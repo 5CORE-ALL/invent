@@ -433,6 +433,25 @@
     </div>
 </div>
 
+{{-- Target / Last Purchase Modal --}}
+<div class="modal fade" id="rfqReportMetaModal" tabindex="-1" aria-labelledby="rfqReportMetaTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable shadow-none modal-lg">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title fw-bold" id="rfqReportMetaTitle">Edit</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="rfqReportMetaBody"></div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" id="rfqReportMetaSaveBtn">
+                    <i class="fa-solid fa-floppy-disk me-1"></i> Save
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 {{-- History Modal --}}
 <div class="modal fade" id="rfqHistoryModal" tabindex="-1" aria-labelledby="rfqHistoryModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered shadow-none">
@@ -505,6 +524,97 @@
         return out;
     }
 
+    const RFQ_BASE_LABELS = {
+        supplierName: 'Supplier Name',
+        companyName: 'Alias',
+        supplierLink: 'Supplier Link',
+        productName: 'Product Name',
+    };
+
+    function escapeHtml(str) {
+        return String(str === null || str === undefined ? '' : str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    function parseRfqFields(formData) {
+        let fields = formData.fields || [];
+        if (typeof fields === 'string') {
+            try { fields = JSON.parse(fields) || []; } catch (e) { fields = []; }
+        }
+        return Array.isArray(fields) ? fields : [];
+    }
+
+    function parseLinkedSkus(formData) {
+        let skus = formData.linked_skus || [];
+        if (typeof skus === 'string') {
+            try { skus = JSON.parse(skus) || []; } catch (e) { skus = []; }
+        }
+        if (!Array.isArray(skus)) return [];
+        return skus.map(function(s) { return String(s).trim(); }).filter(Boolean);
+    }
+
+    function buildRfqFieldKeys(formData) {
+        const keys = ['supplierName', 'companyName', 'supplierLink', 'productName'];
+        parseRfqFields(formData).forEach(function(field) {
+            if (field && field.name && keys.indexOf(field.name) === -1) {
+                keys.push(field.name);
+            }
+        });
+        return keys;
+    }
+
+    function buildRfqMetaKeys(formData) {
+        const linkedSkus = parseLinkedSkus(formData);
+        if (linkedSkus.length > 0) {
+            return linkedSkus;
+        }
+        return buildRfqFieldKeys(formData);
+    }
+
+    function labelForRfqKey(key, formData) {
+        const meta = parseReportMeta(formData);
+        if (meta.labels && meta.labels[key]) return meta.labels[key];
+        if (RFQ_BASE_LABELS[key]) return RFQ_BASE_LABELS[key];
+        const field = parseRfqFields(formData).find(function(f) { return f.name === key; });
+        if (field) return field.label || field.name;
+        return String(key).replace(/([A-Z])/g, ' $1').replace(/^./, function(c) { return c.toUpperCase(); });
+    }
+
+    function parseReportMeta(formData) {
+        let meta = formData.report_meta || {};
+        if (typeof meta === 'string') {
+            try { meta = JSON.parse(meta) || {}; } catch (e) { meta = {}; }
+        }
+        return meta && typeof meta === 'object' ? meta : {};
+    }
+
+    function openReportMetaModal(formData, section) {
+        const keys = buildRfqMetaKeys(formData);
+        const meta = parseReportMeta(formData);
+        const values = meta[section] || {};
+        const title = section === 'target' ? 'Target' : 'Last Purchase';
+
+        document.getElementById('rfqReportMetaTitle').textContent = title + ' — ' + (formData.name || '');
+        document.getElementById('rfqReportMetaBody').innerHTML = keys.length
+            ? keys.map(function(key) {
+                if (key === 'additionalPhotos') return '';
+                const val = values[key] != null ? values[key] : '';
+                return `<div class="mb-3">
+                    <label class="form-label mb-1 small fw-semibold">${escapeHtml(labelForRfqKey(key, formData))}</label>
+                    <input type="text" class="form-control form-control-sm rfq-meta-input" data-key="${escapeHtml(key)}" value="${escapeHtml(String(val))}">
+                </div>`;
+            }).join('')
+            : '<p class="text-muted mb-0">Link SKUs in the Linked SKU column, or define form fields first.</p>';
+
+        const modal = document.getElementById('rfqReportMetaModal');
+        modal.dataset.formId = formData.id;
+        modal.dataset.section = section;
+        new bootstrap.Modal(modal).show();
+    }
+
     // Show the created/updated history for an RFQ form in a modal
     function showRfqHistory(data) {
         document.getElementById('rfqHistoryFormName').textContent = data.name || '';
@@ -534,6 +644,53 @@
     }
 
     document.addEventListener('DOMContentLoaded', function () {
+
+        document.getElementById('rfqReportMetaSaveBtn').addEventListener('click', function() {
+            const modal = document.getElementById('rfqReportMetaModal');
+            const formId = modal.dataset.formId;
+            const section = modal.dataset.section;
+            if (!formId || !section) return;
+
+            const values = {};
+            document.querySelectorAll('#rfqReportMetaBody .rfq-meta-input').forEach(function(input) {
+                values[input.dataset.key] = input.value;
+            });
+
+            const btn = this;
+            const orig = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Saving...';
+
+            fetch(`/rfq-form/${formId}/report-meta`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({ section: section, values: values })
+            })
+            .then(function(res) { return res.json(); })
+            .then(function(res) {
+                if (res.success) {
+                    const row = table.getRows().find(function(r) { return String(r.getData().id) === String(formId); });
+                    if (row) {
+                        const data = row.getData();
+                        data.report_meta = res.report_meta || data.report_meta;
+                        row.update(data);
+                    }
+                    bootstrap.Modal.getInstance(modal).hide();
+                    showToast('success', res.message || 'Saved successfully!');
+                } else {
+                    alert(res.message || 'Failed to save');
+                }
+            })
+            .catch(function() { alert('Error saving data'); })
+            .finally(function() {
+                btn.disabled = false;
+                btn.innerHTML = orig;
+            });
+        });
 
         const table = new Tabulator("#rfq-form-table", {
             ajaxURL: "/rfq-form/data",
@@ -634,10 +791,56 @@
                     }
                 },
                 {
+                    title: "Target",
+                    field: "_target_col",
+                    headerSort: false,
+                    hozAlign: "center",
+                    formatter: function(cell){
+                        const d = cell.getData();
+                        return `
+                            <div class="d-flex justify-content-center align-item-center">
+                                <button type="button" class="btn btn-sm btn-warning rfq-meta-btn" data-id="${d.id}" data-section="target" title="Edit Target">
+                                    Target <i class="fa-solid fa-pen-to-square"></i>
+                                </button>
+                            </div>
+                        `;
+                    },
+                    cellClick: function(e, cell){
+                        if(e.target.closest('.rfq-meta-btn')){
+                            e.preventDefault();
+                            e.stopPropagation();
+                            openReportMetaModal(cell.getData(), 'target');
+                        }
+                    }
+                },
+                {
+                    title: "Last Purchase",
+                    field: "_last_purchase_col",
+                    headerSort: false,
+                    hozAlign: "center",
+                    formatter: function(cell){
+                        const d = cell.getData();
+                        return `
+                            <div class="d-flex justify-content-center align-item-center">
+                                <button type="button" class="btn btn-sm btn-secondary rfq-meta-btn" data-id="${d.id}" data-section="last_purchase" title="Edit Last Purchase">
+                                    Last Purchase <i class="fa-solid fa-pen-to-square"></i>
+                                </button>
+                            </div>
+                        `;
+                    },
+                    cellClick: function(e, cell){
+                        if(e.target.closest('.rfq-meta-btn')){
+                            e.preventDefault();
+                            e.stopPropagation();
+                            openReportMetaModal(cell.getData(), 'last_purchase');
+                        }
+                    }
+                },
+                {
                     title: "Report",
-                    field: "slug",
+                    field: "_report_col",
                     formatter: function(cell, formatterParams, onRendered){
-                        const slug = cell.getValue();
+                        const slug = cell.getData().slug;
                         if(!slug) return "";
 
                         const fullUrl = window.location.origin + `/rfq-form/reports/${slug}`;
@@ -680,7 +883,7 @@
                 },
                 {
                     title: "Action",
-                    field: "name",
+                    field: "_action_col",
                     hozAlign: "center",
                     formatter: function(cell, formatterParams, onRendered) {
                         const rowData = cell.getData();

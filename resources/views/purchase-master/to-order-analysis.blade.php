@@ -261,6 +261,14 @@
         .nrp-dot-cell .nrp-status-dot {
             /* inherits shared dot rules above */
         }
+        .open-month-modal .toa-status-dot {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
+        }
         .nrp-dot-cell .nrp-nr-select {
             opacity: 0;
             cursor: pointer;
@@ -1743,8 +1751,8 @@
                             return `
                                 <div style="text-align:center; font-weight:bold;">
                                     ${val}
-                                    <button class="btn btn-sm btn-link text-info open-month-modal" style="padding: 0 4px;" title="View Monthly">
-                                        <i class="bi bi-calendar3"></i>
+                                    <button class="btn btn-sm btn-link open-month-modal d-inline-flex align-items-center" style="padding: 0 4px; vertical-align: middle;" title="View Monthly">
+                                        <span class="toa-status-dot" style="background-color:#22c55e;" aria-hidden="true"></span>
                                     </button>
                                 </div>
                             `;

@@ -11,8 +11,8 @@ class Supplier extends Model
     use HasFactory;
 
     protected $fillable = [
-        'type', 'category_id', 'name', 'company', 'sku', 'parent', 'phone', 'city',
-        'email', 'whatsapp', 'wechat', 'alibaba', 'others', 'address', 'bank_details',
+        'type', 'category_id', 'name', 'company', 'alias', 'sku', 'parent', 'phone', 'city',
+        'email', 'whatsapp', 'wechat', 'alibaba', 'link_1688', 'qq', 'others', 'address', 'bank_details',
         'approval_status', 'next_followup',
     ];
 

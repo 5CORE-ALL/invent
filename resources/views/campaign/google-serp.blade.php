@@ -1511,7 +1511,7 @@
                         url: gacRawPushSbgtUrl,
                         btn: pushSbgtBtn,
                         campaign_ids: ids,
-                        confirmMsg: 'Run budget:update-shopping for ' + scope + '? Only matching SHOPPING PARENT campaigns in Google Ads are updated (daily budget from the saved SBGT rule).',
+                        confirmMsg: 'Push SBGT to ' + scope + '? Each row is sent to Google Ads using the SBGT value shown in the grid (direct by campaign_id).',
                         loadingTitle: 'Pushing SBGT (budget:update-shopping)…',
                         loadingDetail: 'Updating budgets for ' + ids.length + ' campaign id(s). Waiting for Google Ads API — do not close this tab.',
                     });
@@ -1529,7 +1529,7 @@
                         url: gacRawPushSbidUrl,
                         btn: pushSbidBtn,
                         campaign_ids: ids,
-                        confirmMsg: 'Run sbid:update for ' + scope + '? Only matching SHOPPING PARENT campaigns in Google Ads are updated (SBID from the saved rule).',
+                        confirmMsg: 'Push SBID to ' + scope + '? Each row is sent to Google Ads using the SBID value shown in the grid (direct by campaign_id). Rows with SBID — are skipped.',
                         loadingTitle: 'Pushing SBID (sbid:update)…',
                         loadingDetail: 'Updating SBIDs for ' + ids.length + ' campaign id(s). Waiting for Google Ads API — do not close this tab.',
                     });

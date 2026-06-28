@@ -18,12 +18,6 @@
         .tabulator .tabulator-footer .tabulator-page-counter {
             display: none !important;
         }
-        #top-row-counter {
-            font-size: 18px;
-            font-weight: 700;
-            color: #3a475d;
-            white-space: nowrap;
-        }
 
         /* Pagination styling */
         .tabulator .tabulator-footer .tabulator-paginator .tabulator-page {
@@ -69,7 +63,7 @@
         .tabulator .tabulator-header .tabulator-col .tabulator-col-content {
             text-align: center;
         }
-        /* Sortable headers: pointer cursor + visible sort arrows on the teal background */
+        /* Sortable headers: pointer cursor; sort icons hidden but click still works */
         #forecast-table.tabulator .tabulator-header .tabulator-col.tabulator-sortable {
             cursor: pointer;
         }
@@ -84,22 +78,9 @@
             background: #6cb8b3 !important;
             background-color: #6cb8b3 !important;
         }
-        #forecast-table.tabulator .tabulator-header .tabulator-col .tabulator-col-sorter {
-            display: flex !important;
-            align-items: center;
-            justify-content: center;
-        }
-        #forecast-table.tabulator .tabulator-header .tabulator-col .tabulator-arrow {
-            display: inline-block !important;
-            opacity: 0.55;
-            border-bottom-color: #1f3a3a !important;
-            border-top-color: #1f3a3a !important;
-        }
-        #forecast-table.tabulator .tabulator-header .tabulator-col[aria-sort="ascending"] .tabulator-arrow,
-        #forecast-table.tabulator .tabulator-header .tabulator-col[aria-sort="descending"] .tabulator-arrow {
-            opacity: 1;
-            border-bottom-color: #0b1f1f !important;
-            border-top-color: #0b1f1f !important;
+        #forecast-table.tabulator .tabulator-header .tabulator-col .tabulator-col-sorter,
+        #forecast-table-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-sorter {
+            display: none !important;
         }
         .tabulator .tabulator-header .tabulator-header-filter {
             display: flex;
@@ -117,6 +98,30 @@
             border-radius: 50%;
             flex-shrink: 0;
             box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
+        }
+        .open-month-modal .nrp-status-dot {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
+        }
+        .forecast-history-row-btn .nrp-status-dot {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
+        }
+        .forecast-edit-row-btn {
+            line-height: 1;
+            text-decoration: none !important;
+            color: #0d9488 !important;
+        }
+        .forecast-edit-row-btn:hover {
+            color: #0f766e !important;
         }
         .nrp-dot-cell .nrp-nr-select {
             opacity: 0;
@@ -153,7 +158,12 @@
         .stage-dot-cell .stage-transit-icon {
             font-size: 1.05rem;
             line-height: 1;
-            color: #334155;
+            display: inline-block;
+        }
+        .stage-dot-cell .stage-mip-icon {
+            font-size: 1rem;
+            line-height: 1;
+            color: #2563eb;
         }
 
         .tabulator-cell.forecast-rating-combo-cell {
@@ -164,6 +174,14 @@
 
         .tabulator-cell.forecast-current-supplier-cell {
             vertical-align: middle;
+            padding-left: 2px !important;
+            padding-right: 2px !important;
+        }
+        .tabulator-cell.forecast-exec-cell {
+            padding-left: 2px !important;
+            padding-right: 2px !important;
+        }
+        .tabulator-cell.forecast-edit-actions-cell {
             padding-left: 2px !important;
             padding-right: 2px !important;
         }
@@ -182,38 +200,6 @@
             text-align: center;
             font-weight: 600;
             font-size: 0.72rem;
-        }
-        /* Inline editable supplier dropdown inside the Supplier cell */
-        .tabulator-cell.forecast-current-supplier-cell .forecast-supplier-edit-select {
-            width: 100%;
-            max-width: 100%;
-            box-sizing: border-box;
-            padding: 1px 14px 1px 3px;
-            font-size: 0.7rem;
-            font-weight: 600;
-            line-height: 1.1;
-            text-align: center;
-            text-align-last: center;
-            background-color: #fff;
-            border: 1px solid #c9d3df;
-            border-radius: 4px;
-            cursor: pointer;
-            min-height: 22px;
-        }
-        .tabulator-cell.forecast-current-supplier-cell .forecast-supplier-edit-select:focus {
-            outline: none;
-            border-color: #2563eb;
-            box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.3);
-        }
-        .tabulator-cell.forecast-current-supplier-cell .forecast-supplier-edit-select.is-empty {
-            color: #6b7280;
-            font-style: italic;
-            font-weight: 500;
-        }
-        .tabulator-cell.forecast-current-supplier-cell .forecast-supplier-edit-select option {
-            font-style: normal;
-            font-weight: 500;
-            color: #111827;
         }
 
         .forecast-dil-pct {
@@ -294,8 +280,8 @@
             min-height: 56px;
             width: 100%;
         }
-        #forecast-table-wrap .tabulator .tabulator-header .tabulator-col:not(:first-child) .tabulator-col-title,
-        #forecast-table-wrap .tabulator .tabulator-header .tabulator-col:not(:first-child) .tabulator-title {
+        #forecast-table-wrap .tabulator .tabulator-header .tabulator-col:not(:first-child):not(.tabulator-field-SKU) .tabulator-col-title,
+        #forecast-table-wrap .tabulator .tabulator-header .tabulator-col:not(:first-child):not(.tabulator-field-SKU) .tabulator-title {
             writing-mode: vertical-rl;
             transform: rotate(180deg);
             white-space: nowrap;
@@ -304,11 +290,6 @@
             line-height: 1.1;
             letter-spacing: 0.02em;
             text-align: center;
-        }
-        #forecast-table-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-sorter {
-            writing-mode: horizontal-tb !important;
-            transform: none !important;
-            flex-shrink: 0;
         }
         #forecast-table-wrap .tabulator .tabulator-header .tabulator-col:first-child .tabulator-col-content {
             min-height: auto;
@@ -322,6 +303,39 @@
             writing-mode: horizontal-tb !important;
             transform: none !important;
             min-height: auto !important;
+        }
+        /* SKU column title — horizontal, 2× header size */
+        #forecast-table-wrap .tabulator .tabulator-header .tabulator-col.tabulator-field-SKU .tabulator-col-content,
+        #forecast-table-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="SKU"] .tabulator-col-content {
+            min-height: auto !important;
+            flex-direction: column;
+            align-items: stretch;
+            justify-content: center;
+            gap: 4px;
+        }
+        #forecast-table-wrap .tabulator .tabulator-header .tabulator-col.tabulator-field-SKU .tabulator-col-title-holder,
+        #forecast-table-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="SKU"] .tabulator-col-title-holder {
+            min-height: auto !important;
+            flex-direction: row !important;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+        }
+        #forecast-table-wrap .tabulator .tabulator-header .tabulator-col.tabulator-field-SKU .tabulator-col-title,
+        #forecast-table-wrap .tabulator .tabulator-header .tabulator-col.tabulator-field-SKU .tabulator-col-title-holder,
+        #forecast-table-wrap .tabulator .tabulator-header .tabulator-col.tabulator-field-SKU .tabulator-title,
+        #forecast-table-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="SKU"] .tabulator-col-title,
+        #forecast-table-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="SKU"] .tabulator-col-title-holder,
+        #forecast-table-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="SKU"] .tabulator-title {
+            writing-mode: horizontal-tb !important;
+            transform: none !important;
+            min-height: auto !important;
+            font-size: 1.36rem !important;
+            font-weight: 700;
+            line-height: 1.15;
+            letter-spacing: normal;
+            text-align: center;
+            white-space: nowrap;
         }
         #forecast-table-wrap .tabulator .tabulator-header .tabulator-header-filter {
             writing-mode: horizontal-tb !important;
@@ -515,6 +529,158 @@
             margin-right: 5px;
             vertical-align: middle;
         }
+        #forecast-toolbar-top {
+            display: flex;
+            flex-wrap: nowrap;
+            align-items: stretch;
+            gap: 6px;
+            width: 100%;
+        }
+        #forecast-toolbar-top .forecast-play-group {
+            display: flex;
+            align-items: center;
+            gap: 3px;
+            border: 1px solid #dee2e6;
+            border-radius: 0.25rem;
+            padding: 2px 5px;
+            background: #f8f9fa;
+            flex-shrink: 0;
+        }
+        #forecast-toolbar-top .forecast-play-group > small {
+            font-size: 0.65rem;
+            line-height: 1;
+        }
+        #forecast-toolbar-top .forecast-play-group .btn.rounded-circle {
+            width: 26px;
+            height: 26px;
+            min-width: 26px;
+            min-height: 26px;
+        }
+        #forecast-toolbar-top .forecast-play-group .btn.rounded-circle i {
+            font-size: 9px;
+        }
+        #forecast-toolbar-top .forecast-play-group .forecast-play-letter {
+            width: 26px;
+            height: 26px;
+            min-width: 26px;
+            min-height: 26px;
+            font-size: 10px;
+            padding: 0;
+        }
+        #forecast-toolbar-top .forecast-play-label {
+            font-size: 0.62rem;
+            max-width: 80px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        #forecast-toolbar-top .forecast-toolbar-vr {
+            align-self: stretch;
+            width: 1px;
+            min-width: 1px;
+            background: rgba(0, 0, 0, 0.12);
+            flex-shrink: 0;
+            margin: 3px 2px;
+        }
+        #forecast-summary-badges {
+            display: flex;
+            flex-wrap: nowrap;
+            align-items: stretch;
+            gap: 4px;
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+        #forecast-summary-badges .btn {
+            flex: 1 1 0;
+            min-width: 0;
+            padding: 0.35rem 0.3rem;
+            font-size: 0.78rem;
+            line-height: 1.2;
+            white-space: nowrap;
+            text-align: center;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        @media (max-width: 1400px) {
+            #forecast-summary-badges .btn {
+                font-size: 0.7rem;
+                padding: 0.3rem 0.2rem;
+            }
+        }
+        @media (max-width: 1100px) {
+            #forecast-toolbar-top {
+                overflow-x: auto;
+                scrollbar-width: thin;
+            }
+            #forecast-summary-badges .btn {
+                flex: 0 0 auto;
+                min-width: max-content;
+            }
+        }
+        #forecast-filter-bar {
+            display: flex;
+            flex-wrap: nowrap;
+            align-items: center;
+            gap: 6px;
+            width: 100%;
+        }
+        #forecast-filter-bar .forecast-filter-fields {
+            display: flex;
+            flex-wrap: nowrap;
+            align-items: center;
+            gap: 6px;
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+        #forecast-filter-bar .forecast-filter-field {
+            flex: 1 1 0;
+            min-width: 0;
+            width: auto !important;
+        }
+        #forecast-filter-bar .forecast-filter-nrp {
+            flex: 0.75 1 0;
+            min-width: 0;
+        }
+        #forecast-filter-bar .forecast-filter-nrp .dropdown-toggle {
+            width: 100%;
+            min-width: 0;
+        }
+        #forecast-filter-bar .page-info-toolbar-item {
+            flex-shrink: 0;
+        }
+        #forecast-filter-bar .forecast-filter-vr {
+            align-self: stretch;
+            width: 1px;
+            min-width: 1px;
+            background: rgba(0, 0, 0, 0.12);
+            flex-shrink: 0;
+            margin: 2px 0;
+        }
+        #forecast-filter-bar .forecast-filter-actions {
+            display: flex;
+            flex-wrap: nowrap;
+            align-items: center;
+            gap: 4px;
+            flex-shrink: 0;
+        }
+        #forecast-filter-bar #stage-filter-badge {
+            flex-shrink: 0;
+        }
+        @media (max-width: 1200px) {
+            #forecast-filter-bar {
+                overflow-x: auto;
+                scrollbar-width: thin;
+            }
+            #forecast-filter-bar .forecast-filter-fields {
+                flex: 0 0 auto;
+            }
+            #forecast-filter-bar .forecast-filter-field,
+            #forecast-filter-bar .forecast-filter-nrp {
+                flex: 0 0 100px;
+                min-width: 100px;
+            }
+        }
     </style>
 @endsection
 
@@ -529,110 +695,92 @@
             <div class="card shadow-sm">
                 <div class="card-body pb-0 d-flex flex-column gap-2">
 
-                    <!-- ── Row 1: Play controls + row counter ── -->
-                    <div class="d-flex align-items-center flex-wrap gap-2">
-
+                    <!-- ── Play controls + summary badges (one row) ── -->
+                    <div id="forecast-toolbar-top">
                         <!-- Parent play -->
-                        <div class="d-flex align-items-center gap-1 border rounded px-2 py-1 bg-light" title="Play by Parent">
-                            <small class="text-muted fw-semibold" style="font-size:0.65rem;">P</small>
-                            <button id="play-backward" class="btn btn-light btn-sm rounded-circle p-0" style="width:28px;height:28px;"><i class="fas fa-step-backward" style="font-size:10px;"></i></button>
-                            <button id="play-pause"   class="btn btn-primary btn-sm rounded-circle p-0" style="width:28px;height:28px;display:none;"><i class="fas fa-pause" style="font-size:10px;"></i></button>
-                            <button id="play-auto"    class="btn btn-primary btn-sm rounded-circle p-0" style="width:28px;height:28px;"><i class="fas fa-play" style="font-size:10px;"></i></button>
-                            <button id="play-forward" class="btn btn-light btn-sm rounded-circle p-0" style="width:28px;height:28px;"><i class="fas fa-step-forward" style="font-size:10px;"></i></button>
+                        <div class="forecast-play-group" title="Play by Parent">
+                            <small class="text-muted fw-semibold">P</small>
+                            <button id="play-backward" class="btn btn-light btn-sm rounded-circle p-0"><i class="fas fa-step-backward"></i></button>
+                            <button id="play-pause"   class="btn btn-primary btn-sm rounded-circle p-0" style="display:none;"><i class="fas fa-pause"></i></button>
+                            <button id="play-auto"    class="btn btn-primary btn-sm rounded-circle p-0"><i class="fas fa-play"></i></button>
+                            <button id="play-forward" class="btn btn-light btn-sm rounded-circle p-0"><i class="fas fa-step-forward"></i></button>
                         </div>
 
                         <!-- Supplier play -->
-                        <div class="d-flex align-items-center gap-1 border rounded px-2 py-1 bg-light" title="Play by Supplier">
-                            <small class="text-muted fw-semibold" style="font-size:0.65rem;">S</small>
-                            <button id="supplier-play-backward" class="btn btn-light btn-sm rounded-circle p-0" style="width:28px;height:28px;" title="Prev supplier"><i class="fas fa-step-backward" style="font-size:10px;"></i></button>
-                            <button id="supplier-play-pause"    class="btn btn-warning btn-sm rounded-circle p-0" style="width:28px;height:28px;display:none;" title="Stop supplier"><i class="fas fa-pause" style="font-size:10px;"></i></button>
-                            <button id="supplier-play-auto"     class="btn btn-outline-warning btn-sm rounded-circle p-0 fw-bold" style="width:28px;height:28px;font-size:11px;" title="Play by supplier">S</button>
-                            <button id="supplier-play-forward"  class="btn btn-light btn-sm rounded-circle p-0" style="width:28px;height:28px;" title="Next supplier"><i class="fas fa-step-forward" style="font-size:10px;"></i></button>
-                            <span class="badge bg-warning text-dark" id="supplier-play-label" style="font-size:0.65rem;display:none;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
-                            </div>
-
-                        <!-- Zone play -->
-                        <div class="d-flex align-items-center gap-1 border rounded px-2 py-1 bg-light" title="Play by Zone">
-                            <small class="text-muted fw-semibold" style="font-size:0.65rem;">Z</small>
-                            <button id="zone-play-backward" class="btn btn-light btn-sm rounded-circle p-0" style="width:28px;height:28px;" title="Prev zone"><i class="fas fa-step-backward" style="font-size:10px;"></i></button>
-                            <button id="zone-play-pause"    class="btn btn-info btn-sm rounded-circle p-0" style="width:28px;height:28px;display:none;" title="Stop zone"><i class="fas fa-pause" style="font-size:10px;"></i></button>
-                            <button id="zone-play-auto"     class="btn btn-outline-info btn-sm rounded-circle p-0 fw-bold" style="width:28px;height:28px;font-size:11px;" title="Play by zone">Z</button>
-                            <button id="zone-play-forward"  class="btn btn-light btn-sm rounded-circle p-0" style="width:28px;height:28px;" title="Next zone"><i class="fas fa-step-forward" style="font-size:10px;"></i></button>
-                            <span class="badge bg-info text-dark" id="zone-play-label" style="font-size:0.65rem;display:none;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+                        <div class="forecast-play-group" title="Play by Supplier">
+                            <small class="text-muted fw-semibold">S</small>
+                            <button id="supplier-play-backward" class="btn btn-light btn-sm rounded-circle p-0" title="Prev supplier"><i class="fas fa-step-backward"></i></button>
+                            <button id="supplier-play-pause"    class="btn btn-warning btn-sm rounded-circle p-0" style="display:none;" title="Stop supplier"><i class="fas fa-pause"></i></button>
+                            <button id="supplier-play-auto"     class="btn btn-outline-warning btn-sm rounded-circle p-0 fw-bold forecast-play-letter" title="Play by supplier">S</button>
+                            <button id="supplier-play-forward"  class="btn btn-light btn-sm rounded-circle p-0" title="Next supplier"><i class="fas fa-step-forward"></i></button>
+                            <span class="badge bg-warning text-dark forecast-play-label" id="supplier-play-label" style="display:none;"></span>
                         </div>
 
                         <!-- Container play -->
-                        <div class="d-flex align-items-center gap-1 border rounded px-2 py-1 bg-light" title="Play by Container">
-                            <small class="text-muted fw-semibold" style="font-size:0.65rem;">C</small>
-                            <button id="container-play-backward" class="btn btn-light btn-sm rounded-circle p-0" style="width:28px;height:28px;" title="Prev container"><i class="fas fa-step-backward" style="font-size:10px;"></i></button>
-                            <button id="container-play-pause"    class="btn btn-dark btn-sm rounded-circle p-0" style="width:28px;height:28px;display:none;" title="Stop container"><i class="fas fa-pause" style="font-size:10px;"></i></button>
-                            <button id="container-play-auto"     class="btn btn-outline-dark btn-sm rounded-circle p-0 fw-bold" style="width:28px;height:28px;font-size:11px;" title="Play by container">C</button>
-                            <button id="container-play-forward"  class="btn btn-light btn-sm rounded-circle p-0" style="width:28px;height:28px;" title="Next container"><i class="fas fa-step-forward" style="font-size:10px;"></i></button>
-                            <span class="badge bg-dark text-white" id="container-play-label" style="font-size:0.65rem;display:none;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+                        <div class="forecast-play-group" title="Play by Container">
+                            <small class="text-muted fw-semibold">C</small>
+                            <button id="container-play-backward" class="btn btn-light btn-sm rounded-circle p-0" title="Prev container"><i class="fas fa-step-backward"></i></button>
+                            <button id="container-play-pause"    class="btn btn-dark btn-sm rounded-circle p-0" style="display:none;" title="Stop container"><i class="fas fa-pause"></i></button>
+                            <button id="container-play-auto"     class="btn btn-outline-dark btn-sm rounded-circle p-0 fw-bold forecast-play-letter" title="Play by container">C</button>
+                            <button id="container-play-forward"  class="btn btn-light btn-sm rounded-circle p-0" title="Next container"><i class="fas fa-step-forward"></i></button>
+                            <span class="badge bg-dark text-white forecast-play-label" id="container-play-label" style="display:none;"></span>
                         </div>
 
-                        <!-- Chart Toggle Button -->
-                        <button id="toggle-pmt-chart-btn" class="btn btn-sm btn-outline-primary fw-semibold d-flex align-items-center gap-1" title="Toggle Payment Terms Chart">
-                            <i class="fas fa-chart-pie"></i>
-                            <span>Chart</span>
-                        </button>
+                        <span class="forecast-toolbar-vr" aria-hidden="true"></span>
 
-                        <span class="vr align-self-stretch opacity-25"></span>
-                        <span id="top-row-counter" class="text-muted small">Showing 0-0 of 0 rows</span>
+                        <div id="forecast-summary-badges">
+                            <span id="filtered-row-badge" class="btn btn-sm btn-dark fw-semibold text-white" title="Filtered child SKU rows"><span id="filtered-row-count">0</span></span>
+                            <button id="total_msl_c" class="btn btn-sm btn-success fw-semibold text-dark">MSL_LP $<span id="total_msl_c_value">0.00</span></button>
+                            <button type="button" class="btn btn-sm btn-info fw-semibold text-dark" title="MSL × AMZ price ÷ 4">MSL_SP $<span id="total_msl_sp_amz_value">0</span></button>
+                            <button id="total_inv_value" class="btn btn-sm btn-info fw-semibold text-dark" title="INV Value">INV $<span id="total_inv_value_display">0</span></button>
+                            <button id="total_lp_value" class="btn btn-sm btn-warning fw-semibold text-dark" title="LP Value">LP $<span id="total_lp_value_display">0</span></button>
+                            <button id="total_order_value" class="btn btn-sm btn-warning fw-semibold text-dark" title="2 Ord × CP">Ord $<span id="total_order_value_display">0</span></button>
+                            <button id="total_minimal_msl" class="btn btn-sm btn-secondary fw-semibold text-white" title="Missing forecast.analysis">Missing $<span id="total_minimal_msl_value">0</span></button>
+                            <button id="total_mip_value" class="btn btn-sm btn-warning fw-semibold text-dark" title="MIP Value">MIP $<span id="total_mip_value_display">0</span></button>
+                            <button id="total_r2s_value" class="btn btn-sm btn-warning fw-semibold text-dark" title="R2S Value">R2S $<span id="total_r2s_value_display">0</span></button>
+                            <button id="total_transit_value" class="btn btn-sm btn-secondary fw-semibold text-dark" title="Transit Value">Trn $<span id="total_transit_value_display">0</span></button>
+                            <button id="total_cbm_value" class="btn btn-sm btn-info fw-semibold text-dark" title="Total CBM — Σ (MSL × CBM/unit) across visible child SKUs">CBM <span id="total_cbm_value_display">0</span></button>
+                            <button type="button" id="zero-stock-badge-btn" class="btn btn-sm btn-danger fw-semibold text-white" style="cursor:pointer;" title="Child SKUs with INV ≤ 0 (zero or negative). Click to filter or clear." aria-pressed="false"><span id="zero-stock-count">0%</span></button>
+                        </div>
                     </div>
 
                     <!-- ── Row 2: Searches + Filters ── -->
-                        <div class="d-flex align-items-center flex-wrap gap-2">
-                        @include('purchase-master.partials.page-info-toolbar', ['pageKey' => 'forecast'])
-                        <!-- Column Searches -->
-                        <input type="text" id="search-parent"   class="form-control form-control-sm border-primary" placeholder="Parent…"   autocomplete="off" style="width:130px;">
-                        <input type="text" id="search-sku"      class="form-control form-control-sm border-primary" placeholder="SKU…"      autocomplete="off" style="width:140px;">
-                        <input type="text" id="search-supplier" class="form-control form-control-sm border-primary" placeholder="Supplier…" autocomplete="off" style="width:130px;">
+                    <div id="forecast-filter-bar">
+                        <div class="forecast-filter-fields">
+                            @include('purchase-master.partials.page-info-toolbar', ['pageKey' => 'forecast'])
+                            <input type="text" id="search-parent" class="form-control form-control-sm border-primary forecast-filter-field" placeholder="Parent…" autocomplete="off">
+                            <input type="text" id="search-sku" class="form-control form-control-sm border-primary forecast-filter-field" placeholder="SKU…" autocomplete="off">
+                            <input type="text" id="search-supplier" class="form-control form-control-sm border-primary forecast-filter-field" placeholder="Supplier…" autocomplete="off">
 
-                        {{-- Executive quick filter — matches the in-cell Exec column
-                             values; empty string means "show every executive". --}}
-                        <select id="executive-filter"
-                                class="form-select form-select-sm border-primary"
-                                style="width:140px;"
-                                title="Filter by assigned executive"
-                                aria-label="Executive filter">
-                            <option value="">👤 All Execs</option>
-                            <option value="__unassigned__">— Unassigned —</option>
-                            <option value="Atin">Atin</option>
-                            <option value="Jack">Jack</option>
-                            <option value="Nitish">Nitish</option>
-                            <option value="Ajay">Ajay</option>
-                            <option value="Candy">Candy</option>
-                            <option value="Sruti">Sruti</option>
-                        </select>
+                            <select id="executive-filter"
+                                    class="form-select form-select-sm border-primary forecast-filter-field"
+                                    title="Filter by Exec (all executives when unset)"
+                                    aria-label="Exec filter">
+                                <option value="">Exec</option>
+                                <option value="__unassigned__">NA</option>
+                                <option value="Atin">Atin</option>
+                                <option value="Jack">Jack</option>
+                                <option value="Nitish">Nitish</option>
+                                <option value="Ajay">Ajay</option>
+                                <option value="Candy">Candy</option>
+                                <option value="Sruti">Sruti</option>
+                            </select>
 
-                        {{-- NRP checkbox dropdown — promoted to the top filter row so
-                             REQ / 2BDC / LATER toggles sit next to the other quick
-                             filters. The button label is kept in sync by the existing
-                             updateNRPMultiselectLabel() helper. --}}
-                        <div class="dropdown d-inline-block">
-                            <button class="btn btn-sm btn-light border border-primary dropdown-toggle" type="button" id="nrp-filter-dropdown" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" style="min-width:130px;" title="Filter by NRP type (REQ / 2BDC / LATER)">
-                                🔍 NRP: <span id="nrp-filter-label">ALL Items</span>
-                            </button>
-                            <ul class="dropdown-menu shadow-sm p-2" style="min-width:170px;" aria-labelledby="nrp-filter-dropdown">
-                                <li class="small text-muted px-2 mb-1">Show item types</li>
-                                <li><label class="dropdown-item-text mb-0 d-flex align-items-center gap-2 cursor-pointer"><input type="checkbox" class="form-check-input nrp-ms-opt flex-shrink-0" value="REQ" checked><span>REQ</span></label></li>
-                                <li><label class="dropdown-item-text mb-0 d-flex align-items-center gap-2 cursor-pointer"><input type="checkbox" class="form-check-input nrp-ms-opt flex-shrink-0" value="NR" checked><span>2BDC</span></label></li>
-                                <li><label class="dropdown-item-text mb-0 d-flex align-items-center gap-2 cursor-pointer"><input type="checkbox" class="form-check-input nrp-ms-opt flex-shrink-0" value="LATER" checked><span>LATER</span></label></li>
-                            </ul>
-                        </div>
+                            <div class="dropdown forecast-filter-nrp">
+                                <button class="btn btn-sm btn-light border border-primary dropdown-toggle w-100" type="button" id="nrp-filter-dropdown" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" title="Filter by NRP: All items (REQ / 2BDC / LATER)">
+                                    NRP
+                                </button>
+                                <ul class="dropdown-menu shadow-sm p-2" style="min-width:170px;" aria-labelledby="nrp-filter-dropdown">
+                                    <li class="small text-muted px-2 mb-1">Show item types</li>
+                                    <li><label class="dropdown-item-text mb-0 d-flex align-items-center gap-2 cursor-pointer"><input type="checkbox" class="form-check-input nrp-ms-opt flex-shrink-0" value="REQ" checked><span>REQ</span></label></li>
+                                    <li><label class="dropdown-item-text mb-0 d-flex align-items-center gap-2 cursor-pointer"><input type="checkbox" class="form-check-input nrp-ms-opt flex-shrink-0" value="NR" checked><span>2BDC</span></label></li>
+                                    <li><label class="dropdown-item-text mb-0 d-flex align-items-center gap-2 cursor-pointer"><input type="checkbox" class="form-check-input nrp-ms-opt flex-shrink-0" value="LATER" checked><span>LATER</span></label></li>
+                                </ul>
+                            </div>
 
-                        <span class="vr align-self-stretch opacity-25"></span>
-
-                        <!-- Stage Filter + blue summary badge (filtered child rows + column sum) -->
-                        <div class="d-inline-flex flex-column align-items-start">
-                            <div class="d-flex align-items-center gap-1 flex-wrap">
-                                {{-- "Stage summary" label now lives inside the select itself
-                                     (first option + title tooltip) instead of as a separate <span>
-                                     above it — keeps the toolbar shorter while preserving meaning. --}}
-                                <select id="stage-filter" class="form-select form-select-sm border border-primary" style="width:150px;"
-                                        title="Stage summary — child SKU rows currently visible after Stage and all other filters. QTY is the sum of that stage’s quantity column (e.g. appr_req_qty for Appr Req).">
-                                <option value="">Stage summary — All</option>
+                            <select id="stage-filter" class="form-select form-select-sm border border-primary forecast-filter-field"
+                                    title="Stage — child SKU rows currently visible after Stage and all other filters. QTY is the sum of that stage’s quantity column (e.g. appr_req_qty for Appr Req).">
+                                <option value="">Stage</option>
                                 <option value="__blank__">Not Req Now</option>
                                 <option value="two_ord_nonneg">2 Ord</option>
                                 <option value="appr_req">Appr Req</option>
@@ -641,81 +789,59 @@
                                 <option value="transit">Trn</option>
                                 <option value="to_order_analysis">Order</option>
                             </select>
-                                <span id="stage-filter-badge" style="display:none;background:#0d6efd;color:#fff;font-size:0.78rem;font-weight:700;border-radius:20px;padding:3px 10px;white-space:nowrap;box-shadow:0 1px 4px rgba(13,110,253,.35);"></span>
-                            </div>
+                            <span id="stage-filter-badge" style="display:none;background:#0d6efd;color:#fff;font-size:0.78rem;font-weight:700;border-radius:20px;padding:3px 10px;white-space:nowrap;box-shadow:0 1px 4px rgba(13,110,253,.35);"></span>
+
+                            <select id="row-data-type" class="form-select form-select-sm border border-primary forecast-filter-field" aria-label="Row type"></select>
                         </div>
 
-                        <!-- Row Type -->
-                        <select id="row-data-type" class="form-select form-select-sm border border-primary" style="width:150px;" aria-label="Row type"></select>
+                        <span class="forecast-filter-vr" aria-hidden="true"></span>
 
-                        <span class="vr align-self-stretch opacity-25"></span>
-
-                        <!-- Column Management -->
-                        <div class="dropdown">
-                            <button class="btn btn-sm btn-primary d-flex align-items-center gap-1" type="button" id="hide-column-dropdown" title="Manage Columns">
-                                <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-                                    <rect x="0"  y="0" width="2.5" height="14" rx="1"/>
-                                    <rect x="3.8" y="0" width="2.5" height="14" rx="1"/>
-                                    <rect x="7.6" y="0" width="2.5" height="14" rx="1"/>
-                                    <rect x="11.4" y="0" width="2.5" height="14" rx="1"/>
-                                </svg>
+                        <div class="forecast-filter-actions">
+                            <div class="dropdown">
+                                <button class="btn btn-sm btn-primary d-flex align-items-center gap-1" type="button" id="hide-column-dropdown" title="Manage Columns">
+                                    <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                                        <rect x="0"  y="0" width="2.5" height="14" rx="1"/>
+                                        <rect x="3.8" y="0" width="2.5" height="14" rx="1"/>
+                                        <rect x="7.6" y="0" width="2.5" height="14" rx="1"/>
+                                        <rect x="11.4" y="0" width="2.5" height="14" rx="1"/>
+                                    </svg>
                                 </button>
                             </div>
 
-                        <!-- Export Button -->
-                        <button id="export-forecast-btn" class="btn btn-sm btn-success fw-semibold d-flex align-items-center" type="button"
-                                title="Export filtered rows: Supplier, SKU, Image, QTY, Order Date"
-                                aria-label="Export filtered rows">
-                            <i class="fas fa-download"></i>
+                            <button id="export-forecast-btn" class="btn btn-sm btn-success fw-semibold d-flex align-items-center" type="button"
+                                    title="Export filtered rows: Supplier, SKU, Image, QTY, Order Date"
+                                    aria-label="Export filtered rows">
+                                <i class="fas fa-download"></i>
                             </button>
 
-                        <!-- Clear All Filters -->
-                        <button id="clear-all-filters-btn"
-                                class="btn btn-sm btn-outline-danger fw-semibold d-flex align-items-center"
-                                type="button"
-                                aria-label="Clear all filters"
-                                title="Reset every search, filter, play mode, NRP selection, header filter and zero-stock toggle">
-                            <i class="fas fa-times-circle"></i>
-                        </button>
-
-                        @php
-                            $__forecastPresidentEmail = 'president@5core.com';
-                            $__forecastIsPresident = strtolower(trim((string) (\Illuminate\Support\Facades\Auth::user()->email ?? ''))) === $__forecastPresidentEmail;
-                        @endphp
-                        @if ($__forecastIsPresident)
-                            <!-- Archive selected (president only) -->
-                            <button id="archive-selected-btn"
-                                    class="btn btn-sm btn-outline-dark fw-semibold d-flex align-items-center gap-1"
-                                    type="button" disabled
-                                    title="Archive the rows you've ticked. Archived rows disappear from this view and live on the Restore page.">
-                                <i class="fas fa-box-archive"></i>
-                                <span>Archive (<span id="archive-selected-count">0</span>)</span>
+                            <button id="clear-all-filters-btn"
+                                    class="btn btn-sm btn-outline-danger fw-semibold d-flex align-items-center"
+                                    type="button"
+                                    aria-label="Clear all filters"
+                                    title="Reset every search, filter, play mode, NRP selection, header filter and zero-stock toggle">
+                                <i class="fas fa-times-circle"></i>
                             </button>
-                            <!-- Restore page link (president only) -->
-                            <a href="{{ route('forecast.analysis.archived') }}"
-                               class="btn btn-sm btn-outline-secondary fw-semibold d-flex align-items-center gap-1"
-                               title="Open the Restore page to bring archived rows back">
-                                <i class="fas fa-rotate-left"></i>
-                                <span>Restore</span>
-                            </a>
-                        @endif
-                    </div>
 
-                    <!-- ── Row 3: Value badges ── -->
-                    <div class="d-flex align-items-center flex-wrap gap-2">
-                        <button id="total_msl_c"       class="btn btn-sm btn-success fw-semibold text-dark"> MSL_LP: $<span id="total_msl_c_value">0.00</span></button>
-                        <button type="button"           class="btn btn-sm btn-info fw-semibold text-dark" title="MSL × AMZ price ÷ 4"> MSL_SP: $<span id="total_msl_sp_amz_value">0</span></button>
-                        <button id="total_inv_value"    class="btn btn-sm btn-info fw-semibold text-dark" title="INV Value"> INV: $<span id="total_inv_value_display">0</span></button>
-                        <button id="total_lp_value"     class="btn btn-sm btn-warning fw-semibold text-dark" title="LP Value"> LP: $<span id="total_lp_value_display">0</span></button>
-                        <button id="total_order_value"  class="btn btn-sm btn-warning fw-semibold text-dark" title="2 Ord × CP"> Ord: $<span id="total_order_value_display">0</span></button>
-                        <button id="total_minimal_msl"  class="btn btn-sm btn-secondary fw-semibold text-white" title="Missing forecast.analysis">Missing: $<span id="total_minimal_msl_value">0</span></button>
-                        <button id="total_mip_value"    class="btn btn-sm btn-warning fw-semibold text-dark" title="MIP Value"> MIP: $<span id="total_mip_value_display">0</span></button>
-                        <button id="total_r2s_value"    class="btn btn-sm btn-warning fw-semibold text-dark" title="R2S Value"> R2S: $<span id="total_r2s_value_display">0</span></button>
-                        <button id="total_transit_value" class="btn btn-sm btn-secondary fw-semibold text-dark" title="Transit Value"> Trn: $<span id="total_transit_value_display">0</span></button>
-                        {{-- Total CBM across the rows currently visible (filtered + paginated alike).
-                             Each row contributes total_cbm = MSL × CBM/unit (see ForecastAnalysisController). --}}
-                        <button id="total_cbm_value" class="btn btn-sm btn-info fw-semibold text-dark" title="Total CBM — Σ (MSL × CBM/unit) across visible child SKUs"> CBM: <span id="total_cbm_value_display">0</span></button>
-                        <button type="button" id="zero-stock-badge-btn" class="btn btn-sm btn-danger fw-semibold text-white" style="cursor:pointer;" title="Child SKUs with INV ≤ 0 (zero or negative). Click to filter or clear." aria-pressed="false">0: <span id="zero-stock-count">0</span></button>
+                            @php
+                                $__forecastPresidentEmail = 'president@5core.com';
+                                $__forecastIsPresident = strtolower(trim((string) (\Illuminate\Support\Facades\Auth::user()->email ?? ''))) === $__forecastPresidentEmail;
+                            @endphp
+                            @if ($__forecastIsPresident)
+                                <button id="archive-selected-btn"
+                                        class="btn btn-sm btn-outline-dark fw-semibold d-flex align-items-center"
+                                        type="button" disabled
+                                        aria-label="Archive selected (0)"
+                                        title="Archive selected (0). Archived rows disappear from this view and live on the Restore page.">
+                                    <i class="fas fa-archive"></i>
+                                </button>
+                                <a href="{{ route('forecast.analysis.archived') }}"
+                                   class="btn btn-sm btn-outline-secondary fw-semibold d-flex align-items-center"
+                                   aria-label="Restore archived rows"
+                                   title="Open the Restore page to bring archived rows back">
+                                    <i class="fas fa-rotate-left"></i>
+                                </a>
+                            @endif
+                        </div>
                     </div>
 
                     <!-- Bulk edit badge (shown when rows selected) -->
@@ -821,43 +947,8 @@
                                 </li>
                             </ul>
                         </div>
-                        <div class="dropdown">
-                            <button class="btn btn-sm btn-secondary dropdown-toggle" type="button" id="bulkEditPmtTermsBtn" data-bs-toggle="dropdown" aria-expanded="false">
-                                Pmt Terms
-                            </button>
-                            <ul class="dropdown-menu" aria-labelledby="bulkEditPmtTermsBtn">
-                                <li class="px-3 py-2">
-                                    <select id="bulk-pmt-terms-select" class="form-select form-select-sm" style="min-width: 140px;">
-                                        <option value="">Select…</option>
-                                        <option value="BL">🔴 BL</option>
-                                        <option value="AL">🟡 AL</option>
-                                        <option value="BRBL">🟢 BRBL</option>
-                                    </select>
-                                </li>
-                                <li><hr class="dropdown-divider"></li>
-                                <li>
-                                    <button class="dropdown-item" type="button" id="bulk-apply-pmt-terms">
-                                        <i class="fas fa-check me-1"></i> Apply
-                                    </button>
-                                </li>
-                            </ul>
-                        </div>
                     </div>
                     <div id="forecast-table-wrap" class="flex-grow-1" style="min-height: 0;">
-                        <!-- Payment Terms Pie Chart (hidden until Chart button clicked) -->
-                        <div id="pmt-chart-row" class="align-items-center gap-3 px-1 py-2 mb-1 rounded border bg-white" style="display:none;">
-                            <div style="position:relative;width:140px;height:140px;flex-shrink:0;">
-                                <canvas id="pmt-terms-chart"></canvas>
-                            </div>
-                            <div class="d-flex flex-column gap-1">
-                                <div class="d-flex align-items-center gap-2 mb-1">
-                                    <span class="fw-bold text-dark" style="font-size:0.8rem;">Payment Terms</span>
-                                    <span id="pmt-chart-scope" class="badge bg-secondary" style="font-size:0.68rem;"></span>
-                                </div>
-                                <div id="pmt-chart-legend" class="d-flex flex-wrap gap-2" style="font-size:0.75rem;max-width:340px;"></div>
-                                <div id="pmt-chart-nodata" class="text-muted small" style="display:none;">No payment term data available.</div>
-                            </div>
-                        </div>
                         <div id="forecast-table"></div>
                     </div>
                 </div>
@@ -1028,6 +1119,16 @@
                                 <h6 class="text-muted small text-uppercase mb-2">Workflow</h6>
                             </div>
                             <div class="col-md-3">
+                                <label class="form-label small mb-1">Supplier</label>
+                                <select class="form-select" id="fre_supplier">
+                                    <option value="">-- Select --</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small mb-1">Zone</label>
+                                <input type="text" class="form-control" id="fre_zone" maxlength="80" placeholder="e.g. Ningbo">
+                            </div>
+                            <div class="col-md-3">
                                 <label class="form-label small mb-1">Stage</label>
                                 <select class="form-select" id="fre_stage">
                                     <option value="">— None —</option>
@@ -1183,30 +1284,6 @@
         </div>
     </div>
 
-    {{-- LMP Competitors Modal — same data source / styling as /to-order-analysis. --}}
-    <div class="modal fade" id="faLmpModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-xl modal-dialog-scrollable">
-            <div class="modal-content">
-                <div class="modal-header bg-primary text-white">
-                    <h5 class="modal-title">
-                        <i class="fa fa-shopping-cart"></i> LMP Competitors for SKU: <span id="faLmpSku"></span>
-                    </h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <div id="faLmpDataList">
-                        <div class="text-center py-5">
-                            <div class="spinner-border text-primary" role="status">
-                                <span class="visually-hidden">Loading...</span>
-                            </div>
-                            <p class="mt-2">Loading competitors...</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
 @endsection
 
 @section('script')
@@ -1223,6 +1300,13 @@
                 clearTimeout(debounceTimers[key]);
             }
             debounceTimers[key] = setTimeout(callback, delay);
+        }
+
+        /** Round dollar badge totals to nearest thousand (e.g. 176356 → 176K). */
+        function formatBadgeK(value) {
+            const n = parseFloat(value);
+            if (!Number.isFinite(n)) return '0';
+            return Math.round(n / 1000).toLocaleString('en-US') + 'K';
         }
 
         /** POST inline forecast updates (used by Tabulator MOQ editor and other handlers). */
@@ -1244,6 +1328,87 @@
                 console.error('AJAX failed:', err);
                 alert('Error saving data.');
                 onFail();
+            });
+        }
+
+        /** Promise wrapper for ready-to-ship inline updates (zone, pay terms, etc.). */
+        function updateForecastR2sInlinePromise(sku, column, value) {
+            return new Promise(function(resolve) {
+                const token = $('meta[name="csrf-token"]').attr('content') || '';
+                fetch('/ready-to-ship/inline-update-by-sku', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': token,
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({ sku: sku, column: column, value: value })
+                })
+                .then(function(r) { return r.json().catch(function() { return { success: false }; }); })
+                .then(function(res) {
+                    if (res && res.success === true) {
+                        resolve({ ok: true, message: res.message || '' });
+                    } else {
+                        resolve({ ok: false, message: (res && res.message) || 'Not saved' });
+                    }
+                })
+                .catch(function(err) {
+                    resolve({ ok: false, message: (err && err.message) || 'AJAX failed' });
+                });
+            });
+        }
+
+        /** Promise wrapper for supplier updates (mfrg_progress.supplier). */
+        function updateForecastSupplierPromise(sku, value, mipId) {
+            return new Promise(function(resolve) {
+                const fd = new FormData();
+                fd.append('sku', sku);
+                fd.append('column', 'supplier');
+                fd.append('value', value);
+                if (mipId) fd.append('mip_id', mipId);
+                fd.append('_token', $('meta[name="csrf-token"]').attr('content') || '');
+                fetch('/mfrg-progresses/inline-update-by-sku', {
+                    method: 'POST',
+                    body: fd,
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Accept': 'application/json'
+                    }
+                })
+                .then(function(r) { return r.json().catch(function() { return { success: false }; }); })
+                .then(function(res) {
+                    if (res && res.success === true) {
+                        resolve({ ok: true, message: res.message || '' });
+                    } else {
+                        resolve({ ok: false, message: (res && res.message) || 'Not saved' });
+                    }
+                })
+                .catch(function(err) {
+                    resolve({ ok: false, message: (err && err.message) || 'AJAX failed' });
+                });
+            });
+        }
+
+        function populateForecastRowEditSupplierSelect(selectedValue) {
+            const sel = document.getElementById('fre_supplier');
+            if (!sel) return;
+            const value = String(selectedValue == null ? '' : selectedValue).trim();
+            const suppliers = (window.forecastSuppliersList || []);
+            const names = new Set();
+            suppliers.forEach(function(s) {
+                const n = (s && (s.name || s.id)) ? String(s.name || s.id).trim() : '';
+                if (n) names.add(n);
+            });
+            if (value) names.add(value);
+            const sorted = Array.from(names).sort(function(a, b) { return a.localeCompare(b); });
+            sel.innerHTML = '<option value="">-- Select --</option>';
+            sorted.forEach(function(name) {
+                const opt = document.createElement('option');
+                opt.value = name;
+                opt.textContent = name;
+                if (name === value) opt.selected = true;
+                sel.appendChild(opt);
             });
         }
 
@@ -1290,6 +1455,16 @@
                 }
             }
             return '';
+        }
+
+        /** Display supplier as "FIRST MIDDLE L" — last word abbreviated to first letter. */
+        function formatSupplierShortName(name) {
+            const value = String(name == null ? '' : name).trim();
+            if (!value) return '';
+            const parts = value.split(/\s+/).filter(Boolean);
+            if (parts.length <= 1) return parts[0] || '';
+            const lastInitial = parts[parts.length - 1].charAt(0);
+            return parts.slice(0, -1).join(' ') + ' ' + lastInitial;
         }
 
         function forecastRowToYmd(value) {
@@ -1359,6 +1534,8 @@
                     return String(v).toLowerCase() === 'true' ? '1' : '0';
                 })(forecastRowGetField(d, 'hide', 'Hide')),
                 notes:      forecastRowGetField(d, 'notes', 'Notes'),
+                supplier:   forecastRowGetField(d, 'mfrg_supplier', 'Supplier'),
+                zone:       forecastRowGetField(d, 'r2s_zone', 'zone'),
             };
             forecastRowEditState.original = original;
 
@@ -1387,6 +1564,8 @@
             $('#fre_rfq_report').val(original.rfq_report);
             $('#fre_hide').val(original.hide);
             $('#fre_notes').val(original.notes);
+            populateForecastRowEditSupplierSelect(original.supplier);
+            $('#fre_zone').val(original.zone);
             $('#forecastRowEditStatus').empty();
 
             const modalEl = document.getElementById('forecastRowEditModal');
@@ -1534,6 +1713,8 @@
                 { id: 'fre_cp',          column: 'CP',            key: 'cp' },
                 { id: 'fre_cbm',         column: 'CBM',           key: 'cbm' },
                 { id: 'fre_stage',       column: 'Stage',         key: 'stage' },
+                { id: 'fre_supplier',    column: 'supplier',      key: 'supplier' },
+                { id: 'fre_zone',        column: 'area',          key: 'zone' },
                 { id: 'fre_nr',          column: 'NR',            key: 'nr' },
                 { id: 'fre_dateappr',    column: 'Date of Appr',  key: 'date_appr' },
                 { id: 'fre_req',         column: 'REQ',           key: 'req' },
@@ -1597,12 +1778,20 @@
                             : fc.value;
 
                         try {
-                            const res = await updateForecastFieldPromise({
-                                sku: tSku,
-                                parent: tParent,
-                                column: fc.column,
-                                value: saveVal
-                            });
+                            let res;
+                            if (fc.column === 'supplier') {
+                                const mipId = String(d.mip_id || d.mipId || '').trim();
+                                res = await updateForecastSupplierPromise(tSku, saveVal, mipId);
+                            } else if (fc.column === 'area') {
+                                res = await updateForecastR2sInlinePromise(tSku, 'area', saveVal);
+                            } else {
+                                res = await updateForecastFieldPromise({
+                                    sku: tSku,
+                                    parent: tParent,
+                                    column: fc.column,
+                                    value: saveVal
+                                });
+                            }
                             if (!res || !res.ok) {
                                 failed.push(tSku + ' · ' + fc.column + (res && res.message ? ': ' + res.message : ''));
                                 continue;
@@ -1672,7 +1861,6 @@
 
         //global variables for play btn
         let groupedSkuData = {};
-        let currentOrderPositiveCount = 0;
         let currentMipPositiveCount = 0;
         let currentR2sPositiveCount = 0;
         let currentTransitPositiveCount = 0;
@@ -1766,6 +1954,8 @@
             else if (col === 'rfq_report') patch.rfq_report = value;
             else if (col === 'Hide') patch.hide = value;
             else if (col === 'Date of Appr') patch.date_apprvl = value;
+            else if (col === 'supplier') patch.mfrg_supplier = value;
+            else if (col === 'area') patch.r2s_zone = value;
 
             if (!Object.keys(patch).length) return;
             row.update(patch, true);
@@ -1786,15 +1976,14 @@
         function forecastArchiveUpdateButton() {
             const count = dedupeForecastRows(table ? table.getSelectedRows() : []).length;
             const $btn = $('#archive-selected-btn');
-            const $cnt = $('#archive-selected-count');
-            if ($cnt.length) $cnt.text(count);
-            if ($btn.length) $btn.prop('disabled', count === 0);
-        }
-        function updateOrderColumnHeader(count) {
-            currentOrderPositiveCount = Number.isFinite(count) ? count : 0;
-            table.updateColumnDefinition("to_order", {
-                title: "2 Ord (" + currentOrderPositiveCount + ")"
-            });
+            if ($btn.length) {
+                $btn.prop('disabled', count === 0);
+                const title = count === 1
+                    ? 'Archive 1 selected row. It will disappear from this view and live on the Restore page.'
+                    : 'Archive ' + count + ' selected rows. They will disappear from this view and live on the Restore page.';
+                $btn.attr('title', title);
+                $btn.attr('aria-label', 'Archive selected (' + count + ')');
+            }
         }
         function updateMipColumnHeader(count) {
             currentMipPositiveCount = Number.isFinite(count) ? count : 0;
@@ -2031,6 +2220,8 @@
                 {
                     title: "Parent",
                     field: "Parent",
+                    visible: false,
+                    hideFromColumnPicker: true,
                     width: 92,
                     minWidth: 72,
                     maxWidth: 180,
@@ -2182,8 +2373,8 @@
                         return `
                         <div style="text-align:center; font-weight:bold;">
                             ${value}
-                            <button class="btn btn-sm btn-link text-info open-month-modal" style="padding: 0 4px;" title="View Monthly">
-                                <i class="bi bi-calendar3"></i>
+                            <button class="btn btn-sm btn-link open-month-modal d-inline-flex align-items-center" style="padding: 0 4px; vertical-align: middle;" title="View Monthly">
+                                <span class="nrp-status-dot" style="background-color:#22c55e;" aria-hidden="true"></span>
                             </button>
                         </div>
                     `;
@@ -2264,11 +2455,12 @@
 
                         let markerHtml = '';
                         if (value === 'transit') {
-                            markerHtml = '<i class="bi bi-truck stage-transit-icon" aria-hidden="true"></i>';
+                            markerHtml = '<span class="stage-transit-icon" aria-hidden="true">🚢</span>';
+                        } else if (value === 'mip') {
+                            markerHtml = '<i class="fas fa-hammer stage-mip-icon" aria-hidden="true"></i>';
                         } else {
                             let dotColor = '#94a3b8';
                             if (value === 'appr_req') dotColor = '#facc15';
-                            else if (value === 'mip') dotColor = '#2563eb';
                             else if (value === 'to_order_analysis') dotColor = '#c2410c';
                             else if (value === 'r2s') dotColor = '#16a34a';
                             markerHtml = '<span class="stage-status-dot" style="background-color:' + dotColor + ';" aria-hidden="true"></span>';
@@ -2283,7 +2475,7 @@
                     // select value is already controlled by formatter selected options
                 },
                 {
-                    title: "Appr Req",
+                    title: "Appr",
                     field: "appr_req_qty",
                     accessor: row => (row ? row.appr_req_qty : null),
                     sorter: "number",
@@ -2296,17 +2488,17 @@
                             const bg = (!isParent && isFallback) ? 'background:#fff3a0;border-radius:4px;padding:2px 4px;' : '';
                             return `<div style="text-align:center;font-weight:700;${bg}">${valueText}</div>`;
                         };
-                        const v = parseFloat(cell.getValue());
-                        if (!v || isNaN(v)) {
-                            const fallbackApprReq = getEffectiveApprReqValue(rowData);
-                            if (fallbackApprReq > 0) {
-                                const dispMoq = Number.isInteger(fallbackApprReq) ? fallbackApprReq : fallbackApprReq.toFixed(2).replace(/\.?0+$/, '');
-                                return renderValue(dispMoq, true);
-                            }
+                        if (!isParent && apprReqHideRowForNrp2BdcOrLater(rowData)) {
+                            return renderValue('0', false);
+                        }
+                        const effective = getEffectiveApprReqValue(rowData);
+                        if (!(effective > 0)) {
                             return '<div style="text-align:center;" class="text-muted">—</div>';
                         }
-                        const disp = Number.isInteger(v) ? v : v.toFixed(2).replace(/\.?0+$/, '');
-                        return renderValue(disp, false);
+                        const explicit = parseFloat(cell.getValue());
+                        const isFallback = !(Number.isFinite(explicit) && explicit > 0);
+                        const disp = Number.isInteger(effective) ? effective : effective.toFixed(2).replace(/\.?0+$/, '');
+                        return renderValue(disp, isFallback);
                     }
                 },
                 {
@@ -2497,23 +2689,27 @@
                     headerSort: true,
                     hozAlign: "center",
                     formatter: function(cell) {
-                        const value = cell.getValue();
                         const rowData = cell.getRow().getData();
+                        const moqNum = displayMoqForRow(rowData);
                         const esc = function(s) {
                             return String(s === null || s === undefined ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
                         };
-                        const disp = esc(value);
 
                         if (rowData.is_parent || rowData.isParent) {
                             return `<div 
                                 style="outline:none; min-width:40px; text-align:center; font-weight:bold;color:#6c757d;"
                                 title="Total MOQ for this parent (edit MOQ on each SKU row below)">
-                                ${disp}
+                                ${esc(moqNum)}
                             </div>`;
                         }
 
+                        if (isNrp2BdcRow(rowData)) {
+                            return `<span class="forecast-moq-cell" style="display:block;outline:none;min-width:40px;text-align:center;font-weight:bold;color:#212529;"
+                                title="2BDC — MOQ shown as 0">0</span>`;
+                        }
+
                         let moqColor = '#212529';
-                        const moq = parseFloat(value);
+                        const moq = moqNum;
                         const msl = parseFloat(rowData.msl);
                         if (Number.isFinite(moq) && Number.isFinite(msl) && msl > 0) {
                             if (moq < msl) {
@@ -2523,8 +2719,9 @@
                             }
                         }
 
+                        const disp = Number.isInteger(moq) ? String(moq) : moq.toFixed(2).replace(/\.?0+$/, '');
                         return `<span class="forecast-moq-cell" style="display:block;outline:none;min-width:40px;text-align:center;font-weight:bold;color:${moqColor};"
-                            title="${Number.isFinite(parseFloat(rowData.msl)) && parseFloat(rowData.msl) > 0 ? 'Green: MOQ &lt; MSL · Red: MOQ &gt; MSL' : 'MOQ'}">${disp}</span>`;
+                            title="${Number.isFinite(parseFloat(rowData.msl)) && parseFloat(rowData.msl) > 0 ? 'Green: MOQ &lt; MSL · Red: MOQ &gt; MSL' : 'MOQ'}">${esc(disp)}</span>`;
                     },
                 },
                 {
@@ -2571,7 +2768,6 @@
                         return `
                             <div class="nrp-dot-cell d-flex justify-content-center align-items-center w-100" title="${tip}">
                                 <span class="nrp-status-dot" style="background-color:${dotColor};" aria-hidden="true"></span>
-                                <span class="purchase-hover-tip-badge">${tip}</span>
                             </div>
                         `;
                     }
@@ -2606,9 +2802,8 @@
                         return span;
                     },
                     formatter: function(cell) {
-                        const rowData = cell.getRow().getData() || {};
                         const rawValue = cell.getValue();
-                        const value = rawValue == null ? '' : String(rawValue);
+                        const value = rawValue == null ? '' : String(rawValue).trim();
                         const escHtml = function(s) {
                             return String(s == null ? '' : s)
                                 .replace(/&/g, '&amp;')
@@ -2617,56 +2812,10 @@
                                 .replace(/"/g, '&quot;')
                                 .replace(/'/g, '&#39;');
                         };
-
-                        // Parent rows: keep read-only label (no inline editor)
-                        if (rowData.is_parent || rowData.isParent) {
-                            const display = value ? escHtml(value) : '-';
-                            return '<span class="forecast-supplier-name" title="' + escHtml(value) + '">' + display + '</span>';
-                        }
-
-                        const sku    = String(rowData.SKU || '').trim();
-                        const parent = String(rowData.Parent || '').trim();
-                        const mipId  = rowData.mip_id || rowData.mipId || '';
-
-                        const suppliers = (window.forecastSuppliersList || []);
-                        // Fall back to a static label until the suppliers list finishes loading
-                        // (loadForecastSuppliers() calls table.redraw() once the fetch resolves,
-                        // which re-runs this formatter with a populated list).
-                        if (!suppliers.length) {
-                            const display = value ? escHtml(value) : '-';
-                            return '<span class="forecast-supplier-name" title="' + escHtml(value) + '">' + display + '</span>';
-                        }
-
-                        // Build option list: include the current value even if it is not in the
-                        // suppliers table (legacy / free-text values), so the cell can still
-                        // display the existing supplier name without losing it.
-                        const names = new Set();
-                        suppliers.forEach(function(s) {
-                            const n = (s && (s.name || s.id)) ? String(s.name || s.id).trim() : '';
-                            if (n) names.add(n);
-                        });
-                        if (value && value.trim() !== '') names.add(value.trim());
-                        const sorted = Array.from(names).sort(function(a, b) {
-                            return a.localeCompare(b);
-                        });
-
-                        const selectedVal = value.trim();
-                        let optionsHtml = '<option value=""' + (selectedVal === '' ? ' selected' : '') + '>-- Select --</option>';
-                        sorted.forEach(function(name) {
-                            const sel = (name === selectedVal) ? ' selected' : '';
-                            optionsHtml += '<option value="' + escHtml(name) + '"' + sel + '>' + escHtml(name) + '</option>';
-                        });
-
-                        const emptyCls = selectedVal === '' ? ' is-empty' : '';
-                        return '<select class="forecast-supplier-edit-select' + emptyCls + '"'
-                            + ' data-sku="' + escHtml(sku) + '"'
-                            + ' data-parent="' + escHtml(parent) + '"'
-                            + ' data-mip-id="' + escHtml(mipId) + '"'
-                            + ' data-original="' + escHtml(selectedVal) + '"'
-                            + ' title="' + escHtml(selectedVal || 'Select supplier') + '"'
-                            + ' aria-label="Supplier">'
-                            + optionsHtml
-                            + '</select>';
+                        const display = value
+                            ? escHtml(formatSupplierShortName(value))
+                            : '-';
+                        return '<span class="forecast-supplier-name" title="' + escHtml(value) + '">' + display + '</span>';
                     }
                 },
                 {
@@ -2731,21 +2880,21 @@
                             ? ("(" + revParsed.toLocaleString("en-US") + ")")
                             : null;
 
-                        let html = "<div style=\"display:inline-flex;align-items:center;justify-content:center;gap:3px;flex-wrap:nowrap;padding:0 2px;" + ratingWrapStyle + "\">";
+                        let html = "<div style=\"display:block;text-align:center;padding:0 2px;" + ratingWrapStyle + "\">";
                         if (hasRating) {
-                            html += "<span style=\"font-weight:700;color:" + starColor + ";display:inline-flex;align-items:center;gap:1px;font-size:0.72rem;\">";
+                            html += "<span style=\"font-weight:700;color:" + starColor + ";display:inline-flex;align-items:center;justify-content:center;gap:1px;font-size:0.72rem;\">";
                             html += "<i class=\"bi bi-star-fill\" style=\"font-size:0.68rem;line-height:1;\"></i>";
                             html += "<span>" + ratingLine + "</span></span>";
                         } else {
-                            html += "<span style=\"font-weight:700;color:#9e9e9e;display:inline-flex;align-items:center;gap:1px;font-size:0.68rem;\">";
+                            html += "<span style=\"font-weight:700;color:#9e9e9e;display:inline-flex;align-items:center;justify-content:center;gap:1px;font-size:0.68rem;\">";
                             html += "<i class=\"bi bi-star\" style=\"font-size:0.65rem;\"></i><span>—</span></span>";
                         }
                         const revMuted = hasRating && rVal >= 4.5 ? '#861657' : '#5c5c5c';
                         const revZero = hasRating && rVal >= 4.5 ? '#9d174d' : '#9e9e9e';
                         if (revLine) {
-                            html += "<span style=\"font-size:0.62rem;color:" + revMuted + ";font-weight:500;white-space:nowrap;\">" + revLine + "</span>";
+                            html += "<br><span style=\"font-size:0.62rem;color:" + revMuted + ";font-weight:500;white-space:nowrap;\">" + revLine + "</span>";
                         } else if (hasRating) {
-                            html += "<span style=\"font-size:0.6rem;color:" + revZero + ";\">(0)</span>";
+                            html += "<br><span style=\"font-size:0.6rem;color:" + revZero + ";\">(0)</span>";
                         }
                         html += "</div>";
 
@@ -2870,6 +3019,8 @@
                 {
                     title: "C link",
                     field: "Clink",
+                    visible: false,
+                    hideFromColumnPicker: true,
                     hozAlign: "center",
                     headerSort: false,
                     headerTooltip: "Comparison link",
@@ -2893,6 +3044,8 @@
                 {
                     title: "RFQ",
                     field: "rfq_form_link",
+                    visible: false,
+                    hideFromColumnPicker: true,
                     hozAlign: "center",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData() || {};
@@ -2966,61 +3119,25 @@
                     }
                 },
                 {
-                    // LMP — Lowest Market Price across competitor entries (sourced from
-                    // amazon_sku_competitors, same data that powers /amazon-tabulator-view).
-                    // Shows the lowest competitor price + a "View N" link that opens the
-                    // Amazon tabulator view filtered to this SKU so users can drill in.
-                    title: "LMP",
-                    field: "lmp_price",
-                    hozAlign: "center",
-                    headerSort: true,
-                    sorter: "number",
-                    width: 110,
-                    formatter: function(cell) {
-                        const d = cell.getRow().getData() || {};
-                        if (d.is_parent || d.isParent) return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
-                        const lmpPrice = parseFloat(cell.getValue());
-                        const total = parseInt(d.lmp_entries_total, 10) || 0;
-                        if ((!Number.isFinite(lmpPrice) || lmpPrice <= 0) && total === 0) {
-                            return '<span style="display:block;text-align:center;color:#9ca3af;">—</span>';
-                        }
-                        // Compare against current price to color the cell:
-                        //   green = LMP is at-or-above current price (our price is competitive)
-                        //   red   = LMP undercuts us (we're priced higher than market)
-                        const currentPrice = parseFloat(d.price) || parseFloat(d.shopifyb2c_price) || 0;
-                        const priceColor = (Number.isFinite(lmpPrice) && lmpPrice > 0 && currentPrice > 0 && lmpPrice < currentPrice)
-                            ? '#dc3545' : '#16a34a';
-
-                        let html = '<div style="display:flex;flex-direction:column;align-items:center;gap:2px;line-height:1.1;">';
-                        if (Number.isFinite(lmpPrice) && lmpPrice > 0) {
-                            html += `<span style="color:${priceColor};font-weight:700;font-size:0.85rem;">$${lmpPrice.toFixed(2)}</span>`;
-                        }
-                        if (total > 0) {
-                            // Click → opens an inline modal (same structure as the LMP modal
-                            // on /to-order-analysis) listing every competitor for this SKU.
-                            // No more new-tab navigation — users stay on the forecast page.
-                            const sku = String(d.SKU || '').trim();
-                            const safeSku = sku.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                            html += `<a href="#" class="fa-view-lmp-competitors" data-sku="${safeSku}"
-                                        style="color:#2563eb;text-decoration:none;font-size:0.7rem;font-weight:600;"
-                                        title="View all ${total} competitor entries">
-                                        <i class="fas fa-eye" style="font-size:0.7rem;"></i> View ${total}
-                                     </a>`;
-                        }
-                        html += '</div>';
-                        return html;
-                    }
-                },
-                {
                     title: "CBM",
                     field: "cbm",
                     hozAlign: "center",
                     formatter: function(cell) {
                         const d = cell.getRow().getData() || {};
-                        if (d.is_parent || d.isParent) return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
+                        if (d.is_parent || d.isParent) {
+                            return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
+                        }
                         const v = parseFloat(cell.getValue());
-                        if (!Number.isFinite(v) || v <= 0) return '<span style="display:block;text-align:center;color:#6c757d;">N/A</span>';
-                        return `<span style="display:block;text-align:center;font-weight:700;">${v.toFixed(4)}</span>`;
+                        const hasData = Number.isFinite(v) && v > 0;
+                        const dotColor = hasData ? '#22c55e' : '#dc3545';
+                        const tip = hasData ? v.toFixed(4) : 'No data';
+                        const escTip = String(tip)
+                            .replace(/&/g, '&amp;')
+                            .replace(/"/g, '&quot;')
+                            .replace(/'/g, '&#39;');
+                        return `<div class="nrp-dot-cell d-flex justify-content-center align-items-center w-100" title="${escTip}">
+                            <span class="nrp-status-dot" style="background-color:${dotColor};" aria-label="${escTip}"></span>
+                        </div>`;
                     }
                 },
                 {
@@ -3036,71 +3153,6 @@
                             return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
                         }
                         return `<span style="display:block;text-align:center;font-weight:700;">${total.toFixed(2)}</span>`;
-                    }
-                },
-                {
-                    title: "Zone",
-                    field: "r2s_zone",
-                    hozAlign: "center",
-                    headerSort: true,
-                    editor: "input",
-                    editable: function(cell) {
-                        const d = cell.getRow().getData();
-                        return !(d.is_parent || d.isParent);
-                    },
-                    cellClick: function(e, cell) {
-                        const d = cell.getRow().getData();
-                        if (d.is_parent || d.isParent) return;
-                        cell.edit();
-                    },
-                    cellEditing: function(cell) {
-                        cell._zonePrev = cell.getValue();
-                        setTimeout(function() {
-                            const input = cell.getElement().querySelector('input');
-                            if (input) { input.focus(); input.select(); }
-                        }, 0);
-                    },
-                    cellEdited: function(cell) {
-                        const row = cell.getRow();
-                        const d = row.getData();
-                        if (d.is_parent || d.isParent) return;
-                        const next = String(cell.getValue() || '').trim();
-                        const prev = cell._zonePrev || '';
-                        delete cell._zonePrev;
-                        if (next === prev) return;
-                        const sku = String(d.SKU || '').trim();
-                        if (!sku) return;
-                        const token = document.querySelector('meta[name="csrf-token"]')?.content || '';
-                        fetch('/ready-to-ship/inline-update-by-sku', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'X-CSRF-TOKEN': token,
-                                'X-Requested-With': 'XMLHttpRequest',
-                                'Accept': 'application/json'
-                            },
-                            body: JSON.stringify({ sku: sku, column: 'area', value: next })
-                        })
-                        .then(r => r.json())
-                        .then(res => {
-                            if (!res || !res.success) {
-                                cell.setValue(prev, true);
-                                alert(res?.message || 'Failed to update Zone');
-                            } else {
-                                row.update({ r2s_zone: next }, true);
-                            }
-                        })
-                        .catch(() => {
-                            cell.setValue(prev, true);
-                            alert('Failed to update Zone');
-                        });
-                    },
-                    formatter: function(cell) {
-                        const d = cell.getRow().getData() || {};
-                        if (d.is_parent || d.isParent) return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
-                        const v = String(cell.getValue() || '').trim();
-                        if (!v) return '<span style="display:block;text-align:center;color:#6c757d;cursor:text;">-</span>';
-                        return `<span style="display:block;text-align:center;font-weight:600;cursor:text;" title="${v}">${v}</span>`;
                     }
                 },
                 {
@@ -3142,6 +3194,8 @@
                 {
                     title: "Amount",
                     field: "r2s_amount",
+                    visible: false,
+                    hideFromColumnPicker: true,
                     hozAlign: "center",
                     formatter: function(cell) {
                         const d = cell.getRow().getData() || {};
@@ -3152,76 +3206,6 @@
                     }
                 },
                 {
-                    title: "Pmt Terms",
-                    field: "r2s_pay_term",
-                    hozAlign: "center",
-                    headerSort: true,
-                    editor: "list",
-                    editorParams: {
-                        values: ["BL", "AL", "BRBL"],
-                        defaultValue: "BL",
-                        verticalNavigation: "editor",
-                    },
-                    editable: function(cell) {
-                        const d = cell.getRow().getData();
-                        return !(d.is_parent || d.isParent);
-                    },
-                    cellClick: function(e, cell) {
-                        const d = cell.getRow().getData();
-                        if (d.is_parent || d.isParent) return;
-                        cell.edit();
-                    },
-                    cellEditing: function(cell) {
-                        cell._pmtTermsPrev = cell.getValue();
-                    },
-                    cellEdited: function(cell) {
-                        const row = cell.getRow();
-                        const d = row.getData();
-                        if (d.is_parent || d.isParent) return;
-                        const next = String(cell.getValue() || '').trim().toUpperCase();
-                        const prev = cell._pmtTermsPrev || '';
-                        delete cell._pmtTermsPrev;
-                        if (next === prev) return;
-                        const sku = String(d.SKU || '').trim();
-                        if (!sku) return;
-                        const token = document.querySelector('meta[name="csrf-token"]')?.content || '';
-                        fetch('/ready-to-ship/inline-update-by-sku', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'X-CSRF-TOKEN': token,
-                                'X-Requested-With': 'XMLHttpRequest',
-                                'Accept': 'application/json'
-                            },
-                            body: JSON.stringify({ sku: sku, column: 'pay_term', value: next })
-                        })
-                        .then(r => r.json())
-                        .then(res => {
-                            if (!res || !res.success) {
-                                cell.setValue(prev, true);
-                                alert(res?.message || 'Failed to update Pmt Terms');
-                            } else {
-                                row.update({ r2s_pay_term: next }, true);
-                            }
-                        })
-                        .catch(() => {
-                            cell.setValue(prev, true);
-                            alert('Failed to update Pmt Terms');
-                        });
-                    },
-                    formatter: function(cell) {
-                        const d = cell.getRow().getData() || {};
-                        if (d.is_parent || d.isParent) return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
-                        const value = String(cell.getValue() || 'BL').trim().toUpperCase();
-                        const colorMap = { BRBL: '#28a745', AL: '#ffc107', BL: '#dc3545' };
-                        const color = colorMap[value] || '#6c757d';
-                        return `<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;cursor:pointer;" title="Click to edit">
-                            <span style="display:inline-block;width:10px;height:10px;border-radius:50%;flex-shrink:0;background:${color};"></span>
-                            <span style="font-size:0.75rem;font-weight:700;">${value}</span>
-                        </span>`;
-                    }
-                },
-                {
                     // Exec — reads/writes the same to_order_analysis.exec column used by
                     // the MFRG In Progress page and the /update-link "Exec" save path,
                     // so an exec change here is visible everywhere immediately.
@@ -3229,10 +3213,14 @@
                     field: "exec",
                     hozAlign: "center",
                     headerSort: true,
-                    width: 110,
+                    minWidth: 48,
+                    maxWidth: 62,
+                    widthGrow: 0,
+                    widthShrink: 1,
+                    cssClass: "forecast-exec-cell",
                     editor: "list",
                     editorParams: {
-                        values: { "": "— Unassigned —", "Atin": "Atin", "Jack": "Jack", "Nitish": "Nitish", "Ajay": "Ajay", "Candy": "Candy", "Sruti": "Sruti" },
+                        values: { "": "NA", "Atin": "Atin", "Jack": "Jack", "Nitish": "Nitish", "Ajay": "Ajay", "Candy": "Candy", "Sruti": "Sruti" },
                         defaultValue: "",
                         verticalNavigation: "editor",
                     },
@@ -3299,10 +3287,10 @@
                             Sruti:  { bg: '#14b8a6', text: '#fff' },
                         };
                         if (!value) {
-                            return '<span style="display:inline-block;padding:2px 8px;border-radius:6px;background:#e5e7eb;color:#6b7280;font-size:0.72rem;font-weight:600;cursor:pointer;" title="Click to assign">— Unassigned —</span>';
+                            return '<span style="display:inline-block;padding:2px 6px;border-radius:6px;background:#e5e7eb;color:#6b7280;font-size:0.72rem;font-weight:600;cursor:pointer;white-space:nowrap;" title="Click to assign">NA</span>';
                         }
                         const c = colorMap[value] || { bg: '#6b7280', text: '#fff' };
-                        return `<span style="display:inline-block;padding:2px 8px;border-radius:6px;background:${c.bg};color:${c.text};font-size:0.75rem;font-weight:700;cursor:pointer;" title="Click to change">${value}</span>`;
+                        return `<span style="display:inline-block;padding:2px 6px;border-radius:6px;background:${c.bg};color:${c.text};font-size:0.72rem;font-weight:700;cursor:pointer;white-space:nowrap;" title="Click to change">${value}</span>`;
                     }
                 },
                 {
@@ -3323,50 +3311,39 @@
                     field: "_edit_row",
                     hozAlign: "center",
                     headerSort: false,
-                    width: 56,
-                    minWidth: 50,
-                    maxWidth: 64,
+                    width: 52,
+                    minWidth: 44,
+                    maxWidth: 58,
                     widthGrow: 0,
+                    widthShrink: 1,
+                    cssClass: "forecast-edit-actions-cell",
                     download: false,
                     formatter: function(cell) {
                         const d = cell.getRow().getData() || {};
                         if (d.is_parent || d.isParent) {
                             return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
                         }
-                        return '<button type="button" class="btn btn-sm btn-outline-primary py-0 px-2 forecast-edit-row-btn" title="Edit row"><i class="mdi mdi-pencil"></i></button>';
+                        return `<div style="display:flex;align-items:center;justify-content:center;gap:4px;">
+                            <button type="button" class="btn btn-sm btn-link forecast-edit-row-btn d-inline-flex align-items-center p-0" title="Edit row" style="line-height:1;"><i class="mdi mdi-pencil" style="font-size:1rem;"></i></button>
+                            <button type="button" class="btn btn-sm btn-link forecast-history-row-btn d-inline-flex align-items-center p-0" title="History — see who changed what" style="line-height:1;">
+                                <span class="nrp-status-dot" style="background-color:#22c55e;" aria-label="History"></span>
+                            </button>
+                        </div>`;
                     },
                     cellClick: function(e, cell) {
-                        if (!e.target.closest('.forecast-edit-row-btn')) return;
-                        e.stopPropagation();
                         const d = cell.getRow().getData() || {};
                         if (d.is_parent || d.isParent) return;
-                        openForecastEditModal(cell.getRow());
-                    }
-                },
-                {
-                    title: "History",
-                    field: "_history_row",
-                    hozAlign: "center",
-                    headerSort: false,
-                    width: 56,
-                    minWidth: 50,
-                    maxWidth: 64,
-                    widthGrow: 0,
-                    download: false,
-                    formatter: function(cell) {
-                        const d = cell.getRow().getData() || {};
-                        if (d.is_parent || d.isParent) {
-                            return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
+                        if (e.target.closest('.forecast-edit-row-btn')) {
+                            e.stopPropagation();
+                            openForecastEditModal(cell.getRow());
+                            return;
                         }
-                        return '<button type="button" class="btn btn-sm btn-outline-info py-0 px-2 forecast-history-row-btn" title="History — see who changed what"><i class="bi bi-clock-history"></i></button>';
-                    },
-                    cellClick: function(e, cell) {
-                        if (!e.target.closest('.forecast-history-row-btn')) return;
-                        const d = cell.getRow().getData() || {};
-                        if (d.is_parent || d.isParent) return;
-                        const sku = String(forecastRowGetField(d, 'SKU', 'sku') || '').trim();
-                        const parent = String(forecastRowGetField(d, 'Parent', 'parent') || '').trim();
-                        openForecastHistoryModal(sku, parent);
+                        if (e.target.closest('.forecast-history-row-btn')) {
+                            e.stopPropagation();
+                            const sku = String(forecastRowGetField(d, 'SKU', 'sku') || '').trim();
+                            const parent = String(forecastRowGetField(d, 'Parent', 'parent') || '').trim();
+                            openForecastHistoryModal(sku, parent);
+                        }
                     }
                 },
             ],
@@ -3446,15 +3423,15 @@
                 // ── Single DOM-write phase for every badge ──
                 const setBadgeText = (id, value) => {
                     const el = document.getElementById(id);
-                    if (el) el.textContent = Math.round(value).toLocaleString('en-US');
+                    if (el) el.textContent = formatBadgeK(value);
                 };
                 const totalMslCElement = document.getElementById('total_msl_c_value');
                 if (totalMslCElement && response.total_msl_c !== undefined) {
-                    totalMslCElement.textContent = Math.round(parseFloat(response.total_msl_c)).toLocaleString('en-US');
+                    totalMslCElement.textContent = formatBadgeK(parseFloat(response.total_msl_c));
                 }
                 const totalMslSpAmzEl = document.getElementById('total_msl_sp_amz_value');
                 if (totalMslSpAmzEl && response.total_msl_sp_amz !== undefined) {
-                    totalMslSpAmzEl.textContent = Math.round(parseFloat(response.total_msl_sp_amz)).toLocaleString('en-US');
+                    totalMslSpAmzEl.textContent = formatBadgeK(parseFloat(response.total_msl_sp_amz));
                 }
                 setBadgeText('total_inv_value_display',          totalInvValue);
                 setBadgeText('total_lp_value_display',           totalLpValue);
@@ -3466,11 +3443,10 @@
                 setBadgeText('total_transit_value_display',      totalTransitValue);
                 setBadgeText('total_restock_msl_lp_value',       totalRestockMslLp);
 
-                // CBM badge — show with 2 decimals (everything else rounds to whole-number $),
-                // since CBM is a fractional volume figure.
+                // CBM badge — rounded to nearest whole number.
                 const totalCbmEl = document.getElementById('total_cbm_value_display');
                 if (totalCbmEl) {
-                    totalCbmEl.textContent = totalCbmSum.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                    totalCbmEl.textContent = Math.round(totalCbmSum).toLocaleString('en-US');
                 }
 
 
@@ -3624,9 +3600,11 @@
                         sumOrderGiven  += (parseFloat(c.order_given)    || (raw && parseFloat(raw.order_given))    || 0);
                         sumTransit     += (parseFloat(c.transit)        || (raw && parseFloat(raw.transit))        || 0);
                         sumToOrder     += (parseFloat(c.to_order)       || 0);
-                        sumMOQ         += (parseFloat(c.MOQ)            || (raw && parseFloat(raw.MOQ))            || 0);
+                        if (String(c.nr ?? raw?.nr ?? '').trim().toUpperCase() !== 'NR') {
+                            sumMOQ     += (parseFloat(c.MOQ)            || (raw && parseFloat(raw.MOQ))            || 0);
+                        }
                         sumTwoOrderQty += (parseFloat(c.two_order_qty)  || 0);
-                        sumApprReqQty  += (parseFloat(c.appr_req_qty)   || 0);
+                        sumApprReqQty  += getEffectiveApprReqValue(c);
 
                         const gp = c.avg_gpft_pct;
                         if (gp != null && gp !== '') {
@@ -3721,31 +3699,16 @@
                 requestAnimationFrame(() => {
                     // Count column-header positives in ONE pass instead of 8 .filter() sweeps.
                     const allData = table.getData();
-                    let mslCount = 0, toOrderCount = 0, orderCount = 0, mipCount = 0,
-                        r2sCount = 0, transitCount = 0, moqCount = 0, apprReqStageCount = 0;
+                    let orderCount = 0, mipCount = 0,
+                        r2sCount = 0, transitCount = 0, moqCount = 0;
                     for (let i = 0, n = allData.length; i < n; i++) {
                         const row = allData[i];
                         if (String(row.SKU || '').toLowerCase().includes('parent')) continue;
-                        if ((parseFloat(row.msl)            || 0) > 0) mslCount++;
-                        // "2 Ord (N)" column header — strict bucket: rows that still need routing
-                        // (to_order > 0 AND no explicit stage yet). Rows already tagged Appr Req /
-                        // MIP / R2S / Trn / Order / All Good are counted under their own headers/
-                        // filters and must not be double-counted here.
-                        const __toOrd = parseFloat(row.to_order) || 0;
-                        const __stg = String(row.stage || (row.raw_data && row.raw_data.stage) || '')
-                            .trim().toLowerCase();
-                        if (__toOrd > 0
-                            && __stg !== 'appr_req' && __stg !== 'mip' && __stg !== 'r2s'
-                            && __stg !== 'transit' && __stg !== 'all_good'
-                            && __stg !== 'to_order_analysis') {
-                            toOrderCount++;
-                        }
                         if ((parseFloat(row.two_order_qty)  || 0) > 0) orderCount++;
                         if ((parseFloat(row.order_given)    || 0) > 0) mipCount++;
                         if ((parseFloat(row.readyToShipQty) || 0) > 0) r2sCount++;
                         if ((parseFloat(row.transit)        || 0) > 0) transitCount++;
-                        if ((parseFloat(row.MOQ)            || 0) > 0) moqCount++;
-                        if (getEffectiveApprReqValue(row)         > 0) apprReqStageCount++;
+                        if ((parseFloat(row.MOQ)            || 0) > 0 && !isNrp2BdcRow(row)) moqCount++;
                     }
 
                     // Batch the 8 column-definition updates inside blockRedraw so Tabulator
@@ -3753,9 +3716,6 @@
                     if (typeof table.blockRedraw === 'function') table.blockRedraw();
                     try {
                         table.updateColumnDefinition("SKU",            { title: "SKU (" + skuCount + ")" });
-                        table.updateColumnDefinition("msl",             { title: "MSL (" + mslCount + ")" });
-                        table.updateColumnDefinition("to_order",        { title: "2 Ord (" + toOrderCount + ")" });
-                        table.updateColumnDefinition("appr_req_qty",    { title: "Appr Req (" + apprReqStageCount + ")" });
                         table.updateColumnDefinition("two_order_qty",   { title: "Order" });
                         table.updateColumnDefinition("order_given",     { title: "MIP" });
                         table.updateColumnDefinition("readyToShipQty",  { title: "R2S" });
@@ -3765,7 +3725,6 @@
                         if (typeof table.restoreRedraw === 'function') table.restoreRedraw();
                     }
 
-                    updateOrderColumnHeader(toOrderCount);
                     currentMoqPositiveCount = moqCount;
                     updateTopQtyFilterOptionCounts({
                         order: orderCount,
@@ -3775,6 +3734,7 @@
                         moq: moqCount,
                     });
                     updateZeroStockBadgeCount();
+                    updateFilteredRowBadge();
                     syncZeroStockBadgeActiveState();
 
                     // setCombinedFilters() runs setFilter() across every row plus a debounced
@@ -3827,17 +3787,11 @@
                 .then(r => r.json())
                 .then(function(data) {
                     window.forecastSuppliersList = data.suppliers || [];
-                    if (table) {
-                        table.redraw();
-                        // Reformat just the Supplier cells so the inline editable
-                        // dropdown picks up the freshly-loaded supplier list even
-                        // when /supplier.list.json resolves after the table data.
-                        try {
-                            table.getRows().forEach(function(row) {
-                                const cell = row.getCell && row.getCell('mfrg_supplier');
-                                if (cell && typeof cell.reformat === 'function') cell.reformat();
-                            });
-                        } catch (e) { /* no-op */ }
+                    if (table) table.redraw();
+                    populateBulkSupplierSelect();
+                    const freSel = document.getElementById('fre_supplier');
+                    if (freSel && freSel.closest('.modal.show')) {
+                        populateForecastRowEditSupplierSelect(freSel.value);
                     }
                     if (typeof callback === 'function') callback();
                 })
@@ -3966,87 +3920,6 @@
             }).catch(function() { btn.disabled = false; });
         });
 
-        // ── Inline editable Supplier cell ─────────────────────────────────
-        // Each row's Supplier dropdown is rendered by the column formatter using
-        // window.forecastSuppliersList (loaded from /supplier.list.json). Persist
-        // the change to mfrg_progress.supplier through the same endpoint that the
-        // bulk-apply button uses, then patch the local row data so the table
-        // reflects the new value without a full reload.
-        $(document).off('change.forecastSupplier', '.forecast-supplier-edit-select')
-            .on('change.forecastSupplier', '.forecast-supplier-edit-select', function(e) {
-                e.stopPropagation();
-                const $el = $(this);
-                const sku = String($el.data('sku') || '').trim();
-                const parent = String($el.data('parent') || '').trim();
-                const mipId = String($el.data('mip-id') || '').trim();
-                const originalVal = String($el.data('original') || '').trim();
-                const newVal = String($el.val() || '').trim();
-
-                if (!sku) {
-                    $el.val(originalVal);
-                    alert('SKU not available for this row.');
-                    return;
-                }
-                if (newVal === originalVal) return;
-
-                $el.prop('disabled', true).css('opacity', '0.6');
-
-                const token = document.querySelector('input[name="_token"]')?.value
-                    || document.querySelector('meta[name="csrf-token"]')?.content
-                    || '';
-                const fd = new FormData();
-                fd.append('sku', sku);
-                fd.append('column', 'supplier');
-                fd.append('value', newVal);
-                if (mipId) fd.append('mip_id', mipId);
-                fd.append('_token', token);
-
-                fetch('/mfrg-progresses/inline-update-by-sku', {
-                    method: 'POST',
-                    body: fd,
-                    headers: {
-                        'X-Requested-With': 'XMLHttpRequest',
-                        'Accept': 'application/json'
-                    }
-                })
-                .then(function(r) { return r.json().catch(function() { return { success: false }; }); })
-                .then(function(res) {
-                    if (!res || res.success !== true) {
-                        throw new Error((res && res.message) || 'Save failed');
-                    }
-                    // Update the local row so any other column reading
-                    // mfrg_supplier (search, filters, exports) sees the new value.
-                    const row = table.getRows().find(function(r) {
-                        const d = r.getData() || {};
-                        return String(d.SKU || '').trim() === sku
-                            && String(d.Parent || '').trim() === parent;
-                    });
-                    if (row) {
-                        row.update({ mfrg_supplier: newVal }, true);
-                    }
-                    $el.data('original', newVal);
-                    $el.attr('data-original', newVal);
-                    $el.attr('title', newVal || 'Select supplier');
-                    if (newVal === '') $el.addClass('is-empty');
-                    else $el.removeClass('is-empty');
-                })
-                .catch(function(err) {
-                    console.error('Supplier inline update failed:', err);
-                    $el.val(originalVal);
-                    alert('Failed to save supplier.');
-                })
-                .finally(function() {
-                    $el.prop('disabled', false).css('opacity', '1');
-                });
-            });
-
-        // Prevent row-level handlers (e.g. detail expand) from firing when the user
-        // interacts with the inline supplier dropdown.
-        $(document).off('mousedown.forecastSupplier click.forecastSupplier', '.forecast-supplier-edit-select')
-            .on('mousedown.forecastSupplier click.forecastSupplier', '.forecast-supplier-edit-select', function(e) {
-                e.stopPropagation();
-            });
-
         function bulkApplyForecastField(column, getValue, btnId, selectId, ddBtnId) {
             const val = getValue();
             if (val === '' || val === null || val === undefined) {
@@ -4155,47 +4028,6 @@
             bulkApplyForecastField('CP', function() { return v; }, 'bulk-apply-cp', 'bulk-cp-input', 'bulkEditCpBtn');
         });
 
-        document.getElementById('bulk-apply-pmt-terms')?.addEventListener('click', function(e) {
-            e.preventDefault();
-            const val = (document.getElementById('bulk-pmt-terms-select')?.value || '').trim().toUpperCase();
-            if (!val) { alert('Please select a Pmt Terms value.'); return; }
-            const selected = table.getSelectedRows();
-            const validRows = [];
-            selected.forEach(function(row) {
-                const d = row.getData();
-                const sku = (d.SKU || '').trim();
-                if (sku && !sku.toLowerCase().includes('parent')) validRows.push({ row: row, sku: sku });
-            });
-            if (validRows.length === 0) { alert('No valid SKUs in selection.'); return; }
-            const btn = this;
-            btn.disabled = true;
-            const token = document.querySelector('meta[name="csrf-token"]')?.content || '';
-            const promises = validRows.map(function(item) {
-                return fetch('/ready-to-ship/inline-update-by-sku', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': token,
-                        'X-Requested-With': 'XMLHttpRequest',
-                        'Accept': 'application/json'
-                    },
-                    body: JSON.stringify({ sku: item.sku, column: 'pay_term', value: val })
-                }).then(r => r.json());
-            });
-            Promise.all(promises).then(function() {
-                validRows.forEach(function(item) {
-                    item.row.update({ r2s_pay_term: val }, true);
-                });
-                table.deselectRow();
-                updateBulkEditBadge();
-                btn.disabled = false;
-                const sel = document.getElementById('bulk-pmt-terms-select');
-                if (sel) sel.value = '';
-                const dd = bootstrap.Dropdown.getInstance(document.getElementById('bulkEditPmtTermsBtn'));
-                if (dd) dd.hide();
-            }).catch(function() { btn.disabled = false; });
-        });
-
         let currentParentFilter = null;
         let currentColorFilter = null;
         let currentSearchQuery = '';
@@ -4204,7 +4036,6 @@
         let currentSearchSupplier = '';
         let currentExecutiveFilter = '';
         let currentSupplierFilter = null;
-        let currentZoneFilter = null;
         let currentContainerFilter = null;
         let currentTwoOrdColorFilter = '';
         let currentTopQtySignFilters = {
@@ -4252,7 +4083,7 @@
             // Stop any active "play" modes by clicking their visible stop buttons.
             // Each mode's `is*Playing` flag is closed over inside its own IIFE, so the
             // only safe public way to stop it is to trigger the same UI click.
-            ['play-pause', 'supplier-play-pause', 'zone-play-pause', 'container-play-pause']
+            ['play-pause', 'supplier-play-pause', 'container-play-pause']
                 .forEach(function(id) {
                     const btn = document.getElementById(id);
                     if (btn && btn.offsetParent !== null) {
@@ -4269,7 +4100,6 @@
             currentSearchSupplier    = '';
             currentExecutiveFilter   = '';
             currentSupplierFilter    = null;
-            currentZoneFilter        = null;
             currentContainerFilter   = null;
             currentTwoOrdColorFilter = '';
             currentRowTypeFilter     = 'sku';
@@ -4402,21 +4232,7 @@
         });
 
         function updateTopRowCounter() {
-            const el = document.getElementById('top-row-counter');
-            if (!el || !table) return;
-            let total = 0;
-            try {
-                total = Number(table.getDataCount('active')) || 0;
-            } catch (e) {
-                total = 0;
-            }
-            if (!Number.isFinite(total) || total < 0) {
-                try {
-                    total = (table.getRows('active') || []).length;
-                } catch (e) {
-                    total = 0;
-                }
-            }
+            if (!table) return;
 
             // Stage filter badge — only visible when a filter is active
             const badge = document.getElementById('stage-filter-badge');
@@ -4436,29 +4252,9 @@
                         'transit':           'Trn',
                         'to_order_analysis': 'Order'
                     };
-                    const qtyFieldMap = {
-                        '__blank__':         null,
-                        'two_ord_nonneg':    'to_order',
-                        'appr_req':          'appr_req_qty',
-                        'mip':               'order_given',
-                        'r2s':               'readyToShipQty',
-                        'transit':           'transit',
-                        'to_order_analysis': 'two_order_qty'
-                    };
-                    const label    = labelMap[currentStageFilter] || currentStageFilter;
-                    const qtyField = qtyFieldMap[currentStageFilter] || null;
-                    let totalQty   = 0;
-                    if (qtyField) {
-                        activeRows.forEach(function(row) {
-                            const d = row.getData();
-                            if (!d.is_parent && !d.isParent) {
-                                totalQty += parseFloat(d[qtyField]) || 0;
-                            }
-                        });
-                    }
-                    const qtyPart = qtyField ? ' &nbsp;|&nbsp; QTY: <strong>' + Math.round(totalQty).toLocaleString() + '</strong>' : '';
-                    badge.innerHTML = label + ': <strong>' + childCount + '</strong> SKU' + (childCount !== 1 ? 's' : '') + qtyPart;
-                    badge.title = 'Filtered child rows (Stage + all filters). QTY = sum of column ' + (qtyField || '—') + ' for those rows.';
+                    const label = labelMap[currentStageFilter] || currentStageFilter;
+                    badge.innerHTML = label + ': <strong>' + childCount + '</strong> SKU' + (childCount !== 1 ? 's' : '');
+                    badge.title = 'Filtered child rows (Stage + all filters).';
                     badge.style.display = 'inline-block';
                 } else {
                     badge.style.display = 'none';
@@ -4466,19 +4262,34 @@
                 }
             }
 
-            let start = 0;
-            let end = 0;
-            if (total > 0) {
-                let pageSize = 0;
-                let pageNo = 1;
-                try { pageSize = Number(table.getPageSize()); } catch (e) {}
-                try { pageNo = Number(table.getPage()); } catch (e) {}
-                if (!Number.isFinite(pageSize) || pageSize <= 0) pageSize = total;
-                if (!Number.isFinite(pageNo) || pageNo <= 0) pageNo = 1;
-                start = ((pageNo - 1) * pageSize) + 1;
-                end = Math.min(total, pageNo * pageSize);
+            updateFilteredRowBadge();
+        }
+        function updateFilteredRowBadge() {
+            const countEl = document.getElementById('filtered-row-count');
+            const badge = document.getElementById('filtered-row-badge');
+            if (!countEl || !table) return;
+            let filteredChild = 0;
+            try {
+                const activeRows = table.getRows('active') || [];
+                filteredChild = activeRows.filter(function(row) {
+                    const d = row.getData();
+                    return d && !d.is_parent && !d.isParent;
+                }).length;
+            } catch (e) {
+                filteredChild = 0;
             }
-            el.textContent = `Showing ${start}-${end} of ${total} rows`;
+            let totalChild = 0;
+            if (typeof table.getData === 'function') {
+                table.getData().forEach(function(d) {
+                    if (!d || d.is_parent || d.isParent) return;
+                    totalChild++;
+                });
+            }
+            const pct = totalChild > 0 ? Math.round((filteredChild / totalChild) * 100) : 0;
+            countEl.textContent = String(filteredChild);
+            if (badge) {
+                badge.title = 'Filtered child SKU rows: ' + filteredChild + ' of ' + totalChild + ' (' + pct + '%)';
+            }
         }
         function normalizeTwoOrdFilterValue(rawValue) {
             const raw = (rawValue || '').trim().toLowerCase();
@@ -4539,15 +4350,23 @@
         }
         function updateZeroStockBadgeCount() {
             const countEl = document.getElementById('zero-stock-count');
+            const btn = document.getElementById('zero-stock-badge-btn');
             if (!countEl || !table || typeof table.getData !== 'function') return;
-            const n = table.getData().filter(function(d) {
-                if (!d || d.is_parent || d.isParent) return false;
+            let total = 0;
+            let zero = 0;
+            table.getData().forEach(function(d) {
+                if (!d || d.is_parent || d.isParent) return;
+                total++;
                 const invValue = d.raw_data ? d.raw_data["INV"] : d["INV"];
                 const invNum = parseFloat(invValue);
                 const v = Number.isFinite(invNum) ? invNum : 0;
-                return v <= 0;
-            }).length;
-            countEl.textContent = String(n);
+                if (v <= 0) zero++;
+            });
+            const pct = total > 0 ? Math.round((zero / total) * 100) : 0;
+            countEl.textContent = pct + '%';
+            if (btn) {
+                btn.title = 'Child SKUs with INV ≤ 0: ' + zero + ' of ' + total + ' (' + pct + '%). Click to filter or clear.';
+            }
         }
         function syncInvFilterFromHeader() {
             const tbl = Tabulator.findTable("#forecast-table")[0];
@@ -4588,7 +4407,7 @@
                 return stageValue === 'transit';
             }
             if (stageFilterValue === 'appr_req') {
-                return getEffectiveApprReqValue(rowData) > 0;
+                return rowCountsForApprColumnHeader(rowData);
             }
             if (stageFilterValue === 'mip') {
                 // Strict: only rows whose stage is actually 'mip'. This keeps the MIP count on
@@ -4690,6 +4509,7 @@
                 return Number.isFinite(n) ? n : 0;
             }
             if (key === 'moq') {
+                if (isNrp2BdcRow(data)) return 0;
                 const n = parseFloat(data?.MOQ ?? raw?.MOQ ?? raw?.['Approved QTY']);
                 return Number.isFinite(n) ? n : 0;
             }
@@ -4748,7 +4568,7 @@
                 if (isP) parentRow = r;
                 else {
                     sumTwo += parseFloat(d.two_order_qty) || 0;
-                    sumAppr += parseFloat(d.appr_req_qty) || 0;
+                    sumAppr += getEffectiveApprReqValue(d);
                 }
             });
             if (parentRow) parentRow.update({ two_order_qty: sumTwo, appr_req_qty: sumAppr }, true);
@@ -4767,6 +4587,7 @@
                 if (isP) {
                     parentRow = r;
                 } else {
+                    if (isNrp2BdcRow(d)) return;
                     const moq = parseFloat(d.MOQ) || parseFloat(d.raw_data && d.raw_data['MOQ']) || 0;
                     sumMOQ += moq;
                 }
@@ -4790,15 +4611,17 @@
         }
 
         function updateNRPMultiselectLabel() {
-            const el = document.getElementById('nrp-filter-label');
-            if (!el) return;
+            const btn = document.getElementById('nrp-filter-dropdown');
+            if (!btn) return;
             const checked = [...document.querySelectorAll('.nrp-ms-opt:checked')].map(b => b.value);
-            if (checked.length === 3 || checked.length === 0) {
-                el.textContent = 'ALL Items';
-                return;
-            }
             const labels = { REQ: 'REQ', NR: '2BDC', LATER: 'LATER' };
-            el.textContent = checked.map(v => labels[v] || v).join(', ');
+            let filterDesc;
+            if (checked.length === 3 || checked.length === 0) {
+                filterDesc = 'All items';
+            } else {
+                filterDesc = checked.map(v => labels[v] || v).join(', ');
+            }
+            btn.title = 'Filter by NRP: ' + filterDesc + ' (REQ / 2BDC / LATER)';
         }
 
         function syncNRPMultiselectFromHeader(val) {
@@ -4826,6 +4649,21 @@
             const mip = rowData.order_given ?? raw.order_given ?? raw['Order Given'] ?? null;
             const order = rowData.two_order_qty ?? raw.two_order_qty ?? raw['two_order_qty'] ?? null;
             return !isNullOrDashQty(transit) || !isNullOrDashQty(r2s) || !isNullOrDashQty(mip) || !isNullOrDashQty(order);
+        }
+
+        /** NRP = 2BDC (stored as NR) — MOQ displays as 0 for these child rows. */
+        function isNrp2BdcRow(rowData) {
+            if (!rowData || rowData.is_parent || rowData.isParent) return false;
+            const raw = rowData.raw_data || {};
+            const nr = String(rowData.nr ?? raw.nr ?? '').trim().toUpperCase();
+            return nr === 'NR';
+        }
+
+        function displayMoqForRow(rowData) {
+            if (isNrp2BdcRow(rowData)) return 0;
+            const raw = rowData.raw_data || {};
+            const n = parseFloat(rowData.MOQ ?? raw.MOQ ?? raw['Approved QTY']);
+            return Number.isFinite(n) ? n : 0;
         }
 
         /** Appr Req. filter: hide NRP = 2BDC (NR) and LATER — only REQ rows */
@@ -4857,6 +4695,7 @@
 
         function getEffectiveApprReqValue(rowData) {
             if (!rowData || rowData.is_parent || rowData.isParent) return 0;
+            if (apprReqHideRowForNrp2BdcOrLater(rowData)) return 0;
             // Rows already moved into a downstream pipeline stage no longer need approval —
             // hide the Appr Req value for them so they drop off /approval.required and /to-order-analysis.
             // 'to_order_analysis' is also excluded so the Appr Req filter/count matches /approval.required
@@ -4870,17 +4709,27 @@
             if (Number.isFinite(explicitApprReq) && explicitApprReq > 0) {
                 return explicitApprReq;
             }
-            // Loose Appr Req rule (matches /approval.required and /to-order-analysis):
-            // any non-parent row where to_order >= 0 — pipeline qty and NR status are NOT excluded here
-            // so the column shows MOQ for every "running low" SKU. Use NRP / Stage dropdowns to narrow.
+            // Loose Appr rule: to_order >= 0, no pipeline qty — show MOQ (yellow in cell).
+            if (apprReqHideRowForPipelineQty(rowData)) {
+                return 0;
+            }
             const twoOrdVal = parseFloat(rowData.to_order ?? raw.to_order ?? 0);
             if (Number.isFinite(twoOrdVal) && twoOrdVal >= 0) {
-                const moqVal = parseFloat(rowData.MOQ ?? raw.MOQ ?? raw['Approved QTY']);
-                if (Number.isFinite(moqVal) && moqVal > 0) {
+                const moqVal = displayMoqForRow(rowData);
+                if (moqVal > 0) {
                     return moqVal;
                 }
             }
             return 0;
+        }
+
+        /** Appr Req stage filter — same bucket as the Appr column display. */
+        function rowCountsForApprColumnHeader(rowData) {
+            if (!rowData || rowData.is_parent || rowData.isParent) return false;
+            if (String(rowData.SKU || '').toLowerCase().includes('parent')) return false;
+            // Match Appr cell: 2BDC/LATER render "0" — not counted as Appr Req SKUs.
+            if (apprReqHideRowForNrp2BdcOrLater(rowData)) return false;
+            return getEffectiveApprReqValue(rowData) > 0;
         }
 
         function setCombinedFilters() {
@@ -4977,12 +4826,6 @@
                 if (currentSupplierFilter) {
                     const rowSupplier = String(data.mfrg_supplier || '').trim();
                     if (rowSupplier !== currentSupplierFilter) return false;
-                }
-
-                // Zone play filter
-                if (currentZoneFilter) {
-                    const rowZone = String(data.r2s_zone || '').trim();
-                    if (rowZone !== currentZoneFilter) return false;
                 }
 
                 // Container (Trn) play filter
@@ -5093,7 +4936,6 @@
             filterPostCalcTimer = setTimeout(() => {
                 filterPostCalcTimer = null;
                 updateParentTotalsBasedOnVisibleRows();
-                if (typeof window.updatePmtChart === 'function') window.updatePmtChart();
                 
                 // Calculate total MSL_C for visible rows
                 const visibleRows = table.getRows(true);
@@ -5109,8 +4951,7 @@
                 // Update total MSL_C display
                 const totalMslCElement = document.getElementById('total_msl_c_value');
                 if (totalMslCElement) {
-                    const wholeNumber = Math.round(totalMslC);
-                    totalMslCElement.textContent = wholeNumber.toLocaleString('en-US');
+                    totalMslCElement.textContent = formatBadgeK(totalMslC);
                 }
 
                 // Keep INV Val / LP Val badges aligned with currently visible (active) rows.
@@ -5128,7 +4969,7 @@
                 }, 0);
                 const totalInvValueElement = document.getElementById('total_inv_value_display');
                 if (totalInvValueElement) {
-                    totalInvValueElement.textContent = Math.round(visibleInvValue).toLocaleString('en-US');
+                    totalInvValueElement.textContent = formatBadgeK(visibleInvValue);
                 }
                 const visibleLpValue = visibleChildRows.reduce(function(sum, row) {
                     const d = row.getData();
@@ -5140,7 +4981,7 @@
                 }, 0);
                 const totalLpValueElement = document.getElementById('total_lp_value_display');
                 if (totalLpValueElement) {
-                    totalLpValueElement.textContent = Math.round(visibleLpValue).toLocaleString('en-US');
+                    totalLpValueElement.textContent = formatBadgeK(visibleLpValue);
                 }
                 const visibleOrderValue = visibleChildRows.reduce(function(sum, row) {
                     const d = row.getData();
@@ -5151,7 +4992,7 @@
                 }, 0);
                 const totalOrderValueElement = document.getElementById('total_order_value_display');
                 if (totalOrderValueElement) {
-                    totalOrderValueElement.textContent = Math.round(visibleOrderValue).toLocaleString('en-US');
+                    totalOrderValueElement.textContent = formatBadgeK(visibleOrderValue);
                 }
 
                 let totalMslSpAmz = 0;
@@ -5163,7 +5004,7 @@
                 });
                 const totalMslSpAmzEl = document.getElementById('total_msl_sp_amz_value');
                 if (totalMslSpAmzEl) {
-                    totalMslSpAmzEl.textContent = Math.round(totalMslSpAmz).toLocaleString('en-US');
+                    totalMslSpAmzEl.textContent = formatBadgeK(totalMslSpAmz);
                 }
 
                 // Calculate total Restock MSL for visible rows
@@ -5179,8 +5020,7 @@
                 // Update total Restock MSL display
                 const totalRestockMslElement = document.getElementById('total_restock_msl_value');
                 if (totalRestockMslElement) {
-                    const wholeNumber = Math.round(totalRestockMsl);
-                    totalRestockMslElement.textContent = wholeNumber.toLocaleString('en-US');
+                    totalRestockMslElement.textContent = formatBadgeK(totalRestockMsl);
                 }
 
                 // Calculate total Minimal MSL for visible rows
@@ -5202,8 +5042,7 @@
                 // Update total Minimal MSL display
                 const totalMinimalMslElement = document.getElementById('total_minimal_msl_value');
                 if (totalMinimalMslElement) {
-                    const wholeNumber = Math.round(totalMinimalMsl);
-                    totalMinimalMslElement.textContent = wholeNumber.toLocaleString('en-US');
+                    totalMinimalMslElement.textContent = formatBadgeK(totalMinimalMsl);
                 }
 
                 // Calculate sum restock shopify price for visible rows
@@ -5215,8 +5054,7 @@
                 // Update sum restock shopify price display
                 const sumRestockShopifyPriceElement = document.getElementById('sum_restock_shopify_price_value');
                 if (sumRestockShopifyPriceElement) {
-                    const wholeNumber = Math.round(visibleSumRestockShopifyPrice);
-                    sumRestockShopifyPriceElement.textContent = wholeNumber.toLocaleString('en-US');
+                    sumRestockShopifyPriceElement.textContent = formatBadgeK(visibleSumRestockShopifyPrice);
                 }
 
                 // Calculate total restock MSL LP for visible rows
@@ -5274,8 +5112,7 @@
                 // Update total MIP Value display
                 const totalMipValueElement = document.getElementById('total_mip_value_display');
                 if (totalMipValueElement) {
-                    const roundedTotal = Math.round(totalMipValue);
-                    totalMipValueElement.textContent = roundedTotal.toLocaleString('en-US');
+                    totalMipValueElement.textContent = formatBadgeK(totalMipValue);
                 }
 
                 // Calculate total R2S Value - from ALL rows (not filtered), only for rows with stage === 'r2s' (like ready-to-ship page)
@@ -5321,8 +5158,7 @@
                 // Update total R2S Value display
                 const totalR2sValueElement = document.getElementById('total_r2s_value_display');
                 if (totalR2sValueElement) {
-                    const roundedTotal = Math.round(totalR2sValue);
-                    totalR2sValueElement.textContent = roundedTotal.toLocaleString('en-US');
+                    totalR2sValueElement.textContent = formatBadgeK(totalR2sValue);
                 }
 
                 // Trn Val badge: sum(transit QTY × CP) from controller; not recalculated on row filter
@@ -5699,6 +5535,8 @@
                 list.innerHTML = table.getColumns().map(function(col) {
                     const f = col.getField();
                     if (!f) return '';
+                    const def = col.getDefinition() || {};
+                    if (def.hideFromColumnPicker) return '';
                     const label = getColumnLabel(col);
                     const checked = col.isVisible() ? 'checked' : '';
                     const safeF = String(f).replace(/"/g, '&quot;');
@@ -5727,7 +5565,10 @@
 
             // Show All
             document.getElementById("columnShowAllBtn")?.addEventListener("click", function() {
-                table.getColumns().forEach(function(col) { if (col.getField()) col.show(); });
+                table.getColumns().forEach(function(col) {
+                    const def = col.getDefinition() || {};
+                    if (col.getField() && !def.hideFromColumnPicker) col.show();
+                });
                 saveColumnVisibilityToLocalStorage();
                 buildCheckboxList();
             });
@@ -6177,7 +6018,7 @@
                 const prev = (sel.value || 'sku').trim();
                 const ROW_TYPE_OPTS = [
                     ['all', '🔁 All'],
-                    ['sku', '🔹 SKU (Child)'],
+                    ['sku', '🔹 SKU'],
                     ['parent', '🔸 Parent']
                 ];
                 sel.innerHTML = '';
@@ -6313,73 +6154,6 @@
                 document.getElementById('supplier-play-pause').style.display = 'none';
                 document.getElementById('supplier-play-auto').style.display = 'inline-block';
                 const lbl = document.getElementById('supplier-play-label');
-                if (lbl) lbl.style.display = 'none';
-            });
-            // ─────────────────────────────────────────────────────────────
-
-            // ── Zone play/pause ──────────────────────────────────────────
-            let isZonePlaying = false;
-            let zoneIndex = 0;
-
-            function getZoneList() {
-                const tbl = Tabulator.findTable("#forecast-table")[0];
-                if (!tbl) return [];
-                const seen = new Set();
-                const list = [];
-                tbl.getRows().forEach(function(row) {
-                    const d = row.getData();
-                    const cell = row.getCell("r2s_zone");
-                    const s = String(
-                        (cell ? cell.getValue() : null) ||
-                        d.r2s_zone || d['r2s_zone'] || ''
-                    ).trim();
-                    if (s && s !== '-' && !seen.has(s)) { seen.add(s); list.push(s); }
-                });
-                return list.sort();
-            }
-
-            function renderZoneGroup(zone) {
-                currentZoneFilter = zone;
-                setCombinedFilters();
-                const lbl = document.getElementById('zone-play-label');
-                if (lbl) { lbl.textContent = zone; lbl.style.display = 'inline-block'; }
-                const tbl = Tabulator.findTable("#forecast-table")[0];
-                if (tbl && tbl.rowManager && tbl.rowManager.element) {
-                    tbl.rowManager.element.scrollTop = 0;
-                }
-            }
-
-            document.getElementById('zone-play-auto').addEventListener('click', function() {
-                const list = getZoneList();
-                if (!list.length) { alert('No zone data available.'); return; }
-                isZonePlaying = true;
-                zoneIndex = 0;
-                renderZoneGroup(list[zoneIndex]);
-                document.getElementById('zone-play-pause').style.display = 'inline-block';
-                document.getElementById('zone-play-auto').style.display = 'none';
-            });
-
-            document.getElementById('zone-play-forward').addEventListener('click', function() {
-                if (!isZonePlaying) return;
-                const list = getZoneList();
-                zoneIndex = (zoneIndex + 1) % list.length;
-                renderZoneGroup(list[zoneIndex]);
-            });
-
-            document.getElementById('zone-play-backward').addEventListener('click', function() {
-                if (!isZonePlaying) return;
-                const list = getZoneList();
-                zoneIndex = (zoneIndex - 1 + list.length) % list.length;
-                renderZoneGroup(list[zoneIndex]);
-            });
-
-            document.getElementById('zone-play-pause').addEventListener('click', function() {
-                isZonePlaying = false;
-                currentZoneFilter = null;
-                setCombinedFilters();
-                document.getElementById('zone-play-pause').style.display = 'none';
-                document.getElementById('zone-play-auto').style.display = 'inline-block';
-                const lbl = document.getElementById('zone-play-label');
                 if (lbl) lbl.style.display = 'none';
             });
             // ─────────────────────────────────────────────────────────────
@@ -6599,7 +6373,7 @@
                     .then(function(r) { return r.json(); })
                     .then(function(data) {
                         if (typeof data.value === 'number') {
-                            el.textContent = data.value.toLocaleString('en-US');
+                            el.textContent = formatBadgeK(data.value);
                         }
                     })
                     .catch(function() {});
@@ -6732,141 +6506,6 @@
         });
 
         // ── Export button: Supplier Name, SKU, Image, QTY, Order Date ──────────────
-        // ── Payment Terms Pie Chart ─────────────────────────────────────────────
-        (function() {
-            const PIE_COLORS = [
-                '#2563eb','#16a34a','#ea580c','#9333ea','#0891b2',
-                '#d97706','#db2777','#65a30d','#dc2626','#475569'
-            ];
-            let pmtChart = null;
-
-            function buildPmtChart() {
-                const ctx = document.getElementById('pmt-terms-chart');
-                if (!ctx) return;
-                if (pmtChart) { pmtChart.destroy(); pmtChart = null; }
-                pmtChart = new Chart(ctx, {
-                    type: 'pie',
-                    data: { labels: [], datasets: [{ data: [], backgroundColor: [] }] },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: true,
-                        plugins: {
-                            legend: { display: false },
-                            tooltip: {
-                                callbacks: {
-                                    label: function(ctx) {
-                                        const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
-                                        const pct = total > 0 ? Math.round(ctx.parsed / total * 100) : 0;
-                                        return ctx.label + ': ' + ctx.parsed + ' (' + pct + '%)';
-                                    }
-                                }
-                            }
-                        }
-                    }
-                });
-            }
-
-            window.updatePmtChart = function() {
-                if (!table) return;
-                const chartRow = document.getElementById('pmt-chart-row');
-                // Only update if chart panel is currently visible
-                if (!chartRow || chartRow.style.display === 'none' || chartRow.style.display === '') return;
-
-                // Use selected rows if any, otherwise filtered rows
-                const selected = table.getSelectedRows ? table.getSelectedRows() : [];
-                const useSelected = selected.length > 0;
-                const rows = useSelected ? selected : (table.getRows('active') || []);
-
-                const counts = {};
-                let total = 0;
-                rows.forEach(function(row) {
-                    const d = row.getData();
-                    if (d.is_parent || d.isParent) return;
-                    const term = String(d.r2s_pay_term || '').trim() || 'Not Set';
-                    counts[term] = (counts[term] || 0) + 1;
-                    total++;
-                });
-
-                const noDataEl  = document.getElementById('pmt-chart-nodata');
-                const legendEl  = document.getElementById('pmt-chart-legend');
-                const canvasWrap = document.querySelector('#pmt-chart-row > div:first-child');
-                const scopeEl   = document.getElementById('pmt-chart-scope');
-
-                if (total === 0) {
-                    if (noDataEl)  noDataEl.style.display  = 'block';
-                    if (legendEl)  legendEl.style.display  = 'none';
-                    if (canvasWrap) canvasWrap.style.display = 'none';
-                    if (scopeEl)   scopeEl.textContent      = '0 rows';
-                    return;
-                }
-
-                if (noDataEl)   noDataEl.style.display   = 'none';
-                if (legendEl)   legendEl.style.display   = '';
-                if (canvasWrap) canvasWrap.style.display = '';
-
-                // Sort by count desc
-                const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
-                const labels = entries.map(e => e[0]);
-                const data   = entries.map(e => e[1]);
-                const colors = labels.map((_, i) => PIE_COLORS[i % PIE_COLORS.length]);
-
-                if (!pmtChart) buildPmtChart();
-                pmtChart.data.labels                       = labels;
-                pmtChart.data.datasets[0].data             = data;
-                pmtChart.data.datasets[0].backgroundColor  = colors;
-                pmtChart.update();
-
-                // Legend
-                if (legendEl) {
-                    legendEl.innerHTML = entries.map(function(e, i) {
-                        const pct = Math.round(e[1] / total * 100);
-                        return '<span style="display:inline-flex;align-items:center;gap:4px;white-space:nowrap;">' +
-                            '<span style="width:10px;height:10px;border-radius:50%;background:' + colors[i] + ';flex-shrink:0;display:inline-block;"></span>' +
-                            '<span><strong>' + e[0] + '</strong>: ' + e[1] + ' (' + pct + '%)</span>' +
-                            '</span>';
-                    }).join('');
-                }
-
-                // Scope badge
-                if (scopeEl) {
-                    const childSelected = selected.filter(r => { const d = r.getData(); return !d.is_parent && !d.isParent; }).length;
-                    scopeEl.textContent = useSelected
-                        ? childSelected + ' selected'
-                        : total + ' filtered';
-                    scopeEl.className = 'badge ' + (useSelected ? 'bg-primary' : 'bg-secondary');
-                }
-            };
-
-            // Chart toggle button
-            document.getElementById('toggle-pmt-chart-btn').addEventListener('click', function() {
-                const chartRow = document.getElementById('pmt-chart-row');
-                if (!chartRow) return;
-                const isHidden = chartRow.style.display === 'none' || chartRow.style.display === '';
-                if (isHidden) {
-                    chartRow.style.display = 'flex';
-                    this.classList.remove('btn-outline-primary');
-                    this.classList.add('btn-primary');
-                    window.updatePmtChart();
-                } else {
-                    chartRow.style.display = 'none';
-                    this.classList.remove('btn-primary');
-                    this.classList.add('btn-outline-primary');
-                }
-            });
-
-            // Build chart on load
-            buildPmtChart();
-
-            // Hook into table events after table is ready
-            setTimeout(function() {
-                if (!table) return;
-                table.on('dataLoaded',   function() { window.updatePmtChart(); });
-                table.on('dataFiltered', function() { window.updatePmtChart(); });
-                table.on('rowSelected',  function() { window.updatePmtChart(); });
-                table.on('rowDeselected',function() { window.updatePmtChart(); });
-            }, 500);
-        })();
-
         document.getElementById('export-forecast-btn').addEventListener('click', function() {
             const btn = this;
             btn.disabled = true;
@@ -6938,104 +6577,6 @@
             btn.disabled = false;
             btn.innerHTML = '<i class="fas fa-download"></i>';
         });
-
-        // ── LMP Competitors modal ────────────────────────────────────────────────
-        // Mirrors the toaLmpModal flow on /to-order-analysis: clicking the
-        // "View N" link inside the LMP column fetches /amazon/competitors?sku=…
-        // and renders the same table layout inside an in-page Bootstrap modal,
-        // so users never leave /forecast.analysis.
-        (function setupFaLmpModal() {
-            const escAttr = function (s) {
-                return String(s == null ? '' : s)
-                    .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
-                    .replace(/</g, '&lt;').replace(/>/g, '&gt;');
-            };
-
-            function renderFaLmpCompetitorsList(competitors, lowestPrice) {
-                const $list = $("#faLmpDataList");
-                if (!competitors || competitors.length === 0) {
-                    $list.html('<div class="alert alert-info"><i class="fa fa-info-circle"></i> No competitors found for this SKU</div>');
-                    return;
-                }
-                let html = '<div class="table-responsive"><table class="table table-hover table-bordered table-sm">';
-                html += `<thead class="table-light"><tr>
-                    <th>#</th><th>Image</th><th>ASIN</th><th>Product Title</th><th>Seller</th>
-                    <th>Price</th><th>Rating</th><th>Reviews</th><th>Link</th>
-                </tr></thead><tbody>`;
-
-                competitors.forEach(function (item, index) {
-                    const isLowest = Math.abs(parseFloat(item.price) - parseFloat(lowestPrice)) < 0.01;
-                    const rowClass = isLowest ? "table-success" : "";
-                    const priceFormatted = "$" + parseFloat(item.price).toFixed(2);
-                    const productLink = item.link || item.product_link || "#";
-                    const productTitle = item.title || item.product_title || "N/A";
-                    const sellerName = item.seller_name || "—";
-                    const imageUrl = item.image || "";
-                    const imageHtml = imageUrl
-                        ? `<img src="${escAttr(imageUrl)}" style="width:50px;height:50px;object-fit:contain;" alt="">`
-                        : '<span style="color:#999;">—</span>';
-                    const rating = item.rating
-                        ? `<span style="color:#ffc107;">${parseFloat(item.rating).toFixed(1)} <i class="fa fa-star"></i></span>`
-                        : '<span style="color:#999;">—</span>';
-                    const reviews = item.reviews
-                        ? `<span>${parseInt(item.reviews, 10).toLocaleString()}</span>`
-                        : '<span style="color:#999;">—</span>';
-
-                    html += `<tr class="${rowClass}">
-                        <td class="text-center"><strong>${index + 1}</strong></td>
-                        <td class="text-center">${imageHtml}</td>
-                        <td><span class="text-primary fw-semibold" style="font-size:11px;">${escAttr(item.asin || "N/A")}</span></td>
-                        <td style="font-size:11px;" title="${escAttr(productTitle)}">${escAttr(productTitle.length > 60 ? productTitle.substring(0, 60) + "…" : productTitle)}</td>
-                        <td style="font-size:11px;">${escAttr(sellerName)}</td>
-                        <td><strong>${priceFormatted}${isLowest ? ' <i class="fa fa-trophy text-success"></i>' : ""}</strong></td>
-                        <td class="text-center">${rating}</td>
-                        <td class="text-center">${reviews}</td>
-                        <td class="text-center">
-                            <a href="${escAttr(productLink)}" target="_blank" rel="noopener" class="btn btn-sm btn-info" title="View product">
-                                <i class="fa fa-external-link"></i>
-                            </a>
-                        </td>
-                    </tr>`;
-                });
-                html += "</tbody></table></div>";
-                $list.html(html);
-            }
-
-            function loadFaLmpModal(sku) {
-                $("#faLmpSku").text(sku);
-                const modal = new bootstrap.Modal(document.getElementById("faLmpModal"));
-                modal.show();
-                $("#faLmpDataList").html(`
-                    <div class="text-center py-5">
-                        <div class="spinner-border text-primary" role="status">
-                            <span class="visually-hidden">Loading...</span>
-                        </div>
-                        <p class="mt-2">Loading competitors...</p>
-                    </div>
-                `);
-                $.ajax({
-                    url: "/amazon/competitors",
-                    method: "GET",
-                    data: { sku: sku },
-                    success: function (response) {
-                        if (response.success) {
-                            renderFaLmpCompetitorsList(response.competitors, response.lowest_price);
-                        } else {
-                            $("#faLmpDataList").html('<div class="alert alert-warning"><i class="fa fa-info-circle"></i> No competitors found for this SKU.</div>');
-                        }
-                    },
-                    error: function () {
-                        $("#faLmpDataList").html('<div class="alert alert-warning"><i class="fa fa-info-circle"></i> Could not load competitor data.</div>');
-                    }
-                });
-            }
-
-            $(document).on("click", ".fa-view-lmp-competitors", function (e) {
-                e.preventDefault();
-                const sku = $(this).data("sku");
-                if (sku) loadFaLmpModal(String(sku));
-            });
-        })();
 
     </script>
 @endsection

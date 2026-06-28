@@ -1045,42 +1045,137 @@ class ForecastAnalysisController extends Controller
         return $this->buildForecastAnalysisData(false);
     }
 
+    /**
+     * Toolbar badge totals for /forecast.analysis — mirrors the initial ajaxResponse
+     * aggregation in forecastAnalysis.blade.php (all child rows, no UI filters).
+     *
+     * @return array<string, int|float>
+     */
+    public function getForecastAnalysisBadgeTotals(): array
+    {
+        return $this->aggregateForecastToolbarBadges(
+            $this->forecastAnalysisRowsForToolbar(false)
+        );
+    }
+
+    /**
+     * @return list<object>
+     */
+    private function forecastAnalysisRowsForToolbar(bool $persistDerivedForecastStages = false): array
+    {
+        $processedData = $this->buildForecastAnalysisData($persistDerivedForecastStages);
+
+        $archivedKeySet = $this->buildArchivedSkuParentKeySet();
+        if (! empty($archivedKeySet)) {
+            $processedData = collect($processedData)->reject(function ($item) use ($archivedKeySet) {
+                $sku = strtolower(trim((string) ($item->SKU ?? $item->sku ?? '')));
+                $parent = strtolower(trim((string) ($item->Parent ?? $item->parent ?? '')));
+
+                return isset($archivedKeySet[$sku.'|'.$parent])
+                    || isset($archivedKeySet[$sku.'|']);
+            })->values()->all();
+        }
+
+        return $processedData;
+    }
+
+    /**
+     * @param  list<object>  $processedData
+     * @return array<string, int|float>
+     */
+    private function aggregateForecastToolbarBadges(array $processedData): array
+    {
+        $children = collect($processedData)->filter(fn ($item) => ! ($item->is_parent ?? false));
+
+        $totalMslC = $children->sum(fn ($item) => (float) ($item->{'MSL_C'} ?? 0));
+        $totalMslSpAmz = $children->sum(fn ($item) => (float) ($item->{'MSL_SP_AMZ'} ?? 0));
+        $totalTransitValue = $children->sum(
+            fn ($item) => (float) ($item->transit ?? 0) * (float) ($item->{'CP'} ?? 0)
+        );
+
+        $totalInv = 0.0;
+        $totalLp = 0.0;
+        $totalMissing = 0.0;
+        $totalMip = 0.0;
+        $totalR2s = 0.0;
+        $totalOrd = 0.0;
+        $totalCbm = 0.0;
+        $zeroStockCount = 0;
+        $childCount = 0;
+
+        foreach ($children as $item) {
+            $childCount++;
+            $inv = (float) ($item->INV ?? 0);
+
+            $totalInv += (float) ($item->inv_value ?? 0);
+            $totalLp += (float) ($item->lp_value ?? 0);
+            $totalCbm += (float) ($item->total_cbm ?? 0);
+
+            if ($inv <= 0) {
+                $zeroStockCount++;
+            }
+            if ($inv === 0.0) {
+                $totalMissing += (float) ($item->{'MSL_SP'} ?? 0);
+            }
+
+            $orderQty = (float) ($item->two_order_qty ?? 0);
+            $cp = (float) ($item->CP ?? 0);
+            if ($orderQty > 0) {
+                $totalOrd += $orderQty * $cp;
+            }
+
+            $stageNorm = strtolower(trim((string) ($item->stage ?? '')));
+            $readyToShip = trim((string) ($item->mfrg_ready_to_ship ?? 'No'));
+            $nrNorm = strtoupper(trim((string) ($item->nr ?? '')));
+
+            if ($stageNorm === 'mip' && $readyToShip !== 'Yes' && $nrNorm !== 'NR') {
+                $qty = (float) ($item->order_given ?? 0);
+                $rate = (float) ($item->mip_rate ?? 0);
+                if ($qty > 0 && $rate > 0) {
+                    $totalMip += $qty * $rate;
+                }
+            }
+
+            if ($stageNorm === 'r2s' && $nrNorm !== 'NR') {
+                $qty = (float) ($item->readyToShipQty ?? 0);
+                $rate = (float) ($item->r2s_rate ?? 0);
+                if ($qty > 0 && $rate > 0) {
+                    $totalR2s += $qty * $rate;
+                }
+            }
+        }
+
+        return [
+            'total_msl_c' => round($totalMslC, 2),
+            'total_msl_sp_amz' => round($totalMslSpAmz, 2),
+            'total_inv_value' => round($totalInv, 2),
+            'total_lp_value' => round($totalLp, 2),
+            'total_order_value' => round($totalOrd, 2),
+            'total_minimal_msl' => round($totalMissing, 2),
+            'total_mip_value' => round($totalMip, 2),
+            'total_r2s_value' => round($totalR2s, 2),
+            'total_transit_value' => round($totalTransitValue, 2),
+            'total_cbm' => (int) round($totalCbm),
+            'zero_stock_pct' => $childCount > 0 ? (int) round(($zeroStockCount / $childCount) * 100) : 0,
+        ];
+    }
+
     public function getViewForecastAnalysisData()
     {
         try {
+            $processedData = $this->forecastAnalysisRowsForToolbar(true);
+            $badgeTotals = $this->aggregateForecastToolbarBadges($processedData);
 
-            $processedData = $this->buildForecastAnalysisData();
-
-            // Hide soft-archived rows from the main forecast view. Archive state lives
-            // on forecast_analysis.archived_at (see migration
-            // 2026_06_24_030000_add_archived_columns_to_forecast_analysis) and is
-            // managed by the president-only archive/restore endpoints below.
-            $archivedKeySet = $this->buildArchivedSkuParentKeySet();
-            if (!empty($archivedKeySet)) {
-                $processedData = collect($processedData)->reject(function ($item) use ($archivedKeySet) {
-                    $sku = strtolower(trim((string) ($item->SKU ?? $item->sku ?? '')));
-                    $parent = strtolower(trim((string) ($item->Parent ?? $item->parent ?? '')));
-                    return isset($archivedKeySet[$sku . '|' . $parent])
-                        || isset($archivedKeySet[$sku . '|']);
-                })->values()->all();
-            }
-
-            $children = collect($processedData)->filter(fn($item) => !$item->is_parent);
-
-            $totalMslC = $children->sum(fn($item) => floatval($item->{'MSL_C'} ?? 0));
-            $totalMslSp = $children->sum(fn($item) => floatval($item->{'MSL_SP'} ?? 0));
-            $totalMslSpAmz = $children->sum(fn($item) => floatval($item->{'MSL_SP_AMZ'} ?? 0));
-            $totalTransitValue = $children->sum(function ($item) {
-                return (float) ($item->transit ?? 0) * (float) ($item->{'CP'} ?? 0);
-            });
+            $children = collect($processedData)->filter(fn ($item) => ! ($item->is_parent ?? false));
+            $totalMslSp = $children->sum(fn ($item) => (float) ($item->{'MSL_SP'} ?? 0));
 
             $payload = [
                 'message'             => 'Data fetched successfully',
                 'data'                => $processedData,
-                'total_msl_c'         => round($totalMslC, 2),
+                'total_msl_c'         => $badgeTotals['total_msl_c'],
                 'total_msl_sp'        => round($totalMslSp, 0),
-                'total_msl_sp_amz'    => round($totalMslSpAmz, 2),
-                'total_transit_value' => round($totalTransitValue, 2),
+                'total_msl_sp_amz'    => $badgeTotals['total_msl_sp_amz'],
+                'total_transit_value' => $badgeTotals['total_transit_value'],
                 'status'              => 200,
             ];
 

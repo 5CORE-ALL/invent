@@ -134,7 +134,7 @@
     );
     $templateLabels = [
         'supplierName' => 'Supplier Name',
-        'companyName' => 'Company Name',
+        'companyName' => 'Alias',
         'supplierLink' => 'Supplier Link',
         'productName' => 'Product Name',
     ];
@@ -143,11 +143,16 @@
             $templateLabels[$f['name']] = $f['label'] ?? $f['name'];
         }
     }
+    $linkedSkus = collect($form->linked_skus ?? [])->filter()->values()->all();
+    foreach ($linkedSkus as $sku) {
+        $templateLabels[$sku] = $sku;
+    }
 @endphp
 <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
 <!-- SheetJS for Excel Export -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
+    const LINKED_SKUS = @json($linkedSkus);
     // Replace a broken/missing image with a small "N/A" placeholder instead of a broken icon
     window.rfqImgError = function(img){
         img.onerror = null;
@@ -215,6 +220,8 @@
     document.addEventListener('DOMContentLoaded', function () {
 
         const FORM_ID = {{ $form->id }};
+        const TEMPLATE_COLUMNS = @json($templateColumns);
+        const TEMPLATE_LABELS = @json($templateLabels);
         let currentSubmissions = [];
         let currentColumnMeta = {};
         let currentRowKeys = [];
@@ -262,6 +269,9 @@
                 priorityKeys.forEach(k => {
                     if(submissions.some(s => s.hasOwnProperty(k))){ orderedKeys.push(k); seen[k] = true; }
                 });
+                LINKED_SKUS.forEach(k => {
+                    if(k && !seen[k]){ orderedKeys.push(k); seen[k] = true; }
+                });
                 submissions.forEach(s => {
                     Object.keys(s).forEach(k => {
                         if(!seen[k]){ seen[k] = true; orderedKeys.push(k); }
@@ -273,7 +283,7 @@
                 // Expose data for the edit-column modal
                 currentSubmissions = raw.map(r => ({ id: r.id, data: r.data || {} }));
                 currentRowKeys = rowKeys;
-                const labelFor = k => (reportMeta.labels && reportMeta.labels[k]) ? reportMeta.labels[k] : humanizeKey(k);
+                const labelFor = k => (reportMeta.labels && reportMeta.labels[k]) ? reportMeta.labels[k] : (TEMPLATE_LABELS[k] || humanizeKey(k));
                 currentLabelFor = labelFor;
 
                 const columnMeta = {
@@ -424,7 +434,11 @@
             document.getElementById('rfqColEditTitle').textContent = titleText;
 
             let html = '';
-            currentRowKeys.forEach(k => {
+            const editKeys = (meta.type === 'target' || meta.type === 'last_purchase')
+                ? (LINKED_SKUS.length ? LINKED_SKUS.slice() : currentRowKeys.filter(k => k !== 'additionalPhotos'))
+                : currentRowKeys;
+
+            editKeys.forEach(k => {
                 if(meta.type === 'supplier' && k === 'additionalPhotos') return; // files can't be edited as text
 
                 let value = '';
@@ -592,13 +606,12 @@
         });
 
         // ===== Import multiple suppliers via template =====
-        const TEMPLATE_COLUMNS = @json($templateColumns);
-        const TEMPLATE_LABELS = @json($templateLabels);
         const LABEL_TO_KEY = {};
         Object.keys(TEMPLATE_LABELS).forEach(key => {
             LABEL_TO_KEY[String(TEMPLATE_LABELS[key]).toLowerCase().trim()] = key;
             LABEL_TO_KEY[String(key).toLowerCase().trim()] = key;
         });
+        LABEL_TO_KEY['company name'] = 'companyName';
 
         document.getElementById('downloadTemplateBtn').addEventListener('click', function(e){
             e.preventDefault();

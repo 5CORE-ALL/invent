@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Campaigns;
 
 use App\Http\Controllers\Controller;
+use App\Services\GoogleAdsSbidService;
 use App\Support\GoogleShoppingCampaignsRawRule;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -111,39 +112,35 @@ class GoogleShoppingCampaignsController extends Controller
     }
 
     /**
-     * Run `budget:update-shopping` — writes daily Shopping budgets from the persisted SBGT rule   (same as cron).
-     * Request JSON: `{ "campaign_ids": ["…"] }` — when sent from the raw grid, only those SHOPPING  campaigns are updated (max 1000).
+     * Push SBGT to Google Ads for each sent campaign_id using the same values as the grid
+     * (no product-master SKU matching).
+     *
+     * Request JSON: `{ "campaign_ids": ["…"] }` — rows on the current grid page (max 1000).
      */
     public function pushSbgtShoppingBudgets(Request $request): JsonResponse
     {
         $ids = $this->validatedPushCampaignIds($request);
         if ($ids === []) {
-            return $this->pushCampaignIdsMissingResponse('budget:update-shopping');
+            return $this->pushCampaignIdsMissingResponse('push-sbgt');
         }
 
-        return $this->runArtisanPush(
-            'budget:update-shopping',
-            ['--campaign-ids' => implode(',', $ids)],
-            'budget:update-shopping'
-        );
+        return $this->pushGridSbgt($ids);
     }
 
     /**
-     * Run `sbid:update` — updates Shopping campaign SBIDs from the persisted SBID rule (same as cron). 
-     * Request JSON: `{ "campaign_ids": ["…"] }` — when sent from the raw grid, only those campaigns  are considered (max 1000).
+     * Push SBID to Google Ads for each sent campaign_id using the same values as the grid
+     * (no product-master SKU matching).
+     *
+     * Request JSON: `{ "campaign_ids": ["…"] }` — rows on the current grid page (max 1000).
      */
     public function pushSbidShopping(Request $request): JsonResponse
     {
         $ids = $this->validatedPushCampaignIds($request);
         if ($ids === []) {
-            return $this->pushCampaignIdsMissingResponse('sbid:update');
+            return $this->pushCampaignIdsMissingResponse('push-sbid');
         }
 
-        return $this->runArtisanPush(
-            'sbid:update',
-            ['--campaign-ids' => implode(',', $ids)],
-            'sbid:update'
-        );
+        return $this->pushGridSbid($ids);
     }
 
     /**
@@ -244,6 +241,211 @@ class GoogleShoppingCampaignsController extends Controller
             'message' => $exitCode === 0 ? 'Command finished successfully.' : 'Command failed — see output below.',
             'output' => $output,
         ], $exitCode === 0 ? 200 : 422);
+    }
+
+    /**
+     * @param  list<string>  $campaignIds
+     */
+    private function pushGridSbgt(array $campaignIds): JsonResponse
+    {
+        @ini_set('memory_limit', '512M');
+        @ini_set('max_execution_time', '0');
+        set_time_limit(0);
+
+        $customerId = config('services.google_ads.login_customer_id');
+        if (! $customerId) {
+            return response()->json([
+                'ok' => false,
+                'exit_code' => 1,
+                'command' => 'push-sbgt',
+                'message' => 'Google Ads customer ID is not configured.',
+                'output' => '',
+            ], 500);
+        }
+
+        /** @var GoogleAdsSbidService $sbidService */
+        $sbidService = app(GoogleAdsSbidService::class);
+        $rowsById = $this->enrichedRowsForCampaignIds($campaignIds);
+        $lines = [];
+        $updated = 0;
+        $skipped = 0;
+        $errors = 0;
+
+        $lines[] = 'Pushing SBGT for '.count($campaignIds).' campaign id(s) from grid (direct, no SKU matching)...';
+
+        foreach ($campaignIds as $campaignId) {
+            $row = $rowsById[$campaignId] ?? null;
+            if ($row === null) {
+                $lines[] = "[SKIP] {$campaignId}: not found in grid data (no L30 rows or outside page scope).";
+                $skipped++;
+
+                continue;
+            }
+
+            $name = (string) ($row['campaign_name'] ?? $campaignId);
+            $status = strtoupper(trim((string) ($row['campaign_status'] ?? '')));
+            if ($status !== 'ENABLED') {
+                $lines[] = "[SKIP] {$name} ({$campaignId}): campaign status is {$status}, not ENABLED.";
+                $skipped++;
+
+                continue;
+            }
+
+            $budgetId = $row['budget_id'] ?? null;
+            if ($budgetId === null || $budgetId === '') {
+                $lines[] = "[SKIP] {$name} ({$campaignId}): missing budget_id.";
+                $skipped++;
+
+                continue;
+            }
+
+            $currentBudget = (float) ($row['bgt'] ?? 0);
+            $newBudget = (int) ($row['sbgt'] ?? 0);
+            $acos = round((float) ($row['acos_l30'] ?? 0), 1);
+
+            try {
+                $budgetResourceName = "customers/{$customerId}/campaignBudgets/{$budgetId}";
+                $sbidService->updateCampaignBudget($customerId, $budgetResourceName, $newBudget);
+                $lines[] = "[OK] {$name} ({$campaignId}): Budget=\${$currentBudget} → \${$newBudget} (ACOS={$acos}%, SBGT={$newBudget})";
+                $updated++;
+            } catch (\Throwable $e) {
+                $lines[] = "[ERROR] {$name} ({$campaignId}): ".$e->getMessage();
+                $errors++;
+            }
+        }
+
+        $lines[] = '';
+        $lines[] = "Done. Updated: {$updated}, Skipped: {$skipped}, Errors: {$errors}.";
+
+        $output = implode("\n", $lines);
+
+        return response()->json([
+            'ok' => $errors === 0,
+            'exit_code' => $errors === 0 ? 0 : 1,
+            'command' => 'push-sbgt',
+            'message' => $errors === 0
+                ? "SBGT push finished — {$updated} campaign(s) updated."
+                : "SBGT push finished with {$errors} error(s).",
+            'output' => $output,
+        ], $errors === 0 ? 200 : 422);
+    }
+
+    /**
+     * @param  list<string>  $campaignIds
+     */
+    private function pushGridSbid(array $campaignIds): JsonResponse
+    {
+        @ini_set('memory_limit', '512M');
+        @ini_set('max_execution_time', '0');
+        set_time_limit(0);
+
+        $customerId = config('services.google_ads.login_customer_id');
+        if (! $customerId) {
+            return response()->json([
+                'ok' => false,
+                'exit_code' => 1,
+                'command' => 'push-sbid',
+                'message' => 'Google Ads customer ID is not configured.',
+                'output' => '',
+            ], 500);
+        }
+
+        /** @var GoogleAdsSbidService $sbidService */
+        $sbidService = app(GoogleAdsSbidService::class);
+        $rowsById = $this->enrichedRowsForCampaignIds($campaignIds);
+        $lines = [];
+        $updated = 0;
+        $skipped = 0;
+        $errors = 0;
+
+        $lines[] = 'Pushing SBID for '.count($campaignIds).' campaign id(s) from grid (direct, no SKU matching)...';
+
+        foreach ($campaignIds as $campaignId) {
+            $row = $rowsById[$campaignId] ?? null;
+            if ($row === null) {
+                $lines[] = "[SKIP] {$campaignId}: not found in grid data (no L30 rows or outside page scope).";
+                $skipped++;
+
+                continue;
+            }
+
+            $name = (string) ($row['campaign_name'] ?? $campaignId);
+            $status = strtoupper(trim((string) ($row['campaign_status'] ?? '')));
+            if ($status !== 'ENABLED') {
+                $lines[] = "[SKIP] {$name} ({$campaignId}): campaign status is {$status}, not ENABLED.";
+                $skipped++;
+
+                continue;
+            }
+
+            $sbid = $row['sbid'] ?? null;
+            if ($sbid === null || $sbid === '' || (float) $sbid <= 0) {
+                $ub7 = round((float) ($row['ub7'] ?? 0), 1);
+                $ub1 = round((float) ($row['ub1'] ?? 0), 1);
+                $lines[] = "[SKIP] {$name} ({$campaignId}): no SBID to push (7UB={$ub7}%, 1UB={$ub1}% — mid band shows —).";
+                $skipped++;
+
+                continue;
+            }
+
+            $sbid = round((float) $sbid, 2);
+            $ub7 = round((float) ($row['ub7'] ?? 0), 1);
+            $ub1 = round((float) ($row['ub1'] ?? 0), 1);
+
+            try {
+                $sbidService->updateCampaignSbids($customerId, $campaignId, $sbid);
+                $lines[] = "[OK] {$name} ({$campaignId}): SBID=\${$sbid} (7UB={$ub7}%, 1UB={$ub1}%)";
+                $updated++;
+            } catch (\Throwable $e) {
+                $lines[] = "[ERROR] {$name} ({$campaignId}): ".$e->getMessage();
+                $errors++;
+            }
+        }
+
+        $lines[] = '';
+        $lines[] = "Done. Updated: {$updated}, Skipped: {$skipped}, Errors: {$errors}.";
+
+        $output = implode("\n", $lines);
+
+        return response()->json([
+            'ok' => $errors === 0,
+            'exit_code' => $errors === 0 ? 0 : 1,
+            'command' => 'push-sbid',
+            'message' => $errors === 0
+                ? "SBID push finished — {$updated} campaign(s) updated."
+                : "SBID push finished with {$errors} error(s).",
+            'output' => $output,
+        ], $errors === 0 ? 200 : 422);
+    }
+
+    /**
+     * Grid rows enriched with SBGT/SBID — keyed by campaign_id string.
+     *
+     * @param  list<string>  $campaignIds
+     * @return array<string, array<string, mixed>>
+     */
+    protected function enrichedRowsForCampaignIds(array $campaignIds): array
+    {
+        if ($campaignIds === []) {
+            return [];
+        }
+
+        $query = $this->buildRawGridBaseQuery();
+        $query->whereIn('g.campaign_id', $campaignIds);
+        $rawRule = GoogleShoppingCampaignsRawRule::resolvedRule();
+        $byId = [];
+
+        foreach ($query->get() as $row) {
+            $arr = json_decode(json_encode($row), true);
+            if (isset($arr['spend_window_micros'])) {
+                $arr['metrics_cost_micros'] = (int) $arr['spend_window_micros'];
+                unset($arr['spend_window_micros']);
+            }
+            self::enrichRawRowGoogleShoppingStyle($arr, $rawRule);
+            $byId[(string) ($arr['campaign_id'] ?? '')] = $arr;
+        }
+
+        return $byId;
     }
 
     /**
