@@ -839,8 +839,11 @@
                                     <th scope="col" title="Summary — open the team-member dashboard (own metrics + tagged juniors)">
                                         Summ
                                     </th>
-                                    <th scope="col" title="KPI — open the badges modal (tagged badges for this team member)">
+                                    <th scope="col" title="KPI — assign live page badges from badges_data">
                                         KPI
+                                    </th>
+                                    <th scope="col" title="Incentives — rupee bag rewards for this team member">
+                                        Inc
                                     </th>
                                 </tr>
                             </thead>
@@ -1160,15 +1163,28 @@
                                                     data-user-id="{{ (int) ($row['user_id'] ?? 0) }}"
                                                     data-user-name="{{ e($row['team_member']) }}"
                                                     data-designation="{{ e($row['designation'] ?? '') }}"
-                                                    @if((int) ($row['user_id'] ?? 0) === 0) disabled title="No user record found for this row" @else title="View KPI badges tagged on {{ e($row['team_member']) }}" @endif
+                                                    data-badge-count="{{ (int) ($row['kpi_count'] ?? 0) }}"
+                                                    @if((int) ($row['user_id'] ?? 0) === 0) disabled title="No user record found for this row" @else title="Manage KPI badges for {{ e($row['team_member']) }}" @endif
                                                     aria-label="Open KPI badges for {{ e($row['team_member']) }}">
-                                                <i class="ri-search-eye-line" style="font-size:1.15rem;" aria-hidden="true"></i>
+                                                <i class="ri-search-eye-line" style="font-size:1.15rem;" aria-hidden="true"></i>@if((int) ($row['kpi_count'] ?? 0) > 0)<span class="kpi-badges-count">{{ (int) $row['kpi_count'] }}</span>@endif
+                                            </button>
+                                        </td>
+                                        <td class="text-center">
+                                            <button type="button"
+                                                    class="incentive-bag-btn task-summary-incentive-btn"
+                                                    data-user-id="{{ (int) ($row['user_id'] ?? 0) }}"
+                                                    data-user-name="{{ e($row['team_member']) }}"
+                                                    data-designation="{{ e($row['designation'] ?? '') }}"
+                                                    data-incentive-count="{{ (int) ($row['incentive_count'] ?? 0) }}"
+                                                    @if((int) ($row['user_id'] ?? 0) === 0) disabled title="No user record found for this row" @else title="View incentives for {{ e($row['team_member']) }}" @endif
+                                                    aria-label="Open incentives for {{ e($row['team_member']) }}">
+                                                <i class="ri-hand-coin-fill" style="font-size:1.2rem;" aria-hidden="true"></i>@if((int) ($row['incentive_count'] ?? 0) > 0)<span class="incentive-bag-count">{{ (int) $row['incentive_count'] }}</span>@endif
                                             </button>
                                         </td>
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="21" class="text-center text-muted py-4">
+                                        <td colspan="22" class="text-center text-muted py-4">
                                             @if (($visibility['scope'] ?? 'all') !== 'all')
                                                 No team members visible to you. Ask an admin to update your Role (Mgr/Director) or tag juniors under you.
                                             @else
@@ -1179,7 +1195,7 @@
                                 @endforelse
                                 @if (!empty($rows) && count($rows))
                                     <tr id="task-summary-filter-empty" class="d-none">
-                                        <td colspan="21" class="text-center text-muted py-4">No matching team members.</td>
+                                        <td colspan="22" class="text-center text-muted py-4">No matching team members.</td>
                                     </tr>
                                 @endif
                             </tbody>
@@ -1202,7 +1218,7 @@
     @include('partials.user-dashboard')
     @include('partials.score-history')
     @include('partials.team-member-profile')
-    @include('partials.user-badges')
+    @include('partials.user-kpis')
 
     <div class="modal fade" id="taskSummaryAnalyticsModal" tabindex="-1" aria-labelledby="taskSummaryAnalyticsModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-lg modal-fullscreen-sm-down modal-dialog-scrollable">
@@ -2429,7 +2445,7 @@
                 tr.setAttribute('data-level', level); // 'director' | 'mgr' | 'others'
                 tr.setAttribute('data-collapsed', 'false');
                 var td = document.createElement('td');
-                td.setAttribute('colspan', '21');
+                td.setAttribute('colspan', '22');
                 td.innerHTML =
                     '<div class="task-summary-group-header-inner">'
                     + '<button type="button" class="task-summary-group-chevron" data-action="toggle-group" aria-label="Toggle group">'
@@ -6194,7 +6210,7 @@
         })();
 
         // -------------------------------------------------------------------
-        // KPI Badges modal (KPI column magnifier)
+        // KPI modal — badges_data page metrics (KPI column)
         // -------------------------------------------------------------------
         (function () {
             var csrfToken = (function () {
@@ -6203,25 +6219,25 @@
             })();
 
             var endpoints = {
-                get: @json(route('tasks.userBadges.get')),
-                award: @json(route('tasks.userBadges.award')),
-                remove: @json(route('tasks.userBadges.remove')),
-                create: @json(route('tasks.badges.create')),
-                deleteBase: @json(url('/tasks/badges'))
+                get: @json(route('tasks.userKpis.get')),
+                add: @json(route('tasks.userKpis.add')),
+                remove: @json(route('tasks.userKpis.remove'))
             };
 
             var state = {
                 userId: null,
                 userName: '',
                 designation: '',
-                canAward: false,
-                canManagePool: false,
-                awards: [],
-                available: []
+                canManage: false,
+                assigned: [],
+                available: [],
+                pickerOpen: false,
+                pickerQuery: '',
+                pickerSelected: {}
             };
 
             function el(id) { return document.getElementById(id); }
-            function getModalEl() { return document.getElementById('taskSummaryUserBadgesModal'); }
+            function getModalEl() { return document.getElementById('taskSummaryUserKpisModal'); }
             function getBsModal() {
                 var m = getModalEl();
                 if (!m) return null;
@@ -6230,132 +6246,328 @@
                 }
                 return null;
             }
-            function fallbackShow(modalEl) {
-                modalEl.classList.add('show');
-                modalEl.style.display = 'block';
-                modalEl.removeAttribute('aria-hidden');
-                modalEl.setAttribute('aria-modal', 'true');
-                document.body.classList.add('modal-open');
-                if (!document.getElementById('ts-ub-fallback-backdrop')) {
-                    var bd = document.createElement('div');
-                    bd.id = 'ts-ub-fallback-backdrop';
-                    bd.className = 'modal-backdrop fade show';
-                    document.body.appendChild(bd);
-                    bd.addEventListener('click', function () { fallbackHide(modalEl); });
-                }
-                modalEl.querySelectorAll('[data-bs-dismiss="modal"]').forEach(function (b) {
-                    b.addEventListener('click', function () { fallbackHide(modalEl); }, { once: true });
-                });
-            }
-            function fallbackHide(modalEl) {
-                modalEl.classList.remove('show');
-                modalEl.style.display = 'none';
-                modalEl.setAttribute('aria-hidden', 'true');
-                modalEl.removeAttribute('aria-modal');
-                document.body.classList.remove('modal-open');
-                var bd = document.getElementById('ts-ub-fallback-backdrop');
-                if (bd) bd.remove();
-            }
             function showModal() {
                 var m = getModalEl();
-                if (!m) {
-                    console.error('[UserBadges] taskSummaryUserBadgesModal not found');
-                    return;
-                }
+                if (!m) return;
                 var bs = getBsModal();
-                if (bs) bs.show(); else fallbackShow(m);
+                if (bs) bs.show();
             }
-
             function escapeHtml(s) {
                 return String(s == null ? '' : s)
                     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
                     .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
             }
             function showError(msg) {
-                var n = el('ts-ub-error');
+                var n = el('ts-uk-error');
                 if (!n) return;
                 n.textContent = msg || 'Something went wrong.';
                 n.classList.remove('d-none');
             }
             function clearError() {
-                var n = el('ts-ub-error');
+                var n = el('ts-uk-error');
                 if (n) { n.classList.add('d-none'); n.textContent = ''; }
             }
-
-            function pickContrastText(/* unused — chips are always white on coloured bg */) {
-                return '#fff';
+            function setLoading(on) {
+                var loading = el('ts-uk-loading');
+                var content = el('ts-uk-content');
+                if (loading) loading.classList.toggle('d-none', !on);
+                if (content) content.classList.toggle('d-none', on);
             }
 
-            function renderAwardChip(a) {
-                var color = a.color || '#0d9488';
-                var label = (a.name || '—');
-                var noteTitle = a.note ? (label + ' — ' + a.note + (a.awarded_by ? ' (by ' + a.awarded_by + ')' : '')) : label;
-                var html = '<span class="ub-chip" style="background:' + escapeHtml(color) + ';color:' + pickContrastText() + ';" data-award-id="' + a.award_id + '" data-badge-id="' + a.badge_id + '" title="' + escapeHtml(noteTitle) + '">'
-                    + '<i class="' + escapeHtml(a.icon || 'ri-medal-line') + '"></i>'
-                    + '<span>' + escapeHtml(label) + '</span>';
-                if (state.canAward) {
-                    html += '<button type="button" class="ub-chip-remove" data-action="remove-award" aria-label="Remove ' + escapeHtml(label) + '">&times;</button>';
-                }
-                html += '</span>';
-                return html;
-            }
-
-            function renderPoolChip(b) {
-                var color = b.color || '#0d9488';
-                var title = b.description ? (b.name + ' — ' + b.description) : b.name;
-                var disabled = state.canAward ? '' : 'disabled';
-                return '<button type="button" class="ub-pool-chip ' + (state.canAward ? '' : 'is-disabled') + '" '
-                    + 'style="border:1.5px solid ' + escapeHtml(color) + ';color:' + escapeHtml(color) + ';" '
-                    + 'data-badge-id="' + b.id + '" data-action="award-from-pool" ' + disabled + ' '
-                    + 'title="' + escapeHtml(title) + '">'
-                    + '<i class="' + escapeHtml(b.icon || 'ri-medal-line') + '"></i>'
-                    + '<span>' + escapeHtml(b.name) + '</span>'
-                    + '</button>';
-            }
-
-            function updateCount() {
-                var c = el('ts-ub-modal-count');
-                if (c) {
-                    var n = state.awards.length;
-                    c.textContent = n > 0 ? '· ' + n + ' tagged' : '';
-                }
-                // Sync row count badge if present.
+            function syncRowCount() {
                 var rowBtn = document.querySelector('.task-summary-kpi-badges-btn[data-user-id="' + state.userId + '"]');
-                if (rowBtn) {
-                    var n2 = state.awards.length;
-                    rowBtn.setAttribute('data-badge-count', String(n2));
+                if (!rowBtn) return;
+                var n = state.assigned.length;
+                rowBtn.setAttribute('data-badge-count', String(n));
+                var existing = rowBtn.querySelector('.kpi-badges-count');
+                if (n > 0) {
+                    if (existing) {
+                        existing.textContent = String(n);
+                    } else {
+                        var span = document.createElement('span');
+                        span.className = 'kpi-badges-count';
+                        span.textContent = String(n);
+                        rowBtn.appendChild(span);
+                    }
+                } else if (existing) {
+                    existing.remove();
                 }
+            }
+
+            function remainingSlots() {
+                return Math.max(0, 5 - state.assigned.length);
+            }
+
+            function selectedPickerKeys() {
+                return Object.keys(state.pickerSelected).filter(function (key) {
+                    return !!state.pickerSelected[key];
+                });
+            }
+
+            function clearPickerSelection() {
+                state.pickerSelected = {};
+                state.pickerQuery = '';
+                var search = el('ts-uk-picker-search');
+                if (search) search.value = '';
+            }
+
+            var pickerFloatBound = false;
+
+            function positionPickerDropdown() {
+                var dropdown = el('ts-uk-picker-dropdown');
+                var anchor = el('ts-uk-picker-anchor');
+                if (!dropdown || !anchor || !state.pickerOpen) return;
+
+                var rect = anchor.getBoundingClientRect();
+                var gap = 4;
+                var maxH = 260;
+                var spaceBelow = window.innerHeight - rect.bottom - gap;
+                var spaceAbove = rect.top - gap;
+                var openUp = spaceBelow < 160 && spaceAbove > spaceBelow;
+                var height = Math.min(maxH, Math.max(120, openUp ? spaceAbove - 8 : spaceBelow - 8));
+                var width = Math.min(rect.width, window.innerWidth - 16);
+                var left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8));
+
+                dropdown.style.position = 'fixed';
+                dropdown.style.left = left + 'px';
+                dropdown.style.width = width + 'px';
+                dropdown.style.maxHeight = height + 'px';
+                dropdown.style.zIndex = '1065';
+                if (openUp) {
+                    dropdown.style.top = 'auto';
+                    dropdown.style.bottom = (window.innerHeight - rect.top + gap) + 'px';
+                } else {
+                    dropdown.style.top = (rect.bottom + gap) + 'px';
+                    dropdown.style.bottom = 'auto';
+                }
+            }
+
+            function floatPickerDropdown() {
+                var dropdown = el('ts-uk-picker-dropdown');
+                if (!dropdown) return;
+                if (dropdown.parentNode !== document.body) {
+                    document.body.appendChild(dropdown);
+                }
+                dropdown.classList.add('is-floating');
+                positionPickerDropdown();
+            }
+
+            function dockPickerDropdown() {
+                var dropdown = el('ts-uk-picker-dropdown');
+                var control = document.querySelector('#ts-uk-picker .uk-picker-control');
+                if (!dropdown || !control) return;
+                if (dropdown.parentNode !== control) {
+                    control.appendChild(dropdown);
+                }
+                dropdown.classList.remove('is-floating');
+                dropdown.style.position = '';
+                dropdown.style.left = '';
+                dropdown.style.top = '';
+                dropdown.style.bottom = '';
+                dropdown.style.width = '';
+                dropdown.style.maxHeight = '';
+                dropdown.style.zIndex = '';
+            }
+
+            function onPickerFloatReposition() {
+                if (state.pickerOpen) positionPickerDropdown();
+            }
+
+            function bindPickerFloatListeners(on) {
+                if (on && !pickerFloatBound) {
+                    window.addEventListener('resize', onPickerFloatReposition);
+                    window.addEventListener('scroll', onPickerFloatReposition, true);
+                    pickerFloatBound = true;
+                } else if (!on && pickerFloatBound) {
+                    window.removeEventListener('resize', onPickerFloatReposition);
+                    window.removeEventListener('scroll', onPickerFloatReposition, true);
+                    pickerFloatBound = false;
+                }
+            }
+
+            function setPickerOpen(open) {
+                state.pickerOpen = !!open;
+                var picker = el('ts-uk-picker');
+                var dropdown = el('ts-uk-picker-dropdown');
+                var search = el('ts-uk-picker-search');
+                if (picker) picker.classList.toggle('is-open', state.pickerOpen);
+                if (dropdown) dropdown.classList.toggle('d-none', !state.pickerOpen);
+                if (search) search.setAttribute('aria-expanded', state.pickerOpen ? 'true' : 'false');
+                if (state.pickerOpen) {
+                    floatPickerDropdown();
+                    bindPickerFloatListeners(true);
+                } else {
+                    bindPickerFloatListeners(false);
+                    dockPickerDropdown();
+                }
+            }
+
+            function togglePickerKey(key, forceOn) {
+                if (!key) return;
+                var selectedCount = selectedPickerKeys().length;
+                var isOn = !!state.pickerSelected[key];
+                if (typeof forceOn === 'boolean') {
+                    isOn = forceOn;
+                } else {
+                    isOn = !isOn;
+                }
+                if (isOn) {
+                    if (selectedCount >= remainingSlots()) return;
+                    state.pickerSelected[key] = true;
+                } else {
+                    delete state.pickerSelected[key];
+                }
+                renderPicker();
+            }
+
+            function optionMatchesQuery(opt, query) {
+                if (!query) return true;
+                var hay = [
+                    opt.label,
+                    opt.field_label,
+                    opt.page_label,
+                    opt.page,
+                    opt.field,
+                    opt.value_display
+                ].join(' ').toLowerCase();
+                return hay.indexOf(query) >= 0;
+            }
+
+            function renderPicker() {
+                var picker = el('ts-uk-picker');
+                var chipsWrap = el('ts-uk-picker-chips');
+                var listWrap = el('ts-uk-picker-list');
+                var addBtn = el('ts-uk-add-btn');
+                var addWrap = el('ts-uk-add-wrap');
+                var hint = el('ts-uk-add-hint');
+                var countEl = el('ts-uk-picker-count');
+                if (!picker || !listWrap) return;
+
+                var slotsLeft = remainingSlots();
+                var atMax = slotsLeft <= 0;
+                var noOptions = state.available.length === 0;
+                var selectedKeys = selectedPickerKeys();
+                var query = (state.pickerQuery || '').trim().toLowerCase();
+
+                if (addWrap) addWrap.classList.toggle('d-none', !state.canManage);
+                if (hint) hint.classList.toggle('d-none', !state.canManage || (!atMax && !noOptions));
+                if (hint && atMax) hint.textContent = 'Maximum of 5 KPI badges per user.';
+                if (hint && noOptions && !atMax) hint.textContent = 'All available badges are already assigned.';
+
+                if (chipsWrap) {
+                    if (!selectedKeys.length) {
+                        chipsWrap.innerHTML = '';
+                    } else {
+                        chipsWrap.innerHTML = selectedKeys.map(function (key) {
+                            var opt = state.available.find(function (o) { return o.key === key; });
+                            var label = opt ? (opt.field_label || opt.label) : key;
+                            return '<span class="uk-picker-chip">'
+                                + '<span class="text-truncate">' + escapeHtml(label) + '</span>'
+                                + '<button type="button" data-action="picker-chip-remove" data-key="' + escapeHtml(key) + '" aria-label="Remove ' + escapeHtml(label) + '">&times;</button>'
+                                + '</span>';
+                        }).join('');
+                    }
+                }
+
+                if (countEl) {
+                    countEl.textContent = selectedKeys.length + ' selected'
+                        + (slotsLeft > 0 ? (' · ' + slotsLeft + ' slot' + (slotsLeft === 1 ? '' : 's') + ' left') : '');
+                }
+
+                if (addBtn) {
+                    addBtn.disabled = !state.canManage || atMax || !selectedKeys.length;
+                    addBtn.innerHTML = selectedKeys.length > 1
+                        ? ('<i class="ri-add-line"></i> Add ' + selectedKeys.length + ' selected')
+                        : '<i class="ri-add-line"></i> Add selected';
+                }
+
+                if (noOptions) {
+                    listWrap.innerHTML = '<div class="uk-picker-empty">No badges available to add.</div>';
+                    return;
+                }
+
+                var grouped = {};
+                state.available.forEach(function (opt) {
+                    if (!optionMatchesQuery(opt, query)) return;
+                    var pageKey = opt.page || 'other';
+                    if (!grouped[pageKey]) {
+                        grouped[pageKey] = {
+                            label: opt.page_label || pageKey,
+                            items: []
+                        };
+                    }
+                    grouped[pageKey].items.push(opt);
+                });
+
+                var pageKeys = Object.keys(grouped).sort(function (a, b) {
+                    return grouped[a].label.localeCompare(grouped[b].label);
+                });
+                if (!pageKeys.length) {
+                    listWrap.innerHTML = '<div class="uk-picker-empty">No badges match your search.</div>';
+                    return;
+                }
+
+                var html = '';
+                pageKeys.forEach(function (pageKey) {
+                    var group = grouped[pageKey];
+                    var groupClass = 'uk-picker-group-label uk-picker-group--' + String(pageKey).replace(/[^a-z0-9-]/g, '');
+                    html += '<div class="' + groupClass + '">' + escapeHtml(group.label) + '</div>';
+                    group.items.forEach(function (opt) {
+                        var checked = !!state.pickerSelected[opt.key];
+                        var disableNew = !checked && selectedKeys.length >= slotsLeft;
+                        var cls = 'uk-picker-option' + (checked ? ' is-selected' : '') + (disableNew ? ' is-disabled' : '');
+                        var preview = opt.value_display ? opt.value_display : '—';
+                        html += '<label class="' + cls + '" data-key="' + escapeHtml(opt.key) + '" data-page="' + escapeHtml(opt.page || '') + '">'
+                            + '<input type="checkbox" value="' + escapeHtml(opt.key) + '" '
+                            + (checked ? 'checked ' : '')
+                            + (disableNew ? 'disabled ' : '')
+                            + '/>'
+                            + '<span class="uk-picker-option-main">'
+                            + '<span class="uk-picker-option-title">' + escapeHtml(opt.field_label || opt.label) + '</span>'
+                            + '<span class="uk-picker-option-meta">' + escapeHtml(preview) + '</span>'
+                            + '</span></label>';
+                    });
+                });
+                listWrap.innerHTML = html;
+                if (state.pickerOpen) positionPickerDropdown();
+            }
+
+            function renderAssigned() {
+                var body = el('ts-uk-assigned-body');
+                var empty = el('ts-uk-empty');
+                var countEl = el('ts-uk-modal-count');
+                if (countEl) {
+                    countEl.textContent = state.assigned.length > 0
+                        ? ('· ' + state.assigned.length + ' assigned')
+                        : '';
+                }
+                if (!body) return;
+
+                if (state.assigned.length === 0) {
+                    body.innerHTML = '';
+                    if (empty) empty.classList.remove('d-none');
+                    return;
+                }
+                if (empty) empty.classList.add('d-none');
+
+                body.innerHTML = state.assigned.map(function (item) {
+                    var removeBtn = state.canManage
+                        ? '<button type="button" class="btn btn-sm btn-outline-danger" data-action="remove-kpi" data-slot="' + item.slot + '" aria-label="Remove ' + escapeHtml(item.label) + '"><i class="ri-close-line"></i></button>'
+                        : '';
+                    return '<tr>'
+                        + '<td><div class="fw-semibold">' + escapeHtml(item.label) + '</div>'
+                        + '<div class="text-muted small">' + escapeHtml(item.page_label || '') + '</div></td>'
+                        + '<td class="text-end uk-value">' + escapeHtml(item.value_display || '—') + '</td>'
+                        + '<td class="text-end">' + removeBtn + '</td>'
+                        + '</tr>';
+                }).join('');
+
+                syncRowCount();
             }
 
             function render() {
-                var awardedWrap = el('ts-ub-awarded');
-                var poolWrap = el('ts-ub-pool');
-                var empty = el('ts-ub-empty');
-                var poolEmpty = el('ts-ub-pool-empty');
-                var createWrap = el('ts-ub-create-wrap');
-
-                if (awardedWrap) {
-                    if (state.awards.length === 0) {
-                        awardedWrap.innerHTML = '';
-                        if (empty) empty.classList.remove('d-none');
-                    } else {
-                        if (empty) empty.classList.add('d-none');
-                        awardedWrap.innerHTML = state.awards.map(renderAwardChip).join('');
-                    }
-                }
-                if (poolWrap) {
-                    if (state.available.length === 0) {
-                        poolWrap.innerHTML = '';
-                        if (poolEmpty) poolEmpty.classList.remove('d-none');
-                    } else {
-                        if (poolEmpty) poolEmpty.classList.add('d-none');
-                        poolWrap.innerHTML = state.available.map(renderPoolChip).join('');
-                    }
-                }
-                if (createWrap) {
-                    createWrap.classList.toggle('d-none', !state.canManagePool);
-                }
-                updateCount();
+                renderAssigned();
+                renderPicker();
             }
 
             function postJson(url, body, method) {
@@ -6372,145 +6584,111 @@
                 }).then(function (r) {
                     return r.json().then(function (data) {
                         if (!r.ok || data.success === false) {
-                            var msg = (data && data.message) ? data.message : 'Request failed (HTTP ' + r.status + ')';
-                            throw new Error(msg);
+                            throw new Error((data && data.message) ? data.message : ('Request failed (HTTP ' + r.status + ')'));
                         }
                         return data;
                     });
                 });
             }
 
-            function loadBadges() {
+            function loadKpis() {
                 clearError();
-                var loading = el('ts-ub-loading');
-                var content = el('ts-ub-content');
-                if (loading) loading.classList.remove('d-none');
-                if (content) content.classList.add('d-none');
-                var url = endpoints.get + (endpoints.get.indexOf('?') >= 0 ? '&' : '?') + 'user_id=' + encodeURIComponent(state.userId);
-                fetch(url, {
+                setLoading(true);
+                return fetch(endpoints.get + '?user_id=' + encodeURIComponent(state.userId), {
                     credentials: 'same-origin',
-                    headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
-                })
-                    .then(function (r) {
-                        return r.json().then(function (data) {
-                            if (!r.ok || data.success === false) {
-                                var msg = (data && data.message) ? data.message : 'Could not load badges.';
-                                throw new Error(msg);
-                            }
-                            return data;
-                        });
-                    })
-                    .then(function (data) {
-                        if (loading) loading.classList.add('d-none');
-                        if (content) content.classList.remove('d-none');
-                        state.canAward = !!data.can_award;
-                        state.canManagePool = !!data.can_manage_pool;
-                        state.awards = Array.isArray(data.awards) ? data.awards : [];
-                        state.available = Array.isArray(data.available) ? data.available : [];
-                        render();
-                    })
-                    .catch(function (err) {
-                        if (loading) loading.classList.add('d-none');
-                        if (content) content.classList.remove('d-none');
-                        showError(err && err.message ? err.message : 'Failed to load badges.');
-                    });
-            }
-
-            function awardBadge(badgeId) {
-                if (!state.canAward) return;
-                clearError();
-                postJson(endpoints.award, {
-                    user_id: state.userId,
-                    badge_id: parseInt(badgeId, 10)
-                })
-                    .then(function (data) {
-                        if (!data.award) return;
-                        state.awards.unshift(data.award);
-                        state.available = state.available.filter(function (b) { return parseInt(b.id, 10) !== parseInt(badgeId, 10); });
-                        render();
-                    })
-                    .catch(function (err) {
-                        showError(err.message || 'Could not tag badge.');
-                    });
-            }
-
-            function removeBadge(badgeId) {
-                if (!state.canAward) return;
-                if (!window.confirm('Remove this badge from the user?')) return;
-                clearError();
-                postJson(endpoints.remove, {
-                    user_id: state.userId,
-                    badge_id: parseInt(badgeId, 10)
-                }, 'DELETE')
-                    .then(function () {
-                        var removed = state.awards.find(function (a) { return parseInt(a.badge_id, 10) === parseInt(badgeId, 10); });
-                        state.awards = state.awards.filter(function (a) { return parseInt(a.badge_id, 10) !== parseInt(badgeId, 10); });
-                        if (removed) {
-                            state.available.push({
-                                id: removed.badge_id,
-                                name: removed.name,
-                                icon: removed.icon,
-                                color: removed.color,
-                                description: removed.description
-                            });
-                            state.available.sort(function (a, b) {
-                                return String(a.name).localeCompare(String(b.name));
-                            });
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+                }).then(function (r) {
+                    return r.json().then(function (data) {
+                        if (!r.ok || data.success === false) {
+                            throw new Error((data && data.message) ? data.message : 'Could not load KPIs.');
                         }
-                        render();
-                    })
-                    .catch(function (err) {
-                        showError(err.message || 'Could not remove badge.');
+                        return data;
                     });
+                }).then(function (data) {
+                    state.canManage = !!data.can_manage;
+                    state.assigned = data.assigned || [];
+                    state.available = data.available || [];
+                    clearPickerSelection();
+                    setPickerOpen(false);
+                    setLoading(false);
+                    render();
+                    return data;
+                }).catch(function (err) {
+                    setLoading(false);
+                    showError(err.message || 'Could not load KPIs.');
+                    throw err;
+                });
             }
 
-            function createBadge() {
-                var nameEl = el('ts-ub-create-name');
-                var iconEl = el('ts-ub-create-icon');
-                var colorEl = el('ts-ub-create-color');
-                var btn = el('ts-ub-create-btn');
-                var name = (nameEl && nameEl.value || '').trim();
-                if (!name) {
-                    showError('Enter a badge name first.');
-                    return;
-                }
-                var payload = {
-                    name: name,
-                    icon: (iconEl && iconEl.value || '').trim() || 'ri-medal-line',
-                    color: (colorEl && colorEl.value || '').trim() || '#b45309'
-                };
-                if (btn) btn.disabled = true;
+            function addKpi(key) {
+                if (!key || !state.canManage) return Promise.resolve();
+                return postJson(endpoints.add, { user_id: state.userId, key: key });
+            }
+
+            function addSelectedKpis() {
+                if (!state.canManage) return;
+                var keys = selectedPickerKeys().slice(0, remainingSlots());
+                if (!keys.length) return;
+
+                var addBtn = el('ts-uk-add-btn');
+                if (addBtn) addBtn.disabled = true;
                 clearError();
-                postJson(endpoints.create, payload)
-                    .then(function (data) {
-                        if (btn) btn.disabled = false;
-                        if (nameEl) nameEl.value = '';
-                        if (iconEl) iconEl.value = '';
-                        if (!data.badge) return;
-                        state.available.push(data.badge);
-                        state.available.sort(function (a, b) {
-                            return String(a.name).localeCompare(String(b.name));
-                        });
-                        render();
+
+                var chain = Promise.resolve();
+                keys.forEach(function (key) {
+                    chain = chain.then(function () { return addKpi(key); });
+                });
+
+                chain
+                    .then(function () {
+                        clearPickerSelection();
+                        setPickerOpen(false);
+                        return loadKpis();
                     })
                     .catch(function (err) {
-                        if (btn) btn.disabled = false;
-                        showError(err.message || 'Could not create badge.');
+                        showError(err.message || 'Could not add selected badges.');
+                        renderPicker();
+                    })
+                    .finally(function () {
+                        if (addBtn) addBtn.disabled = false;
                     });
             }
 
-            function updateIconPreview() {
-                var iconEl = el('ts-ub-create-icon');
-                var colorEl = el('ts-ub-create-color');
-                var preview = el('ts-ub-create-icon-preview');
-                if (!preview) return;
-                var i = (iconEl && iconEl.value || '').trim() || 'ri-medal-line';
-                var c = (colorEl && colorEl.value || '').trim() || '#b45309';
-                preview.style.background = c;
-                preview.innerHTML = '<i class="' + escapeHtml(i) + '"></i>';
+            function removeKpi(slot) {
+                if (!state.canManage) return;
+                postJson(endpoints.remove, { user_id: state.userId, slot: slot }, 'DELETE')
+                    .then(function (data) {
+                        state.assigned = data.assigned || [];
+                        loadKpis();
+                    })
+                    .catch(function (err) { showError(err.message); });
             }
 
-            // Open from any KPI badges magnifier.
+            function openModal(btn) {
+                state.userId = parseInt(btn.getAttribute('data-user-id'), 10) || null;
+                state.userName = btn.getAttribute('data-user-name') || '';
+                state.designation = (btn.getAttribute('data-designation') || '').trim();
+                if (!state.userId) return;
+
+                var userLabel = el('ts-uk-modal-user');
+                if (userLabel) userLabel.textContent = state.userName ? (state.userName + ' — KPI') : 'KPI';
+                var desEl = el('ts-uk-modal-designation');
+                if (desEl) {
+                    desEl.innerHTML = state.designation
+                        ? ('<i class="ri-briefcase-line me-1"></i>' + escapeHtml(state.designation))
+                        : '';
+                }
+
+                state.assigned = [];
+                state.available = [];
+                clearPickerSelection();
+                setPickerOpen(false);
+                render();
+                clearError();
+                showModal();
+                loadKpis();
+            }
+
             document.addEventListener('click', function (e) {
                 var target = e.target;
                 if (!target || !target.closest) return;
@@ -6519,82 +6697,105 @@
                 if (openBtn) {
                     e.preventDefault();
                     if (openBtn.disabled) return;
-                    state.userId = parseInt(openBtn.getAttribute('data-user-id'), 10) || null;
-                    state.userName = openBtn.getAttribute('data-user-name') || '';
-                    state.designation = (openBtn.getAttribute('data-designation') || '').trim();
-                    state.canAward = false;
-                    state.canManagePool = false;
-                    state.awards = [];
-                    state.available = [];
-                    var userLabel = el('ts-ub-modal-user');
-                    if (userLabel) userLabel.textContent = state.userName ? (state.userName + ' — KPI Badges') : 'KPI Badges';
-                    var desEl = el('ts-ub-modal-designation');
-                    if (desEl) desEl.innerHTML = state.designation ? ('<i class="ri-briefcase-line me-1"></i>' + escapeHtml(state.designation)) : '';
-                    var countEl = el('ts-ub-modal-count');
-                    if (countEl) countEl.textContent = '';
-                    render();
-                    clearError();
-                    showModal();
-                    loadBadges();
+                    openModal(openBtn);
                     return;
                 }
 
-                // Award from pool chip
-                var poolBtn = target.closest('button[data-action="award-from-pool"]');
-                if (poolBtn) {
-                    e.preventDefault();
-                    if (poolBtn.disabled) return;
-                    var bid = poolBtn.getAttribute('data-badge-id');
-                    if (bid) awardBadge(bid);
-                    return;
-                }
-
-                // Remove an awarded chip
-                var remBtn = target.closest('button[data-action="remove-award"]');
+                var remBtn = target.closest('[data-action="remove-kpi"]');
                 if (remBtn) {
                     e.preventDefault();
-                    var chip = remBtn.closest('.ub-chip');
-                    var rmId = chip ? chip.getAttribute('data-badge-id') : null;
-                    if (rmId) removeBadge(rmId);
+                    var slot = parseInt(remBtn.getAttribute('data-slot'), 10);
+                    if (slot) removeKpi(slot);
                     return;
                 }
 
-                // Create new badge
-                if (target.closest('#ts-ub-create-btn')) {
+                var chipRem = target.closest('[data-action="picker-chip-remove"]');
+                if (chipRem) {
                     e.preventDefault();
-                    createBadge();
+                    togglePickerKey(chipRem.getAttribute('data-key'), false);
                     return;
+                }
+
+                var pickerOption = target.closest('.uk-picker-option');
+                if (pickerOption && target.closest('#ts-uk-picker-list') && !target.closest('button')) {
+                    var checkbox = pickerOption.querySelector('input[type="checkbox"]');
+                    if (checkbox && !checkbox.disabled && target !== checkbox) {
+                        e.preventDefault();
+                        togglePickerKey(checkbox.value);
+                    }
+                    return;
+                }
+
+                if (target.closest('#ts-uk-picker-toggle')) {
+                    e.preventDefault();
+                    setPickerOpen(!state.pickerOpen);
+                    var searchToggle = el('ts-uk-picker-search');
+                    if (state.pickerOpen && searchToggle) searchToggle.focus();
+                    return;
+                }
+
+                if (target.closest('#ts-uk-add-btn')) {
+                    e.preventDefault();
+                    addSelectedKpis();
+                    return;
+                }
+
+                var picker = el('ts-uk-picker');
+                var dropdown = el('ts-uk-picker-dropdown');
+                if (state.pickerOpen
+                    && !target.closest('#ts-uk-picker')
+                    && !(dropdown && dropdown.contains(target))) {
+                    setPickerOpen(false);
                 }
             });
 
-            // Icon / colour preview live updates.
+            document.addEventListener('change', function (e) {
+                if (e.target && e.target.matches('#ts-uk-picker-list input[type="checkbox"]')) {
+                    togglePickerKey(e.target.value, e.target.checked);
+                }
+            });
+
             document.addEventListener('input', function (e) {
-                if (e.target && (e.target.id === 'ts-ub-create-icon' || e.target.id === 'ts-ub-create-color')) {
-                    updateIconPreview();
-                }
-            });
-            // Enter on name commits.
-            document.addEventListener('keydown', function (e) {
-                if (e.key !== 'Enter') return;
-                var t = e.target;
-                if (t && (t.id === 'ts-ub-create-name' || t.id === 'ts-ub-create-icon')) {
-                    e.preventDefault();
-                    createBadge();
+                if (e.target && e.target.id === 'ts-uk-picker-search') {
+                    state.pickerQuery = e.target.value || '';
+                    if (!state.pickerOpen) setPickerOpen(true);
+                    renderPicker();
                 }
             });
 
-            window.taskSummaryUserBadges = {
+            document.addEventListener('focusin', function (e) {
+                if (e.target && e.target.id === 'ts-uk-picker-search' && state.canManage) {
+                    setPickerOpen(true);
+                }
+            });
+
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape' && state.pickerOpen) {
+                    setPickerOpen(false);
+                }
+            });
+
+            window.taskSummaryUserKpis = {
                 open: function (userId, name) {
-                    state.userId = parseInt(userId, 10) || null;
-                    state.userName = name || '';
-                    if (!state.userId) return;
-                    var label = el('ts-ub-modal-user');
-                    if (label) label.textContent = (state.userName ? state.userName + ' — ' : '') + 'KPI Badges';
-                    state.awards = []; state.available = []; render(); clearError();
-                    showModal();
-                    loadBadges();
+                    openModal({
+                        getAttribute: function (key) {
+                            if (key === 'data-user-id') return String(userId || '');
+                            if (key === 'data-user-name') return name || '';
+                            if (key === 'data-designation') return '';
+                            return '';
+                        },
+                        disabled: false
+                    });
                 }
             };
+
+            var kpiModalEl = getModalEl();
+            if (kpiModalEl) {
+                kpiModalEl.addEventListener('hidden.bs.modal', function () {
+                    setPickerOpen(false);
+                    dockPickerDropdown();
+                });
+            }
         })();
 
         // Avatar size — controls are hidden; size fixed at 35px regardless

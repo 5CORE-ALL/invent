@@ -5894,7 +5894,13 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/tasks/mgr-tags', [\App\Http\Controllers\TaskController::class, 'getManagerJuniorsForTags'])->name('tasks.mgrTags.get');
     Route::get('/tasks/user-dashboard', [\App\Http\Controllers\TaskController::class, 'getUserDashboard'])->name('tasks.userDashboard.get');
     Route::get('/tasks/user-score-history', [\App\Http\Controllers\TaskController::class, 'getUserScoreHistory'])->name('tasks.userScoreHistory.get');
-    // KPI Badges — pool + per-user awards (Task Summary "KPI" column)
+    // KPI — page badges from badges_data (Task Summary "KPI" column)
+    Route::get('/tasks/user-kpis', [\App\Http\Controllers\TaskController::class, 'getUserKpis'])->name('tasks.userKpis.get');
+    Route::post('/tasks/user-kpis', [\App\Http\Controllers\TaskController::class, 'addUserKpi'])->name('tasks.userKpis.add');
+    Route::delete('/tasks/user-kpis', [\App\Http\Controllers\TaskController::class, 'removeUserKpi'])->name('tasks.userKpis.remove');
+    Route::get('/tasks/user-incentives', [\App\Http\Controllers\TaskController::class, 'getUserIncentives'])->name('tasks.userIncentives.get');
+    Route::post('/tasks/user-incentives/sync', [\App\Http\Controllers\TaskController::class, 'syncUserIncentives'])->name('tasks.userIncentives.sync');
+    // Legacy recognition badges (pool + awards)
     Route::get('/tasks/user-badges', [\App\Http\Controllers\TaskController::class, 'getUserBadges'])->name('tasks.userBadges.get');
     Route::post('/tasks/user-badges/award', [\App\Http\Controllers\TaskController::class, 'awardUserBadge'])->name('tasks.userBadges.award');
     Route::delete('/tasks/user-badges/award', [\App\Http\Controllers\TaskController::class, 'removeUserBadge'])->name('tasks.userBadges.remove');

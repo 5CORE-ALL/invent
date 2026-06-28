@@ -882,6 +882,9 @@
             }
         }
     </script>
+    @auth
+        @include('partials.user-incentives')
+    @endauth
 </body>
 
 </html>
