@@ -154,9 +154,55 @@
         .filter-item .form-select,
         .filter-item .form-control { min-height: 38px; font-size: 0.95rem; padding: 0.4rem 0.65rem; }
         .filter-item .form-select { min-width: 145px; }
-        .to-order-counts-box { padding: 0.75rem 1.25rem; min-width: 200px; }
-        .to-order-counts-box .count-label { font-size: 0.85rem; letter-spacing: 0.02em; }
-        .to-order-counts-box .count-value { font-size: 2rem; line-height: 1.2; font-weight: 700; }
+
+        /* Summary badges — full-width row above filters, autosize left to right */
+        .toa-summary {
+            display: flex;
+            flex-wrap: nowrap;
+            align-items: stretch;
+            gap: 6px;
+            width: 100%;
+            margin-bottom: 12px;
+        }
+        .toa-summary-badge {
+            flex: 1 1 0;
+            min-width: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: clamp(4px, 0.8vw, 10px);
+            padding: clamp(10px, 1.2vw, 14px) clamp(8px, 1vw, 16px);
+            border-radius: 10px;
+            font-size: clamp(0.78rem, 1.1vw, 1.05rem);
+            font-weight: 600;
+            color: #fff;
+            line-height: 1.2;
+            white-space: nowrap;
+            text-align: center;
+            box-shadow: 0 2px 4px rgba(15, 23, 42, 0.15);
+        }
+        .toa-summary-badge .label { opacity: 0.95; font-weight: 500; flex-shrink: 0; }
+        .toa-summary-badge .value {
+            font-weight: 700;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .toa-badge--pending { background: #2563eb; }
+        .toa-badge--value   { background: #0891b2; }
+        .toa-badge--ocd     { background: #d97706; }
+        .toa-badge--cbm     { background: #16a34a; }
+        @media (max-width: 1100px) {
+            .toa-summary {
+                overflow-x: auto;
+                scrollbar-width: thin;
+            }
+            .toa-summary-badge {
+                flex: 0 0 auto;
+                min-width: max-content;
+                font-size: 0.78rem;
+                padding: 10px 12px;
+            }
+        }
 
         .toa-ctn-instr-wrap .toa-ctn-instructions-input {
             font-size: 12px;
@@ -355,27 +401,47 @@
     </style>
 @endsection
 @section('content')
-    @include('layouts.shared.page-title', ['page_title' => 'To Order Analysis', 'sub_title' => 'To Order Analysis'])
 
     <div class="row">
+        <div class="col-12">
+            {{-- Summary badges — full-width row above the card --}}
+            <div class="toa-summary" aria-label="Summary">
+                <span class="toa-summary-badge toa-badge--pending" title="Pending items in current view">
+                    <span class="label">🕒 Pending</span>
+                    <span class="value" id="pendingItemsCount">00</span>
+                </span>
+                <span class="toa-summary-badge toa-badge--value" title="Order value — sum of CP × MOQ for visible rows">
+                    <span class="label">$ Value</span>
+                    <span class="value" id="totalOrderValue">0</span>
+                </span>
+                <span class="toa-summary-badge toa-badge--ocd" title="Order Completion Days — average days since DOA for visible pending rows">
+                    <span class="label">OCD</span>
+                    <span class="value" id="ocdAverageDays">00</span>
+                </span>
+                <span class="toa-summary-badge toa-badge--cbm" title="Total CBM for visible rows">
+                    <span class="label">📦 CBM</span>
+                    <span class="value" id="totalCBM">00</span>
+                </span>
+            </div>
+            <span id="totalApprovedQty" class="d-none">00</span>
+        </div>
         <div class="col-12">
             <div class="card shadow-sm">
                 <div class="card-body">
 
-                    <div class="d-flex justify-content-between align-items-center mb-3">
-                        <h4 class="mb-0">To Order Analysis</h4>
-                    </div>
-
-                    {{-- Single row: all filters left, counts right --}}
+                    {{-- Filters row --}}
                     <div class="d-flex flex-wrap align-items-end to-order-filter-row mb-4">
                         @include('purchase-master.partials.page-info-toolbar', ['pageKey' => 'to_order'])
                         <div class="filter-item">
                             <label class="form-label fw-semibold d-block">▶️ Navigation</label>
-                            <div class="btn-group" role="group">
-                                <button id="play-backward" class="btn btn-light rounded-circle shadow-sm me-2" style="width: 38px; height: 38px;" title="Previous parent"><i class="fas fa-step-backward"></i></button>
-                                <button id="play-pause" class="btn btn-light rounded-circle shadow-sm me-2" style="width: 38px; height: 38px; display: none;" title="Pause"><i class="fas fa-pause"></i></button>
-                                <button id="play-auto" class="btn btn-primary rounded-circle shadow-sm me-2" style="width: 38px; height: 38px;" title="Play"><i class="fas fa-play"></i></button>
-                                <button id="play-forward" class="btn btn-light rounded-circle shadow-sm" style="width: 38px; height: 38px;" title="Next parent"><i class="fas fa-step-forward"></i></button>
+                            <div class="d-flex align-items-center gap-1">
+                                <div class="btn-group" role="group">
+                                    <button id="play-backward" class="btn btn-light rounded-circle shadow-sm" style="width: 38px; height: 38px;" title="Previous supplier"><i class="fas fa-step-backward"></i></button>
+                                    <button id="play-pause" class="btn btn-warning rounded-circle shadow-sm" style="width: 38px; height: 38px; display: none;" title="Stop supplier play"><i class="fas fa-pause"></i></button>
+                                    <button id="play-auto" class="btn btn-primary rounded-circle shadow-sm" style="width: 38px; height: 38px;" title="Play by supplier"><i class="fas fa-play"></i></button>
+                                    <button id="play-forward" class="btn btn-light rounded-circle shadow-sm" style="width: 38px; height: 38px;" title="Next supplier"><i class="fas fa-step-forward"></i></button>
+                                </div>
+                                <span class="badge bg-warning text-dark" id="toa-supplier-play-label" style="font-size:0.7rem;display:none;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title=""></span>
                             </div>
                         </div>
                         <div class="filter-item">
@@ -390,27 +456,6 @@
                                 <option value="Candy">Candy</option>
                                 <option value="Sruti">Sruti</option>
                             </select>
-                        </div>
-                        <div class="filter-item">
-                            <label class="form-label fw-semibold d-block">Parent / Sku</label>
-                            <select id="row-data-type" class="form-select border border-primary">
-                                <option value="all">🔁 Show All</option>
-                                <option value="sku">🔹 SKU</option>
-                                <option value="parent">🔸 Parent</option>
-                            </select>
-                        </div>
-                        <div class="filter-item">
-                            <label class="form-label fw-semibold d-block">🔹 SKU</label>
-                            <div class="position-relative">
-                                <input type="search" id="sku-filter" class="form-select border border-primary"
-                                    placeholder="Search SKU…" autocomplete="off" style="padding-right: 26px;">
-                                <button type="button" id="sku-filter-clear"
-                                    class="btn btn-link p-0 position-absolute top-50 translate-middle-y text-muted"
-                                    style="right: 6px; display: none; line-height: 1;"
-                                    title="Clear" aria-label="Clear SKU filter">
-                                    <i class="mdi mdi-close-circle"></i>
-                                </button>
-                            </div>
                         </div>
                         <div class="filter-item">
                             <label class="form-label fw-semibold d-block">Pending Status</label>
@@ -463,39 +508,10 @@
                             </button>
                             <div id="toa-columns-menu" class="toa-columns-menu" style="display:none;"></div>
                         </div>
-                        </div>
-
-                        <div class="ms-auto d-flex align-items-end">
-                            <div class="d-flex align-items-center to-order-counts-box gap-4 rounded border bg-light">
-                                <div class="text-center">
-                                    <div class="text-muted count-label fw-semibold mb-1">🕒 Pending</div>
-                                    <div id="pendingItemsCount" class="count-value text-primary">00</div>
-                                </div>
-                                <div class="vr" style="height: 40px;"></div>
-                                <div class="text-center">
-                                    <div class="text-muted count-label fw-semibold mb-1" title="Order value — sum of CP × MOQ for visible rows">$</div>
-                                    <div id="totalOrderValue" class="count-value text-info">0</div>
-                                </div>
-                                <div class="vr" style="height: 40px;"></div>
-                                <div class="text-center">
-                                    <div class="text-muted count-label fw-semibold mb-1" title="Order Completion Days — average days since DOA for visible pending rows">OCD</div>
-                                    <div id="ocdAverageDays" class="count-value text-warning">00</div>
-                                </div>
-                                <div class="vr" style="height: 40px;"></div>
-                                <div class="text-center">
-                                    <div class="text-muted count-label fw-semibold mb-1">📦 CBM</div>
-                                    <div id="totalCBM" class="count-value text-success">00</div>
-                                </div>
-                            </div>
-                            <div class="filter-item d-none" id="totalApprovedQty-wrap">
-                                <label class="form-label fw-semibold mb-1 d-block small">Approved Qty</label>
-                                <div id="totalApprovedQty" class="fw-bold text-primary small">00</div>
-                            </div>
-                        </div>
                     </div>
                     <div id="toa-bulk-edit-badge" class="d-none mb-2 p-2 rounded border bg-light align-items-center gap-2 flex-wrap" style="min-height: 40px;">
                         <span class="fw-semibold text-dark" id="toa-bulk-edit-count">0 selected</span>
-                        <span class="text-muted small">Select rows with checkboxes, then click the <strong>Action</strong> edit button on any row to apply changes to all selected.</span>
+                        <span class="text-muted small">Select rows with checkboxes, then use <strong>Action</strong> for bulk field edits or <strong>CL Bulk Edit</strong> for the pre-order checklist.</span>
                         <button type="button" class="btn btn-sm btn-outline-primary ms-auto" id="toa-bulk-cl-btn" title="Bulk edit Pre-Order checklist for selected rows">
                             <i class="mdi mdi-magnify me-1"></i> CL Bulk Edit
                         </button>
@@ -1957,10 +1973,7 @@
                     {
                         title: "Parent",
                         field: "Parent",
-                        headerFilter: "input",
-                        headerFilterPlaceholder: " Filter parent...",
                         width: 180,
-                        headerFilterLiveFilter: true,
                     },
                     {
                         title: "Executive",
@@ -2620,13 +2633,11 @@
                         hozAlign: "center",
                         headerSort: false,
                         download: false,
-                        headerTooltip: "Pre-Order checklist before ORDER",
+                        headerTooltip: "Pre-Order checklist before ORDER — click magnify to open",
                         formatter: toaClFormatter,
                         cellClick: function (e, cell) {
-                            if (e.target.closest('.toa-cl-open-btn')) {
-                                e.stopPropagation();
-                                openToaClModal('single', [cell.getRow()]);
-                            }
+                            e.stopPropagation();
+                            openToaClModal('single', [cell.getRow()]);
                         }
                     },
                     {
@@ -3558,14 +3569,133 @@
                 });
             });
 
-            let supplierKeys = [];
-            let currentIndex = 0;
-            let navigationEnabled = false;
+            let isSupplierPlaying = false;
+            let supplierPlayIndex = 0;
+            let currentSupplierFilter = null;
 
-            // Update unique suppliers from table
-            function updateSupplierKeys() {
-                const tableData = table.getData();
-                supplierKeys = [...new Set(tableData.map(r => r.Supplier).filter(Boolean))];
+            function rowPassesToaFilters(row, skipSupplierFilters) {
+                const pending = document.getElementById("row-data-pending-status").value;
+                const stage = document.getElementById("stage-filter").value.toLowerCase().trim();
+                const moqFilter = (document.getElementById("moq-filter") && document.getElementById("moq-filter").value) || "";
+                const supplierFilterEl = document.getElementById("supplier-filter");
+                const manualSupplierFilter = supplierFilterEl ? supplierFilterEl.value.trim() : '';
+                const executiveFilterEl = document.getElementById("executive-filter");
+                const executiveFilter = executiveFilterEl ? executiveFilterEl.value.trim() : '';
+
+                let keep = true;
+
+                if (stage) keep = keep && (row.stage || '').toLowerCase() === stage;
+
+                const moqNum = parseFloat(row.approved_qty);
+                const moqVal = Number.isFinite(moqNum) ? moqNum : 0;
+                if (moqFilter === "zero") keep = keep && moqVal === 0;
+                else if (moqFilter === "gt0") keep = keep && moqVal > 0;
+
+                if (pending) keep = keep && getRowColor(row) === pending;
+
+                // When building the supplier play list, skip ALL supplier filters
+                // (dropdown is synced to current supplier during play and would collapse the list).
+                if (!skipSupplierFilters) {
+                    if (currentSupplierFilter) {
+                        keep = keep && (row.Supplier || '').trim().toLowerCase() === currentSupplierFilter.toLowerCase();
+                    } else if (manualSupplierFilter) {
+                        if (manualSupplierFilter === '__blank__') {
+                            keep = keep && (row.Supplier || '').trim() === '';
+                        } else {
+                            keep = keep && (row.Supplier || '').trim().toLowerCase() === manualSupplierFilter.toLowerCase();
+                        }
+                    }
+                }
+
+                if (executiveFilter) {
+                    const exec = (row.Exec || '').trim();
+                    if (executiveFilter === '__unassigned__') {
+                        keep = keep && exec === '';
+                    } else {
+                        keep = keep && exec.toLowerCase() === executiveFilter.toLowerCase();
+                    }
+                }
+
+                return keep;
+            }
+
+            function getToaSupplierList() {
+                const seen = new Set();
+                const list = [];
+                (table.getData() || []).forEach(function (row) {
+                    if (!rowPassesToaFilters(row, true)) return;
+                    const s = String(row.Supplier || '').trim();
+                    if (s && s !== '-' && !seen.has(s)) {
+                        seen.add(s);
+                        list.push(s);
+                    }
+                });
+                return list.sort(function (a, b) { return a.localeCompare(b); });
+            }
+
+            function syncToaSupplierPlayIndex(list, supplier) {
+                const idx = list.indexOf(supplier);
+                supplierPlayIndex = idx >= 0 ? idx : 0;
+            }
+
+            function ensureSupplierFilterOption(name) {
+                const el = document.getElementById('supplier-filter');
+                if (!el || !name) return;
+                if (!Array.from(el.options).some(function (o) { return o.value === name; })) {
+                    el.add(new Option(name, name));
+                }
+            }
+
+            function renderToaSupplierGroup(supplier) {
+                currentSupplierFilter = supplier;
+                ensureSupplierFilterOption(supplier);
+                applyFilters();
+                const list = getToaSupplierList();
+                syncToaSupplierPlayIndex(list, supplier);
+                const lbl = document.getElementById('toa-supplier-play-label');
+                if (lbl) {
+                    lbl.textContent = supplier;
+                    lbl.title = supplier;
+                    lbl.style.display = 'inline-block';
+                }
+                if (table && table.rowManager && table.rowManager.element) {
+                    table.rowManager.element.scrollTop = 0;
+                }
+            }
+
+            function startToaSupplierPlay(list, index) {
+                isSupplierPlaying = true;
+                supplierPlayIndex = index;
+                renderToaSupplierGroup(list[supplierPlayIndex]);
+                document.getElementById('play-pause').style.display = 'inline-block';
+                document.getElementById('play-auto').style.display = 'none';
+            }
+
+            function stopToaSupplierPlay() {
+                isSupplierPlaying = false;
+                currentSupplierFilter = null;
+                const sel = document.getElementById('supplier-filter');
+                if (sel) sel.value = '';
+                applyFilters();
+                document.getElementById('play-pause').style.display = 'none';
+                document.getElementById('play-auto').style.display = 'inline-block';
+                const lbl = document.getElementById('toa-supplier-play-label');
+                if (lbl) lbl.style.display = 'none';
+            }
+
+            function applyToolbarFilters() {
+                applyFilters();
+                if (!isSupplierPlaying || !currentSupplierFilter) return;
+                const list = getToaSupplierList();
+                if (!list.length) {
+                    stopToaSupplierPlay();
+                    return;
+                }
+                if (!list.includes(currentSupplierFilter)) {
+                    renderToaSupplierGroup(list[0]);
+                } else {
+                    syncToaSupplierPlayIndex(list, currentSupplierFilter);
+                }
             }
 
             // Parse DOA and return days since approval (local midnight), or null if missing/invalid.
@@ -3655,89 +3785,13 @@
                 }
             }
 
-            // Apply all filters + optional supplier override (from nav play uses supplierOverride)
-            function applyFilters(supplierOverride = null) {
-                const type = document.getElementById("row-data-type").value;
-                const pending = document.getElementById("row-data-pending-status").value;
-                const stage = document.getElementById("stage-filter").value.toLowerCase().trim();
-                const moqFilter = (document.getElementById("moq-filter") && document.getElementById("moq-filter").value) || "";
-                const supplierFilterEl = document.getElementById("supplier-filter");
-                const supplierFilter = supplierOverride != null ? supplierOverride : (supplierFilterEl ? supplierFilterEl.value.trim() : '');
-                const executiveFilterEl = document.getElementById("executive-filter");
-                const executiveFilter = executiveFilterEl ? executiveFilterEl.value.trim() : '';
-                const skuFilterEl = document.getElementById("sku-filter");
-                const skuFilter = skuFilterEl ? skuFilterEl.value.trim().toLowerCase() : '';
-
+            // Apply all filters (supplier play uses currentSupplierFilter when active)
+            function applyFilters() {
                 table.clearFilter(true);
-
-                table.setFilter(row => {
-                    let keep = true;
-
-                    if (type === 'parent') keep = keep && row.is_parent;
-                    else if (type === 'sku') keep = keep && !row.SKU.startsWith("PARENT");
-
-                    if (stage) keep = keep && (row.stage || '').toLowerCase() === stage;
-
-                    const moqNum = parseFloat(row.approved_qty);
-                    const moqVal = Number.isFinite(moqNum) ? moqNum : 0;
-                    if (moqFilter === "zero") keep = keep && moqVal === 0;
-                    else if (moqFilter === "gt0") keep = keep && moqVal > 0;
-
-                    if (pending) keep = keep && getRowColor(row) === pending;
-                    if (supplierFilter) {
-                        if (supplierFilter === '__blank__') {
-                            keep = keep && (row.Supplier || '').trim() === '';
-                        } else {
-                            keep = keep && (row.Supplier || '').trim().toLowerCase() === supplierFilter.toLowerCase();
-                        }
-                    }
-                    if (executiveFilter) {
-                        const exec = (row.Exec || '').trim();
-                        if (executiveFilter === '__unassigned__') {
-                            keep = keep && exec === '';
-                        } else {
-                            keep = keep && exec.toLowerCase() === executiveFilter.toLowerCase();
-                        }
-                    }
-                    if (skuFilter) {
-                        keep = keep && (row.SKU || '').toString().toLowerCase().includes(skuFilter);
-                    }
-
-                    return keep;
+                table.setFilter(function (data) {
+                    return rowPassesToaFilters(data, false);
                 });
-
                 setTimeout(updateCounts, 0);
-            }
-
-            function enableNavigation() {
-                navigationEnabled = true;
-                document.getElementById("play-auto").style.display = "none";
-                document.getElementById("play-pause").style.display = "inline-block";
-            }
-
-            function disableNavigation() {
-                navigationEnabled = false;
-                document.getElementById("play-auto").style.display = "inline-block";
-                document.getElementById("play-pause").style.display = "none";
-                applyFilters();
-            }
-
-            function nextSupplier() {
-                updateSupplierKeys();
-                if(supplierKeys.length === 0) return;
-
-                if(currentIndex >= supplierKeys.length) currentIndex = 0;
-                applyFilters(supplierKeys[currentIndex]);
-                currentIndex++;
-            }
-
-            function previousSupplier() {
-                updateSupplierKeys();
-                if(supplierKeys.length === 0) return;
-
-                currentIndex--;
-                if(currentIndex < 0) currentIndex = supplierKeys.length - 1;
-                applyFilters(supplierKeys[currentIndex]);
             }
 
             function debounce(func, wait=300) {
@@ -3748,54 +3802,61 @@
                 }
             }
 
-            // Event Listeners
-            document.getElementById("play-auto").addEventListener("click", enableNavigation);
-            document.getElementById("play-pause").addEventListener("click", disableNavigation);
-            document.getElementById("play-forward").addEventListener("click", nextSupplier);
-            document.getElementById("play-backward").addEventListener("click", previousSupplier);
+            // Supplier play navigation (mirrors MIP / forecast supplier play)
+            document.getElementById("play-auto").addEventListener("click", function () {
+                const list = getToaSupplierList();
+                if (!list.length) {
+                    alert('No supplier data available to play through.');
+                    return;
+                }
+                startToaSupplierPlay(list, 0);
+            });
+            document.getElementById("play-pause").addEventListener("click", stopToaSupplierPlay);
+            document.getElementById("play-forward").addEventListener("click", function () {
+                const list = getToaSupplierList();
+                if (!list.length) return;
+                if (!isSupplierPlaying) {
+                    startToaSupplierPlay(list, 0);
+                    return;
+                }
+                supplierPlayIndex = (supplierPlayIndex + 1) % list.length;
+                renderToaSupplierGroup(list[supplierPlayIndex]);
+            });
+            document.getElementById("play-backward").addEventListener("click", function () {
+                const list = getToaSupplierList();
+                if (!list.length) return;
+                if (!isSupplierPlaying) {
+                    startToaSupplierPlay(list, list.length - 1);
+                    return;
+                }
+                supplierPlayIndex = (supplierPlayIndex - 1 + list.length) % list.length;
+                renderToaSupplierGroup(list[supplierPlayIndex]);
+            });
+
+            table.on('dataLoaded', function () {
+                if (isSupplierPlaying) stopToaSupplierPlay();
+                document.getElementById("stage-filter").value = "";
+                document.getElementById("moq-filter").value = "";
+                applyFilters();
+            });
 
             // Filter change events
-            document.getElementById("row-data-type").addEventListener("change", () => applyFilters());
-            document.getElementById("row-data-pending-status").addEventListener("change", () => applyFilters());
-            document.getElementById("stage-filter").addEventListener("change", () => applyFilters());
-            document.getElementById("moq-filter").addEventListener("change", () => applyFilters());
-            document.getElementById("supplier-filter").addEventListener("change", () => applyFilters());
+            document.getElementById("row-data-pending-status").addEventListener("change", () => applyToolbarFilters());
+            document.getElementById("stage-filter").addEventListener("change", () => applyToolbarFilters());
+            document.getElementById("moq-filter").addEventListener("change", () => applyToolbarFilters());
+            document.getElementById("supplier-filter").addEventListener("change", function () {
+                if (isSupplierPlaying) stopToaSupplierPlay();
+                else applyFilters();
+            });
             (function () {
                 const el = document.getElementById("executive-filter");
-                if (el) el.addEventListener("change", () => applyFilters());
-            })();
-            (function setupSkuFilter() {
-                const input = document.getElementById("sku-filter");
-                const clearBtn = document.getElementById("sku-filter-clear");
-                if (!input) return;
-                const syncClear = () => {
-                    if (!clearBtn) return;
-                    clearBtn.style.display = input.value.length > 0 ? 'inline-block' : 'none';
-                };
-                input.addEventListener("input", debounce(() => { syncClear(); applyFilters(); }, 200));
-                if (clearBtn) {
-                    clearBtn.addEventListener("click", () => {
-                        input.value = '';
-                        syncClear();
-                        applyFilters();
-                        input.focus();
-                    });
-                }
-                syncClear();
+                if (el) el.addEventListener("change", () => applyToolbarFilters());
             })();
 
             document.getElementById("stage-filter").value = "";
             document.getElementById("moq-filter").value = "";
 
             // Table events
-            table.on("dataLoaded", function() {
-                updateSupplierKeys();
-                currentIndex = 0;
-                document.getElementById("stage-filter").value = "";
-                document.getElementById("moq-filter").value = "";
-                applyFilters();
-            });
-
             table.on("dataFiltered", updateCounts);
             table.on("dataSorted", updateCounts);
             table.on("dataChanged", updateCounts);
@@ -3825,6 +3886,8 @@
                     table.getColumns().forEach(function (col) {
                         const field = col.getField();
                         if (!field) return;
+                        // CL + Action stay visible — core workflow columns
+                        if (field === 'pre_order_checklist_status' || field === '_action') return;
                         const checked = col.isVisible() ? 'checked' : '';
                         rows += '<div class="form-check">' +
                             '<input class="form-check-input toa-col-toggle" type="checkbox" data-field="' + escAttr(field) + '" id="toacol-' + escAttr(field) + '" ' + checked + '>' +
