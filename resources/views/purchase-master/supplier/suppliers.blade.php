@@ -352,6 +352,7 @@
                                     <input type="checkbox" class="form-check-input supplier-select-all" aria-label="Select all suppliers on this page">
                                 </th>
                                 <th class="sortable" data-sort-key="category">Category <span class="sort-icon"><i class="mdi mdi-unfold-more-horizontal"></i></span></th>
+                                <th class="text-center" title="Total suppliers in each of this row's categories (category-wide count)">Suppliers</th>
                                 <th class="sortable" data-sort-key="name">Name <span class="sort-icon"><i class="mdi mdi-unfold-more-horizontal"></i></span></th>
                                 <th class="sortable text-center" data-sort-key="approval" title="Approved">Appr <span class="sort-icon"><i class="mdi mdi-unfold-more-horizontal"></i></span></th>
                                 <th class="sortable" data-sort-key="company">Company <span class="sort-icon"><i class="mdi mdi-unfold-more-horizontal"></i></span></th>

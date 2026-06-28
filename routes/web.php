@@ -4187,6 +4187,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/to-order-analysis/suppliers-by-category', 'suppliersByCategory')->name('to.order.analysis.suppliers.by.category');
         Route::get('/to-order-analysis/qc-issues', 'qcIssuesForSku')->name('to.order.analysis.qc.issues');
         Route::post('/to-order-analysis/bulk-update-exec', 'bulkUpdateExec')->name('to.order.analysis.bulk.exec');
+        Route::get('/to-order-analysis/pre-order-checklist', 'getPreOrderChecklist')->name('to.order.analysis.pre.checklist.get');
+        Route::post('/to-order-analysis/pre-order-checklist', 'savePreOrderChecklist')->name('to.order.analysis.pre.checklist.save');
+        Route::post('/to-order-analysis/pre-order-checklist/bulk', 'bulkSavePreOrderChecklist')->name('to.order.analysis.pre.checklist.bulk');
         Route::post('/mfrg-progresses/insert', 'storeMFRG')->name('mfrg.progresses.insert');
         Route::post('/save-to-order-review', 'storeToOrderReview')->name('save.to_order_review');
         Route::post('/to-order-analysis/delete', 'deleteToOrderAnalysis')->name('delete.to_order_analysis');
@@ -4228,6 +4231,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
         Route::get('/mfrg-in-progress/new', 'newMfrgView')->name('mfrg.in.progress.new');
         Route::get('/mfrg-in-progress/data', 'getMfrgProgressData')->name('mfrg.in.progress.data');
+        Route::get('/mfrg-in-progress/pre-mip-checklist', 'getPreMipChecklist')->name('mfrg.pre.mip.checklist.get');
+        Route::post('/mfrg-in-progress/pre-mip-checklist', 'savePreMipChecklist')->name('mfrg.pre.mip.checklist.save');
+        Route::post('/mfrg-in-progress/pre-mip-checklist/bulk', 'bulkSavePreMipChecklist')->name('mfrg.pre.mip.checklist.bulk');
     });
 
     Route::controller(MfrgProgressPoController::class)->group(function () {

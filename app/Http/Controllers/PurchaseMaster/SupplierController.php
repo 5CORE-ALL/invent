@@ -11,6 +11,7 @@ use App\Models\SupplierRating;
 use App\Models\SupplierRemarkHistory;
 use Illuminate\Support\Collection;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Facades\Validator;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -95,7 +96,7 @@ class SupplierController extends Controller
         $totalCount = Supplier::count();
         
         $suppliers = $query->with(['ratings', 'latestRemark'])->paginate(20)->appends($request->query());
-        $categories = Category::orderBy('name')->get();
+        $categories = $this->categoriesWithSupplierCounts();
         $rfqLinkedSkusBySupplierId = $this->buildRfqLinkedSkusBySupplierId($suppliers->getCollection());
         
         // If AJAX request, return JSON
@@ -120,6 +121,21 @@ class SupplierController extends Controller
             'direction',
             'rfqLinkedSkusBySupplierId'
         ));
+    }
+
+    /**
+     * Categories with supplier_count per category (same logic as category list page).
+     */
+    private function categoriesWithSupplierCounts(): Collection
+    {
+        $categories = Category::orderBy('name')->get();
+        foreach ($categories as $category) {
+            $category->supplier_count = DB::table('suppliers')
+                ->whereRaw('FIND_IN_SET(?, category_id)', [$category->id])
+                ->count();
+        }
+
+        return $categories;
     }
 
     /**

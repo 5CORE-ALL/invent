@@ -32,6 +32,36 @@
         @endif
     </td>
 
+    <td class="text-center align-middle">
+        @php
+            $assignedCategories = $categories->filter(function ($category) use ($categoryIds) {
+                return in_array($category->id, $categoryIds);
+            });
+            $firstCatCount = $assignedCategories->first()?->supplier_count ?? 0;
+        @endphp
+        @if($assignedCategories->isNotEmpty())
+            <div class="dropdown d-inline-block">
+                <button class="btn btn-sm btn-light dropdown-toggle py-0 px-2" type="button" data-bs-toggle="dropdown" aria-expanded="false"
+                    title="Suppliers per category (category-wide totals)">
+                    <i class="mdi mdi-account-group text-info me-1"></i>
+                    <span class="fw-semibold text-info">{{ $firstCatCount }}</span>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end">
+                    @foreach ($assignedCategories as $category)
+                        <li>
+                            <span class="dropdown-item small d-flex justify-content-between align-items-center gap-2">
+                                <span>{{ $category->name }}</span>
+                                <span class="badge bg-info-subtle text-info">{{ $category->supplier_count }}</span>
+                            </span>
+                        </li>
+                    @endforeach
+                </ul>
+            </div>
+        @else
+            <span class="text-muted">-</span>
+        @endif
+    </td>
+
 
     <td>{{ $supplier->name ?? '-' }}</td>
     @php

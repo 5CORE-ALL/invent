@@ -8,58 +8,12 @@
     <style>
         /* Column show/hide menu */
         .toa-columns-wrap { position: relative; }
-
-        /* Search input directly above the table header */
-        .toa-table-search-wrap {
-            padding: 10px 12px;
-            background: #f8fafc;
-            border: 1px solid #e2e8f0;
-            border-bottom: 0;
-            border-top-left-radius: 8px;
-            border-top-right-radius: 8px;
-        }
-        .toa-table-search-group {
-            width: 100%;
-            border: 1px solid #e2e8f0;
-            border-radius: 10px;
-            background: #fff;
-            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
-            overflow: hidden;
-            transition: border-color 0.15s, box-shadow 0.15s;
-        }
-        .toa-table-search-group:focus-within {
-            border-color: #4db6ac;
-            box-shadow: 0 0 0 3px rgba(77, 182, 172, 0.18);
-        }
-        .toa-table-search-group .toa-table-search-icon {
-            background: transparent;
-            border: 0;
-            color: #94a3b8;
-            padding-left: 14px;
-            padding-right: 8px;
-        }
-        .toa-table-search-group .toa-table-search {
-            border: 0;
-            background: transparent;
-            box-shadow: none !important;
-            height: 42px;
-            font-size: 0.95rem;
-            color: #1e293b;
-            padding-left: 4px;
-        }
-        .toa-table-search-group .toa-table-search::placeholder { color: #94a3b8; }
-        .toa-table-search-group .toa-table-search:focus { outline: none; border: 0; }
-        .toa-table-search-group .toa-table-search-clear {
-            background: transparent;
-            border: 0;
-            color: #cbd5e1;
-            padding: 0 14px;
-            display: none;
-            align-items: center;
-            justify-content: center;
-        }
-        .toa-table-search-group .toa-table-search-clear:hover { color: #64748b; }
-        .toa-table-search-group.has-value .toa-table-search-clear { display: inline-flex; }
+        .toa-cl-cell { display: flex; align-items: center; justify-content: center; gap: 4px; }
+        .toa-cl-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; border: 1px solid rgba(0,0,0,0.08); }
+        .toa-cl-item-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid #f1f5f9; }
+        .toa-cl-item-row:last-child { border-bottom: none; }
+        .toa-cl-item-row .form-check { flex: 1; margin: 0; }
+        .toa-cl-item-row .toa-cl-remove-item { color: #94a3b8; }
         .toa-columns-menu {
             position: absolute; z-index: 4000; top: 100%; left: 0; margin-top: 4px;
             background: #fff; border: 1px solid #cbd5e1; border-radius: 8px;
@@ -384,6 +338,20 @@
             box-shadow: 0 0 0 2px #495057;
             border-radius: 50%;
         }
+
+        /* Full-viewport modal overlay — avoids misaligned dark block with body zoom / nested layout */
+        .modal-backdrop {
+            position: fixed !important;
+            inset: 0 !important;
+            z-index: 1040 !important;
+            background-color: rgba(0, 0, 0, 0.5) !important;
+        }
+        .modal {
+            z-index: 1050 !important;
+        }
+        .modal.show {
+            background: transparent !important;
+        }
     </style>
 @endsection
 @section('content')
@@ -489,20 +457,9 @@
                                 @endforeach
                             </select>
                         </div>
-                        <div class="filter-item">
-                            <label class="form-label fw-semibold d-block">🗂️ Category</label>
-                            <select id="category-filter" class="form-select">
-                                <option value="">All Categories</option>
-                                <option value="__blank__">Blank / No category</option>
-                                @foreach($allCategories ?? [] as $c)
-                                <option value="{{ $c }}">{{ $c }}</option>
-                                @endforeach
-                            </select>
-                        </div>
                         <div class="filter-item toa-columns-wrap">
-                            <label class="form-label fw-semibold d-block">Columns</label>
-                            <button type="button" class="btn btn-outline-secondary" id="toa-columns-btn">
-                                <i class="fas fa-table-columns me-1"></i> Show / Hide
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="toa-columns-btn" title="Show / hide columns" aria-label="Show / hide columns">
+                                <i class="fas fa-table-columns"></i>
                             </button>
                             <div id="toa-columns-menu" class="toa-columns-menu" style="display:none;"></div>
                         </div>
@@ -516,6 +473,16 @@
                                 </div>
                                 <div class="vr" style="height: 40px;"></div>
                                 <div class="text-center">
+                                    <div class="text-muted count-label fw-semibold mb-1" title="Order value — sum of CP × MOQ for visible rows">$</div>
+                                    <div id="totalOrderValue" class="count-value text-info">0</div>
+                                </div>
+                                <div class="vr" style="height: 40px;"></div>
+                                <div class="text-center">
+                                    <div class="text-muted count-label fw-semibold mb-1" title="Order Completion Days — average days since DOA for visible pending rows">OCD</div>
+                                    <div id="ocdAverageDays" class="count-value text-warning">00</div>
+                                </div>
+                                <div class="vr" style="height: 40px;"></div>
+                                <div class="text-center">
                                     <div class="text-muted count-label fw-semibold mb-1">📦 CBM</div>
                                     <div id="totalCBM" class="count-value text-success">00</div>
                                 </div>
@@ -524,21 +491,14 @@
                                 <label class="form-label fw-semibold mb-1 d-block small">Approved Qty</label>
                                 <div id="totalApprovedQty" class="fw-bold text-primary small">00</div>
                             </div>
-                            <button class="btn btn-sm btn-danger d-none align-self-end" id="delete-selected-btn">
-                                <i class="fas fa-trash-alt me-1"></i> Delete
-                            </button>
                         </div>
                     </div>
-                    <div class="toa-table-search-wrap mb-2">
-                        <div class="input-group toa-table-search-group">
-                            <span class="input-group-text toa-table-search-icon">
-                                <i class="fas fa-search"></i>
-                            </span>
-                            <input type="text" id="search-input" class="form-control toa-table-search" placeholder="Search SKU, parent, supplier, category...">
-                            <button type="button" class="btn toa-table-search-clear" id="search-input-clear" title="Clear search" tabindex="-1">
-                                <i class="fas fa-times"></i>
-                            </button>
-                        </div>
+                    <div id="toa-bulk-edit-badge" class="d-none mb-2 p-2 rounded border bg-light align-items-center gap-2 flex-wrap" style="min-height: 40px;">
+                        <span class="fw-semibold text-dark" id="toa-bulk-edit-count">0 selected</span>
+                        <span class="text-muted small">Select rows with checkboxes, then click the <strong>Action</strong> edit button on any row to apply changes to all selected.</span>
+                        <button type="button" class="btn btn-sm btn-outline-primary ms-auto" id="toa-bulk-cl-btn" title="Bulk edit Pre-Order checklist for selected rows">
+                            <i class="mdi mdi-magnify me-1"></i> CL Bulk Edit
+                        </button>
                     </div>
                     <div id="toOrderAnalysis-table"></div>
                 </div>
@@ -939,7 +899,7 @@
          checkbox-selected rows. Only fields with a non-empty value are
          applied; leave any field blank to skip it. --}}
     <div class="modal fade" id="toaActionModal" tabindex="-1" aria-labelledby="toaActionModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header bg-primary text-white">
                     <h5 class="modal-title fw-bold d-flex align-items-center m-0" id="toaActionModalLabel">
@@ -958,42 +918,90 @@
                     </div>
                     <p class="text-muted small mb-3">Only fields you fill in below will be applied. Leave a field blank to keep its current value.</p>
 
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold">Supplier</label>
-                        <select id="toa-action-supplier" class="form-select form-select-sm">
-                            <option value="">— Keep current —</option>
-                            @foreach($allSuppliers ?? [] as $s)
-                                <option value="{{ $s }}">{{ $s }}</option>
-                            @endforeach
-                        </select>
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold">Executive</label>
-                        <select id="toa-action-executive" class="form-select form-select-sm">
-                            <option value="">— Keep current —</option>
-                            <option value="__unassigned__">— Unassigned —</option>
-                            <option value="Atin">Atin</option>
-                            <option value="Jack">Jack</option>
-                            <option value="Nitish">Nitish</option>
-                            <option value="Ajay">Ajay</option>
-                            <option value="Candy">Candy</option>
-                            <option value="Sruti">Sruti</option>
-                        </select>
-                    </div>
-
-                    <div class="mb-1">
-                        <label class="form-label fw-semibold">Stage</label>
-                        <select id="toa-action-stage" class="form-select form-select-sm">
-                            <option value="">— Keep current —</option>
-                            <option value="appr_req">Appr. Req</option>
-                            <option value="mip">MIP</option>
-                            <option value="r2s">R2S</option>
-                            <option value="transit">Transit</option>
-                            <option value="all_good">😊 All Good</option>
-                            <option value="to_order_analysis">2 Order</option>
-                        </select>
-                        <div class="form-text small">Stage rows must have MOQ &gt; 0; rows without MOQ will be skipped.</div>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">MOQ</label>
+                            <input type="number" id="toa-action-moq" class="form-control form-control-sm" min="0" max="99999" step="1" placeholder="— Keep current —">
+                        </div>
+                        @if(strtolower((string)(auth()->user()->email ?? '')) === 'president@5core.com')
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">DOA</label>
+                            <input type="date" id="toa-action-doa" class="form-control form-control-sm" placeholder="— Keep current —">
+                        </div>
+                        @endif
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Supplier</label>
+                            <select id="toa-action-supplier" class="form-select form-select-sm">
+                                <option value="">— Keep current —</option>
+                                @foreach($allSuppliers ?? [] as $s)
+                                    <option value="{{ $s }}">{{ $s }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Executive</label>
+                            <select id="toa-action-executive" class="form-select form-select-sm">
+                                <option value="">— Keep current —</option>
+                                <option value="__unassigned__">— Unassigned —</option>
+                                <option value="Atin">Atin</option>
+                                <option value="Jack">Jack</option>
+                                <option value="Nitish">Nitish</option>
+                                <option value="Ajay">Ajay</option>
+                                <option value="Candy">Candy</option>
+                                <option value="Sruti">Sruti</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">NRP</label>
+                            <select id="toa-action-nrp" class="form-select form-select-sm">
+                                <option value="">— Keep current —</option>
+                                <option value="REQ">REQ</option>
+                                <option value="NR">2BDC</option>
+                                <option value="LATER">LATER</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Stage</label>
+                            <select id="toa-action-stage" class="form-select form-select-sm">
+                                <option value="">— Keep current —</option>
+                                <option value="appr_req">Appr. Req</option>
+                                <option value="mip">MIP</option>
+                                <option value="r2s">R2S</option>
+                                <option value="transit">Transit</option>
+                                <option value="all_good">😊 All Good</option>
+                                <option value="to_order_analysis">2 Order</option>
+                            </select>
+                            <div class="form-text small">Stage rows must have MOQ &gt; 0; rows without MOQ will be skipped.</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Adv date</label>
+                            <input type="date" id="toa-action-adv-date" class="form-control form-control-sm">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">C link</label>
+                            <input type="text" id="toa-action-clink" class="form-control form-control-sm" maxlength="500" placeholder="— Keep current —">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">RFQ Form Link</label>
+                            <input type="text" id="toa-action-rfq" class="form-control form-control-sm" maxlength="500" placeholder="— Keep current —">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label fw-semibold">Reviews (improvement note)</label>
+                            <textarea id="toa-action-reviews" class="form-control form-control-sm" rows="2" maxlength="2000" placeholder="— Keep current —"></textarea>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label fw-semibold">Item Pkg.</label>
+                            <textarea id="toa-action-item-pkg" class="form-control form-control-sm" rows="2" maxlength="2000" placeholder="— Keep current —"></textarea>
+                            <div class="form-text small">Requires product master ID on row (same as grid editor).</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Instr Carton</label>
+                            <input type="text" id="toa-action-ctn-instr" class="form-control form-control-sm" maxlength="100" placeholder="— Keep current —">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label fw-semibold">Design Instr Carton</label>
+                            <textarea id="toa-action-carton-design" class="form-control form-control-sm" rows="2" maxlength="2000" placeholder="— Keep current —"></textarea>
+                        </div>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -1001,6 +1009,38 @@
                     <button type="button" class="btn btn-primary" id="toa-action-apply-btn">
                         <i class="mdi mdi-check-bold me-1"></i> Apply
                     </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- Pre-Order Checklist (CL) modal --}}
+    <div class="modal fade" id="toaPreOrderClModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title"><i class="mdi mdi-magnify me-2"></i> Pre-Order Checklist <span id="toa-cl-modal-title" class="ms-2 fw-normal small"></span></h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p id="toa-cl-modal-subtitle" class="text-muted small mb-3">Checklist before ORDER: QC, packing, printing, compliance, profitability, and instructions.</p>
+                    <div id="toa-cl-items-list" class="mb-3"></div>
+                    <div class="d-flex gap-2 mb-3">
+                        <input type="text" id="toa-cl-new-item" class="form-control form-control-sm" placeholder="Add checklist point…" maxlength="500">
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="toa-cl-add-item-btn"><i class="fas fa-plus"></i> Add</button>
+                    </div>
+                    <div id="toa-cl-escalate-wrap" class="mb-2">
+                        <label class="form-label small fw-semibold" for="toa-cl-escalation-note">Escalation note (required when escalating)</label>
+                        <textarea id="toa-cl-escalation-note" class="form-control form-control-sm" rows="2" placeholder="Which points failed?"></textarea>
+                    </div>
+                    <div id="toa-cl-status" class="small"></div>
+                </div>
+                <div class="modal-footer justify-content-between">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-danger" id="toa-cl-escalate-btn"><i class="fas fa-bell me-1"></i> Escalate</button>
+                        <button type="button" class="btn btn-success" id="toa-cl-clear-btn"><i class="fas fa-check me-1"></i> Clear to load</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1107,6 +1147,49 @@
             document.body.style.zoom = "80%";
 
             document.documentElement.setAttribute("data-sidenav-size", "condensed");
+
+            // Move modals to body so fixed positioning + backdrop cover the full viewport.
+            (function initToaModalBackdropFix() {
+                const modalIds = [
+                    'toaActionModal', 'toaPreOrderClModal', 'reviewModal', 'monthModal',
+                    'toaLmpModal', 'toaMoqModal', 'toaDataModal', 'supplierCategoryModal',
+                    'pkgModal', 'qcIssueModal', 'addSupplierModal'
+                ];
+
+                function fixBackdrop() {
+                    const zoom = parseFloat(document.body.style.zoom) || 1;
+                    const inv = zoom > 0 ? (1 / zoom) : 1;
+                    document.querySelectorAll('.modal-backdrop').forEach(function (bd) {
+                        bd.style.position = 'fixed';
+                        bd.style.top = '0';
+                        bd.style.left = '0';
+                        bd.style.width = inv === 1 ? '100vw' : (inv * 100) + 'vw';
+                        bd.style.height = inv === 1 ? '100vh' : (inv * 100) + 'vh';
+                        bd.style.zIndex = '1040';
+                    });
+                }
+
+                function cleanupBackdrop() {
+                    if (!document.querySelector('.modal.show')) {
+                        document.querySelectorAll('.modal-backdrop').forEach(function (el) {
+                            el.remove();
+                        });
+                        document.body.classList.remove('modal-open');
+                        document.body.style.removeProperty('overflow');
+                        document.body.style.removeProperty('padding-right');
+                    }
+                }
+
+                modalIds.forEach(function (id) {
+                    const el = document.getElementById(id);
+                    if (!el) return;
+                    if (el.parentElement !== document.body) {
+                        document.body.appendChild(el);
+                    }
+                    el.addEventListener('shown.bs.modal', fixBackdrop);
+                    el.addEventListener('hidden.bs.modal', cleanupBackdrop);
+                });
+            })();
 
             const globalPreview = Object.assign(document.createElement("div"), {
                 id: "image-hover-preview",
@@ -1603,6 +1686,214 @@
                 modal.show();
             }
 
+            const DEFAULT_TOA_CL_ITEMS = [
+                { id: 'qc', label: 'QC', checked: false },
+                { id: 'packing', label: 'Packing inner and outer', checked: false },
+                { id: 'printing', label: 'Printing', checked: false },
+                { id: 'compliance', label: 'Compliance', checked: false },
+                { id: 'profitability', label: 'Profitability', checked: false },
+                { id: 'instructions', label: 'Instructions', checked: false },
+            ];
+            const toaClState = { mode: 'single', rows: [], items: [] };
+
+            function toaClStatusColor(d) {
+                const st = String(d.pre_order_checklist_status || '').toLowerCase();
+                if (st === 'clear_to_load') return '#22c55e';
+                if (st === 'escalated') return '#dc3545';
+                const met = parseInt(d.pre_order_checklist_met_count, 10) || 0;
+                const tot = parseInt(d.pre_order_checklist_total_count, 10) || DEFAULT_TOA_CL_ITEMS.length;
+                if (met > 0 && met < tot) return '#f59e0b';
+                return '#94a3b8';
+            }
+            function toaClFormatter(cell) {
+                const d = cell.getRow().getData();
+                const color = toaClStatusColor(d);
+                const met = parseInt(d.pre_order_checklist_met_count, 10) || 0;
+                const tot = parseInt(d.pre_order_checklist_total_count, 10) || DEFAULT_TOA_CL_ITEMS.length;
+                const st = String(d.pre_order_checklist_status || 'pending');
+                const tip = st + ' (' + met + '/' + tot + ')';
+                return '<div class="toa-cl-cell">' +
+                    '<span class="toa-cl-dot" style="background:' + color + ';" title="' + escapeHtmlAttr(tip) + '"></span>' +
+                    '<button type="button" class="btn btn-link btn-sm p-0 toa-cl-open-btn" title="Pre-Order checklist">' +
+                    '<i class="mdi mdi-magnify" style="font-size:18px;color:#3bc0c3;line-height:1;"></i></button></div>';
+            }
+            function mergeToaClItemsFromRow(d) {
+                const raw = d && d.pre_order_checklist_items;
+                if (!Array.isArray(raw) || !raw.length) {
+                    return DEFAULT_TOA_CL_ITEMS.map(function (i) { return { id: i.id, label: i.label, checked: false }; });
+                }
+                return raw.map(function (i) {
+                    return { id: String(i.id || ''), label: String(i.label || ''), checked: !!i.checked };
+                });
+            }
+            function cloneToaClItems(items) {
+                return (items || []).map(function (i) {
+                    return { id: i.id, label: i.label, checked: !!i.checked };
+                });
+            }
+            function toaAllClItemsChecked(items) {
+                if (!items || !items.length) return false;
+                return items.every(function (i) { return i.checked; });
+            }
+            function renderToaClItemsList() {
+                const box = document.getElementById('toa-cl-items-list');
+                if (!box) return;
+                let html = '';
+                toaClState.items.forEach(function (item, idx) {
+                    const id = 'toa-cl-chk-' + idx;
+                    html += '<div class="toa-cl-item-row" data-idx="' + idx + '">' +
+                        '<div class="form-check">' +
+                        '<input class="form-check-input toa-cl-item-chk" type="checkbox" id="' + id + '" data-idx="' + idx + '"' + (item.checked ? ' checked' : '') + '>' +
+                        '<label class="form-check-label" for="' + id + '">' + escapeHtmlAttr(item.label) + '</label></div>' +
+                        '<button type="button" class="btn btn-link btn-sm p-0 toa-cl-remove-item" data-idx="' + idx + '" title="Remove point"><i class="fas fa-times"></i></button></div>';
+                });
+                box.innerHTML = html || '<p class="text-muted small mb-0">No checklist points — add one below.</p>';
+                syncToaClActionButtons();
+            }
+            function syncToaClActionButtons() {
+                const allMet = toaAllClItemsChecked(toaClState.items);
+                const clearBtn = document.getElementById('toa-cl-clear-btn');
+                const escalateBtn = document.getElementById('toa-cl-escalate-btn');
+                if (clearBtn) clearBtn.disabled = !allMet;
+                if (escalateBtn) escalateBtn.disabled = allMet;
+            }
+            function openToaClModal(mode, rows) {
+                toaClState.mode = mode;
+                toaClState.rows = rows || [];
+                const titleEl = document.getElementById('toa-cl-modal-title');
+                const subEl = document.getElementById('toa-cl-modal-subtitle');
+                const noteEl = document.getElementById('toa-cl-escalation-note');
+                const statusEl = document.getElementById('toa-cl-status');
+                if (statusEl) statusEl.innerHTML = '';
+                if (noteEl) noteEl.value = '';
+
+                if (mode === 'bulk') {
+                    titleEl.textContent = '';
+                    titleEl.innerHTML = '<span class="badge bg-warning text-dark">' + toaClState.rows.length + ' rows</span>';
+                    subEl.textContent = 'Apply the same checklist to all ' + toaClState.rows.length + ' selected rows. Add or remove points as needed.';
+                    toaClState.items = cloneToaClItems(DEFAULT_TOA_CL_ITEMS);
+                } else {
+                    const d = toaClState.rows[0] ? toaClState.rows[0].getData() : {};
+                    titleEl.textContent = d.SKU || '';
+                    subEl.textContent = 'Item-wise checklist before ORDER. All points must be met to Clear to load; otherwise Escalate.';
+                    toaClState.items = mergeToaClItemsFromRow(d);
+                    if (d.pre_order_checklist_escalation_note) {
+                        noteEl.value = d.pre_order_checklist_escalation_note;
+                    }
+                }
+                renderToaClItemsList();
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('toaPreOrderClModal')).show();
+            }
+            function patchToaRowClData(row, payload) {
+                if (!row || !payload) return;
+                const items = payload.items || toaClState.items;
+                row.update({
+                    pre_order_checklist_items: items,
+                    pre_order_checklist_status: payload.status,
+                    pre_order_checklist_escalation_note: payload.escalation_note || null,
+                    pre_order_checklist_met_count: payload.met_count != null ? payload.met_count : items.filter(function (i) { return i.checked; }).length,
+                    pre_order_checklist_total_count: payload.total_count != null ? payload.total_count : items.length,
+                });
+            }
+            function findToaRowBySku(sku) {
+                if (!table || !sku) return null;
+                const s = String(sku).trim().toUpperCase();
+                return table.getRows().find(function (r) {
+                    return String(r.getData().SKU || '').trim().toUpperCase() === s;
+                }) || null;
+            }
+            async function saveToaClChecklist(action) {
+                const statusEl = document.getElementById('toa-cl-status');
+                const note = (document.getElementById('toa-cl-escalation-note').value || '').trim();
+                const items = toaClState.items.map(function (i) {
+                    return { id: i.id, label: i.label, checked: !!i.checked };
+                });
+                const csrf = document.querySelector('meta[name="csrf-token"]').content;
+
+                if (action === 'clear_to_load' && !toaAllClItemsChecked(items)) {
+                    if (statusEl) statusEl.innerHTML = '<span class="text-danger">All points must be checked before Clear to load.</span>';
+                    return;
+                }
+                if (action === 'escalate' && toaAllClItemsChecked(items)) {
+                    if (statusEl) statusEl.innerHTML = '<span class="text-warning">All points are met — use Clear to load instead.</span>';
+                    return;
+                }
+                if (action === 'escalate' && !note) {
+                    if (statusEl) statusEl.innerHTML = '<span class="text-danger">Please enter an escalation note.</span>';
+                    return;
+                }
+
+                const clearBtn = document.getElementById('toa-cl-clear-btn');
+                const escalateBtn = document.getElementById('toa-cl-escalate-btn');
+                if (clearBtn) clearBtn.disabled = true;
+                if (escalateBtn) escalateBtn.disabled = true;
+                if (statusEl) statusEl.innerHTML = '<span class="text-muted"><i class="fas fa-spinner fa-spin"></i> Saving…</span>';
+
+                try {
+                    let res;
+                    if (toaClState.mode === 'bulk') {
+                        const rowsPayload = toaClState.rows.map(function (r) {
+                            const d = r.getData();
+                            return {
+                                to_order_analysis_id: d.id || null,
+                                sku: d.SKU || '',
+                            };
+                        });
+                        const r = await fetch('/to-order-analysis/pre-order-checklist/bulk', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrf },
+                            body: JSON.stringify({ rows: rowsPayload, items: items, action: action, escalation_note: note }),
+                        });
+                        res = await r.json();
+                        if (!r.ok) throw new Error(res.message || 'Save failed');
+                        if (res.success && res.data) {
+                            res.data.forEach(function (ref) {
+                                const row = findToaRowBySku(ref.sku);
+                                if (row) patchToaRowClData(row, {
+                                    status: ref.status,
+                                    items: items,
+                                    met_count: ref.met_count,
+                                    total_count: ref.total_count,
+                                    escalation_note: action === 'escalate' ? note : null,
+                                });
+                            });
+                        }
+                    } else {
+                        const row = toaClState.rows[0];
+                        const d = row.getData();
+                        const r = await fetch('/to-order-analysis/pre-order-checklist', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrf },
+                            body: JSON.stringify({
+                                to_order_analysis_id: d.id || null,
+                                sku: d.SKU || '',
+                                items: items,
+                                action: action,
+                                escalation_note: note,
+                            }),
+                        });
+                        res = await r.json();
+                        if (!r.ok) throw new Error(res.message || 'Save failed');
+                        if (res.success && res.data) {
+                            patchToaRowClData(row, res.data);
+                        }
+                    }
+
+                    if (!res.success) {
+                        throw new Error(res.message || 'Save failed');
+                    }
+
+                    if (statusEl) statusEl.innerHTML = '<span class="text-success"><i class="fas fa-check"></i> Saved.</span>';
+                    setTimeout(function () {
+                        bootstrap.Modal.getOrCreateInstance(document.getElementById('toaPreOrderClModal')).hide();
+                    }, 400);
+                } catch (err) {
+                    if (statusEl) statusEl.innerHTML = '<span class="text-danger">' + escapeHtmlAttr(err.message || 'Save failed') + '</span>';
+                } finally {
+                    syncToaClActionButtons();
+                }
+            }
+
             const table = new Tabulator("#toOrderAnalysis-table", {
                 ajaxURL: "/to-order-analysis/data",
                 ajaxConfig: {
@@ -1828,6 +2119,27 @@
                         }
                     },
                     {
+                        title: "Days",
+                        field: "doa_days",
+                        width: 56,
+                        minWidth: 48,
+                        hozAlign: "center",
+                        headerTooltip: "Days since Date of Approval (DOA)",
+                        sorter: function (a, b, aRow, bRow) {
+                            const av = getDaysSinceDoa(aRow.getData());
+                            const bv = getDaysSinceDoa(bRow.getData());
+                            return (av == null ? -1 : av) - (bv == null ? -1 : bv);
+                        },
+                        formatter: function (cell) {
+                            const days = getDaysSinceDoa(cell.getRow().getData());
+                            if (days === null) return '<span class="text-muted">-</span>';
+                            let style = "";
+                            if (days >= 14) style = "color:red;font-weight:700;";
+                            else if (days >= 7) style = "color:#FFC106;font-weight:700;";
+                            return `<span style="${style}">${days}</span>`;
+                        }
+                    },
+                    {
                         title: "Supplier",
                         field: "Supplier",
                         width: 160,
@@ -1865,6 +2177,32 @@
                         formatter: function (cell) {
                             const v = (cell.getValue() || "").trim();
                             return v ? v : '<span class="text-muted">—</span>';
+                        }
+                    },
+                    {
+                        title: "Suppliers",
+                        field: "category_supplier_count",
+                        width: 100,
+                        minWidth: 80,
+                        hozAlign: "center",
+                        headerTooltip: "Total suppliers in this category (from supplier list)",
+                        formatter: function (cell) {
+                            const row = cell.getRow().getData();
+                            const cat = (row.Category || "").trim();
+                            const n = cell.getValue();
+                            if (!cat || n == null || n === '') {
+                                return '<span class="text-muted">—</span>';
+                            }
+                            const catEsc = escapeHtmlAttr(cat);
+                            return `<button type="button" class="btn btn-sm btn-light py-0 px-2 toa-supplier-cat-btn" data-category="${catEsc}" title="${n} suppliers in ${catEsc}">
+                                <i class="mdi mdi-account-group text-info me-1"></i><span class="fw-semibold text-info">${n}</span>
+                            </button>`;
+                        },
+                        cellClick: function (e, cell) {
+                            if (e.target.closest('.toa-supplier-cat-btn')) {
+                                e.stopPropagation();
+                                openSupplierCategoryModal(cell.getRow().getData().Category);
+                            }
                         }
                     },
                     {
@@ -2276,6 +2614,22 @@
                         }
                     },
                     {
+                        title: "CL",
+                        field: "pre_order_checklist_status",
+                        width: 64,
+                        hozAlign: "center",
+                        headerSort: false,
+                        download: false,
+                        headerTooltip: "Pre-Order checklist before ORDER",
+                        formatter: toaClFormatter,
+                        cellClick: function (e, cell) {
+                            if (e.target.closest('.toa-cl-open-btn')) {
+                                e.stopPropagation();
+                                openToaClModal('single', [cell.getRow()]);
+                            }
+                        }
+                    },
+                    {
                         // Action column — opens the shared bulk-edit modal.
                         // Targets = {clicked row} ∪ {checkbox-selected rows},
                         // so a single click works for one row OR for many.
@@ -2295,7 +2649,12 @@
                                 'data-sku="' + sku + '" title="Bulk-edit this row (or all selected rows)">' +
                                 '<i class="mdi mdi-square-edit-outline"></i></button>';
                         },
-                        cellClick: function (e) { e.stopPropagation(); }
+                        cellClick: function (e, cell) {
+                            if (!e.target.closest('.toa-row-action-btn')) return;
+                            e.stopPropagation();
+                            e.preventDefault();
+                            openToaActionModal(cell.getRow());
+                        }
                     },
                 ],
                 ajaxResponse: (url, params, response) => {
@@ -2320,6 +2679,50 @@
             }
 
             let toaBulkSelectionCache = [];
+            let toaActionPendingTargets = null;
+            const toaActionModalState = { currentRows: [], bsModal: null, initialized: false };
+
+            function openToaActionModal(clickedRow) {
+                if (!clickedRow || !toaActionModalState.initialized || !toaActionModalState.bsModal) return;
+
+                const sku = String(clickedRow.getData().SKU || '').trim();
+                toaActionModalState.currentRows = (toaActionPendingTargets && toaActionPendingTargets.length)
+                    ? toaActionPendingTargets
+                    : getToaBulkTargetRows(sku, [clickedRow]);
+                toaActionPendingTargets = null;
+
+                const $supplierSel = $('#toa-action-supplier');
+                const $execSel = $('#toa-action-executive');
+                const $stageSel = $('#toa-action-stage');
+                const $countEl = $('#toa-action-target-count');
+                const $skusEl = $('#toa-action-target-skus');
+
+                resetToaActionModalFields();
+
+                const skuList = toaActionModalState.currentRows.map(function (r) { return r.getData().SKU; })
+                    .filter(Boolean);
+                $countEl.text(toaActionModalState.currentRows.length);
+                $skusEl.text(skuList.length <= 6
+                    ? skuList.join(', ')
+                    : skuList.slice(0, 6).join(', ') + ' (+' + (skuList.length - 6) + ' more)');
+
+                toaActionModalState.bsModal.show();
+            }
+
+            function updateToaBulkEditBadge() {
+                const badge = document.getElementById('toa-bulk-edit-badge');
+                const countEl = document.getElementById('toa-bulk-edit-count');
+                if (!badge || !countEl) return;
+                const n = dedupeToaRows(table ? table.getSelectedRows() : []).length;
+                if (n > 0) {
+                    badge.classList.remove('d-none');
+                    badge.classList.add('d-flex');
+                    countEl.textContent = n + ' selected';
+                } else {
+                    badge.classList.add('d-none');
+                    badge.classList.remove('d-flex');
+                }
+            }
 
             function dedupeToaRows(rows) {
                 const seen = new Set();
@@ -2332,23 +2735,15 @@
                 });
             }
 
-            /** Selected checkbox rows; keeps multi-select when focus moves to a dropdown. */
+            /** Checkbox-selected rows; keeps multi-select when focus moves to Action edit (forecast pattern). */
             function getToaBulkTargetRows(primarySku, extraRows) {
-                const live = dedupeToaRows(table.getSelectedRows());
-                const cached = dedupeToaRows(toaBulkSelectionCache);
-                let selected = cached.length > live.length ? cached : live;
-                if (selected.length > 0) return selected;
+                const merged = dedupeToaRows([
+                    ...(toaBulkSelectionCache || []),
+                    ...(table.getSelectedRows() || []),
+                    ...(extraRows || [])
+                ]);
+                if (merged.length > 0) return merged;
 
-                const rows = [];
-                const seen = new Set();
-                (extraRows || []).forEach(function (r) {
-                    if (!r || !isToaSelectableRow(r)) return;
-                    const sku = String(r.getData().SKU || '').trim();
-                    if (seen.has(sku)) return;
-                    seen.add(sku);
-                    rows.push(r);
-                });
-                if (rows.length) return rows;
                 if (primarySku) {
                     const row = table.searchRows('SKU', '=', primarySku)[0];
                     if (row && isToaSelectableRow(row)) return [row];
@@ -2419,6 +2814,149 @@
                     else failed.push(res.sku + (res.error ? ': ' + res.error : ''));
                 }
                 return { ok: ok, failed: failed, skippedMoq: skippedMoq };
+            }
+
+            async function applyMoqToRows(rows, moqVal) {
+                const num = parseInt(moqVal, 10);
+                if (isNaN(num) || num < 0) {
+                    throw new Error('MOQ must be a non-negative number');
+                }
+                const failed = [];
+                let ok = 0;
+                for (let i = 0; i < rows.length; i++) {
+                    const d = rows[i].getData();
+                    const sku = String(d.SKU || '').trim();
+                    if (!sku || sku.startsWith('PARENT')) continue;
+                    try {
+                        await saveToaMoq(d, num);
+                        rows[i].update({ approved_qty: num }, true);
+                        ok++;
+                    } catch (e) {
+                        failed.push(sku + ': ' + (e.message || 'error'));
+                    }
+                }
+                updateCounts();
+                return { ok: ok, failed: failed };
+            }
+
+            async function applyNrpToRows(rows, nrpVal) {
+                const value = String(nrpVal || '').trim().toUpperCase();
+                const failed = [];
+                let ok = 0;
+                for (let i = 0; i < rows.length; i++) {
+                    const row = rows[i];
+                    const d = row.getData();
+                    const sku = String(d.SKU || '').trim();
+                    if (!sku || sku.startsWith('PARENT')) continue;
+                    try {
+                        await new Promise(function (resolve, reject) {
+                            updateForecastField({
+                                sku: d.SKU,
+                                parent: d.Parent || '',
+                                column: 'NR',
+                                value: value
+                            }, function () {
+                                row.update({ nr: value }, true);
+                                row.reformat();
+                                resolve();
+                            }, function () {
+                                reject(new Error('save failed'));
+                            });
+                        });
+                        ok++;
+                    } catch (e) {
+                        failed.push(sku + ': ' + (e.message || 'error'));
+                    }
+                }
+                return { ok: ok, failed: failed };
+            }
+
+            async function applyLinkColumnToRows(rows, column, value) {
+                const failed = [];
+                let ok = 0;
+                const fieldMap = {
+                    'Date of Appr': 'Date of Appr',
+                    'Adv date': 'Adv date',
+                    'RFQ Form Link': 'RFQ Form Link',
+                    'Clink': 'Clink',
+                    'Reviews': 'Reviews'
+                };
+                const dataField = fieldMap[column] || column;
+                const csrf = document.querySelector('meta[name="csrf-token"]').content;
+
+                for (let i = 0; i < rows.length; i++) {
+                    const row = rows[i];
+                    const d = row.getData();
+                    const sku = String(d.SKU || '').trim();
+                    if (!sku || sku.startsWith('PARENT')) continue;
+                    const payload = { sku: sku, column: column, value: value };
+                    if (column === 'Reviews') payload.parent = d.Parent || '';
+                    try {
+                        const res = await fetch('/update-link', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': csrf,
+                                'Accept': 'application/json'
+                            },
+                            body: JSON.stringify(payload)
+                        });
+                        const data = await res.json();
+                        if (!res.ok || !data.success) {
+                            throw new Error(data.message || 'Save failed');
+                        }
+                        row.update({ [dataField]: value }, true);
+                        if (column === 'Date of Appr') row.reformat();
+                        ok++;
+                    } catch (e) {
+                        failed.push(sku + ': ' + (e.message || 'error'));
+                    }
+                }
+                if (column === 'Date of Appr' || column === 'approved_qty') updateCounts();
+                return { ok: ok, failed: failed };
+            }
+
+            async function applyDataFieldToRows(rows, fieldKey, text) {
+                const skipped = [];
+                const failed = [];
+                let ok = 0;
+                for (let i = 0; i < rows.length; i++) {
+                    const row = rows[i];
+                    const d = row.getData();
+                    const sku = String(d.SKU || '').trim();
+                    if (!d.product_master_id) {
+                        if (sku) skipped.push(sku);
+                        continue;
+                    }
+                    try {
+                        const saved = await saveToaDataField(fieldKey, d, text);
+                        row.update({ [fieldKey]: saved }, true);
+                        ok++;
+                    } catch (e) {
+                        failed.push(sku + ': ' + (e.message || 'error'));
+                    }
+                }
+                return { ok: ok, skipped: skipped, failed: failed };
+            }
+
+            function resetToaActionModalFields() {
+                $('#toa-action-supplier, #toa-action-executive, #toa-action-stage, #toa-action-nrp').val('');
+                $('#toa-action-moq, #toa-action-doa, #toa-action-adv-date, #toa-action-clink, #toa-action-rfq').val('');
+                $('#toa-action-reviews, #toa-action-item-pkg, #toa-action-ctn-instr, #toa-action-carton-design').val('');
+            }
+
+            function toaActionHasAnyField() {
+                const checks = [
+                    '#toa-action-moq', '#toa-action-doa', '#toa-action-supplier', '#toa-action-executive',
+                    '#toa-action-nrp', '#toa-action-stage', '#toa-action-adv-date', '#toa-action-clink',
+                    '#toa-action-rfq', '#toa-action-reviews', '#toa-action-item-pkg', '#toa-action-ctn-instr',
+                    '#toa-action-carton-design'
+                ];
+                return checks.some(function (sel) {
+                    const el = document.querySelector(sel);
+                    if (!el) return false;
+                    return String(el.value || '').trim() !== '';
+                });
             }
 
             function applySupplierToRows(rows, supplierName) {
@@ -2509,82 +3047,72 @@
 
             table.on("rowSelectionChanged", function(data, rows) {
                 toaBulkSelectionCache = dedupeToaRows(rows || table.getSelectedRows());
-                if (data.length > 0) {
-                    $('#delete-selected-btn').removeClass('d-none');
-                } else {
-                    $('#delete-selected-btn').addClass('d-none');
-                }
+                updateToaBulkEditBadge();
             });
 
-            deleteWithSelect();
+            // Snapshot checkbox selection on mousedown before Tabulator collapses it (forecast pattern).
+            document.addEventListener('mousedown', function (e) {
+                const btn = e.target.closest('.toa-row-action-btn');
+                if (!btn) return;
+                const rowEl = btn.closest('.tabulator-row');
+                if (!rowEl || !table) return;
+                const clickedRow = table.getRow(rowEl);
+                toaActionPendingTargets = dedupeToaRows([
+                    ...(toaBulkSelectionCache || []),
+                    ...(table.getSelectedRows() || []),
+                    ...(clickedRow ? [clickedRow] : [])
+                ]);
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+            }, true);
+
             initActionColumn();
 
             // -----------------------------------------------------------------
             // Action column — replaces the previous bulk-actions toolbar.
             //
             // Per-row Action button opens a single shared modal where the user
-            // can pick a Supplier, an Executive and/or a Stage. Targets =
-            // (clicked row) ∪ (checkbox-selected rows), deduped. Only fields
-            // the user actually fills are applied; blank fields are skipped.
+            // can bulk-edit any editable grid field. Targets = (clicked row) ∪
+            // (checkbox-selected rows), deduped. Only filled fields are applied.
             //
-            // Backed by the same endpoints the previous bulk toolbar used:
-            //   • POST {{ route('to.order.analysis.bulk.supplier') }}
-            //   • POST /to-order-analysis/bulk-update-exec
-            //   • POST /update-forecast-data  (and /mfrg-progresses/insert for MIP)
+            // Endpoints match inline editors:
+            //   • /update-link (MOQ, DOA, C link, RFQ, Adv date, Reviews)
+            //   • bulk supplier / bulk exec routes
+            //   • /update-forecast-data (NRP, Stage)
+            //   • instruction endpoints (Item Pkg, Instr Carton, Design Instr Carton)
             // -----------------------------------------------------------------
             function initActionColumn() {
                 const modalEl = document.getElementById('toaActionModal');
                 if (!modalEl) return;
-                const bsModal = bootstrap.Modal.getOrCreateInstance(modalEl);
+                toaActionModalState.bsModal = bootstrap.Modal.getOrCreateInstance(modalEl);
+                toaActionModalState.initialized = true;
                 const $supplierSel = $('#toa-action-supplier');
                 const $execSel     = $('#toa-action-executive');
                 const $stageSel    = $('#toa-action-stage');
-                const $countEl     = $('#toa-action-target-count');
-                const $skusEl      = $('#toa-action-target-skus');
                 const applyBtn     = document.getElementById('toa-action-apply-btn');
 
-                // Targets state for the currently-open modal session.
-                let currentRows = [];
-
-                // Opening the modal from the per-row Action button.
-                $(document).off('click.toaAction').on('click.toaAction', '.toa-row-action-btn', function (e) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    const clickedRow = table.getRow($(this).closest('.tabulator-row')[0]);
-                    if (!clickedRow) return;
-
-                    currentRows = getToaBulkTargetRows(
-                        String(clickedRow.getData().SKU || '').trim(),
-                        [clickedRow]
-                    );
-
-                    // Reset the form between opens so leftover values don't bleed
-                    // into the next session.
-                    $supplierSel.val('');
-                    $execSel.val('');
-                    $stageSel.val('');
-
-                    const skuList = currentRows.map(function (r) { return r.getData().SKU; })
-                                               .filter(Boolean);
-                    $countEl.text(currentRows.length);
-                    $skusEl.text(skuList.length <= 6
-                        ? skuList.join(', ')
-                        : skuList.slice(0, 6).join(', ') + ' (+' + (skuList.length - 6) + ' more)');
-
-                    bsModal.show();
-                });
-
                 $(applyBtn).off('click.toaActionApply').on('click.toaActionApply', async function () {
+                    const currentRows = toaActionModalState.currentRows;
                     if (!currentRows.length) return;
 
-                    const supplierVal = ($supplierSel.val() || '').trim();
-                    const execVal     = ($execSel.val() || '').trim();
-                    const stageVal    = ($stageSel.val() || '').trim();
-
-                    if (!supplierVal && !execVal && !stageVal) {
-                        alert('Pick at least one field to apply (Supplier, Executive, or Stage).');
+                    if (!toaActionHasAnyField()) {
+                        alert('Fill in at least one field to apply.');
                         return;
                     }
+
+                    const moqVal      = ($('#toa-action-moq').val() || '').trim();
+                    const doaVal      = ($('#toa-action-doa').val() || '').trim();
+                    const supplierVal = ($supplierSel.val() || '').trim();
+                    const execVal     = ($execSel.val() || '').trim();
+                    const nrpVal      = ($('#toa-action-nrp').val() || '').trim();
+                    const stageVal    = ($stageSel.val() || '').trim();
+                    const advDateVal  = ($('#toa-action-adv-date').val() || '').trim();
+                    const clinkVal    = ($('#toa-action-clink').val() || '').trim();
+                    const rfqVal      = ($('#toa-action-rfq').val() || '').trim();
+                    const reviewsVal  = ($('#toa-action-reviews').val() || '').trim();
+                    const itemPkgVal  = ($('#toa-action-item-pkg').val() || '').trim();
+                    const ctnInstrVal = ($('#toa-action-ctn-instr').val() || '').trim();
+                    const cartonDesignVal = ($('#toa-action-carton-design').val() || '').trim();
 
                     const summary = [];
                     const origHtml = applyBtn.innerHTML;
@@ -2592,6 +3120,18 @@
                     applyBtn.innerHTML = '<i class="mdi mdi-loading mdi-spin me-1"></i> Applying...';
 
                     try {
+                        if (moqVal) {
+                            const res = await applyMoqToRows(currentRows, moqVal);
+                            let line = 'MOQ → ' + moqVal + ': ' + res.ok + ' row(s)';
+                            if (res.failed.length) line += ' • errors: ' + res.failed.join('; ');
+                            summary.push(line);
+                        }
+                        if (doaVal) {
+                            const res = await applyLinkColumnToRows(currentRows, 'Date of Appr', doaVal);
+                            let line = 'DOA → ' + doaVal + ': ' + res.ok + ' row(s)';
+                            if (res.failed.length) line += ' • errors: ' + res.failed.join('; ');
+                            summary.push(line);
+                        }
                         if (supplierVal) {
                             const res = await applySupplierToRows(currentRows, supplierVal);
                             summary.push('Supplier → ' + supplierVal + ': ' + res.ok + ' row(s)' +
@@ -2603,6 +3143,12 @@
                             summary.push('Executive → ' + label + ': ' + res.ok + ' row(s)' +
                                 (res.skipped ? ' (' + res.skipped + ' parent/empty skipped)' : ''));
                         }
+                        if (nrpVal) {
+                            const res = await applyNrpToRows(currentRows, nrpVal);
+                            let line = 'NRP → ' + nrpVal + ': ' + res.ok + ' row(s)';
+                            if (res.failed.length) line += ' • errors: ' + res.failed.join('; ');
+                            summary.push(line);
+                        }
                         if (stageVal) {
                             const res = await applyStageToRows(currentRows, stageVal);
                             let line = 'Stage → ' + stageVal + ': ' + res.ok + ' row(s)';
@@ -2610,10 +3156,56 @@
                             if (res.failed.length)     line += ' • errors: ' + res.failed.join('; ');
                             summary.push(line);
                         }
+                        if (advDateVal) {
+                            const res = await applyLinkColumnToRows(currentRows, 'Adv date', advDateVal);
+                            let line = 'Adv date → ' + advDateVal + ': ' + res.ok + ' row(s)';
+                            if (res.failed.length) line += ' • errors: ' + res.failed.join('; ');
+                            summary.push(line);
+                        }
+                        if (clinkVal) {
+                            const res = await applyLinkColumnToRows(currentRows, 'Clink', clinkVal);
+                            let line = 'C link: ' + res.ok + ' row(s)';
+                            if (res.failed.length) line += ' • errors: ' + res.failed.join('; ');
+                            summary.push(line);
+                        }
+                        if (rfqVal) {
+                            const res = await applyLinkColumnToRows(currentRows, 'RFQ Form Link', rfqVal);
+                            let line = 'RFQ Form Link: ' + res.ok + ' row(s)';
+                            if (res.failed.length) line += ' • errors: ' + res.failed.join('; ');
+                            summary.push(line);
+                        }
+                        if (reviewsVal) {
+                            const res = await applyLinkColumnToRows(currentRows, 'Reviews', reviewsVal);
+                            let line = 'Reviews: ' + res.ok + ' row(s)';
+                            if (res.failed.length) line += ' • errors: ' + res.failed.join('; ');
+                            summary.push(line);
+                        }
+                        if (itemPkgVal) {
+                            const res = await applyDataFieldToRows(currentRows, 'instructions_item_pkg', itemPkgVal);
+                            let line = 'Item Pkg.: ' + res.ok + ' row(s)';
+                            if (res.skipped.length) line += ' • skipped (no product ID): ' + res.skipped.join(', ');
+                            if (res.failed.length) line += ' • errors: ' + res.failed.join('; ');
+                            summary.push(line);
+                        }
+                        if (ctnInstrVal) {
+                            const res = await applyDataFieldToRows(currentRows, 'ctn_instructions', ctnInstrVal);
+                            let line = 'Instr Carton: ' + res.ok + ' row(s)';
+                            if (res.skipped.length) line += ' • skipped (no product ID): ' + res.skipped.join(', ');
+                            if (res.failed.length) line += ' • errors: ' + res.failed.join('; ');
+                            summary.push(line);
+                        }
+                        if (cartonDesignVal) {
+                            const res = await applyDataFieldToRows(currentRows, 'instructions_carton_design', cartonDesignVal);
+                            let line = 'Design Instr Carton: ' + res.ok + ' row(s)';
+                            if (res.skipped.length) line += ' • skipped (no product ID): ' + res.skipped.join(', ');
+                            if (res.failed.length) line += ' • errors: ' + res.failed.join('; ');
+                            summary.push(line);
+                        }
 
-                        bsModal.hide();
+                        toaActionModalState.bsModal.hide();
                         table.deselectRow();
                         toaBulkSelectionCache = [];
+                        updateToaBulkEditBadge();
                         alert('Done.\n\n' + summary.join('\n'));
                     } catch (err) {
                         alert('Error: ' + (err.message || 'Something went wrong'));
@@ -2621,47 +3213,6 @@
                         applyBtn.disabled = false;
                         applyBtn.innerHTML = origHtml;
                     }
-                });
-            }
-
-            function deleteWithSelect() {
-                const deleteBtn = document.getElementById('delete-selected-btn');
-
-                table.on("rowSelectionChanged", function(data, rows) {
-                    deleteBtn.disabled = data.length === 0;
-                });
-
-                deleteBtn.addEventListener('click', function() {
-                    const selectedRows = table.getSelectedRows();
-
-                    if (selectedRows.length === 0) {
-                        alert("Please select rows to delete.");
-                        return;
-                    }
-
-                    if (!confirm(`Are you sure you want to delete ${selectedRows.length} row(s)?`)) return;
-
-                    const idsToDelete = selectedRows.map(row => row.getData().id);
-
-                    fetch('/to-order-analysis/delete', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'X-CSRF-TOKEN': '{{ csrf_token() }}',
-                            },
-                            body: JSON.stringify({
-                                ids: idsToDelete
-                            }),
-                        })
-                        .then(res => res.json())
-                        .then(response => {
-                            if (response.success) {
-                                selectedRows.forEach(row => row.delete());
-                            } else {
-                                alert('Deletion failed');
-                            }
-                        })
-                        .catch(() => alert('Error deleting rows'));
                 });
             }
 
@@ -3017,23 +3568,50 @@
                 supplierKeys = [...new Set(tableData.map(r => r.Supplier).filter(Boolean))];
             }
 
+            // Parse DOA and return days since approval (local midnight), or null if missing/invalid.
+            function parseDoaDate(value) {
+                if (!value) return null;
+                let d;
+                const parts = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
+                if (parts) {
+                    d = new Date(parseInt(parts[1], 10), parseInt(parts[2], 10) - 1, parseInt(parts[3], 10));
+                } else {
+                    d = new Date(value);
+                }
+                if (isNaN(d.getTime())) return null;
+                d.setHours(0, 0, 0, 0);
+                return d;
+            }
+
+            function getDaysSinceDoa(row) {
+                const d = parseDoaDate(row["Date of Appr"]);
+                if (!d) return null;
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                return Math.floor((today - d) / (1000 * 60 * 60 * 24));
+            }
+
             // Get DOA color
             function getRowColor(row) {
-                const value = row["Date of Appr"];
-                if (!value) return "";
-                const doa = new Date(value);
-                const today = new Date();
-                const diffDays = Math.floor((today - doa) / (1000*60*60*24));
-                if(diffDays>=14) return "red";
-                if(diffDays>=7) return "yellow";
+                const diffDays = getDaysSinceDoa(row);
+                if (diffDays === null) return "";
+                if (diffDays >= 14) return "red";
+                if (diffDays >= 7) return "yellow";
                 return "green";
+            }
+
+            function formatToaBadgeK(value) {
+                const n = parseFloat(value);
+                if (!Number.isFinite(n)) return '0';
+                if (n >= 1000) return Math.round(n / 1000).toLocaleString('en-US') + 'K';
+                return Math.round(n).toLocaleString('en-US');
             }
 
             // Update counts & totals based on filtered rows
             function updateCounts() {
                 const tableData = table.getData("active"); 
                 let green=0, yellow=0, red=0;
-                let totalApproved=0, pendingItems=0, totalCBM=0;
+                let totalApproved=0, pendingItems=0, totalCBM=0, totalOrderDays=0, totalOrderValue=0;
 
                 tableData.forEach(row => {
                     const color = getRowColor(row);
@@ -3047,8 +3625,14 @@
                     // regardless of whether an MOQ has been set yet.
                     pendingItems++;
 
+                    const days = getDaysSinceDoa(row);
+                    if (days !== null) totalOrderDays += days;
+
                     const cbm = parseFloat(row["total_cbm"]) || 0;
                     totalCBM += cbm;
+
+                    const cp = parseFloat(row.CP) || 0;
+                    totalOrderValue += cp * qty;
                 });
 
                 // Update the display counts immediately
@@ -3058,6 +3642,17 @@
                 document.getElementById("pendingItemsCount").innerText = pendingItems.toString();
                 document.getElementById("totalApprovedQty").innerText = totalApproved.toString();
                 document.getElementById("totalCBM").innerText = totalCBM.toFixed(0);
+                const orderValueEl = document.getElementById("totalOrderValue");
+                if (orderValueEl) {
+                    orderValueEl.textContent = formatToaBadgeK(totalOrderValue);
+                    orderValueEl.title = 'Order value (CP × MOQ): $' + Math.round(totalOrderValue).toLocaleString('en-US');
+                }
+                const ocdEl = document.getElementById("ocdAverageDays");
+                if (ocdEl) {
+                    const ocd = pendingItems > 0 ? (totalOrderDays / pendingItems) : 0;
+                    ocdEl.textContent = pendingItems > 0 ? ocd.toFixed(1) : "0";
+                    ocdEl.title = "Order Completion Days — sum of days since DOA (" + totalOrderDays + ") ÷ pending rows (" + pendingItems + ")";
+                }
             }
 
             // Apply all filters + optional supplier override (from nav play uses supplierOverride)
@@ -3066,11 +3661,8 @@
                 const pending = document.getElementById("row-data-pending-status").value;
                 const stage = document.getElementById("stage-filter").value.toLowerCase().trim();
                 const moqFilter = (document.getElementById("moq-filter") && document.getElementById("moq-filter").value) || "";
-                const searchText = document.getElementById("search-input").value.trim().toLowerCase();
                 const supplierFilterEl = document.getElementById("supplier-filter");
                 const supplierFilter = supplierOverride != null ? supplierOverride : (supplierFilterEl ? supplierFilterEl.value.trim() : '');
-                const categoryFilterEl = document.getElementById("category-filter");
-                const categoryFilter = categoryFilterEl ? categoryFilterEl.value.trim() : '';
                 const executiveFilterEl = document.getElementById("executive-filter");
                 const executiveFilter = executiveFilterEl ? executiveFilterEl.value.trim() : '';
                 const skuFilterEl = document.getElementById("sku-filter");
@@ -3099,13 +3691,6 @@
                             keep = keep && (row.Supplier || '').trim().toLowerCase() === supplierFilter.toLowerCase();
                         }
                     }
-                    if (categoryFilter) {
-                        if (categoryFilter === '__blank__') {
-                            keep = keep && (row.Category || '').trim() === '';
-                        } else {
-                            keep = keep && (row.Category || '').trim().toLowerCase() === categoryFilter.toLowerCase();
-                        }
-                    }
                     if (executiveFilter) {
                         const exec = (row.Exec || '').trim();
                         if (executiveFilter === '__unassigned__') {
@@ -3117,7 +3702,6 @@
                     if (skuFilter) {
                         keep = keep && (row.SKU || '').toString().toLowerCase().includes(skuFilter);
                     }
-                    if (searchText) keep = keep && Object.values(row).some(val => val && val.toString().toLowerCase().includes(searchText));
 
                     return keep;
                 });
@@ -3176,7 +3760,6 @@
             document.getElementById("stage-filter").addEventListener("change", () => applyFilters());
             document.getElementById("moq-filter").addEventListener("change", () => applyFilters());
             document.getElementById("supplier-filter").addEventListener("change", () => applyFilters());
-            document.getElementById("category-filter").addEventListener("change", () => applyFilters());
             (function () {
                 const el = document.getElementById("executive-filter");
                 if (el) el.addEventListener("change", () => applyFilters());
@@ -3199,27 +3782,6 @@
                     });
                 }
                 syncClear();
-            })();
-            document.getElementById("search-input").addEventListener("input", debounce(() => applyFilters(), 300));
-
-            (function setupSearchClear() {
-                const input = document.getElementById("search-input");
-                const clearBtn = document.getElementById("search-input-clear");
-                if (!input || !clearBtn) return;
-                const group = input.closest('.toa-table-search-group');
-                const sync = () => {
-                    if (!group) return;
-                    if ((input.value || '').length > 0) group.classList.add('has-value');
-                    else group.classList.remove('has-value');
-                };
-                input.addEventListener('input', sync);
-                clearBtn.addEventListener('click', () => {
-                    input.value = '';
-                    sync();
-                    input.dispatchEvent(new Event('input', { bubbles: true }));
-                    input.focus();
-                });
-                sync();
             })();
 
             document.getElementById("stage-filter").value = "";
@@ -3627,9 +4189,50 @@
                 reloadTableWithFilters();
             });
 
+            document.getElementById('toa-cl-items-list').addEventListener('change', function (e) {
+                const chk = e.target.closest('.toa-cl-item-chk');
+                if (!chk) return;
+                const idx = parseInt(chk.dataset.idx, 10);
+                if (toaClState.items[idx]) toaClState.items[idx].checked = chk.checked;
+                syncToaClActionButtons();
+            });
+            document.getElementById('toa-cl-items-list').addEventListener('click', function (e) {
+                const btn = e.target.closest('.toa-cl-remove-item');
+                if (!btn) return;
+                const idx = parseInt(btn.dataset.idx, 10);
+                if (!isNaN(idx)) {
+                    toaClState.items.splice(idx, 1);
+                    renderToaClItemsList();
+                }
+            });
+            document.getElementById('toa-cl-add-item-btn').addEventListener('click', function () {
+                const input = document.getElementById('toa-cl-new-item');
+                const label = (input.value || '').trim();
+                if (!label) return;
+                const id = 'custom_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+                toaClState.items.push({ id: id, label: label, checked: false });
+                input.value = '';
+                renderToaClItemsList();
+            });
+            document.getElementById('toa-cl-new-item').addEventListener('keydown', function (e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    document.getElementById('toa-cl-add-item-btn').click();
+                }
+            });
+            document.getElementById('toa-cl-clear-btn').addEventListener('click', function () { saveToaClChecklist('clear_to_load'); });
+            document.getElementById('toa-cl-escalate-btn').addEventListener('click', function () { saveToaClChecklist('escalate'); });
+            document.getElementById('toa-bulk-cl-btn').addEventListener('click', function () {
+                const selected = dedupeToaRows(table.getSelectedRows() || []);
+                if (!selected.length) {
+                    alert('Select one or more rows with checkboxes first.');
+                    return;
+                }
+                openToaClModal('bulk', selected);
+            });
+
             function reloadTableWithFilters() {
                 const stage = document.getElementById("stage-filter").value;
-                const searchText = document.getElementById("search-input").value.trim();
                 const nrpFilter = document.getElementById("nrp-filter").value;
                 
                 let showNR = '0';
@@ -3644,7 +4247,6 @@
                 // Update AJAX URL with parameters
                 const params = new URLSearchParams({
                     stage: stage || '',
-                    search: searchText || '',
                     showNR: showNR,
                     showLATER: showLATER
                 });
