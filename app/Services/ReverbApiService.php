@@ -15,9 +15,13 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\URL;
+use App\Services\Support\SavesMarketplaceVideoMetrics;
+use App\Services\Support\VideoMasterMarketplaceMethods;
 
 class ReverbApiService
 {
+    use SavesMarketplaceVideoMetrics;
+    use VideoMasterMarketplaceMethods;
     protected $clientId;
 
     protected $clientSecret;
@@ -2038,6 +2042,171 @@ class ReverbApiService
         }
 
         return $res;
+    }
+
+    /**
+     * Try payloads Reverb accepts when applying a product video URL.
+     */
+    private function putReverbListingVideo(string $token, string $listingId, string $videoUrl): Response
+    {
+        $variants = [
+            ['video_url' => $videoUrl],
+            ['product_video_url' => $videoUrl],
+            ['video' => ['url' => $videoUrl]],
+            ['videos' => [$videoUrl]],
+        ];
+        $last = null;
+        foreach ($variants as $payload) {
+            $last = $this->reverbPutListingWithRetry($token, $listingId, $payload);
+            if ($last->successful()) {
+                return $last;
+            }
+            Log::warning('Reverb PUT listing video attempt failed', [
+                'listing_id' => $listingId,
+                'status' => $last->status(),
+                'body' => mb_substr($last->body(), 0, 800),
+            ]);
+        }
+
+        return $last;
+    }
+
+    /**
+     * Replace listing product video by public HTTPS URL.
+     *
+     * @param  list<string>  $videoUrls
+     * @return array{success: bool, message: string, listing_id?: string, normalized_urls?: list<string>}
+     */
+    public function updateListingVideos(string $identifier, array $videoUrls, string $mode = 'replace'): array
+    {
+        $token = self::getReverbBearerToken();
+        if (! $token) {
+            return ['success' => false, 'message' => 'Reverb API token not configured (set REVERB_CLIENT_ID + REVERB_CLIENT_SECRET or REVERB_TOKEN).'];
+        }
+
+        $urls = array_values(array_filter(array_map('trim', $videoUrls), fn ($s) => $s !== ''));
+        $urls = array_slice($urls, 0, 3);
+        foreach ($urls as $url) {
+            if (! preg_match('#^https?://#i', $url)) {
+                return ['success' => false, 'message' => 'Invalid video URL (must be http/https).'];
+            }
+        }
+        if ($urls === []) {
+            return ['success' => false, 'message' => 'At least one video URL is required.'];
+        }
+
+        $trim = trim($identifier);
+        if ($trim === '') {
+            return ['success' => false, 'message' => 'SKU or listing_id is required.'];
+        }
+
+        $listingId = $this->resolveReverbListingId($trim);
+        if ($listingId === null) {
+            return ['success' => false, 'message' => 'No Reverb listing found for SKU or reverb_listing_id.'];
+        }
+
+        try {
+            $response = $this->putReverbListingVideo($token, (string) $listingId, $urls[0]);
+
+            if ($response->successful()) {
+                return [
+                    'success' => true,
+                    'message' => 'Reverb listing video updated.',
+                    'listing_id' => $listingId,
+                    'normalized_urls' => [$urls[0]],
+                ];
+            }
+
+            return [
+                'success' => false,
+                'message' => 'Reverb API error (HTTP '.$response->status().'): '.mb_substr($response->body(), 0, 2000),
+                'listing_id' => $listingId,
+            ];
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage(), 'listing_id' => $listingId];
+        }
+    }
+
+    /**
+     * Video Master compatibility method: push video then persist video_master_json in reverb_products.
+     *
+     * @param  list<string>  $videos
+     * @return array{success: bool, message: string, listing_id?: string, normalized_urls?: list<string>}
+     */
+    public function updateVideos(string $identifier, array $videos, string $mode = 'replace'): array
+    {
+        $videos = array_slice(array_values(array_unique(array_filter(array_map('trim', $videos), fn ($v) => $v !== ''))), 0, 3);
+        if ($videos === [] && strtolower(trim($mode)) !== 'replace') {
+            return ['success' => true, 'message' => 'No videos to add; skipped.'];
+        }
+        if ($videos === []) {
+            return ['success' => false, 'message' => 'At least one video URL is required.'];
+        }
+
+        $res = $this->updateListingVideos($identifier, $videos, $mode);
+        if (! ($res['success'] ?? false)) {
+            return $res;
+        }
+
+        $trim = trim($identifier);
+        $listingId = (string) ($res['listing_id'] ?? '');
+        $toSave = isset($res['normalized_urls']) && is_array($res['normalized_urls']) ? $res['normalized_urls'] : $videos;
+        $saved = $this->saveVideoUrlsToReverbProducts($trim, $listingId, $toSave);
+        if (! $saved) {
+            $res['message'] = ($res['message'] ?? 'Reverb listing video updated.').' Metrics save failed.';
+        }
+
+        return $res;
+    }
+
+    /**
+     * @param  list<string>  $videos
+     */
+    private function saveVideoUrlsToReverbProducts(string $identifier, string $listingId, array $videos): bool
+    {
+        try {
+            if (! Schema::hasTable('reverb_products')) {
+                return false;
+            }
+            $payload = json_encode(array_values($videos), JSON_UNESCAPED_SLASHES);
+            if ($payload === false) {
+                return false;
+            }
+
+            $update = [];
+            if (Schema::hasColumn('reverb_products', 'video_master_json')) {
+                $update['video_master_json'] = $payload;
+            }
+            if (Schema::hasColumn('reverb_products', 'video_urls')) {
+                $update['video_urls'] = $payload;
+            }
+            if ($update === []) {
+                return false;
+            }
+
+            $query = ReverbProduct::query();
+            $matched = false;
+            if ($identifier !== '') {
+                $count = (clone $query)
+                    ->where(function ($q) use ($identifier) {
+                        $q->where('sku', $identifier)
+                            ->orWhere('sku', strtoupper($identifier))
+                            ->orWhere('sku', strtolower($identifier));
+                    })
+                    ->update($update);
+                $matched = $count > 0;
+            }
+            if (! $matched && $listingId !== '') {
+                $count = ReverbProduct::query()->where('reverb_listing_id', $listingId)->update($update);
+                $matched = $count > 0;
+            }
+
+            return $matched;
+        } catch (\Throwable $e) {
+            Log::warning('Reverb video metrics save failed', ['identifier' => $identifier, 'listing_id' => $listingId, 'error' => $e->getMessage()]);
+
+            return false;
+        }
     }
 
     /**

@@ -241,6 +241,7 @@ use App\Http\Controllers\ProductMaster\DescriptionMaster2Controller;
 use App\Http\Controllers\ProductMaster\DescriptionMasterController;
 use App\Http\Controllers\ProductMaster\ForecastAnalysisController;
 use App\Http\Controllers\ProductMaster\ImageMasterController;
+use App\Http\Controllers\ProductMaster\VideoMasterController;
 use App\Http\Controllers\ProductMaster\MovementAnalysisController;
 use App\Http\Controllers\ProductMaster\PrAnalysisController;
 use App\Http\Controllers\ProductMaster\PricingAnalysisController;
@@ -3345,6 +3346,23 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/image-master/shopify-pull/pause', [ImageMasterController::class, 'pauseShopifyPullJob'])->name('image.master.shopify.pull.pause');
     Route::post('/image-master/shopify-pull/resume', [ImageMasterController::class, 'resumeShopifyPullJob'])->name('image.master.shopify.pull.resume');
     Route::post('/image-master/shopify-pull/stop', [ImageMasterController::class, 'stopShopifyPullJob'])->name('image.master.shopify.pull.stop');
+
+    Route::get('/video-master', [VideoMasterController::class, 'index'])->name('video.master');
+    Route::get('/video-master-data', [VideoMasterController::class, 'getData'])->name('video.master.data');
+    Route::post('/video-master/push', [VideoMasterController::class, 'pushToMarketplace'])->name('video.master.push');
+    Route::get('/video-master/push/status', [VideoMasterController::class, 'pushJobStatus'])->name('video.master.push.status');
+    Route::post('/video-master/save-pm', [VideoMasterController::class, 'saveProductMasterVideos'])->name('video.master.save.pm');
+    Route::post('/video-master/upload', [VideoMasterController::class, 'uploadVideos'])->name('video.master.upload');
+    Route::get('/video-master/amazon-videos', [VideoMasterController::class, 'getAmazonVideos'])->name('video.master.amazon.videos');
+    Route::get('/video-master/ebay-videos', [VideoMasterController::class, 'getEbayVideos'])->name('video.master.ebay.videos');
+    Route::get('/video-master/sku-videos', [VideoMasterController::class, 'getSkuVideos'])->name('video.master.sku.videos');
+    Route::delete('/video-master/sku-video/{id}', [VideoMasterController::class, 'deleteSkuVideo'])->name('video.master.sku.video.delete');
+    Route::post('/video-master/shopify-pull-one', [VideoMasterController::class, 'pullShopifyVideosToMaster'])->name('video.master.shopify.pull.one');
+    Route::post('/video-master/shopify-pull/start', [VideoMasterController::class, 'startShopifyPullJob'])->name('video.master.shopify.pull.start');
+    Route::get('/video-master/shopify-pull/status', [VideoMasterController::class, 'shopifyPullJobStatus'])->name('video.master.shopify.pull.status');
+    Route::post('/video-master/shopify-pull/pause', [VideoMasterController::class, 'pauseShopifyPullJob'])->name('video.master.shopify.pull.pause');
+    Route::post('/video-master/shopify-pull/resume', [VideoMasterController::class, 'resumeShopifyPullJob'])->name('video.master.shopify.pull.resume');
+    Route::post('/video-master/shopify-pull/stop', [VideoMasterController::class, 'stopShopifyPullJob'])->name('video.master.shopify.pull.stop');
 
     Route::get('/bullet-point-master', [BulletPointMasterController::class, 'index'])->name('bullet.point.master');
     Route::get('/bullet-point-master-data', [BulletPointMasterController::class, 'getData'])->name('bullet.point.master.data');

@@ -465,6 +465,16 @@ return [
         'goods_desc_field' => env('TEMU_GOODS_DESC_FIELD', 'goodsDesc'),
         /** Carousel / gallery field inside goodsBasic (Temu-hosted URLs after upload). */
         'goods_image_urls_field' => env('TEMU_GOODS_IMAGE_URLS_FIELD', 'carouselImageUrlList'),
+        /** Product video URL list inside goodsBasic (after Temu-hosted upload). */
+        'goods_video_urls_field' => env('TEMU_GOODS_VIDEO_URLS_FIELD', 'productVideoUrlList'),
+        /** Primary video upload `type` (Partner router). */
+        'video_upload_type' => env('TEMU_VIDEO_UPLOAD_TYPE', 'files/upload_video'),
+        /** Comma-separated extra `type` values to try after the primary. */
+        'video_upload_types' => array_values(array_filter(array_map('trim', explode(',', env('TEMU_VIDEO_UPLOAD_TYPES', 'temu.local.video.upload,bg.local.goods.video.upload'))))),
+        /** If true, after URL-based upload fails, download the video and try base64 fields. */
+        'video_upload_try_base64' => filter_var(env('TEMU_VIDEO_UPLOAD_TRY_BASE64', true), FILTER_VALIDATE_BOOLEAN),
+        /** If true, download each video and upload base64 first (large files; use with caution). */
+        'video_upload_prefer_base64' => filter_var(env('TEMU_VIDEO_UPLOAD_PREFER_BASE64', false), FILTER_VALIDATE_BOOLEAN),
         /** Primary image upload `type` (Partner router). Community/docs often use `files/upload_image` with `url`. */
         'image_upload_type' => env('TEMU_IMAGE_UPLOAD_TYPE', 'files/upload_image'),
         /** Comma-separated extra `type` values to try after the primary (e.g. regional variants). */

@@ -7,6 +7,8 @@ use App\Services\Concerns\ResolvesBulletPointIdentifier;
 use App\Services\Support\DescriptionWithImagesFormatter;
 use App\Services\Support\EbaySellInventoryListingResolver;
 use App\Services\Support\EbayTradingReviseItem;
+use App\Services\Support\SavesMarketplaceVideoMetrics;
+use App\Services\Support\VideoMasterMarketplaceMethods;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -17,6 +19,8 @@ use SimpleXMLElement;
 class EbayThreeApiService
 {
     use ResolvesBulletPointIdentifier;
+    use SavesMarketplaceVideoMetrics;
+    use VideoMasterMarketplaceMethods;
 
     protected $appId;
     protected $certId;
@@ -1293,6 +1297,85 @@ class EbayThreeApiService
         $saved = $this->saveImageUrlsToMetrics('ebay_3_metrics', $identifier, $row, $urlsForMetrics);
         if (! $saved) {
             $res['message'] = ($res['message'] ?? 'eBay3 images updated.').' Metrics save failed.';
+        }
+
+        $res['normalized_urls'] = $urlsForMetrics;
+
+        return $res;
+    }
+
+    /**
+     * @param  list<string>  $videoUrls
+     * @return array{success: bool, message: string}
+     */
+    public function updateListingVideos(string $identifier, array $videoUrls): array
+    {
+        return $this->updateVideos($identifier, $videoUrls);
+    }
+
+    /**
+     * Video Master: push product video URL(s) via Trading API VideoDetails.
+     *
+     * @param  list<string>  $videos
+     * @return array{success: bool, message: string, normalized_urls?: list<string>}
+     */
+    public function updateVideos(string $identifier, array $videos, string $mode = 'replace'): array
+    {
+        if (trim($identifier) === '') {
+            return ['success' => false, 'message' => 'SKU (or item_id) is required.'];
+        }
+
+        $videos = array_slice(array_values(array_unique(array_filter(array_map('trim', $videos), fn ($v) => $v !== ''))), 0, 3);
+        if ($videos === []) {
+            return ['success' => false, 'message' => 'At least one video URL is required.'];
+        }
+
+        $row = $this->findMetricRowBySkuOrAlternateIds('ebay_3_metrics', $identifier, ['item_id']);
+        $itemId = isset($row->item_id) && $row->item_id !== '' ? trim((string) $row->item_id) : null;
+
+        try {
+            $token = $this->generateBearerToken();
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+
+        if (! $itemId) {
+            $itemId = EbaySellInventoryListingResolver::resolveWithTradingFallback(
+                $token,
+                $this->endpoint,
+                $this->tradingApiHeadersBase(),
+                trim($identifier)
+            );
+        }
+
+        if (! $itemId) {
+            return ['success' => false, 'message' => 'No eBay3 listing found for this SKU or item_id (check ebay_3_metrics or Inventory / GetSellerList).'];
+        }
+
+        $res = EbayTradingReviseItem::reviseItemVideos(
+            $this->endpoint,
+            $this->compatLevel,
+            $this->devId,
+            $this->appId,
+            $this->certId,
+            $this->siteId,
+            $token,
+            (string) $itemId,
+            $videos
+        );
+
+        if (! ($res['success'] ?? false)) {
+            return $res;
+        }
+
+        $urlsForMetrics = isset($res['normalized_urls']) && is_array($res['normalized_urls'])
+            ? array_values($res['normalized_urls'])
+            : $videos;
+
+        $sku = trim((string) ($row->sku ?? $identifier));
+        $saved = $this->saveVideoUrlsToMetricsRow('ebay_3_metrics', $sku, $urlsForMetrics);
+        if (! $saved) {
+            $res['message'] = ($res['message'] ?? 'eBay3 video updated.').' Metrics save failed.';
         }
 
         $res['normalized_urls'] = $urlsForMetrics;

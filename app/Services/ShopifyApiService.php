@@ -15,10 +15,14 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
+use App\Services\Support\ShopifyProductVideoPushTrait;
+use App\Services\Support\VideoMasterMarketplaceMethods;
 
 class ShopifyApiService
 {
     use ShopifyAdminRateLimitRetry;
+    use ShopifyProductVideoPushTrait;
+    use VideoMasterMarketplaceMethods;
 
     protected $shopifyApiKey;
 
@@ -987,6 +991,180 @@ class ShopifyApiService
         }
 
         return $res;
+    }
+
+    /**
+     * Video Master: push product videos via GraphQL productCreateMedia (VIDEO / EXTERNAL_VIDEO).
+     *
+     * @param  list<string>  $videoUrls
+     * @return array{success: bool, message: string, normalized_urls?: list<string>}
+     */
+    public function updateListingVideos(string $identifier, array $videoUrls, string $mode = 'replace'): array
+    {
+        $urls = array_values(array_filter(array_map('trim', $videoUrls), fn ($s) => $s !== ''));
+        $urls = array_slice($urls, 0, 10);
+
+        if (trim($identifier) === '') {
+            return ['success' => false, 'message' => 'SKU / identifier is required.'];
+        }
+
+        if ($urls === [] && $mode !== 'replace') {
+            return ['success' => true, 'message' => 'No videos to add; skipped.'];
+        }
+
+        foreach ($urls as $u) {
+            if (! preg_match('#^https?://#i', $u)) {
+                return ['success' => false, 'message' => 'Shopify requires publicly reachable http(s) video URLs.'];
+            }
+        }
+
+        try {
+            $domain = config('services.shopify.store_url') ?: config('services.shopify.domain');
+            $token = config('services.shopify.access_token') ?: config('services.shopify.password');
+            if (! $domain || ! $token) {
+                return ['success' => false, 'message' => 'Shopify credentials not configured.'];
+            }
+
+            $domain = rtrim(preg_replace('#^https?://#', '', (string) $domain), '/');
+            $trim = trim($identifier);
+            $variantId = $this->resolveMainStoreVariantId($trim);
+            if (! $variantId) {
+                return ['success' => false, 'message' => 'Shopify variant mapping not found for SKU or variant_id.'];
+            }
+
+            $variantRes = $this->retryOnRateLimit(fn () => Http::withHeaders([
+                'X-Shopify-Access-Token' => $token,
+                'Content-Type' => 'application/json',
+            ])->timeout(60)->connectTimeout(25)->get("https://{$domain}/admin/api/2024-01/variants/{$variantId}.json"));
+
+            if (! $variantRes->successful()) {
+                return ['success' => false, 'message' => 'Variant lookup failed: '.$variantRes->body()];
+            }
+
+            $productId = $variantRes->json('variant.product_id');
+            if (! $productId) {
+                return ['success' => false, 'message' => 'Product ID missing.'];
+            }
+
+            if ($urls !== []) {
+                $normalized = $this->normalizeVideoUrlsForShopifyPush($domain, (string) $token, $urls);
+                if (! ($normalized['success'] ?? false)) {
+                    return ['success' => false, 'message' => (string) ($normalized['message'] ?? 'Video URL resolution failed.')];
+                }
+                $urls = $normalized['urls'] ?? $urls;
+            }
+
+            return $this->attachProductVideosViaGraphql($domain, (string) $token, (string) $productId, $urls, $mode);
+        } catch (\Throwable $e) {
+            Log::error('Shopify updateListingVideos', ['identifier' => $identifier, 'error' => $e->getMessage()]);
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * @param  list<string>  $videos
+     * @return array{success: bool, message: string}
+     */
+    public function updateVideos(string $identifier, array $videos, string $mode = 'replace'): array
+    {
+        $seen = [];
+        $videos = array_values(array_filter(array_map('trim', $videos), function ($v) use (&$seen) {
+            if ($v === '' || isset($seen[$v])) {
+                return false;
+            }
+            $seen[$v] = true;
+
+            return true;
+        }));
+        $videos = array_slice($videos, 0, 10);
+
+        if ($videos === [] && $mode !== 'replace') {
+            return ['success' => true, 'message' => 'No videos to add; skipped.'];
+        }
+        if ($videos === [] && $mode === 'replace') {
+            $res = $this->updateListingVideos($identifier, [], 'replace');
+            if ($res['success'] ?? false) {
+                $this->saveVideoUrlsToShopifyCatalog('main', $identifier, []);
+            }
+
+            return $res;
+        }
+
+        foreach ($videos as $url) {
+            if (! preg_match('#^https?://#i', $url)) {
+                return ['success' => false, 'message' => 'Invalid video URL (must be http/https).'];
+            }
+        }
+
+        $res = $this->updateListingVideos($identifier, $videos, $mode);
+        if (! ($res['success'] ?? false)) {
+            return $res;
+        }
+
+        $toSave = isset($res['normalized_urls']) && is_array($res['normalized_urls'])
+            ? $res['normalized_urls']
+            : $videos;
+        $saved = $this->saveVideoUrlsToShopifyCatalog('main', $identifier, $toSave);
+        if (! $saved) {
+            $res['message'] = ($res['message'] ?? 'Shopify product videos updated.').' Metrics save failed.';
+        }
+
+        return $res;
+    }
+
+    /**
+     * @param  list<string>  $videos
+     */
+    private function saveVideoUrlsToShopifyCatalog(string $store, string $identifier, array $videos): bool
+    {
+        try {
+            if (! Schema::hasTable('shopify_catalog_products') || ! Schema::hasTable('shopify_catalog_variants')) {
+                return false;
+            }
+
+            $productId = DB::table('shopify_catalog_variants')
+                ->where('store', $store)
+                ->where(function ($q) use ($identifier) {
+                    $q->where('sku', $identifier)
+                        ->orWhere('sku', strtoupper($identifier))
+                        ->orWhere('sku', strtolower($identifier));
+                })
+                ->value('shopify_catalog_product_id');
+            if (! $productId) {
+                return false;
+            }
+
+            $update = [];
+            if ($videos === []) {
+                if (Schema::hasColumn('shopify_catalog_products', 'video_master_json')) {
+                    $update['video_master_json'] = null;
+                }
+            } else {
+                $payload = json_encode(array_values($videos), JSON_UNESCAPED_SLASHES);
+                if ($payload === false) {
+                    return false;
+                }
+                if (Schema::hasColumn('shopify_catalog_products', 'video_master_json')) {
+                    $update['video_master_json'] = $payload;
+                }
+            }
+
+            if ($update === []) {
+                return false;
+            }
+            if (Schema::hasColumn('shopify_catalog_products', 'updated_at')) {
+                $update['updated_at'] = now();
+            }
+
+            DB::table('shopify_catalog_products')->where('id', $productId)->update($update);
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::warning('Shopify video_master_json save failed', ['identifier' => $identifier, 'error' => $e->getMessage()]);
+
+            return false;
+        }
     }
 
     /**

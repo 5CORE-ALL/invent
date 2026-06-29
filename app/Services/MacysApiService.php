@@ -13,10 +13,14 @@ use Illuminate\Support\Facades\Schema;
 use App\Models\ProductStockMapping;
 use App\Services\Concerns\ResolvesBulletPointIdentifier;
 use App\Services\Support\DescriptionWithImagesFormatter;
+use App\Services\Support\SavesMarketplaceVideoMetrics;
+use App\Services\Support\VideoMasterMarketplaceMethods;
 
 class MacysApiService
 {
     use ResolvesBulletPointIdentifier;
+    use SavesMarketplaceVideoMetrics;
+    use VideoMasterMarketplaceMethods;
 
     private function getAccessToken()
     {
@@ -651,6 +655,70 @@ class MacysApiService
         if (! $saved) {
             $res['message'] = ($res['message'] ?? 'Macy product images updated.').' Metrics save failed.';
         }
+
+        return $res;
+    }
+
+    /**
+     * Mirakl Connect product videos (attribute names vary by channel; we send common keys).
+     *
+     * @param  list<string>  $videoUrls
+     * @return array{success: bool, message: string}
+     */
+    public function updateListingVideos(string $identifier, array $videoUrls): array
+    {
+        $urls = array_values(array_filter(array_map('trim', $videoUrls), fn ($s) => $s !== ''));
+        $urls = array_slice($urls, 0, 5);
+        if (trim($identifier) === '' || $urls === []) {
+            return ['success' => false, 'message' => 'SKU (or marketplace product id) and video URLs are required.'];
+        }
+
+        try {
+            $sku = $this->resolveMacyMiraklSku($identifier);
+            if ($sku === '') {
+                return ['success' => false, 'message' => 'SKU (or marketplace product id) not found in macy_metrics.'];
+            }
+
+            $attributes = [
+                'videoUrl' => $urls[0],
+                'videoUrls' => $urls,
+                'productVideoUrls' => $urls,
+                'mainVideoUrl' => $urls[0],
+            ];
+
+            return $this->pushMacyMiraklProductAttributes($sku, $attributes, 'Macy product videos updated.', 'Macy video update failed');
+        } catch (\Throwable $e) {
+            Log::error('Macy video update failed', ['identifier' => $identifier, 'error' => $e->getMessage()]);
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Video Master compatibility method: push videos then persist video_master_json in macy_metrics.
+     *
+     * @param  list<string>  $videos
+     * @return array{success: bool, message: string, normalized_urls?: list<string>}
+     */
+    public function updateVideos(string $identifier, array $videos, string $mode = 'replace'): array
+    {
+        $videos = array_slice(array_values(array_unique(array_filter(array_map('trim', $videos), fn ($v) => $v !== ''))), 0, 5);
+        if ($videos === []) {
+            return ['success' => false, 'message' => 'At least one video URL is required.'];
+        }
+
+        $res = $this->updateListingVideos($identifier, $videos);
+        if (! ($res['success'] ?? false)) {
+            return $res;
+        }
+
+        $sku = $this->resolveMacyMiraklSku($identifier);
+        $saved = $this->saveVideoUrlsToMetricsRow('macy_metrics', $sku, $videos);
+        if (! $saved) {
+            $res['message'] = ($res['message'] ?? 'Macy product videos updated.').' Metrics save failed.';
+        }
+
+        $res['normalized_urls'] = $videos;
 
         return $res;
     }

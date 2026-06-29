@@ -4,9 +4,10 @@ namespace App\Http\Controllers\ProductMaster;
 
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\ProductMaster\ProductMasterController as PMController;
-use App\Jobs\RunImageMasterPushJob;
-use App\Jobs\RunShopifyImagePullJob;
-use App\Models\ProductImage;
+use App\Http\Controllers\ProductMaster\Concerns\GuardsMarketplaceApiConfiguration;
+use App\Jobs\RunVideoMasterPushJob;
+use App\Jobs\RunShopifyVideoPullJob;
+use App\Models\ProductVideo;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\ShopifyVariant;
@@ -20,8 +21,8 @@ use App\Services\ReverbApiService;
 use App\Services\ShopifyApiService;
 use App\Services\ShopifyPLSApiService;
 use App\Services\ShopifyPlsTokenService;
-use App\Services\Support\ImageMasterPushJobStore;
-use App\Services\Support\ShopifyImagePullJobStore;
+use App\Services\Support\VideoMasterPushJobStore;
+use App\Services\Support\ShopifyVideoPullJobStore;
 use App\Services\Support\EbaySellInventoryListingResolver;
 use App\Services\Support\EbayTradingReviseItem;
 use App\Services\WayfairApiService;
@@ -33,20 +34,22 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
-class ImageMasterController extends Controller
+class VideoMasterController extends Controller
 {
-    private const PM_MAX_IMAGES = 20;
+    use GuardsMarketplaceApiConfiguration;
+
+    private const PM_MAX_VIDEOS = 10;
 
     public function index(Request $request)
     {
         $mode = $request->query('mode', '');
         $demo = $request->query('demo', '');
 
-        return view('image-master', compact('mode', 'demo'));
+        return view('video-master', compact('mode', 'demo'));
     }
 
     /**
-     * Product rows from Product Master + per-marketplace image_master_json (push state / last URLs).
+     * Product rows from Product Master + per-marketplace video_master_json (push state / last URLs).
      */
     public function getData(Request $request)
     {
@@ -58,10 +61,13 @@ class ImageMasterController extends Controller
             $marketTables = $this->marketplaceTableMap();
             $metricsByMarketplace = [];
             foreach ($marketTables as $marketplace => $table) {
-                $metricsByMarketplace[$marketplace] = $this->loadImageMetricsBySku($table);
+                $metricsByMarketplace[$marketplace] = $this->loadVideoMetricsBySku($table);
             }
 
-            $mainBySku = $this->loadImageMainByMarketplaceForSkus(
+            $mainBySku = $this->loadVideoMainByMarketplaceForSkus(
+                array_map(fn ($row) => $this->normalizeSku($row['SKU'] ?? null), $products)
+            );
+            $videoSlotsBySku = $this->loadProductMasterVideoSlotsForSkus(
                 array_map(fn ($row) => $this->normalizeSku($row['SKU'] ?? null), $products)
             );
 
@@ -71,8 +77,11 @@ class ImageMasterController extends Controller
                 foreach (array_keys($marketTables) as $mp) {
                     $im[$mp] = $metricsByMarketplace[$mp][$sku] ?? '';
                 }
-                $row['image_master'] = $im;
-                $row['image_main_by_marketplace'] = $mainBySku[$sku] ?? [];
+                $row['video_master'] = $im;
+                $row['video_main_by_marketplace'] = $mainBySku[$sku] ?? [];
+                foreach ($videoSlotsBySku[$sku] ?? [] as $column => $value) {
+                    $row[$column] = $value;
+                }
                 $row['preview_thumb'] = $this->firstPreviewUrl($row);
             }
 
@@ -82,10 +91,10 @@ class ImageMasterController extends Controller
                 'status' => 200,
             ]);
         } catch (\Throwable $e) {
-            Log::error('ImageMaster getData failed', ['error' => $e->getMessage()]);
+            Log::error('VideoMaster getData failed', ['error' => $e->getMessage()]);
 
             return response()->json([
-                'message' => 'Failed to load image master data.',
+                'message' => 'Failed to load video master data.',
                 'error' => $e->getMessage(),
                 'status' => 500,
             ], 500);
@@ -95,7 +104,7 @@ class ImageMasterController extends Controller
     /**
      * Amazon listing images via Listings Items API (same media path as catalog enrichment).
      */
-    public function getAmazonImages(Request $request)
+    public function getAmazonVideos(Request $request)
     {
         $validated = $request->validate([
             'sku' => 'required|string|max:255',
@@ -108,14 +117,13 @@ class ImageMasterController extends Controller
 
             return response()->json([
                 'success' => (bool) ($res['success'] ?? false),
-                'images' => $res['images'] ?? [],
-                'videos' => $res['videos'] ?? [],
+                'videos' => $this->normalizeVideoList($res['videos'] ?? []),
                 'message' => $res['message'] ?? null,
             ]);
         } catch (\Throwable $e) {
             return response()->json([
                 'success' => false,
-                'images' => [],
+                'videos' => [],
                 'message' => $e->getMessage(),
             ], 500);
         }
@@ -124,7 +132,7 @@ class ImageMasterController extends Controller
     /**
      * eBay gallery URLs from GetItem (Trading API). account: ebay | ebay2 | ebay3
      */
-    public function getEbayImages(Request $request)
+    public function getEbayVideos(Request $request)
     {
         $validated = $request->validate([
             'sku' => 'required|string|max:255',
@@ -146,7 +154,7 @@ class ImageMasterController extends Controller
 
         $table = $tableMap[$account];
         if (! Schema::hasTable($table)) {
-            return response()->json(['success' => false, 'images' => [], 'message' => 'Metrics table missing.'], 422);
+            return response()->json(['success' => false, 'videos' => [], 'message' => 'Metrics table missing.'], 422);
         }
 
         $row = DB::table($table)->where(function ($q) use ($sku) {
@@ -173,29 +181,29 @@ class ImageMasterController extends Controller
             if (! $itemId) {
                 return response()->json([
                     'success' => false,
-                    'images' => [],
+                    'videos' => [],
                     'message' => 'No eBay listing found for this SKU (metrics item_id empty and Inventory/GetSellerList lookup failed).',
                 ], 422);
             }
 
             $getItem = $svc->getItem((string) $itemId);
             if (! $getItem) {
-                return response()->json(['success' => false, 'images' => [], 'message' => 'GetItem failed.'], 502);
+                return response()->json(['success' => false, 'videos' => [], 'message' => 'GetItem failed.'], 502);
             }
             $urls = EbayTradingReviseItem::extractPictureUrlsFromGetItem($getItem);
 
             return response()->json([
                 'success' => true,
-                'images' => $urls,
+                'videos' => $urls,
                 'item_id' => (string) $itemId,
             ]);
         } catch (\Throwable $e) {
-            return response()->json(['success' => false, 'images' => [], 'message' => $e->getMessage()], 500);
+            return response()->json(['success' => false, 'videos' => [], 'message' => $e->getMessage()], 500);
         }
     }
 
     /**
-     * Push ordered image URLs to marketplace and persist image_master_json on success (or local-only for unsupported APIs).
+     * Push ordered image URLs to marketplace and persist video_master_json on success (or local-only for unsupported APIs).
      *
      * @return \Illuminate\Http\JsonResponse
      */
@@ -205,11 +213,11 @@ class ImageMasterController extends Controller
             'sku'                    => 'required|string|max:255',
             'updates'                => 'required|array|min:1',
             'updates.*.marketplace'  => 'required|string',
-            'updates.*.images'       => 'required|array',          // allow empty for "clear all"
-            'updates.*.images.*'     => 'nullable|string|max:2048',
+            'updates.*.videos'       => 'required|array',          // allow empty for "clear all"
+            'updates.*.videos.*'     => 'nullable|string|max:2048',
             'mode'                   => 'nullable|string|in:replace,add',
             'main_by_marketplace'    => 'nullable|array',
-            'main_by_marketplace.*'  => 'integer|min:0|max:'.(self::PM_MAX_IMAGES - 1),
+            'main_by_marketplace.*'  => 'integer|min:0|max:'.(self::PM_MAX_VIDEOS - 1),
             'dry_run'                => 'nullable|boolean',
         ]);
 
@@ -218,24 +226,24 @@ class ImageMasterController extends Controller
         $dryRun  = (bool) ($validated['dry_run'] ?? false);
         $results = [];
 
-        $maxImageCount = 0;
+        $maxVideoCount = 0;
         foreach ($validated['updates'] as $u) {
-            $maxImageCount = max($maxImageCount, count(array_values(array_filter(array_map('trim', $u['images'] ?? []), fn ($s) => $s !== ''))));
+            $maxVideoCount = max($maxVideoCount, count(array_values(array_filter(array_map('trim', $u['videos'] ?? []), fn ($s) => $s !== ''))));
         }
         $mainMap = $this->resolveMainByMarketplaceForPush(
             $sku,
             $validated['main_by_marketplace'] ?? null,
-            $maxImageCount
+            $maxVideoCount
         );
 
         if ($dryRun) {
             foreach ($validated['updates'] as $u) {
                 $mp = strtolower(trim($u['marketplace']));
-                $images = array_values(array_filter(array_map('trim', $u['images'] ?? []), fn ($s) => $s !== ''));
+                $videos = array_values(array_filter(array_map('trim', $u['videos'] ?? []), fn ($s) => $s !== ''));
                 $results[$mp] = $this->runQueuedMarketplacePush(
                     $sku,
                     $mp,
-                    $images,
+                    $videos,
                     $mode,
                     $mainMap,
                     true
@@ -260,44 +268,44 @@ class ImageMasterController extends Controller
             ]);
         }
 
-        /** @var ImageMasterPushJobStore $pushStore */
-        $pushStore = app(ImageMasterPushJobStore::class);
+        /** @var VideoMasterPushJobStore $pushStore */
+        $pushStore = app(VideoMasterPushJobStore::class);
         $currentJob = $pushStore->load();
         if ($pushStore->isActive($currentJob) && ! $pushStore->isStale($currentJob)) {
             return response()->json(array_merge($pushStore->toApiResponse($currentJob), [
                 'success' => false,
-                'message' => 'An image push is already running. Wait for it to finish or check progress below.',
+                'message' => 'A video push is already running. Wait for it to finish or check progress below.',
             ]), 409);
         }
         // A stale "running" job (worker died/never ran) is auto-cleared so it can't block forever.
         if ($pushStore->isActive($currentJob)) {
             $pushStore->forceStop('Cleared a stale push job (no worker was processing it).');
-            $this->releaseUniqueJobLock(RunImageMasterPushJob::class, 'image-master-push');
+            $this->releaseUniqueJobLock(RunVideoMasterPushJob::class, 'video-master-push');
         }
 
         $tasks = [];
         foreach ($validated['updates'] as $u) {
             $tasks[] = [
                 'marketplace' => strtolower(trim($u['marketplace'])),
-                'images' => array_values(array_filter(array_map('trim', $u['images'] ?? []), fn ($s) => $s !== '')),
+                'videos' => array_values(array_filter(array_map('trim', $u['videos'] ?? []), fn ($s) => $s !== '')),
             ];
         }
 
         $job = $pushStore->create($sku, $mode, $tasks, $mainMap);
         try {
-            $this->dispatchImageMasterPushJob();
+            $this->dispatchVideoMasterPushJob();
         } catch (\Throwable $e) {
             $pushStore->markFailed('Could not queue worker: '.$e->getMessage());
-            Log::warning('ImageMaster push queue dispatch failed', ['error' => $e->getMessage()]);
+            Log::warning('VideoMaster push queue dispatch failed', ['error' => $e->getMessage()]);
 
             return response()->json(array_merge($pushStore->toApiResponse($pushStore->load()), [
                 'success' => false,
-                'message' => 'Could not queue image push worker. Is the image-master-push queue worker running?',
+                'message' => 'Could not queue video push worker. Is the video-master-push queue worker running?',
             ]), 500);
         }
 
         return response()->json(array_merge($pushStore->toApiResponse($job), [
-            'message' => 'Image push queued ('.count($tasks).' marketplace(s)). Processing in background…',
+            'message' => 'Video push queued ('.count($tasks).' marketplace(s)). Processing in background…',
         ]));
     }
 
@@ -311,7 +319,7 @@ class ImageMasterController extends Controller
     public function runQueuedMarketplacePush(
         string $sku,
         string $marketplace,
-        array $images,
+        array $videos,
         string $mode = 'replace',
         ?array $mainMap = null,
         bool $dryRun = false
@@ -320,42 +328,33 @@ class ImageMasterController extends Controller
 
         $mp = strtolower(trim($marketplace));
         $allowed = array_keys($this->marketplaceTableMap());
-        $images = array_values(array_filter(array_map('trim', $images), fn ($s) => $s !== ''));
-        $originalCount = count($images);
+        $videos = array_values(array_filter(array_map('trim', $videos), fn ($s) => $s !== ''));
+        $originalCount = count($videos);
         $mainMap = $mainMap ?? [];
 
         if (! in_array($mp, $allowed, true)) {
             return ['success' => false, 'message' => 'Unknown marketplace'];
         }
 
-        if ($images === [] && $mode !== 'replace') {
-            return ['success' => true, 'message' => 'No images to add; skipped.'];
+        if ($blocked = $this->marketplaceApiNotConfiguredResult($mp)) {
+            return $blocked;
         }
 
-        if ($images === [] && $mode === 'replace' && ! in_array($mp, ['shopify_main', 'shopify_pls'], true)) {
+        if ($videos === [] && $mode !== 'replace') {
+            return ['success' => true, 'message' => 'No videos to add; skipped.'];
+        }
+
+        if ($videos === [] && $mode === 'replace' && ! in_array($mp, ['shopify_main', 'shopify_pls'], true)) {
             return [
                 'success' => false,
-                'message' => 'Clear-all images is only supported for Shopify Main and Shopify PLS.',
+                'message' => 'Clear-all videos is only supported for Shopify Main and Shopify PLS.',
             ];
         }
 
-        if ($images !== [] && $mode !== 'add') {
-            $mainIndex = $this->mainImageIndexFromMap($mainMap, $mp, $originalCount);
-            if ($mainIndex > 0) {
-                $images = $this->reorderImagesWithMainFirst($images, $mainIndex);
-            }
-        }
-
-        $mainNote = '';
-        if ($images !== [] && $mode !== 'add') {
-            $mainIdx = $this->mainImageIndexFromMap($mainMap, $mp, $originalCount);
-            $mainNote = ' Main image: Image '.($mainIdx + 1).'.';
-        }
-
-        $limit = $this->marketplaceImageLimit($mp);
-        $images = array_slice($images, 0, $limit);
+        $limit = $this->marketplaceVideoLimit($mp);
+        $videos = array_slice($videos, 0, $limit);
         $truncatedNote = $originalCount > $limit
-            ? " Truncated from {$originalCount} to {$limit} image(s) ({$mp} limit)."
+            ? " Truncated from {$originalCount} to {$limit} video(s) ({$mp} limit)."
             : '';
 
         $effectiveMode = $mode;
@@ -365,57 +364,57 @@ class ImageMasterController extends Controller
             $addModeNote = ' Add mode is not supported for this marketplace; used replace instead.';
         }
 
-        $imagesForPush = in_array($mp, ['shopify_main', 'shopify_pls'], true)
-            ? $images
-            : $this->rewriteLocalStorageUrlsToPublic($images);
+        $videosForPush = in_array($mp, ['shopify_main', 'shopify_pls'], true)
+            ? $videos
+            : $this->rewriteLocalStorageUrlsToPublic($videos);
 
         if ($dryRun) {
-            $remote = $this->dryRunPushToRemote($mp, $sku, $imagesForPush, $effectiveMode);
+            $remote = $this->dryRunPushToRemote($mp, $sku, $videosForPush, $effectiveMode);
             $remoteOk = (bool) ($remote['success'] ?? false);
             $dryNote = ' (dry run — no marketplace write).';
-            $message = trim(($remote['message'] ?? '').$mainNote.$truncatedNote.$addModeNote.$dryNote);
+            $message = trim(($remote['message'] ?? '').$truncatedNote.$addModeNote.$dryNote);
 
             return array_merge([
                 'success' => $remoteOk,
                 'dry_run' => true,
                 'metrics_saved' => false,
                 'message' => $message,
-                'images_count' => count($imagesForPush),
+                'videos_count' => count($videosForPush),
             ], array_diff_key($remote, ['success' => 1, 'message' => 1]));
         }
 
-        $remote = $this->pushImagesToRemote($mp, $sku, $imagesForPush, $effectiveMode);
+        $remote = $this->pushVideosToRemote($mp, $sku, $videosForPush, $effectiveMode);
         $remoteOk = (bool) ($remote['success'] ?? false);
 
         if (! $remoteOk) {
-            Log::warning('ImageMaster marketplace push failed', [
+            Log::warning('VideoMaster marketplace push failed', [
                 'marketplace' => $mp,
                 'sku' => $sku,
                 'message' => $remote['message'] ?? null,
-                'image_count' => count($imagesForPush),
-                'first_image' => isset($imagesForPush[0]) ? mb_substr((string) $imagesForPush[0], 0, 300) : null,
+                'video_count' => count($videosForPush),
+                'first_video' => isset($videosForPush[0]) ? mb_substr((string) $videosForPush[0], 0, 300) : null,
                 'listing_id' => $remote['listing_id'] ?? null,
             ]);
         }
 
-        $urlsForMetrics = $imagesForPush;
+        $urlsForMetrics = $videosForPush;
         if ($remoteOk && ! empty($remote['normalized_urls']) && is_array($remote['normalized_urls'])) {
             $urlsForMetrics = array_values($remote['normalized_urls']);
-        } elseif ($remoteOk && $imagesForPush !== []) {
-            $urlsForMetrics = $imagesForPush;
-        } elseif ($remoteOk && $imagesForPush === []) {
+        } elseif ($remoteOk && $videosForPush !== []) {
+            $urlsForMetrics = $videosForPush;
+        } elseif ($remoteOk && $videosForPush === []) {
             $urlsForMetrics = [];
         }
 
         $saved = false;
         if ($remoteOk) {
-            $saved = $this->saveImageMetricsToTable($mp, $sku, $urlsForMetrics);
+            $saved = $this->saveVideoMetricsToTable($mp, $sku, $urlsForMetrics);
             if (in_array($mp, ['shopify_main', 'shopify_pls'], true)) {
-                $saved = $this->saveShopifyCatalogImages($sku, $mp, $urlsForMetrics) || $saved;
+                $saved = $this->saveShopifyCatalogVideos($sku, $mp, $urlsForMetrics) || $saved;
             }
         }
 
-        $message = trim(($remote['message'] ?? '').$mainNote.$truncatedNote.$addModeNote);
+        $message = trim(($remote['message'] ?? '').$truncatedNote.$addModeNote);
         if ($message === '' && ! $remoteOk) {
             $message = ucfirst($mp).' push failed (no error detail returned). Check storage/logs/laravel.log.';
         }
@@ -430,7 +429,7 @@ class ImageMasterController extends Controller
         ];
     }
 
-    public function pushJobStatus(ImageMasterPushJobStore $store)
+    public function pushJobStatus(VideoMasterPushJobStore $store)
     {
         $job = $store->load();
 
@@ -445,19 +444,23 @@ class ImageMasterController extends Controller
     private function dryRunPushToRemote(string $marketplace, string $sku, array $imageUrls, string $mode = 'replace'): array
     {
         if ($imageUrls === [] && $mode === 'replace' && in_array($marketplace, ['shopify_main', 'shopify_pls'], true)) {
-            return ['success' => true, 'message' => 'Dry run OK: would clear all Shopify images.'];
+            return ['success' => true, 'message' => 'Dry run OK: would clear all Shopify videos.'];
         }
 
         if ($imageUrls === []) {
-            return ['success' => false, 'message' => 'No images to push.'];
+            return ['success' => false, 'message' => 'No videos to push.'];
         }
 
         try {
             switch ($marketplace) {
                 case 'amazon':
-                    return app(AmazonSpApiService::class)->dryRunUpdateImages($sku, $imageUrls);
+                    return app(AmazonSpApiService::class)->dryRunUpdateVideos($sku, $imageUrls);
+                case 'shopify_main':
+                    return app(ShopifyApiService::class)->dryRunUpdateVideos($sku, $imageUrls);
+                case 'shopify_pls':
+                    return app(ShopifyPLSApiService::class)->dryRunUpdateVideos($sku, $imageUrls);
                 case 'reverb':
-                    return app(ReverbApiService::class)->dryRunUpdateImages($sku, $imageUrls);
+                    return app(ReverbApiService::class)->dryRunUpdateVideos($sku, $imageUrls);
                 case 'ebay':
                 case 'ebay2':
                 case 'ebay3':
@@ -490,14 +493,14 @@ class ImageMasterController extends Controller
 
         foreach ($imageUrls as $url) {
             if (! preg_match('#^https?://#i', $url)) {
-                return ['success' => false, 'message' => 'Dry run: invalid image URL (must be http/https).', 'dry_run' => true];
+                return ['success' => false, 'message' => 'Dry run: invalid video URL (must be http/https).', 'dry_run' => true];
             }
         }
 
         return [
             'success' => true,
             'dry_run' => true,
-            'message' => 'Dry run OK: would push '.count($imageUrls).' image(s) to '.($marketplace).'.',
+            'message' => 'Dry run OK: would push '.count($imageUrls).' video(s) to '.($marketplace).'.',
         ];
     }
 
@@ -524,38 +527,38 @@ class ImageMasterController extends Controller
 
         foreach ($imageUrls as $url) {
             if (! preg_match('#^https?://#i', $url)) {
-                return ['success' => false, 'message' => 'Dry run: invalid image URL.', 'dry_run' => true];
+                return ['success' => false, 'message' => 'Dry run: invalid video URL.', 'dry_run' => true];
             }
         }
 
         return [
             'success' => true,
             'dry_run' => true,
-            'message' => 'Dry run OK: would push '.count($imageUrls).' image(s) to '.$marketplace.'.',
+            'message' => 'Dry run OK: would push '.count($imageUrls).' video(s) to '.$marketplace.'.',
         ];
     }
 
     /**
-     * Save ordered URLs to Product Master image1–image20 and main_image.
+     * Save ordered URLs to Product Master video1–video20 and main_video.
      */
-    public function saveProductMasterImages(Request $request)
+    public function saveProductMasterVideos(Request $request)
     {
         $validated = $request->validate([
             'sku' => 'required|string|max:255',
-            'images' => 'present|array|max:'.self::PM_MAX_IMAGES,
-            'images.*' => 'nullable|string|max:2048',
+            'videos' => 'present|array|max:'.self::PM_MAX_VIDEOS,
+            'videos.*' => 'nullable|string|max:2048',
             'main_by_marketplace' => 'nullable|array',
-            'main_by_marketplace.*' => 'integer|min:0|max:'.(self::PM_MAX_IMAGES - 1),
+            'main_by_marketplace.*' => 'integer|min:0|max:'.(self::PM_MAX_VIDEOS - 1),
             'removed_urls' => 'nullable|array|max:100',
             'removed_urls.*' => 'nullable|string|max:2048',
         ]);
         $sku = $this->normalizeSku($validated['sku']);
-        $images = $this->normalizeStorageUrlsForImageMasterMetrics(
-            array_values(array_slice($validated['images'], 0, self::PM_MAX_IMAGES))
+        $videos = $this->normalizeStorageUrlsForVideoMasterMetrics(
+            array_values(array_slice($validated['videos'], 0, self::PM_MAX_VIDEOS))
         );
         $mainByMarketplace = $this->sanitizeMainByMarketplace(
             $validated['main_by_marketplace'] ?? [],
-            count($images)
+            count($videos)
         );
 
         $product = ProductMaster::query()->where('sku', $sku)->first();
@@ -563,28 +566,26 @@ class ImageMasterController extends Controller
             return response()->json(['success' => false, 'message' => 'Product not found'], 404);
         }
 
-        for ($i = 0; $i < self::PM_MAX_IMAGES; $i++) {
-            $col = 'image'.($i + 1);
-            $product->{$col} = $images[$i] ?? null;
+        for ($i = 0; $i < self::PM_MAX_VIDEOS; $i++) {
+            $col = 'video'.($i + 1);
+            $product->{$col} = $videos[$i] ?? null;
         }
-        $product->main_image = $images[0] ?? null;
-        if (Schema::hasColumn('product_master', 'image_main_by_marketplace_json')) {
-            $product->image_main_by_marketplace_json = $mainByMarketplace === []
-                ? null
-                : json_encode($mainByMarketplace, JSON_UNESCAPED_SLASHES);
+        $product->main_video = $videos[0] ?? null;
+        if (Schema::hasColumn('product_master', 'video_main_by_marketplace_json')) {
+            $product->video_main_by_marketplace_json = null;
         }
 
         try {
             $product->save();
 
             // Clean up images the user removed in the modal — local file, DB row, and Shopify CDN
-            // file. Heavily guarded (see purgeRemovedSkuImages) so a kept image can never be deleted.
-            $purged = $this->purgeRemovedSkuImages($sku, $validated['removed_urls'] ?? [], $images);
+            // file. Heavily guarded (see purgeRemovedSkuVideos) so a kept image can never be deleted.
+            $purged = $this->purgeRemovedSkuVideos($sku, $validated['removed_urls'] ?? [], $videos);
 
             return response()->json([
                 'success' => true,
-                'message' => 'Product Master images saved.'.($purged > 0 ? " Removed {$purged} image(s)." : ''),
-                'image_main_by_marketplace' => $mainByMarketplace,
+                'message' => 'Product Master videos saved.'.($purged > 0 ? " Removed {$purged} video(s)." : ''),
+                'video_main_by_marketplace' => [],
             ]);
         } catch (\Throwable $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
@@ -592,24 +593,23 @@ class ImageMasterController extends Controller
     }
 
     /**
-     * Upload files to public disk under products/{sku}/, persist to product_images, return URLs.
+     * Upload files to public disk under products/{sku}/, persist to product_videos, return URLs.
      */
-    public function uploadImages(Request $request)
+    public function uploadVideos(Request $request)
     {
         $validated = $request->validate([
             'sku'    => 'required|string|max:255',
-            'files'  => 'required|array|min:1|max:'.self::PM_MAX_IMAGES,
-            'files.*' => 'file|mimes:jpg,jpeg,png,webp|max:10240',
+            'files'  => 'required|array|min:1|max:'.self::PM_MAX_VIDEOS,
+            'files.*' => 'file|mimes:mp4,webm,mov,quicktime,m4v|max:102400',
         ]);
 
         $sku     = $this->normalizeSku($validated['sku']);
         $safeSku = preg_replace('/[^a-zA-Z0-9_\- ]/', '_', $sku);
-        $folder  = "products/{$safeSku}";
+        $folder  = "products/{$safeSku}/videos";
 
         $urls    = [];
         $records = [];
         $now     = now();
-        $shopify = app(ShopifyApiService::class);
 
         foreach ($request->file('files', []) as $file) {
             if (! $file) {
@@ -617,105 +617,78 @@ class ImageMasterController extends Controller
             }
 
             $originalName = $file->getClientOriginalName();
-            $baseName     = preg_replace('/[^A-Za-z0-9._-]+/', '_', pathinfo($originalName, PATHINFO_FILENAME)) ?: 'image';
+            $baseName     = preg_replace('/[^A-Za-z0-9._-]+/', '_', pathinfo($originalName, PATHINFO_FILENAME)) ?: 'video';
+            $mime         = $file->getClientMimeType() ?: 'video/mp4';
+            $extByMime    = ['video/mp4' => 'mp4', 'video/webm' => 'webm', 'video/quicktime' => 'mov', 'video/x-m4v' => 'm4v'];
+            $extension    = $extByMime[strtolower($mime)] ?? (strtolower($file->getClientOriginalExtension()) ?: 'mp4');
+            $uniqueName   = $baseName.'_'.uniqid().'.'.$extension;
+            $path         = $folder.'/'.$uniqueName;
+            $bytes        = (string) @file_get_contents($file->getRealPath());
+            if ($bytes === '') {
+                Log::warning('Video Master upload: skipped empty file', ['sku' => $sku, 'file' => $originalName]);
 
-            // Validate + normalize: enforce Shopify's 20-megapixel limit (downscale if over) so the
-            // image is accepted by every marketplace. Skip files that are not valid images.
-            $bytes = (string) @file_get_contents($file->getRealPath());
-            $bytes = $shopify->downscaleImageBytes($bytes);
-            $info  = $bytes !== '' ? @getimagesizefromstring($bytes) : false;
-            if ($info === false) {
-                Log::warning('Image Master upload: skipped invalid/unreadable image', ['sku' => $sku, 'file' => $originalName]);
                 continue;
             }
-            $mime      = $info['mime'] ?: ($file->getClientMimeType() ?: 'image/jpeg');
-            $extByMime = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp', 'image/gif' => 'gif'];
-            $extension = $extByMime[strtolower($mime)] ?? (strtolower($file->getClientOriginalExtension()) ?: 'jpg');
-            $uniqueName = $baseName.'_'.uniqid().'.'.$extension;
 
-            // Keep a (normalized) local copy as a fallback, but the marketplace-facing URL must be a
-            // public CDN URL — a self-hosted /storage URL cannot be fetched by Reverb (and other
-            // URL-fetching marketplaces), which is why newly uploaded images failed to push.
-            $path = $folder.'/'.$uniqueName;
             Storage::disk('public')->put($path, $bytes);
-            $localUrl = $this->normalizeStorageUrlsForImageMasterMetrics([asset('storage/'.$path)])[0] ?? asset('storage/'.$path);
+            $localUrl = $this->normalizeStorageUrlsForVideoMasterMetrics([asset('storage/'.$path)])[0] ?? asset('storage/'.$path);
 
-            $cdnUrl    = null;
-            $cdnFileId = null;
-            try {
-                $cdn = $shopify->uploadImageToShopifyCdn($bytes, $uniqueName, $mime);
-                if (($cdn['success'] ?? false) && ! empty($cdn['url'])) {
-                    $cdnUrl    = $cdn['url'];
-                    $cdnFileId = $cdn['file_id'] ?? null;
-                } else {
-                    Log::warning('Image Master upload: Shopify CDN upload failed; using local URL', [
-                        'sku' => $sku, 'file' => $originalName, 'error' => $cdn['message'] ?? 'unknown',
-                    ]);
-                }
-            } catch (\Throwable $e) {
-                Log::warning('Image Master upload: Shopify CDN upload threw; using local URL', [
-                    'sku' => $sku, 'file' => $originalName, 'error' => $e->getMessage(),
-                ]);
-            }
-
-            $url = $cdnUrl ?: $localUrl;
-
-            $record = ProductImage::create([
+            $record = ProductVideo::create([
                 'sku'           => $sku,
-                'image_path'    => $path,
-                'cdn_url'       => $cdnUrl,
-                'cdn_file_id'   => $cdnFileId,
+                'video_path'    => $path,
+                'cdn_url'       => null,
+                'cdn_file_id'   => null,
                 'original_name' => $originalName,
                 'file_size'     => strlen($bytes),
                 'mime_type'     => $mime,
                 'created_at'    => $now,
             ]);
 
-            $urls[]  = $url;
+            $urls[] = $localUrl;
             $records[] = [
-                'id'    => $record->id,
-                'url'   => $url,
-                'name'  => $originalName,
+                'id'   => $record->id,
+                'url'  => $localUrl,
+                'name' => $originalName,
             ];
         }
 
         return response()->json([
             'success' => true,
             'urls'    => $urls,
-            'images'  => $records,
+            'videos'  => $records,
         ]);
     }
 
     /**
-     * Return all locally stored images for a SKU (from product_images table).
+     * Return all locally stored images for a SKU (from product_videos table).
      */
-    public function getSkuImages(Request $request)
+    public function getSkuVideos(Request $request)
     {
         $sku = $this->normalizeSku($request->get('sku', ''));
         if ($sku === '') {
-            return response()->json(['success' => false, 'images' => []]);
+            return response()->json(['success' => false, 'videos' => []]);
         }
 
-        $images = ProductImage::where('sku', $sku)
+        $videos = ProductVideo::where('sku', $sku)
             ->orderBy('id')
             ->get()
-            ->map(fn (ProductImage $img) => [
-                'id'   => $img->id,
-                'url'  => $this->normalizeStorageUrlsForImageMasterMetrics([asset('storage/'.$img->image_path)])[0] ?? asset('storage/'.$img->image_path),
-                'name' => $img->original_name ?? basename($img->image_path),
-                'path' => $img->image_path,
+            ->map(fn (ProductVideo $video) => [
+                'id'   => $video->id,
+                'url'  => $this->normalizeStorageUrlsForVideoMasterMetrics([asset('storage/'.$video->video_path)])[0] ?? asset('storage/'.$video->video_path),
+                'name' => $video->original_name ?? basename($video->video_path),
+                'path' => $video->video_path,
             ])
             ->values();
 
-        return response()->json(['success' => true, 'images' => $images]);
+        return response()->json(['success' => true, 'videos' => $videos]);
     }
 
     /**
      * Delete a stored SKU image from DB and disk.
      */
-    public function deleteSkuImage(Request $request, int $id)
+    public function deleteSkuVideo(Request $request, int $id)
     {
-        $image = ProductImage::find($id);
+        $image = ProductVideo::find($id);
         if (! $image) {
             return response()->json(['success' => false, 'message' => 'Not found'], 404);
         }
@@ -725,15 +698,15 @@ class ImageMasterController extends Controller
         if (! empty($cdnRef)) {
             try {
                 if (! app(ShopifyApiService::class)->deleteCdnFile((string) $cdnRef)) {
-                    Log::warning('Image Master delete: CDN file not removed', ['id' => $id, 'cdn' => $cdnRef]);
+                    Log::warning('Video Master delete: CDN file not removed', ['id' => $id, 'cdn' => $cdnRef]);
                 }
             } catch (\Throwable $e) {
-                Log::warning('Image Master delete: CDN delete threw', ['id' => $id, 'error' => $e->getMessage()]);
+                Log::warning('Video Master delete: CDN delete threw', ['id' => $id, 'error' => $e->getMessage()]);
             }
         }
 
-        if (! empty($image->image_path)) {
-            Storage::disk('public')->delete($image->image_path);
+        if (! empty($image->video_path)) {
+            Storage::disk('public')->delete($image->video_path);
         }
         $image->delete();
 
@@ -744,7 +717,7 @@ class ImageMasterController extends Controller
      * Delete images the user removed in the modal (called from Save) — local file + DB row +
      * Shopify CDN file. A wrong delete is unrecoverable, so EVERY condition must hold before
      * deleting any row:
-     *   1. the product_images row belongs to THIS sku;
+     *   1. the product_videos row belongs to THIS sku;
      *   2. the row matches a URL the user actually removed (by cdn_url, or local file basename);
      *   3. the row's image is NOT in the final saved set.
      * Anything failing all three is skipped (logged), never deleted.
@@ -752,10 +725,10 @@ class ImageMasterController extends Controller
      * @param  list<string>  $removedUrls  URLs the user removed this session
      * @param  list<string>  $keptImages   the final saved image URLs (must never be deleted)
      */
-    private function purgeRemovedSkuImages(string $sku, array $removedUrls, array $keptImages): int
+    private function purgeRemovedSkuVideos(string $sku, array $removedUrls, array $keptImages): int
     {
         $removedUrls = array_values(array_filter(array_map('trim', $removedUrls), fn ($s) => $s !== ''));
-        if ($removedUrls === [] || ! Schema::hasTable('product_images')) {
+        if ($removedUrls === [] || ! Schema::hasTable('product_videos')) {
             return 0;
         }
 
@@ -769,9 +742,9 @@ class ImageMasterController extends Controller
         }
 
         $deleted = 0;
-        foreach (ProductImage::where('sku', $sku)->get() as $img) {
+        foreach (ProductVideo::where('sku', $sku)->get() as $img) {
             $cdn  = $img->cdn_url ? strtok((string) $img->cdn_url, '?') : '';
-            $base = $img->image_path ? basename((string) $img->image_path) : '';
+            $base = $img->video_path ? basename((string) $img->video_path) : '';
 
             // (2) must match a removed URL (by cdn_url or local basename)
             $matchesRemoved = ($cdn !== '' && isset($removed[$cdn]));
@@ -798,7 +771,7 @@ class ImageMasterController extends Controller
                 }
             }
             if ($stillKept) {
-                Log::warning('Image Master purge: skipped (image still in saved set)', ['sku' => $sku, 'id' => $img->id]);
+                Log::warning('Video Master purge: skipped (image still in saved set)', ['sku' => $sku, 'id' => $img->id]);
                 continue;
             }
 
@@ -809,20 +782,20 @@ class ImageMasterController extends Controller
                     $cdnResult = app(ShopifyApiService::class)->deleteCdnFile((string) $cdnRef) ? 'deleted' : 'not_found';
                 } catch (\Throwable $e) {
                     $cdnResult = 'error';
-                    Log::warning('Image Master purge: CDN delete threw', ['id' => $img->id, 'ref' => (string) $cdnRef, 'error' => $e->getMessage()]);
+                    Log::warning('Video Master purge: CDN delete threw', ['id' => $img->id, 'ref' => (string) $cdnRef, 'error' => $e->getMessage()]);
                 }
                 if ($cdnResult === 'not_found') {
-                    Log::warning('Image Master purge: CDN file NOT deleted (not found / no deletedFileIds)', ['id' => $img->id, 'ref' => (string) $cdnRef]);
+                    Log::warning('Video Master purge: CDN file NOT deleted (not found / no deletedFileIds)', ['id' => $img->id, 'ref' => (string) $cdnRef]);
                 }
             }
-            if (! empty($img->image_path)) {
-                Storage::disk('public')->delete($img->image_path);
+            if (! empty($img->video_path)) {
+                Storage::disk('public')->delete($img->video_path);
             }
             $imgId = $img->id;
             $imgCdn = $img->cdn_url;
             $img->delete();
             $deleted++;
-            Log::info('Image Master purge: removed image', ['sku' => $sku, 'id' => $imgId, 'cdn' => $imgCdn, 'cdn_delete' => $cdnResult]);
+            Log::info('Video Master purge: removed image', ['sku' => $sku, 'id' => $imgId, 'cdn' => $imgCdn, 'cdn_delete' => $cdnResult]);
         }
 
         return $deleted;
@@ -831,46 +804,46 @@ class ImageMasterController extends Controller
     /**
      * @return array{success: bool, message: string}
      */
-    private function pushImagesToRemote(string $marketplace, string $sku, array $imageUrls, string $mode = 'replace'): array
+    private function pushVideosToRemote(string $marketplace, string $sku, array $imageUrls, string $mode = 'replace'): array
     {
         try {
             switch ($marketplace) {
                 case 'ebay':
-                    return app(EbayApiService::class)->updateListingImages($sku, $imageUrls);
+                    return app(EbayApiService::class)->updateListingVideos($sku, $imageUrls);
                 case 'ebay2':
-                    return app(Ebay2ApiService::class)->updateListingImages($sku, $imageUrls);
+                    return app(Ebay2ApiService::class)->updateListingVideos($sku, $imageUrls);
                 case 'ebay3':
-                    return app(EbayThreeApiService::class)->updateListingImages($sku, $imageUrls);
+                    return app(EbayThreeApiService::class)->updateListingVideos($sku, $imageUrls);
                 case 'amazon':
-                    return app(AmazonSpApiService::class)->updateImages($sku, $imageUrls);
+                    return app(AmazonSpApiService::class)->updateVideos($sku, $imageUrls);
                 case 'temu':
-                    return app(TemuApiService::class)->updateImages($sku, $imageUrls);
+                    return app(TemuApiService::class)->updateVideos($sku, $imageUrls);
                 case 'wayfair':
-                    return app(WayfairApiService::class)->updateImages($sku, $imageUrls);
+                    return app(WayfairApiService::class)->updateVideos($sku, $imageUrls);
                 case 'bestbuy':
-                    return app(BestBuyApiService::class)->updateImages($sku, $imageUrls);
+                    return app(BestBuyApiService::class)->updateVideos($sku, $imageUrls);
                 case 'shopify_main':
-                    return app(ShopifyApiService::class)->updateImages($sku, $imageUrls, $mode);
+                    return app(ShopifyApiService::class)->updateVideos($sku, $imageUrls, $mode);
                 case 'shopify_pls':
-                    return app(ShopifyPLSApiService::class)->updateImages($sku, $imageUrls, $mode);
+                    return app(ShopifyPLSApiService::class)->updateVideos($sku, $imageUrls, $mode);
                 case 'macy':
-                    return app(MacysApiService::class)->updateImages($sku, $imageUrls);
+                    return app(MacysApiService::class)->updateVideos($sku, $imageUrls);
                 case 'reverb':
-                    return app(ReverbApiService::class)->updateImages($sku, $imageUrls, $mode);
+                    return app(ReverbApiService::class)->updateVideos($sku, $imageUrls, $mode);
                 default:
                     return [
                         'success' => false,
-                        'message' => 'Image push is not implemented for '.$marketplace.' yet.',
+                        'message' => 'Video push is not implemented for '.$marketplace.' yet.',
                     ];
             }
         } catch (\Throwable $e) {
-            Log::warning('ImageMaster pushImagesToRemote failed', ['mp' => $marketplace, 'sku' => $sku, 'error' => $e->getMessage()]);
+            Log::warning('VideoMaster pushVideosToRemote failed', ['mp' => $marketplace, 'sku' => $sku, 'error' => $e->getMessage()]);
 
             return ['success' => false, 'message' => $e->getMessage()];
         }
     }
 
-    private function saveImageMetricsToTable(string $marketplace, string $sku, array $imageUrls): bool
+    private function saveVideoMetricsToTable(string $marketplace, string $sku, array $videoUrls): bool
     {
         $table = $this->marketplaceTableMap()[$marketplace] ?? null;
         if (! $table || ! Schema::hasTable($table)) {
@@ -880,28 +853,28 @@ class ImageMasterController extends Controller
             return false;
         }
 
-        $isClear = $imageUrls === [];
+        $isClear = $videoUrls === [];
 
         try {
             $now = now();
             $updatable = [];
             if ($isClear) {
-                if (Schema::hasColumn($table, 'image_master_json')) {
-                    $updatable['image_master_json'] = null;
+                if (Schema::hasColumn($table, 'video_master_json')) {
+                    $updatable['video_master_json'] = null;
                 }
-                if (Schema::hasColumn($table, 'image_urls')) {
-                    $updatable['image_urls'] = null;
+                if (Schema::hasColumn($table, 'video_urls')) {
+                    $updatable['video_urls'] = null;
                 }
             } else {
-                $payload = json_encode(array_values($imageUrls), JSON_UNESCAPED_SLASHES);
+                $payload = json_encode(array_values($videoUrls), JSON_UNESCAPED_SLASHES);
                 if ($payload === false) {
                     return false;
                 }
-                if (Schema::hasColumn($table, 'image_master_json')) {
-                    $updatable['image_master_json'] = $payload;
+                if (Schema::hasColumn($table, 'video_master_json')) {
+                    $updatable['video_master_json'] = $payload;
                 }
-                if (Schema::hasColumn($table, 'image_urls')) {
-                    $updatable['image_urls'] = $payload;
+                if (Schema::hasColumn($table, 'video_urls')) {
+                    $updatable['video_urls'] = $payload;
                 }
             }
 
@@ -924,7 +897,7 @@ class ImageMasterController extends Controller
 
             return true;
         } catch (\Throwable $e) {
-            Log::warning("ImageMaster: could not save {$table}", ['sku' => $sku, 'error' => $e->getMessage()]);
+            Log::warning("VideoMaster: could not save {$table}", ['sku' => $sku, 'error' => $e->getMessage()]);
 
             return false;
         }
@@ -958,23 +931,37 @@ class ImageMasterController extends Controller
         return ['shopify_main', 'shopify_pls', 'reverb'];
     }
 
-    private function marketplaceImageLimit(string $marketplace): int
+    private function marketplaceVideoLimit(string $marketplace): int
     {
         return match ($marketplace) {
-            'amazon' => 9,
-            'reverb' => 25,
-            'shopify_main', 'shopify_pls' => 20,
-            default => 12,
+            'amazon' => 3,
+            'reverb' => 5,
+            'shopify_main', 'shopify_pls' => self::PM_MAX_VIDEOS,
+            default => 5,
         };
     }
 
     /**
      * @param  list<string|null>  $skus
-     * @return array<string, array<string, int>>
+     * @return array<string, array<string, string|null>>
      */
-    private function loadImageMainByMarketplaceForSkus(array $skus): array
+    private function loadProductMasterVideoSlotsForSkus(array $skus): array
     {
-        if (! Schema::hasTable('product_master') || ! Schema::hasColumn('product_master', 'image_main_by_marketplace_json')) {
+        if (! Schema::hasTable('product_master')) {
+            return [];
+        }
+
+        $columns = ['sku'];
+        for ($i = 1; $i <= self::PM_MAX_VIDEOS; $i++) {
+            $col = 'video'.$i;
+            if (Schema::hasColumn('product_master', $col)) {
+                $columns[] = $col;
+            }
+        }
+        if (Schema::hasColumn('product_master', 'main_video')) {
+            $columns[] = 'main_video';
+        }
+        if (count($columns) === 1) {
             return [];
         }
 
@@ -984,12 +971,51 @@ class ImageMasterController extends Controller
         }
 
         $out = [];
-        foreach (DB::table('product_master')->whereIn('sku', $skus)->get(['sku', 'image_main_by_marketplace_json']) as $row) {
+        foreach (DB::table('product_master')->whereIn('sku', $skus)->get($columns) as $row) {
             $sku = $this->normalizeSku($row->sku ?? null);
             if ($sku === '') {
                 continue;
             }
-            $out[$sku] = $this->decodeImageMainByMarketplaceJson((string) ($row->image_main_by_marketplace_json ?? ''));
+            $slots = [];
+            for ($i = 1; $i <= self::PM_MAX_VIDEOS; $i++) {
+                $col = 'video'.$i;
+                if (in_array($col, $columns, true)) {
+                    $value = trim((string) ($row->{$col} ?? ''));
+                    $slots[$col] = $value !== '' ? $value : null;
+                }
+            }
+            if (in_array('main_video', $columns, true)) {
+                $value = trim((string) ($row->main_video ?? ''));
+                $slots['main_video'] = $value !== '' ? $value : null;
+            }
+            $out[$sku] = $slots;
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  list<string|null>  $skus
+     * @return array<string, array<string, int>>
+     */
+    private function loadVideoMainByMarketplaceForSkus(array $skus): array
+    {
+        if (! Schema::hasTable('product_master') || ! Schema::hasColumn('product_master', 'video_main_by_marketplace_json')) {
+            return [];
+        }
+
+        $skus = array_values(array_unique(array_filter(array_map(fn ($s) => $this->normalizeSku($s), $skus))));
+        if ($skus === []) {
+            return [];
+        }
+
+        $out = [];
+        foreach (DB::table('product_master')->whereIn('sku', $skus)->get(['sku', 'video_main_by_marketplace_json']) as $row) {
+            $sku = $this->normalizeSku($row->sku ?? null);
+            if ($sku === '') {
+                continue;
+            }
+            $out[$sku] = $this->decodeVideoMainByMarketplaceJson((string) ($row->video_main_by_marketplace_json ?? ''));
         }
 
         return $out;
@@ -998,21 +1024,21 @@ class ImageMasterController extends Controller
     /**
      * @return array<string, int>
      */
-    private function loadImageMainByMarketplace(string $sku): array
+    private function loadVideoMainByMarketplace(string $sku): array
     {
-        if (! Schema::hasTable('product_master') || ! Schema::hasColumn('product_master', 'image_main_by_marketplace_json')) {
+        if (! Schema::hasTable('product_master') || ! Schema::hasColumn('product_master', 'video_main_by_marketplace_json')) {
             return [];
         }
 
-        $raw = DB::table('product_master')->where('sku', $sku)->value('image_main_by_marketplace_json');
+        $raw = DB::table('product_master')->where('sku', $sku)->value('video_main_by_marketplace_json');
 
-        return $this->decodeImageMainByMarketplaceJson((string) ($raw ?? ''));
+        return $this->decodeVideoMainByMarketplaceJson((string) ($raw ?? ''));
     }
 
     /**
      * @return array<string, int>
      */
-    private function decodeImageMainByMarketplaceJson(string $raw): array
+    private function decodeVideoMainByMarketplaceJson(string $raw): array
     {
         $trim = trim($raw);
         if ($trim === '' || $trim === '{}') {
@@ -1031,7 +1057,7 @@ class ImageMasterController extends Controller
             if (! in_array($mp, $allowed, true)) {
                 continue;
             }
-            $out[$mp] = max(0, min(self::PM_MAX_IMAGES - 1, (int) $idx));
+            $out[$mp] = max(0, min(self::PM_MAX_VIDEOS - 1, (int) $idx));
         }
 
         return $out;
@@ -1048,7 +1074,7 @@ class ImageMasterController extends Controller
         }
 
         $allowed = array_keys($this->marketplaceTableMap());
-        $maxIdx = min(self::PM_MAX_IMAGES - 1, $imageCount - 1);
+        $maxIdx = min(self::PM_MAX_VIDEOS - 1, $imageCount - 1);
         $out = [];
         foreach ($input as $mp => $idx) {
             $mp = strtolower(trim((string) $mp));
@@ -1064,15 +1090,15 @@ class ImageMasterController extends Controller
         return $out;
     }
 
-    private function mainImageIndexForMarketplace(string $sku, string $marketplace, int $imageCount): int
+    private function mainVideoIndexForMarketplace(string $sku, string $marketplace, int $imageCount): int
     {
-        return $this->mainImageIndexFromMap($this->loadImageMainByMarketplace($sku), $marketplace, $imageCount);
+        return $this->mainVideoIndexFromMap($this->loadVideoMainByMarketplace($sku), $marketplace, $imageCount);
     }
 
     /**
      * @param  array<string, int>  $map
      */
-    private function mainImageIndexFromMap(array $map, string $marketplace, int $imageCount): int
+    private function mainVideoIndexFromMap(array $map, string $marketplace, int $imageCount): int
     {
         if ($imageCount <= 0) {
             return 0;
@@ -1090,7 +1116,7 @@ class ImageMasterController extends Controller
      */
     private function resolveMainByMarketplaceForPush(string $sku, ?array $requestMain, int $imageCount): array
     {
-        $fromDb = $this->loadImageMainByMarketplace($sku);
+        $fromDb = $this->loadVideoMainByMarketplace($sku);
         if ($requestMain === null) {
             return $fromDb;
         }
@@ -1104,7 +1130,7 @@ class ImageMasterController extends Controller
      * @param  list<string>  $images
      * @return list<string>
      */
-    private function reorderImagesWithMainFirst(array $images, int $mainIndex): array
+    private function reorderVideosWithMainFirst(array $images, int $mainIndex): array
     {
         $count = count($images);
         if ($count <= 1) {
@@ -1128,20 +1154,20 @@ class ImageMasterController extends Controller
     }
 
     /**
-     * @return array<string, string> sku => image_master_json raw or ''
+     * @return array<string, string> sku => video_master_json raw or ''
      */
-    private function loadImageMetricsBySku(string $table): array
+    private function loadVideoMetricsBySku(string $table): array
     {
         try {
             if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'sku')) {
                 return [];
             }
-            $hasMasterJson = Schema::hasColumn($table, 'image_master_json');
-            $hasImageUrls = Schema::hasColumn($table, 'image_urls');
-            if (! $hasMasterJson && ! $hasImageUrls) {
+            $hasMasterJson = Schema::hasColumn($table, 'video_master_json');
+            $hasVideoUrls = Schema::hasColumn($table, 'video_urls');
+            if (! $hasMasterJson && ! $hasVideoUrls && ! Schema::hasColumn($table, 'image_urls')) {
                 return [];
             }
-            $valueColumn = $hasMasterJson ? 'image_master_json' : 'image_urls';
+            $valueColumn = $hasMasterJson ? 'video_master_json' : ($hasVideoUrls ? 'video_urls' : 'image_urls');
 
             return DB::table($table)
                 ->select('sku', $valueColumn)
@@ -1162,7 +1188,7 @@ class ImageMasterController extends Controller
                 })
                 ->toArray();
         } catch (\Throwable $e) {
-            Log::warning("ImageMaster: load metrics failed for {$table}", ['error' => $e->getMessage()]);
+            Log::warning("VideoMaster: load metrics failed for {$table}", ['error' => $e->getMessage()]);
 
             return [];
         }
@@ -1174,20 +1200,20 @@ class ImageMasterController extends Controller
      *
      * @return list<string>
      */
-    private function loadExistingMarketplaceImages(string $marketplace, string $sku): array
+    private function loadExistingMarketplaceVideos(string $marketplace, string $sku): array
     {
         $table = $this->marketplaceTableMap()[$marketplace] ?? null;
         if (! $table || ! Schema::hasTable($table) || ! Schema::hasColumn($table, 'sku')) {
             return [];
         }
 
-        $hasMasterJson = Schema::hasColumn($table, 'image_master_json');
+        $hasMasterJson = Schema::hasColumn($table, 'video_master_json');
         $hasImageUrls  = Schema::hasColumn($table, 'image_urls');
         if (! $hasMasterJson && ! $hasImageUrls) {
             return [];
         }
 
-        $col = $hasMasterJson ? 'image_master_json' : 'image_urls';
+        $col = $hasMasterJson ? 'video_master_json' : 'image_urls';
         $row = DB::table($table)->where('sku', $sku)->first();
         if (! $row) {
             return [];
@@ -1261,7 +1287,7 @@ class ImageMasterController extends Controller
      * @param  list<string>  $urls
      * @return list<string>
      */
-    private function normalizeStorageUrlsForImageMasterMetrics(array $urls): array
+    private function normalizeStorageUrlsForVideoMasterMetrics(array $urls): array
     {
         $base = rtrim((string) (config('app.asset_url') ?: config('app.url')), '/');
         $out  = [];
@@ -1297,7 +1323,7 @@ class ImageMasterController extends Controller
      */
     private function firstPreviewUrl(array $row): ?string
     {
-        foreach (['main_image', 'image1', 'image2', 'image3', 'image4', 'image5', 'image6'] as $k) {
+        foreach (['main_video', 'video1', 'video2', 'video3', 'video4', 'video5', 'video6'] as $k) {
             $v = $row[$k] ?? null;
             if (is_string($v) && trim($v) !== '') {
                 $v = trim($v);
@@ -1310,7 +1336,7 @@ class ImageMasterController extends Controller
         }
 
         // Fall back to legacy/Shopify preview when Product Master image slots are empty.
-        $fallback = $row['image_path'] ?? null;
+        $fallback = $row['video_path'] ?? null;
         if (is_string($fallback) && trim($fallback) !== '') {
             $fallback = trim($fallback);
             if (str_starts_with($fallback, 'http') || str_starts_with($fallback, '//')) {
@@ -1326,7 +1352,7 @@ class ImageMasterController extends Controller
     /**
      * Save image URLs to shopify_catalog_products when available.
      */
-    private function saveShopifyCatalogImages(string $sku, string $marketplace, array $imageUrls): bool
+    private function saveShopifyCatalogVideos(string $sku, string $marketplace, array $imageUrls): bool
     {
         try {
             if (! Schema::hasTable('shopify_catalog_products') || ! Schema::hasTable('shopify_catalog_variants')) {
@@ -1358,8 +1384,8 @@ class ImageMasterController extends Controller
                 if (Schema::hasColumn('shopify_catalog_products', 'image_urls')) {
                     $update['image_urls'] = null;
                 }
-                if (Schema::hasColumn('shopify_catalog_products', 'image_master_json')) {
-                    $update['image_master_json'] = null;
+                if (Schema::hasColumn('shopify_catalog_products', 'video_master_json')) {
+                    $update['video_master_json'] = null;
                 }
             } else {
                 $payload = json_encode(array_values($imageUrls), JSON_UNESCAPED_SLASHES);
@@ -1377,8 +1403,8 @@ class ImageMasterController extends Controller
                 if (Schema::hasColumn('shopify_catalog_products', 'image_urls')) {
                     $update['image_urls'] = $payload;
                 }
-                if (Schema::hasColumn('shopify_catalog_products', 'image_master_json')) {
-                    $update['image_master_json'] = $payload;
+                if (Schema::hasColumn('shopify_catalog_products', 'video_master_json')) {
+                    $update['video_master_json'] = $payload;
                 }
             }
 
@@ -1392,18 +1418,18 @@ class ImageMasterController extends Controller
 
             return true;
         } catch (\Throwable $e) {
-            Log::warning('ImageMaster: failed saving shopify_catalog_products images', ['sku' => $sku, 'marketplace' => $marketplace, 'error' => $e->getMessage()]);
+            Log::warning('VideoMaster: failed saving shopify_catalog_products images', ['sku' => $sku, 'marketplace' => $marketplace, 'error' => $e->getMessage()]);
 
             return false;
         }
     }
 
     /**
-     * Pull current Shopify product images into Product Master image1–image12 and main_image.
+     * Pull current Shopify product images into Product Master video1–video12 and main_video.
      */
-    public function pullShopifyImagesToMaster(Request $request)
+    public function pullShopifyVideosToMaster(Request $request)
     {
-        $pullLog = $this->shopifyImagePullLogger();
+        $pullLog = $this->shopifyVideoPullLogger();
         $sku = '';
         try {
             $validated = $request->validate([
@@ -1413,7 +1439,8 @@ class ImageMasterController extends Controller
 
             $sku = $this->normalizeSku($validated['sku']);
             $dryRun = (bool) ($validated['dry_run'] ?? false);
-            $pullLog->info('Shopify image pull started', ['sku' => $sku]);
+            $pullLog->info('Shopify video pull started', ['sku' => $sku]);
+            Log::info('VideoMaster: Shopify video pull started', ['sku' => $sku]);
             $product = $this->findProductMasterBySku($sku);
             if (! $product) {
                 $pullLog->warning('Product Master row not found', ['sku' => $sku]);
@@ -1426,10 +1453,16 @@ class ImageMasterController extends Controller
                 ], 404);
             }
 
-            $currentImages = $this->productMasterImageArray($product);
-            $shopify = $this->fetchShopifyImagesForSku($sku);
+            $currentImages = $this->productMasterVideoArray($product);
+            $shopify = $this->fetchShopifyVideosForSku($sku);
             if (! ($shopify['success'] ?? false)) {
-                $pullLog->warning('Shopify image fetch failed', [
+                $pullLog->warning('Shopify video fetch failed', [
+                    'sku' => $sku,
+                    'message' => $shopify['message'] ?? 'Unable to fetch Shopify product.',
+                    'variant_id' => $shopify['variant_id'] ?? null,
+                    'product_id' => $shopify['product_id'] ?? null,
+                ]);
+                Log::warning('VideoMaster: Shopify video fetch failed', [
                     'sku' => $sku,
                     'message' => $shopify['message'] ?? 'Unable to fetch Shopify product.',
                     'variant_id' => $shopify['variant_id'] ?? null,
@@ -1445,9 +1478,9 @@ class ImageMasterController extends Controller
                 ], 422);
             }
 
-            $shopifyImages = array_slice($shopify['images'] ?? [], 0, self::PM_MAX_IMAGES);
-            if ($shopifyImages === []) {
-                $pullLog->warning('No Shopify images detected', [
+            $shopifyVideos = array_slice($shopify['videos'] ?? [], 0, self::PM_MAX_VIDEOS);
+            if ($shopifyVideos === []) {
+                $pullLog->warning('No Shopify videos detected', [
                     'sku' => $sku,
                     'shopify_product_id' => $shopify['product_id'] ?? null,
                     'variant_id' => $shopify['variant_id'] ?? null,
@@ -1458,23 +1491,23 @@ class ImageMasterController extends Controller
                     'success' => false,
                     'sku' => $sku,
                     'status' => 'no_images_detected',
-                    'message' => 'No Shopify product images detected.',
+                    'message' => 'No Shopify product videos detected.',
                     'current_images' => $currentImages,
                     'shopify_product_id' => $shopify['product_id'] ?? null,
                 ], 422);
             }
 
-            $matchedBefore = $this->normalizedImageArray($currentImages) === $this->normalizedImageArray($shopifyImages);
+            $matchedBefore = $this->normalizedVideoArray($currentImages) === $this->normalizedVideoArray($shopifyVideos);
 
             if ($dryRun) {
-                $pullLog->info('Shopify image pull dry run', [
+                $pullLog->info('Shopify video pull dry run', [
                     'sku' => $sku,
                     'shopify_product_id' => $shopify['product_id'] ?? null,
                     'variant_id' => $shopify['variant_id'] ?? null,
                     'source' => $shopify['source'] ?? null,
                     'matched_before' => $matchedBefore,
                     'before_count' => count($currentImages),
-                    'shopify_count' => count($shopifyImages),
+                    'shopify_count' => count($shopifyVideos),
                 ]);
 
                 return response()->json([
@@ -1483,41 +1516,41 @@ class ImageMasterController extends Controller
                     'sku' => $sku,
                     'status' => $matchedBefore ? 'already_matched' : 'would_import',
                     'message' => $matchedBefore
-                        ? 'Dry run: already matched Shopify images (no change).'
-                        : 'Dry run: would import '.count($shopifyImages).' image(s) to Product Master.',
+                        ? 'Dry run: already matched Shopify videos (no change).'
+                        : 'Dry run: would import '.count($shopifyVideos).' video(s) to Product Master.',
                     'source' => $shopify['source'] ?? 'shopify_admin',
                     'shopify_product_id' => $shopify['product_id'] ?? null,
                     'variant_id' => $shopify['variant_id'] ?? null,
-                    'before_images' => $currentImages,
-                    'shopify_images' => $shopifyImages,
-                    'after_images' => $shopifyImages,
+                    'before_videos' => $currentImages,
+                    'shopify_videos' => $shopifyVideos,
+                    'after_videos' => $shopifyVideos,
                 ]);
             }
 
-            for ($i = 1; $i <= self::PM_MAX_IMAGES; $i++) {
-                $product->{'image'.$i} = $shopifyImages[$i - 1] ?? null;
+            for ($i = 1; $i <= self::PM_MAX_VIDEOS; $i++) {
+                $product->{'video'.$i} = $shopifyVideos[$i - 1] ?? null;
             }
-            $product->main_image = $shopifyImages[0] ?? null;
+            $product->main_video = $shopifyVideos[0] ?? null;
             $product->save();
 
-            $newImages = $this->productMasterImageArray($product->fresh());
-            Log::info('ImageMaster: pulled Shopify images to Product Master', [
+            $newVideos = $this->productMasterVideoArray($product->fresh());
+            Log::info('VideoMaster: pulled Shopify videos to Product Master', [
                 'sku' => $sku,
                 'shopify_product_id' => $shopify['product_id'] ?? null,
                 'variant_id' => $shopify['variant_id'] ?? null,
                 'source' => $shopify['source'] ?? null,
                 'matched_before' => $matchedBefore,
-                'image_count' => count($shopifyImages),
+                'video_count' => count($shopifyVideos),
             ]);
-            $pullLog->info('Shopify images saved to Product Master', [
+            $pullLog->info('Shopify videos saved to Product Master', [
                 'sku' => $sku,
                 'shopify_product_id' => $shopify['product_id'] ?? null,
                 'variant_id' => $shopify['variant_id'] ?? null,
                 'source' => $shopify['source'] ?? null,
                 'matched_before' => $matchedBefore,
                 'before_count' => count($currentImages),
-                'shopify_count' => count($shopifyImages),
-                'after_count' => count($newImages),
+                'shopify_count' => count($shopifyVideos),
+                'after_count' => count($newVideos),
             ]);
 
             return response()->json([
@@ -1525,17 +1558,17 @@ class ImageMasterController extends Controller
                 'dry_run' => false,
                 'sku' => $sku,
                 'status' => $matchedBefore ? 'already_matched' : 'imported_to_product_master',
-                'message' => $matchedBefore ? 'Already matched Shopify images.' : 'Imported Shopify images to Product Master.',
+                'message' => $matchedBefore ? 'Already matched Shopify videos.' : 'Imported Shopify videos to Product Master.',
                 'source' => $shopify['source'] ?? 'shopify_admin',
                 'shopify_product_id' => $shopify['product_id'] ?? null,
                 'variant_id' => $shopify['variant_id'] ?? null,
-                'before_images' => $currentImages,
-                'shopify_images' => $shopifyImages,
-                'after_images' => $newImages,
+                'before_videos' => $currentImages,
+                'shopify_videos' => $shopifyVideos,
+                'after_videos' => $newVideos,
             ]);
         } catch (\Throwable $e) {
-            Log::error('ImageMaster pullShopifyImagesToMaster failed', ['error' => $e->getMessage()]);
-            $pullLog->error('Shopify image pull exception', [
+            Log::error('VideoMaster pullShopifyVideosToMaster failed', ['error' => $e->getMessage()]);
+            $pullLog->error('Shopify video pull exception', [
                 'sku' => $sku,
                 'error' => $e->getMessage(),
             ]);
@@ -1544,7 +1577,7 @@ class ImageMasterController extends Controller
         }
     }
 
-    public function startShopifyPullJob(Request $request, ShopifyImagePullJobStore $store)
+    public function startShopifyPullJob(Request $request, ShopifyVideoPullJobStore $store)
     {
         $validated = $request->validate([
             'skus' => 'required|array|min:1',
@@ -1555,43 +1588,46 @@ class ImageMasterController extends Controller
         if ($store->isActive($current) && ! $store->isStale($current)) {
             return response()->json([
                 'success' => false,
-                'message' => 'A Shopify image pull is already running or paused. Stop it first to start a new one.',
+                'message' => 'A Shopify video pull is already running or paused. Stop it first to start a new one.',
                 'job' => $current,
             ], 409);
         }
         // A stale "active" job (worker died/never ran) is auto-cleared so it can't block forever.
         if ($store->isActive($current)) {
             $store->forceStop('Cleared a stale pull job (no worker was processing it).');
-            $this->releaseUniqueJobLock(RunShopifyImagePullJob::class, 'shopify-image-pull');
+            $this->releaseUniqueJobLock(RunShopifyVideoPullJob::class, 'shopify-video-pull');
         }
 
         $job = $store->create($validated['skus'], 6);
         try {
-            $this->dispatchShopifyImagePullJob();
+            $this->dispatchShopifyVideoPullJob();
         } catch (\Throwable $e) {
             $store->markFailed('Could not queue worker: '.$e->getMessage());
-            $this->shopifyImagePullLogger()->error('Failed to queue Shopify image pull', [
+            $this->shopifyVideoPullLogger()->error('Failed to queue Shopify video pull', [
                 'error' => $e->getMessage(),
             ]);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Could not queue Shopify image pull worker. Is the queue worker running?',
+                'message' => 'Could not queue Shopify video pull worker. Is the queue worker running?',
                 'job' => $store->load(),
             ], 500);
         }
-        $this->shopifyImagePullLogger()->info('Shopify image pull queued', [
+        $this->shopifyVideoPullLogger()->info('Shopify video pull queued', [
+            'total' => $job['total'] ?? 0,
+        ]);
+        Log::info('VideoMaster: Shopify video pull queued', [
             'total' => $job['total'] ?? 0,
         ]);
 
         return response()->json([
             'success' => true,
-            'message' => 'Background Shopify image pull started.',
+            'message' => 'Background Shopify video pull started.',
             'job' => $job,
         ]);
     }
 
-    public function shopifyPullJobStatus(ShopifyImagePullJobStore $store)
+    public function shopifyPullJobStatus(ShopifyVideoPullJobStore $store)
     {
         return response()->json([
             'success' => true,
@@ -1599,7 +1635,7 @@ class ImageMasterController extends Controller
         ]);
     }
 
-    public function pauseShopifyPullJob(ShopifyImagePullJobStore $store)
+    public function pauseShopifyPullJob(ShopifyVideoPullJobStore $store)
     {
         $job = $store->update(function (array $state) {
             if (($state['status'] ?? 'idle') === 'running') {
@@ -1614,21 +1650,21 @@ class ImageMasterController extends Controller
         return response()->json(['success' => true, 'job' => $job]);
     }
 
-    public function resumeShopifyPullJob(ShopifyImagePullJobStore $store)
+    public function resumeShopifyPullJob(ShopifyVideoPullJobStore $store)
     {
         $job = $store->update(function (array $state) {
             if (($state['status'] ?? 'idle') === 'paused') {
                 $state['status'] = 'running';
-                $state['last_message'] = 'Resumed Shopify image pull.';
+                $state['last_message'] = 'Resumed Shopify video pull.';
             }
 
             return $state;
         });
-        $store->appendMessage('Resumed Shopify image pull.', true);
+        $store->appendMessage('Resumed Shopify video pull.', true);
         try {
-            $this->dispatchShopifyImagePullJob();
+            $this->dispatchShopifyVideoPullJob();
         } catch (\Throwable $e) {
-            $this->shopifyImagePullLogger()->warning('Resume could not re-queue Shopify image pull', [
+            $this->shopifyVideoPullLogger()->warning('Resume could not re-queue Shopify video pull', [
                 'error' => $e->getMessage(),
             ]);
         }
@@ -1636,7 +1672,7 @@ class ImageMasterController extends Controller
         return response()->json(['success' => true, 'job' => $job]);
     }
 
-    public function stopShopifyPullJob(ShopifyImagePullJobStore $store)
+    public function stopShopifyPullJob(ShopifyVideoPullJobStore $store)
     {
         // Force the job inactive immediately so Stop/Cancel always works — even if the worker is
         // gone and the job is stuck in "stopping"/"running" (which used to block new pulls forever).
@@ -1644,7 +1680,7 @@ class ImageMasterController extends Controller
         $job = $store->forceStop('Stopped by user.');
         // Also release the ShouldBeUnique lock — otherwise it stays held (up to uniqueFor) and the
         // next pull dispatch is silently dropped even though the store is clear.
-        $this->releaseUniqueJobLock(RunShopifyImagePullJob::class, 'shopify-image-pull');
+        $this->releaseUniqueJobLock(RunShopifyVideoPullJob::class, 'shopify-video-pull');
 
         return response()->json(['success' => true, 'job' => $job]);
     }
@@ -1663,11 +1699,11 @@ class ImageMasterController extends Controller
         }
     }
 
-    private function shopifyImagePullLogger(): \Psr\Log\LoggerInterface
+    private function shopifyVideoPullLogger(): \Psr\Log\LoggerInterface
     {
         return Log::build([
             'driver' => 'single',
-            'path' => storage_path('logs/shopify-image-pull.log'),
+            'path' => storage_path('logs/shopify-video-pull.log'),
             'level' => 'debug',
         ]);
     }
@@ -1688,7 +1724,7 @@ class ImageMasterController extends Controller
     /**
      * @return array{success: bool, message?: string, images?: list<string>, product_id?: string, variant_id?: string, source?: string}
      */
-    private function fetchShopifyImagesForSku(string $sku): array
+    private function fetchShopifyVideosForSku(string $sku): array
     {
         $mapping = $this->resolveShopifyMappingForSku($sku);
         $store = (string) ($mapping['store'] ?? 'main');
@@ -1735,29 +1771,37 @@ class ImageMasterController extends Controller
             ];
         }
 
-        $images = $this->extractShopifyImageUrls($productRes->json('product.images') ?? []);
-        $source = 'shopify_admin';
+        $videos = $this->fetchShopifyProductVideosViaGraphql($domain, (string) $token, (string) $productId);
+        $source = 'shopify_admin_graphql';
 
-        if ($images === []) {
-            $publicImages = $this->fetchPublicShopifyProductImagesForSku($sku);
-            if ($publicImages !== []) {
-                $images = $publicImages;
+        if ($videos === []) {
+            $adminHandle = trim((string) ($productRes->json('product.handle') ?? ''));
+            $publicVideos = $this->fetchPublicShopifyProductVideosForSku($sku, $adminHandle !== '' ? $adminHandle : null);
+            if ($publicVideos !== []) {
+                $videos = $publicVideos;
                 $source = 'shopify_storefront';
             }
         }
 
-        if ($images === []) {
-            $cachedImages = $this->fetchCachedShopifyImagesForSku($sku);
-            if ($cachedImages !== []) {
-                $images = $cachedImages;
+        if ($videos === []) {
+            $cachedVideos = $this->fetchCachedShopifyVideosForSku($sku);
+            if ($cachedVideos !== []) {
+                $videos = $cachedVideos;
                 $source = 'shopify_catalog_cache';
             }
         }
 
-        if ($images === []) {
+        if ($videos === []) {
+            Log::info('VideoMaster: no Shopify videos for SKU', [
+                'sku' => $sku,
+                'variant_id' => (string) $variantId,
+                'product_id' => (string) $productId,
+                'store' => $store,
+            ]);
+
             return [
                 'success' => false,
-                'message' => 'No Shopify product images found.',
+                'message' => 'No Shopify product videos found. This product may only have gallery images in Shopify Admin — add VIDEO or EXTERNAL_VIDEO media there first.',
                 'variant_id' => (string) $variantId,
                 'product_id' => (string) $productId,
             ];
@@ -1765,7 +1809,7 @@ class ImageMasterController extends Controller
 
         return [
             'success' => true,
-            'images' => $images,
+            'videos' => $videos,
             'variant_id' => (string) $variantId,
             'product_id' => (string) $productId,
             'store' => $store,
@@ -1774,18 +1818,157 @@ class ImageMasterController extends Controller
     }
 
     /**
-     * @param  mixed  $images
+     * Fetch VIDEO / EXTERNAL_VIDEO media from Shopify Admin GraphQL (not product.images).
+     *
      * @return list<string>
      */
-    private function extractShopifyImageUrls($images): array
+    private function fetchShopifyProductVideosViaGraphql(string $domain, string $token, string $productId): array
+    {
+        $version = config('services.shopify.api_version', '2025-01');
+        $gql = "https://{$domain}/admin/api/{$version}/graphql.json";
+        $pgid = 'gid://shopify/Product/'.$productId;
+        $query = <<<'GQL'
+query($id: ID!) {
+  product(id: $id) {
+    media(first: 20) {
+      nodes {
+        mediaContentType
+        ... on Video {
+          sources { url mimeType }
+          originalSource { url }
+        }
+        ... on ExternalVideo {
+          originUrl
+          embedUrl
+        }
+      }
+    }
+  }
+}
+GQL;
+
+        try {
+            $response = Http::withHeaders([
+                'X-Shopify-Access-Token' => $token,
+                'Content-Type' => 'application/json',
+            ])->timeout(40)->post($gql, [
+                'query' => $query,
+                'variables' => ['id' => $pgid],
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('VideoMaster: Shopify GraphQL video fetch failed', [
+                'product_id' => $productId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [];
+        }
+
+        if (! $response->successful()) {
+            Log::warning('VideoMaster: Shopify GraphQL video fetch HTTP error', [
+                'product_id' => $productId,
+                'status' => $response->status(),
+                'body' => mb_substr((string) $response->body(), 0, 500),
+            ]);
+
+            return [];
+        }
+
+        $gqlErrors = $response->json('errors') ?? [];
+        if (is_array($gqlErrors) && $gqlErrors !== []) {
+            Log::warning('VideoMaster: Shopify GraphQL video fetch returned errors', [
+                'product_id' => $productId,
+                'errors' => $gqlErrors,
+            ]);
+        }
+
+        $nodes = $response->json('data.product.media.nodes') ?? [];
+        if (! is_array($nodes)) {
+            return [];
+        }
+
+        $urls = [];
+        foreach ($nodes as $node) {
+            if (! is_array($node)) {
+                continue;
+            }
+            $type = strtoupper((string) ($node['mediaContentType'] ?? ''));
+            if ($type === 'VIDEO') {
+                $added = false;
+                foreach ($node['sources'] ?? [] as $source) {
+                    if (! is_array($source)) {
+                        continue;
+                    }
+                    $url = trim((string) ($source['url'] ?? ''));
+                    if ($url !== '') {
+                        $urls[] = $url;
+                        $added = true;
+                        break;
+                    }
+                }
+                if (! $added) {
+                    $orig = trim((string) ($node['originalSource']['url'] ?? ''));
+                    if ($orig !== '') {
+                        $urls[] = $orig;
+                    }
+                }
+            } elseif ($type === 'EXTERNAL_VIDEO') {
+                $origin = trim((string) ($node['originUrl'] ?? ''));
+                if ($origin !== '') {
+                    $urls[] = $origin;
+                } else {
+                    $embed = trim((string) ($node['embedUrl'] ?? ''));
+                    if ($embed !== '') {
+                        $urls[] = $embed;
+                    }
+                }
+            }
+        }
+
+        return $this->dedupeVideoUrls($this->filterLikelyVideoUrls($urls));
+    }
+
+    /**
+     * @param  list<string>  $urls
+     * @return list<string>
+     */
+    private function filterLikelyVideoUrls(array $urls): array
+    {
+        return array_values(array_filter($urls, fn ($url) => $this->isLikelyVideoUrl((string) $url)));
+    }
+
+    private function isLikelyVideoUrl(string $url): bool
+    {
+        $url = trim($url);
+        if ($url === '') {
+            return false;
+        }
+        if (preg_match('#cdn\.shopify\.com/videos/#i', $url)) {
+            return true;
+        }
+        if (preg_match('#\.(mp4|webm|mov|m4v|ogv)(\?|#|$)#i', $url)) {
+            return true;
+        }
+        if (preg_match('#/(files|videos)/#i', $url) && preg_match('#\.(mp4|webm|mov|m4v)(\?|#|$)#i', $url)) {
+            return true;
+        }
+        // YouTube / Vimeo external product videos
+        if (preg_match('#(?:youtube\.com|youtu\.be|vimeo\.com)#i', $url)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  mixed  $images  Legacy — unused; kept for signature compatibility.
+     * @return list<string>
+     */
+    private function extractShopifyVideoUrls($images): array
     {
         if (! is_array($images)) {
             return [];
         }
-
-        usort($images, static function ($a, $b) {
-            return ((int) ($a['position'] ?? 0)) <=> ((int) ($b['position'] ?? 0));
-        });
 
         $urls = [];
         foreach ($images as $image) {
@@ -1793,33 +1976,76 @@ class ImageMasterController extends Controller
                 continue;
             }
             $src = trim((string) ($image['src'] ?? ''));
-            if ($src !== '') {
+            if ($src !== '' && $this->isLikelyVideoUrl($src)) {
                 $urls[] = $src;
             }
         }
 
-        return $this->dedupeImageUrls($urls);
+        return $this->dedupeVideoUrls($urls);
+    }
+
+    /**
+     * @param  mixed  $media  Storefront product.js "media" array.
+     * @return list<string>
+     */
+    private function extractShopifyStorefrontMediaVideoUrls($media): array
+    {
+        if (! is_array($media)) {
+            return [];
+        }
+
+        $urls = [];
+        foreach ($media as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            if (strtolower((string) ($item['media_type'] ?? '')) !== 'video') {
+                continue;
+            }
+
+            $bestUrl = null;
+            $bestHeight = -1;
+            foreach ($item['sources'] ?? [] as $source) {
+                if (! is_array($source)) {
+                    continue;
+                }
+                $url = trim((string) ($source['url'] ?? ''));
+                if ($url === '') {
+                    continue;
+                }
+                $mime = strtolower((string) ($source['mime_type'] ?? ''));
+                if (str_contains($mime, 'mpegurl') || str_ends_with(strtolower($url), '.m3u8')) {
+                    continue;
+                }
+                $height = (int) ($source['height'] ?? 0);
+                if ($height >= $bestHeight) {
+                    $bestHeight = $height;
+                    $bestUrl = $url;
+                }
+            }
+
+            if ($bestUrl !== null) {
+                $urls[] = $bestUrl;
+                continue;
+            }
+
+            $src = trim((string) ($item['src'] ?? ''));
+            if ($src !== '' && $this->isLikelyVideoUrl($src)) {
+                $urls[] = $src;
+            }
+        }
+
+        return $this->dedupeVideoUrls($urls);
     }
 
     /**
      * @return list<string>
      */
-    private function fetchPublicShopifyProductImagesForSku(string $sku): array
+    private function fetchPublicShopifyProductVideosForSku(string $sku, ?string $handleOverride = null): array
     {
-        if (! Schema::hasTable('shopify_catalog_variants') || ! Schema::hasTable('shopify_catalog_products')) {
-            return [];
-        }
+        $handles = $this->resolveShopifyStorefrontHandlesForSku($sku, $handleOverride);
 
-        $row = DB::table('shopify_catalog_variants as v')
-            ->join('shopify_catalog_products as p', 'p.id', '=', 'v.shopify_catalog_product_id')
-            ->whereRaw('LOWER(TRIM(COALESCE(v.sku, \'\'))) = ?', [mb_strtolower(trim($sku))])
-            ->orderByDesc('v.synced_at')
-            ->orderByDesc('v.id')
-            ->select('p.handle')
-            ->first();
-
-        $handle = trim((string) ($row->handle ?? ''));
-        if ($handle === '') {
+        if ($handles === []) {
             return [];
         }
 
@@ -1828,21 +2054,166 @@ class ImageMasterController extends Controller
             'www.5core.com',
         ])));
 
+        foreach ($handles as $handle) {
+            foreach ($domains as $domain) {
+                $domain = rtrim(preg_replace('#^https?://#', '', (string) $domain), '/');
+                if ($domain === '') {
+                    continue;
+                }
+
+                $url = "https://{$domain}/products/{$handle}.js";
+                try {
+                    $response = Http::timeout(30)->connectTimeout(15)->get($url);
+                } catch (\Throwable $e) {
+                    Log::warning('VideoMaster: public Shopify product fetch exception', [
+                        'sku' => $sku,
+                        'url' => $url,
+                        'error' => $e->getMessage(),
+                    ]);
+                    continue;
+                }
+
+                if (! $response->successful()) {
+                    continue;
+                }
+
+                $payload = $response->json();
+                $videos = $this->extractShopifyStorefrontMediaVideoUrls($payload['media'] ?? []);
+                if ($videos === []) {
+                    $videos = $this->extractShopifyVideoUrls($payload['images'] ?? []);
+                }
+                $videos = $this->filterLikelyVideoUrls($videos);
+                if ($videos !== []) {
+                    Log::info('VideoMaster: found Shopify videos via storefront', [
+                        'sku' => $sku,
+                        'handle' => $handle,
+                        'domain' => $domain,
+                        'video_count' => count($videos),
+                    ]);
+
+                    return $videos;
+                }
+            }
+        }
+
+        return [];
+    }
+
+    private function resolveShopifyCatalogHandleForSku(string $sku): ?string
+    {
+        foreach ($this->resolveShopifyCatalogHandlesForSku($sku) as $handle) {
+            return $handle;
+        }
+
+        return null;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function resolveShopifyCatalogHandlesForSku(string $sku): array
+    {
+        if (! Schema::hasTable('shopify_catalog_variants') || ! Schema::hasTable('shopify_catalog_products')) {
+            return [];
+        }
+
+        $rows = DB::table('shopify_catalog_variants as v')
+            ->join('shopify_catalog_products as p', 'p.id', '=', 'v.shopify_catalog_product_id')
+            ->whereRaw('LOWER(TRIM(COALESCE(v.sku, \'\'))) = ?', [mb_strtolower(trim($sku))])
+            ->orderByDesc('v.synced_at')
+            ->orderByDesc('v.id')
+            ->select('p.handle')
+            ->get();
+
+        $handles = [];
+        foreach ($rows as $row) {
+            $handle = trim((string) ($row->handle ?? ''));
+            if ($handle === '' || in_array($handle, $handles, true)) {
+                continue;
+            }
+            $handles[] = $handle;
+            $stripped = preg_replace('/-\d+$/', '', $handle);
+            if (is_string($stripped) && $stripped !== '' && $stripped !== $handle && ! in_array($stripped, $handles, true)) {
+                $handles[] = $stripped;
+            }
+        }
+
+        usort($handles, static function (string $a, string $b): int {
+            $aSuffix = (int) preg_match('/-\d+$/', $a);
+            $bSuffix = (int) preg_match('/-\d+$/', $b);
+            if ($aSuffix !== $bSuffix) {
+                return $aSuffix <=> $bSuffix;
+            }
+
+            return strlen($a) <=> strlen($b);
+        });
+
+        return $handles;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function resolveShopifyStorefrontHandlesForSku(string $sku, ?string $handleOverride = null): array
+    {
+        $handles = [];
+        foreach ([$handleOverride, ...$this->resolveShopifyCatalogHandlesForSku($sku)] as $candidate) {
+            $candidate = trim((string) ($candidate ?? ''));
+            if ($candidate !== '' && ! in_array($candidate, $handles, true)) {
+                $handles[] = $candidate;
+            }
+            $stripped = preg_replace('/-\d+$/', '', $candidate);
+            if (is_string($stripped) && $stripped !== '' && $stripped !== $candidate && ! in_array($stripped, $handles, true)) {
+                $handles[] = $stripped;
+            }
+        }
+
+        foreach ($this->fetchShopifyStorefrontHandlesBySkuSearch($sku) as $searchHandle) {
+            if (! in_array($searchHandle, $handles, true)) {
+                $handles[] = $searchHandle;
+            }
+        }
+
+        return $handles;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function fetchShopifyStorefrontHandlesBySkuSearch(string $sku): array
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return [];
+        }
+
+        $domains = array_values(array_unique(array_filter([
+            config('services.shopify_5core.domain'),
+            'www.5core.com',
+        ])));
+
+        $lowerSku = mb_strtolower($sku);
         foreach ($domains as $domain) {
             $domain = rtrim(preg_replace('#^https?://#', '', (string) $domain), '/');
             if ($domain === '') {
                 continue;
             }
 
-            $url = "https://{$domain}/products/{$handle}.js";
+            $url = 'https://'.$domain.'/search/suggest.json?'.http_build_query([
+                'q' => $sku,
+                'resources' => [
+                    'type' => 'product',
+                    'limit' => 8,
+                    'options' => [
+                        'unavailable_products' => 'last',
+                        'fields' => 'title,product_type,variants.title,variants.sku,vendor',
+                    ],
+                ],
+            ]);
+
             try {
-                $response = Http::timeout(30)->connectTimeout(15)->get($url);
-            } catch (\Throwable $e) {
-                Log::warning('ImageMaster: public Shopify product fetch exception', [
-                    'sku' => $sku,
-                    'url' => $url,
-                    'error' => $e->getMessage(),
-                ]);
+                $response = Http::timeout(20)->connectTimeout(10)->get($url);
+            } catch (\Throwable) {
                 continue;
             }
 
@@ -1850,9 +2221,37 @@ class ImageMasterController extends Controller
                 continue;
             }
 
-            $images = $this->extractShopifyImageUrls($response->json('images') ?? []);
-            if ($images !== []) {
-                return $images;
+            $products = $response->json('resources.results.products') ?? [];
+            if (! is_array($products)) {
+                continue;
+            }
+
+            $handles = [];
+            foreach ($products as $product) {
+                if (! is_array($product)) {
+                    continue;
+                }
+                $handle = trim((string) ($product['handle'] ?? ''));
+                if ($handle === '') {
+                    continue;
+                }
+                $matched = false;
+                foreach ($product['variants'] ?? [] as $variant) {
+                    if (! is_array($variant)) {
+                        continue;
+                    }
+                    if (mb_strtolower(trim((string) ($variant['sku'] ?? ''))) === $lowerSku) {
+                        $matched = true;
+                        break;
+                    }
+                }
+                if ($matched && ! in_array($handle, $handles, true)) {
+                    $handles[] = $handle;
+                }
+            }
+
+            if ($handles !== []) {
+                return $handles;
             }
         }
 
@@ -1862,19 +2261,38 @@ class ImageMasterController extends Controller
     /**
      * @return list<string>
      */
-    private function fetchCachedShopifyImagesForSku(string $sku): array
+    private function fetchCachedShopifyVideosForSku(string $sku): array
     {
         if (! Schema::hasTable('shopify_catalog_variants') || ! Schema::hasTable('shopify_catalog_products')) {
             return [];
         }
 
-        $row = DB::table('shopify_catalog_variants as v')
-            ->join('shopify_catalog_products as p', 'p.id', '=', 'v.shopify_catalog_product_id')
-            ->whereRaw('LOWER(TRIM(COALESCE(v.sku, \'\'))) = ?', [mb_strtolower(trim($sku))])
-            ->orderByDesc('v.synced_at')
-            ->orderByDesc('v.id')
-            ->select('p.image_src', 'p.images', 'p.image_urls')
-            ->first();
+        $select = [];
+        foreach (['image_src', 'images', 'image_urls'] as $col) {
+            if (Schema::hasColumn('shopify_catalog_products', $col)) {
+                $select[] = 'p.'.$col;
+            }
+        }
+        if ($select === []) {
+            return [];
+        }
+
+        try {
+            $row = DB::table('shopify_catalog_variants as v')
+                ->join('shopify_catalog_products as p', 'p.id', '=', 'v.shopify_catalog_product_id')
+                ->whereRaw('LOWER(TRIM(COALESCE(v.sku, \'\'))) = ?', [mb_strtolower(trim($sku))])
+                ->orderByDesc('v.synced_at')
+                ->orderByDesc('v.id')
+                ->select($select)
+                ->first();
+        } catch (\Throwable $e) {
+            Log::warning('VideoMaster: cached Shopify video lookup failed', [
+                'sku' => $sku,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [];
+        }
 
         if (! $row) {
             return [];
@@ -1886,9 +2304,15 @@ class ImageMasterController extends Controller
             if (is_array($decoded)) {
                 foreach ($decoded as $item) {
                     if (is_string($item) && trim($item) !== '') {
-                        $urls[] = trim($item);
+                        $candidate = trim($item);
+                        if ($this->isLikelyVideoUrl($candidate)) {
+                            $urls[] = $candidate;
+                        }
                     } elseif (is_array($item) && ! empty($item['src'])) {
-                        $urls[] = trim((string) $item['src']);
+                        $candidate = trim((string) $item['src']);
+                        if ($this->isLikelyVideoUrl($candidate)) {
+                            $urls[] = $candidate;
+                        }
                     }
                 }
             }
@@ -1899,26 +2323,35 @@ class ImageMasterController extends Controller
             if (is_array($decoded)) {
                 foreach ($decoded as $item) {
                     if (is_string($item) && trim($item) !== '') {
-                        $urls[] = trim($item);
+                        $candidate = trim($item);
+                        if ($this->isLikelyVideoUrl($candidate)) {
+                            $urls[] = $candidate;
+                        }
                     } elseif (is_array($item) && ! empty($item['src'])) {
-                        $urls[] = trim((string) $item['src']);
+                        $candidate = trim((string) $item['src']);
+                        if ($this->isLikelyVideoUrl($candidate)) {
+                            $urls[] = $candidate;
+                        }
                     }
                 }
             }
         }
 
-        if ($urls === [] && ! empty($row->image_src)) {
-            $urls[] = trim((string) $row->image_src);
+        if ($urls === [] && Schema::hasColumn('shopify_catalog_products', 'image_src') && ! empty($row->image_src)) {
+            $candidate = trim((string) $row->image_src);
+            if ($this->isLikelyVideoUrl($candidate)) {
+                $urls[] = $candidate;
+            }
         }
 
-        return $this->dedupeImageUrls($urls);
+        return $this->filterLikelyVideoUrls($this->dedupeVideoUrls($urls));
     }
 
     /**
      * @param  list<string>  $urls
      * @return list<string>
      */
-    private function dedupeImageUrls(array $urls): array
+    private function dedupeVideoUrls(array $urls): array
     {
         $seen = [];
         $out = [];
@@ -1931,7 +2364,7 @@ class ImageMasterController extends Controller
             $out[] = $url;
         }
 
-        return array_slice($out, 0, self::PM_MAX_IMAGES);
+        return array_slice($out, 0, self::PM_MAX_VIDEOS);
     }
 
     /**
@@ -1986,22 +2419,22 @@ class ImageMasterController extends Controller
     /**
      * @return list<string>
      */
-    private function productMasterImageArray(?ProductMaster $product): array
+    private function productMasterVideoArray(?ProductMaster $product): array
     {
         if (! $product) {
             return [];
         }
 
         $urls = [];
-        for ($i = 1; $i <= self::PM_MAX_IMAGES; $i++) {
-            $value = trim((string) ($product->{'image'.$i} ?? ''));
+        for ($i = 1; $i <= self::PM_MAX_VIDEOS; $i++) {
+            $value = trim((string) ($product->{'video'.$i} ?? ''));
             if ($value !== '') {
                 $urls[] = $value;
             }
         }
 
-        if ($urls === [] && ! empty($product->main_image)) {
-            $urls[] = trim((string) $product->main_image);
+        if ($urls === [] && ! empty($product->main_video)) {
+            $urls[] = trim((string) $product->main_video);
         }
 
         return $urls;
@@ -2011,7 +2444,7 @@ class ImageMasterController extends Controller
      * @param  list<string>  $images
      * @return list<string>
      */
-    private function normalizedImageArray(array $images): array
+    private function normalizedVideoArray(array $images): array
     {
         return array_values(array_map(function ($url) {
             $url = trim((string) $url);
@@ -2024,14 +2457,14 @@ class ImageMasterController extends Controller
         }, $images));
     }
 
-    private function dispatchShopifyImagePullJob(): void
+    private function dispatchShopifyVideoPullJob(): void
     {
-        RunShopifyImagePullJob::dispatch();
+        RunShopifyVideoPullJob::dispatch();
     }
 
-    private function dispatchImageMasterPushJob(): void
+    private function dispatchVideoMasterPushJob(): void
     {
-        RunImageMasterPushJob::dispatch();
+        RunVideoMasterPushJob::dispatch();
     }
 
     private function shopifyPullAdminGet(string $url, string $token): \Illuminate\Http\Client\Response
@@ -2055,5 +2488,28 @@ class ImageMasterController extends Controller
         }
 
         return $last;
+    }
+
+    /**
+     * @param  list<mixed>  $videos
+     * @return list<string>
+     */
+    private function normalizeVideoList(array $videos): array
+    {
+        $urls = [];
+        foreach ($videos as $video) {
+            if (is_string($video) && trim($video) !== '') {
+                $urls[] = trim($video);
+            } elseif (is_array($video)) {
+                foreach (['url', 'locator', 'video_url', 'src'] as $key) {
+                    if (! empty($video[$key]) && is_string($video[$key])) {
+                        $urls[] = trim($video[$key]);
+                        break;
+                    }
+                }
+            }
+        }
+
+        return array_values(array_unique(array_filter($urls)));
     }
 }
