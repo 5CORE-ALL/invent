@@ -15,9 +15,11 @@ use App\Models\AmazonListingRaw;
 use App\Models\ProductStockMapping;
 use App\Services\Support\AplusContentDocumentParser;
 use App\Services\Support\DescriptionWithImagesFormatter;
+use App\Services\Support\VideoMasterMarketplaceMethods;
 
 class AmazonSpApiService
 {
+    use VideoMasterMarketplaceMethods;
     protected $clientId;
     protected $clientSecret;
     protected $refreshToken;
@@ -3807,6 +3809,265 @@ class AmazonSpApiService
         }
 
         return $res;
+    }
+
+    /**
+     * @param  list<string>  $videoUrls
+     * @return array{success: bool, message: string, normalized_urls?: list<string>}
+     */
+    public function updateListingVideos(string $identifier, array $videoUrls): array
+    {
+        $sku = $this->resolveAmazonSellerSkuForBullets($identifier);
+        $urls = array_values(array_filter(array_map('trim', $videoUrls), fn ($s) => $s !== ''));
+        $urls = array_slice($urls, 0, 3);
+        if ($sku === '' || $urls === []) {
+            return ['success' => false, 'message' => 'SKU (or ASIN from amazon_metrics) and at least one video URL are required.'];
+        }
+
+        foreach ($urls as $u) {
+            if (! preg_match('#^https://#i', $u)) {
+                return ['success' => false, 'message' => 'Amazon requires publicly reachable HTTPS video URLs.'];
+            }
+        }
+
+        $sellerId = config('services.amazon_sp.seller_id');
+        $marketplaceId = (string) config('services.amazon_sp.marketplace_id', 'ATVPDKIKX0DER');
+        if (empty($sellerId)) {
+            return ['success' => false, 'message' => 'Amazon Seller ID is not configured.'];
+        }
+
+        $amazonSku = null;
+        $productType = null;
+        $lastError = null;
+        $triedLabels = [];
+
+        for ($attempt = 1; $attempt <= 2; $attempt++) {
+            try {
+                $accessToken = $this->getAccessToken($attempt > 1);
+                if (empty($accessToken)) {
+                    return ['success' => false, 'message' => 'Failed to get Amazon access token.'];
+                }
+
+                if ($amazonSku === null) {
+                    $listingTarget = $this->resolveAmazonListingTarget($sku, $accessToken);
+                    $amazonSku = $listingTarget['amazon_sku'];
+                    $productType = $listingTarget['product_type'];
+                    if (empty($amazonSku)) {
+                        return ['success' => false, 'message' => 'SKU not found in Amazon.'];
+                    }
+                }
+
+                if ($productType === null) {
+                    $productType = $this->getAmazonProductType($sku, $amazonSku, $accessToken);
+                    if (empty($productType)) {
+                        return ['success' => false, 'message' => 'Product type not found for SKU.'];
+                    }
+                }
+
+                $attributes = $this->getListingItemAttributes($amazonSku, $accessToken);
+                $strategies = $this->buildAmazonListingVideoPatchStrategies($urls, $marketplaceId);
+
+                $encodedSku = rawurlencode($amazonSku);
+                $endpoint = $this->endpoint.'/listings/2021-08-01/items/'.$sellerId.'/'.$encodedSku.'?marketplaceIds='.$marketplaceId;
+
+                $response = null;
+                foreach ($strategies as $strategy) {
+                    $triedLabels[] = $strategy['label'];
+                    $body = [
+                        'productType' => $productType,
+                        'patches' => $strategy['patches'],
+                    ];
+
+                    $response = Http::withHeaders([
+                        'x-amz-access-token' => $accessToken,
+                        'Content-Type' => 'application/json',
+                        'Accept' => 'application/json',
+                    ])->timeout(90)->patch($endpoint, $body);
+
+                    $responseData = $response->json() ?? [];
+
+                    if ($response->successful() && empty($responseData['errors'])) {
+                        Log::info('Amazon listing videos updated', [
+                            'sku' => $sku,
+                            'amazon_sku' => $amazonSku,
+                            'count' => count($urls),
+                            'strategy' => $strategy['label'],
+                        ]);
+
+                        return [
+                            'success' => true,
+                            'message' => 'Amazon listing video(s) updated ('.$strategy['label'].').',
+                            'normalized_urls' => $urls,
+                        ];
+                    }
+
+                    $lastError = $responseData['errors'][0]['message'] ?? $response->body();
+                    if (is_array($lastError)) {
+                        $lastError = json_encode($lastError);
+                    }
+                    $lastError = (string) $lastError;
+
+                    Log::warning('Amazon video patch strategy failed', [
+                        'sku' => $sku,
+                        'strategy' => $strategy['label'],
+                        'status' => $response->status(),
+                        'message' => substr($lastError, 0, 500),
+                    ]);
+                }
+
+                if (isset($response) && in_array($response->status(), [401, 403, 500, 502, 503], true) && $attempt < 2) {
+                    sleep(1);
+                    continue;
+                }
+
+                $summary = 'None of the video patch strategies succeeded. Tried: '.implode('; ', array_unique($triedLabels)).'. ';
+                $summary .= 'Last error: '.$lastError.'. ';
+                $summary .= 'Your product type may not support product_video — check Product Type Definitions for "'.$productType.'".';
+
+                return ['success' => false, 'message' => $summary];
+            } catch (\Throwable $e) {
+                $lastError = $e->getMessage();
+                if ($attempt >= 2) {
+                    return ['success' => false, 'message' => $lastError];
+                }
+            }
+        }
+
+        return ['success' => false, 'message' => (string) $lastError];
+    }
+
+    /**
+     * @param  list<string>  $videos
+     * @return array{success: bool, message: string}
+     */
+    public function updateVideos(string $identifier, array $videos): array
+    {
+        $videos = array_slice(array_values(array_unique(array_filter(array_map('trim', $videos), fn ($v) => $v !== ''))), 0, 3);
+        if ($videos === []) {
+            return ['success' => false, 'message' => 'At least one video URL is required.'];
+        }
+
+        $res = $this->updateListingVideos($identifier, $videos);
+        if (! ($res['success'] ?? false)) {
+            return $res;
+        }
+
+        $sku = $this->resolveAmazonSellerSkuForBullets($identifier);
+        $saved = $this->saveVideoUrlsToAmazonMetrics($sku, $videos);
+        if (! $saved) {
+            $res['message'] = ($res['message'] ?? 'Amazon listing videos updated.').' Metrics save failed.';
+        }
+
+        return $res;
+    }
+
+    /**
+     * @param  list<string>  $urls
+     * @return list<array{label: string, patches: list<array<string, mixed>>}>
+     */
+    private function buildAmazonListingVideoPatchStrategies(array $urls, string $marketplaceId): array
+    {
+        $primary = (string) ($urls[0] ?? '');
+        $strategies = [];
+
+        $isExternal = (bool) preg_match('#(?:youtube\.com|youtu\.be|vimeo\.com)#i', $primary);
+
+        if ($isExternal) {
+            $strategies[] = [
+                'label' => 'external_product_video (string URL)',
+                'patches' => [[
+                    'op' => 'replace',
+                    'path' => '/attributes/external_product_video',
+                    'value' => [[
+                        'marketplace_id' => $marketplaceId,
+                        'value' => $primary,
+                    ]],
+                ]],
+            ];
+        }
+
+        $strategies[] = [
+            'label' => 'product_video (string URL)',
+            'patches' => [[
+                'op' => 'replace',
+                'path' => '/attributes/product_video',
+                'value' => [[
+                    'marketplace_id' => $marketplaceId,
+                    'value' => $primary,
+                ]],
+            ]],
+        ];
+
+        $strategies[] = [
+            'label' => 'product_video (media_location)',
+            'patches' => [[
+                'op' => 'replace',
+                'path' => '/attributes/product_video',
+                'value' => [[
+                    'marketplace_id' => $marketplaceId,
+                    'value' => [
+                        'media_location' => $primary,
+                    ],
+                ]],
+            ]],
+        ];
+
+        $strategies[] = [
+            'label' => 'product_video (locator)',
+            'patches' => [[
+                'op' => 'replace',
+                'path' => '/attributes/product_video',
+                'value' => [[
+                    'marketplace_id' => $marketplaceId,
+                    'value' => [
+                        'locator' => $primary,
+                    ],
+                ]],
+            ]],
+        ];
+
+        return $strategies;
+    }
+
+    /**
+     * @param  list<string>  $videos
+     */
+    private function saveVideoUrlsToAmazonMetrics(string $sku, array $videos): bool
+    {
+        try {
+            if (! Schema::hasTable('amazon_metrics') || ! Schema::hasColumn('amazon_metrics', 'sku')) {
+                return false;
+            }
+            $payload = json_encode(array_values($videos), JSON_UNESCAPED_SLASHES);
+            if ($payload === false) {
+                return false;
+            }
+
+            $update = [];
+            if (Schema::hasColumn('amazon_metrics', 'video_master_json')) {
+                $update['video_master_json'] = $payload;
+            }
+            if (Schema::hasColumn('amazon_metrics', 'video_urls')) {
+                $update['video_urls'] = $payload;
+            }
+            if ($update === []) {
+                return false;
+            }
+            if (Schema::hasColumn('amazon_metrics', 'updated_at')) {
+                $update['updated_at'] = now();
+            }
+
+            DB::table('amazon_metrics')->updateOrInsert(['sku' => $sku], $update);
+            if (Schema::hasColumn('amazon_metrics', 'created_at')) {
+                DB::table('amazon_metrics')->where('sku', $sku)->whereNull('created_at')->update(['created_at' => now()]);
+            }
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::warning('Amazon video metrics save failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return false;
+        }
     }
 
     /**

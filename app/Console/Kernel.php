@@ -114,6 +114,8 @@ class Kernel extends ConsoleKernel
         \App\Console\Commands\RunShopifyBulletPull::class,
         \App\Console\Commands\RunShopifyImagePull::class,
         \App\Console\Commands\RunImageMasterPush::class,
+        \App\Console\Commands\RunShopifyVideoPull::class,
+        \App\Console\Commands\RunVideoMasterPush::class,
     ];
 
     /**
