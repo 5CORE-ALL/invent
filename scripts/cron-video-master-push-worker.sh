@@ -1,4 +1,5 @@
-#!/usr/bin/env bash# Ensures the video-master-push queue worker is running (crontab watchdog).
+#!/usr/bin/env bash
+# Ensures the video-master-push queue worker is running (crontab watchdog).
 #
 # queue:work is long-lived; cron only starts it when no matching process exists.
 #

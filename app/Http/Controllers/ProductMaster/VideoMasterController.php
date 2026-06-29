@@ -4,6 +4,7 @@ namespace App\Http\Controllers\ProductMaster;
 
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\ProductMaster\ProductMasterController as PMController;
+use App\Http\Controllers\ProductMaster\Concerns\GuardsMarketplaceApiConfiguration;
 use App\Jobs\RunVideoMasterPushJob;
 use App\Jobs\RunShopifyVideoPullJob;
 use App\Models\ProductVideo;
@@ -35,6 +36,8 @@ use Illuminate\Support\Facades\Schema;
 
 class VideoMasterController extends Controller
 {
+    use GuardsMarketplaceApiConfiguration;
+
     private const PM_MAX_VIDEOS = 10;
 
     public function index(Request $request)
@@ -331,6 +334,10 @@ class VideoMasterController extends Controller
 
         if (! in_array($mp, $allowed, true)) {
             return ['success' => false, 'message' => 'Unknown marketplace'];
+        }
+
+        if ($blocked = $this->marketplaceApiNotConfiguredResult($mp)) {
+            return $blocked;
         }
 
         if ($videos === [] && $mode !== 'replace') {

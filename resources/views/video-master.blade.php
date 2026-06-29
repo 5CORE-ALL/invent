@@ -27,6 +27,13 @@
         .btn-temu { background-color:#ff6b00; } .btn-reverb { background-color:#333333; }
         .btn-shopify { background-color:#7cb342; } .btn-shopify-pls { background-color:#5c6bc0; }
         .btn-wayfair { background-color:#7a3ff2; } .btn-bestbuy { background-color:#0046be; }
+        .btn-walmart { background-color:#0071ce; } .btn-doba { background-color:#fd7e14; } .btn-faire { background-color:#6f42c1; }
+        .btn-shein { background-color:#000; } .btn-aliexpress { background-color:#e62e04; }
+        .btn-amazon-fba { background-color:#e47911; } .btn-tiendamia { background-color:#6c757d; } .btn-newegg { background-color:#cc4100; }
+        .btn-tiktok { background-color:#010101; } .btn-depop { background-color:#ff2300; } .btn-instagram { background-color:#c13584; }
+        .btn-mercari { background-color:#4dc9f6; } .btn-fb { background-color:#1877f2; } .btn-shopify-b5c { background-color:#455a64; }
+        .btn-shopify-b2b { background-color:#37474f; } .btn-topdawg { background-color:#2e7d32; } .btn-purchasing-power { background-color:#795548; }
+        .bp-mp-inline { display:flex; flex-wrap:wrap; gap:4px; max-width:520px; }
         .modal-header-gradient { background:linear-gradient(135deg,#6B73FF 0%,#000DFF 100%); color:#fff; }
         /* ── Video card grid ─────────────────────────────────────── */
         .vm-grid { display:flex; flex-wrap:wrap; gap:10px; min-height:40px; padding:4px 0; }
@@ -108,16 +115,25 @@
                                     <th>Product Name</th>
                                     <th>Preview</th>
                                     <th>Action</th>
-                                    <th title="eBay1–3, Macy's, Amazon, Temu, Reverb, Wayfair, Best Buy">
+                                    <th title="All channels from All Marketplace Master">
                                         <div class="bp-mp-th-title">MARKET PLACES</div>
                                         <div class="bp-mp-th-icons">
-                                            <span class="bp-mp-th-pill btn-ebay1">E1</span><span class="bp-mp-th-pill btn-ebay2">E2</span><span class="bp-mp-th-pill btn-ebay3">E3</span><span class="bp-mp-th-pill btn-macy">M</span><span class="bp-mp-th-pill btn-amazon">A</span><span class="bp-mp-th-pill btn-temu">T</span><span class="bp-mp-th-pill btn-reverb">R</span><span class="bp-mp-th-pill btn-wayfair">W</span><span class="bp-mp-th-pill btn-bestbuy">B</span>
+@php $vmMpChannels = app(\App\Services\Support\AllMarketplaceChannelRegistry::class)->channels(); @endphp
+@foreach ($vmMpChannels as $ch)
+@if (($ch['group'] ?? '') === 'marketplaces')
+                                            <span class="bp-mp-th-pill {{ $ch['cls'] }}">{{ $ch['short'] }}</span>
+@endif
+@endforeach
                                         </div>
                                     </th>
-                                    <th title="Shopify Main, Shopify PLS">
+                                    <th title="Shopify channels">
                                         <div class="bp-mp-th-title">SHOPIFY</div>
                                         <div class="bp-mp-th-icons">
-                                            <span class="bp-mp-th-pill btn-shopify">SM</span><span class="bp-mp-th-pill btn-shopify-pls">PLS</span>
+@foreach ($vmMpChannels as $ch)
+@if (($ch['group'] ?? '') === 'shopify')
+                                            <span class="bp-mp-th-pill {{ $ch['cls'] }}">{{ $ch['short'] }}</span>
+@endif
+@endforeach
                                         </div>
                                     </th>
                                 </tr>
@@ -290,29 +306,24 @@
 @endsection
 
 @section('script')
+@include('partials.marketplace-api-config')
+@include('partials.all-marketplace-master-channels', ['allMpMaster' => 'video'])
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', () => {
     const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-    const MARKETPLACES = ['ebay','ebay2','ebay3','amazon','temu','wayfair','bestbuy','macy','reverb','shopify_main','shopify_pls'];
-    const ENABLED_MARKETPLACES = ['ebay','ebay2','ebay3','amazon','temu','wayfair','bestbuy','macy','reverb','shopify_main','shopify_pls'];
-    const LABELS = {
-        ebay:'eBay1', ebay2:'eBay2', ebay3:'eBay3', amazon:'Amazon', temu:'Temu', wayfair:'Wayfair', bestbuy:'Best Buy', macy:"Macy's", reverb:'Reverb',
-        shopify_main:'Shopify Main', shopify_pls:'Shopify PLS',
-    };
-    const MP_TILE = {
-        ebay:'btn-ebay1', ebay2:'btn-ebay2', ebay3:'btn-ebay3', amazon:'btn-amazon', temu:'btn-temu', wayfair:'btn-wayfair', bestbuy:'btn-bestbuy', macy:'btn-macy', reverb:'btn-reverb',
-        shopify_main:'btn-shopify', shopify_pls:'btn-shopify-pls',
-    };
-    const MP_SHORT = {
-        ebay:'E1', ebay2:'E2', ebay3:'E3', amazon:'A', temu:'T', wayfair:'W', bestbuy:'B', macy:'M', reverb:'R',
-        shopify_main:'SM', shopify_pls:'PLS',
-    };
-    const GROUPS = {
-        gChannels: ['ebay','ebay2','ebay3','macy','amazon','temu','reverb','wayfair','bestbuy'],
-        gShopify: ['shopify_main','shopify_pls'],
-    };
+    const __mp = window.__ALL_MP__ || {};
+    const MARKETPLACES = __mp.marketplaces || [];
+    const ENABLED_MARKETPLACES = __mp.enabled || [];
+    const GROUPS = __mp.groups || { gChannels: [], gShopify: [] };
+    const LABELS = __mp.labels || {};
+    const MP_TILE = {};
+    const MP_SHORT = {};
+    Object.entries(__mp.tiles || {}).forEach(([k, v]) => {
+        MP_TILE[k] = v.cls;
+        MP_SHORT[k] = v.short;
+    });
     const ADD_MODE_MARKETPLACES = ['shopify_main', 'shopify_pls', 'reverb'];
     const SHOPIFY_MARKETPLACES = ['shopify_main', 'shopify_pls'];
     const PM_MAX_VIDEOS = 10;
@@ -526,9 +537,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const pushed = hasPushedVideos(val);
         const tile = MP_TILE[mp] || 'btn-secondary';
         const short = MP_SHORT[mp] || mp;
-        const enabled = ENABLED_MARKETPLACES.includes(mp);
-        const title = enabled ? LABELS[mp] : `${LABELS[mp]} video push is not implemented yet`;
-        return `<button type="button" class="bp-mp-stack" data-push-mp="${esc(mp)}" data-sku="${esc(sku)}" title="${esc(title)}" ${enabled ? '' : 'disabled'}>
+        const implemented = ENABLED_MARKETPLACES.includes(mp);
+        const configured = isMarketplaceApiConfigured(mp);
+        let title = LABELS[mp];
+        if (!implemented) title = `${LABELS[mp]} video push is not implemented yet`;
+        else if (!configured) title = `${LABELS[mp]}. API not configured.`;
+        const noApiClass = (implemented && configured) ? '' : ' bp-mp-stack--no-api';
+        return `<button type="button" class="bp-mp-stack${noApiClass}" data-push-mp="${esc(mp)}" data-sku="${esc(sku)}" data-api-configured="${configured ? '1' : '0'}" data-implemented="${implemented ? '1' : '0'}" title="${esc(title)}" ${implemented ? '' : 'disabled'}>
             <span class="bp-mp-dot ${pushed?'pushed':''}"></span>
             <span class="marketplace-btn ${tile}">${esc(short)}</span>
         </button>`;
@@ -570,7 +585,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }).join('');
         document.querySelectorAll('.edit-btn[data-edit]').forEach(b => b.addEventListener('click', () => openEditModal(b.dataset.edit)));
         document.querySelectorAll('.shopify-row-pull-btn[data-shopify-pull-sku]').forEach(b => b.addEventListener('click', () => startSingleShopifyPull(b.dataset.shopifyPullSku, b)));
-        document.querySelectorAll('.bp-mp-stack[data-push-mp]:not(:disabled)').forEach(b => b.addEventListener('click', () => quickPush(b.dataset.sku, b.dataset.pushMp)));
+        document.querySelectorAll('.bp-mp-stack[data-push-mp]:not(:disabled)').forEach(b => b.addEventListener('click', () => {
+            if (b.dataset.apiConfigured === '0') {
+                alertMarketplaceApiNotConfigured(b.dataset.pushMp, LABELS[b.dataset.pushMp]);
+                return;
+            }
+            quickPush(b.dataset.sku, b.dataset.pushMp);
+        }));
     }
 
     function pmVideoUrls(row) {
@@ -1094,6 +1115,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // ── End push mode popup ────────────────────────────────────────────────────
 
     function quickPush(sku, mp) {
+        if (!marketplaceApiGuard(mp, LABELS[mp])) return;
         const row = bySku.get(String(sku));
         if (!row) return;
         const urls = pmVideoUrls(row);

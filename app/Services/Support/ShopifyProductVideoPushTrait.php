@@ -352,18 +352,7 @@ trait ShopifyProductVideoPushTrait
                     ];
                 }
 
-                Log::info('Shopify video push: staging local file', [
-                    'filename' => $file['filename'],
-                    'bytes' => strlen($file['contents']),
-                ]);
-
-                $staged = $this->stagedUploadVideoBytesToShopify(
-                    $domain,
-                    $token,
-                    $file['contents'],
-                    $file['filename'],
-                    $file['mimeType']
-                );
+                $staged = $this->stageVideoBytesForShopifyPush($domain, $token, $file, 'local file');
                 if (! ($staged['success'] ?? false)) {
                     return [
                         'success' => false,
@@ -371,12 +360,31 @@ trait ShopifyProductVideoPushTrait
                     ];
                 }
 
-                $resourceUrl = trim((string) ($staged['resourceUrl'] ?? ''));
-                if ($resourceUrl === '') {
-                    return ['success' => false, 'message' => 'Shopify staged video upload did not return a resource URL.'];
+                $resolved[] = (string) $staged['resourceUrl'];
+
+                continue;
+            }
+
+            // Shopify CDN video URLs (from pull / video_master) cannot be passed directly to
+            // productCreateMedia — download and re-stage like a local upload.
+            if ($this->isShopifyCdnVideoUrl($url)) {
+                $file = $this->downloadRemoteVideoBytesForShopifyPush($url);
+                if ($file === null) {
+                    return [
+                        'success' => false,
+                        'message' => 'Could not download Shopify CDN video for re-upload: '.basename((string) parse_url($url, PHP_URL_PATH) ?: $url),
+                    ];
                 }
 
-                $resolved[] = $resourceUrl;
+                $staged = $this->stageVideoBytesForShopifyPush($domain, $token, $file, 'Shopify CDN video');
+                if (! ($staged['success'] ?? false)) {
+                    return [
+                        'success' => false,
+                        'message' => (string) ($staged['message'] ?? 'Shopify staged video upload failed.'),
+                    ];
+                }
+
+                $resolved[] = (string) $staged['resourceUrl'];
 
                 continue;
             }
@@ -393,6 +401,96 @@ trait ShopifyProductVideoPushTrait
         }
 
         return ['success' => true, 'urls' => array_values($resolved)];
+    }
+
+    /**
+     * @param  array{contents: string, filename: string, mimeType: string}  $file
+     * @return array{success: bool, message: string, resourceUrl?: string}
+     */
+    protected function stageVideoBytesForShopifyPush(string $domain, string $token, array $file, string $sourceLabel): array
+    {
+        Log::info('Shopify video push: staging '.$sourceLabel, [
+            'filename' => $file['filename'],
+            'bytes' => strlen($file['contents']),
+        ]);
+
+        $staged = $this->stagedUploadVideoBytesToShopify(
+            $domain,
+            $token,
+            $file['contents'],
+            $file['filename'],
+            $file['mimeType']
+        );
+        if (! ($staged['success'] ?? false)) {
+            return [
+                'success' => false,
+                'message' => (string) ($staged['message'] ?? 'Shopify staged video upload failed.'),
+            ];
+        }
+
+        $resourceUrl = trim((string) ($staged['resourceUrl'] ?? ''));
+        if ($resourceUrl === '') {
+            return ['success' => false, 'message' => 'Shopify staged video upload did not return a resource URL.'];
+        }
+
+        return ['success' => true, 'resourceUrl' => $resourceUrl, 'message' => 'Video staged on Shopify.'];
+    }
+
+    protected function isShopifyCdnVideoUrl(string $url): bool
+    {
+        $url = trim($url);
+        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+        $path = (string) parse_url($url, PHP_URL_PATH);
+
+        return in_array($host, ['cdn.shopify.com', 'cdn.shopifycdn.com'], true)
+            && str_contains($path, '/videos/');
+    }
+
+    /**
+     * @return array{contents: string, filename: string, mimeType: string}|null
+     */
+    protected function downloadRemoteVideoBytesForShopifyPush(string $url): ?array
+    {
+        try {
+            $response = Http::timeout(600)->connectTimeout(30)->get($url);
+            if (! $response->successful()) {
+                Log::warning('Shopify video push: remote download failed', [
+                    'url' => $url,
+                    'status' => $response->status(),
+                ]);
+
+                return null;
+            }
+
+            $contents = $response->body();
+            if ($contents === '' || strlen($contents) < 100) {
+                return null;
+            }
+
+            $path = (string) parse_url($url, PHP_URL_PATH);
+            $filename = basename($path) ?: 'video.mp4';
+            $mimeType = 'video/mp4';
+            $contentType = $response->header('Content-Type');
+            if (is_string($contentType) && $contentType !== '') {
+                $primary = strtolower(trim(explode(';', $contentType)[0]));
+                if (str_starts_with($primary, 'video/')) {
+                    $mimeType = $primary;
+                }
+            }
+
+            return [
+                'contents' => $contents,
+                'filename' => $filename,
+                'mimeType' => $mimeType,
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('Shopify video push: remote download exception', [
+                'url' => $url,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
     }
 
     /**
