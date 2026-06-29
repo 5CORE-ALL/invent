@@ -11,6 +11,7 @@ use App\Models\MfrgProgress;
 use App\Models\ShopifySku;
 use App\Models\Supplier;
 use App\Models\ToOrderAnalysis;
+use App\Models\ToOrderPreChecklist;
 use App\Models\ToOrderReview;
 use App\Models\AmazonSkuCompetitor;
 use App\Services\PurchasePageExecService;
@@ -116,7 +117,7 @@ class ToOrderAnalysisController extends Controller
             $skusForReviews = $toOrderRecords->pluck('sku')->map(fn($s) => strtoupper(trim((string) $s)))->unique()->filter()->values()->all();
             $ratingReviewsMap = $this->getRatingReviewsBySku($skusForReviews);
 
-            // MSL: same as forecast page – from movement_analysis (Total/Total month)*4, fallback to forecast_analysis.s_msl
+            // MSL: from movement_analysis (Total/Total month)*4
             $movementMap = DB::table('movement_analysis')->get()->keyBy(fn($item) => strtoupper(trim($item->sku ?? '')));
 
             $processedData = [];
@@ -172,7 +173,6 @@ class ToOrderAnalysisController extends Controller
                 $approvedQty = (int)($toOrder->approved_qty ?? 0);
 
                 $mslValue = $this->computeMslForSku($sheetSku, $movementMap, $forecast);
-                $sMsl = $forecast ? (int)($forecast->s_msl ?? 0) : 0;
                 $lpMsl = ($mslValue > 0 && $lp > 0) ? round($mslValue * $lp / 4, 2) : null;
 
                 $rr = $ratingReviewsMap[$sheetSku] ?? ['rating' => null, 'reviews' => null];
@@ -186,7 +186,6 @@ class ToOrderAnalysisController extends Controller
                     // Use stored supplier; only fallback to parent lookup when never set (null). Empty = user chose "Select" so keep blank.
                     'Supplier'        => $toOrder->supplier_name !== null ? (string) $toOrder->supplier_name : ($supplierName ?? ''),
                     'msl'             => $mslValue,
-                    's_msl'           => $sMsl,
                     'lp_msl'          => $lpMsl,
                     'rating'          => $rr['rating'],
                     'reviews'         => $rr['reviews'],
@@ -337,6 +336,34 @@ class ToOrderAnalysisController extends Controller
         return $map;
     }
 
+    /**
+     * @return array<string, int> normalized category name => supplier count
+     */
+    private function categorySupplierCountMap(): array
+    {
+        $map = [];
+        foreach (DB::table('categories')->select('id', 'name')->get() as $cat) {
+            $name = strtoupper(trim((string) ($cat->name ?? '')));
+            if ($name === '') {
+                continue;
+            }
+            $map[$name] = (int) DB::table('suppliers')
+                ->whereRaw('FIND_IN_SET(?, category_id)', [$cat->id])
+                ->count();
+        }
+
+        return $map;
+    }
+
+    private function attachCategorySupplierCounts(array &$rows, array $countMap): void
+    {
+        foreach ($rows as &$row) {
+            $cat = strtoupper(trim((string) ($row['Category'] ?? '')));
+            $row['category_supplier_count'] = $cat !== '' ? ($countMap[$cat] ?? 0) : null;
+        }
+        unset($row);
+    }
+
     public function getToOrderAnalysis()
     {
         try {
@@ -400,7 +427,7 @@ class ToOrderAnalysisController extends Controller
             $skusForReviews = $allSkus;
             $ratingReviewsMap = $this->getRatingReviewsBySku($skusForReviews);
 
-            // MSL: same as forecast page – from movement_analysis (Total/Total month)*4, fallback to forecast_analysis.s_msl
+            // MSL: from movement_analysis (Total/Total month)*4
             $movementMap = DB::table('movement_analysis')->get()->keyBy(fn($item) => strtoupper(trim($item->sku ?? '')));
             $qcIssuesBySku = $this->buildQcPackingIssuesBySku($allSkus);
 
@@ -430,6 +457,7 @@ class ToOrderAnalysisController extends Controller
             $execService = app(PurchasePageExecService::class);
             $pageExec = $execService->getAssignment('to_order') ?? '';
             $supplierCategoryMap = $this->supplierCategoryMap();
+            $categorySupplierCountMap = $this->categorySupplierCountMap();
 
             foreach ($allSkus as $sheetSku) {
                 if ($sheetSku === '') {
@@ -490,16 +518,21 @@ class ToOrderAnalysisController extends Controller
                 $ctnInstructions = '';
                 $packingInstructions = '';
                 $packingCdrPath = '';
+                $cp = 0;
                 if (!empty($product?->Values)) {
                     $valuesArray = json_decode($product->Values, true);
                     if (is_array($valuesArray)) {
                         $cbm = (float)($valuesArray['cbm'] ?? 0);
                         $imagePath = $valuesArray['image_path'] ?? null;
                         $lp = (float)($valuesArray['lp'] ?? 0);
+                        $cp = (float)($valuesArray['cp'] ?? 0);
                         $ctnInstructions = isset($valuesArray['ctn_instructions']) ? (string) $valuesArray['ctn_instructions'] : '';
                         $packingInstructions = isset($valuesArray['packing_instructions']) ? trim((string) $valuesArray['packing_instructions']) : '';
                         $packingCdrPath = isset($valuesArray['packing_cdr_path']) ? trim((string) $valuesArray['packing_cdr_path']) : '';
                     }
+                }
+                if ($cp <= 0 && $faItem) {
+                    $cp = (float) ($faItem->CP ?? 0);
                 }
 
                 $shopifyImage = $shopifySkus->get($sheetSku)?->image_src ?? null;
@@ -511,7 +544,6 @@ class ToOrderAnalysisController extends Controller
                 $review = $allReviews->get($reviewKey);
                 $rr = $ratingReviewsMap[$sheetSku] ?? ['rating' => null, 'reviews' => null];
                 $mslValue = $this->computeMslForSku($sheetSku, $movementMap, $forecast);
-                $sMsl = $forecast ? (int)($forecast->s_msl ?? 0) : 0;
                 $lpMsl = ($mslValue > 0 && $lp > 0) ? round($mslValue * $lp / 4, 2) : null;
 
                 $instructionsItemPkg = '';
@@ -546,6 +578,7 @@ class ToOrderAnalysisController extends Controller
                     'Parent'          => $parent,
                     'SKU'             => $sheetSku,
                     'approved_qty'    => $approvedQty,
+                    'CP'              => $cp,
                     'ctn_instructions' => mb_substr($ctnInstructions, 0, 100),
                     'packing_instructions' => $packingInstructions,
                     'packing_cdr_path' => $packingCdrPath,
@@ -558,7 +591,6 @@ class ToOrderAnalysisController extends Controller
                     'Category'        => $supplierCategoryMap[strtoupper(trim((string) ($toOrder->supplier_name !== null ? $toOrder->supplier_name : ($supplierName ?? ''))))] ?? '',
                     'Exec'            => isset($toOrder->exec) && $toOrder->exec !== null ? (string) $toOrder->exec : '',
                     'msl'             => $mslValue,
-                    's_msl'           => $sMsl,
                     'lp_msl'          => $lpMsl,
                     'rating'          => $rr['rating'],
                     'reviews'         => $rr['reviews'],
@@ -591,6 +623,9 @@ class ToOrderAnalysisController extends Controller
                     'date_updated'    => $review->date_updated ?? null,
                 ], $monthData, $this->lmpFieldsForSku($sheetSku, $lmpDetailsLookup, $lmpLowestLookup));
             }
+
+            $this->attachToOrderPreChecklists($processedData);
+            $this->attachCategorySupplierCounts($processedData, $categorySupplierCountMap);
 
             return response()->json([
                 'data' => $processedData,
@@ -667,8 +702,7 @@ class ToOrderAnalysisController extends Controller
     }
 
     /**
-     * Compute MSL for a SKU the same way as forecast page: from movement_analysis (Total/Total month)*4,
-     * fallback to forecast_analysis.s_msl when no movement data.
+     * Compute MSL for a SKU the same way as forecast page: from movement_analysis (Total/Total month)*4.
      */
     private function computeMslForSku(string $sheetSku, $movementMap, $forecast): int
     {
@@ -691,8 +725,7 @@ class ToOrderAnalysisController extends Controller
                 return (int) round($msl);
             }
         }
-        $sMsl = $forecast ? (int) ($forecast->s_msl ?? 0) : 0;
-        return $sMsl;
+        return 0;
     }
 
     private function forecastNullOrDashQtyForYellow(mixed $value): bool
@@ -728,8 +761,7 @@ class ToOrderAnalysisController extends Controller
             ? $mslFromProp
             : ($totalMonth > 0 ? ($total / $totalMonth) * 4 : 0.0);
 
-        $sMslVal = (float) ($item->{'s_msl'} ?? $item->{'s-msl'} ?? 0);
-        $effectiveMslForToOrder = max($msl, $sMslVal);
+        $effectiveMslForToOrder = $msl;
 
         $itemStage = strtolower(trim((string) ($item->stage ?? '')));
 
@@ -1503,6 +1535,231 @@ class ToOrderAnalysisController extends Controller
                 'message' => 'Error deleting records: ' . $e->getMessage(),
             ], 500);
         }
+    }
+
+    public function getPreOrderChecklist(Request $request)
+    {
+        $sku = strtoupper(trim((string) $request->input('sku', '')));
+        $rowId = (int) $request->input('to_order_analysis_id', 0);
+
+        if ($sku === '') {
+            return response()->json(['success' => false, 'message' => 'SKU is required.'], 422);
+        }
+
+        $record = ToOrderPreChecklist::query()
+            ->where('sku', $sku)
+            ->first();
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'to_order_analysis_id' => $rowId > 0 ? $rowId : ($record?->to_order_analysis_id),
+                'sku' => $sku,
+                'items' => ToOrderPreChecklist::mergeWithDefaults($record?->items),
+                'status' => $record?->status,
+                'escalation_note' => $record?->escalation_note,
+            ],
+        ]);
+    }
+
+    public function savePreOrderChecklist(Request $request)
+    {
+        $validated = $request->validate([
+            'to_order_analysis_id' => 'nullable|integer|min:1',
+            'sku' => 'required|string|max:255',
+            'items' => 'required|array|min:1',
+            'items.*.id' => 'required|string|max:120',
+            'items.*.label' => 'required|string|max:500',
+            'items.*.checked' => 'boolean',
+            'action' => 'required|in:clear_to_load,escalate',
+            'escalation_note' => 'nullable|string|max:2000',
+        ]);
+
+        $sku = strtoupper(trim($validated['sku']));
+        $items = $this->normalizeToOrderChecklistItems($validated['items']);
+        $action = $validated['action'];
+        $userName = $request->user()->name ?? 'Unknown';
+
+        if ($action === 'clear_to_load' && ! ToOrderPreChecklist::allItemsChecked($items)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'All checklist points must be met before Clear to load.',
+            ], 422);
+        }
+
+        if ($action === 'escalate' && ToOrderPreChecklist::allItemsChecked($items)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'All points are met — use Clear to load instead.',
+            ], 422);
+        }
+
+        $rowId = (int) ($validated['to_order_analysis_id'] ?? 0);
+        if ($rowId <= 0) {
+            $rowId = (int) ToOrderAnalysis::query()
+                ->whereRaw('UPPER(TRIM(sku)) = ?', [$sku])
+                ->value('id');
+        }
+
+        $record = ToOrderPreChecklist::query()->updateOrCreate(
+            ['sku' => $sku],
+            [
+                'to_order_analysis_id' => $rowId > 0 ? $rowId : null,
+                'items' => $items,
+                'status' => $action === 'clear_to_load' ? 'clear_to_load' : 'escalated',
+                'escalation_note' => $action === 'escalate' ? ($validated['escalation_note'] ?? null) : null,
+                'updated_by' => $userName,
+                'escalated_by' => $action === 'escalate' ? $userName : null,
+                'escalated_at' => $action === 'escalate' ? now() : null,
+            ]
+        );
+
+        return response()->json([
+            'success' => true,
+            'data' => $this->formatToOrderChecklistPayload($record),
+        ]);
+    }
+
+    public function bulkSavePreOrderChecklist(Request $request)
+    {
+        $validated = $request->validate([
+            'rows' => 'required|array|min:1',
+            'rows.*.to_order_analysis_id' => 'nullable|integer|min:1',
+            'rows.*.sku' => 'required|string|max:255',
+            'items' => 'required|array|min:1',
+            'items.*.id' => 'required|string|max:120',
+            'items.*.label' => 'required|string|max:500',
+            'items.*.checked' => 'boolean',
+            'action' => 'required|in:clear_to_load,escalate',
+            'escalation_note' => 'nullable|string|max:2000',
+        ]);
+
+        $items = $this->normalizeToOrderChecklistItems($validated['items']);
+        $action = $validated['action'];
+        $userName = $request->user()->name ?? 'Unknown';
+
+        if ($action === 'clear_to_load' && ! ToOrderPreChecklist::allItemsChecked($items)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'All checklist points must be met before Clear to load.',
+            ], 422);
+        }
+
+        if ($action === 'escalate' && ToOrderPreChecklist::allItemsChecked($items)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'All points are met — use Clear to load instead.',
+            ], 422);
+        }
+
+        $results = [];
+        foreach ($validated['rows'] as $row) {
+            $sku = strtoupper(trim((string) ($row['sku'] ?? '')));
+            if ($sku === '') {
+                continue;
+            }
+            $rowId = (int) ($row['to_order_analysis_id'] ?? 0);
+            if ($rowId <= 0) {
+                $rowId = (int) ToOrderAnalysis::query()
+                    ->whereRaw('UPPER(TRIM(sku)) = ?', [$sku])
+                    ->value('id');
+            }
+
+            $record = ToOrderPreChecklist::query()->updateOrCreate(
+                ['sku' => $sku],
+                [
+                    'to_order_analysis_id' => $rowId > 0 ? $rowId : null,
+                    'items' => $items,
+                    'status' => $action === 'clear_to_load' ? 'clear_to_load' : 'escalated',
+                    'escalation_note' => $action === 'escalate' ? ($validated['escalation_note'] ?? null) : null,
+                    'updated_by' => $userName,
+                    'escalated_by' => $action === 'escalate' ? $userName : null,
+                    'escalated_at' => $action === 'escalate' ? now() : null,
+                ]
+            );
+
+            $results[] = array_merge(
+                ['sku' => $sku, 'to_order_analysis_id' => $record->to_order_analysis_id],
+                $this->formatToOrderChecklistPayload($record)
+            );
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $results,
+        ]);
+    }
+
+    private function normalizeToOrderChecklistItems(array $items): array
+    {
+        $out = [];
+        foreach ($items as $item) {
+            $id = Str::slug((string) ($item['id'] ?? ''), '_');
+            if ($id === '') {
+                $id = Str::slug((string) ($item['label'] ?? ''), '_');
+            }
+            if ($id === '') {
+                continue;
+            }
+            $out[] = [
+                'id' => $id,
+                'label' => trim((string) ($item['label'] ?? $id)),
+                'checked' => (bool) ($item['checked'] ?? false),
+            ];
+        }
+
+        return $out;
+    }
+
+    private function formatToOrderChecklistPayload(ToOrderPreChecklist $record): array
+    {
+        $items = ToOrderPreChecklist::mergeWithDefaults($record->items);
+        $met = count(array_filter($items, fn ($i) => ! empty($i['checked'])));
+
+        return [
+            'items' => $items,
+            'status' => $record->status,
+            'escalation_note' => $record->escalation_note,
+            'met_count' => $met,
+            'total_count' => count($items),
+        ];
+    }
+
+    private function attachToOrderPreChecklists(array &$rows): void
+    {
+        if ($rows === []) {
+            return;
+        }
+
+        $skus = [];
+        foreach ($rows as $row) {
+            $sku = strtoupper(trim((string) ($row['SKU'] ?? '')));
+            if ($sku !== '') {
+                $skus[] = $sku;
+            }
+        }
+        $skus = array_values(array_unique($skus));
+        if ($skus === []) {
+            return;
+        }
+
+        $map = ToOrderPreChecklist::query()
+            ->whereIn('sku', $skus)
+            ->get()
+            ->keyBy(fn ($r) => strtoupper(trim((string) $r->sku)));
+
+        foreach ($rows as &$row) {
+            $sku = strtoupper(trim((string) ($row['SKU'] ?? '')));
+            $rec = $map->get($sku);
+            $items = ToOrderPreChecklist::mergeWithDefaults($rec?->items);
+            $met = count(array_filter($items, fn ($i) => ! empty($i['checked'])));
+            $row['pre_order_checklist_items'] = $items;
+            $row['pre_order_checklist_status'] = $rec?->status;
+            $row['pre_order_checklist_escalation_note'] = $rec?->escalation_note;
+            $row['pre_order_checklist_met_count'] = $met;
+            $row['pre_order_checklist_total_count'] = count($items);
+        }
+        unset($row);
     }
 
 }

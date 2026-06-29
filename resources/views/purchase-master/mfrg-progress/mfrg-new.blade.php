@@ -90,36 +90,66 @@
 
         /* ---- Toolbar + Summary strip (Amazon Analytics-style layout) ---- */
         .mip-toolbar {
-            display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px;
+            display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
             margin-bottom: 10px;
         }
         .mip-toolbar-row {
-            display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px;
+            display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
             width: 100%;
         }
-        .mip-toolbar .mip-field { display: flex; flex-direction: column; gap: 2px; }
-        .mip-toolbar .mip-field > label {
-            font-size: 11px; font-weight: 600; color: #475569; margin: 0;
+        .mip-toolbar .mip-field { display: flex; align-items: center; }
+        .mip-toolbar .mip-filter-field {
+            width: 130px;
+            min-width: 0;
         }
+        .mip-toolbar .mip-filter-field--wide { width: 170px; }
+        .mip-toolbar .mip-filter-field--sku,
+        .mip-toolbar .mip-filter-field--supplier { width: 140px; }
 
         .mip-summary {
-            display: flex; flex-wrap: wrap; align-items: center; gap: 16px;
-            background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px;
-            padding: 16px 20px; margin-bottom: 16px;
-        }
-        .mip-summary-title {
-            font-weight: 700; font-size: 1.05rem; color: #334155;
-            margin-right: 8px; white-space: nowrap;
+            display: flex;
+            flex-wrap: nowrap;
+            align-items: stretch;
+            gap: 6px;
+            width: 100%;
+            margin-bottom: 12px;
         }
         .mip-summary-badge {
-            display: inline-flex; align-items: center; gap: 10px;
-            padding: 12px 18px; border-radius: 10px;
-            font-size: 1.05rem; font-weight: 600;
-            color: #fff; line-height: 1; white-space: nowrap;
+            flex: 1 1 0;
+            min-width: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: clamp(4px, 0.8vw, 10px);
+            padding: clamp(10px, 1.2vw, 14px) clamp(8px, 1vw, 16px);
+            border-radius: 10px;
+            font-size: clamp(0.78rem, 1.1vw, 1.05rem);
+            font-weight: 600;
+            color: #fff;
+            line-height: 1.2;
+            white-space: nowrap;
+            text-align: center;
             box-shadow: 0 2px 4px rgba(15, 23, 42, 0.15);
         }
-        .mip-summary-badge .label { opacity: 0.95; font-weight: 500; }
-        .mip-summary-badge .value { font-weight: 700; }
+        .mip-summary-badge .label { opacity: 0.95; font-weight: 500; flex-shrink: 0; }
+        .mip-summary-badge .value {
+            font-weight: 700;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        @media (max-width: 1100px) {
+            .mip-summary {
+                overflow-x: auto;
+                scrollbar-width: thin;
+            }
+            .mip-summary-badge {
+                flex: 0 0 auto;
+                min-width: max-content;
+                font-size: 0.78rem;
+                padding: 10px 12px;
+            }
+        }
+
         .mip-badge--amount    { background: #2563eb; }   /* blue */
         .mip-badge--cbm       { background: #14b8a6; }   /* teal */
         .mip-badge--items     { background: #0f172a; }   /* dark */
@@ -153,33 +183,97 @@
             background: #d97706;
             border-color: #b45309;
         }
+
+        /* Supplier summary modal */
+        .mip-sup-history-block { background: #fff; }
+        .mip-sup-history-block .mip-sup-history-head {
+            display: flex; justify-content: space-between; align-items: center; gap: 8px;
+            padding: 8px 12px; background: #f1f5f9; border-bottom: 1px solid #e2e8f0;
+            font-weight: 600; font-size: 0.9rem;
+        }
+        .mip-sup-history-block .mip-sup-history-totals {
+            font-size: 0.75rem; color: #64748b; font-weight: 500;
+        }
+        .mip-sup-history-block .list-group-item { border-left: none; border-right: none; }
+        .mip-sup-history-block .list-group-item:first-child { border-top: none; }
+
+        /* Pre-MIP CL column */
+        .mip-cl-cell { display: flex; align-items: center; justify-content: center; gap: 4px; }
+        .mip-cl-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; border: 1px solid rgba(0,0,0,0.08); }
+        .mip-cl-item-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid #f1f5f9; }
+        .mip-cl-item-row:last-child { border-bottom: none; }
+        .mip-cl-item-row .form-check { flex: 1; margin: 0; }
+        .mip-cl-item-row .mip-cl-remove-item { color: #94a3b8; }
     </style>
 @endsection
 @section('content')
+    @php
+        $canMipArchive = strtolower(trim(auth()->user()->email ?? '')) === 'president@5core.com';
+    @endphp
     @include('layouts.shared.page-title', ['page_title' => 'MIP', 'sub_title' => 'MIP'])
 
     <div class="row">
         <div class="col-12">
+            {{-- Summary badges — full-width row above the card --}}
+            <div class="mip-summary" aria-label="Summary">
+                <span class="mip-summary-badge mip-badge--amount" title="Amount">
+                    <span class="label">💰 Amount</span>
+                    <span class="value" id="totalAmount">0</span>
+                </span>
+                <span class="mip-summary-badge mip-badge--cbm" title="Total CBM">
+                    <span class="label">📦 CBM</span>
+                    <span class="value" id="totalCBM">0</span>
+                </span>
+                <span class="mip-summary-badge mip-badge--items" title="Items in current view">
+                    <span class="label">🔢 Items</span>
+                    <span class="value" id="totalItems">0</span>
+                </span>
+                <span class="mip-summary-badge mip-badge--suppliers" title="Unique suppliers in current view">
+                    <span class="label">👥 Suppliers</span>
+                    <span class="value" id="totalSuppliers">0</span>
+                </span>
+            </div>
+        </div>
+        <div class="col-12">
             <div class="card shadow-sm">
                 <div class="card-body">
-                    {{-- ===== Toolbar: filters row + actions row (Amazon-Analytics-style layout) ===== --}}
+                    {{-- ===== Toolbar: filters row + actions row ===== --}}
                     <div class="mip-toolbar">
                         {{-- Row 1: filters & search --}}
                         <div class="mip-toolbar-row">
                             @include('purchase-master.partials.page-info-toolbar', ['pageKey' => 'mip'])
 
                             <div class="mip-field">
-                                <label>Stage</label>
-                                <select id="mip-stage-filter" class="form-select form-select-sm" style="width: 130px;">
-                                    <option value="both">MIP + R2S</option>
+                                <select id="mip-stage-filter" class="form-select form-select-sm border-primary mip-filter-field" aria-label="Stage filter" title="Stage filter">
+                                    <option value="">Stage</option>
                                     <option value="mip">MIP only</option>
                                     <option value="r2s">R2S only</option>
                                 </select>
                             </div>
 
-                            {{-- ── Supplier Play/Pause (mirrors /forecast.analysis Supplier play) ── --}}
                             <div class="mip-field">
-                                <label title="Step through rows one supplier at a time">▶ Supplier Play</label>
+                                <select id="mip-exec-filter" class="form-select form-select-sm border-primary mip-filter-field" aria-label="Executive filter" title="Executive filter">
+                                    <option value="">Executive</option>
+                                    <option value="__un__">Unassigned</option>
+                                    <option value="Atin">Atin</option>
+                                    <option value="Jack">Jack</option>
+                                    <option value="Nitish">Nitish</option>
+                                    <option value="Ajay">Ajay</option>
+                                    <option value="Candy">Candy</option>
+                                    <option value="Sruti">Sruti</option>
+                                </select>
+                            </div>
+
+                            <div class="mip-field">
+                                <input type="text" id="mip-sku-search" class="form-control form-control-sm border-primary mip-filter-field mip-filter-field--sku" placeholder="SKU…" autocomplete="off" aria-label="SKU filter">
+                            </div>
+
+                            <div class="mip-field">
+                                <input type="text" id="mip-supplier-search" class="form-control form-control-sm border-primary mip-filter-field mip-filter-field--supplier" placeholder="Supplier…" autocomplete="off" aria-label="Supplier filter">
+                            </div>
+
+                            {{-- ── Supplier Play/Pause (mirrors /forecast.analysis Supplier play) ── --}}
+                            <div class="mip-field" title="Step through rows one supplier at a time">
                                 <div class="d-flex align-items-center gap-1 border rounded px-2 py-1 bg-light">
                                     <button type="button" id="mip-supplier-play-backward" class="btn btn-light btn-sm rounded-circle p-0" style="width:28px;height:28px;" title="Prev supplier">
                                         <i class="fas fa-step-backward" style="font-size:10px;"></i>
@@ -196,7 +290,7 @@
                             </div>
 
                             <div class="mip-field">
-                                <input type="text" id="search-input" class="form-control form-control-sm" placeholder="Search..." title="Search all columns" aria-label="Search all columns" style="width: 170px;">
+                                <input type="text" id="search-input" class="form-control form-control-sm border-primary mip-filter-field mip-filter-field--wide" placeholder="Search…" title="Search all columns" aria-label="Search all columns">
                             </div>
 
                             <div class="mip-field mip-columns-wrap">
@@ -206,10 +300,8 @@
                                 <div id="mip-columns-menu" class="mip-columns-menu" style="display:none;"></div>
                             </div>
 
-                            <div class="d-flex align-items-end ms-auto gap-2">
-                                {{-- "Show archived" — rendered as a tinted icon badge (eye + trash)
-                                     that toggles a hidden checkbox underneath, so the existing
-                                     `change` handler keeps working unchanged. --}}
+                            <div class="d-flex align-items-center ms-auto gap-2">
+                                @if ($canMipArchive)
                                 <input class="visually-hidden" type="checkbox" id="show-archived-toggle">
                                 <label for="show-archived-toggle"
                                        id="show-archived-badge"
@@ -220,31 +312,26 @@
                                     <i class="fas fa-eye"></i>
                                     <i class="fas fa-trash-alt"></i>
                                 </label>
+                                @endif
+                                <button type="button" class="btn btn-sm btn-info text-white" id="mip-supplier-summary-btn" title="Supplier-wise summary with chat history">
+                                    <i class="fas fa-table-list"></i>
+                                </button>
                                 <button type="button" class="btn btn-sm btn-info text-white" id="mip-followup-btn" title="Follow-Up"><i class="fas fa-comment-dots"></i></button>
+                                @if ($canMipArchive)
                                 <button type="button" class="btn btn-sm btn-warning d-none" id="archive-selected-btn" title="Archive selected"><i class="fas fa-archive"></i></button>
                                 <button type="button" class="btn btn-sm btn-success d-none" id="restore-selected-btn" title="Restore selected"><i class="fas fa-undo"></i></button>
+                                @endif
                             </div>
                         </div>
                     </div>
 
-                    {{-- ===== Summary strip: colored badge pills (matches Amazon Analytics styling) ===== --}}
-                    <div class="mip-summary" aria-label="Summary">
-                        <span class="mip-summary-badge mip-badge--amount" title="Amount">
-                            <span class="label">💰</span>
-                            <span class="value" id="totalAmount">0</span>
-                        </span>
-                        <span class="mip-summary-badge mip-badge--cbm">
-                            <span class="label">📦 CBM</span>
-                            <span class="value" id="totalCBM">0</span>
-                        </span>
-                        <span class="mip-summary-badge mip-badge--items">
-                            <span class="label">🔢 Items</span>
-                            <span class="value" id="totalItems">0</span>
-                        </span>
-                        <span class="mip-summary-badge mip-badge--suppliers" title="Unique suppliers in current view">
-                            <span class="label">👥 Suppliers</span>
-                            <span class="value" id="totalSuppliers">0</span>
-                        </span>
+                    {{-- Bulk edit badge (shown when rows selected — mirrors forecast page) --}}
+                    <div id="mip-bulk-edit-badge" class="d-none mb-2 p-2 rounded border bg-light d-flex align-items-center gap-2 flex-wrap" style="min-height: 40px;">
+                        <span class="fw-semibold text-dark" id="mip-bulk-edit-count">0 selected</span>
+                        <span class="text-muted small">Select rows with checkboxes, then click <strong>Edit</strong> on any row to apply changes to all selected.</span>
+                        <button type="button" class="btn btn-sm btn-outline-primary ms-auto" id="mip-bulk-cl-btn" title="Bulk edit Pre-MIP checklist for selected rows">
+                            <i class="mdi mdi-magnify me-1"></i> CL Bulk Edit
+                        </button>
                     </div>
 
                     <div id="mfrg-table"></div>
@@ -262,11 +349,83 @@
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
+                    <p id="mip-edit-subtitle" class="text-muted small mb-2"></p>
                     <div id="mip-edit-form" class="row g-3"></div>
+                    <div id="mip-edit-status" class="small mt-2"></div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="button" class="btn btn-primary" id="mip-edit-save"><i class="fas fa-save me-1"></i> Save Changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- Pre-MIP Checklist (CL) Modal --}}
+    <div class="modal fade" id="mipPreMipClModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header bg-secondary text-white">
+                    <h5 class="modal-title"><i class="mdi mdi-magnify me-2"></i> Pre-MIP Checklist <span id="mip-cl-modal-title" class="ms-2 fw-normal small"></span></h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p id="mip-cl-modal-subtitle" class="text-muted small mb-3">Verify all points before MIP: QC, printing approvals, compliance, instructions, and delivery.</p>
+                    <div id="mip-cl-items-list" class="mb-3"></div>
+                    <div class="d-flex gap-2 mb-3">
+                        <input type="text" id="mip-cl-new-item" class="form-control form-control-sm" placeholder="Add checklist point…" maxlength="500">
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="mip-cl-add-item-btn"><i class="fas fa-plus"></i> Add</button>
+                    </div>
+                    <div id="mip-cl-escalate-wrap" class="mb-2">
+                        <label class="form-label small fw-semibold" for="mip-cl-escalation-note">Escalation note (required when escalating)</label>
+                        <textarea id="mip-cl-escalation-note" class="form-control form-control-sm" rows="2" placeholder="Why is this being escalated? Which points failed?"></textarea>
+                    </div>
+                    <div id="mip-cl-status" class="small"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-danger" id="mip-cl-escalate-btn"><i class="fas fa-bell me-1"></i> Escalate</button>
+                    <button type="button" class="btn btn-success" id="mip-cl-update-btn"><i class="fas fa-check me-1"></i> Update</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- Supplier Summary Modal (grouped totals + chat history) --}}
+    <div class="modal fade" id="mipSupplierSummaryModal" tabindex="-1" aria-labelledby="mipSupplierSummaryModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header bg-info text-white">
+                    <h5 class="modal-title" id="mipSupplierSummaryModalLabel">
+                        <i class="fas fa-table-list me-2"></i>Supplier Summary
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small mb-3">Totals are from <strong>currently visible</strong> rows (after all filters). Chat history is shown per supplier below.</p>
+                    <div class="table-responsive mb-4">
+                        <table class="table table-sm table-striped table-bordered align-middle mb-0" id="mip-supplier-summary-table">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Supplier</th>
+                                    <th class="text-end">Items</th>
+                                    <th class="text-end">QTY</th>
+                                    <th class="text-end">CBM</th>
+                                    <th class="text-end">Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody id="mip-supplier-summary-tbody"></tbody>
+                            <tfoot class="table-secondary fw-bold" id="mip-supplier-summary-tfoot"></tfoot>
+                        </table>
+                    </div>
+                    <h6 class="fw-semibold mb-3"><i class="fas fa-comments me-1"></i> Chat History by Supplier</h6>
+                    <div id="mip-supplier-summary-history"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" id="mip-supplier-summary-csv-btn" title="Download summary as CSV">
+                        <i class="fas fa-file-csv me-1"></i> Export CSV
+                    </button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                 </div>
             </div>
         </div>
@@ -314,10 +473,62 @@
             const USER_EMAIL = '{{ strtolower(trim(auth()->user()->email ?? "")) }}';
             const PRIVILEGED_EMAILS = ['president@5core.com', 'purchase@5core.com', 'software5@5core.com'];
             const CAN_EDIT_ALL = PRIVILEGED_EMAILS.includes(USER_EMAIL);
-            const CAN_ARCHIVE = PRIVILEGED_EMAILS.includes(USER_EMAIL);
+            const CAN_ARCHIVE = USER_EMAIL === 'president@5core.com';
             let uniqueSuppliers = [];
             let showArchived = false;
             let table;
+            let mipBulkSelectionCache = [];
+            const mipRowEditState = { row: null, targetRows: null, pendingBulkTargets: null };
+
+            function isSelectableMipRow(row) {
+                const d = (row && typeof row.getData === 'function') ? row.getData() : {};
+                return !!(String(d.sku || '').trim() || d.id);
+            }
+
+            function dedupeMipRows(rows) {
+                const seen = new Set();
+                return (rows || []).filter(function (row) {
+                    if (!isSelectableMipRow(row)) return false;
+                    const d = row.getData() || {};
+                    const key = String(d.id || '') + '||' + String(d.source_table || '') + '||' + String(d.sku || '').trim();
+                    if (!key || seen.has(key)) return false;
+                    seen.add(key);
+                    return true;
+                });
+            }
+
+            /** Checkbox-selected rows; keeps multi-select when focus moves to the Edit button. */
+            function getMipBulkTargetRows(primarySku, extraRows) {
+                const merged = dedupeMipRows([
+                    ...(mipBulkSelectionCache || []),
+                    ...(table && table.getSelectedRows ? table.getSelectedRows() : []),
+                    ...(extraRows || [])
+                ]);
+                if (merged.length > 0) return merged;
+
+                if (primarySku && table) {
+                    const match = table.getRows().find(function (r) {
+                        return String((r.getData() || {}).sku || '').trim() === String(primarySku).trim();
+                    });
+                    if (match && isSelectableMipRow(match)) return [match];
+                }
+                return [];
+            }
+
+            function updateMipBulkEditBadge() {
+                const badge = document.getElementById('mip-bulk-edit-badge');
+                const countEl = document.getElementById('mip-bulk-edit-count');
+                if (!badge || !countEl) return;
+                const n = dedupeMipRows(table ? table.getSelectedRows() : []).length;
+                if (n > 0) {
+                    badge.classList.remove('d-none');
+                    badge.classList.add('d-flex');
+                    countEl.textContent = n + ' selected';
+                } else {
+                    badge.classList.add('d-none');
+                    badge.classList.remove('d-flex');
+                }
+            }
 
             // Full supplier list from the database (supplier.list — Supplier type), used for the
             // searchable Supplier dropdown so every supplier is selectable, not just ones already in the grid.
@@ -349,6 +560,16 @@
             };
             const PLAT_ICON = { 'Website': 'fas fa-globe', 'Email': 'fas fa-envelope', 'WhatsApp': 'fab fa-whatsapp', 'WeChat': 'fab fa-weixin', 'Alibaba': 'fas fa-store' };
             const PLAT_COLOR = { 'Website': '#2563eb', 'Email': '#dc3545', 'WhatsApp': '#25d366', 'WeChat': '#09b83e', 'Alibaba': '#ff6a00' };
+
+            const DEFAULT_PRE_MIP_ITEMS = [
+                { id: 'qc', label: 'QC', checked: false },
+                { id: 'printing_approvals', label: 'Printing approvals', checked: false },
+                { id: 'compliance', label: 'Compliance', checked: false },
+                { id: 'instructions_followed', label: 'Instructions followed', checked: false },
+                { id: 'timely_delivery', label: 'Timely Delivery', checked: false },
+            ];
+
+            const mipClState = { mode: 'single', rows: [], items: [] };
 
             function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
 
@@ -451,6 +672,207 @@
                 });
                 return '<div class="dropdown d-inline-block"><button class="btn btn-sm btn-light py-0 px-1" type="button" data-bs-toggle="dropdown" style="font-size:11px;" title="Communication">' + list.length + '</button>' +
                     '<ul class="dropdown-menu dropdown-menu-end mip-plat-menu"><li class="d-flex align-items-center gap-2 px-2">' + items + '</li></ul></div>';
+            }
+            function clStatusColor(d) {
+                const st = String(d.pre_mip_checklist_status || '').toLowerCase();
+                if (st === 'updated') return '#22c55e';
+                if (st === 'escalated') return '#dc3545';
+                const met = parseInt(d.pre_mip_checklist_met_count, 10) || 0;
+                const tot = parseInt(d.pre_mip_checklist_total_count, 10) || DEFAULT_PRE_MIP_ITEMS.length;
+                if (met > 0 && met < tot) return '#f59e0b';
+                return '#94a3b8';
+            }
+            function clFormatter(cell) {
+                const d = cell.getRow().getData();
+                const color = clStatusColor(d);
+                const met = parseInt(d.pre_mip_checklist_met_count, 10) || 0;
+                const tot = parseInt(d.pre_mip_checklist_total_count, 10) || DEFAULT_PRE_MIP_ITEMS.length;
+                const st = String(d.pre_mip_checklist_status || 'pending');
+                const tip = st + ' (' + met + '/' + tot + ')';
+                return '<div class="mip-cl-cell">' +
+                    '<span class="mip-cl-dot" style="background:' + color + ';" title="' + esc(tip) + '"></span>' +
+                    '<button type="button" class="btn btn-link btn-sm p-0 mip-cl-open-btn" title="Pre-MIP checklist">' +
+                    '<i class="mdi mdi-magnify" style="font-size:18px;color:#3bc0c3;line-height:1;"></i></button></div>';
+            }
+            function mergeClItemsFromRow(d) {
+                const raw = d && d.pre_mip_checklist_items;
+                if (!Array.isArray(raw) || !raw.length) {
+                    return DEFAULT_PRE_MIP_ITEMS.map(function (i) { return { id: i.id, label: i.label, checked: false }; });
+                }
+                return raw.map(function (i) {
+                    return { id: String(i.id || ''), label: String(i.label || ''), checked: !!i.checked };
+                });
+            }
+            function cloneClItems(items) {
+                return (items || []).map(function (i) {
+                    return { id: i.id, label: i.label, checked: !!i.checked };
+                });
+            }
+            function allClItemsChecked(items) {
+                if (!items || !items.length) return false;
+                return items.every(function (i) { return i.checked; });
+            }
+            function renderMipClItemsList() {
+                const box = document.getElementById('mip-cl-items-list');
+                if (!box) return;
+                let html = '';
+                mipClState.items.forEach(function (item, idx) {
+                    const id = 'mip-cl-chk-' + idx;
+                    html += '<div class="mip-cl-item-row" data-idx="' + idx + '">' +
+                        '<div class="form-check">' +
+                        '<input class="form-check-input mip-cl-item-chk" type="checkbox" id="' + id + '" data-idx="' + idx + '"' + (item.checked ? ' checked' : '') + '>' +
+                        '<label class="form-check-label" for="' + id + '">' + esc(item.label) + '</label></div>' +
+                        '<button type="button" class="btn btn-link btn-sm p-0 mip-cl-remove-item" data-idx="' + idx + '" title="Remove point"><i class="fas fa-times"></i></button></div>';
+                });
+                box.innerHTML = html || '<p class="text-muted small mb-0">No checklist points — add one below.</p>';
+                syncMipClActionButtons();
+            }
+            function syncMipClActionButtons() {
+                const allMet = allClItemsChecked(mipClState.items);
+                const updateBtn = document.getElementById('mip-cl-update-btn');
+                const escalateBtn = document.getElementById('mip-cl-escalate-btn');
+                if (updateBtn) updateBtn.disabled = !allMet;
+                if (escalateBtn) escalateBtn.disabled = allMet;
+            }
+            function openMipClModal(mode, rows) {
+                mipClState.mode = mode;
+                mipClState.rows = rows || [];
+                const titleEl = document.getElementById('mip-cl-modal-title');
+                const subEl = document.getElementById('mip-cl-modal-subtitle');
+                const noteEl = document.getElementById('mip-cl-escalation-note');
+                const statusEl = document.getElementById('mip-cl-status');
+                if (statusEl) statusEl.innerHTML = '';
+                if (noteEl) noteEl.value = '';
+
+                if (mode === 'bulk') {
+                    titleEl.textContent = '';
+                    titleEl.innerHTML = '<span class="badge bg-warning text-dark">' + mipClState.rows.length + ' rows</span>';
+                    subEl.textContent = 'Apply the same checklist to all ' + mipClState.rows.length + ' selected rows. Add or remove points as needed.';
+                    mipClState.items = cloneClItems(DEFAULT_PRE_MIP_ITEMS);
+                } else {
+                    const d = mipClState.rows[0] ? mipClState.rows[0].getData() : {};
+                    titleEl.textContent = d.sku || '';
+                    subEl.textContent = 'Item-wise checklist before MIP. All points must be met to Update; otherwise Escalate.';
+                    mipClState.items = mergeClItemsFromRow(d);
+                    if (d.pre_mip_checklist_escalation_note) {
+                        noteEl.value = d.pre_mip_checklist_escalation_note;
+                    }
+                }
+                renderMipClItemsList();
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('mipPreMipClModal')).show();
+            }
+            function patchRowClData(row, payload) {
+                if (!row || !payload) return;
+                const items = payload.items || mipClState.items;
+                row.update({
+                    pre_mip_checklist_items: items,
+                    pre_mip_checklist_status: payload.status,
+                    pre_mip_checklist_escalation_note: payload.escalation_note || null,
+                    pre_mip_checklist_met_count: payload.met_count != null ? payload.met_count : items.filter(function (i) { return i.checked; }).length,
+                    pre_mip_checklist_total_count: payload.total_count != null ? payload.total_count : items.length,
+                });
+            }
+            function findMipRowByRef(ref) {
+                if (!table || !ref) return null;
+                return table.getRows().find(function (r) {
+                    const d = r.getData();
+                    return String(d.source_table || 'mfrg_progress') === String(ref.source_table) &&
+                        String(d.id) === String(ref.source_id);
+                }) || null;
+            }
+            async function saveMipClChecklist(action) {
+                const statusEl = document.getElementById('mip-cl-status');
+                const note = (document.getElementById('mip-cl-escalation-note').value || '').trim();
+                const items = mipClState.items.map(function (i) {
+                    return { id: i.id, label: i.label, checked: !!i.checked };
+                });
+
+                if (action === 'update' && !allClItemsChecked(items)) {
+                    if (statusEl) statusEl.innerHTML = '<span class="text-danger">All points must be checked before Update.</span>';
+                    return;
+                }
+                if (action === 'escalate' && allClItemsChecked(items)) {
+                    if (statusEl) statusEl.innerHTML = '<span class="text-warning">All points are met — use Update instead.</span>';
+                    return;
+                }
+                if (action === 'escalate' && !note) {
+                    if (statusEl) statusEl.innerHTML = '<span class="text-danger">Please enter an escalation note.</span>';
+                    return;
+                }
+
+                const updateBtn = document.getElementById('mip-cl-update-btn');
+                const escalateBtn = document.getElementById('mip-cl-escalate-btn');
+                if (updateBtn) updateBtn.disabled = true;
+                if (escalateBtn) escalateBtn.disabled = true;
+                if (statusEl) statusEl.innerHTML = '<span class="text-muted"><i class="fas fa-spinner fa-spin"></i> Saving…</span>';
+
+                try {
+                    let res;
+                    if (mipClState.mode === 'bulk') {
+                        const rowsPayload = mipClState.rows.map(function (r) {
+                            const d = r.getData();
+                            return {
+                                source_table: d.source_table || 'mfrg_progress',
+                                source_id: d.id,
+                                sku: d.sku || '',
+                            };
+                        });
+                        res = await fetch('/mfrg-in-progress/pre-mip-checklist/bulk', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': CSRF },
+                            body: JSON.stringify({ rows: rowsPayload, items: items, action: action, escalation_note: note }),
+                        }).then(r => r.json());
+                        if (res.success || (res.data && res.data.length)) {
+                            (res.data || []).forEach(function (ref) {
+                                const row = findMipRowByRef(ref);
+                                if (row) patchRowClData(row, {
+                                    status: ref.status,
+                                    items: items,
+                                    met_count: ref.met_count,
+                                    total_count: ref.total_count,
+                                    escalation_note: action === 'escalate' ? note : null,
+                                });
+                            });
+                        }
+                    } else {
+                        const row = mipClState.rows[0];
+                        const d = row.getData();
+                        res = await fetch('/mfrg-in-progress/pre-mip-checklist', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': CSRF },
+                            body: JSON.stringify({
+                                source_table: d.source_table || 'mfrg_progress',
+                                source_id: d.id,
+                                sku: d.sku || '',
+                                items: items,
+                                action: action,
+                                escalation_note: note,
+                            }),
+                        }).then(r => r.json());
+                        if (res.success && res.data) {
+                            patchRowClData(row, res.data);
+                        }
+                    }
+
+                    if (!res.success) {
+                        if (statusEl) statusEl.innerHTML = '<span class="text-danger">' + esc(res.message || 'Save failed.') + '</span>';
+                        return;
+                    }
+
+                    if (statusEl) statusEl.innerHTML = '<span class="text-success">' + esc(res.message || 'Saved.') + '</span>';
+                    setTimeout(function () {
+                        bootstrap.Modal.getInstance(document.getElementById('mipPreMipClModal')).hide();
+                        if (mipClState.mode === 'bulk') {
+                            table.deselectRow();
+                            mipBulkSelectionCache = [];
+                            updateMipBulkEditBadge();
+                        }
+                    }, 450);
+                } catch (err) {
+                    if (statusEl) statusEl.innerHTML = '<span class="text-danger">Network error.</span>';
+                } finally {
+                    syncMipClActionButtons();
+                }
             }
             function inputFormatter(column, type, width) {
                 return function (cell) {
@@ -584,11 +1006,28 @@
                             return url ? '<div class="mip-new-img-aspect"><img src="' + esc(url) + '"></div>' : '<span class="text-muted">N/A</span>';
                         }
                     },
-                    { title: "Executive", field: "exec", width: 120, hozAlign: "center", headerFilter: "list",
-                      headerFilterParams: { values: { "": "— All —", "__un__": "Unassigned", "Atin": "Atin", "Jack": "Jack", "Nitish": "Nitish", "Ajay": "Ajay", "Candy": "Candy", "Sruti": "Sruti" } },
-                      headerFilterFunc: function (h, rv) { if (!h) return true; const r = (rv || '').trim(); return h === '__un__' ? r === '' : r === h; },
+                    { title: "Executive", field: "exec", width: 120, hozAlign: "center",
                       formatter: execFormatter },
-                    { title: "SKU", field: "sku", width: 190, headerFilter: "input", headerFilterPlaceholder: " Filter SKU...", headerFilterLiveFilter: true,
+                    { title: "Supplier", field: "supplier", width: 140, hozAlign: "center",
+                      formatter: supplierFormatter,
+                      editor: "list",
+                      editorParams: {
+                          values: ALL_SUPPLIERS,
+                          autocomplete: true,
+                          listOnEmpty: true,
+                          clearable: true,
+                          freetext: false,
+                          placeholderEmpty: "No supplier found",
+                          maxHeight: 260,
+                      },
+                      cellEdited: function (cell) {
+                          const d = cell.getRow().getData();
+                          const v = (cell.getValue() || '').trim();
+                          postInline(d.sku || '', d.id || 0, 'supplier', v, d.source_table)
+                              .then(r => { if (!r || !r.success) alert((r && r.message) || 'Could not save supplier.'); })
+                              .catch(err => { alert('Could not save supplier: ' + (err && err.message ? err.message : err)); });
+                      } },
+                    { title: "SKU", field: "sku", width: 190,
                       formatter: function (cell) {
                           const v = cell.getValue() || '';
                           if (!v) return '';
@@ -621,26 +1060,6 @@
                     { title: "D Date", field: "delivery_date", width: 90, hozAlign: "center", formatter: dateDisplayFormatter,
                       editor: "date",
                       cellEdited: function (cell) { const d = cell.getRow().getData(); postInline(d.sku || '', d.id || 0, 'delivery_date', cell.getValue(), d.source_table).then(r => { if (!r || !r.success) alert((r && r.message) || 'Save failed'); }).catch(err => alert('Could not save date: ' + (err && err.message ? err.message : err))); } },
-                    { title: "Supplier", field: "supplier", width: 140, hozAlign: "center",
-                      headerFilter: "input", headerFilterPlaceholder: " Filter...",
-                      formatter: supplierFormatter,
-                      editor: "list",
-                      editorParams: {
-                          values: ALL_SUPPLIERS,
-                          autocomplete: true,
-                          listOnEmpty: true,
-                          clearable: true,
-                          freetext: false,
-                          placeholderEmpty: "No supplier found",
-                          maxHeight: 260,
-                      },
-                      cellEdited: function (cell) {
-                          const d = cell.getRow().getData();
-                          const v = (cell.getValue() || '').trim();
-                          postInline(d.sku || '', d.id || 0, 'supplier', v, d.source_table)
-                              .then(r => { if (!r || !r.success) alert((r && r.message) || 'Could not save supplier.'); })
-                              .catch(err => { alert('Could not save supplier: ' + (err && err.message ? err.message : err)); });
-                      } },
                     { title: '<i class="fas fa-comments" title="Communication"></i>', field: "supplier_platform_links", width: 56, headerSort: false, formatter: commFormatter },
                     { title: "PO", field: "mip_po_number", width: 80, hozAlign: "center", formatter: function (c) { const v = c.getValue(); return v ? '<span class="badge bg-info">' + esc(v) + '</span>' : '<span class="mip-status-dot" style="background-color:#dc3545;" title="No PO"></span>'; } },
                     { title: "T-CBM", field: "total_cbm", width: 90, hozAlign: "center", formatter: function (cell) {
@@ -672,6 +1091,14 @@
                     { title: "Pkg Inst", field: "pkg_inst", width: 80, hozAlign: "center", formatter: dotToggleFormatter('pkg_inst') },
                     { title: "U-Manual", field: "u_manual", width: 90, hozAlign: "center", formatter: dotToggleFormatter('u_manual') },
                     { title: "Compliance", field: "compliance", width: 100, hozAlign: "center", formatter: dotToggleFormatter('compliance') },
+                    { title: "CL", field: "pre_mip_checklist_status", width: 64, hozAlign: "center", headerSort: false,
+                      formatter: clFormatter,
+                      cellClick: function (e, cell) {
+                          if (e.target.closest('.mip-cl-open-btn')) {
+                              e.stopPropagation();
+                              openMipClModal('single', [cell.getRow()]);
+                          }
+                      } },
                     { title: "Stage", field: "stage", width: 80, hozAlign: "center", formatter: stageFormatter },
                     ...(CAN_EDIT_ALL ? [{
                         title: "Action", field: "row_action", width: 80, hozAlign: "center", headerSort: false,
@@ -818,24 +1245,61 @@
             let currentSupplierFilter = null;
 
             // ---- combined filtering (stage dropdown + global search + supplier play) ----
-            function applyFilters() {
+            function rowPassesMipFilters(row, skipSupplierPlay) {
                 const stage = (document.getElementById('mip-stage-filter').value || 'both').toLowerCase();
+                const execFilter = (document.getElementById('mip-exec-filter').value || '').trim();
                 const search = (document.getElementById('search-input').value || '').trim().toLowerCase();
-                const pending = (document.getElementById('row-data-pending-status')?.value || '');
-                table.setFilter(function (row) {
-                    let keep = true;
-                    const rs = (row.stage || '').toLowerCase().trim();
-                    if (stage === 'mip') keep = keep && rs === 'mip';
-                    else if (stage === 'r2s') keep = keep && rs === 'r2s';
-                    if (search) keep = keep && Object.values(row).some(v => v && v.toString().toLowerCase().includes(search));
-                    // Supplier play filter: restrict to a single supplier when active.
-                    if (currentSupplierFilter) {
-                        const rowSupplier = String(row.supplier || '').trim();
-                        if (rowSupplier !== currentSupplierFilter) keep = false;
+                const skuSearch = (document.getElementById('mip-sku-search').value || '').trim().toLowerCase();
+                const supplierSearch = (document.getElementById('mip-supplier-search').value || '').trim().toLowerCase();
+
+                let keep = true;
+                const rs = (row.stage || '').toLowerCase().trim();
+                if (stage === 'mip') keep = keep && rs === 'mip';
+                else if (stage === 'r2s') keep = keep && rs === 'r2s';
+                if (execFilter) {
+                    const rowExec = String(row.exec || '').trim();
+                    if (execFilter === '__un__') {
+                        if (rowExec !== '') keep = false;
+                    } else if (rowExec !== execFilter) {
+                        keep = false;
                     }
-                    return keep;
+                }
+                if (search) keep = keep && Object.values(row).some(v => v && v.toString().toLowerCase().includes(search));
+                if (skuSearch) {
+                    const rowSku = String(row.sku || '').trim().toLowerCase();
+                    if (!rowSku.includes(skuSearch)) keep = false;
+                }
+                if (supplierSearch) {
+                    const rowSupplier = String(row.supplier || '').trim().toLowerCase();
+                    if (!rowSupplier.includes(supplierSearch)) keep = false;
+                }
+                if (!skipSupplierPlay && currentSupplierFilter) {
+                    const rowSupplier = String(row.supplier || '').trim();
+                    if (rowSupplier !== currentSupplierFilter) keep = false;
+                }
+                return keep;
+            }
+
+            function applyFilters() {
+                table.setFilter(function (row) {
+                    return rowPassesMipFilters(row, false);
                 });
                 setTimeout(updateStats, 0);
+            }
+
+            function applyToolbarFilters() {
+                applyFilters();
+                if (!isSupplierPlaying || !currentSupplierFilter) return;
+                const list = getMipSupplierList();
+                if (!list.length) {
+                    stopSupplierPlay();
+                    return;
+                }
+                if (!list.includes(currentSupplierFilter)) {
+                    renderMipSupplierGroup(list[0]);
+                } else {
+                    syncMipSupplierPlayIndex(list, currentSupplierFilter);
+                }
             }
 
             function updateStats() {
@@ -862,8 +1326,11 @@
 
             table.on("dataLoaded", function () { applyFilters(); updateMfrgArchiveButtons(); });
             table.on("dataFiltered", updateStats);
-            document.getElementById('mip-stage-filter').addEventListener('change', applyFilters);
-            document.getElementById('search-input').addEventListener('input', function () { clearTimeout(window._mipS); window._mipS = setTimeout(applyFilters, 300); });
+            document.getElementById('mip-stage-filter').addEventListener('change', applyToolbarFilters);
+            document.getElementById('mip-exec-filter').addEventListener('change', applyToolbarFilters);
+            document.getElementById('search-input').addEventListener('input', function () { clearTimeout(window._mipS); window._mipS = setTimeout(applyToolbarFilters, 300); });
+            document.getElementById('mip-sku-search').addEventListener('input', function () { clearTimeout(window._mipSkuS); window._mipSkuS = setTimeout(applyToolbarFilters, 300); });
+            document.getElementById('mip-supplier-search').addEventListener('input', function () { clearTimeout(window._mipSupS); window._mipSupS = setTimeout(applyToolbarFilters, 300); });
 
             // ---- delegated inline-edit handlers on the table element ----
             const tableEl = document.getElementById('mfrg-table');
@@ -931,35 +1398,29 @@
 
             // ── Pencil (Edit) click — DOCUMENT-LEVEL CAPTURE-PHASE handler ────────
             // Tabulator v6's `selectableRows: true` toggles row selection on any
-            // click (and in some builds, on `mousedown`) inside the row body. The
-            // earlier capture-phase listener on `tableEl` wasn't enough because:
-            //   • Tabulator may bind its handlers on the same `tableEl` element,
-            //     and registration order beats our capture listener; or
-            //   • Selection actually fires on `mousedown`, which we never blocked.
-            //
-            // We now hook BOTH `mousedown` and `click` in capture phase on
-            // `document`, which is guaranteed to fire before any handler bound on
-            // a descendant element (regardless of registration order). When the
-            // event target is inside `.mip-action-btn`, we kill it dead — Tabulator
-            // never sees it, so the underlying row's selection state is untouched.
-            //
-            // Bulk-edit rule (unchanged):
-            //   • 2+ rows selected → modal saves to ALL selected rows
-            //   • 0 or 1 row selected → modal saves to just the clicked row
+            // click (and in some builds, on `mousedown`). The forecast page preserves
+            // checkbox multi-select by caching selection on rowSelectionChanged and
+            // snapshotting targets on mousedown before the Edit click collapses selection.
             document.addEventListener('mousedown', function (e) {
-                if (e.target.closest('.mip-action-btn')) {
-                    e.stopPropagation();
-                    e.stopImmediatePropagation();
-                }
+                const actBtn = e.target.closest('.mip-action-btn');
+                if (!actBtn || !tableEl.contains(actBtn)) return;
+
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+
+                const tr = actBtn.closest('.tabulator-row');
+                const row = tr ? table.getRow(tr) : null;
+                mipRowEditState.pendingBulkTargets = dedupeMipRows([
+                    ...(mipBulkSelectionCache || []),
+                    ...(table.getSelectedRows() || []),
+                    ...(row ? [row] : [])
+                ]);
             }, true /* capture */);
 
             document.addEventListener('click', function (e) {
                 const actBtn = e.target.closest('.mip-action-btn');
                 if (!actBtn) return;
 
-                // Only handle pencils that actually live inside THIS page's table —
-                // a document-level listener could otherwise fire on any unrelated
-                // future .mip-action-btn elsewhere.
                 if (!tableEl.contains(actBtn)) return;
 
                 e.stopPropagation();
@@ -970,16 +1431,7 @@
                 const row = tr ? table.getRow(tr) : null;
                 if (!row) return;
 
-                const selected = table.getSelectedRows() || [];
-                let targetRows, baselineRow;
-                if (selected.length >= 2) {
-                    targetRows = selected;
-                    baselineRow = (selected.indexOf(row) !== -1) ? row : selected[0];
-                } else {
-                    targetRows = [row];
-                    baselineRow = row;
-                }
-                openEditModal(baselineRow, targetRows);
+                openEditModal(row);
             }, true /* capture */);
 
             tableEl.addEventListener('click', function (e) {
@@ -1051,11 +1503,11 @@
                 if (!table) return [];
                 const seen = new Set();
                 const list = [];
-                // Walk every row (not just current page) so the play loop covers all
-                // suppliers represented in the loaded dataset.
-                table.getRows().forEach(function (row) {
-                    const d = row.getData();
-                    const s = String(d.supplier || '').trim();
+                // Build from full loaded data + toolbar filters, but NOT the supplier-play
+                // isolation filter — otherwise forward/back only ever see one supplier.
+                (table.getData() || []).forEach(function (row) {
+                    if (!rowPassesMipFilters(row, true)) return;
+                    const s = String(row.supplier || '').trim();
                     if (s && s !== '-' && !seen.has(s)) {
                         seen.add(s);
                         list.push(s);
@@ -1064,9 +1516,24 @@
                 return list.sort((a, b) => a.localeCompare(b));
             }
 
+            function syncMipSupplierPlayIndex(list, supplier) {
+                const idx = list.indexOf(supplier);
+                supplierPlayIndex = idx >= 0 ? idx : 0;
+            }
+
+            function startMipSupplierPlay(list, index) {
+                isSupplierPlaying = true;
+                supplierPlayIndex = index;
+                renderMipSupplierGroup(list[supplierPlayIndex]);
+                document.getElementById('mip-supplier-play-pause').style.display = 'inline-block';
+                document.getElementById('mip-supplier-play-auto').style.display  = 'none';
+            }
+
             function renderMipSupplierGroup(supplier) {
                 currentSupplierFilter = supplier;
                 applyFilters();
+                const list = getMipSupplierList();
+                syncMipSupplierPlayIndex(list, supplier);
                 const lbl = document.getElementById('mip-supplier-play-label');
                 if (lbl) { lbl.textContent = supplier; lbl.title = supplier; lbl.style.display = 'inline-block'; }
                 if (table && table.rowManager && table.rowManager.element) {
@@ -1087,25 +1554,27 @@
             document.getElementById('mip-supplier-play-auto').addEventListener('click', function () {
                 const list = getMipSupplierList();
                 if (!list.length) { alert('No supplier data available to play through.'); return; }
-                isSupplierPlaying = true;
-                supplierPlayIndex = 0;
-                renderMipSupplierGroup(list[supplierPlayIndex]);
-                document.getElementById('mip-supplier-play-pause').style.display = 'inline-block';
-                document.getElementById('mip-supplier-play-auto').style.display  = 'none';
+                startMipSupplierPlay(list, 0);
             });
 
             document.getElementById('mip-supplier-play-forward').addEventListener('click', function () {
-                if (!isSupplierPlaying) return;
                 const list = getMipSupplierList();
                 if (!list.length) return;
+                if (!isSupplierPlaying) {
+                    startMipSupplierPlay(list, 0);
+                    return;
+                }
                 supplierPlayIndex = (supplierPlayIndex + 1) % list.length;
                 renderMipSupplierGroup(list[supplierPlayIndex]);
             });
 
             document.getElementById('mip-supplier-play-backward').addEventListener('click', function () {
-                if (!isSupplierPlaying) return;
                 const list = getMipSupplierList();
                 if (!list.length) return;
+                if (!isSupplierPlaying) {
+                    startMipSupplierPlay(list, list.length - 1);
+                    return;
+                }
                 supplierPlayIndex = (supplierPlayIndex - 1 + list.length) % list.length;
                 renderMipSupplierGroup(list[supplierPlayIndex]);
             });
@@ -1118,26 +1587,31 @@
 
             // ---- Archive / Restore ----
             function updateMfrgArchiveButtons() {
-                // Archive/Restore is restricted to president@5core.com and purchase@5core.com.
+                // Archive/Restore is restricted to president@5core.com only.
                 if (!CAN_ARCHIVE) {
                     $('#archive-selected-btn').addClass('d-none');
                     $('#restore-selected-btn').addClass('d-none');
-                    return;
-                }
-                const n = (table.getSelectedRows() || []).length;
-                if (showArchived) {
-                    $('#archive-selected-btn').addClass('d-none');
-                    $('#restore-selected-btn').removeClass('d-none').prop('disabled', n === 0);
                 } else {
-                    $('#restore-selected-btn').addClass('d-none');
-                    $('#archive-selected-btn').toggleClass('d-none', n === 0);
+                    const n = dedupeMipRows(table.getSelectedRows() || []).length;
+                    if (showArchived) {
+                        $('#archive-selected-btn').addClass('d-none');
+                        $('#restore-selected-btn').removeClass('d-none').prop('disabled', n === 0);
+                    } else {
+                        $('#restore-selected-btn').addClass('d-none');
+                        $('#archive-selected-btn').toggleClass('d-none', n === 0);
+                    }
                 }
+                updateMipBulkEditBadge();
             }
-            table.on("rowSelectionChanged", updateMfrgArchiveButtons);
+            table.on("rowSelectionChanged", function (data, rows) {
+                mipBulkSelectionCache = dedupeMipRows(rows || table.getSelectedRows());
+                updateMfrgArchiveButtons();
+            });
 
             $('#show-archived-toggle').on('change', function () {
                 showArchived = this.checked;
                 table.deselectRow();
+                mipBulkSelectionCache = [];
                 table.replaceData();
             });
 
@@ -1157,7 +1631,7 @@
                 if (!confirm(confirmMsg.replace('{n}', items.length))) return;
                 fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': CSRF }, body: JSON.stringify({ items: items }) })
                     .then(r => r.json())
-                    .then(r => { if (r.success) { table.deselectRow(); table.replaceData(); if (r.message) alert(r.message); } else alert(r.message || 'Failed.'); })
+                    .then(r => { if (r.success) { table.deselectRow(); mipBulkSelectionCache = []; table.replaceData(); updateMipBulkEditBadge(); if (r.message) alert(r.message); } else alert(r.message || 'Failed.'); })
                     .catch(() => alert('Network error.'));
             }
             $('#archive-selected-btn').on('click', function () { bulkArchiveRestore('/mfrg-progresses/delete', 'Archive {n} row(s)?'); });
@@ -1182,7 +1656,7 @@
                 { key: 'qty', label: 'QTY', type: 'number' },
                 { key: 'created_at', label: 'O Date', type: 'date' },
                 { key: 'delivery_date', label: 'D Date', type: 'date' },
-                { key: 'supplier', label: 'Supplier', type: 'select', options: function () { return [['', '']].concat(uniqueSuppliers.map(function (s) { return [s, s]; })); } },
+                { key: 'supplier', label: 'Supplier', type: 'select', options: function () { return [['', '']].concat(ALL_SUPPLIERS.map(function (s) { return [s, s]; })); } },
                 { key: 'supplier_sku', label: 'Supplier SKU', type: 'text' },
                 { key: 'rate', label: 'Rate (CP)', type: 'number' },
                 { key: 'CBM', label: 'CBM', type: 'number', note: 'Saved to product master' },
@@ -1199,26 +1673,37 @@
                     return [['', 'Select'], ['appr_req', 'Appr. Req'], ['mip', 'MIP'], ['r2s', 'R2S'], ['transit', 'Transit'], ['all_good', 'All Good'], ['to_order_analysis', '2 Order']];
                 } },
             ];
-            function openEditModal(row, targetRows) {
-                window._mipEditRow = row;
-                // targetRows = the rows the save will be applied to. Either just [row]
-                // (single-row mode) or the user's multi-selection (bulk mode).
-                window._mipEditTargets = Array.isArray(targetRows) && targetRows.length ? targetRows : [row];
-                const isBulk = window._mipEditTargets.length > 1;
+            function openEditModal(row) {
+                mipRowEditState.row = row;
                 const d = row.getData();
-                // Modal header: show "N rows" pill in bulk mode so the user knows the
-                // save will fan out, otherwise show the row's SKU like before.
+                const sku = String(d.sku || '').trim();
+
+                const bulkTargets = (mipRowEditState.pendingBulkTargets && mipRowEditState.pendingBulkTargets.length)
+                    ? mipRowEditState.pendingBulkTargets
+                    : getMipBulkTargetRows(sku, [row]);
+                mipRowEditState.pendingBulkTargets = null;
+                mipRowEditState.targetRows = bulkTargets;
+
+                const isBulk = bulkTargets.length > 1;
+                const baselineRow = bulkTargets.indexOf(row) !== -1 ? row : bulkTargets[0];
+                const baseline = baselineRow.getData();
+
                 const skuEl = document.getElementById('mip-edit-sku');
+                const subEl = document.getElementById('mip-edit-subtitle');
+                const statusEl = document.getElementById('mip-edit-status');
                 if (isBulk) {
-                    skuEl.innerHTML = '<span class="badge bg-warning text-dark">'
-                                    + window._mipEditTargets.length + ' rows selected — bulk edit</span>';
+                    skuEl.innerHTML = '<span class="badge bg-warning text-dark">' + bulkTargets.length + ' rows selected</span>';
+                    subEl.textContent = 'Changes apply to all ' + bulkTargets.length + ' selected rows. Only fields you change will be overwritten on every row.';
                 } else {
-                    skuEl.textContent = d.sku || '';
+                    skuEl.textContent = baseline.sku || '';
+                    subEl.textContent = sku ? (baseline.parent ? sku + ' · ' + baseline.parent : sku) : '';
                 }
+                if (statusEl) statusEl.innerHTML = '';
+
                 let html = '';
                 EDIT_FIELDS.forEach(function (f) {
                     const id = 'medit-' + f.key;
-                    let val = d[f.key] == null ? '' : d[f.key];
+                    let val = baseline[f.key] == null ? '' : baseline[f.key];
                     let input = '';
                     if (f.type === 'select') {
                         const opts = (f.options ? f.options() : []).map(function (o) {
@@ -1241,15 +1726,17 @@
                 new bootstrap.Modal(document.getElementById('mipEditModal')).show();
             }
             document.getElementById('mip-edit-save').addEventListener('click', async function () {
-                const row = window._mipEditRow;
+                const row = mipRowEditState.row;
                 if (!row) return;
-                const targets = (Array.isArray(window._mipEditTargets) && window._mipEditTargets.length)
-                    ? window._mipEditTargets
+                const targets = (mipRowEditState.targetRows && mipRowEditState.targetRows.length)
+                    ? mipRowEditState.targetRows
                     : [row];
                 const isBulk = targets.length > 1;
                 const btn = this;
                 const originalLabel = btn.innerHTML;
-                const baseline = row.getData();
+                const statusEl = document.getElementById('mip-edit-status');
+                const baselineRow = targets.indexOf(row) !== -1 ? row : targets[0];
+                const baseline = baselineRow.getData();
 
                 // Collect the set of changes the user made in the modal. Each entry is
                 // { key, newVal, kind } where kind tells us which backend endpoint to call.
@@ -1275,11 +1762,13 @@
                 });
 
                 if (changes.length === 0) {
-                    bootstrap.Modal.getInstance(document.getElementById('mipEditModal')).hide();
+                    if (statusEl) statusEl.innerHTML = '<span class="text-muted">No changes to save.</span>';
+                    else bootstrap.Modal.getInstance(document.getElementById('mipEditModal')).hide();
                     return;
                 }
 
                 btn.disabled = true;
+                if (statusEl) statusEl.innerHTML = '<span class="text-muted">Saving ' + changes.length + ' field(s) to ' + targets.length + ' row(s)…</span>';
                 let savedCount = 0;
                 const failed = [];
                 const renderProgress = () => {
@@ -1328,11 +1817,21 @@
                 btn.innerHTML = originalLabel;
 
                 if (failed.length) {
-                    alert('Some changes could not be saved (' + failed.length + ' row(s)). '
+                    const failMsg = 'Some changes could not be saved (' + failed.length + ' row(s)). '
                           + 'Affected SKUs: ' + failed.slice(0, 8).map(f => f.sku).join(', ')
-                          + (failed.length > 8 ? ', …' : ''));
+                          + (failed.length > 8 ? ', …' : '');
+                    if (statusEl) statusEl.innerHTML = '<span class="text-warning">' + esc(failMsg) + '</span>';
+                    else alert(failMsg);
+                } else {
+                    if (statusEl) statusEl.innerHTML = '<span class="text-success">Saved ' + changes.length + ' field(s) on ' + targets.length + ' row(s).</span>';
+                    setTimeout(function () {
+                        bootstrap.Modal.getInstance(document.getElementById('mipEditModal')).hide();
+                        table.deselectRow();
+                        mipBulkSelectionCache = [];
+                        updateMipBulkEditBadge();
+                        if (CAN_ARCHIVE) updateMfrgArchiveButtons();
+                    }, 500);
                 }
-                bootstrap.Modal.getInstance(document.getElementById('mipEditModal')).hide();
             });
 
             // ---- Follow-Up / Current Status ----
@@ -1340,7 +1839,19 @@
                 if (!raw) return '';
                 const d = new Date(raw);
                 if (isNaN(d.getTime())) return '';
-                return d.getDate() + ' ' + d.toLocaleString('en-US', { month: 'short' });
+                return d.getDate() + ' ' + d.toLocaleString('en-US', { month: 'short' }) + ' ' + d.getFullYear();
+            }
+            function renderFollowupHistoryList(list) {
+                if (!list.length) return '<p class="text-muted small mb-0 px-2 py-2">No chat history yet.</p>';
+                let html = '<div class="list-group list-group-flush">';
+                list.forEach(function (it) {
+                    html += '<div class="list-group-item py-2">' +
+                        '<div class="d-flex justify-content-between"><span class="fw-semibold small">' + esc(it.created_by || 'Unknown') + '</span>' +
+                        '<span class="text-muted small">' + fmtFollowupDate(it.created_at) + '</span></div>' +
+                        '<div class="small mt-1">' + esc(it.remark || '') + '</div></div>';
+                });
+                html += '</div>';
+                return html;
             }
             function loadFollowupHistory(supplier) {
                 const box = document.getElementById('followup-history-list');
@@ -1351,15 +1862,7 @@
                     .then(res => {
                         const list = (res && res.data) ? res.data : [];
                         if (!list.length) { box.innerHTML = '<p class="text-muted small mb-0">No history yet.</p>'; return; }
-                        let html = '<div class="list-group">';
-                        list.forEach(function (it) {
-                            html += '<div class="list-group-item py-2">' +
-                                '<div class="d-flex justify-content-between"><span class="fw-semibold small">' + esc(it.created_by || 'Unknown') + '</span>' +
-                                '<span class="text-muted small">' + fmtFollowupDate(it.created_at) + '</span></div>' +
-                                '<div class="small mt-1">' + esc(it.remark || '') + '</div></div>';
-                        });
-                        html += '</div>';
-                        box.innerHTML = html;
+                        box.innerHTML = renderFollowupHistoryList(list);
                     })
                     .catch(() => { box.innerHTML = '<p class="text-danger small mb-0">Failed to load history.</p>'; });
             }
@@ -1406,6 +1909,197 @@
                     })
                     .catch(() => alert('Network error.'))
                     .finally(() => { btn.disabled = false; });
+            });
+
+            // ---- Supplier Summary (grouped totals + chat history) ----
+            let mipSupplierSummaryCsvLines = [];
+
+            function buildMipSupplierGroups() {
+                const groups = {};
+                if (!table) return groups;
+                table.getData('active').forEach(function (d) {
+                    const sup = String(d.supplier || '').trim();
+                    const key = sup && sup !== '-' ? sup : 'Unknown';
+                    if (!groups[key]) {
+                        groups[key] = { items: 0, qty: 0, cbm: 0, amount: 0 };
+                    }
+                    const qty = parseFloat(d.qty) || 0;
+                    groups[key].items += 1;
+                    groups[key].qty += qty;
+                    groups[key].cbm += (parseFloat(d.CBM) || 0) * qty;
+                    groups[key].amount += rowAmount(d);
+                });
+                return groups;
+            }
+
+            function fmtMipQty(n) {
+                if (!isFinite(n)) return '0';
+                if (Math.abs(n - Math.round(n)) < 1e-9) return String(Math.round(n));
+                return n.toFixed(2);
+            }
+
+            function fmtMipAmount(n) {
+                return Math.round(n).toLocaleString();
+            }
+
+            function csvEscapeCell(cell) {
+                const s = String(cell != null ? cell : '');
+                if (/[",\r\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+                return s;
+            }
+
+            function renderMipSupplierSummaryTable(groups) {
+                const tbody = document.getElementById('mip-supplier-summary-tbody');
+                const tfoot = document.getElementById('mip-supplier-summary-tfoot');
+                const names = Object.keys(groups).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+                tbody.innerHTML = '';
+                tfoot.innerHTML = '';
+                mipSupplierSummaryCsvLines = [['Supplier', 'Items', 'QTY', 'CBM', 'Amount']];
+
+                if (!names.length) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="text-muted text-center py-3">No rows in the current view.</td></tr>';
+                    return names;
+                }
+
+                let gItems = 0, gQty = 0, gCbm = 0, gAmount = 0;
+                names.forEach(function (name) {
+                    const g = groups[name];
+                    gItems += g.items;
+                    gQty += g.qty;
+                    gCbm += g.cbm;
+                    gAmount += g.amount;
+                    const tr = document.createElement('tr');
+                    tr.innerHTML =
+                        '<td>' + esc(name) + '</td>' +
+                        '<td class="text-end">' + g.items + '</td>' +
+                        '<td class="text-end">' + fmtMipQty(g.qty) + '</td>' +
+                        '<td class="text-end">' + Math.round(g.cbm).toLocaleString() + '</td>' +
+                        '<td class="text-end">' + fmtMipAmount(g.amount) + '</td>';
+                    tbody.appendChild(tr);
+                    mipSupplierSummaryCsvLines.push([name, g.items, fmtMipQty(g.qty), Math.round(g.cbm), Math.round(g.amount)]);
+                });
+
+                mipSupplierSummaryCsvLines.push(['Grand Total', gItems, fmtMipQty(gQty), Math.round(gCbm), Math.round(gAmount)]);
+                tfoot.innerHTML =
+                    '<tr><td>Grand Total</td>' +
+                    '<td class="text-end">' + gItems + '</td>' +
+                    '<td class="text-end">' + fmtMipQty(gQty) + '</td>' +
+                    '<td class="text-end">' + Math.round(gCbm).toLocaleString() + '</td>' +
+                    '<td class="text-end">' + fmtMipAmount(gAmount) + '</td></tr>';
+                return names;
+            }
+
+            function renderMipSupplierSummaryHistory(names, groups, historyMap) {
+                const box = document.getElementById('mip-supplier-summary-history');
+                if (!names.length) {
+                    box.innerHTML = '<p class="text-muted small mb-0">No suppliers in the current view.</p>';
+                    return;
+                }
+                let html = '';
+                names.forEach(function (name) {
+                    const g = groups[name];
+                    const list = historyMap[name] || [];
+                    const totals = fmtMipQty(g.qty) + ' QTY · ' + Math.round(g.cbm).toLocaleString() + ' CBM · ' + fmtMipAmount(g.amount) + ' Amount';
+                    html += '<div class="mip-sup-history-block mb-3 border rounded">' +
+                        '<div class="mip-sup-history-head">' +
+                        '<span>' + esc(name) + '</span>' +
+                        '<span class="mip-sup-history-totals">' + g.items + ' items · ' + totals +
+                        (list.length ? ' · ' + list.length + ' message' + (list.length === 1 ? '' : 's') : '') + '</span>' +
+                        '</div>' +
+                        renderFollowupHistoryList(list) +
+                        '</div>';
+                });
+                box.innerHTML = html;
+            }
+
+            function openMipSupplierSummaryModal() {
+                const groups = buildMipSupplierGroups();
+                const names = renderMipSupplierSummaryTable(groups);
+                const historyBox = document.getElementById('mip-supplier-summary-history');
+                historyBox.innerHTML = '<p class="text-muted small mb-0"><i class="fas fa-spinner fa-spin"></i> Loading chat history…</p>';
+
+                if (!names.length) {
+                    historyBox.innerHTML = '<p class="text-muted small mb-0">No suppliers in the current view.</p>';
+                    bootstrap.Modal.getOrCreateInstance(document.getElementById('mipSupplierSummaryModal')).show();
+                    return;
+                }
+
+                const historyMap = {};
+                Promise.all(names.map(function (name) {
+                    return fetch('/purchase-master/follow-up-history/supplier/' + encodeURIComponent(name))
+                        .then(r => r.json())
+                        .then(res => {
+                            historyMap[name] = (res && res.data) ? res.data : [];
+                        })
+                        .catch(() => { historyMap[name] = []; });
+                })).then(function () {
+                    renderMipSupplierSummaryHistory(names, groups, historyMap);
+                });
+
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('mipSupplierSummaryModal')).show();
+            }
+
+            document.getElementById('mip-supplier-summary-btn').addEventListener('click', openMipSupplierSummaryModal);
+
+            document.getElementById('mip-supplier-summary-csv-btn').addEventListener('click', function () {
+                if (!mipSupplierSummaryCsvLines.length || mipSupplierSummaryCsvLines.length <= 1) {
+                    const groups = buildMipSupplierGroups();
+                    renderMipSupplierSummaryTable(groups);
+                }
+                if (mipSupplierSummaryCsvLines.length <= 1) return;
+                const csv = mipSupplierSummaryCsvLines.map(row => row.map(csvEscapeCell).join(',')).join('\r\n');
+                const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'mip-supplier-summary-' + new Date().toISOString().slice(0, 10) + '.csv';
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                URL.revokeObjectURL(url);
+            });
+
+            // ---- Pre-MIP CL checklist ----
+            document.getElementById('mip-cl-items-list').addEventListener('change', function (e) {
+                const chk = e.target.closest('.mip-cl-item-chk');
+                if (!chk) return;
+                const idx = parseInt(chk.dataset.idx, 10);
+                if (mipClState.items[idx]) mipClState.items[idx].checked = chk.checked;
+                syncMipClActionButtons();
+            });
+            document.getElementById('mip-cl-items-list').addEventListener('click', function (e) {
+                const btn = e.target.closest('.mip-cl-remove-item');
+                if (!btn) return;
+                const idx = parseInt(btn.dataset.idx, 10);
+                if (idx >= 0) {
+                    mipClState.items.splice(idx, 1);
+                    renderMipClItemsList();
+                }
+            });
+            document.getElementById('mip-cl-add-item-btn').addEventListener('click', function () {
+                const input = document.getElementById('mip-cl-new-item');
+                const label = (input.value || '').trim();
+                if (!label) return;
+                const id = 'custom_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+                mipClState.items.push({ id: id, label: label, checked: false });
+                input.value = '';
+                renderMipClItemsList();
+            });
+            document.getElementById('mip-cl-new-item').addEventListener('keydown', function (e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    document.getElementById('mip-cl-add-item-btn').click();
+                }
+            });
+            document.getElementById('mip-cl-update-btn').addEventListener('click', function () { saveMipClChecklist('update'); });
+            document.getElementById('mip-cl-escalate-btn').addEventListener('click', function () { saveMipClChecklist('escalate'); });
+            document.getElementById('mip-bulk-cl-btn').addEventListener('click', function () {
+                const selected = dedupeMipRows(table.getSelectedRows() || []);
+                if (!selected.length) {
+                    alert('Select one or more rows with checkboxes first.');
+                    return;
+                }
+                openMipClModal('bulk', selected);
             });
         });
     </script>

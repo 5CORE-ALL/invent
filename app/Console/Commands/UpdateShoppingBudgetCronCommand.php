@@ -6,6 +6,7 @@ use App\Models\GoogleAdsCampaign;
 use App\Models\GoogleDataView;
 use App\Models\ProductMaster;
 use App\Services\GoogleAdsSbidService;
+use App\Support\GoogleShoppingCampaignNameMatcher;
 use App\Support\GoogleShoppingCampaignsRawRule;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -172,23 +173,8 @@ class UpdateShoppingBudgetCronCommand extends Command
 
                 // Use improved matching logic for SHOPPING campaigns (matching frontend logic)
                 $matchedCampaign = $googleCampaigns->first(function ($c) use ($sku) {
-                    $campaign = strtoupper(trim($c->campaign_name));
-                    $campaignCleaned = rtrim(trim($campaign), '.'); // Remove trailing dots like frontend
-                    $skuTrimmed = strtoupper(trim($sku));
-
-                    // Check if SKU is in comma-separated list
-                    $parts = array_map('trim', explode(',', $campaignCleaned));
-                    $parts = array_map(function ($part) {
-                        return rtrim(trim($part), '.'); // Remove trailing dots from each part
-                    }, $parts);
-                    $exactMatch = in_array($skuTrimmed, $parts);
-
-                    // If not in list, check if campaign name exactly equals SKU
-                    if (! $exactMatch) {
-                        $exactMatch = $campaignCleaned === $skuTrimmed;
-                    }
-
-                    return $exactMatch && $c->campaign_status === 'ENABLED';
+                    return GoogleShoppingCampaignNameMatcher::matches((string) $c->campaign_name, $sku)
+                        && $c->campaign_status === 'ENABLED';
                 });
 
                 if (! $matchedCampaign) {
@@ -215,19 +201,7 @@ class UpdateShoppingBudgetCronCommand extends Command
                     if (! $matchedCampaign) {
                         // Check if campaign exists but is not ENABLED (matching frontend logic)
                         $anyCampaign = $googleCampaigns->first(function ($c) use ($sku) {
-                            $campaign = strtoupper(trim($c->campaign_name));
-                            $campaignCleaned = rtrim(trim($campaign), '.'); // Remove trailing dots
-                            $skuTrimmed = strtoupper(trim($sku));
-                            $parts = array_map('trim', explode(',', $campaignCleaned));
-                            $parts = array_map(function ($part) {
-                                return rtrim(trim($part), '.'); // Remove trailing dots from each part
-                            }, $parts);
-                            $exactMatch = in_array($skuTrimmed, $parts);
-                            if (! $exactMatch) {
-                                $exactMatch = $campaignCleaned === $skuTrimmed;
-                            }
-
-                            return $exactMatch;
+                            return GoogleShoppingCampaignNameMatcher::matches((string) $c->campaign_name, $sku);
                         });
 
                         if ($anyCampaign && $anyCampaign->campaign_status !== 'ENABLED') {
@@ -256,30 +230,13 @@ class UpdateShoppingBudgetCronCommand extends Command
 
                 // Aggregate metrics for L30 (include ENABLED + PAUSED so ACOS matches UI/SBGT)
                 $campaignRanges = $googleCampaigns->filter(function ($c) use ($sku, $dateRanges) {
-                    $campaign = strtoupper(trim($c->campaign_name));
-                    $campaignCleaned = rtrim(trim($campaign), '.'); // Remove trailing dots
-                    $skuTrimmed = strtoupper(trim($sku));
-
-                    $parts = array_map('trim', explode(',', $campaignCleaned));
-                    $parts = array_map(function ($part) {
-                        return rtrim(trim($part), '.'); // Remove trailing dots from each part
-                    }, $parts);
-                    $exactMatch = in_array($skuTrimmed, $parts);
-
-                    if (! $exactMatch) {
-                        $exactMatch = $campaignCleaned === $skuTrimmed;
+                    if (! GoogleShoppingCampaignNameMatcher::matches((string) $c->campaign_name, $sku)) {
+                        return false;
                     }
 
-                    $matchesCampaign = $exactMatch;
-                    // Include all statuses (ENABLED + PAUSED) so ACOS aligns with UI; else
-                    // ENABLED-only can undercount spend/overcount sales → ACOS < 10% → BGT=5
-                    // while UI shows ACOS 100% and SBGT 1.
-                    $matchesStatus = true;
-
                     $campaignDate = is_string($c->date) ? $c->date : (is_object($c->date) && method_exists($c->date, 'format') ? $c->date->format('Y-m-d') : (string) $c->date);
-                    $matchesDate = $campaignDate >= $dateRanges['L30']['start'] && $campaignDate <= $dateRanges['L30']['end'];
 
-                    return $matchesCampaign && $matchesStatus && $matchesDate;
+                    return $campaignDate >= $dateRanges['L30']['start'] && $campaignDate <= $dateRanges['L30']['end'];
                 });
 
                 $totalSpend = $campaignRanges->sum('metrics_cost_micros') / 1000000; // Convert to dollars

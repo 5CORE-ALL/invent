@@ -15,7 +15,7 @@
         <div class="dropdown d-inline-block">
             @if(!empty(array_filter($categoryIds)))
             <button class="btn btn-sm btn-light dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                cat. ({{ count(array_filter($categoryIds)) }})
+                {{ count(array_filter($categoryIds)) }}
             </button>
             <ul class="dropdown-menu">
                 @foreach ($categories as $category)
@@ -28,6 +28,36 @@
         </div>
 
         @if(empty(array_filter($categoryIds)))
+            <span class="text-muted">-</span>
+        @endif
+    </td>
+
+    <td class="text-center align-middle">
+        @php
+            $assignedCategories = $categories->filter(function ($category) use ($categoryIds) {
+                return in_array($category->id, $categoryIds);
+            });
+            $firstCatCount = $assignedCategories->first()?->supplier_count ?? 0;
+        @endphp
+        @if($assignedCategories->isNotEmpty())
+            <div class="dropdown d-inline-block">
+                <button class="btn btn-sm btn-light dropdown-toggle py-0 px-2" type="button" data-bs-toggle="dropdown" aria-expanded="false"
+                    title="Suppliers per category (category-wide totals)">
+                    <i class="mdi mdi-account-group text-info me-1"></i>
+                    <span class="fw-semibold text-info">{{ $firstCatCount }}</span>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end">
+                    @foreach ($assignedCategories as $category)
+                        <li>
+                            <span class="dropdown-item small d-flex justify-content-between align-items-center gap-2">
+                                <span>{{ $category->name }}</span>
+                                <span class="badge bg-info-subtle text-info">{{ $category->supplier_count }}</span>
+                            </span>
+                        </li>
+                    @endforeach
+                </ul>
+            </div>
+        @else
             <span class="text-muted">-</span>
         @endif
     </td>
@@ -81,6 +111,9 @@
             <span class="text-muted">-</span>
         @endif
     </td>
+    <td class="align-middle">
+        {{ $supplier->alias ?: '-' }}
+    </td>
     <td class="parents-col" style="position: relative;">
         @php
             $parents = !empty($supplier->parent) ? array_filter(explode(',', $supplier->parent)) : [];
@@ -102,6 +135,28 @@
         @if(count($parents) == 0)
             <span class="text-muted">-</span>
         @endif
+    </td>
+
+    @php
+        $linkedSkus = $rfqLinkedSkusBySupplierId[$supplier->id] ?? [];
+    @endphp
+    <td class="linked-sku-col align-top">
+        <div class="d-flex flex-column align-items-start py-1">
+            <div class="mb-1" style="line-height:1.6;">
+                @if(count($linkedSkus))
+                    @foreach($linkedSkus as $linkedSku)
+                        <span class="badge bg-info-subtle text-dark border me-1 mb-1">{{ $linkedSku }}</span>
+                    @endforeach
+                @else
+                    <span class="text-muted fst-italic">No SKUs</span>
+                @endif
+            </div>
+            <a href="{{ url('/rfq-form/list') }}" target="_blank" rel="noopener noreferrer"
+                class="btn btn-sm btn-outline-primary" title="Manage linked SKUs on RFQ Form list"
+                style="padding:2px 8px;">
+                <i class="mdi mdi-plus"></i>
+            </a>
+        </div>
     </td>
 
     <td>
@@ -185,6 +240,50 @@
                 <span class="supplier-contact-wrap supplier-contact-wrap--missing">
                     <span class="supplier-contact-icon-inner" style="background: #ffecb3; border-radius: 50%; width: 36px; height: 36px; display: flex; justify-content: center; align-items: center;">
                         <i class="mdi mdi-shopping" style="font-size: 1.4rem; color: #ff9800;"></i>
+                    </span>
+                </span>
+            </div>
+        @endif
+    </td>
+
+    <td>
+        @if(!empty($supplier->link_1688))
+            <a href="{{ $supplier->link_1688 }}" target="_blank"
+            class="d-flex justify-content-center align-items-center text-decoration-none"
+            title="View 1688 Profile">
+                <span class="supplier-contact-wrap">
+                    <span class="supplier-contact-icon-inner" style="background: #ffe0b2; border-radius: 50%; width: 36px; height: 36px; display: flex; justify-content: center; align-items: center;">
+                        <span style="font-size: 0.72rem; font-weight: 800; color: #e65100; line-height: 1;">1688</span>
+                    </span>
+                </span>
+            </a>
+        @else
+            <div class="d-flex justify-content-center align-items-center" title="No 1688 on file">
+                <span class="supplier-contact-wrap supplier-contact-wrap--missing">
+                    <span class="supplier-contact-icon-inner" style="background: #ffe0b2; border-radius: 50%; width: 36px; height: 36px; display: flex; justify-content: center; align-items: center;">
+                        <span style="font-size: 0.72rem; font-weight: 800; color: #e65100; line-height: 1;">1688</span>
+                    </span>
+                </span>
+            </div>
+        @endif
+    </td>
+
+    <td>
+        @if(!empty($supplier->qq))
+            <a href="javascript:void(0);"
+            class="d-flex justify-content-center align-items-center text-decoration-none"
+            title="QQ: {{ $supplier->qq }}">
+                <span class="supplier-contact-wrap">
+                    <span class="supplier-contact-icon-inner" style="background: #bbdefb; border-radius: 50%; width: 36px; height: 36px; display: flex; justify-content: center; align-items: center;">
+                        <i class="mdi mdi-qqchat" style="font-size: 1.4rem; color: #1565c0;"></i>
+                    </span>
+                </span>
+            </a>
+        @else
+            <div class="d-flex justify-content-center align-items-center" title="No QQ on file">
+                <span class="supplier-contact-wrap supplier-contact-wrap--missing">
+                    <span class="supplier-contact-icon-inner" style="background: #bbdefb; border-radius: 50%; width: 36px; height: 36px; display: flex; justify-content: center; align-items: center;">
+                        <i class="mdi mdi-qqchat" style="font-size: 1.4rem; color: #1565c0;"></i>
                     </span>
                 </span>
             </div>
@@ -357,6 +456,11 @@
                                 </div>
 
                                 <div class="col-md-6">
+                                    <label class="form-label fw-semibold">Alias</label>
+                                    <input type="text" name="alias" class="form-control" placeholder="Alias" value="{{ $supplier->alias }}">
+                                </div>
+
+                                <div class="col-md-6">
                                     <div class="row">
                                         <div class="col-md-4">
                                             <label class="form-label fw-semibold">Country Code</label>
@@ -423,6 +527,16 @@
                                 <div class="col-md-6">
                                     <label class="form-label fw-semibold">Alibaba Profile</label>
                                     <input type="text" name="alibaba" class="form-control" placeholder="Alibaba Profile" value="{{ $supplier->alibaba }}">
+                                </div>
+
+                                <div class="col-md-6">
+                                    <label class="form-label fw-semibold">1688</label>
+                                    <input type="text" name="link_1688" class="form-control" placeholder="1688 Profile / URL" value="{{ $supplier->link_1688 }}">
+                                </div>
+
+                                <div class="col-md-6">
+                                    <label class="form-label fw-semibold">QQ</label>
+                                    <input type="text" name="qq" class="form-control" placeholder="QQ ID" value="{{ $supplier->qq }}">
                                 </div>
                                 <div class="col-md-12">
                                     <div class="row">
@@ -491,7 +605,7 @@
                                             
                                             @if($count > 0)
                                                 <button class="btn btn-sm btn-light dropdown-toggle" type="button" data-bs-toggle="dropdown">
-                                                    cat. ({{ $count }})
+                                                    {{ $count }}
                                                 </button>
                                                 <ul class="dropdown-menu">
                                                     @foreach($categories as $category)
@@ -509,6 +623,11 @@
                                     <div class="col-sm-6">
                                         <span class="fw-semibold text-muted">Company:</span>
                                         <div>{{ $supplier->company ?? '-' }}</div>
+                                    </div>
+
+                                    <div class="col-sm-6">
+                                        <span class="fw-semibold text-muted">Alias:</span>
+                                        <div>{{ $supplier->alias ?? '-' }}</div>
                                     </div>
 
                                     <div class="col-sm-6">
@@ -623,6 +742,22 @@
                                                 <span class="text-muted">-</span>
                                             @endif
                                         </div>
+                                    </div>
+                                    <div class="col-sm-6">
+                                        <span class="fw-semibold text-muted">1688:</span>
+                                        <div>
+                                            @if(!empty($supplier->link_1688))
+                                                <a href="{{ $supplier->link_1688 }}" target="_blank" class="text-decoration-none" style="color:#e65100;">
+                                                    Profile
+                                                </a>
+                                            @else
+                                                <span class="text-muted">-</span>
+                                            @endif
+                                        </div>
+                                    </div>
+                                    <div class="col-sm-6">
+                                        <span class="fw-semibold text-muted">QQ:</span>
+                                        <div>{{ $supplier->qq ?? '-' }}</div>
                                     </div>
                                     <div class="col-sm-6">
                                         <span class="fw-semibold text-muted">Others:</span>

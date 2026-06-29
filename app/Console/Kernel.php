@@ -1483,6 +1483,22 @@ class Kernel extends ConsoleKernel
 
         /*
         |--------------------------------------------------------------------------
+        | PAGE BADGE SNAPSHOTS (badges_data table)
+        |--------------------------------------------------------------------------
+        | Daily toolbar badge metrics for purchase / ops pages. Each registered
+        | PageBadgeCalculator writes one row (page_name + JSON) so dashboards
+        | can read badges without joining source tables.
+        */
+        $ist($schedule->command('badges:save-all')
+            ->dailyAt('19:10')
+            ->timezone('Asia/Kolkata')
+            ->name('badges-save-all-daily')
+            ->withoutOverlapping(30)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        /*
+        |--------------------------------------------------------------------------
         | AUTO LOGOUT INACTIVE USERS
         |--------------------------------------------------------------------------
         */

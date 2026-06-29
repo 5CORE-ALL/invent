@@ -331,10 +331,10 @@
                         <button type="button" class="btn btn-sm btn-outline-primary" id="gac-raw-sbgt-rule-btn" data-bs-toggle="modal" data-bs-target="#gacRawSbgtRuleModal" title="Edit ACOS band thresholds and SBGT tier values">SBGT RULE</button>
                         <button type="button" class="btn btn-sm btn-outline-primary" id="gac-raw-sbid-rule-btn" data-bs-toggle="modal" data-bs-target="#gacRawSbidRuleModal" title="Edit 7UB/1UB% thresholds and CPC multipliers for suggested SBID">SBID RULE</button>
                         <span class="vr align-self-center d-none d-md-inline-block mx-1"></span>
-                        <button type="button" class="btn btn-sm btn-warning text-dark" id="gac-raw-push-sbgt" title="Runs Artisan budget:update-shopping — sets Google Shopping daily budgets from the saved SBGT rule (same as cron)">
+                        <button type="button" class="btn btn-sm btn-warning text-dark" id="gac-raw-push-sbgt" title="Runs budget:update-shopping — sets Google Shopping daily budgets from the saved SBGT rule. Waits until complete; shows success or error.">
                             <i class="fa fa-cloud-upload-alt"></i> Push SBGT
                         </button>
-                        <button type="button" class="btn btn-sm btn-warning text-dark" id="gac-raw-push-sbid" title="Runs Artisan sbid:update — pushes SBIDs for PARENT Shopping campaigns from the saved SBID rule (same as cron)">
+                        <button type="button" class="btn btn-sm btn-warning text-dark" id="gac-raw-push-sbid" title="Runs sbid:update — pushes SBIDs for PARENT Shopping campaigns from the saved SBID rule. Waits until complete; shows success or error.">
                             <i class="fa fa-cloud-upload-alt"></i> Push SBID
                         </button>
                     </div>
@@ -1416,7 +1416,7 @@
                 wrap.classList.remove('d-none', 'alert-success', 'alert-danger', 'alert-secondary', 'alert-info');
                 wrap.classList.add('alert-info');
                 tEl.innerHTML = '<i class="fa fa-spinner fa-spin me-1" aria-hidden="true"></i>' + (title || 'Working…');
-                pre.textContent = detail || 'Running on the server. This can take several minutes — please keep this tab open.';
+                pre.textContent = detail || 'Running on the server — please keep this tab open until finished.';
                 wrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
             }
 
@@ -1478,13 +1478,14 @@
                     .then(function(out) {
                         var b = out.body || {};
                         var cmd = b.command || 'command';
-                        var title = cmd + ' — ' + (b.ok ? 'finished' : 'failed');
+                        var success = out.ok && b.ok !== false;
+                        var title = cmd + ' — ' + (success ? 'finished' : 'failed');
                         if (b.exit_code != null) {
                             title += ' (exit ' + b.exit_code + ')';
                         }
                         var text = (b.message ? b.message + '\n\n' : '') + (b.output || '');
-                        gacShowPushResult(title, text, b.ok ? 'success' : 'error');
-                        if (b.ok && table) {
+                        gacShowPushResult(title, text, success ? 'success' : 'error');
+                        if (success && table) {
                             Promise.resolve(table.setData(dataUrl)).finally(gacRawRefreshTableUiSoon);
                         }
                     })
@@ -1510,9 +1511,9 @@
                         url: gacRawPushSbgtUrl,
                         btn: pushSbgtBtn,
                         campaign_ids: ids,
-                        confirmMsg: 'Run budget:update-shopping for ' + scope + '? Only matching SHOPPING PARENT campaigns in Google Ads are updated (daily budget from the saved SBGT rule).',
+                        confirmMsg: 'Push SBGT to ' + scope + '? Each row is sent to Google Ads using the SBGT value shown in the grid (direct by campaign_id).',
                         loadingTitle: 'Pushing SBGT (budget:update-shopping)…',
-                        loadingDetail: 'Updating budgets for ' + ids.length + ' campaign id(s). This can take several minutes — please keep this tab open.',
+                        loadingDetail: 'Updating budgets for ' + ids.length + ' campaign id(s). Waiting for Google Ads API — do not close this tab.',
                     });
                 });
             }
@@ -1528,9 +1529,9 @@
                         url: gacRawPushSbidUrl,
                         btn: pushSbidBtn,
                         campaign_ids: ids,
-                        confirmMsg: 'Run sbid:update for ' + scope + '? Only matching SHOPPING PARENT campaigns in Google Ads are updated (SBID from the saved rule).',
+                        confirmMsg: 'Push SBID to ' + scope + '? Each row is sent to Google Ads using the SBID value shown in the grid (direct by campaign_id). Rows with SBID — are skipped.',
                         loadingTitle: 'Pushing SBID (sbid:update)…',
-                        loadingDetail: 'Updating SBIDs for ' + ids.length + ' campaign id(s). This can take several minutes — please keep this tab open.',
+                        loadingDetail: 'Updating SBIDs for ' + ids.length + ' campaign id(s). Waiting for Google Ads API — do not close this tab.',
                     });
                 });
             }

@@ -222,8 +222,17 @@
                 padding: 8px 12px;
                 margin-bottom: 8px;
                 overflow-x: auto;
+                overflow-y: visible;
                 -webkit-overflow-scrolling: touch;
                 scrollbar-width: none;
+            }
+
+            .mobile-action-buttons .dropdown {
+                position: static;
+            }
+
+            .mobile-action-buttons .dropdown-menu {
+                z-index: 1080;
             }
             
             .mobile-action-buttons::-webkit-scrollbar {
@@ -363,6 +372,132 @@
         }
         .select2-container--bootstrap-5.select2-container--open {
             z-index: 1060;
+        }
+
+        /* Desktop: single-line toolbar (actions + filters) */
+        @media (min-width: 768px) {
+            .task-toolbar-wrap {
+                display: flex;
+                flex-wrap: nowrap;
+                align-items: center;
+                gap: 4px;
+                padding: 4px 6px;
+                margin-bottom: 0.5rem;
+                background: #f8f9fa;
+                border-radius: 8px;
+                overflow: visible;
+                position: relative;
+                z-index: 20;
+            }
+            .task-toolbar-actions {
+                display: flex;
+                align-items: center;
+                gap: 2px;
+                flex: 0 0 auto;
+                white-space: nowrap;
+                position: relative;
+                z-index: 30;
+            }
+            .task-toolbar-actions .btn-group {
+                position: relative;
+            }
+            .task-toolbar-actions .btn-group.show,
+            .task-toolbar-actions .btn-group .dropdown-menu.show {
+                z-index: 1080;
+            }
+            .task-toolbar-actions .dropdown-menu {
+                z-index: 1080;
+            }
+            .task-toolbar-actions .btn {
+                padding: 0.2rem 0.4rem;
+                font-size: 12px;
+                line-height: 1.2;
+            }
+            .task-toolbar-actions .btn-group > .btn {
+                padding: 0.2rem 0.45rem;
+            }
+            .task-toolbar-actions .task-playback-group .btn {
+                width: 26px !important;
+                height: 26px !important;
+            }
+            .task-toolbar-actions .task-playback-group .btn i {
+                font-size: 14px !important;
+            }
+            .task-toolbar-wrap .task-toolbar-filters {
+                display: flex !important;
+                flex: 1 1 auto;
+                flex-wrap: nowrap;
+                align-items: center;
+                gap: 4px;
+                min-width: 0;
+                margin: 0 !important;
+                padding: 0 !important;
+                background: transparent !important;
+                overflow-x: auto;
+                overflow-y: visible;
+            }
+            .task-toolbar-wrap .task-toolbar-filters > .toolbar-field {
+                flex: 1 1 0;
+                min-width: 0;
+                width: auto !important;
+                max-width: none !important;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+            .task-toolbar-wrap .toolbar-field-search {
+                flex: 1.3 1 72px;
+                min-width: 64px;
+            }
+            .task-toolbar-wrap .toolbar-field-group,
+            .task-toolbar-wrap .toolbar-field-task {
+                flex: 1 1 58px;
+                min-width: 50px;
+            }
+            .task-toolbar-wrap .toolbar-field-date {
+                flex: 0 0 112px;
+                min-width: 112px;
+                max-width: 112px;
+            }
+            .task-toolbar-wrap .toolbar-field-select {
+                flex: 1 1 68px;
+                min-width: 62px;
+            }
+            .task-toolbar-wrap .form-control-sm,
+            .task-toolbar-wrap .form-select-sm {
+                font-size: 11px;
+                padding: 0.15rem 0.3rem;
+                min-height: 26px;
+                height: 26px;
+            }
+            .task-toolbar-wrap .task-filter-user-select + .select2-container--bootstrap-5 {
+                min-width: 0 !important;
+                width: 100% !important;
+            }
+            .task-toolbar-wrap .task-filter-user-select + .select2-container--bootstrap-5 .select2-selection {
+                min-height: 26px !important;
+                padding: 0 0.3rem !important;
+                font-size: 11px !important;
+            }
+            .task-toolbar-wrap .select2-container--bootstrap-5 .select2-selection--single .select2-selection__rendered {
+                line-height: 24px !important;
+                font-size: 11px !important;
+            }
+            .task-toolbar-wrap .select2-container--bootstrap-5 .select2-selection--single .select2-selection__arrow {
+                height: 24px !important;
+            }
+            .task-toolbar-meta {
+                flex: 0 0 auto;
+                font-size: 11px;
+                white-space: nowrap;
+                color: #6c757d;
+            }
+        }
+
+        @media (max-width: 767.98px) {
+            .task-toolbar-wrap .task-toolbar-filters {
+                background: #f8f9fa;
+                border-radius: 8px;
+            }
         }
 
         /* Filter bar: equal column widths on desktop, aligned row */
@@ -1248,112 +1383,6 @@
             padding: 10px;
         }
 
-        /* Contenteditable Editor Styling */
-        #rr-content-editor {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            font-size: 14px;
-            line-height: 1.6;
-        }
-
-        #rr-content-editor:focus {
-            outline: 2px solid #007bff;
-            outline-offset: -2px;
-        }
-
-        #rr-content-editor img {
-            max-width: 100%;
-            height: auto;
-            margin: 10px 0;
-        }
-
-        #rr-content-editor h1, #rr-content-editor h2, #rr-content-editor h3, #rr-content-editor h4 {
-            margin-top: 15px;
-            margin-bottom: 10px;
-            font-weight: 600;
-        }
-
-        #rr-content-editor ul, #rr-content-editor ol {
-            padding-left: 30px;
-            margin: 10px 0;
-        }
-
-        #rr-content-editor p {
-            margin: 8px 0;
-        }
-
-        /* R&R Tabs Styling - More Prominent */
-        #tasksRRTabs {
-            background: #fff;
-            padding: 0;
-            margin: 0;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            display: flex !important;
-            visibility: visible !important;
-            min-height: auto;
-        }
-
-        #tasksRRTabs .nav-item {
-            flex: 1;
-        }
-
-        #tasksRRTabs .nav-link {
-            border: none !important;
-            border-bottom: 3px solid transparent !important;
-            color: #6c757d !important;
-            padding: 6px 14px !important;
-            transition: all 0.3s ease;
-            font-size: 14px !important;
-            font-weight: 600 !important;
-            cursor: pointer;
-            background: transparent;
-            text-align: center;
-            width: 100%;
-        }
-
-        #tasksRRTabs .nav-link:hover {
-            color: #007bff !important;
-            border-bottom-color: #dee2e6 !important;
-            background-color: #f8f9fa;
-        }
-
-        #tasksRRTabs .nav-link.active {
-            color: #007bff !important;
-            border-bottom-color: #007bff !important;
-            background-color: #f0f7ff !important;
-        }
-
-        #tasksRRTabs .nav-link i {
-            font-size: 16px !important;
-            margin-right: 6px;
-        }
-
-        /* R&R Container Styling */
-        #rr-container {
-            min-height: 400px;
-            padding: 12px 4px 16px;
-        }
-
-        #rr-loading-spinner {
-            margin: 20px auto;
-        }
-
-        /* Smooth fade-in for R&R content */
-        .rr-container {
-            animation: fadeIn 0.3s ease-in;
-        }
-
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: translateY(10px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
         /* Task playback (Assignor / Assignee step-through - above filters) */
         .task-playback-group .btn {
             display: inline-flex;
@@ -1716,124 +1745,40 @@
             </div>
         </div>
 
-        <!-- Tabs Navigation - Prominent Location -->
-        <div class="row mb-2">
-            <div class="col-12">
-                <div class="tabs-wrapper" style="background: #fff; padding: 0; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
-                    <ul class="nav nav-tabs" id="tasksRRTabs" role="tablist" style="border-bottom: 2px solid #e9ecef; margin: 0;">
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link active" id="tasks-tab" data-bs-toggle="tab" data-bs-target="#tasks-content" type="button" role="tab" aria-controls="tasks-content" aria-selected="true">
-                                <i class="mdi mdi-format-list-checks me-2"></i>Tasks
-                            </button>
-                        </li>
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link" id="rr-tab" data-bs-toggle="tab" data-bs-target="#rr-content" type="button" role="tab" aria-controls="rr-content" aria-selected="false">
-                                <i class="mdi mdi-account-tie me-2"></i>R&R
-                            </button>
-                        </li>
-                    </ul>
-                </div>
-            </div>
-        </div>
-
         <div class="row">
             <div class="col-12">
                 <div class="card task-card">
                     <div class="card-body">
                         <div class="row mb-2">
                             <div class="col-sm-12">
-                                <!-- Desktop Action Buttons -->
-                                <div class="d-none d-md-flex justify-content-between align-items-center">
-                                    <div>
-                                        <button type="button" class="btn btn-success" id="upload-csv-btn">
-                                            <i class="mdi mdi-upload me-2"></i> CSV
-                                        </button>
-
-                                        <button type="button" class="btn btn-primary ms-2" id="bulk-task-btn">
-                                            <i class="mdi mdi-plus-box-multiple me-2"></i> Create Multi Task
-                                        </button>
-                                        
-                                        <button type="button" class="btn btn-info ms-2" id="bulk-actions-btn">
-                                            <i class="mdi mdi-format-list-checks me-2"></i> Bulk
-                                        </button>
-
-                                        <button type="button" class="btn btn-secondary ms-2" id="export-selected-btn">
-                                            <i class="mdi mdi-download me-2"></i> Export Selected
-                                        </button>
-
-                                        <button type="button" class="btn btn-warning text-dark ms-2" id="tasks-refresh-table-btn" title="Reload tasks from server (keeps your filters)">
-                                            <i class="mdi mdi-refresh"></i>
-                                        </button>
-
-                                        @if(!empty($canShowTaskMaintenanceButtons))
-                                        <button type="button" class="btn btn-outline-danger ms-2" id="expire-daily-auto-btn"
-                                            title="Auto-delete DAILY automated tasks not completed before the California business day ends. Runs at 12:05 AM {{ $taskBusinessTzShort ?? 'PT' }} each night. Weekly/monthly not affected.">
-                                            <i class="mdi mdi-magnify me-2"></i> Missed
-                                        </button>
-
-                                        @endif
-
-
-                                        <!-- Playback Controls - Assignor -->
-                                        <div class="btn-group task-playback-group task-playback-assignor ms-2" role="group" aria-label="Assignor playback">
-                                            <button type="button" id="task-play-backward-assignor" class="btn btn-light btn-sm rounded-circle p-0" style="width:32px;height:32px;" title="Previous assignor" disabled>
-                                                <i class="mdi mdi-skip-previous" style="font-size:16px;"></i>
-                                            </button>
-                                            <button type="button" id="task-play-pause-assignor" class="btn btn-light btn-sm rounded-circle p-0" style="width:32px;height:32px; display:none;" title="Show all">
-                                                <i class="mdi mdi-pause" style="font-size:16px;"></i>
-                                            </button>
-                                            <button type="button" id="task-play-auto-assignor" class="btn btn-light btn-sm rounded-circle p-0" style="width:32px;height:32px;" title="Step through assignors">
-                                                <i class="mdi mdi-play" style="font-size:16px;"></i>
-                                            </button>
-                                            <button type="button" id="task-play-forward-assignor" class="btn btn-light btn-sm rounded-circle p-0" style="width:32px;height:32px;" title="Next assignor" disabled>
-                                                <i class="mdi mdi-skip-next" style="font-size:16px;"></i>
-                                            </button>
-                                        </div>
-                                        
-                                        <!-- Playback Controls - Assignee -->
-                                        <div class="btn-group task-playback-group task-playback-assignee ms-2" role="group" aria-label="Assignee playback">
-                                            <button type="button" id="task-play-backward-assignee" class="btn btn-light btn-sm rounded-circle p-0" style="width:32px;height:32px;" title="Previous assignee" disabled>
-                                                <i class="mdi mdi-skip-previous" style="font-size:16px;"></i>
-                                            </button>
-                                            <button type="button" id="task-play-pause-assignee" class="btn btn-light btn-sm rounded-circle p-0" style="width:32px;height:32px; display:none;" title="Show all">
-                                                <i class="mdi mdi-pause" style="font-size:16px;"></i>
-                                            </button>
-                                            <button type="button" id="task-play-auto-assignee" class="btn btn-light btn-sm rounded-circle p-0" style="width:32px;height:32px;" title="Step through assignees">
-                                                <i class="mdi mdi-play" style="font-size:16px;"></i>
-                                            </button>
-                                            <button type="button" id="task-play-forward-assignee" class="btn btn-light btn-sm rounded-circle p-0" style="width:32px;height:32px;" title="Next assignee" disabled>
-                                                <i class="mdi mdi-skip-next" style="font-size:16px;"></i>
-                                            </button>
-                                        </div>
-                                    </div>
-                                    
-                                    <div>
-                                        <span id="selected-count" class="text-muted" style="display: none;">
-                                            <strong id="count-number">0</strong> task(s) selected
-                                        </span>
-                                    </div>
-                                </div>
-                                
-                                <!-- Mobile Action Buttons Grid -->
+                                <!-- Mobile Action Buttons -->
                                 <div class="d-md-none mobile-action-buttons">
-                                    <button type="button" class="mobile-action-btn btn-success" id="upload-csv-btn-mobile">
-                                        <i class="mdi mdi-file-upload"></i>
-                                        <span>CSV</span>
-                                    </button>
+                                    <div class="dropdown d-inline-block">
+                                        <button type="button" class="mobile-action-btn btn-success dropdown-toggle" id="csv-actions-btn-mobile" data-bs-toggle="dropdown" data-bs-popper-config='{"strategy":"fixed"}' aria-expanded="false" title="CSV: upload, template, export">
+                                            <i class="mdi mdi-file-delimited"></i>
+                                        </button>
+                                        <ul class="dropdown-menu">
+                                            <li>
+                                                <a class="dropdown-item csv-upload-action" href="#">
+                                                    <i class="mdi mdi-upload me-2"></i>Upload CSV
+                                                </a>
+                                            </li>
+                                            <li>
+                                                <a class="dropdown-item" href="{{ route('tasks.downloadTemplate') }}">
+                                                    <i class="mdi mdi-download me-2"></i>Download Template
+                                                </a>
+                                            </li>
+                                            <li><hr class="dropdown-divider"></li>
+                                            <li>
+                                                <a class="dropdown-item csv-export-action" href="#">
+                                                    <i class="mdi mdi-export me-2"></i>Export Selected<span class="export-count"></span>
+                                                </a>
+                                            </li>
+                                        </ul>
+                                    </div>
 
                                     <button type="button" class="mobile-action-btn btn-primary" id="bulk-task-btn-mobile">
-                                        <i class="mdi mdi-plus-box-multiple"></i>
-                                        <span>Multiple Task</span>
-                                    </button>
-                                    
-                                    <button type="button" class="mobile-action-btn btn-info" id="bulk-actions-btn-mobile">
-                                        <i class="mdi mdi-format-list-checks"></i>
-                                        <span>Bulk</span>
-                                    </button>
-
-                                    <button type="button" class="mobile-action-btn btn-secondary" id="export-selected-btn-mobile">
-                                        <i class="mdi mdi-download"></i>
-                                        <span>Export</span>
+                                        <span>+ Multi</span>
                                     </button>
 
                                     <button type="button" class="mobile-action-btn btn-warning text-dark" id="tasks-refresh-table-btn-mobile" title="Reload tasks (keeps filters)">
@@ -1885,24 +1830,92 @@
                             </div>
                         </div>
 
-                        <!-- Search/Filter Bar -->
-                        <div class="row g-2 mb-2 py-2 px-2 filter-section filter-section-eq align-items-center" style="background: #f8f9fa; border-radius: 8px;">
-                            <!-- Desktop: All Filters -->
-                            <div class="col-12 mb-2 d-none d-md-block">
+                        <!-- Toolbar + Filters (desktop: one line) -->
+                        <div class="task-toolbar-wrap">
+                            <div class="task-toolbar-actions d-none d-md-flex">
+                                <div class="btn-group" role="group">
+                                    <button type="button" class="btn btn-success dropdown-toggle" id="csv-actions-btn" data-bs-toggle="dropdown" data-bs-popper-config='{"strategy":"fixed"}' aria-expanded="false" title="CSV: upload, template, export">
+                                        <i class="mdi mdi-file-delimited"></i>
+                                    </button>
+                                    <ul class="dropdown-menu">
+                                        <li>
+                                            <a class="dropdown-item csv-upload-action" href="#">
+                                                <i class="mdi mdi-upload me-2"></i>Upload CSV
+                                            </a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item" href="{{ route('tasks.downloadTemplate') }}">
+                                                <i class="mdi mdi-download me-2"></i>Download Template
+                                            </a>
+                                        </li>
+                                        <li><hr class="dropdown-divider"></li>
+                                        <li>
+                                            <a class="dropdown-item csv-export-action" href="#">
+                                                <i class="mdi mdi-export me-2"></i>Export Selected<span class="export-count"></span>
+                                            </a>
+                                        </li>
+                                    </ul>
+                                </div>
+
+                                <button type="button" class="btn btn-primary" id="bulk-task-btn">+ Multi</button>
+
+                                <button type="button" class="btn btn-warning text-dark" id="tasks-refresh-table-btn" title="Reload tasks from server (keeps your filters)">
+                                    <i class="mdi mdi-refresh"></i>
+                                </button>
+
+                                @if(!empty($canShowTaskMaintenanceButtons))
+                                <button type="button" class="btn btn-outline-danger" id="expire-daily-auto-btn"
+                                    title="Auto-delete DAILY automated tasks not completed before the California business day ends. Runs at 12:05 AM {{ $taskBusinessTzShort ?? 'PT' }} each night. Weekly/monthly not affected.">
+                                    <i class="mdi mdi-magnify"></i>
+                                </button>
+                                @endif
+
+                                <div class="btn-group task-playback-group task-playback-assignor" role="group" aria-label="Assignor playback">
+                                    <button type="button" id="task-play-backward-assignor" class="btn btn-light btn-sm rounded-circle p-0" title="Previous assignor" disabled>
+                                        <i class="mdi mdi-skip-previous"></i>
+                                    </button>
+                                    <button type="button" id="task-play-pause-assignor" class="btn btn-light btn-sm rounded-circle p-0" style="display:none;" title="Show all">
+                                        <i class="mdi mdi-pause"></i>
+                                    </button>
+                                    <button type="button" id="task-play-auto-assignor" class="btn btn-light btn-sm rounded-circle p-0" title="Step through assignors">
+                                        <i class="mdi mdi-play"></i>
+                                    </button>
+                                    <button type="button" id="task-play-forward-assignor" class="btn btn-light btn-sm rounded-circle p-0" title="Next assignor" disabled>
+                                        <i class="mdi mdi-skip-next"></i>
+                                    </button>
+                                </div>
+
+                                <div class="btn-group task-playback-group task-playback-assignee" role="group" aria-label="Assignee playback">
+                                    <button type="button" id="task-play-backward-assignee" class="btn btn-light btn-sm rounded-circle p-0" title="Previous assignee" disabled>
+                                        <i class="mdi mdi-skip-previous"></i>
+                                    </button>
+                                    <button type="button" id="task-play-pause-assignee" class="btn btn-light btn-sm rounded-circle p-0" style="display:none;" title="Show all">
+                                        <i class="mdi mdi-pause"></i>
+                                    </button>
+                                    <button type="button" id="task-play-auto-assignee" class="btn btn-light btn-sm rounded-circle p-0" title="Step through assignees">
+                                        <i class="mdi mdi-play"></i>
+                                    </button>
+                                    <button type="button" id="task-play-forward-assignee" class="btn btn-light btn-sm rounded-circle p-0" title="Next assignee" disabled>
+                                        <i class="mdi mdi-skip-next"></i>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="row g-2 mb-2 py-2 px-2 filter-section filter-section-eq align-items-center task-toolbar-filters">
+                            <div class="col-12 mb-2 toolbar-field toolbar-field-search">
                                 <input type="text" id="filter-search" class="form-control form-control-sm" placeholder="Search" autocomplete="off" onkeydown="if(event.key === 'Enter') { event.preventDefault(); return false; }">
                             </div>
-                            <div class="col-12 mb-2 d-none d-md-block">
+                            <div class="col-12 mb-2 toolbar-field toolbar-field-group">
                                 <input type="text" id="filter-group" class="form-control form-control-sm" placeholder="Group" autocomplete="off" onkeydown="if(event.key === 'Enter') { event.preventDefault(); return false; }">
                             </div>
-                            <div class="col-12 mb-2 d-none d-md-block">
+                            <div class="col-12 mb-2 toolbar-field toolbar-field-task">
                                 <input type="text" id="filter-task" class="form-control form-control-sm" placeholder="Task" autocomplete="off" onkeydown="if(event.key === 'Enter') { event.preventDefault(); return false; }">
                             </div>
-                            <div class="col-12 mb-2 d-none d-md-block">
+                            <div class="col-12 mb-2 toolbar-field toolbar-field-date">
                                 <input type="date" id="filter-date" class="form-control form-control-sm" title="Filter by start date">
                             </div>
                             
-                            <!-- Mobile & Desktop: Assignor / Assignee (searchable) -->
-                            <div class="col-12 mb-2">
+                            <div class="col-12 mb-2 toolbar-field toolbar-field-select">
                                 <select id="filter-assignor" class="form-select form-select-sm task-filter-user-select" title="Search by name or email">
                                     <option value=""></option>
                                     <option value="__NULL__" data-email="">No assignor</option>
@@ -1922,7 +1935,7 @@
                                     @endif
                                 </select>
                             </div>
-                            <div class="col-12 mb-2">
+                            <div class="col-12 mb-2 toolbar-field toolbar-field-select">
                                 <select id="filter-assignee" class="form-select form-select-sm task-filter-user-select" title="Search by name or email">
                                     <option value=""></option>
                                     <option value="__NULL__" data-email="">No assignee</option>
@@ -1942,7 +1955,14 @@
                                     @endif
                                 </select>
                             </div>
-                            <div class="col-12 mb-2">
+                            <div class="col-12 mb-2 toolbar-field toolbar-field-select">
+                                <select id="filter-task-type" class="form-select form-select-sm">
+                                    <option value="">All Tasks</option>
+                                    <option value="automated">Automated</option>
+                                    <option value="normal">Normal</option>
+                                </select>
+                            </div>
+                            <div class="col-12 mb-2 toolbar-field toolbar-field-select">
                                 <select id="filter-status" class="form-select form-select-sm">
                                     <option value="">Status</option>
                                     <option value="Todo">Todo</option>
@@ -1959,21 +1979,24 @@
                                 </select>
                             </div>
                             
-                            <!-- Desktop only: Priority -->
-                            <div class="col-12 mb-2 d-none d-md-block">
+                            <div class="col-12 mb-2 toolbar-field toolbar-field-select d-none d-md-block">
                                 <select id="filter-priority" class="form-select form-select-sm">
-                                    <option value="">All Priority</option>
+                                    <option value="">Priority</option>
                                     <option value="low">Low</option>
                                     <option value="normal">Normal</option>
                                     <option value="high">Urgent</option>
                                 </select>
                             </div>
+                            </div>
+
+                            <div class="task-toolbar-meta d-none d-md-block">
+                                <span id="selected-count" class="text-muted" style="display: none;">
+                                    <strong id="count-number">0</strong> selected
+                                </span>
+                            </div>
                         </div>
 
-                        <!-- Tab Content -->
-                        <div class="tab-content" id="tasksRRTabContent">
-                            <!-- Tasks Tab -->
-                            <div class="tab-pane fade show active" id="tasks-content" role="tabpanel" aria-labelledby="tasks-tab">
+                        <div id="tasks-content">
                                 <div class="table-wrapper">
                                     <div id="tasks-table"></div>
                                 </div>
@@ -1992,26 +2015,6 @@
                                         </div>
                                     </div>
                                 </div>
-                            </div>
-
-                            <!-- R&R Tab -->
-                            <div class="tab-pane fade" id="rr-content" role="tabpanel" aria-labelledby="rr-tab">
-                                <div class="d-flex justify-content-between align-items-center mb-2">
-                                    <h5 class="mb-0">Role & Responsibility</h5>
-                                    <button type="button" class="btn btn-primary btn-sm" id="edit-rr-btn" style="display: none;">
-                                        <i class="mdi mdi-pencil me-1"></i>Edit R&R
-                                    </button>
-                                </div>
-                                <div id="rr-container">
-                                    <!-- R&R content will be loaded here via AJAX -->
-                                    <div class="text-center py-5">
-                                        <div class="spinner-border text-primary" role="status" id="rr-loading-spinner" style="display: none;">
-                                            <span class="visually-hidden">Loading...</span>
-                                        </div>
-                                        <p class="text-muted mt-3" id="rr-placeholder">Please select a user from the dropdown above to view their Role & Responsibility.</p>
-                                    </div>
-                                </div>
-                            </div>
                         </div>
 
                     </div> <!-- end card-body-->
@@ -2706,37 +2709,6 @@
     </div>
 </div>
 
-<!-- Edit R&R Modal -->
-<div class="modal fade" id="editRRModal" tabindex="-1" aria-labelledby="editRRModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header bg-primary text-white">
-                <h5 class="modal-title" id="editRRModalLabel">
-                    <i class="mdi mdi-account-tie me-2"></i>Edit Role & Responsibility
-                </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <form id="rr-form">
-                <div class="modal-body">
-                    <input type="hidden" id="rr-user-id" name="user_id">
-                    <div class="mb-3">
-                        <label for="rr-content-editor" class="form-label fw-bold">Role & Responsibility Content</label>
-                        <small class="text-muted d-block mb-2">You can copy-paste formatted content with images and icons directly into this editor.</small>
-                        <div id="rr-content-editor" contenteditable="true" class="form-control" style="min-height: 400px; padding: 15px; overflow-y: auto; border: 1px solid #ced4da; border-radius: 0.375rem; background: white;">
-                        </div>
-                        <textarea id="rr-content-hidden" name="content" style="display: none;"></textarea>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary">
-                        <i class="mdi mdi-content-save me-1"></i>Save R&R
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
 
 @endsection
 
@@ -2814,7 +2786,8 @@
                         assignor: $('#filter-assignor').val() || '',
                         assignee: $('#filter-assignee').val() || '',
                         status: $('#filter-status').val() || '',
-                        priority: $('#filter-priority').val() || ''
+                        priority: $('#filter-priority').val() || '',
+                        taskType: $('#filter-task-type').val() || ''
                     }));
                 } catch (e) { /* ignore quota / private mode */ }
             }
@@ -2831,6 +2804,7 @@
                     $('#filter-date').val(s.date || '');
                     $('#filter-status').val(s.status || '');
                     $('#filter-priority').val(s.priority || '');
+                    $('#filter-task-type').val(s.taskType || '');
                     suppressAssignFilterApply = true;
                     $('#filter-assignor').val(s.assignor != null ? s.assignor : '').trigger('change');
                     $('#filter-assignee').val(s.assignee != null ? s.assignee : '').trigger('change');
@@ -3207,7 +3181,7 @@
                             </div>
                             
                             <div class="mobile-task-info">
-                                <div><i class="mdi mdi-account-circle"></i> ${task.assignee_name || 'Unassigned'}</div>
+                                <div><i class="mdi mdi-account-circle"></i> ${(task.assignee_name && task.assignee_name !== '-') ? String(task.assignee_name).split(',').map(function(n) { return n.trim().split(/\s+/)[0]; }).filter(Boolean).join(', ') : 'Unassigned'}</div>
                                 ${(() => {
                                     var rawEtc = task.eta_time != null && task.eta_time !== '' ? task.eta_time : task.etc_minutes;
                                     var etcN = rawEtc != null && rawEtc !== '' ? Math.round(Number(rawEtc)) : NaN;
@@ -3315,6 +3289,12 @@
             };
             
             window.editTask = function(id) {
+                var taskId = String(id);
+                var selectedIdSet = new Set(selectedTasks.map(function(sid) { return String(sid); }));
+                if (selectedTasks.length > 1 && selectedIdSet.has(taskId)) {
+                    openBulkActionsModal();
+                    return;
+                }
                 window.location.href = `/tasks/${id}/edit`;
             };
             
@@ -3437,6 +3417,10 @@
                         status: t.status
                     })));
                     console.log('==============================');
+
+                    if (Array.isArray(response)) {
+                        response = response.map(normalizeTaskAutomateFlag);
+                    }
                     
                     // Render mobile view with error handling
                     if (window.innerWidth < 768) {
@@ -3489,12 +3473,12 @@
                     // Apply styling:
                     // - Automated tasks: always yellow (even if overdue)
                     // - Non-automated overdue tasks: red highlight
-                    if (data.is_automate_task) {
+                    if (data.is_automate_task == 1) {
                         row.getElement().classList.add('automated-task');
                         // Alternate shades among automated rows: yellow / light-yellow
                         var automatedRowsBefore = row.getTable().getRows("active").filter(function(r) {
                             var d = r.getData();
-                            return !!d && !!d.is_automate_task;
+                            return !!d && d.is_automate_task == 1;
                         });
                         var automatedIndex = automatedRowsBefore.findIndex(function(r) {
                             return r.getData().id === data.id;
@@ -3523,11 +3507,9 @@
                 layoutColumnsOnNewData: true,
                 autoResize: true,
                 initialSort: [
-                    // Urgent (priority = 'high') always on top, regardless of TID — must come
-                    // first so the priority bucket is established before date / automation order.
                     {column: "priority", dir: "desc"},
-                    {column: "start_date", dir: "asc"},
-                    {column: "is_automate_task", dir: "desc"}
+                    {column: "tid_business_date", dir: "asc"},
+                    {column: "start_date", dir: "asc"}
                 ],
                 columns: (function() {
                     var cols = [];
@@ -3563,7 +3545,26 @@
                         }
                     });
                     
-                    // Hidden column for sorting: automated tasks first within same day
+                    // Hidden column for TID sort (matches TID column display; ignores automated vs normal)
+                    cols.push({
+                        title: "",
+                        field: "tid_business_date",
+                        width: 1,
+                        minWidth: 1,
+                        visible: false,
+                        sorter: function (a, b, aRow, bRow) {
+                            function tidSortKey(val, row) {
+                                if (val) {
+                                    return String(val).slice(0, 10);
+                                }
+                                var sd = row.getData().start_date;
+                                return sd ? String(sd).slice(0, 10) : '9999-99-99';
+                            }
+                            return tidSortKey(a, aRow).localeCompare(tidSortKey(b, bRow));
+                        }
+                    });
+
+                    // Hidden column (row styling only; not used for sort order)
                     cols.push({
                         title: "",
                         field: "is_automate_task",
@@ -3636,19 +3637,21 @@
                         }
                     });
 
-                    // ASSIGNEE (avatar + name, limited to 12 chars)
+                    // ASSIGNEE (avatar + first name(s))
                     cols.push({
                         title: "ASSIGNEE",
                         field: "assignee_name",
-                        width: 140,
+                        width: 120,
                         hozAlign: "center",
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
                             var value = cell.getValue();
                             if (value && value !== '-') {
-                                var displayValue = value.length > 12 ? value.substring(0, 12) + '...' : value;
+                                var firstNames = String(value).split(',').map(function(name) {
+                                    return name.trim().split(/\s+/)[0];
+                                }).filter(Boolean).join(', ');
                                 var imgSrc = (row.assignee_avatar || "{{ asset('images/users/avatar-2.jpg') }}").replace(/&/g, '&amp;');
-                                var nameEsc = String(displayValue).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                                var nameEsc = String(firstNames).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
                                 var designation = row.assignee_designation || '';
                                 var designationAttr = designation ? ' title="' + String(designation).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '"' : '';
                                 return '<div class="d-flex align-items-center justify-content-center gap-2 flex-nowrap"' + designationAttr + '>' +
@@ -4264,25 +4267,11 @@
                 });
             }
 
-            // Decide row order based on active user filters.
-            // - When ANY user filter is active (assignor dropdown, assignee dropdown, or session user focus):
-            //     manual / normal tasks FIRST, then automated.
-            // - Otherwise (global view): automated tasks on top per the existing UX.
-            // Day-level ordering (start_date) is always primary.
             function getTaskSortForCurrentFilters() {
-                var hasUserFilter = !!(
-                    ($('#filter-assignor').val() || '').trim()
-                    || ($('#filter-assignee').val() || '').trim()
-                    || (typeof taskManagerSessionUserFocus !== 'undefined' && String(taskManagerSessionUserFocus || '').trim())
-                );
-                // Urgent (stored as `high`) ALWAYS floats to the top regardless of TID.
-                // The custom sorter on the `priority` column ranks high=urgent > normal > low,
-                // so dir:"desc" pins Urgent rows above everything; TID/automation ordering only
-                // tie-breaks within each priority bucket.
                 return [
                     {column: "priority", dir: "desc"},
-                    {column: "start_date", dir: "asc"},
-                    {column: "is_automate_task", dir: hasUserFilter ? "asc" : "desc"}
+                    {column: "tid_business_date", dir: "asc"},
+                    {column: "start_date", dir: "asc"}
                 ];
             }
 
@@ -4294,7 +4283,28 @@
                 }
             }
 
-            // Combined filter function (proper AND logic)
+            function isAutomatedTask(rowData) {
+                var v = rowData && rowData.is_automate_task;
+                return v == 1 || v === true || String(v) === '1';
+            }
+
+            function normalizeTaskAutomateFlag(task) {
+                if (!task || typeof task !== 'object') {
+                    return task;
+                }
+                task.is_automate_task = isAutomatedTask(task) ? 1 : 0;
+                return task;
+            }
+
+            function appendTaskTypeFilter(filters) {
+                var taskTypeValue = $('#filter-task-type').val();
+                if (taskTypeValue === 'automated') {
+                    filters.push({field: 'is_automate_task', type: '=', value: 1});
+                } else if (taskTypeValue === 'normal') {
+                    filters.push({field: 'is_automate_task', type: '=', value: 0});
+                }
+            }
+
             function applyFilters() {
                 console.log('🔍 Applying filters...');
                 
@@ -4342,14 +4352,22 @@
                 var assignorValue = $('#filter-assignor').val();
                 if (!focusActive && assignorValue) {
                     if (assignorValue === '__NULL__') {
-                        // Custom filter for tasks with NO assignor
-                        table.setFilter(function(data) {
+                        filters.push(function (data) {
                             return !data.assignor_name || data.assignor_name === '-' || data.assignor_name === '';
                         });
+                        appendTaskTypeFilter(filters);
+                        table.setFilter(filters);
                         console.log('✓ Filter applied: No Assignor');
+                        applyTaskOrdering();
+                        setTimeout(function () {
+                            updateStatistics();
+                            if (window.innerWidth < 768) {
+                                renderMobileTasks(table.getData('active'));
+                            }
+                            syncTaskTableHeaderSelectAllCheckbox();
+                        }, 100);
                         persistTaskIndexFilters();
-                        setTimeout(syncTaskTableHeaderSelectAllCheckbox, 0);
-                        return; // Skip other filters
+                        return;
                     } else {
                         // Use "like" so tasks show when this person is assignor (exact or in list)
                         filters.push({field:"assignor_name", type:"like", value:assignorValue});
@@ -4378,6 +4396,7 @@
                         // Apply filter - ONLY show tasks where assignee_name is exactly "-"
                         table.clearFilter();
                         filters.push({field:"assignee_name", type:"=", value:"-"});
+                        appendTaskTypeFilter(filters);
                         table.setFilter(filters);
                         
                         console.log('✅ Filter applied: assignee_name = "-"');
@@ -4400,6 +4419,12 @@
                         filters.push({field: "assignee_name", type: "like", value: assigneeValue});
                         console.log('Filter - Assignee (like):', assigneeValue);
                     }
+                }
+                
+                appendTaskTypeFilter(filters);
+                var taskTypeValue = $('#filter-task-type').val();
+                if (taskTypeValue === 'automated' || taskTypeValue === 'normal') {
+                    console.log('Filter - Task type:', taskTypeValue === 'automated' ? 'Automated' : 'Normal');
                 }
                 
                 // Status filter - Try case-insensitive
@@ -4443,8 +4468,6 @@
                     table.setFilter(filters);
                 }
 
-                // Re-apply ordering: when a user is being filtered we want manual tasks first,
-                // then automated. Without this the initialSort would always keep automated on top.
                 applyTaskOrdering();
 
                 // Update statistics after filtering
@@ -4530,7 +4553,7 @@
                 }
                 applyFilters();
             });
-            $('#filter-status').on('change', applyFilters);
+            $('#filter-status, #filter-task-type').on('change', applyFilters);
             $('#filter-priority').on('change', applyFilters);
 
             // Reload table from server only; keep filter inputs and reapply Tabulator filters
@@ -5085,16 +5108,6 @@
             // ==========================================
             // MOBILE ACTION BUTTONS
             // ==========================================
-            // Connect mobile buttons to desktop functionality
-            $('#upload-csv-btn-mobile').on('click', function() {
-                $('#upload-csv-btn').click();
-            });
-            
-            $('#bulk-actions-btn-mobile').on('click', function() {
-                $('#bulk-actions-btn').click();
-            });
-
-            
             // ==========================================
             // MOBILE QUICK FILTER CHIPS
             // ==========================================
@@ -5115,6 +5128,7 @@
                     case 'all':
                         $('#filter-status').val('');
                         $('#filter-priority').val('');
+                        $('#filter-task-type').val('');
                         $('#filter-date').val('');
                         $('#filter-assignor').val('');
                         $('#filter-assignee').val('');
@@ -5280,14 +5294,12 @@
                 if (count > 0) {
                     $('#selected-count').show();
                     $('#count-number').text(count);
-                    $('#bulk-actions-btn').removeClass('btn-info').addClass('btn-success');
-                    $('#export-selected-btn').removeClass('btn-secondary').addClass('btn-success');
-                    $('#export-selected-btn-mobile').removeClass('btn-secondary').addClass('btn-success');
+                    $('.export-count').text(' (' + count + ')');
+                    $('#csv-actions-btn, #csv-actions-btn-mobile').addClass('border border-2 border-white');
                 } else {
                     $('#selected-count').hide();
-                    $('#bulk-actions-btn').removeClass('btn-success').addClass('btn-info');
-                    $('#export-selected-btn').removeClass('btn-success').addClass('btn-secondary');
-                    $('#export-selected-btn-mobile').removeClass('btn-success').addClass('btn-secondary');
+                    $('.export-count').text('');
+                    $('#csv-actions-btn, #csv-actions-btn-mobile').removeClass('border border-2 border-white');
                 }
                 syncTaskTableHeaderSelectAllCheckbox();
             });
@@ -5296,270 +5308,8 @@
             table.on('dataFiltered', syncTaskTableHeaderSelectAllCheckbox);
 
 
-            // Function to load R&R data
-            function loadUserRR(userName) {
-                console.log('Loading R&R for user:', userName);
-                if (!userName) {
-                    $('#rr-container').html(
-                        '<div class="text-center py-5">' +
-                        '<p class="text-muted">Please select a user from the Assignee filter above to view their Role & Responsibility.</p>' +
-                        '</div>'
-                    );
-                    return;
-                }
-
-                // Show loading spinner
-                $('#rr-loading-spinner').show();
-                $('#rr-placeholder').hide();
-                $('#rr-container').html(
-                    '<div class="text-center py-5">' +
-                    '<div class="spinner-border text-primary" role="status">' +
-                    '<span class="visually-hidden">Loading...</span>' +
-                    '</div>' +
-                    '<p class="text-muted mt-3">Loading Role & Responsibility...</p>' +
-                    '</div>'
-                );
-
-                $.ajax({
-                    url: '{{ route("tasks.getUserRR") }}',
-                    method: 'GET',
-                    data: {
-                        user_name: userName
-                    },
-                    success: function(response) {
-                        console.log('R&R data loaded successfully');
-                        $('#rr-loading-spinner').hide();
-                        $('#rr-container').html(response.html);
-                        // Show Edit button if assignee filter is set
-                        var assigneeValue = $('#filter-assignee').val();
-                        if (assigneeValue && assigneeValue !== '__NULL__') {
-                            $('#edit-rr-btn').show();
-                        }
-                        // Trigger fade-in animation
-                        setTimeout(function() {
-                            $('.rr-container').css('opacity', '1');
-                        }, 50);
-                    },
-                    error: function(xhr, status, error) {
-                        console.error('Error loading R&R:', error, xhr);
-                        $('#rr-loading-spinner').hide();
-                        $('#rr-container').html(
-                            '<div class="alert alert-danger">' +
-                            '<i class="mdi mdi-alert-circle me-2"></i>' +
-                            'Error loading Role & Responsibility data. Please try again.<br>' +
-                            '<small>Error: ' + error + '</small>' +
-                            '</div>'
-                        );
-                    }
-                });
-            }
-
-
-            // Manual tab switching (fallback if Bootstrap tabs don't work)
-            function switchTab(tabName) {
-                // Hide all tab panes
-                $('.tab-pane').removeClass('show active');
-                $('.nav-link').removeClass('active').attr('aria-selected', 'false');
-                
-                if (tabName === 'tasks') {
-                    $('#tasks-tab').addClass('active').attr('aria-selected', 'true');
-                    $('#tasks-content').addClass('show active');
-                } else if (tabName === 'rr') {
-                    $('#rr-tab').addClass('active').attr('aria-selected', 'true');
-                    $('#rr-content').addClass('show active');
-                    
-                    // Load R&R data when switching to R&R tab - use assignee filter
-                    var assigneeValue = $('#filter-assignee').val();
-                    if (assigneeValue && assigneeValue !== '__NULL__') {
-                        loadUserRR(assigneeValue);
-                    } else {
-                        $('#rr-container').html(
-                            '<div class="text-center py-5">' +
-                            '<p class="text-muted">Please select a user from the Assignee filter above to view their Role & Responsibility.</p>' +
-                            '</div>'
-                        );
-                        $('#edit-rr-btn').hide();
-                    }
-                }
-            }
-
-            // Click handlers for tabs (manual + Bootstrap)
-            $('#tasks-tab').on('click', function(e) {
+            $('.csv-upload-action').on('click', function(e) {
                 e.preventDefault();
-                console.log('Tasks tab clicked');
-                switchTab('tasks');
-                $('#edit-rr-btn').hide(); // Hide edit button on Tasks tab
-                // Also trigger Bootstrap tab if available
-                if (typeof bootstrap !== 'undefined' && bootstrap.Tab) {
-                    var tab = new bootstrap.Tab(this);
-                    tab.show();
-                }
-            });
-
-            $('#rr-tab').on('click', function(e) {
-                e.preventDefault();
-                console.log('R&R tab clicked');
-                switchTab('rr');
-                // Show edit button if assignee filter is set
-                var assigneeValue = $('#filter-assignee').val();
-                if (assigneeValue && assigneeValue !== '__NULL__') {
-                    $('#edit-rr-btn').show();
-                } else {
-                    $('#edit-rr-btn').hide();
-                }
-                // Also trigger Bootstrap tab if available
-                if (typeof bootstrap !== 'undefined' && bootstrap.Tab) {
-                    var tab = new bootstrap.Tab(this);
-                    tab.show();
-                }
-            });
-
-            // Ensure tabs are visible on page load
-            console.log('Tabs initialized. Tasks tab:', $('#tasks-tab').length, 'R&R tab:', $('#rr-tab').length);
-
-            // Bootstrap tab event handlers (if Bootstrap is loaded)
-            $('#rr-tab').on('shown.bs.tab', function() {
-                var assigneeValue = $('#filter-assignee').val();
-                if (assigneeValue && assigneeValue !== '__NULL__') {
-                    loadUserRR(assigneeValue);
-                } else {
-                    $('#rr-container').html(
-                        '<div class="text-center py-5">' +
-                        '<p class="text-muted">Please select a user from the Assignee filter above to view their Role & Responsibility.</p>' +
-                        '</div>'
-                    );
-                }
-            });
-
-            // Simple contenteditable editor - no external dependencies
-            // Native browser paste with images is supported automatically
-
-            // Edit R&R Button Click Handler
-            $('#edit-rr-btn').on('click', function() {
-                var assigneeValue = $('#filter-assignee').val();
-                if (!assigneeValue || assigneeValue === '__NULL__') {
-                    alert('Please select a user from the Assignee filter first');
-                    return;
-                }
-
-                // Get user ID from assignee filter option
-                var selectedOption = $('#filter-assignee option:selected');
-                var userId = selectedOption.data('user-id');
-
-                if (!userId) {
-                    alert('Could not find user ID. Please try again.');
-                    return;
-                }
-
-                // Load existing R&R data
-                $.ajax({
-                    url: '{{ route("tasks.getUserRRData") }}',
-                    method: 'GET',
-                    data: {
-                        user_id: userId
-                    },
-                    success: function(response) {
-                        $('#rr-user-id').val(response.user.id);
-                        
-                        // Store response data for later use
-                        var rrData = response.userRR || {};
-                        
-                        // Combine all content into one (for backward compatibility)
-                        var combinedContent = '';
-                        if (rrData.role) combinedContent += '<h3>Role</h3>' + rrData.role + '<br><br>';
-                        if (rrData.responsibilities) combinedContent += '<h3>Responsibilities</h3>' + rrData.responsibilities + '<br><br>';
-                        if (rrData.goals) combinedContent += '<h3>Goals</h3>' + rrData.goals;
-                        // If we have a combined content field, use that instead
-                        if (rrData.content) combinedContent = rrData.content;
-                        
-                        // Show modal and set content
-                        $('#editRRModal').modal('show');
-                        
-                        // Set content in contenteditable div after modal is shown
-                        $('#editRRModal').one('shown.bs.modal', function() {
-                            $('#rr-content-editor').html(combinedContent);
-                        });
-                    },
-                    error: function(xhr, status, error) {
-                        console.error('Error loading R&R data:', error);
-                        alert('Error loading R&R data. Please try again.');
-                    }
-                });
-            });
-
-            // R&R Form Submission
-            $('#rr-form').on('submit', function(e) {
-                e.preventDefault();
-
-                // Get content from contenteditable div
-                var content = $('#rr-content-editor').html();
-                var userId = $('#rr-user-id').val();
-
-                // Debug logging
-                console.log('Form submission - User ID:', userId);
-                console.log('Form submission - Content length:', content ? content.length : 0);
-                console.log('Form submission - Content preview:', content ? content.substring(0, 100) : 'empty');
-
-                // Validate content
-                if (!userId) {
-                    alert('User ID is missing. Please try again.');
-                    return;
-                }
-
-                // Store in hidden textarea for form submission
-                $('#rr-content-hidden').val(content);
-
-                var formData = {
-                    user_id: userId,
-                    content: content || '', // Ensure content is not undefined
-                    _token: '{{ csrf_token() }}'
-                };
-
-                console.log('Sending form data:', {
-                    user_id: formData.user_id,
-                    content_length: formData.content ? formData.content.length : 0,
-                    has_token: !!formData._token
-                });
-
-                $.ajax({
-                    url: '{{ route("tasks.storeUserRR") }}',
-                    method: 'POST',
-                    data: formData,
-                    dataType: 'json',
-                    success: function(response) {
-                        console.log('Save response:', response);
-                        if (response.success) {
-                            $('#editRRModal').modal('hide');
-                            // Reload R&R display
-                            var assigneeValue = $('#filter-assignee').val();
-                            if (assigneeValue && assigneeValue !== '__NULL__') {
-                                loadUserRR(assigneeValue);
-                            }
-                            // Show success message
-                            alert('Role & Responsibility saved successfully!');
-                        } else {
-                            alert('Failed to save: ' + (response.message || 'Unknown error'));
-                        }
-                    },
-                    error: function(xhr, status, error) {
-                        console.error('Error saving R&R:', error, xhr);
-                        console.error('Response text:', xhr.responseText);
-                        var errorMsg = 'Error saving R&R data. ';
-                        if (xhr.responseJSON && xhr.responseJSON.message) {
-                            errorMsg += xhr.responseJSON.message;
-                        } else if (xhr.responseText) {
-                            errorMsg += xhr.responseText;
-                        } else {
-                            errorMsg += 'Please try again.';
-                        }
-                        alert(errorMsg);
-                    }
-                });
-            });
-
-
-            // Show CSV Upload Modal
-            $('#upload-csv-btn').on('click', function() {
                 $('#csvUploadModal').modal('show');
             });
 
@@ -5629,33 +5379,15 @@
                 });
             });
 
-            // Show Bulk Actions Modal
-            $('#bulk-actions-btn, #bulk-actions-btn-mobile').on('click', function() {
-                if (selectedTasks.length === 0) {
-                    // Show error notification
-                    var alertHtml = `
-                        <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                            <i class="mdi mdi-alert-circle me-2"></i><strong>Error!</strong> Please select at least one task to perform bulk actions.
-                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                        </div>
-                    `;
-                    $('.task-card .card-body').prepend(alertHtml);
-                    
-                    // Auto dismiss after 4 seconds
-                    setTimeout(function() {
-                        $('.alert-danger').fadeOut();
-                    }, 4000);
-                    
-                    return;
-                }
-                
+            function openBulkActionsModal() {
                 $('#bulk-selected-count').text(selectedTasks.length);
                 $('#bulk-assignee-count').text(selectedTasks.length);
                 $('#bulk-assignor-count').text(selectedTasks.length);
                 $('#bulkActionsModal').modal('show');
-            });
+            }
 
-            $('#export-selected-btn, #export-selected-btn-mobile').on('click', function() {
+            $('.csv-export-action').on('click', function(e) {
+                e.preventDefault();
                 if (selectedTasks.length === 0) {
                     var alertHtml = `
                         <div class="alert alert-danger alert-dismissible fade show" role="alert">
@@ -6289,9 +6021,14 @@
                 $('#doneNoteViewModal').modal('show');
             }
 
-            // Edit Task
+            // Edit Task — multiple selected rows open bulk actions; otherwise single-task edit
             $(document).on('click', '.edit-task', function() {
-                var taskId = $(this).data('id');
+                var taskId = String($(this).data('id'));
+                var selectedIdSet = new Set(selectedTasks.map(function(id) { return String(id); }));
+                if (selectedTasks.length > 1 && selectedIdSet.has(taskId)) {
+                    openBulkActionsModal();
+                    return;
+                }
                 window.location.href = '/tasks/' + taskId + '/edit';
             });
 

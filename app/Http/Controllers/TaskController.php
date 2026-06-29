@@ -10,8 +10,10 @@ use App\Models\GeneralChecklistItem;
 use App\Models\ManagerJunior;
 use App\Models\PerformanceReview;
 use App\Models\Task;
+use App\Models\TeamMemberKpi;
 use App\Models\User;
 use App\Models\UserBadge;
+use App\Models\UserIncentive;
 use App\Models\UserGeneralChecklistProgress;
 use App\Models\UserMgrCheckpointProgress;
 use App\Models\UserRR;
@@ -21,6 +23,7 @@ use App\Models\UserScoreHistory;
 use App\Models\DeletedTask;
 use App\Policies\TaskPolicy;
 use App\Services\TaskWhatsAppNotificationService;
+use App\Support\Badges\BadgeDataCatalog;
 use App\Support\OpenAiRequest;
 use App\Support\TaskBusinessTime;
 use Illuminate\Database\Eloquent\Builder;
@@ -312,6 +315,8 @@ class TaskController extends Controller
 
     /** Email allowed to add/edit the Task Manager training video link. */
     private const TRAINING_VIDEO_EDITOR_EMAIL = 'mgr-content@5core.com';
+
+    private const INCENTIVE_EDITOR_EMAIL = 'president@5core.com';
 
     /** Storage path (relative to storage/app) for the persisted training video link. */
     private const TRAINING_VIDEO_FILE = 'task_training_video.json';
@@ -616,6 +621,18 @@ class TaskController extends Controller
             \Log::error('Failed to fetch TeamLogger data for task summary: ' . $e->getMessage());
         }
 
+        $kpiByUser = TeamMemberKpi::query()
+            ->whereIn('user_id', $members->pluck('id'))
+            ->get()
+            ->keyBy('user_id');
+
+        $incentiveCounts = UserIncentive::query()
+            ->whereIn('user_id', $members->pluck('id'))
+            ->where('is_active', true)
+            ->selectRaw('user_id, COUNT(*) as incentive_count')
+            ->groupBy('user_id')
+            ->pluck('incentive_count', 'user_id');
+
         $rows = [];
         foreach ($members as $member) {
             $email = $member->email;
@@ -643,7 +660,25 @@ class TaskController extends Controller
                     || isset($viewerJuniorIds[(int) $member->id]);
             }
 
-            $rows[] = [
+            $kpiRecord = $kpiByUser->get($member->id);
+            $kpiFields = [
+                'kpi_1' => null, 'kpi_1_label' => null,
+                'kpi_2' => null, 'kpi_2_label' => null,
+                'kpi_3' => null, 'kpi_3_label' => null,
+                'kpi_4' => null, 'kpi_4_label' => null,
+                'kpi_5' => null, 'kpi_5_label' => null,
+                'kpi_count' => 0,
+            ];
+            if ($kpiRecord) {
+                foreach (BadgeDataCatalog::resolveAssignments($kpiRecord) as $assignment) {
+                    $slot = (int) $assignment['slot'];
+                    $kpiFields['kpi_'.$slot] = $assignment['value_display'];
+                    $kpiFields['kpi_'.$slot.'_label'] = $assignment['label'];
+                    $kpiFields['kpi_count']++;
+                }
+            }
+
+            $rows[] = array_merge([
                 'user_id' => $member->id,
                 'team_member' => $member->name,
                 'email' => $email,
@@ -665,7 +700,9 @@ class TaskController extends Controller
                 'a_task_h' => (int) round($counts['a_task_h'] / 60),
                 'need_approval' => $counts['need_approval'],
                 'done' => $counts['done'],
-            ];
+            ], $kpiFields, [
+                'incentive_count' => (int) ($incentiveCounts[$member->id] ?? 0),
+            ]);
         }
 
         usort($rows, function (array $a, array $b): int {
@@ -874,27 +911,7 @@ class TaskController extends Controller
     {
         $taskDashboardStats = $this->getTaskDashboardAggregates();
 
-        // Fetch On Sea Transit statistics directly (bypassing cache for now to debug)
-        $onSeaPlanningCount = \App\Models\OnSeaTransit::where('status', 'Planning')->count();
-        $onSeaTotalCount = \App\Models\OnSeaTransit::count();
-        $onSeaArrivedCount = \App\Models\OnSeaTransit::where('status', 'Arrived')->count();
-        $onSeaRemainingCount = $onSeaTotalCount - ($onSeaArrivedCount + $onSeaPlanningCount);
-        
-        // Total value - sum ALL invoice values
-        $onSeaTotalValue = \App\Models\OnSeaTransit::sum('invoice_value') ?? 0;
-        
-        // Total pending amount - sum ALL balances
-        $onSeaPendingAmount = \App\Models\OnSeaTransit::sum('balance') ?? 0;
-        
-        // Debug log
-        \Log::info('On Sea Transit Dashboard Data', [
-            'planning' => $onSeaPlanningCount,
-            'remaining' => $onSeaRemainingCount,
-            'total_value' => $onSeaTotalValue,
-            'pending' => $onSeaPendingAmount
-        ]);
-
-        return view('index', compact('taskDashboardStats', 'onSeaPlanningCount', 'onSeaRemainingCount', 'onSeaTotalValue', 'onSeaPendingAmount'));
+        return view('index', compact('taskDashboardStats'));
     }
 
     /**
@@ -954,9 +971,11 @@ class TaskController extends Controller
             'is_manager' => strtolower((string) ($viewer->org_level ?? '')) === 'mgr',
         ];
 
+        $canEditIncentives = $this->canEditIncentives($viewer);
+
         return view(
             'tasks.task-summary',
-            compact('rows', 'taskDashboardStats', 'orgGraph', 'visibility', 'canEditTags', 'orgLevelControl')
+            compact('rows', 'taskDashboardStats', 'orgGraph', 'visibility', 'canEditTags', 'orgLevelControl', 'canEditIncentives')
         );
     }
 
@@ -1101,21 +1120,12 @@ class TaskController extends Controller
             }
         }
 
-        // Order:
-        //   1. Urgent (priority = 'high') ALWAYS at the top, regardless of TID — these
-        //      need eyeballs first and must not get buried by older dated tasks.
-        //   2. Then by TID date (asc). Within the same day:
-        //      - Default (no user filter): automated tasks on top (us din ka automated task top par)
-        //      - When a user is filtered: manual/normal tasks first, then automated (per user request)
-        //      start_date is the tiebreaker either way.
-        $hasUserFilter = $userNameFilter !== '';
-        $automateSortDirection = $hasUserFilter ? 'asc' : 'desc';
-
+        // Order: Urgent (priority = high) first, then TID date ascending (automated vs normal ignored).
         $tasks = $tasksQuery
             ->orderByRaw("(LOWER(COALESCE(priority, '')) = 'high') DESC")
             ->orderByRaw('(start_date IS NULL) ASC, DATE(start_date) ASC')
-            ->orderBy('is_automate_task', $automateSortDirection)
             ->orderBy('start_date', 'asc')
+            ->orderBy('id', 'asc')
             ->get();
 
         // Map emails to names and avatar URLs for display
@@ -6760,6 +6770,295 @@ class TaskController extends Controller
         $b = Badge::findOrFail($id);
         $b->delete();
         return response()->json(['success' => true]);
+    }
+
+    /**
+     * Task Summary KPI column — assigned page badges + catalog from badges_data.
+     */
+    public function getUserKpis(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'user_id' => 'required|integer|exists:users,id',
+        ]);
+
+        $viewer = Auth::user();
+        $visible = $this->getTaskSummaryVisibleUserIds($viewer);
+        if ($visible !== null && ! in_array((int) $validated['user_id'], $visible, true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You do not have access to this user.',
+            ], 403);
+        }
+
+        $user = User::find($validated['user_id']);
+        if (! $user) {
+            return response()->json(['success' => false, 'message' => 'User not found.'], 404);
+        }
+
+        $record = TeamMemberKpi::forUser($user);
+        $assigned = BadgeDataCatalog::resolveAssignments($record);
+        $assignedKeys = array_column($assigned, 'key');
+        $available = array_values(array_filter(
+            BadgeDataCatalog::allCatalogOptions(),
+            fn (array $option) => ! in_array($option['key'], $assignedKeys, true)
+        ));
+
+        return response()->json([
+            'success' => true,
+            'user' => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'designation' => $user->designation,
+            ],
+            'can_manage' => $this->canManageRow($viewer, $user),
+            'assigned' => $assigned,
+            'available' => $available,
+            'max' => 5,
+        ]);
+    }
+
+    /** Add a badges_data metric to a team member's KPI list (max 5). */
+    public function addUserKpi(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'user_id' => 'required|integer|exists:users,id',
+            'key' => 'required|string|max:120',
+        ]);
+
+        $viewer = Auth::user();
+        $target = User::find($validated['user_id']);
+        if (! $target || ! $this->canManageRow($viewer, $target)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You do not have permission to edit KPIs for this user.',
+            ], 403);
+        }
+
+        if (! BadgeDataCatalog::isValidCatalogKey($validated['key'])) {
+            return response()->json([
+                'success' => false,
+                'message' => 'That badge is not available in badges_data.',
+            ], 422);
+        }
+
+        $record = TeamMemberKpi::forUser($target);
+        if (in_array($validated['key'], $record->assignedKeys(), true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'That badge is already assigned.',
+            ], 422);
+        }
+
+        $slot = $record->nextFreeSlot();
+        if (! $slot) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Maximum of 5 KPI badges per user.',
+            ], 422);
+        }
+
+        $parsed = BadgeDataCatalog::parseKey($validated['key']);
+        $record->{"kpi_{$slot}_value"} = $validated['key'];
+        $record->{"kpi_{$slot}_label"} = BadgeDataCatalog::labelFor($parsed['page'], $parsed['field']);
+        $record->email = $target->email;
+        $record->save();
+
+        $item = collect(BadgeDataCatalog::resolveAssignments($record))
+            ->firstWhere('slot', $slot);
+
+        return response()->json([
+            'success' => true,
+            'assigned' => BadgeDataCatalog::resolveAssignments($record),
+            'item' => $item,
+        ]);
+    }
+
+    /** Remove one KPI slot from a team member. */
+    public function removeUserKpi(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'user_id' => 'required|integer|exists:users,id',
+            'slot' => 'required|integer|min:1|max:5',
+        ]);
+
+        $viewer = Auth::user();
+        $target = User::find($validated['user_id']);
+        if (! $target || ! $this->canManageRow($viewer, $target)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You do not have permission to edit KPIs for this user.',
+            ], 403);
+        }
+
+        $record = TeamMemberKpi::forUser($target);
+        if (! BadgeDataCatalog::parseKey($record->{"kpi_{$validated['slot']}_value"})) {
+            return response()->json([
+                'success' => false,
+                'message' => 'That KPI slot is empty.',
+            ], 422);
+        }
+
+        $record->clearSlot((int) $validated['slot']);
+        $record->save();
+
+        return response()->json([
+            'success' => true,
+            'assigned' => BadgeDataCatalog::resolveAssignments($record),
+        ]);
+    }
+
+    protected function canEditIncentives(?User $viewer): bool
+    {
+        return strtolower((string) ($viewer->email ?? '')) === self::INCENTIVE_EDITOR_EMAIL;
+    }
+
+    protected function canViewUserIncentives(?User $viewer, User $target): bool
+    {
+        if (! $viewer) {
+            return false;
+        }
+        if ($this->canEditIncentives($viewer)) {
+            return true;
+        }
+        if ((int) $viewer->id === (int) $target->id) {
+            return true;
+        }
+        if ($this->canManageRow($viewer, $target)) {
+            return true;
+        }
+
+        $visible = $this->getTaskSummaryVisibleUserIds($viewer);
+        if ($visible === null) {
+            return true;
+        }
+
+        return in_array((int) $target->id, $visible, true);
+    }
+
+    /** GET incentives for a team member (self, mgr juniors, president). */
+    public function getUserIncentives(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'user_id' => 'required|integer|exists:users,id',
+        ]);
+
+        $viewer = Auth::user();
+        $user = User::find($validated['user_id']);
+        if (! $user) {
+            return response()->json(['success' => false, 'message' => 'User not found.'], 404);
+        }
+        if (! $this->canViewUserIncentives($viewer, $user)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You do not have access to this user\'s incentives.',
+            ], 403);
+        }
+
+        $items = UserIncentive::query()
+            ->where('user_id', $user->id)
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'user' => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'designation' => $user->designation,
+            ],
+            'can_edit' => $this->canEditIncentives($viewer),
+            'items' => $items->map(fn (UserIncentive $row) => $this->formatIncentiveItem($row))->values(),
+        ]);
+    }
+
+    /** President-only: replace/sync incentive rows for a user. */
+    public function syncUserIncentives(Request $request): JsonResponse
+    {
+        $viewer = Auth::user();
+        if (! $this->canEditIncentives($viewer)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Only president@5core.com can edit incentives.',
+            ], 403);
+        }
+
+        $validated = $request->validate([
+            'user_id' => 'required|integer|exists:users,id',
+            'items' => 'present|array|max:25',
+            'items.*.id' => 'nullable|integer',
+            'items.*.title' => 'required|string|max:200',
+            'items.*.body' => 'nullable|string|max:5000',
+            'items.*.amount' => 'nullable|numeric|min:0',
+            'items.*.sort_order' => 'nullable|integer|min:0|max:999',
+            'items.*.is_active' => 'nullable|boolean',
+        ]);
+
+        $userId = (int) $validated['user_id'];
+        $keptIds = [];
+
+        foreach ($validated['items'] as $index => $item) {
+            $payload = [
+                'title' => trim((string) $item['title']),
+                'body' => isset($item['body']) ? trim((string) $item['body']) : null,
+                'amount' => array_key_exists('amount', $item) && $item['amount'] !== null && $item['amount'] !== ''
+                    ? round((float) $item['amount'], 2)
+                    : null,
+                'sort_order' => (int) ($item['sort_order'] ?? $index),
+                'is_active' => array_key_exists('is_active', $item) ? (bool) $item['is_active'] : true,
+                'updated_by_user_id' => optional($viewer)->id,
+            ];
+
+            if (! empty($item['id'])) {
+                $row = UserIncentive::query()
+                    ->where('user_id', $userId)
+                    ->where('id', (int) $item['id'])
+                    ->first();
+                if ($row) {
+                    $row->update($payload);
+                    $keptIds[] = (int) $row->id;
+                }
+            } else {
+                $row = UserIncentive::create(array_merge($payload, ['user_id' => $userId]));
+                $keptIds[] = (int) $row->id;
+            }
+        }
+
+        UserIncentive::query()
+            ->where('user_id', $userId)
+            ->when(count($keptIds) > 0, fn ($q) => $q->whereNotIn('id', $keptIds))
+            ->when(count($keptIds) === 0, fn ($q) => $q)
+            ->delete();
+
+        $items = UserIncentive::query()
+            ->where('user_id', $userId)
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'items' => $items->map(fn (UserIncentive $row) => $this->formatIncentiveItem($row))->values(),
+        ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function formatIncentiveItem(UserIncentive $row): array
+    {
+        return [
+            'id' => $row->id,
+            'title' => $row->title,
+            'body' => $row->body,
+            'amount' => $row->amount !== null ? (float) $row->amount : null,
+            'amount_display' => $row->amount !== null ? '₹'.number_format((float) $row->amount, 0) : null,
+            'sort_order' => (int) $row->sort_order,
+            'is_active' => (bool) $row->is_active,
+            'updated_at' => $row->updated_at?->toDateTimeString(),
+        ];
     }
 
     protected function fallbackMgrChecklistStarterSet(): array

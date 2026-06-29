@@ -3685,6 +3685,58 @@ class ChannelMasterController extends Controller
         return view('channels.all-marketplace-master');
     }
 
+    /**
+     * Full channel payload for badge aggregation (all rows, same overlays as the page API).
+     *
+     * @return array<string, mixed>
+     */
+    public function getAllMarketplaceMasterChannelPayload(): array
+    {
+        $request = Request::create('/channels-master-data', 'GET', [
+            'size' => 10000,
+            'page' => 1,
+        ]);
+
+        $response = $this->getViewChannelDataFast($request);
+        $payload = $response instanceof \Illuminate\Http\JsonResponse
+            ? json_decode($response->getContent(), true)
+            : (is_array($response) ? $response : []);
+
+        if (($payload['status'] ?? null) !== 200 || empty($payload['data'])) {
+            $fallback = $this->getViewChannelData($request);
+            $payload = $fallback instanceof \Illuminate\Http\JsonResponse
+                ? json_decode($fallback->getContent(), true)
+                : (is_array($fallback) ? $fallback : []);
+        }
+
+        return is_array($payload) ? $payload : [];
+    }
+
+    /**
+     * Summary toolbar badges for /all-marketplace-master (mirrors updateSummaryStats JS).
+     *
+     * @return array<string, int|float|string|null>
+     */
+    public function getAllMarketplaceMasterBadgeTotals(): array
+    {
+        $payload = $this->getAllMarketplaceMasterChannelPayload();
+
+        if (empty($payload['inventory_value_amazon'])) {
+            $payload['inventory_value_amazon'] = $this->getInventoryValueAmazon();
+        }
+        if (empty($payload['inv_at_lp']) || empty($payload['shopify_inv_sum'])) {
+            $shopifyMetrics = $this->getShopifyInvLpMetrics();
+            $payload['inv_at_lp'] = $payload['inv_at_lp'] ?: $shopifyMetrics['inv_at_lp'];
+            $payload['shopify_inv_sum'] = $payload['shopify_inv_sum'] ?: $shopifyMetrics['inv_sum'];
+            $payload['shopify_weighted_avg_lp'] = $payload['shopify_weighted_avg_lp'] ?: $shopifyMetrics['weighted_avg_lp'];
+        }
+
+        return \App\Support\Badges\AllMarketplaceMasterBadgeAggregator::aggregate(
+            $payload['data'] ?? [],
+            $payload
+        );
+    }
+
 
     public function getEbaytwoMasterAdsPercent(): float
     {

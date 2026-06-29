@@ -462,7 +462,8 @@
                         </div>
                         <div class="form-group">
                             <label for="productName" class="required">Product Name</label>
-                            <input type="text" id="productName" name="productName" required>
+                            <input type="text" id="productName" name="productName" required
+                                value="{{ old('productName', collect($rfqForm->linked_skus ?? [])->filter()->implode(', ')) }}">
                         </div>
                     </div>
 

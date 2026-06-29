@@ -112,6 +112,12 @@
             display: none;
         }
 
+        #suppliers-table th.linked-sku-col,
+        #suppliers-table td.linked-sku-col {
+            min-width: 180px;
+            max-width: 240px;
+        }
+
         #suppliers-table .supplier-select-col {
             width: 36px;
         }
@@ -346,14 +352,19 @@
                                     <input type="checkbox" class="form-check-input supplier-select-all" aria-label="Select all suppliers on this page">
                                 </th>
                                 <th class="sortable" data-sort-key="category">Category <span class="sort-icon"><i class="mdi mdi-unfold-more-horizontal"></i></span></th>
+                                <th class="text-center" title="Total suppliers in each of this row's categories (category-wide count)">Suppliers</th>
                                 <th class="sortable" data-sort-key="name">Name <span class="sort-icon"><i class="mdi mdi-unfold-more-horizontal"></i></span></th>
                                 <th class="sortable text-center" data-sort-key="approval" title="Approved">Appr <span class="sort-icon"><i class="mdi mdi-unfold-more-horizontal"></i></span></th>
                                 <th class="sortable" data-sort-key="company">Company <span class="sort-icon"><i class="mdi mdi-unfold-more-horizontal"></i></span></th>
+                                <th class="sortable" data-sort-key="alias">Alias <span class="sort-icon"><i class="mdi mdi-unfold-more-horizontal"></i></span></th>
                                 <th class="sortable parents-col" data-sort-key="parent">Product <span class="sort-icon"><i class="mdi mdi-unfold-more-horizontal"></i></span></th>
+                                <th class="linked-sku-col">Linked SKU</th>
                                 <th class="sortable" data-sort-key="zone">Zone <span class="sort-icon"><i class="mdi mdi-unfold-more-horizontal"></i></span></th>
                                 <th class="sortable" data-sort-key="phone">Phone <span class="sort-icon"><i class="mdi mdi-unfold-more-horizontal"></i></span></th>
                                 <th class="sortable" data-sort-key="rating">Rating <span class="sort-icon"><i class="mdi mdi-unfold-more-horizontal"></i></span></th>
-                                <th class="sortable" data-sort-key="alibaba">Alibaba <span class="sort-icon"><i class="mdi mdi-unfold-more-horizontal"></i></span></th>
+                                <th class="sortable" data-sort-key="alibaba" title="Alibaba">Ali <span class="sort-icon"><i class="mdi mdi-unfold-more-horizontal"></i></span></th>
+                                <th class="sortable" data-sort-key="link_1688">1688 <span class="sort-icon"><i class="mdi mdi-unfold-more-horizontal"></i></span></th>
+                                <th class="sortable" data-sort-key="qq">QQ <span class="sort-icon"><i class="mdi mdi-unfold-more-horizontal"></i></span></th>
                                 <th class="sortable" data-sort-key="email">Email <span class="sort-icon"><i class="mdi mdi-unfold-more-horizontal"></i></span></th>
                                 <th class="sortable" data-sort-key="whatsapp">WhatsApp <span class="sort-icon"><i class="mdi mdi-unfold-more-horizontal"></i></span></th>
                                 <th class="sortable" data-sort-key="wechat">WeChat <span class="sort-icon"><i class="mdi mdi-unfold-more-horizontal"></i></span></th>
@@ -361,7 +372,11 @@
                             </tr>
                         </thead>
                         <tbody>
-                            @include('purchase-master.supplier.partials.rows', ['suppliers' => $suppliers, 'categories' => $categories])
+                            @include('purchase-master.supplier.partials.rows', [
+                                'suppliers' => $suppliers,
+                                'categories' => $categories,
+                                'rfqLinkedSkusBySupplierId' => $rfqLinkedSkusBySupplierId ?? [],
+                            ])
                         </tbody>
                     </table>
                 </div>
@@ -478,6 +493,10 @@
                             <input type="text" name="company" class="form-control" placeholder="Company Name">
                         </div>
                         <div class="col-md-6">
+                            <label class="form-label fw-semibold">Alias</label>
+                            <input type="text" name="alias" class="form-control" placeholder="Alias">
+                        </div>
+                        <div class="col-md-6">
                             <div class="row">
                                 <div class="col-md-4">
                                     <label class="form-label fw-semibold">Country Code</label>
@@ -537,6 +556,14 @@
                         <div class="col-md-6">
                             <label class="form-label fw-semibold">Alibaba</label>
                             <input type="text" name="alibaba" class="form-control" placeholder="Alibaba Profile">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">1688</label>
+                            <input type="text" name="link_1688" class="form-control" placeholder="1688 Profile / URL">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">QQ</label>
+                            <input type="text" name="qq" class="form-control" placeholder="QQ ID">
                         </div>
                         <div class="col-md-12">
                             <div class="row">
@@ -956,6 +983,7 @@
                 'type': 'Type',
                 'category_id[]': 'Category',
                 'company': 'Company',
+                'alias': 'Alias',
                 'country_code': 'Country Code',
                 'phone': 'Phone',
                 'city': 'City',
@@ -965,6 +993,8 @@
                 'whatsapp': 'WhatsApp',
                 'wechat': 'WeChat',
                 'alibaba': 'Alibaba',
+                'link_1688': '1688',
+                'qq': 'QQ',
                 'website': 'Website',
                 'others': 'Others',
                 'address': 'Address',

@@ -4,10 +4,14 @@ namespace App\Http\Controllers\PurchaseMaster;
 
 use App\Http\Controllers\Controller;
 use App\Models\Category;
+use App\Models\ProductMaster;
+use App\Models\RfqForm;
 use App\Models\Supplier;
 use App\Models\SupplierRating;
 use App\Models\SupplierRemarkHistory;
+use Illuminate\Support\Collection;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Facades\Validator;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -38,6 +42,7 @@ class SupplierController extends Controller
             $query->where(function($q) use ($search) {
                 $q->where('name', 'LIKE', '%' . $search . '%')
                   ->orWhere('company', 'LIKE', '%' . $search . '%')
+                  ->orWhere('alias', 'LIKE', '%' . $search . '%')
                   ->orWhere('email', 'LIKE', '%' . $search . '%')
                   ->orWhere('phone', 'LIKE', '%' . $search . '%');
             });
@@ -49,11 +54,14 @@ class SupplierController extends Controller
             'name'     => 'name',
             'approval' => 'approval_status',
             'company'  => 'company',
+            'alias'    => 'alias',
             'parent'   => 'parent',
             'zone'     => 'zone',
             'phone'    => 'phone',
             'rating'   => null,            // computed via correlated subquery
             'alibaba'  => 'alibaba',
+            'link_1688'=> 'link_1688',
+            'qq'       => 'qq',
             'email'    => 'email',
             'whatsapp' => 'whatsapp',
             'wechat'   => 'wechat',
@@ -88,13 +96,14 @@ class SupplierController extends Controller
         $totalCount = Supplier::count();
         
         $suppliers = $query->with(['ratings', 'latestRemark'])->paginate(20)->appends($request->query());
-        $categories = Category::orderBy('name')->get();
+        $categories = $this->categoriesWithSupplierCounts();
+        $rfqLinkedSkusBySupplierId = $this->buildRfqLinkedSkusBySupplierId($suppliers->getCollection());
         
         // If AJAX request, return JSON
         if ($request->ajax()) {
             return response()->json([
                 'success' => true,
-                'html' => view('purchase-master.supplier.partials.rows', compact('suppliers', 'categories'))->render(),
+                'html' => view('purchase-master.supplier.partials.rows', compact('suppliers', 'categories', 'rfqLinkedSkusBySupplierId'))->render(),
                 'pagination' => (string) $suppliers->onEachSide(1)->links('pagination::bootstrap-5'),
                 'filteredCount' => $filteredCount,
                 'totalCount' => $totalCount,
@@ -103,7 +112,109 @@ class SupplierController extends Controller
             ]);
         }
         
-        return view('purchase-master.supplier.suppliers' , compact('suppliers', 'categories', 'filteredCount', 'totalCount', 'sortKey', 'direction'));
+        return view('purchase-master.supplier.suppliers' , compact(
+            'suppliers',
+            'categories',
+            'filteredCount',
+            'totalCount',
+            'sortKey',
+            'direction',
+            'rfqLinkedSkusBySupplierId'
+        ));
+    }
+
+    /**
+     * Categories with supplier_count per category (same logic as category list page).
+     */
+    private function categoriesWithSupplierCounts(): Collection
+    {
+        $categories = Category::orderBy('name')->get();
+        foreach ($categories as $category) {
+            $category->supplier_count = DB::table('suppliers')
+                ->whereRaw('FIND_IN_SET(?, category_id)', [$category->id])
+                ->count();
+        }
+
+        return $categories;
+    }
+
+    /**
+     * RFQ Form list linked_skus matched to each supplier via supplier sku/parent.
+     *
+     * @param  Collection<int, Supplier>  $suppliers
+     * @return array<int, list<string>>
+     */
+    private function buildRfqLinkedSkusBySupplierId(Collection $suppliers): array
+    {
+        $supplierIds = $suppliers->pluck('id')->all();
+        if ($supplierIds === []) {
+            return [];
+        }
+
+        $rfqSkuDisplay = [];
+        foreach (RfqForm::query()->whereNotNull('linked_skus')->get(['linked_skus']) as $form) {
+            $linked = $form->linked_skus;
+            if (!is_array($linked)) {
+                $linked = json_decode($linked, true) ?: [];
+            }
+            foreach ($linked as $sku) {
+                $norm = strtoupper(trim((string) $sku));
+                if ($norm !== '') {
+                    $rfqSkuDisplay[$norm] = trim((string) $sku);
+                }
+            }
+        }
+
+        if ($rfqSkuDisplay === []) {
+            return array_fill_keys($supplierIds, []);
+        }
+
+        $parentBySkuNorm = [];
+        foreach (ProductMaster::query()->select('sku', 'parent')->get() as $product) {
+            $norm = strtoupper(trim((string) ($product->sku ?? '')));
+            if ($norm === '') {
+                continue;
+            }
+            $parentBySkuNorm[$norm] = str_replace(' ', '', strtoupper(trim((string) ($product->parent ?? ''))));
+        }
+
+        $result = array_fill_keys($supplierIds, []);
+
+        foreach ($suppliers as $supplier) {
+            $supplierSkuNorms = array_filter(array_map(
+                static fn ($s) => strtoupper(trim($s)),
+                preg_split('/\s*,\s*/', (string) ($supplier->sku ?? ''), -1, PREG_SPLIT_NO_EMPTY) ?: []
+            ));
+
+            $supplierParentNorms = array_filter(array_map(
+                static fn ($p) => str_replace(' ', '', strtoupper(trim($p))),
+                preg_split('/\s*,\s*/', (string) ($supplier->parent ?? ''), -1, PREG_SPLIT_NO_EMPTY) ?: []
+            ));
+
+            $matched = [];
+            foreach ($rfqSkuDisplay as $normSku => $displaySku) {
+                if (in_array($normSku, $supplierSkuNorms, true)) {
+                    $matched[] = $displaySku;
+                    continue;
+                }
+
+                $skuParentNorm = $parentBySkuNorm[$normSku] ?? '';
+                if ($skuParentNorm === '') {
+                    continue;
+                }
+
+                foreach ($supplierParentNorms as $supplierParentNorm) {
+                    if ($supplierParentNorm !== '' && $supplierParentNorm === $skuParentNorm) {
+                        $matched[] = $displaySku;
+                        break;
+                    }
+                }
+            }
+
+            $result[$supplier->id] = array_values(array_unique($matched));
+        }
+
+        return $result;
     }
 
     /**
@@ -130,6 +241,7 @@ class SupplierController extends Controller
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'LIKE', '%' . $search . '%')
                   ->orWhere('company', 'LIKE', '%' . $search . '%')
+                  ->orWhere('alias', 'LIKE', '%' . $search . '%')
                   ->orWhere('email', 'LIKE', '%' . $search . '%')
                   ->orWhere('phone', 'LIKE', '%' . $search . '%');
             });
@@ -152,8 +264,8 @@ class SupplierController extends Controller
         };
 
         $columns = [
-            'Type', 'Category', 'Name', 'Company', 'Parent', 'Phone', 'City', 'Zone',
-            'Email', 'WhatsApp', 'WeChat', 'Alibaba', 'Others', 'Address', 'Approval Status',
+            'Type', 'Category', 'Name', 'Company', 'Alias', 'Parent', 'Phone', 'City', 'Zone',
+            'Email', 'WhatsApp', 'WeChat', 'Alibaba', '1688', 'QQ', 'Others', 'Address', 'Approval Status',
         ];
 
         // Fetch all rows up-front. Running queries inside a streamed callback can
@@ -169,6 +281,7 @@ class SupplierController extends Controller
                 $resolveCategoryNames($s->category_id ?? ''),
                 $s->name ?? '',
                 $s->company ?? '',
+                $s->alias ?? '',
                 $s->parent ?? '',
                 $s->phone ?? '',
                 $s->city ?? '',
@@ -177,6 +290,8 @@ class SupplierController extends Controller
                 $s->whatsapp ?? '',
                 $s->wechat ?? '',
                 $s->alibaba ?? '',
+                $s->link_1688 ?? '',
+                $s->qq ?? '',
                 $s->others ?? '',
                 $s->address ?? '',
                 $s->approval_status ?? '',
@@ -253,6 +368,7 @@ class SupplierController extends Controller
                 : null;
             $supplier->name         = trim($inputs['name']);
             $supplier->company      = !empty($inputs['company']) ? trim($inputs['company']) : null;
+            $supplier->alias        = !empty($inputs['alias']) ? trim($inputs['alias']) : null;
             $supplier->parent       = !empty($inputs['parent']) ? trim($inputs['parent']) : null;
             $supplier->country_code = !empty($inputs['country_code']) ? trim($inputs['country_code']) : null;
             $supplier->phone        = !empty($inputs['phone']) ? trim($inputs['phone']) : null;
@@ -262,6 +378,8 @@ class SupplierController extends Controller
             $supplier->whatsapp     = !empty($inputs['whatsapp']) ? trim($inputs['whatsapp']) : null;
             $supplier->wechat       = !empty($inputs['wechat']) ? trim($inputs['wechat']) : null;
             $supplier->alibaba      = !empty($inputs['alibaba']) ? trim($inputs['alibaba']) : null;
+            $supplier->link_1688    = !empty($inputs['link_1688']) ? trim($inputs['link_1688']) : null;
+            $supplier->qq           = !empty($inputs['qq']) ? trim($inputs['qq']) : null;
             $supplier->website      = !empty($inputs['website']) ? trim($inputs['website']) : null;
             $supplier->others       = !empty($inputs['others']) ? trim($inputs['others']) : null;
             $supplier->address      = !empty($inputs['address']) ? trim($inputs['address']) : null;
@@ -357,6 +475,7 @@ class SupplierController extends Controller
                     'category_id'   => $data['category_id'] ?? null,
                     'name'          => $data['name'] ?? '',
                     'company'       => $data['company'] ?? '',
+                    'alias'         => $data['alias'] ?? '',
                     'sku'           => $data['sku'] ?? '',
                     'parent'        => $data['parent'] ?? '',
                     'country_code'  => $data['country_code'] ?? '',
@@ -367,6 +486,8 @@ class SupplierController extends Controller
                     'whatsapp'      => $data['whatsapp'] ?? '',
                     'wechat'        => $data['wechat'] ?? '',
                     'alibaba'       => $data['alibaba'] ?? '',
+                    'link_1688'     => $data['link_1688'] ?? $data['1688'] ?? '',
+                    'qq'            => $data['qq'] ?? '',
                     'others'        => $data['others'] ?? '',
                     'address'       => $data['address'] ?? '',
                     'bank_details'  => $data['bank_details'] ?? '',

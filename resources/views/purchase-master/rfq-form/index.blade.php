@@ -2,6 +2,8 @@
 @section('css')
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" />
 <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
 <style>
     /* Pagination styling */
@@ -22,6 +24,29 @@
     .tabulator .tabulator-footer .tabulator-paginator .tabulator-page.active {
         background: #2563eb;
         color: white;
+    }
+
+    .tabulator-row.rfq-context-row {
+        background-color: #fff8e1 !important;
+        box-shadow: inset 0 0 0 2px #f59e0b;
+    }
+
+    .tabulator-cell .rfq-row-dropdown .dropdown-menu {
+        z-index: 2000;
+    }
+
+    #addSupplierModal .modal-content,
+    #addSupplierModal .modal-body {
+        background-color: #fff !important;
+    }
+    .supplier-approval-dot { width: 14px; height: 14px; border-radius: 50%; border: 2px solid rgba(0,0,0,0.12); }
+    .supplier-approval-dot--red { background-color: #dc3545; }
+    .supplier-approval-dot--green { background-color: #198754; }
+    .supplier-approval-dot--yellow { background-color: #ffc107; }
+    .approval-form-dots label:has(input[type="radio"]:checked) { font-weight: 600; }
+    .approval-form-dots input[type="radio"]:checked + span {
+        box-shadow: 0 0 0 2px #495057;
+        border-radius: 50%;
     }
 </style>
 @endsection
@@ -53,9 +78,28 @@
                             </ul>
                         </div>
                         <input type="file" id="importFormInput" accept=".xlsx,.xls,.csv" style="display:none;">
-                        <button id="add-new-row" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#createRFQFormModal">
-                            <i class="fas fa-plus-circle me-1"></i> Create RFQ Form
-                        </button>
+                        <div class="dropdown d-inline-block">
+                            <button class="btn btn-sm btn-success dropdown-toggle" type="button" id="rfq-actions-dropdown-btn" data-bs-toggle="dropdown" aria-expanded="false">
+                                <i class="fas fa-file-invoice me-1"></i> RFQ
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end">
+                                <li>
+                                    <a class="dropdown-item" href="#" id="rfq-action-create">
+                                        <i class="fas fa-plus-circle me-2"></i> Create RFQ Form
+                                    </a>
+                                </li>
+                                <li>
+                                    <a class="dropdown-item" href="#" id="rfq-action-target">
+                                        <i class="fas fa-bullseye me-2"></i> Target
+                                    </a>
+                                </li>
+                                <li>
+                                    <a class="dropdown-item" href="#" id="rfq-action-last-purchase">
+                                        <i class="fa-solid fa-clock-rotate-left me-2"></i> Last Purchase
+                                    </a>
+                                </li>
+                            </ul>
+                        </div>
                     </div>
                 </div>
                 <div id="rfq-form-table"></div>
@@ -358,7 +402,12 @@
                     </div>
 
                     <div class="mb-3">
-                        <label for="supplier_search" class="form-label">Search Supplier <span class="text-danger">*</span></label>
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <label for="supplier_search" class="form-label mb-0">Search Supplier <span class="text-danger">*</span></label>
+                            <button type="button" class="btn btn-sm btn-outline-primary" id="rfqAddSupplierBtn" title="Add a new supplier">
+                                <i class="mdi mdi-plus me-1"></i> Add Supplier
+                            </button>
+                        </div>
                         <input type="text" id="supplier_search" class="form-control" placeholder="Type to search suppliers by name, company, or email...">
                         <small class="text-muted">Start typing to search and select suppliers</small>
                     </div>
@@ -433,6 +482,25 @@
     </div>
 </div>
 
+{{-- Target / Last Purchase Modal --}}
+<div class="modal fade" id="rfqReportMetaModal" tabindex="-1" aria-labelledby="rfqReportMetaTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable shadow-none modal-lg">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title fw-bold" id="rfqReportMetaTitle">Edit</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="rfqReportMetaBody"></div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" id="rfqReportMetaSaveBtn">
+                    <i class="fa-solid fa-floppy-disk me-1"></i> Save
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 {{-- History Modal --}}
 <div class="modal fade" id="rfqHistoryModal" tabindex="-1" aria-labelledby="rfqHistoryModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered shadow-none">
@@ -462,10 +530,242 @@
     </div>
 </div>
 
+{{-- Add Supplier modal (same as supplier list page) --}}
+<div class="modal fade" id="addSupplierModal" tabindex="-1" aria-labelledby="supplierModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable shadow-none">
+        <div class="modal-content border-0 shadow-lg">
+            <form method="POST" action="{{ route('supplier.create') }}" class="needs-validation" novalidate id="addSupplierForm">
+                @csrf
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title fw-bold" id="supplierModalLabel">
+                        <i class="mdi mdi-account-plus me-2"></i> Add Supplier
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body py-4">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Type <span class="text-danger">*</span></label>
+                            @php $supplierTypes = ['Supplier', 'Forwarders', 'Photographer']; @endphp
+                            <select name="type" class="form-select" required>
+                                <option value="">Select Type</option>
+                                @foreach ($supplierTypes as $type)
+                                    <option value="{{ $type }}">{{ $type }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Category <span class="text-danger">*</span></label>
+                            <select name="category_id[]" class="form-select select2" data-placeholder="Select Category" multiple required style="min-height: 42px;">
+                                @foreach ($categories ?? [] as $category)
+                                    <option value="{{ $category->id }}">{{ $category->name }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Name <span class="text-danger">*</span></label>
+                            <input type="text" name="name" class="form-control" required placeholder="Supplier Name">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Company</label>
+                            <input type="text" name="company" class="form-control" placeholder="Company Name">
+                        </div>
+                        <div class="col-md-12">
+                            <label class="form-label fw-semibold">Parents</label>
+                            <input type="text" name="parent" class="form-control" placeholder="Use commas to separate multiple Parents">
+                        </div>
+                        <div class="col-md-6">
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <label class="form-label fw-semibold">Country Code</label>
+                                    <input type="text" name="country_code" class="form-control" placeholder="+86">
+                                </div>
+                                <div class="col-md-8">
+                                    <label class="form-label fw-semibold">Phone</label>
+                                    <input type="text" name="phone" class="form-control" placeholder="Phone Number">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">City</label>
+                            <input type="text" name="city" class="form-control" placeholder="City">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Zone</label>
+                            <select name="zone" class="form-select">
+                                <option value="">Select Zone</option>
+                                <option value="GHZ">GHZ</option>
+                                <option value="Ningbo">Ningbo</option>
+                                <option value="Tianjin">Tianjin</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Approved</label>
+                            <div class="d-flex align-items-center gap-2 approval-form-dots flex-wrap">
+                                <label class="mb-0 cursor-pointer small text-muted border rounded px-2 py-1" title="Not set">
+                                    <input type="radio" name="approval_status" value="" class="d-none" checked> None
+                                </label>
+                                <label class="mb-0 cursor-pointer d-inline-flex align-items-center" title="disqualified">
+                                    <input type="radio" name="approval_status" value="red" class="d-none">
+                                    <span class="d-inline-block supplier-approval-dot supplier-approval-dot--red border-0"></span>
+                                </label>
+                                <label class="mb-0 cursor-pointer d-inline-flex align-items-center" title="Qualified">
+                                    <input type="radio" name="approval_status" value="green" class="d-none">
+                                    <span class="d-inline-block supplier-approval-dot supplier-approval-dot--green border-0"></span>
+                                </label>
+                                <label class="mb-0 cursor-pointer d-inline-flex align-items-center" title="Explore">
+                                    <input type="radio" name="approval_status" value="yellow" class="d-none">
+                                    <span class="d-inline-block supplier-approval-dot supplier-approval-dot--yellow border-0"></span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Email <span class="text-danger">*</span></label>
+                            <input type="email" name="email" class="form-control" required placeholder="Email Address">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">WhatsApp</label>
+                            <input type="text" name="whatsapp" class="form-control" placeholder="WhatsApp Number">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">WeChat</label>
+                            <input type="text" name="wechat" class="form-control" placeholder="WeChat ID">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Alibaba</label>
+                            <input type="text" name="alibaba" class="form-control" placeholder="Alibaba Profile">
+                        </div>
+                        <div class="col-md-12">
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <label class="form-label fw-semibold">Website URL</label>
+                                    <input type="text" name="website" class="form-control" placeholder="Website URL">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label fw-semibold">Others</label>
+                                    <input type="text" name="others" class="form-control" placeholder="Other Details">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label fw-semibold">Address</label>
+                                    <input type="text" name="address" class="form-control" placeholder="Full Address">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-12">
+                            <label class="form-label fw-semibold">Bank Details</label>
+                            <textarea name="bank_details" class="form-control" rows="2" placeholder="Bank Details"></textarea>
+                        </div>
+                    </div>
+                    <div class="d-flex justify-content-end mt-3">
+                        <button type="submit" class="btn btn-primary" id="addSupplierSubmitBtn">
+                            <i class="mdi mdi-content-save"></i> Save Supplier
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 @endsection
 @section('script')
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+    // Add Supplier modal (supplier list page) — Select2 + AJAX save
+    $(function () {
+        const $modal = $('#addSupplierModal');
+        if (!$modal.length) return;
+
+        function initCategorySelect2() {
+            const $sel = $modal.find('select[name="category_id[]"]');
+            if ($sel.length && !$sel.hasClass('select2-hidden-accessible')) {
+                $sel.select2({
+                    theme: 'bootstrap-5',
+                    width: '100%',
+                    placeholder: $sel.data('placeholder') || 'Select Category',
+                    dropdownParent: $modal,
+                    allowClear: false
+                });
+            }
+        }
+
+        $modal.on('shown.bs.modal', function () {
+            setTimeout(initCategorySelect2, 100);
+        });
+
+        $modal.on('hidden.bs.modal', function () {
+            const $sel = $modal.find('select[name="category_id[]"]');
+            if ($sel.hasClass('select2-hidden-accessible')) {
+                $sel.select2('destroy');
+            }
+            $modal.find('form')[0].reset();
+            $sel.val(null).trigger('change');
+        });
+
+        $('#addSupplierForm').on('submit', function (e) {
+            e.preventDefault();
+            const form = this;
+            const $btn = $('#addSupplierSubmitBtn');
+            const fd = new FormData(form);
+            const cats = fd.getAll('category_id[]').filter(v => v != null && v !== '');
+            if (cats.length === 0) {
+                alert('Please select at least one category.');
+                return;
+            }
+            if (!fd.get('type')) { alert('Please select a type.'); return; }
+            if (!String(fd.get('name') || '').trim()) { alert('Please enter supplier name.'); return; }
+            if (!String(fd.get('email') || '').trim()) { alert('Please enter supplier email.'); return; }
+
+            const orig = $btn.html();
+            $btn.prop('disabled', true).html('<i class="mdi mdi-loading mdi-spin me-1"></i> Saving...');
+
+            $.ajax({
+                url: form.action,
+                method: 'POST',
+                data: fd,
+                processData: false,
+                contentType: false,
+                headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
+            })
+            .done(function (res) {
+                if (res && res.success) {
+                    const newSupplier = {
+                        id: res.supplier && res.supplier.id ? res.supplier.id : null,
+                        name: res.supplier && res.supplier.name ? res.supplier.name : String(fd.get('name') || '').trim(),
+                        email: String(fd.get('email') || '').trim(),
+                        company: String(fd.get('company') || '').trim()
+                    };
+                    const addInst = bootstrap.Modal.getInstance($modal[0]);
+                    const reopenSend = function () {
+                        $modal[0].removeEventListener('hidden.bs.modal', reopenSend);
+                        if (newSupplier.id && newSupplier.email && typeof addSupplier === 'function') {
+                            addSupplier(newSupplier);
+                            showToast('success', 'Supplier added and selected for email.');
+                        }
+                        const sendEl = document.getElementById('sendToSupplierModal');
+                        if (sendEl) bootstrap.Modal.getOrCreateInstance(sendEl).show();
+                    };
+                    $modal[0].addEventListener('hidden.bs.modal', reopenSend);
+                    if (addInst) addInst.hide();
+                    else reopenSend();
+                } else {
+                    alert((res && res.message) ? res.message : 'Could not save supplier.');
+                }
+            })
+            .fail(function (xhr) {
+                const msg = xhr.responseJSON && xhr.responseJSON.message
+                    ? xhr.responseJSON.message
+                    : 'Error saving supplier.';
+                alert(msg);
+            })
+            .always(function () {
+                $btn.prop('disabled', false).html(orig);
+            });
+        });
+    });
+</script>
 <script>
     // Toast notification helper function
     function showToast(type, message) {
@@ -505,6 +805,97 @@
         return out;
     }
 
+    const RFQ_BASE_LABELS = {
+        supplierName: 'Supplier Name',
+        companyName: 'Alias',
+        supplierLink: 'Supplier Link',
+        productName: 'Product Name',
+    };
+
+    function escapeHtml(str) {
+        return String(str === null || str === undefined ? '' : str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    function parseRfqFields(formData) {
+        let fields = formData.fields || [];
+        if (typeof fields === 'string') {
+            try { fields = JSON.parse(fields) || []; } catch (e) { fields = []; }
+        }
+        return Array.isArray(fields) ? fields : [];
+    }
+
+    function parseLinkedSkus(formData) {
+        let skus = formData.linked_skus || [];
+        if (typeof skus === 'string') {
+            try { skus = JSON.parse(skus) || []; } catch (e) { skus = []; }
+        }
+        if (!Array.isArray(skus)) return [];
+        return skus.map(function(s) { return String(s).trim(); }).filter(Boolean);
+    }
+
+    function buildRfqFieldKeys(formData) {
+        const keys = ['supplierName', 'companyName', 'supplierLink', 'productName'];
+        parseRfqFields(formData).forEach(function(field) {
+            if (field && field.name && keys.indexOf(field.name) === -1) {
+                keys.push(field.name);
+            }
+        });
+        return keys;
+    }
+
+    function buildRfqMetaKeys(formData) {
+        const linkedSkus = parseLinkedSkus(formData);
+        if (linkedSkus.length > 0) {
+            return linkedSkus;
+        }
+        return buildRfqFieldKeys(formData);
+    }
+
+    function labelForRfqKey(key, formData) {
+        const meta = parseReportMeta(formData);
+        if (meta.labels && meta.labels[key]) return meta.labels[key];
+        if (RFQ_BASE_LABELS[key]) return RFQ_BASE_LABELS[key];
+        const field = parseRfqFields(formData).find(function(f) { return f.name === key; });
+        if (field) return field.label || field.name;
+        return String(key).replace(/([A-Z])/g, ' $1').replace(/^./, function(c) { return c.toUpperCase(); });
+    }
+
+    function parseReportMeta(formData) {
+        let meta = formData.report_meta || {};
+        if (typeof meta === 'string') {
+            try { meta = JSON.parse(meta) || {}; } catch (e) { meta = {}; }
+        }
+        return meta && typeof meta === 'object' ? meta : {};
+    }
+
+    function openReportMetaModal(formData, section) {
+        const keys = buildRfqMetaKeys(formData);
+        const meta = parseReportMeta(formData);
+        const values = meta[section] || {};
+        const title = section === 'target' ? 'Target' : 'Last Purchase';
+
+        document.getElementById('rfqReportMetaTitle').textContent = title + ' — ' + (formData.name || '');
+        document.getElementById('rfqReportMetaBody').innerHTML = keys.length
+            ? keys.map(function(key) {
+                if (key === 'additionalPhotos') return '';
+                const val = values[key] != null ? values[key] : '';
+                return `<div class="mb-3">
+                    <label class="form-label mb-1 small fw-semibold">${escapeHtml(labelForRfqKey(key, formData))}</label>
+                    <input type="text" class="form-control form-control-sm rfq-meta-input" data-key="${escapeHtml(key)}" value="${escapeHtml(String(val))}">
+                </div>`;
+            }).join('')
+            : '<p class="text-muted mb-0">Link SKUs in the Linked SKU column, or define form fields first.</p>';
+
+        const modal = document.getElementById('rfqReportMetaModal');
+        modal.dataset.formId = formData.id;
+        modal.dataset.section = section;
+        new bootstrap.Modal(modal).show();
+    }
+
     // Show the created/updated history for an RFQ form in a modal
     function showRfqHistory(data) {
         document.getElementById('rfqHistoryFormName').textContent = data.name || '';
@@ -534,6 +925,53 @@
     }
 
     document.addEventListener('DOMContentLoaded', function () {
+
+        document.getElementById('rfqReportMetaSaveBtn').addEventListener('click', function() {
+            const modal = document.getElementById('rfqReportMetaModal');
+            const formId = modal.dataset.formId;
+            const section = modal.dataset.section;
+            if (!formId || !section) return;
+
+            const values = {};
+            document.querySelectorAll('#rfqReportMetaBody .rfq-meta-input').forEach(function(input) {
+                values[input.dataset.key] = input.value;
+            });
+
+            const btn = this;
+            const orig = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Saving...';
+
+            fetch(`/rfq-form/${formId}/report-meta`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({ section: section, values: values })
+            })
+            .then(function(res) { return res.json(); })
+            .then(function(res) {
+                if (res.success) {
+                    const row = table.getRows().find(function(r) { return String(r.getData().id) === String(formId); });
+                    if (row) {
+                        const data = row.getData();
+                        data.report_meta = res.report_meta || data.report_meta;
+                        row.update(data);
+                    }
+                    bootstrap.Modal.getInstance(modal).hide();
+                    showToast('success', res.message || 'Saved successfully!');
+                } else {
+                    alert(res.message || 'Failed to save');
+                }
+            })
+            .catch(function() { alert('Error saving data'); })
+            .finally(function() {
+                btn.disabled = false;
+                btn.innerHTML = orig;
+            });
+        });
 
         const table = new Tabulator("#rfq-form-table", {
             ajaxURL: "/rfq-form/data",
@@ -634,10 +1072,42 @@
                     }
                 },
                 {
+                    title: "RFQ",
+                    field: "_rfq_menu_col",
+                    headerSort: false,
+                    hozAlign: "center",
+                    width: 90,
+                    formatter: function() {
+                        return `
+                            <div class="dropdown d-inline-block rfq-row-dropdown">
+                                <button class="btn btn-sm btn-success dropdown-toggle py-0 px-2 rfq-row-dropdown-toggle" type="button" data-bs-toggle="dropdown" data-bs-boundary="viewport" data-bs-display="static" aria-expanded="false">RFQ</button>
+                                <ul class="dropdown-menu dropdown-menu-end rfq-row-dropdown-menu">
+                                    <li><a class="dropdown-item rfq-row-create" href="#"><i class="fas fa-plus-circle me-2"></i> Create RFQ Form</a></li>
+                                    <li><a class="dropdown-item rfq-row-target" href="#"><i class="fas fa-bullseye me-2"></i> Target</a></li>
+                                    <li><a class="dropdown-item rfq-row-last-purchase" href="#"><i class="fa-solid fa-clock-rotate-left me-2"></i> Last Purchase</a></li>
+                                </ul>
+                            </div>
+                        `;
+                    },
+                    cellClick: function(e, cell) {
+                        const toggle = e.target.closest('.rfq-row-dropdown-toggle');
+                        if (toggle && !e.target.closest('.dropdown-item')) {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            rfqRowDropdownContext = cell.getRow();
+                            bootstrap.Dropdown.getOrCreateInstance(toggle).toggle();
+                            return;
+                        }
+                        if (e.target.closest('.rfq-row-dropdown-menu')) {
+                            e.stopPropagation();
+                        }
+                    },
+                },
+                {
                     title: "Report",
-                    field: "slug",
+                    field: "_report_col",
                     formatter: function(cell, formatterParams, onRendered){
-                        const slug = cell.getValue();
+                        const slug = cell.getData().slug;
                         if(!slug) return "";
 
                         const fullUrl = window.location.origin + `/rfq-form/reports/${slug}`;
@@ -680,7 +1150,7 @@
                 },
                 {
                     title: "Action",
-                    field: "name",
+                    field: "_action_col",
                     hozAlign: "center",
                     formatter: function(cell, formatterParams, onRendered) {
                         const rowData = cell.getData();
@@ -924,6 +1394,96 @@
             ajaxResponse: function(url, params, response){
                 return response.data;
             },
+        });
+
+        let rfqContextRow = null;
+        let rfqRowDropdownContext = null;
+
+        function setRfqContextRow(row) {
+            if (!row) return;
+            rfqContextRow = row;
+            table.getRows().forEach(function(r) {
+                r.getElement().classList.remove('rfq-context-row');
+            });
+            row.getElement().classList.add('rfq-context-row');
+        }
+
+        table.on('cellClick', function(e, cell) {
+            if (e.target.closest('#rfq-actions-dropdown-btn, .dropdown-menu, .modal, .rfq-row-dropdown')) {
+                return;
+            }
+            setRfqContextRow(cell.getRow());
+        });
+
+        document.getElementById('rfq-action-create').addEventListener('click', function(e) {
+            e.preventDefault();
+            isCopyAction = false;
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('createRFQFormModal')).show();
+        });
+
+        document.addEventListener('click', function (e) {
+            if (!e.target.closest('.rfq-row-dropdown-menu')) return;
+            const row = rfqRowDropdownContext;
+            if (!row) return;
+            const data = row.getData();
+            if (e.target.closest('.rfq-row-create')) {
+                e.preventDefault();
+                isCopyAction = false;
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('createRFQFormModal')).show();
+            } else if (e.target.closest('.rfq-row-target')) {
+                e.preventDefault();
+                setRfqContextRow(row);
+                openReportMetaModal(data, 'target');
+            } else if (e.target.closest('.rfq-row-last-purchase')) {
+                e.preventDefault();
+                setRfqContextRow(row);
+                openReportMetaModal(data, 'last_purchase');
+            }
+        });
+
+        document.getElementById('rfq-action-target').addEventListener('click', function(e) {
+            e.preventDefault();
+            if (!rfqContextRow) {
+                alert('Click a form row first, then choose Target from the RFQ menu.');
+                return;
+            }
+            openReportMetaModal(rfqContextRow.getData(), 'target');
+        });
+
+        document.getElementById('rfq-action-last-purchase').addEventListener('click', function(e) {
+            e.preventDefault();
+            if (!rfqContextRow) {
+                alert('Click a form row first, then choose Last Purchase from the RFQ menu.');
+                return;
+            }
+            openReportMetaModal(rfqContextRow.getData(), 'last_purchase');
+        });
+
+        // Row RFQ dropdown menus: portal to body so Tabulator overflow does not clip them
+        document.addEventListener('shown.bs.dropdown', function (e) {
+            const toggle = e.target.closest('.rfq-row-dropdown-toggle');
+            if (!toggle) return;
+            const tr = toggle.closest('.tabulator-row');
+            if (tr) rfqRowDropdownContext = table.getRow(tr);
+            const menu = toggle.parentElement ? toggle.parentElement.querySelector('.dropdown-menu') : null;
+            if (!menu) return;
+            if (!menu._rfqHome) menu._rfqHome = menu.parentElement;
+            document.body.appendChild(menu);
+            menu.classList.add('show');
+            const rect = toggle.getBoundingClientRect();
+            menu.style.position = 'fixed';
+            menu.style.zIndex = '20000';
+            menu.style.top = (rect.bottom + 2) + 'px';
+            menu.style.left = Math.max(8, rect.right - menu.offsetWidth) + 'px';
+        });
+        document.addEventListener('hide.bs.dropdown', function (e) {
+            const toggle = e.target.closest('.rfq-row-dropdown-toggle');
+            if (!toggle) return;
+            const menu = document.querySelector('body > .rfq-row-dropdown-menu.show');
+            if (!menu) return;
+            menu.classList.remove('show');
+            menu.style.cssText = '';
+            if (menu._rfqHome) menu._rfqHome.appendChild(menu);
         });
 
         // ===== Import a new RFQ Form from a template =====
@@ -1281,6 +1841,18 @@
                 setupSupplierSearch();
             });
         }
+
+        document.getElementById('rfqAddSupplierBtn').addEventListener('click', function () {
+            const sendEl = document.getElementById('sendToSupplierModal');
+            const sendInst = bootstrap.Modal.getInstance(sendEl);
+            const openAdd = function () {
+                sendEl.removeEventListener('hidden.bs.modal', openAdd);
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('addSupplierModal')).show();
+            };
+            sendEl.addEventListener('hidden.bs.modal', openAdd);
+            if (sendInst) sendInst.hide();
+            else openAdd();
+        });
 
         function showSupplierDropdown(suppliers) {
             hideSupplierDropdown();

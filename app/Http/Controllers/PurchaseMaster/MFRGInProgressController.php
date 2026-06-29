@@ -4,12 +4,15 @@ namespace App\Http\Controllers\PurchaseMaster;
 
 use App\Http\Controllers\Controller;
 use App\Models\MfrgProgress;
+use App\Models\MipPreChecklist;
 use App\Models\PurchaseOrder;
 use App\Models\ReadyToShip;
 use App\Models\Supplier;
+use App\Models\SupplierRemark;
 use App\Services\PurchasePageExecService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -17,6 +20,15 @@ use Illuminate\Support\Facades\Schema;
 
 class MFRGInProgressController extends Controller
 {
+    private const PRESIDENT_EMAIL = 'president@5core.com';
+
+    private function isPresidentUser(): bool
+    {
+        $email = strtolower(trim((string) optional(Auth::user())->email));
+
+        return $email === self::PRESIDENT_EMAIL;
+    }
+
     public function index()
     {
         $t0 = microtime(true);
@@ -98,6 +110,10 @@ class MFRGInProgressController extends Controller
 
     public function archivedMfrgCount()
     {
+        if (! $this->isPresidentUser()) {
+            return response()->json(['success' => false, 'message' => 'Not authorized.'], 403);
+        }
+
         return response()->json([
             'count' => MfrgProgress::onlyTrashed()->count(),
         ]);
@@ -107,6 +123,9 @@ class MFRGInProgressController extends Controller
     {
         $t0 = microtime(true);
         $archived = request()->boolean('archived');
+        if ($archived && ! $this->isPresidentUser()) {
+            return response()->json(['success' => false, 'message' => 'Not authorized.'], 403);
+        }
         $supplierCache = self::getMipSupplierCache();
         $mfrgData = self::loadEnrichedMipProgressCollection(
             onlyTrashed: $archived,
@@ -158,6 +177,8 @@ class MFRGInProgressController extends Controller
         // Attach exec to the full set (incl. Ready-to-Ship rows). Exec is keyed by SKU in
         // to_order_analysis, so RTS rows that aren't in mfrg_progress still show their saved exec.
         self::attachExecBySku($mfrgData);
+
+        self::attachPreMipChecklists($mfrgData);
 
         if (config('app.debug')) {
             Log::debug('mip.getMfrgProgressData', [
@@ -861,6 +882,10 @@ class MFRGInProgressController extends Controller
 
     public function deleteBySkus(Request $request)
     {
+        if (! $this->isPresidentUser()) {
+            return response()->json(['success' => false, 'message' => 'Not authorized.'], 403);
+        }
+
         try {
             // Preferred: archive specific rows by id + source table (only the selected rows,
             // even when several rows share the same SKU).
@@ -937,6 +962,10 @@ class MFRGInProgressController extends Controller
 
     public function restoreBySkus(Request $request)
     {
+        if (! $this->isPresidentUser()) {
+            return response()->json(['success' => false, 'message' => 'Not authorized.'], 403);
+        }
+
         try {
             // Preferred: restore specific rows by id + source table.
             $items = $request->input('items', []);
@@ -1512,5 +1541,279 @@ class MFRGInProgressController extends Controller
         }
 
         return $rtsData;
+    }
+
+    public function getPreMipChecklist(Request $request)
+    {
+        $sourceTable = (string) $request->input('source_table', 'mfrg_progress');
+        $sourceId = (int) $request->input('source_id');
+
+        if ($sourceId <= 0) {
+            return response()->json(['success' => false, 'message' => 'Invalid row id.'], 422);
+        }
+
+        $record = MipPreChecklist::query()
+            ->where('source_table', $sourceTable)
+            ->where('source_id', $sourceId)
+            ->first();
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'source_table' => $sourceTable,
+                'source_id' => $sourceId,
+                'items' => MipPreChecklist::mergeWithDefaults($record?->items),
+                'status' => $record?->status,
+                'escalation_note' => $record?->escalation_note,
+            ],
+        ]);
+    }
+
+    public function savePreMipChecklist(Request $request)
+    {
+        $validated = $request->validate([
+            'source_table' => 'required|string|max:32',
+            'source_id' => 'required|integer|min:1',
+            'sku' => 'nullable|string|max:255',
+            'items' => 'required|array|min:1',
+            'items.*.id' => 'required|string|max:120',
+            'items.*.label' => 'required|string|max:500',
+            'items.*.checked' => 'boolean',
+            'action' => 'required|in:update,escalate',
+            'escalation_note' => 'nullable|string|max:2000',
+        ]);
+
+        $items = $this->normalizePreMipChecklistItems($validated['items']);
+        $action = $validated['action'];
+        $userName = $request->user()->name ?? 'Unknown';
+
+        if ($action === 'update' && ! MipPreChecklist::allItemsChecked($items)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'All checklist points must be met before marking as Updated.',
+            ], 422);
+        }
+
+        if ($action === 'escalate' && MipPreChecklist::allItemsChecked($items)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'All points are met — use Update instead of Escalate.',
+            ], 422);
+        }
+
+        $record = MipPreChecklist::query()->updateOrCreate(
+            [
+                'source_table' => $validated['source_table'],
+                'source_id' => $validated['source_id'],
+            ],
+            [
+                'sku' => $validated['sku'] ?? null,
+                'items' => $items,
+                'status' => $action === 'update' ? 'updated' : 'escalated',
+                'escalation_note' => $action === 'escalate' ? ($validated['escalation_note'] ?? null) : null,
+                'updated_by' => $userName,
+                'escalated_by' => $action === 'escalate' ? $userName : null,
+                'escalated_at' => $action === 'escalate' ? now() : null,
+            ]
+        );
+
+        if ($action === 'escalate') {
+            $this->logPreMipEscalationRemark(
+                $validated['sku'] ?? $record->sku,
+                $validated['escalation_note'] ?? '',
+                $items,
+                $userName
+            );
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'items' => MipPreChecklist::mergeWithDefaults($record->items),
+                'status' => $record->status,
+                'escalation_note' => $record->escalation_note,
+                'met_count' => count(array_filter($items, fn ($i) => ! empty($i['checked']))),
+                'total_count' => count($items),
+            ],
+        ]);
+    }
+
+    public function bulkSavePreMipChecklist(Request $request)
+    {
+        $validated = $request->validate([
+            'rows' => 'required|array|min:1',
+            'rows.*.source_table' => 'required|string|max:32',
+            'rows.*.source_id' => 'required|integer|min:1',
+            'rows.*.sku' => 'nullable|string|max:255',
+            'items' => 'required|array|min:1',
+            'items.*.id' => 'required|string|max:120',
+            'items.*.label' => 'required|string|max:500',
+            'items.*.checked' => 'boolean',
+            'action' => 'required|in:update,escalate',
+            'escalation_note' => 'nullable|string|max:2000',
+        ]);
+
+        $items = $this->normalizePreMipChecklistItems($validated['items']);
+        $action = $validated['action'];
+        $userName = $request->user()->name ?? 'Unknown';
+
+        if ($action === 'update' && ! MipPreChecklist::allItemsChecked($items)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'All checklist points must be met before marking as Updated.',
+            ], 422);
+        }
+
+        if ($action === 'escalate' && MipPreChecklist::allItemsChecked($items)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'All points are met — use Update instead of Escalate.',
+            ], 422);
+        }
+
+        $results = [];
+        $failed = [];
+
+        foreach ($validated['rows'] as $rowRef) {
+            try {
+                $record = MipPreChecklist::query()->updateOrCreate(
+                    [
+                        'source_table' => $rowRef['source_table'],
+                        'source_id' => $rowRef['source_id'],
+                    ],
+                    [
+                        'sku' => $rowRef['sku'] ?? null,
+                        'items' => $items,
+                        'status' => $action === 'update' ? 'updated' : 'escalated',
+                        'escalation_note' => $action === 'escalate' ? ($validated['escalation_note'] ?? null) : null,
+                        'updated_by' => $userName,
+                        'escalated_by' => $action === 'escalate' ? $userName : null,
+                        'escalated_at' => $action === 'escalate' ? now() : null,
+                    ]
+                );
+
+                if ($action === 'escalate') {
+                    $this->logPreMipEscalationRemark(
+                        $rowRef['sku'] ?? $record->sku,
+                        $validated['escalation_note'] ?? '',
+                        $items,
+                        $userName
+                    );
+                }
+
+                $results[] = [
+                    'source_table' => $rowRef['source_table'],
+                    'source_id' => $rowRef['source_id'],
+                    'sku' => $rowRef['sku'] ?? $record->sku,
+                    'status' => $record->status,
+                    'met_count' => count(array_filter($items, fn ($i) => ! empty($i['checked']))),
+                    'total_count' => count($items),
+                ];
+            } catch (\Throwable $e) {
+                $failed[] = ($rowRef['sku'] ?? 'row '.$rowRef['source_id']).': '.$e->getMessage();
+            }
+        }
+
+        return response()->json([
+            'success' => $failed === [],
+            'message' => $failed === []
+                ? 'Checklist applied to '.count($results).' row(s).'
+                : 'Some rows failed.',
+            'data' => $results,
+            'failed' => $failed,
+        ]);
+    }
+
+    private function normalizePreMipChecklistItems(array $items): array
+    {
+        $normalized = [];
+        foreach ($items as $item) {
+            $normalized[] = [
+                'id' => (string) ($item['id'] ?? ''),
+                'label' => trim((string) ($item['label'] ?? '')),
+                'checked' => (bool) ($item['checked'] ?? false),
+            ];
+        }
+
+        return array_values(array_filter($normalized, fn ($i) => $i['id'] !== '' && $i['label'] !== ''));
+    }
+
+    private function logPreMipEscalationRemark(?string $sku, string $note, array $items, string $userName): void
+    {
+        $unchecked = array_values(array_filter($items, fn ($i) => empty($i['checked'])));
+        $uncheckedLabels = implode(', ', array_map(fn ($i) => $i['label'], $unchecked));
+        $remark = 'Pre-MIP CL escalated';
+        if ($sku) {
+            $remark .= ' (SKU: '.$sku.')';
+        }
+        if ($uncheckedLabels !== '') {
+            $remark .= ' — pending: '.$uncheckedLabels;
+        }
+        if (trim($note) !== '') {
+            $remark .= ' — '.$note;
+        }
+
+        $supplierName = null;
+        if ($sku) {
+            $mfrg = MfrgProgress::query()->where('sku', $sku)->orderByDesc('id')->first();
+            $supplierName = trim((string) ($mfrg->supplier ?? ''));
+            if ($supplierName === '') {
+                $rts = ReadyToShip::query()->where('sku', $sku)->orderByDesc('id')->first();
+                $supplierName = trim((string) ($rts->supplier ?? ''));
+            }
+        }
+
+        if ($supplierName !== '') {
+            SupplierRemark::create([
+                'supplier_name' => $supplierName,
+                'remark' => $remark,
+                'created_by' => $userName,
+            ]);
+        }
+    }
+
+    private static function attachPreMipChecklists(Collection $rows): void
+    {
+        if ($rows->isEmpty()) {
+            return;
+        }
+
+        $grouped = [];
+        foreach ($rows as $row) {
+            $id = $row->id ?? null;
+            $st = (string) ($row->source_table ?? 'mfrg_progress');
+            if (! $id) {
+                continue;
+            }
+            $grouped[$st][] = (int) $id;
+        }
+
+        $map = [];
+        foreach ($grouped as $st => $ids) {
+            $ids = array_values(array_unique(array_filter($ids)));
+            if ($ids === []) {
+                continue;
+            }
+            $records = MipPreChecklist::query()
+                ->where('source_table', $st)
+                ->whereIn('source_id', $ids)
+                ->get();
+            foreach ($records as $rec) {
+                $map[$st.'|'.$rec->source_id] = $rec;
+            }
+        }
+
+        foreach ($rows as $row) {
+            $id = $row->id ?? null;
+            $st = (string) ($row->source_table ?? 'mfrg_progress');
+            $rec = $map[$st.'|'.$id] ?? null;
+            $items = MipPreChecklist::mergeWithDefaults($rec?->items);
+            $met = count(array_filter($items, fn ($i) => ! empty($i['checked'])));
+            $row->pre_mip_checklist_items = $items;
+            $row->pre_mip_checklist_status = $rec?->status;
+            $row->pre_mip_checklist_escalation_note = $rec?->escalation_note;
+            $row->pre_mip_checklist_met_count = $met;
+            $row->pre_mip_checklist_total_count = count($items);
+        }
     }
 }

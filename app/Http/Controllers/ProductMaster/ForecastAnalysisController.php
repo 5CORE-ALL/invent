@@ -6,10 +6,13 @@ use App\Http\Controllers\ApiController;
 use App\Http\Controllers\Controller;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
+use App\Models\ForecastAnalysisHistory;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
+use Carbon\Carbon;
 use App\Models\AmazonDataView;
 use App\Models\AmazonSkuCompetitor;
 use App\Models\JungleScoutProductData;
@@ -238,7 +241,7 @@ class ForecastAnalysisController extends Controller
         // If multiple records exist for same SKU, prefer the one with non-empty stage value, then non-empty nr value
         $forecastMap = DB::table('forecast_analysis')
             ->get([
-                'sku', 'parent', 's_msl', 'approved_qty', 'nr', 'req', 'hide', 'notes',
+                'sku', 'parent', 'approved_qty', 'nr', 'req', 'hide', 'notes',
                 'clink', 'olink', 'rfq_form_link', 'rfq_report', 'date_apprvl', 'stage',
             ])
             ->groupBy(function($item) use ($normalizeSku) {
@@ -687,7 +690,6 @@ class ForecastAnalysisController extends Controller
             // Match forecast record by SKU only
             if ($forecastMap->has($sheetSku)) {
                 $forecast = $forecastMap->get($sheetSku);
-                $item->{'s-msl'} = $forecast->s_msl ?? 0;
                 $item->{'Approved QTY'} = $forecast->approved_qty ?? 0;
                 // MOQ on forecast = same as two-orders (approved_qty) so changes on to-order page show here
                 $approved = $forecast->approved_qty ?? null;
@@ -726,7 +728,6 @@ class ForecastAnalysisController extends Controller
                     ->first();
                 
                 if ($forecastRecord) {
-                    $item->{'s-msl'} = $forecastRecord->s_msl ?? 0;
                     $item->{'Approved QTY'} = $forecastRecord->approved_qty ?? 0;
                     // MOQ = same as two-orders (approved_qty)
                     $approved = $forecastRecord->approved_qty ?? null;
@@ -901,11 +902,10 @@ class ForecastAnalysisController extends Controller
                 $combinedMsl = $combinedActiveMonths > 0 ? ($combinedTotal / $combinedActiveMonths) * 4 : $msl;
 
                 // Use combined MSL as the primary MSL shown in the table
-                $effectiveMsl = (isset($item->{'s-msl'}) && $item->{'s-msl'} > 0) ? $item->{'s-msl'} : $combinedMsl;
+                $effectiveMsl = $combinedMsl;
 
                 $lp = is_numeric($item->{'LP'}) ? (float)$item->{'LP'} : 0;
                 $item->{'MSL_C'} = round($combinedMsl * $lp / 4, 2);
-                $item->{'MSL_Four'} = round($combinedMsl / 4, 2);
                 $item->{'MSL_SP'} = floor($shopifyb2c_price * $effectiveMsl / 4);
 
                 $amzPrc = $resolveAmazonPrice($sheetSku);
@@ -1045,42 +1045,137 @@ class ForecastAnalysisController extends Controller
         return $this->buildForecastAnalysisData(false);
     }
 
+    /**
+     * Toolbar badge totals for /forecast.analysis — mirrors the initial ajaxResponse
+     * aggregation in forecastAnalysis.blade.php (all child rows, no UI filters).
+     *
+     * @return array<string, int|float>
+     */
+    public function getForecastAnalysisBadgeTotals(): array
+    {
+        return $this->aggregateForecastToolbarBadges(
+            $this->forecastAnalysisRowsForToolbar(false)
+        );
+    }
+
+    /**
+     * @return list<object>
+     */
+    private function forecastAnalysisRowsForToolbar(bool $persistDerivedForecastStages = false): array
+    {
+        $processedData = $this->buildForecastAnalysisData($persistDerivedForecastStages);
+
+        $archivedKeySet = $this->buildArchivedSkuParentKeySet();
+        if (! empty($archivedKeySet)) {
+            $processedData = collect($processedData)->reject(function ($item) use ($archivedKeySet) {
+                $sku = strtolower(trim((string) ($item->SKU ?? $item->sku ?? '')));
+                $parent = strtolower(trim((string) ($item->Parent ?? $item->parent ?? '')));
+
+                return isset($archivedKeySet[$sku.'|'.$parent])
+                    || isset($archivedKeySet[$sku.'|']);
+            })->values()->all();
+        }
+
+        return $processedData;
+    }
+
+    /**
+     * @param  list<object>  $processedData
+     * @return array<string, int|float>
+     */
+    private function aggregateForecastToolbarBadges(array $processedData): array
+    {
+        $children = collect($processedData)->filter(fn ($item) => ! ($item->is_parent ?? false));
+
+        $totalMslC = $children->sum(fn ($item) => (float) ($item->{'MSL_C'} ?? 0));
+        $totalMslSpAmz = $children->sum(fn ($item) => (float) ($item->{'MSL_SP_AMZ'} ?? 0));
+        $totalTransitValue = $children->sum(
+            fn ($item) => (float) ($item->transit ?? 0) * (float) ($item->{'CP'} ?? 0)
+        );
+
+        $totalInv = 0.0;
+        $totalLp = 0.0;
+        $totalMissing = 0.0;
+        $totalMip = 0.0;
+        $totalR2s = 0.0;
+        $totalOrd = 0.0;
+        $totalCbm = 0.0;
+        $zeroStockCount = 0;
+        $childCount = 0;
+
+        foreach ($children as $item) {
+            $childCount++;
+            $inv = (float) ($item->INV ?? 0);
+
+            $totalInv += (float) ($item->inv_value ?? 0);
+            $totalLp += (float) ($item->lp_value ?? 0);
+            $totalCbm += (float) ($item->total_cbm ?? 0);
+
+            if ($inv <= 0) {
+                $zeroStockCount++;
+            }
+            if ($inv === 0.0) {
+                $totalMissing += (float) ($item->{'MSL_SP'} ?? 0);
+            }
+
+            $orderQty = (float) ($item->two_order_qty ?? 0);
+            $cp = (float) ($item->CP ?? 0);
+            if ($orderQty > 0) {
+                $totalOrd += $orderQty * $cp;
+            }
+
+            $stageNorm = strtolower(trim((string) ($item->stage ?? '')));
+            $readyToShip = trim((string) ($item->mfrg_ready_to_ship ?? 'No'));
+            $nrNorm = strtoupper(trim((string) ($item->nr ?? '')));
+
+            if ($stageNorm === 'mip' && $readyToShip !== 'Yes' && $nrNorm !== 'NR') {
+                $qty = (float) ($item->order_given ?? 0);
+                $rate = (float) ($item->mip_rate ?? 0);
+                if ($qty > 0 && $rate > 0) {
+                    $totalMip += $qty * $rate;
+                }
+            }
+
+            if ($stageNorm === 'r2s' && $nrNorm !== 'NR') {
+                $qty = (float) ($item->readyToShipQty ?? 0);
+                $rate = (float) ($item->r2s_rate ?? 0);
+                if ($qty > 0 && $rate > 0) {
+                    $totalR2s += $qty * $rate;
+                }
+            }
+        }
+
+        return [
+            'total_msl_c' => round($totalMslC, 2),
+            'total_msl_sp_amz' => round($totalMslSpAmz, 2),
+            'total_inv_value' => round($totalInv, 2),
+            'total_lp_value' => round($totalLp, 2),
+            'total_order_value' => round($totalOrd, 2),
+            'total_minimal_msl' => round($totalMissing, 2),
+            'total_mip_value' => round($totalMip, 2),
+            'total_r2s_value' => round($totalR2s, 2),
+            'total_transit_value' => round($totalTransitValue, 2),
+            'total_cbm' => (int) round($totalCbm),
+            'zero_stock_pct' => $childCount > 0 ? (int) round(($zeroStockCount / $childCount) * 100) : 0,
+        ];
+    }
+
     public function getViewForecastAnalysisData()
     {
         try {
+            $processedData = $this->forecastAnalysisRowsForToolbar(true);
+            $badgeTotals = $this->aggregateForecastToolbarBadges($processedData);
 
-            $processedData = $this->buildForecastAnalysisData();
-
-            // Hide soft-archived rows from the main forecast view. Archive state lives
-            // on forecast_analysis.archived_at (see migration
-            // 2026_06_24_030000_add_archived_columns_to_forecast_analysis) and is
-            // managed by the president-only archive/restore endpoints below.
-            $archivedKeySet = $this->buildArchivedSkuParentKeySet();
-            if (!empty($archivedKeySet)) {
-                $processedData = collect($processedData)->reject(function ($item) use ($archivedKeySet) {
-                    $sku = strtolower(trim((string) ($item->SKU ?? $item->sku ?? '')));
-                    $parent = strtolower(trim((string) ($item->Parent ?? $item->parent ?? '')));
-                    return isset($archivedKeySet[$sku . '|' . $parent])
-                        || isset($archivedKeySet[$sku . '|']);
-                })->values()->all();
-            }
-
-            $children = collect($processedData)->filter(fn($item) => !$item->is_parent);
-
-            $totalMslC = $children->sum(fn($item) => floatval($item->{'MSL_C'} ?? 0));
-            $totalMslSp = $children->sum(fn($item) => floatval($item->{'MSL_SP'} ?? 0));
-            $totalMslSpAmz = $children->sum(fn($item) => floatval($item->{'MSL_SP_AMZ'} ?? 0));
-            $totalTransitValue = $children->sum(function ($item) {
-                return (float) ($item->transit ?? 0) * (float) ($item->{'CP'} ?? 0);
-            });
+            $children = collect($processedData)->filter(fn ($item) => ! ($item->is_parent ?? false));
+            $totalMslSp = $children->sum(fn ($item) => (float) ($item->{'MSL_SP'} ?? 0));
 
             $payload = [
                 'message'             => 'Data fetched successfully',
                 'data'                => $processedData,
-                'total_msl_c'         => round($totalMslC, 2),
+                'total_msl_c'         => $badgeTotals['total_msl_c'],
                 'total_msl_sp'        => round($totalMslSp, 0),
-                'total_msl_sp_amz'    => round($totalMslSpAmz, 2),
-                'total_transit_value' => round($totalTransitValue, 2),
+                'total_msl_sp_amz'    => $badgeTotals['total_msl_sp_amz'],
+                'total_transit_value' => $badgeTotals['total_transit_value'],
                 'status'              => 200,
             ];
 
@@ -1164,6 +1259,16 @@ class ForecastAnalysisController extends Controller
             $parentNorm = strtoupper(trim($parent));
             $valueNum = is_numeric($value) ? (int) $value : null;
 
+            $oldMoq = null;
+            $moqQuery = DB::table('forecast_analysis')->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper]);
+            if ($parentNorm !== '') {
+                $moqQuery->whereRaw('TRIM(UPPER(COALESCE(parent, \'\'))) = ?', [$parentNorm]);
+            }
+            $moqRow = $moqQuery->orderByDesc('updated_at')->first();
+            if ($moqRow) {
+                $oldMoq = $moqRow->approved_qty;
+            }
+
             $faUpdated = 0;
             if ($parentNorm !== '') {
                 $faUpdated = (int) DB::table('forecast_analysis')
@@ -1208,6 +1313,8 @@ class ForecastAnalysisController extends Controller
                 $product->save();
             }
 
+            $this->logForecastAnalysisChange($sku, $parent, 'moq', $oldMoq, $valueNum);
+
             return response()->json(['success' => true, 'message' => 'MOQ updated successfully']);
         }
 
@@ -1217,9 +1324,11 @@ class ForecastAnalysisController extends Controller
             $product = ProductMaster::whereRaw('TRIM(LOWER(sku)) = ?', [strtolower($sku)])->first();
             if ($product) {
                 $values = is_array($product->Values) ? $product->Values : (json_decode($product->Values ?? '{}', true) ?? []);
+                $oldCp = $values['cp'] ?? null;
                 $values['cp'] = $valueNum !== null ? $valueNum : '';
                 $product->Values = $values;
                 $product->save();
+                $this->logForecastAnalysisChange($sku, $parent, 'cp', $oldCp, $valueNum);
                 return response()->json(['success' => true, 'message' => 'CP updated successfully']);
             }
             return response()->json(['success' => false, 'message' => 'Product not found']);
@@ -1231,9 +1340,11 @@ class ForecastAnalysisController extends Controller
             $product = ProductMaster::whereRaw('TRIM(LOWER(sku)) = ?', [strtolower($sku)])->first();
             if ($product) {
                 $values = is_array($product->Values) ? $product->Values : (json_decode($product->Values ?? '{}', true) ?? []);
+                $oldCbm = $values['cbm'] ?? null;
                 $values['cbm'] = $valueNum !== null ? $valueNum : '';
                 $product->Values = $values;
                 $product->save();
+                $this->logForecastAnalysisChange($sku, $parent, 'cbm', $oldCbm, $valueNum);
                 return response()->json(['success' => true, 'message' => 'CBM updated successfully']);
             }
             return response()->json(['success' => false, 'message' => 'Product not found']);
@@ -1252,6 +1363,16 @@ class ForecastAnalysisController extends Controller
 
             $skuUpper = strtoupper(trim($sku));
             $parentNorm = strtoupper(trim($parent));
+
+            $oldOrder = null;
+            $orderQuery = DB::table('to_order_analysis')->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper]);
+            if ($parentNorm !== '') {
+                $orderQuery->whereRaw('TRIM(UPPER(COALESCE(parent, \'\'))) = ?', [$parentNorm]);
+            }
+            $orderRow = $orderQuery->orderByDesc('updated_at')->first();
+            if ($orderRow) {
+                $oldOrder = $orderRow->approved_qty;
+            }
 
             $updated = 0;
             if ($parentNorm !== '') {
@@ -1293,6 +1414,8 @@ class ForecastAnalysisController extends Controller
                 ]);
             }
 
+            $this->logForecastAnalysisChange($sku, $parent, 'order', $oldOrder, $valueNum);
+
             return response()->json(['success' => true, 'message' => 'Order updated successfully']);
         }
 
@@ -1309,6 +1432,18 @@ class ForecastAnalysisController extends Controller
 
             $skuUpper = strtoupper(trim($sku));
             $parentNorm = strtoupper(trim($parent));
+
+            $oldMip = null;
+            $mipQuery = DB::table('mfrg_progress')
+                ->whereNull('deleted_at')
+                ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper]);
+            if ($parentNorm !== '') {
+                $mipQuery->whereRaw('TRIM(UPPER(COALESCE(parent, \'\'))) = ?', [$parentNorm]);
+            }
+            $mipRow = $mipQuery->orderByDesc('updated_at')->first();
+            if ($mipRow) {
+                $oldMip = $mipRow->qty;
+            }
 
             $updated = 0;
             if ($parentNorm !== '') {
@@ -1345,6 +1480,8 @@ class ForecastAnalysisController extends Controller
                 ]);
             }
 
+            $this->logForecastAnalysisChange($sku, $parent, 'mip', $oldMip, $valueNum);
+
             return response()->json(['success' => true, 'message' => 'MIP updated successfully']);
         }
 
@@ -1361,6 +1498,18 @@ class ForecastAnalysisController extends Controller
 
             $skuUpper = strtoupper(trim($sku));
             $parentNorm = strtoupper(trim($parent));
+
+            $oldR2s = null;
+            $r2sQuery = DB::table('ready_to_ship')
+                ->whereNull('deleted_at')
+                ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper]);
+            if ($parentNorm !== '') {
+                $r2sQuery->whereRaw('TRIM(UPPER(COALESCE(parent, \'\'))) = ?', [$parentNorm]);
+            }
+            $r2sRow = $r2sQuery->orderByDesc('updated_at')->first();
+            if ($r2sRow) {
+                $oldR2s = $r2sRow->qty;
+            }
 
             $updated = (int) DB::table('ready_to_ship')
                 ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper])
@@ -1393,6 +1542,8 @@ class ForecastAnalysisController extends Controller
                 ]);
             }
 
+            $this->logForecastAnalysisChange($sku, $parent, 'r2s', $oldR2s, $valueNum);
+
             return response()->json(['success' => true, 'message' => 'R2S updated successfully']);
         }
 
@@ -1411,6 +1562,7 @@ class ForecastAnalysisController extends Controller
                 ->where('tab_name', 'Forecast')
                 ->whereNull('deleted_at')
                 ->first();
+            $oldTransit = $existingTransit ? $existingTransit->no_of_units : null;
 
             if ($existingTransit) {
                 DB::table('transit_container_details')
@@ -1447,6 +1599,7 @@ class ForecastAnalysisController extends Controller
                 ->whereRaw('TRIM(LOWER(sku)) = ?', [strtolower($sku)])
                 ->orderByRaw("CASE WHEN stage IS NOT NULL AND stage != '' THEN 0 ELSE 1 END")
                 ->first();
+            $oldStage = $existingFa ? $existingFa->stage : null;
 
             if ($existingFa) {
                 DB::table('forecast_analysis')
@@ -1461,6 +1614,9 @@ class ForecastAnalysisController extends Controller
                     'updated_at' => now(),
                 ]);
             }
+
+            $this->logForecastAnalysisChange($sku, $parent, 'transit', $oldTransit, $valueNum);
+            $this->logForecastAnalysisChange($sku, $parent, 'stage', $oldStage, 'transit');
 
             return response()->json(['success' => true, 'message' => 'Moved to Transit successfully']);
         }
@@ -1485,9 +1641,6 @@ class ForecastAnalysisController extends Controller
 
         if (!$columnKey) {
             return response()->json(['success' => false, 'message' => 'Invalid column']);
-        }
-        if ($columnKey === 's_msl') {
-            $value = mb_substr((string) $value, 0, 4);
         }
 
         // Match by SKU only - prefer record with stage value if multiple exist
@@ -1524,6 +1677,7 @@ class ForecastAnalysisController extends Controller
                 DB::table('forecast_analysis')
                     ->where('id', $existing->id)
                     ->update([$columnKey => $value, 'updated_at' => now()]);
+                $this->logForecastAnalysisChange($sku, $parent, $columnKey, $currentValue, $value);
             }
 
             if (strtolower($column) === 'stage'){
@@ -1670,6 +1824,7 @@ class ForecastAnalysisController extends Controller
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
+            $this->logForecastAnalysisChange($sku, $parent, $columnKey, null, $value);
 
             if (strtolower($column) === 'stage'){
                 // Get MOQ from ProductMaster table (not from approved_qty)
@@ -2052,7 +2207,7 @@ class ForecastAnalysisController extends Controller
 
     /**
      * Archive a batch of (sku, parent) rows. Body shape:
-     *   { items: [ { sku, parent, stage?, nr?, req?, notes?, s_msl?, approved_qty?,
+     *   { items: [ { sku, parent, stage?, nr?, req?, notes?, approved_qty?,
      *               order_given?, transit?, clink?, olink?, rfq_form_link?,
      *               rfq_report?, date_apprvl? }, ... ] }
      *
@@ -2085,7 +2240,7 @@ class ForecastAnalysisController extends Controller
 
         // Whitelisted snapshot fields (string + numeric variants of each get coerced).
         $stringFields  = ['stage', 'nr', 'req', 'notes', 'clink', 'olink', 'rfq_form_link', 'rfq_report', 'date_apprvl'];
-        $numericFields = ['s_msl', 'approved_qty', 'order_given', 'transit'];
+        $numericFields = ['approved_qty', 'order_given', 'transit'];
 
         foreach ($items as $item) {
             $sku = trim((string) ($item['sku'] ?? ''));
@@ -2215,7 +2370,7 @@ class ForecastAnalysisController extends Controller
             ->orderByDesc('archived_at')
             ->get([
                 'id', 'sku', 'parent', 'archived_at', 'archived_by',
-                's_msl', 'approved_qty', 'nr', 'req', 'stage', 'notes', 'updated_at',
+                'approved_qty', 'nr', 'req', 'stage', 'notes', 'updated_at',
                 'clink', 'olink', 'rfq_form_link', 'rfq_report', 'date_apprvl',
                 'order_given', 'transit',
             ]);
@@ -2287,7 +2442,6 @@ class ForecastAnalysisController extends Controller
                 'cbm'          => $values['cbm'] ?? '',
                 'moq'          => $r->approved_qty,    // mirror what the main view shows for MOQ
                 'approved_qty' => $r->approved_qty,
-                's_msl'        => $r->s_msl,
                 'nr'           => $r->nr,
                 'req'          => $r->req,
                 'stage'        => $r->stage,
@@ -2310,6 +2464,132 @@ class ForecastAnalysisController extends Controller
             'success' => true,
             'data'    => $data,
             'count'   => $data->count(),
+        ]);
+    }
+
+    /** Human-readable labels for forecast history field keys. */
+    private static function forecastHistoryFieldLabels(): array
+    {
+        return [
+            'moq' => 'MOQ (Approved Qty)',
+            'cp' => 'CP',
+            'cbm' => 'CBM',
+            'order' => '2 Order',
+            'mip' => 'MIP',
+            'r2s' => 'R2S',
+            'transit' => 'Transit',
+            'stage' => 'Stage',
+            'nr' => 'NR',
+            'req' => 'REQ',
+            'hide' => 'Hide',
+            'notes' => 'Notes',
+            'clink' => 'Clink',
+            'olink' => 'Olink',
+            'rfq_form_link' => 'RFQ Form Link',
+            'rfq_report' => 'RFQ Report',
+            'order_given' => 'Order Given',
+            'date_apprvl' => 'Date of Appr',
+            'approved_qty' => 'Approved Qty',
+        ];
+    }
+
+    private function forecastHistoryValuesEqual($a, $b): bool
+    {
+        $isEmpty = function ($v): bool {
+            return $v === null || $v === '' || (is_array($v) && empty($v));
+        };
+        if ($isEmpty($a) && $isEmpty($b)) {
+            return true;
+        }
+        if (is_numeric($a) && is_numeric($b)) {
+            return abs((float) $a - (float) $b) < 0.000001;
+        }
+
+        return (string) $a === (string) $b;
+    }
+
+    private function forecastHistoryStringify($v): ?string
+    {
+        if ($v === null || $v === '') {
+            return null;
+        }
+        if (is_bool($v)) {
+            return $v ? '1' : '0';
+        }
+        if (is_array($v) || is_object($v)) {
+            return json_encode($v);
+        }
+
+        return (string) $v;
+    }
+
+    private function logForecastAnalysisChange(string $sku, ?string $parent, string $field, $oldValue, $newValue): void
+    {
+        if ($this->forecastHistoryValuesEqual($oldValue, $newValue)) {
+            return;
+        }
+
+        try {
+            ForecastAnalysisHistory::insert([
+                'sku' => $sku,
+                'parent' => $parent !== '' ? $parent : null,
+                'field' => $field,
+                'old_value' => $this->forecastHistoryStringify($oldValue),
+                'new_value' => $this->forecastHistoryStringify($newValue),
+                'updated_by' => Auth::user()?->name ?? 'N/A',
+                'updated_at' => Carbon::now(),
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to record forecast analysis history: '.$e->getMessage());
+        }
+    }
+
+    /**
+     * GET /forecast-analysis/history?sku=&parent=
+     * Returns the change-log for one forecast row, newest first.
+     */
+    public function getForecastAnalysisHistory(Request $request)
+    {
+        $sku = trim((string) $request->query('sku', ''));
+        $parent = trim((string) $request->query('parent', ''));
+
+        if ($sku === '') {
+            return response()->json(['success' => false, 'message' => 'SKU is required.'], 400);
+        }
+
+        $labels = self::forecastHistoryFieldLabels();
+        $query = ForecastAnalysisHistory::whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper($sku)]);
+
+        if ($parent !== '') {
+            $query->whereRaw('TRIM(UPPER(COALESCE(parent, \'\'))) = ?', [strtoupper($parent)]);
+        }
+
+        $history = $query
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id')
+            ->limit(500)
+            ->get()
+            ->map(function ($h) use ($labels) {
+                return [
+                    'id' => $h->id,
+                    'field' => $h->field,
+                    'field_label' => $labels[$h->field] ?? $h->field,
+                    'old_value' => $h->old_value,
+                    'new_value' => $h->new_value,
+                    'updated_by' => $h->updated_by ?: 'N/A',
+                    'updated_at' => $h->updated_at
+                        ? Carbon::parse($h->updated_at)->timezone('America/New_York')->format('m-d-Y H:i')
+                        : null,
+                ];
+            })
+            ->values()
+            ->all();
+
+        return response()->json([
+            'success' => true,
+            'sku' => $sku,
+            'parent' => $parent !== '' ? $parent : null,
+            'history' => $history,
         ]);
     }
 

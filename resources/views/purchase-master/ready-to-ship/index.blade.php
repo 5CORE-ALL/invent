@@ -128,60 +128,85 @@
     .r2s-copy-cell:hover {
         color: #0d6efd !important;
     }
-    /* Zone CBM summary badges (server totals; same logic as grid: Or. QTY × CBM, NR excluded) */
-    .r2s-zone-cbm-badges {
-        gap: 0.5rem 0.75rem;
+    /* Summary badges — full-width row above filters, equal autosize left to right */
+    .r2s-summary {
+        display: flex;
+        flex-wrap: nowrap;
+        align-items: stretch;
+        gap: 6px;
+        width: 100%;
+        margin-bottom: 12px;
     }
-    .r2s-zone-cbm-badges .r2s-zone-cbm-badge {
+    .r2s-summary-badge {
+        flex: 1 1 0;
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: clamp(4px, 0.8vw, 10px);
+        padding: clamp(10px, 1.2vw, 14px) clamp(8px, 1vw, 16px);
+        border-radius: 10px;
+        font-size: clamp(0.78rem, 1.1vw, 1.05rem);
         font-weight: 600;
         color: #fff;
+        line-height: 1.2;
+        white-space: nowrap;
+        text-align: center;
+        box-shadow: 0 2px 4px rgba(15, 23, 42, 0.15);
         border: none;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+    }
+    .r2s-summary-badge .label {
+        opacity: 0.95;
+        font-weight: 500;
+        flex-shrink: 0;
+    }
+    .r2s-summary-badge .value {
+        font-weight: 700;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
     .r2s-zone-cbm-badge--ghz {
-        background: linear-gradient(135deg, #4f46e5, #6366f1) !important;
+        background: linear-gradient(135deg, #4f46e5, #6366f1);
     }
     .r2s-zone-cbm-badge--ningbo {
-        background: linear-gradient(135deg, #0e7490, #06b6d4) !important;
+        background: linear-gradient(135deg, #0e7490, #06b6d4);
     }
     .r2s-zone-cbm-badge--tianjin {
-        background: linear-gradient(135deg, #047857, #10b981) !important;
+        background: linear-gradient(135deg, #047857, #10b981);
     }
-    /* Summary row: pill style (reference layout), same metrics as before */
-    .r2s-stat-pills {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.65rem;
-        align-items: stretch;
-        justify-content: flex-start;
-    }
-    .r2s-stat-pill {
-        border-radius: 16px;
-        padding: 0.7rem 1.25rem;
-        font-weight: 700;
-        font-size: 1rem;
-        letter-spacing: 0.02em;
-        min-width: 132px;
-        text-align: center;
-        flex: 1 1 auto;
-        max-width: 280px;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-    }
-    .r2s-stat-pill--amount {
+    .r2s-badge--amount {
         background: #e4b953;
         color: #000;
     }
-    .r2s-stat-pill--cbm {
-        background: #5fd4cc;
-        color: #fff;
+    .r2s-badge--amount .label,
+    .r2s-badge--amount .value {
+        color: #000;
     }
-    .r2s-stat-pill--items {
+    .r2s-badge--cbm {
+        background: #5fd4cc;
+    }
+    .r2s-badge--items {
         background: #2a8a82;
         color: #000;
     }
-    .r2s-stat-pill--supp {
+    .r2s-badge--items .label,
+    .r2s-badge--items .value {
+        color: #000;
+    }
+    .r2s-badge--supp {
         background: #c94c5a;
-        color: #fff;
+    }
+    @media (max-width: 1100px) {
+        .r2s-summary {
+            overflow-x: auto;
+            scrollbar-width: thin;
+        }
+        .r2s-summary-badge {
+            flex: 0 0 auto;
+            min-width: max-content;
+            font-size: 0.78rem;
+            padding: 10px 12px;
+        }
     }
     /* One-page layout: no inner 800px scroll cage; use window scroll + denser grid */
     #r2sTableScrollWrap {
@@ -217,13 +242,8 @@
         margin-bottom: 0.65rem !important;
         padding: 0.65rem 0.85rem !important;
     }
-    .r2s-page-tight .r2s-zone-cbm-badges {
+    .r2s-page-tight .r2s-summary {
         margin-bottom: 0.5rem !important;
-    }
-    .r2s-page-tight .r2s-stat-pill {
-        padding: 0.5rem 0.95rem;
-        font-size: 0.9rem;
-        min-width: 118px;
     }
     .r2s-page-tight .mb-4 {
         margin-bottom: 0.65rem !important;
@@ -323,24 +343,79 @@
         margin: 0 auto;
         display: block;
     }
+    .column-dropdown-btn.column-dropdown-btn--icon-only {
+        width: 38px;
+        height: 38px;
+        padding: 0;
+        justify-content: center;
+    }
+    .column-dropdown-btn.column-dropdown-btn--icon-only i {
+        font-size: 1.15rem;
+        line-height: 1;
+    }
+    /* Supplier summary modal — grouped blocks + history */
+    .r2s-sup-history-block { background: #fff; }
+    .r2s-sup-history-block .r2s-sup-history-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        background: #f1f5f9;
+        border-bottom: 1px solid #e2e8f0;
+        font-weight: 600;
+        font-size: 0.9rem;
+    }
+    .r2s-sup-history-block .r2s-sup-history-totals {
+        font-size: 0.75rem;
+        color: #64748b;
+        font-weight: 500;
+    }
+    .r2s-sup-history-block .list-group-item { border-left: none; border-right: none; }
+    .r2s-sup-history-block .list-group-item:first-child { border-top: none; }
+    #readyToShipTable.wide-table th[data-column="28"],
+    #readyToShipTable.wide-table td[data-column="28"] {
+        min-width: 52px;
+        width: 52px;
+        max-width: 56px;
+        text-align: center;
+        vertical-align: middle;
+        padding-left: 4px !important;
+        padding-right: 4px !important;
+    }
 </style>
 @endsection
 @section('content')
 @include('layouts.shared.page-title', ['page_title' => 'Ready To Ship', 'sub_title' => 'Ready To Ship'])
 <div class="row">
     <div class="col-12 r2s-page-tight">
-        <div class="d-flex flex-wrap align-items-center r2s-zone-cbm-badges mb-3 px-1" id="r2sZoneCbmBadges" role="region" aria-label="Total CBM by zone">
-            <span class="text-muted small fw-semibold text-uppercase" style="letter-spacing: 0.04em;">CBM by zone</span>
+        <div class="r2s-summary" id="r2sZoneCbmBadges" role="region" aria-label="Ready to Ship summary">
             @foreach($r2sCbmByZone ?? [] as $zoneLabel => $cbmSum)
                 @php
                     $zoneClass = 'r2s-zone-cbm-badge--' . \Illuminate\Support\Str::slug($zoneLabel, '-');
                 @endphp
-                <span class="badge rounded-pill px-3 py-2 fs-6 r2s-zone-cbm-badge {{ $zoneClass }}" title="Sum of (Or. QTY × CBM) for visible rows in {{ $zoneLabel }} (updates based on active filters)">
-                    {{ $zoneLabel }}
-                    <span class="fw-bold ms-1">{{ number_format((float) $cbmSum, 2) }}</span>
-                    <span class="opacity-90 fw-normal ms-1">m³</span>
+                <span class="r2s-summary-badge r2s-zone-cbm-badge {{ $zoneClass }}" title="Sum of (Or. QTY × CBM) for visible rows in {{ $zoneLabel }} (updates based on active filters)">
+                    <span class="label">{{ $zoneLabel }}</span>
+                    <span class="value fw-bold">{{ number_format((float) $cbmSum, 2) }}</span>
+                    <span class="label">m³</span>
                 </span>
             @endforeach
+            <span class="r2s-summary-badge r2s-badge--amount" title="Total amount for visible rows">
+                <span class="label">Amount</span>
+                <span class="value" id="total-amount">$0</span>
+            </span>
+            <span class="r2s-summary-badge r2s-badge--cbm" title="Total CBM — sum of zone badges">
+                <span class="label">Total CBM</span>
+                <span class="value" id="total-cbm">0</span>
+            </span>
+            <span class="r2s-summary-badge r2s-badge--items" title="Visible item count">
+                <span class="label">Items</span>
+                <span class="value" id="total-order-items">0</span>
+            </span>
+            <span class="r2s-summary-badge r2s-badge--supp" title="Supplier count for visible rows">
+                <span class="label">Suppliers</span>
+                <span class="value" id="followSupplierCount">0</span>
+            </span>
         </div>
         <div class="card shadow-sm">
             <div class="card-body">
@@ -364,8 +439,8 @@
                                 <button id="play-forward" class="btn btn-light rounded-circle shadow-sm me-2" title="Next supplier">
                                     <i class="fas fa-step-forward"></i>
                                 </button>
-                                <button id="supplier-remarks-btn" class="btn btn-success shadow-sm" style="border-radius: 6px; margin-left: 8px;" title="Follow-up History">
-                                    <i class="fas fa-comment-alt"></i> Follow-up History
+                                <button id="supplier-remarks-btn" class="btn btn-success shadow-sm" style="border-radius: 6px; margin-left: 8px;" title="History">
+                                    <i class="fas fa-comment-alt"></i> History
                                 </button>
                                 <button type="button" id="r2s-supplier-summary-btn" class="btn btn-info shadow-sm text-white" style="border-radius: 6px; margin-left: 8px;" title="Supplier-wise summary of visible table rows">
                                     <i class="fas fa-table-list"></i> Supplier Summary
@@ -380,8 +455,8 @@
                         <div class="col-auto">
                             <label class="form-label fw-semibold mb-1 d-block" style="visibility: hidden;">Columns</label>
                             <div class="column-dropdown position-relative">
-                                <button class="btn text-white column-dropdown-btn d-flex align-items-center gap-1" id="columnDropdownBtn" style="border-radius: 6px;">
-                                    <i class="mdi mdi-format-columns"></i> Toggle Columns
+                                <button type="button" class="btn text-white column-dropdown-btn column-dropdown-btn--icon-only d-flex align-items-center justify-content-center" id="columnDropdownBtn" style="border-radius: 6px;" title="Toggle Columns" aria-label="Toggle Columns">
+                                    <i class="mdi mdi-format-columns" aria-hidden="true"></i>
                                 </button>
                                 <div class="column-dropdown-content" id="columnDropdownContent"
                                     style="position: absolute; left: 0; top: 110%; min-width: 220px; z-index: 20; background: #fff; box-shadow: 0 2px 12px rgba(60,192,195,0.10); border-radius: 8px; border: 1px solid #e3e3e3; padding: 12px; max-height: 350px; overflow-y: auto;">
@@ -615,15 +690,8 @@
                     </div>
                 </div>
 
-                <!-- Counts/Stats: same data as before (Amount, CBM, Items, Suppliers), pill layout -->
                 <div class="mb-4">
-                    <div class="r2s-stat-pills" id="r2sStatPillsBar" role="region" aria-label="Totals for visible Ready to Ship rows">
-                        <div class="r2s-stat-pill r2s-stat-pill--amount">Amount: <span id="total-amount">$0</span></div>
-                        <div class="r2s-stat-pill r2s-stat-pill--cbm">Total CBM: <span id="total-cbm">0</span></div>
-                        <div class="r2s-stat-pill r2s-stat-pill--items">Items: <span id="total-order-items">0</span></div>
-                        <div class="r2s-stat-pill r2s-stat-pill--supp">Suppliers: <span id="followSupplierCount">0</span></div>
-                    </div>
-                    <div class="d-flex align-items-center justify-content-center gap-3 mt-2 flex-wrap" id="r2s-supplier-play-banner" style="display: none;">
+                    <div class="d-flex align-items-center justify-content-center gap-3 flex-wrap" id="r2s-supplier-play-banner" style="display: none;">
                         <div class="vr flex-shrink-0" style="height: 40px; display: none;" id="supplier-badge-vr"></div>
                         <div class="text-center" style="min-width: 140px; max-width: 420px; display: none;" id="supplier-badge-container">
                             <div class="text-muted mb-1" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">
@@ -642,7 +710,7 @@
                         <div class="modal-content">
                             <div class="modal-header bg-success text-white">
                                 <h5 class="modal-title" id="supplierRemarksModalLabel">
-                                    <i class="fas fa-comment-alt"></i> Follow-up History
+                                    <i class="fas fa-comment-alt"></i> History
                                 </h5>
                                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                             </div>
@@ -654,13 +722,13 @@
                                     </div>
                                 </div>
                                 <div class="mb-3">
-                                    <label for="supplier-remark-input" class="form-label fw-bold">Add to Follow-up History:</label>
+                                    <label for="supplier-remark-input" class="form-label fw-bold">Add to History:</label>
                                     <textarea class="form-control" id="supplier-remark-input" rows="3" placeholder="Enter follow-up note here..."></textarea>
                                 </div>
                                 <div class="mb-3">
-                                    <label class="form-label fw-bold">Follow-up History:</label>
+                                    <label class="form-label fw-bold">History:</label>
                                     <div id="remarksList" class="border rounded p-3" style="max-height: 300px; overflow-y: auto; background: #f8f9fa;">
-                                        <p class="text-muted mb-0">No follow-up history yet.</p>
+                                        <p class="text-muted mb-0">No history yet.</p>
                                     </div>
                                 </div>
                             </div>
@@ -674,9 +742,9 @@
                     </div>
                 </div>
 
-                <!-- Supplier Summary (visible rows only, DOM — no API) -->
+                <!-- Supplier Summary (visible rows only, DOM — grouped by supplier) -->
                 <div class="modal fade" id="r2sSupplierSummaryModal" tabindex="-1" aria-labelledby="r2sSupplierSummaryModalLabel" aria-hidden="true">
-                    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+                    <div class="modal-dialog modal-xl modal-dialog-scrollable">
                         <div class="modal-content">
                             <div class="modal-header bg-info text-white">
                                 <h5 class="modal-title" id="r2sSupplierSummaryModalLabel">
@@ -685,21 +753,24 @@
                                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                             </div>
                             <div class="modal-body">
-                                <p class="text-muted small mb-2">Totals are from <strong>currently visible</strong> rows in the table (after stage, zone, SKU, and supplier filters).</p>
-                                <div class="table-responsive">
+                                <p class="text-muted small mb-3">Totals are from <strong>currently visible</strong> rows (after stage, zone, SKU, and supplier filters). History is shown per supplier below.</p>
+                                <div class="table-responsive mb-4">
                                     <table class="table table-sm table-striped table-bordered align-middle mb-0" id="r2s-supplier-summary-table">
                                         <thead class="table-light">
                                             <tr>
                                                 <th>Supplier</th>
-                                                <th class="text-end">Total QTY</th>
-                                                <th class="text-end">Total CBM</th>
-                                                <th class="text-end">Total TOTAL CBM</th>
+                                                <th class="text-end">Items</th>
+                                                <th class="text-end">QTY</th>
+                                                <th class="text-end">CBM</th>
+                                                <th class="text-end">Amount</th>
                                             </tr>
                                         </thead>
                                         <tbody id="r2s-supplier-summary-tbody"></tbody>
                                         <tfoot class="table-secondary fw-bold" id="r2s-supplier-summary-tfoot"></tfoot>
                                     </table>
                                 </div>
+                                <h6 class="fw-semibold mb-3"><i class="fas fa-comments me-1"></i> History by Supplier</h6>
+                                <div id="r2s-supplier-summary-history"></div>
                             </div>
                             <div class="modal-footer">
                                 <button type="button" class="btn btn-outline-secondary" id="r2s-supplier-summary-csv-btn" title="Download summary as CSV">
@@ -909,6 +980,31 @@
                     </div>
                 </div>
 
+                <div class="modal fade" id="r2sRowEditModal" tabindex="-1" aria-labelledby="r2sRowEditModalLabel" aria-hidden="true">
+                    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+                        <div class="modal-content">
+                            <div class="modal-header bg-primary text-white">
+                                <h5 class="modal-title" id="r2sRowEditModalLabel">
+                                    <i class="fas fa-pen me-2"></i> Edit Row
+                                    <span id="r2sRowEditSku" class="ms-2 fw-normal small"></span>
+                                </h5>
+                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                                <p class="text-muted small mb-3" id="r2sRowEditSubtitle"></p>
+                                <div id="r2sRowEditForm" class="row g-3"></div>
+                                <div id="r2sRowEditStatus" class="small mt-2"></div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                <button type="button" class="btn btn-primary" id="r2sRowEditSaveBtn">
+                                    <i class="fas fa-save me-1"></i> Save Changes
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="wide-table-wrapper table-container" id="r2sTableScrollWrap">
                     <table class="wide-table" id="readyToShipTable">
                         <thead>
@@ -971,6 +1067,7 @@
                                 <th data-column="17" data-column-name="quote_result" hidden>Quote<br/>Result<div class="resizer">
                                     </div>
                                 </th>
+                                <th data-column="28" class="text-center" title="Edit row (applies to selected rows when checkboxes are checked)">Edit<div class="resizer"></div></th>
                             </tr>
                         </thead>
                         <tbody>
@@ -1253,6 +1350,11 @@
                                  <td class="total-value d-none">
                                     @php $cpValue = $item->CP ?? null; @endphp
                                     {{ is_numeric($item->qty ?? null) && is_numeric($cpValue) ? round($item->qty * $cpValue) : '' }}
+                                </td>
+                                <td data-column="28" class="text-center align-middle">
+                                    <button type="button" class="btn btn-sm btn-outline-primary r2s-row-edit-btn" title="Edit all fields" aria-label="Edit row">
+                                        <i class="fas fa-pen" aria-hidden="true"></i>
+                                    </button>
                                 </td>
                             </tr>
                             @endforeach
@@ -2507,6 +2609,38 @@
                 if (column === 'supplier') {
                     row.setAttribute('data-r2s-supplier', value);
                 }
+                if (column === 'packing_list_link') {
+                    const cell = row.querySelector('td.r2s-packing-list-cell');
+                    const btn = cell ? cell.querySelector('.r2s-packing-link-edit') : null;
+                    const inner = cell ? cell.querySelector('.r2s-packing-list-inner') : null;
+                    if (btn) btn.setAttribute('data-current-url', value || '');
+                    if (inner) {
+                        let a = inner.querySelector('a.r2s-packing-list-link');
+                        const dot = inner.querySelector('.packing-toggle');
+                        if (value) {
+                            if (!a) {
+                                a = document.createElement('a');
+                                a.className = 'r2s-packing-list-link text-nowrap';
+                                a.target = '_blank';
+                                a.rel = 'noopener';
+                                a.textContent = 'ready-to-ship';
+                                a.style.color = '#0d9488';
+                                a.style.fontWeight = '600';
+                                inner.insertBefore(a, inner.firstChild);
+                            }
+                            a.href = value;
+                            a.classList.remove('d-none');
+                            if (dot) dot.classList.add('d-none');
+                        } else if (a) {
+                            a.remove();
+                            if (dot) dot.classList.remove('d-none');
+                        }
+                    }
+                }
+                if (column === 'rate') {
+                    const inp = row.querySelector('input[data-column="rate"]');
+                    if (inp) inp.value = value;
+                }
             }
 
             function syncDomAfterForecastStage(row, value) {
@@ -2640,6 +2774,325 @@
                     if (typeof filterByR2SStage === 'function') filterByR2SStage();
                 });
             }
+
+            // --- Row edit modal (all columns; bulk when checkboxes selected) ---
+            (function setupR2sRowEditModal() {
+                const modalEl = document.getElementById('r2sRowEditModal');
+                const formEl = document.getElementById('r2sRowEditForm');
+                const skuEl = document.getElementById('r2sRowEditSku');
+                const subEl = document.getElementById('r2sRowEditSubtitle');
+                const statusEl = document.getElementById('r2sRowEditStatus');
+                const saveBtn = document.getElementById('r2sRowEditSaveBtn');
+                const tableEl = document.getElementById('readyToShipTable');
+                const rowEditState = { anchorRow: null, targetRows: null, pendingTargets: null };
+                const YESNO = [['Yes', 'Yes'], ['No', 'No']];
+                const STAGE_OPTS = [
+                    ['', 'Not Req Now'], ['appr_req', 'Appr Req'], ['mip', 'MIP'], ['r2s', 'R2S'],
+                    ['transit', 'Trn'], ['to_order_analysis', 'Order'], ['all_good', 'All Good']
+                ];
+                const NR_OPTS = [['REQ', 'REQ'], ['NR', '2BDC'], ['LATER', 'LATER']];
+                const PAY_OPTS = [['EXW', 'EXW'], ['FOB', 'FOB']];
+
+                function r2sEscForm(s) {
+                    return String(s != null ? s : '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+                }
+
+                function rowSku(tr) {
+                    const cb = tr ? tr.querySelector('.r2s-row-checkbox') : null;
+                    if (cb) {
+                        const s = (cb.getAttribute('data-sku') || '').trim();
+                        if (s) return s;
+                    }
+                    const span = tr ? tr.querySelector('td[data-column="3"] .r2s-cell-copy-text') : null;
+                    return span ? String(span.textContent || '').trim() : '';
+                }
+
+                function dedupeR2sRows(rows) {
+                    const seen = new Set();
+                    return (rows || []).filter(function (tr) {
+                        if (!tr) return false;
+                        const sku = rowSku(tr);
+                        if (!sku || seen.has(sku)) return false;
+                        seen.add(sku);
+                        return true;
+                    });
+                }
+
+                function getCheckedRows() {
+                    const out = [];
+                    r2sRowCheckboxEls().forEach(function (cb) {
+                        if (!cb.checked) return;
+                        const tr = cb.closest('tr.stage-row');
+                        if (tr) out.push(tr);
+                    });
+                    return out;
+                }
+
+                function getBulkTargetRows(anchorTr) {
+                    const merged = dedupeR2sRows([
+                        ...(rowEditState.pendingTargets || []),
+                        ...getCheckedRows(),
+                        ...(anchorTr ? [anchorTr] : [])
+                    ]);
+                    if (merged.length) return merged;
+                    return anchorTr ? [anchorTr] : [];
+                }
+
+                function cellText(tr, col, sel) {
+                    const td = tr.querySelector('td[data-column="' + col + '"]');
+                    if (!td) return '';
+                    const el = sel ? td.querySelector(sel) : td;
+                    return el ? String(el.textContent || '').trim() : '';
+                }
+
+                function readR2sRowData(tr) {
+                    const zoneSel = tr.querySelector('select.r2s-zone-x-select');
+                    const stageSel = tr.querySelector('.editable-select-stage');
+                    const nrSel = tr.querySelector('.editable-select-nrp');
+                    const orQtyInp = tr.querySelector('td[data-column="4"] input');
+                    const recInp = tr.querySelector('input[data-column="rec_qty"]');
+                    const recDisp = tr.querySelector('.r2s-rec-qty-display');
+                    const rateInp = tr.querySelector('input[data-column="rate"]');
+                    const paySel = tr.querySelector('select[data-column="pay_term"]');
+                    const payDisp = tr.querySelector('.r2s-pay-term-display');
+                    const advSel = tr.querySelector('select[data-column="payment_confirmation"]');
+                    const packDot = tr.querySelector('.packing-toggle');
+                    const photoDot = tr.querySelector('.new-photo-toggle');
+                    const linkBtn = tr.querySelector('.r2s-packing-link-edit');
+                    const parentText = cellText(tr, '2', '.r2s-cell-copy-text').replace(/^—$/, '');
+
+                    return {
+                        sku: rowSku(tr),
+                        parent: parentText,
+                        mfrg_supplier: cellText(tr, '1', '.forecast-supplier-name').replace(/^—$/, ''),
+                        zone_x: zoneSel ? zoneSel.value : '',
+                        supplier: tr.getAttribute('data-r2s-supplier') || '',
+                        stage: stageSel ? stageSel.value : (tr.getAttribute('data-stage') || ''),
+                        nr: nrSel ? nrSel.value : 'REQ',
+                        or_qty: orQtyInp ? orQtyInp.value : '',
+                        rec_qty: recInp ? recInp.value : (recDisp ? recDisp.textContent.trim() : ''),
+                        rate: rateInp ? rateInp.value : '',
+                        cbm: cellText(tr, '6').replace(/^N\/A$/i, ''),
+                        total_cbm: cellText(tr, '19'),
+                        cp: cellText(tr, '25'),
+                        amount: cellText(tr, '24'),
+                        packing_list: packDot ? (packDot.getAttribute('data-value') || 'No') : 'No',
+                        packing_list_link: linkBtn ? (linkBtn.getAttribute('data-current-url') || '') : '',
+                        pay_term: paySel ? paySel.value : (payDisp ? payDisp.textContent.trim() : 'EXW'),
+                        payment_confirmation: advSel ? advSel.value : 'No',
+                        photo_mail_send: photoDot ? (photoDot.getAttribute('data-value') || 'No') : 'No',
+                        model_number: cellText(tr, '12'),
+                        followup_delivery: cellText(tr, '14'),
+                        container_rfq: cellText(tr, '16'),
+                        quote_result: cellText(tr, '17'),
+                    };
+                }
+
+                const R2S_EDIT_FIELDS = [
+                    { key: 'sku', label: 'SKU', type: 'text', readonly: true },
+                    { key: 'parent', label: 'Parent', type: 'text', readonly: true },
+                    { key: 'mfrg_supplier', label: 'Mfrg Supplier', type: 'text', readonly: true },
+                    { key: 'zone_x', label: 'Zone', type: 'select', source: 'r2s', column: 'zone_x', options: function () {
+                        return [['', '— (clear)']].concat(zones.map(function (z) { return [z, z]; }));
+                    } },
+                    { key: 'supplier', label: 'R2S Supplier', type: 'text', source: 'r2s', column: 'supplier' },
+                    { key: 'stage', label: 'Stage', type: 'select', source: 'forecast', column: 'Stage', options: function () { return STAGE_OPTS; } },
+                    { key: 'nr', label: 'NRP', type: 'select', source: 'forecast', column: 'NR', options: function () { return NR_OPTS; } },
+                    { key: 'or_qty', label: 'Or. QTY', type: 'text', readonly: true },
+                    { key: 'rec_qty', label: 'Rec. QTY', type: 'number', source: 'r2s', column: 'rec_qty' },
+                    { key: 'rate', label: 'Rate', type: 'number', source: 'r2s', column: 'rate' },
+                    { key: 'cbm', label: 'CBM (unit)', type: 'text', readonly: true },
+                    { key: 'total_cbm', label: 'Total CBM', type: 'text', readonly: true },
+                    { key: 'cp', label: 'CP', type: 'text', readonly: true },
+                    { key: 'amount', label: 'Amount', type: 'text', readonly: true },
+                    { key: 'packing_list', label: 'Packing', type: 'select', source: 'r2s', column: 'packing_list', options: function () { return YESNO; } },
+                    { key: 'packing_list_link', label: 'Packing URL', type: 'url', source: 'r2s', column: 'packing_list_link' },
+                    { key: 'pay_term', label: 'Terms', type: 'select', source: 'r2s', column: 'pay_term', options: function () { return PAY_OPTS; } },
+                    { key: 'payment_confirmation', label: 'ADV Confirm', type: 'select', source: 'r2s', column: 'payment_confirmation', options: function () { return YESNO; } },
+                    { key: 'photo_mail_send', label: 'New Photo', type: 'select', source: 'r2s', column: 'photo_mail_send', options: function () { return YESNO; } },
+                    { key: 'model_number', label: 'Model Number', type: 'text', readonly: true },
+                    { key: 'followup_delivery', label: 'Followup Delivery', type: 'text', readonly: true },
+                    { key: 'container_rfq', label: 'Container RFQ', type: 'text', readonly: true },
+                    { key: 'quote_result', label: 'Quote Result', type: 'text', readonly: true },
+                ];
+
+                function renderEditForm(baseline) {
+                    let html = '';
+                    R2S_EDIT_FIELDS.forEach(function (f) {
+                        const id = 'r2s-edit-' + f.key;
+                        let val = baseline[f.key] == null ? '' : baseline[f.key];
+                        let input = '';
+                        if (f.type === 'select') {
+                            const opts = (f.options ? f.options() : []).map(function (o) {
+                                return '<option value="' + r2sEscForm(o[0]) + '"' + (String(o[0]) === String(val) ? ' selected' : '') + '>' + r2sEscForm(o[1]) + '</option>';
+                            }).join('');
+                            input = '<select class="form-select form-select-sm" id="' + id + '" data-key="' + r2sEscForm(f.key) + '"' + (f.readonly ? ' disabled' : '') + '>' + opts + '</select>';
+                        } else {
+                            input = '<input type="' + (f.type === 'number' ? 'number' : f.type === 'url' ? 'url' : 'text') + '" class="form-control form-control-sm" id="' + id + '" data-key="' + r2sEscForm(f.key) + '" value="' + r2sEscForm(val) + '"' + (f.readonly ? ' readonly' : '') + '>';
+                        }
+                        html += '<div class="col-md-4 col-lg-3"><label class="form-label small fw-semibold mb-1" for="' + id + '">' + r2sEscForm(f.label) + '</label>' + input + '</div>';
+                    });
+                    formEl.innerHTML = html;
+                }
+
+                function openR2sRowEditModal(anchorTr) {
+                    rowEditState.anchorRow = anchorTr;
+                    const targets = getBulkTargetRows(anchorTr);
+                    rowEditState.pendingTargets = null;
+                    rowEditState.targetRows = targets;
+                    const baselineTr = targets.indexOf(anchorTr) !== -1 ? anchorTr : targets[0];
+                    const baseline = readR2sRowData(baselineTr);
+                    const isBulk = targets.length > 1;
+
+                    if (isBulk) {
+                        skuEl.innerHTML = '<span class="badge bg-warning text-dark">' + targets.length + ' rows selected</span>';
+                        subEl.textContent = 'Changes apply to all ' + targets.length + ' selected rows. Only fields you change from the baseline row are overwritten on every row.';
+                    } else {
+                        skuEl.textContent = baseline.sku || '';
+                        subEl.textContent = baseline.parent ? (baseline.sku + ' · ' + baseline.parent) : (baseline.sku || '');
+                    }
+                    if (statusEl) statusEl.innerHTML = '';
+                    renderEditForm(baseline);
+                    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                }
+
+                if (tableEl) {
+                    tableEl.addEventListener('mousedown', function (e) {
+                        const btn = e.target.closest('.r2s-row-edit-btn');
+                        if (!btn) return;
+                        e.stopPropagation();
+                        const tr = btn.closest('tr.stage-row');
+                        rowEditState.pendingTargets = dedupeR2sRows([
+                            ...getCheckedRows(),
+                            ...(tr ? [tr] : [])
+                        ]);
+                    }, true);
+
+                    tableEl.addEventListener('click', function (e) {
+                        const btn = e.target.closest('.r2s-row-edit-btn');
+                        if (!btn) return;
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const tr = btn.closest('tr.stage-row');
+                        if (!tr) return;
+                        openR2sRowEditModal(tr);
+                    }, true);
+                }
+
+                if (saveBtn) {
+                    saveBtn.addEventListener('click', async function () {
+                        const anchorRow = rowEditState.anchorRow;
+                        if (!anchorRow) return;
+                        const targets = (rowEditState.targetRows && rowEditState.targetRows.length) ? rowEditState.targetRows : [anchorRow];
+                        const baselineTr = targets.indexOf(anchorRow) !== -1 ? anchorRow : targets[0];
+                        const baseline = readR2sRowData(baselineTr);
+                        const isBulk = targets.length > 1;
+                        const btn = this;
+                        const origHtml = btn.innerHTML;
+                        const changes = [];
+
+                        document.querySelectorAll('#r2sRowEditForm [data-key]').forEach(function (el) {
+                            const key = el.dataset.key;
+                            const field = R2S_EDIT_FIELDS.find(function (f) { return f.key === key; });
+                            if (!field || field.readonly) return;
+                            const newVal = String(el.value != null ? el.value : '').trim();
+                            const oldVal = String(baseline[key] != null ? baseline[key] : '').trim();
+                            if (newVal === oldVal) return;
+                            changes.push({
+                                key: key,
+                                column: field.column || key,
+                                source: field.source,
+                                newVal: newVal
+                            });
+                        });
+
+                        if (!changes.length) {
+                            if (statusEl) statusEl.innerHTML = '<span class="text-muted">No changes to save.</span>';
+                            else bootstrap.Modal.getInstance(modalEl)?.hide();
+                            return;
+                        }
+
+                        btn.disabled = true;
+                        if (statusEl) statusEl.innerHTML = '<span class="text-muted">Saving ' + changes.length + ' field(s) to ' + targets.length + ' row(s)…</span>';
+
+                        const errors = [];
+                        let okRows = 0;
+
+                        for (let t = 0; t < targets.length; t++) {
+                            const row = targets[t];
+                            const sku = rowSku(row);
+                            if (!sku) continue;
+                            let rowOk = true;
+
+                            for (let c = 0; c < changes.length; c++) {
+                                const ch = changes[c];
+                                try {
+                                    if (ch.source === 'r2s') {
+                                        let sendVal = ch.newVal;
+                                        if (ch.column === 'rec_qty' && sendVal !== '' && !isNaN(Number(sendVal))) {
+                                            sendVal = parseInt(sendVal, 10);
+                                        }
+                                        const res = await inlineUpdateAsync(sku, ch.column, sendVal);
+                                        if (!res.success) {
+                                            rowOk = false;
+                                            errors.push(sku + ' · ' + ch.key + ': ' + (res.message || 'failed'));
+                                        } else {
+                                            syncDomAfterR2sField(row, ch.column, ch.column === 'rec_qty' ? String(sendVal) : ch.newVal);
+                                        }
+                                    } else if (ch.source === 'forecast') {
+                                        const stageSel = row.querySelector('.editable-select-stage');
+                                        const parent = stageSel ? (stageSel.getAttribute('data-parent') || '') : '';
+                                        if (ch.column === 'Stage') {
+                                            const qtyInput = row.querySelector('td[data-column="4"] input');
+                                            const orderQty = qtyInput ? parseFloat(qtyInput.value) : 0;
+                                            if (!orderQty || orderQty === 0) {
+                                                rowOk = false;
+                                                errors.push(sku + ': Order Qty cannot be empty or zero for Stage.');
+                                                continue;
+                                            }
+                                        }
+                                        const res = await updateForecastFieldAsync({
+                                            sku: sku,
+                                            parent: parent,
+                                            column: ch.column,
+                                            value: ch.newVal
+                                        });
+                                        if (!res.success) {
+                                            rowOk = false;
+                                            errors.push(sku + ' · ' + ch.key + ': ' + (res.message || 'forecast update failed'));
+                                        } else {
+                                            if (ch.column === 'Stage') syncDomAfterForecastStage(row, ch.newVal);
+                                            if (ch.column === 'NR') syncDomAfterForecastNr(row, ch.newVal);
+                                        }
+                                    }
+                                } catch (err) {
+                                    rowOk = false;
+                                    errors.push(sku + ' · ' + ch.key + ': network error');
+                                }
+                            }
+                            if (rowOk) okRows++;
+                        }
+
+                        btn.disabled = false;
+                        btn.innerHTML = origHtml;
+
+                        if (errors.length) {
+                            const lines = ['Updated ' + okRows + ' row(s). Errors:'].concat(errors.slice(0, 12).map(function (e) { return '• ' + e; }));
+                            if (errors.length > 12) lines.push('…');
+                            if (statusEl) statusEl.innerHTML = '<span class="text-warning">' + lines.join('<br>') + '</span>';
+                        } else {
+                            if (statusEl) statusEl.innerHTML = '<span class="text-success">Saved ' + changes.length + ' field(s) on ' + targets.length + ' row(s).</span>';
+                            setTimeout(function () {
+                                bootstrap.Modal.getInstance(modalEl)?.hide();
+                                r2sRowCheckboxEls().forEach(function (cb) { cb.checked = false; });
+                                updateButtonVisibility();
+                                updateSelectAllState();
+                            }, 450);
+                        }
+                        if (typeof filterByR2SStage === 'function') filterByR2SStage();
+                    });
+                }
+            })();
         })();
 
         // Delete selected rows
@@ -3200,7 +3653,7 @@
         if (!remarksList) return;
         const remarks = getSupplierRemarks(supplier);
         if (remarks.length === 0) {
-            remarksList.innerHTML = '<p class="text-muted mb-0">No follow-up history yet.</p>';
+            remarksList.innerHTML = '<p class="text-muted mb-0">No history yet.</p>';
             return;
         }
         let html = '<div class="list-group">';
@@ -3513,6 +3966,11 @@
         var $modalEl = document.getElementById('r2sSupplierSummaryModal');
         var lastCsvLines = [];
 
+        function r2sEscHtml(text) {
+            var s = String(text != null ? text : '');
+            return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
         function r2sEffectiveQty($tr) {
             var recRaw = String($tr.find('td[data-column="20"] input').val() || '').trim();
             var orRaw = String($tr.find('td[data-column="4"] input').val() || '').trim();
@@ -3525,7 +3983,7 @@
                 q = parseFloat(orRaw.replace(/,/g, ''));
                 if (isFinite(q)) return q;
             }
-            return NaN;
+            return 0;
         }
 
         function r2sParseCbmCell($tr) {
@@ -3539,6 +3997,26 @@
             var t = $tr.find('td[data-column="19"]').text().trim();
             var n = parseFloat(String(t).replace(/,/g, ''));
             return isFinite(n) ? n : 0;
+        }
+
+        function r2sParseRowTotalCbm($tr) {
+            var totalCbm = r2sParseTotalCbmCell($tr);
+            if (totalCbm > 0) return totalCbm;
+            var qty = r2sEffectiveQty($tr);
+            var unitCbm = r2sParseCbmCell($tr);
+            if (isFinite(qty) && isFinite(unitCbm)) return qty * unitCbm;
+            return 0;
+        }
+
+        function r2sParseAmountCell($tr) {
+            var $hidden = $tr.find('.total-value');
+            if ($hidden.length) {
+                var n = parseFloat(String($hidden.text().trim()).replace(/,/g, ''));
+                if (isFinite(n)) return n;
+            }
+            var t = $tr.find('td[data-column="24"]').text().trim();
+            var n2 = parseFloat(String(t).replace(/,/g, ''));
+            return isFinite(n2) ? n2 : 0;
         }
 
         function r2sSupplierFromRow($tr) {
@@ -3558,7 +4036,31 @@
             return n.toFixed(2);
         }
 
-        function buildSupplierSummary() {
+        function fmtAmount(n) {
+            return Math.round(n).toLocaleString();
+        }
+
+        function fmtFollowupDate(raw) {
+            if (!raw) return '';
+            var d = new Date(raw);
+            if (isNaN(d.getTime())) return '';
+            return d.getDate() + ' ' + d.toLocaleString('en-US', { month: 'short' }) + ' ' + d.getFullYear();
+        }
+
+        function renderR2sFollowupHistoryList(list) {
+            if (!list.length) return '<p class="text-muted small mb-0 px-2 py-2">No history yet.</p>';
+            var html = '<div class="list-group list-group-flush">';
+            list.forEach(function (it) {
+                html += '<div class="list-group-item py-2">' +
+                    '<div class="d-flex justify-content-between"><span class="fw-semibold small">' + r2sEscHtml(it.created_by || 'Unknown') + '</span>' +
+                    '<span class="text-muted small">' + fmtFollowupDate(it.created_at) + '</span></div>' +
+                    '<div class="small mt-1">' + r2sEscHtml(it.remark || '') + '</div></div>';
+            });
+            html += '</div>';
+            return html;
+        }
+
+        function buildR2sSupplierGroups() {
             var groups = {};
             var $visible = $('#readyToShipTable tbody tr.stage-row').filter(function () {
                 var $r = $(this);
@@ -3568,60 +4070,117 @@
 
             $visible.each(function () {
                 var $tr = $(this);
-                var qty = r2sEffectiveQty($tr);
-                if (!isFinite(qty) || qty === 0) return;
-
                 var supplier = r2sSupplierFromRow($tr);
-                var cbm = r2sParseCbmCell($tr);
-                var totalCbm = r2sParseTotalCbmCell($tr);
-
                 if (!groups[supplier]) {
-                    groups[supplier] = { totalQty: 0, totalCbm: 0, totalTotalCbm: 0 };
+                    groups[supplier] = { items: 0, totalQty: 0, totalCbm: 0, totalAmount: 0 };
                 }
-                groups[supplier].totalQty += qty;
-                groups[supplier].totalCbm += cbm;
-                groups[supplier].totalTotalCbm += totalCbm;
+                groups[supplier].items += 1;
+                groups[supplier].totalQty += r2sEffectiveQty($tr);
+                groups[supplier].totalCbm += r2sParseRowTotalCbm($tr);
+                groups[supplier].totalAmount += r2sParseAmountCell($tr);
             });
 
+            return groups;
+        }
+
+        function renderR2sSupplierSummaryTable(groups) {
             var names = Object.keys(groups).sort(function (a, b) {
                 return a.toLowerCase().localeCompare(b.toLowerCase());
             });
 
             $tbody.empty();
             $tfoot.empty();
-
-            var gQty = 0;
-            var gCbm = 0;
-            var gTot = 0;
-            lastCsvLines = [['Supplier', 'Total QTY', 'Total CBM', 'Total TOTAL CBM']];
+            lastCsvLines = [['Supplier', 'Items', 'QTY', 'CBM', 'Amount']];
 
             if (names.length === 0) {
-                $tbody.append('<tr><td colspan="4" class="text-muted text-center py-3">No rows with quantity in the current view.</td></tr>');
-                return;
+                $tbody.append('<tr><td colspan="5" class="text-muted text-center py-3">No rows in the current view.</td></tr>');
+                return names;
             }
+
+            var gItems = 0;
+            var gQty = 0;
+            var gCbm = 0;
+            var gAmount = 0;
 
             names.forEach(function (name) {
                 var g = groups[name];
+                gItems += g.items;
                 gQty += g.totalQty;
                 gCbm += g.totalCbm;
-                gTot += g.totalTotalCbm;
+                gAmount += g.totalAmount;
                 var $tr = $('<tr></tr>');
                 $tr.append($('<td></td>').text(name));
+                $tr.append($('<td class="text-end"></td>').text(g.items));
                 $tr.append($('<td class="text-end"></td>').text(fmtQty(g.totalQty)));
-                $tr.append($('<td class="text-end"></td>').text(g.totalCbm.toFixed(4)));
-                $tr.append($('<td class="text-end"></td>').text(g.totalTotalCbm.toFixed(2)));
+                $tr.append($('<td class="text-end"></td>').text(g.totalCbm.toFixed(2)));
+                $tr.append($('<td class="text-end"></td>').text(fmtAmount(g.totalAmount)));
                 $tbody.append($tr);
-                lastCsvLines.push([name, fmtQty(g.totalQty), g.totalCbm.toFixed(4), g.totalTotalCbm.toFixed(2)]);
+                lastCsvLines.push([name, g.items, fmtQty(g.totalQty), g.totalCbm.toFixed(2), Math.round(g.totalAmount)]);
             });
 
-            lastCsvLines.push(['Grand Total', fmtQty(gQty), gCbm.toFixed(4), gTot.toFixed(2)]);
+            lastCsvLines.push(['Grand Total', gItems, fmtQty(gQty), gCbm.toFixed(2), Math.round(gAmount)]);
 
             var $ftr = $('<tr></tr>');
             $ftr.append($('<td></td>').text('Grand Total'));
+            $ftr.append($('<td class="text-end"></td>').text(gItems));
             $ftr.append($('<td class="text-end"></td>').text(fmtQty(gQty)));
-            $ftr.append($('<td class="text-end"></td>').text(gCbm.toFixed(4)));
-            $ftr.append($('<td class="text-end"></td>').text(gTot.toFixed(2)));
+            $ftr.append($('<td class="text-end"></td>').text(gCbm.toFixed(2)));
+            $ftr.append($('<td class="text-end"></td>').text(fmtAmount(gAmount)));
             $tfoot.append($ftr);
+
+            return names;
+        }
+
+        function renderR2sSupplierSummaryHistory(names, groups, historyMap) {
+            var box = document.getElementById('r2s-supplier-summary-history');
+            if (!box) return;
+            if (!names.length) {
+                box.innerHTML = '<p class="text-muted small mb-0">No suppliers in the current view.</p>';
+                return;
+            }
+            var html = '';
+            names.forEach(function (name) {
+                var g = groups[name];
+                var list = historyMap[name] || [];
+                var totals = fmtQty(g.totalQty) + ' QTY · ' + g.totalCbm.toFixed(2) + ' CBM · ' + fmtAmount(g.totalAmount) + ' Amount';
+                html += '<div class="r2s-sup-history-block mb-3 border rounded">' +
+                    '<div class="r2s-sup-history-head">' +
+                    '<span>' + r2sEscHtml(name) + '</span>' +
+                    '<span class="r2s-sup-history-totals">' + g.items + ' items · ' + totals +
+                    (list.length ? ' · ' + list.length + ' message' + (list.length === 1 ? '' : 's') : '') +
+                    '</span></div>' +
+                    renderR2sFollowupHistoryList(list) +
+                    '</div>';
+            });
+            box.innerHTML = html;
+        }
+
+        function buildSupplierSummary() {
+            var groups = buildR2sSupplierGroups();
+            var names = renderR2sSupplierSummaryTable(groups);
+            var historyBox = document.getElementById('r2s-supplier-summary-history');
+            if (!historyBox) return;
+
+            historyBox.innerHTML = '<p class="text-muted small mb-0"><i class="fas fa-spinner fa-spin"></i> Loading history…</p>';
+
+            if (!names.length) {
+                historyBox.innerHTML = '<p class="text-muted small mb-0">No suppliers in the current view.</p>';
+                return;
+            }
+
+            var historyMap = {};
+            Promise.all(names.map(function (name) {
+                return fetch('/purchase-master/follow-up-history/supplier/' + encodeURIComponent(name))
+                    .then(function (r) { return r.json(); })
+                    .then(function (res) {
+                        historyMap[name] = (res && res.data) ? res.data : [];
+                    })
+                    .catch(function () {
+                        historyMap[name] = [];
+                    });
+            })).then(function () {
+                renderR2sSupplierSummaryHistory(names, groups, historyMap);
+            });
         }
 
         $('#r2s-supplier-summary-btn').on('click', function () {

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Campaigns;
 
 use App\Http\Controllers\Controller;
+use App\Services\GoogleAdsSbidService;
 use App\Support\GoogleShoppingCampaignsRawRule;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -111,46 +112,41 @@ class GoogleShoppingCampaignsController extends Controller
     }
 
     /**
-     * Run `budget:update-shopping` — writes daily Shopping budgets from the persisted SBGT rule   (same as cron).
-     * Request JSON: `{ "campaign_ids": ["…"] }` — when sent from the raw grid, only those SHOPPING  campaigns are updated (max 1000).
+     * Push SBGT to Google Ads for each sent campaign_id using the same values as the grid
+     * (no product-master SKU matching).
+     *
+     * Request JSON: `{ "campaign_ids": ["…"] }` — rows on the current grid page (max 1000).
      */
     public function pushSbgtShoppingBudgets(Request $request): JsonResponse
     {
         $ids = $this->validatedPushCampaignIds($request);
         if ($ids === []) {
-            return $this->pushCampaignIdsMissingResponse('budget:update-shopping');
+            return $this->pushCampaignIdsMissingResponse('push-sbgt');
         }
 
-        return $this->runArtisanPush(
-            'budget:update-shopping',
-            ['--campaign-ids' => implode(',', $ids)],
-            'budget:update-shopping'
-        );
+        return $this->pushGridSbgt($ids);
     }
 
     /**
-     * Run `sbid:update` — updates Shopping campaign SBIDs from the persisted SBID rule (same as cron). 
-     * Request JSON: `{ "campaign_ids": ["…"] }` — when sent from the raw grid, only those campaigns  are considered (max 1000).
+     * Push SBID to Google Ads for each sent campaign_id using the same values as the grid
+     * (no product-master SKU matching).
+     *
+     * Request JSON: `{ "campaign_ids": ["…"] }` — rows on the current grid page (max 1000).
      */
     public function pushSbidShopping(Request $request): JsonResponse
     {
         $ids = $this->validatedPushCampaignIds($request);
         if ($ids === []) {
-            return $this->pushCampaignIdsMissingResponse('sbid:update');
+            return $this->pushCampaignIdsMissingResponse('push-sbid');
         }
 
-        return $this->runArtisanPush(
-            'sbid:update',
-            ['--campaign-ids' => implode(',', $ids)],
-            'sbid:update'
-        );
+        return $this->pushGridSbid($ids);
     }
 
     /**
      * Manually trigger `app:fetch-google-ads-campaigns` so missing rows can be back-filled
-     * without waiting for the daily 09:00 IST cron. Always runs in the background because
-     * the full fetch (campaign list + per-day metrics chunks + GA4 join) routinely takes
-     * several minutes and would time out on a synchronous web request.
+     * without waiting for the daily 09:00 IST cron. Runs synchronously — the request blocks
+     * until the fetch completes or fails so the UI can show real success/failure.
      *
      * Request JSON (all optional): `{ "days": 1 }` — capped to 1..30 to keep API usage sane.
      */
@@ -164,36 +160,11 @@ class GoogleShoppingCampaignsController extends Controller
             $days = 30;
         }
 
-        $command = 'app:fetch-google-ads-campaigns';
-        $label = $command;
-
-        try {
-            $cmdParts = [
-                PHP_BINARY ?: 'php',
-                base_path('artisan'),
-                $command,
-                '--days='.escapeshellarg((string) $days),
-            ];
-            $cmdString = implode(' ', $cmdParts).' > /dev/null 2>&1 &';
-            exec($cmdString);
-        } catch (\Throwable $e) {
-            return response()->json([
-                'ok' => false,
-                'exit_code' => 1,
-                'command' => $label,
-                'message' => 'Could not start data pull: '.$e->getMessage(),
-                'output' => '',
-            ], 500);
-        }
-
-        return response()->json([
-            'ok' => true,
-            'exit_code' => 0,
-            'command' => $label,
-            'async' => true,
-            'message' => "Data pull started in background for the last {$days} day(s). The full fetch typically takes a few minutes — refresh the grid in 2-3 minutes to see new rows.",
-            'output' => "Running: {$command} --days={$days} (async mode)\n\nThe process is running in the background. Once finished, click Refresh to reload the grid.\nLogs: tail -f storage/logs/laravel.log",
-        ], 200);
+        return $this->runArtisanPush(
+            'app:fetch-google-ads-campaigns',
+            ['--days' => (string) $days],
+            'app:fetch-google-ads-campaigns'
+        );
     }
 
     /**
@@ -234,49 +205,17 @@ class GoogleShoppingCampaignsController extends Controller
     }
 
     /**
+     * Run an Artisan command synchronously and return its exit code + console output.
+     * Web requests block until the command finishes so Push/Pull buttons show real success or failure.
+     *
      * @param  array<string, bool|string>  $options
      */
     private function runArtisanPush(string $command, array $options, string $labelForLog): JsonResponse
     {
         @ini_set('memory_limit', '512M');
+        @ini_set('max_execution_time', '0');
         set_time_limit(0);
 
-        // Check if running via web request (likely to timeout for large batches)
-        $isWebRequest = php_sapi_name() !== 'cli';
-        $campaignIds = $options['--campaign-ids'] ?? '';
-        $campaignCount = $campaignIds ? count(explode(',', (string) $campaignIds)) : 0;
-
-        // If web request with many campaigns, run async to prevent timeout
-        if ($isWebRequest && $campaignCount > 10) {
-            try {
-                // Build command string for background execution
-                $cmdParts = ['php', base_path('artisan'), $command];
-                foreach ($options as $key => $value) {
-                    if (is_bool($value) && $value) {
-                        $cmdParts[] = $key;
-                    } elseif ($value !== null && $value !== false) {
-                        $cmdParts[] = $key.'='.escapeshellarg((string) $value);
-                    }
-                }
-                $cmdString = implode(' ', $cmdParts).' > /dev/null 2>&1 &';
-
-                // Execute in background
-                exec($cmdString);
-
-                return response()->json([
-                    'ok' => true,
-                    'exit_code' => 0,
-                    'command' => $labelForLog,
-                    'message' => "Command started in background for {$campaignCount} campaign(s). Processing may take several minutes. Check the campaign budgets/bids in a few minutes to verify completion.",
-                    'output' => "Running: {$command} (async mode)\nCampaigns: {$campaignCount}\n\nThe process is running in the background. This page won't show the detailed output, but you can:\n1. Wait 2-3 minutes\n2. Refresh the data\n3. Verify the budgets/bids were updated\n\nOr check logs: tail -f storage/logs/laravel.log",
-                    'async' => true,
-                ], 200);
-            } catch (\Throwable $e) {
-                // Fall back to synchronous execution
-            }
-        }
-
-        // Synchronous execution (for small batches or CLI)
         try {
             $exitCode = Artisan::call($command, $options);
         } catch (\Throwable $e) {
@@ -299,9 +238,214 @@ class GoogleShoppingCampaignsController extends Controller
             'ok' => $exitCode === 0,
             'exit_code' => $exitCode,
             'command' => $labelForLog,
-            'message' => $exitCode === 0 ? 'Command finished.' : 'Command exited with a non-zero code.',
+            'message' => $exitCode === 0 ? 'Command finished successfully.' : 'Command failed — see output below.',
             'output' => $output,
         ], $exitCode === 0 ? 200 : 422);
+    }
+
+    /**
+     * @param  list<string>  $campaignIds
+     */
+    private function pushGridSbgt(array $campaignIds): JsonResponse
+    {
+        @ini_set('memory_limit', '512M');
+        @ini_set('max_execution_time', '0');
+        set_time_limit(0);
+
+        $customerId = config('services.google_ads.login_customer_id');
+        if (! $customerId) {
+            return response()->json([
+                'ok' => false,
+                'exit_code' => 1,
+                'command' => 'push-sbgt',
+                'message' => 'Google Ads customer ID is not configured.',
+                'output' => '',
+            ], 500);
+        }
+
+        /** @var GoogleAdsSbidService $sbidService */
+        $sbidService = app(GoogleAdsSbidService::class);
+        $rowsById = $this->enrichedRowsForCampaignIds($campaignIds);
+        $lines = [];
+        $updated = 0;
+        $skipped = 0;
+        $errors = 0;
+
+        $lines[] = 'Pushing SBGT for '.count($campaignIds).' campaign id(s) from grid (direct, no SKU matching)...';
+
+        foreach ($campaignIds as $campaignId) {
+            $row = $rowsById[$campaignId] ?? null;
+            if ($row === null) {
+                $lines[] = "[SKIP] {$campaignId}: not found in grid data (no L30 rows or outside page scope).";
+                $skipped++;
+
+                continue;
+            }
+
+            $name = (string) ($row['campaign_name'] ?? $campaignId);
+            $status = strtoupper(trim((string) ($row['campaign_status'] ?? '')));
+            if ($status !== 'ENABLED') {
+                $lines[] = "[SKIP] {$name} ({$campaignId}): campaign status is {$status}, not ENABLED.";
+                $skipped++;
+
+                continue;
+            }
+
+            $budgetId = $row['budget_id'] ?? null;
+            if ($budgetId === null || $budgetId === '') {
+                $lines[] = "[SKIP] {$name} ({$campaignId}): missing budget_id.";
+                $skipped++;
+
+                continue;
+            }
+
+            $currentBudget = (float) ($row['bgt'] ?? 0);
+            $newBudget = (int) ($row['sbgt'] ?? 0);
+            $acos = round((float) ($row['acos_l30'] ?? 0), 1);
+
+            try {
+                $budgetResourceName = "customers/{$customerId}/campaignBudgets/{$budgetId}";
+                $sbidService->updateCampaignBudget($customerId, $budgetResourceName, $newBudget);
+                $lines[] = "[OK] {$name} ({$campaignId}): Budget=\${$currentBudget} → \${$newBudget} (ACOS={$acos}%, SBGT={$newBudget})";
+                $updated++;
+            } catch (\Throwable $e) {
+                $lines[] = "[ERROR] {$name} ({$campaignId}): ".$e->getMessage();
+                $errors++;
+            }
+        }
+
+        $lines[] = '';
+        $lines[] = "Done. Updated: {$updated}, Skipped: {$skipped}, Errors: {$errors}.";
+
+        $output = implode("\n", $lines);
+
+        return response()->json([
+            'ok' => $errors === 0,
+            'exit_code' => $errors === 0 ? 0 : 1,
+            'command' => 'push-sbgt',
+            'message' => $errors === 0
+                ? "SBGT push finished — {$updated} campaign(s) updated."
+                : "SBGT push finished with {$errors} error(s).",
+            'output' => $output,
+        ], $errors === 0 ? 200 : 422);
+    }
+
+    /**
+     * @param  list<string>  $campaignIds
+     */
+    private function pushGridSbid(array $campaignIds): JsonResponse
+    {
+        @ini_set('memory_limit', '512M');
+        @ini_set('max_execution_time', '0');
+        set_time_limit(0);
+
+        $customerId = config('services.google_ads.login_customer_id');
+        if (! $customerId) {
+            return response()->json([
+                'ok' => false,
+                'exit_code' => 1,
+                'command' => 'push-sbid',
+                'message' => 'Google Ads customer ID is not configured.',
+                'output' => '',
+            ], 500);
+        }
+
+        /** @var GoogleAdsSbidService $sbidService */
+        $sbidService = app(GoogleAdsSbidService::class);
+        $rowsById = $this->enrichedRowsForCampaignIds($campaignIds);
+        $lines = [];
+        $updated = 0;
+        $skipped = 0;
+        $errors = 0;
+
+        $lines[] = 'Pushing SBID for '.count($campaignIds).' campaign id(s) from grid (direct, no SKU matching)...';
+
+        foreach ($campaignIds as $campaignId) {
+            $row = $rowsById[$campaignId] ?? null;
+            if ($row === null) {
+                $lines[] = "[SKIP] {$campaignId}: not found in grid data (no L30 rows or outside page scope).";
+                $skipped++;
+
+                continue;
+            }
+
+            $name = (string) ($row['campaign_name'] ?? $campaignId);
+            $status = strtoupper(trim((string) ($row['campaign_status'] ?? '')));
+            if ($status !== 'ENABLED') {
+                $lines[] = "[SKIP] {$name} ({$campaignId}): campaign status is {$status}, not ENABLED.";
+                $skipped++;
+
+                continue;
+            }
+
+            $sbid = $row['sbid'] ?? null;
+            if ($sbid === null || $sbid === '' || (float) $sbid <= 0) {
+                $ub7 = round((float) ($row['ub7'] ?? 0), 1);
+                $ub1 = round((float) ($row['ub1'] ?? 0), 1);
+                $lines[] = "[SKIP] {$name} ({$campaignId}): no SBID to push (7UB={$ub7}%, 1UB={$ub1}% — mid band shows —).";
+                $skipped++;
+
+                continue;
+            }
+
+            $sbid = round((float) $sbid, 2);
+            $ub7 = round((float) ($row['ub7'] ?? 0), 1);
+            $ub1 = round((float) ($row['ub1'] ?? 0), 1);
+
+            try {
+                $sbidService->updateCampaignSbids($customerId, $campaignId, $sbid);
+                $lines[] = "[OK] {$name} ({$campaignId}): SBID=\${$sbid} (7UB={$ub7}%, 1UB={$ub1}%)";
+                $updated++;
+            } catch (\Throwable $e) {
+                $lines[] = "[ERROR] {$name} ({$campaignId}): ".$e->getMessage();
+                $errors++;
+            }
+        }
+
+        $lines[] = '';
+        $lines[] = "Done. Updated: {$updated}, Skipped: {$skipped}, Errors: {$errors}.";
+
+        $output = implode("\n", $lines);
+
+        return response()->json([
+            'ok' => $errors === 0,
+            'exit_code' => $errors === 0 ? 0 : 1,
+            'command' => 'push-sbid',
+            'message' => $errors === 0
+                ? "SBID push finished — {$updated} campaign(s) updated."
+                : "SBID push finished with {$errors} error(s).",
+            'output' => $output,
+        ], $errors === 0 ? 200 : 422);
+    }
+
+    /**
+     * Grid rows enriched with SBGT/SBID — keyed by campaign_id string.
+     *
+     * @param  list<string>  $campaignIds
+     * @return array<string, array<string, mixed>>
+     */
+    protected function enrichedRowsForCampaignIds(array $campaignIds): array
+    {
+        if ($campaignIds === []) {
+            return [];
+        }
+
+        $query = $this->buildRawGridBaseQuery();
+        $query->whereIn('g.campaign_id', $campaignIds);
+        $rawRule = GoogleShoppingCampaignsRawRule::resolvedRule();
+        $byId = [];
+
+        foreach ($query->get() as $row) {
+            $arr = json_decode(json_encode($row), true);
+            if (isset($arr['spend_window_micros'])) {
+                $arr['metrics_cost_micros'] = (int) $arr['spend_window_micros'];
+                unset($arr['spend_window_micros']);
+            }
+            self::enrichRawRowGoogleShoppingStyle($arr, $rawRule);
+            $byId[(string) ($arr['campaign_id'] ?? '')] = $arr;
+        }
+
+        return $byId;
     }
 
     /**

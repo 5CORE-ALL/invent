@@ -35,11 +35,11 @@ class RFQController extends Controller
             'product_dimension',
             'package_dimension',
             'linked_skus',
+            'report_meta',
             'created_by',
             'updated_by',
             'created_at',
             'updated_at'
-            
         )->get();
 
         return response()->json([
@@ -209,6 +209,34 @@ class RFQController extends Controller
         $submissions = RfqSubmission::where('rfq_form_id', $form->id)
             ->select('id', 'data', 'created_at')
             ->get();
+
+        $supplierNames = $submissions
+            ->map(fn ($submission) => trim((string) (($submission->data ?? [])['supplierName'] ?? '')))
+            ->filter()
+            ->unique()
+            ->values();
+
+        $suppliersByName = $supplierNames->isEmpty()
+            ? collect()
+            : Supplier::whereIn('name', $supplierNames)
+                ->get(['name', 'alias', 'company'])
+                ->keyBy('name');
+
+        $submissions = $submissions->map(function ($submission) use ($suppliersByName) {
+            $data = is_array($submission->data) ? $submission->data : [];
+            $name = trim((string) ($data['supplierName'] ?? ''));
+
+            if ($name !== '' && $suppliersByName->has($name)) {
+                $alias = trim((string) ($suppliersByName[$name]->alias ?? ''));
+                if ($alias !== '') {
+                    $data['companyName'] = $alias;
+                }
+            }
+
+            $submission->data = $data;
+
+            return $submission;
+        });
 
         return response()->json([
             'data' => $submissions,
