@@ -6,10 +6,14 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use App\Services\Concerns\ResolvesBulletPointIdentifier;
+use App\Services\Support\SavesMarketplaceVideoMetrics;
+use App\Services\Support\VideoMasterMarketplaceMethods;
 
 class WayfairApiService
 {
     use ResolvesBulletPointIdentifier;
+    use SavesMarketplaceVideoMetrics;
+    use VideoMasterMarketplaceMethods;
 
     protected $token;
  protected $authUrl = 'https://sso.auth.wayfair.com/oauth/token';
@@ -633,6 +637,70 @@ XML;
     }
 
     /**
+     * Push catalog video URLs for a Wayfair SKU through the Product Catalog mutation.
+     *
+     * @param  list<string>  $videoUrls
+     * @return array{success: bool, message: string, normalized_urls?: list<string>}
+     */
+    public function updateListingVideos(string $identifier, array $videoUrls): array
+    {
+        $urls = array_slice(array_values(array_unique(array_filter(array_map('trim', $videoUrls), fn ($url) => $url !== ''))), 0, 5);
+        if (trim($identifier) === '' || $urls === []) {
+            return ['success' => false, 'message' => 'SKU and at least one video URL are required.'];
+        }
+
+        $sku = trim($identifier);
+        if (Schema::hasTable('wayfair_metrics')) {
+            $row = $this->findMetricRowBySkuOrAlternateIds('wayfair_metrics', $identifier, [
+                'supplier_part_number',
+                'supplier_sku',
+                'catalog_supplier_part_number',
+            ]);
+            if ($row && ! empty($row->sku)) {
+                $sku = trim((string) $row->sku);
+            }
+        }
+
+        try {
+            $token = $this->getTokenForCatalog();
+            if (! $token) {
+                return ['success' => false, 'message' => 'Wayfair authentication failed.'];
+            }
+
+            $requestId = $this->submitVideoUrlsUpdate($token, $sku, $urls);
+            if ($requestId === null) {
+                return ['success' => false, 'message' => 'Wayfair: failed to submit video update.'];
+            }
+
+            $result = $this->pollUpdateStatus($token, $requestId, $sku);
+            if (! ($result['success'] ?? false)) {
+                return $result;
+            }
+
+            $saved = $this->saveVideoUrlsToMetricsRow('wayfair_metrics', $sku, $urls);
+            if (! $saved) {
+                $result['message'] = ($result['message'] ?? 'Wayfair videos updated.').' Metrics save failed.';
+            }
+            $result['normalized_urls'] = $urls;
+
+            return $result;
+        } catch (\Throwable $e) {
+            Log::error('Wayfair updateListingVideos', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * @param  list<string>  $videos
+     * @return array{success: bool, message: string, normalized_urls?: list<string>}
+     */
+    public function updateVideos(string $identifier, array $videos, string $mode = 'replace'): array
+    {
+        return $this->updateListingVideos($identifier, $videos);
+    }
+
+    /**
      * @param  list<string>  $features
      */
     private function submitKeyFeaturesUpdate(string $token, string $sku, array $features): ?string
@@ -739,6 +807,63 @@ XML;
         $data = $response->json();
         if (! empty($data['errors'])) {
             Log::warning('Wayfair image GraphQL errors', ['sku' => $sku, 'errors' => $data['errors']]);
+
+            return null;
+        }
+
+        return $data['data']['updateCatalogEntitiesMutations']['updateMarketSpecificCatalogItems']['requestId'] ?? null;
+    }
+
+    /**
+     * @param  list<string>  $urls
+     */
+    private function submitVideoUrlsUpdate(string $token, string $sku, array $urls): ?string
+    {
+        $url = config('services.wayfair.product_catalog_graphql_url', 'https://api.wayfair.io/v1/product-catalog-api/graphql');
+        $supplierId = (string) config('services.wayfair.supplier_id', '2603');
+        $brand = config('services.wayfair.brand', 'WAYFAIR');
+        $country = config('services.wayfair.country', 'UNITED_STATES');
+        $locale = config('services.wayfair.locale', 'en-US');
+
+        $mutation = <<<'GRAPHQL'
+        mutation UpdateMarketSpecificCatalogItems($input: UpdateMarketSpecificCatalogItemsInput!) {
+          updateCatalogEntitiesMutations {
+            updateMarketSpecificCatalogItems(input: $input) {
+              requestId
+            }
+          }
+        }
+        GRAPHQL;
+
+        $variables = [
+            'input' => [
+                'marketContext' => [
+                    'locale' => $locale,
+                    'country' => $country,
+                    'brand' => $brand,
+                ],
+                'supplierId' => $supplierId,
+                'catalogItemsToUpdate' => [
+                    [
+                        'supplierPartNumber' => $sku,
+                        'videos' => $urls,
+                    ],
+                ],
+                'validateOnly' => false,
+            ],
+        ];
+
+        $response = Http::withoutVerifying()
+            ->withToken($token)
+            ->withHeaders(['Content-Type' => 'application/json'])
+            ->post($url, [
+                'query' => $mutation,
+                'variables' => $variables,
+            ]);
+
+        $data = $response->json();
+        if (! empty($data['errors'])) {
+            Log::warning('Wayfair video GraphQL errors', ['sku' => $sku, 'errors' => $data['errors']]);
 
             return null;
         }

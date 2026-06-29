@@ -2611,6 +2611,9 @@
                             <a href="{{ route('image.master') }}">Image Master</a>
                         </li>
                         <li>
+                            <a href="{{ route('video.master') }}">Video Master</a>
+                        </li>
+                        <li>
                             <a href="{{ route('bullet.points') }}">Bullet Points Master</a>
                         </li>
                         <li>

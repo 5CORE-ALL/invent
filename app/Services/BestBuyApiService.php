@@ -10,10 +10,14 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use App\Services\Support\DescriptionWithImagesFormatter;
+use App\Services\Support\SavesMarketplaceVideoMetrics;
+use App\Services\Support\VideoMasterMarketplaceMethods;
 use App\Models\ProductStockMapping;
 
 class BestBuyApiService
 {
+    use SavesMarketplaceVideoMetrics;
+    use VideoMasterMarketplaceMethods;
     private function getAccessToken()
     {
         $response = Http::withoutVerifying()->asForm()->post('https://auth.mirakl.net/oauth/token', [
@@ -362,6 +366,77 @@ class BestBuyApiService
     public function updateImages(string $sku, array $images): array
     {
         return $this->updateListingImages($sku, $images);
+    }
+
+    /**
+     * Push video URL(s) to Best Buy through Mirakl Connect product attributes.
+     *
+     * @param  list<string>  $videoUrls
+     * @return array{success: bool, message: string, normalized_urls?: list<string>}
+     */
+    public function updateListingVideos(string $sku, array $videoUrls): array
+    {
+        $sku = trim($sku);
+        $urls = array_slice(array_values(array_unique(array_filter(array_map('trim', $videoUrls), fn ($url) => $url !== ''))), 0, 5);
+        if ($sku === '' || $urls === []) {
+            return ['success' => false, 'message' => 'SKU and at least one video URL are required.'];
+        }
+
+        $token = $this->getAccessToken();
+        if (! $token) {
+            return ['success' => false, 'message' => 'Best Buy / Mirakl access token not available.'];
+        }
+
+        $baseUrl = 'https://miraklconnect.com/api/products';
+        $productPayload = [
+            'id' => $sku,
+            'attributes' => [
+                'videoUrl' => $urls[0],
+                'videoUrls' => $urls,
+                'productVideoUrls' => $urls,
+                'mainVideoUrl' => $urls[0],
+            ],
+        ];
+
+        $headers = [
+            'Accept' => 'application/json',
+            'Content-Type' => 'application/json',
+            'channel_id' => 'bestbuyusa',
+        ];
+
+        try {
+            $request = Http::withoutVerifying()->withToken($token)->withHeaders($headers)->timeout(90);
+            $response = $request->post($baseUrl, ['products' => [$productPayload]]);
+            if (! $response->successful()) {
+                $response = $request->patch("{$baseUrl}/{$sku}", $productPayload);
+            }
+            if (! $response->successful()) {
+                $response = $request->put("{$baseUrl}/{$sku}", $productPayload);
+            }
+
+            if (! $response->successful()) {
+                return ['success' => false, 'message' => 'Best Buy video update failed: '.$response->body()];
+            }
+
+            $saved = $this->saveVideoUrlsToMetricsRow('bestbuy_metrics', $sku, $urls);
+            $message = 'Best Buy product videos updated.';
+            if (! $saved) {
+                $message .= ' Metrics save failed.';
+            }
+
+            return ['success' => true, 'message' => $message, 'normalized_urls' => $urls];
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * @param  list<string>  $videos
+     * @return array{success: bool, message: string, normalized_urls?: list<string>}
+     */
+    public function updateVideos(string $sku, array $videos, string $mode = 'replace'): array
+    {
+        return $this->updateListingVideos($sku, $videos);
     }
 
     /**

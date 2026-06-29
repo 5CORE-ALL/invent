@@ -262,6 +262,64 @@ final class EbayTradingReviseItem
     }
 
     /**
+     * Attach product video via Trading API VideoDetails (typically one URL; YouTube/Vimeo or hosted MP4).
+     *
+     * @param  list<string>  $videoUrls
+     * @return array{success: bool, message: string, normalized_urls?: list<string>}
+     */
+    public static function reviseItemVideos(
+        string $endpoint,
+        string $compatLevel,
+        string $devId,
+        string $appId,
+        string $certId,
+        string $siteId,
+        string $authToken,
+        string $itemId,
+        array $videoUrls,
+    ): array {
+        $urls = [];
+        foreach ($videoUrls as $u) {
+            $t = trim((string) $u);
+            if ($t !== '' && preg_match('#^https?://#i', $t)) {
+                $urls[] = $t;
+            }
+        }
+        $urls = array_slice(array_values(array_unique($urls)), 0, 3);
+        if ($urls === []) {
+            return ['success' => false, 'message' => 'At least one video URL is required.'];
+        }
+
+        $primary = $urls[0];
+        $tokenEsc = htmlspecialchars($authToken, ENT_XML1 | ENT_QUOTES, 'UTF-8');
+        $idEsc = htmlspecialchars($itemId, ENT_XML1 | ENT_QUOTES, 'UTF-8');
+        $urlEsc = self::escapeXmlElementText($primary);
+
+        $xml = new \SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><ReviseItemRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
+        $creds = $xml->addChild('RequesterCredentials');
+        $creds->addChild('eBayAuthToken', $tokenEsc);
+        $xml->addChild('ErrorLanguage', 'en_US');
+        $xml->addChild('WarningLevel', 'High');
+        $itemNode = $xml->addChild('Item');
+        $itemNode->addChild('ItemID', $idEsc);
+        $vd = $itemNode->addChild('VideoDetails');
+        $vi = $vd->addChild('VideoItem');
+        $vi->addChild('VideoURL', $urlEsc);
+
+        $xmlBody = $xml->asXML();
+        if ($xmlBody === false) {
+            return ['success' => false, 'message' => 'Failed to build ReviseItem XML for video.'];
+        }
+
+        $result = self::postReviseItemXml($endpoint, $compatLevel, $devId, $appId, $certId, $siteId, $itemId, $xmlBody, 'video');
+        if ($result['success'] ?? false) {
+            $result['normalized_urls'] = [$primary];
+        }
+
+        return $result;
+    }
+
+    /**
      * Resolve a storage URL to a local absolute file path for local-file reads.
      * Works for both http://localhost/storage/... and https://domain.com/storage/... patterns.
      */

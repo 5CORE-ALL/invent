@@ -16,10 +16,14 @@ use App\Models\TemuPricing;
 use App\Models\TemuMetric;
 use App\Services\Support\DescriptionWithImagesFormatter;
 use App\Services\Support\ShopifyBulletPointsFormatter;
+use App\Services\Support\SavesMarketplaceVideoMetrics;
+use App\Services\Support\VideoMasterMarketplaceMethods;
 use Carbon\Carbon;
 
 class TemuApiService
 {
+    use SavesMarketplaceVideoMetrics;
+    use VideoMasterMarketplaceMethods;
     protected $clientId;
     protected $clientSecret;
     protected $refreshToken;
@@ -1449,6 +1453,162 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         return ['success' => false, 'url' => null, 'message' => $message];
     }
 
+    /**
+     * Upload a remote video via Temu Open API so goodsBasic video fields accept Temu-hosted URLs.
+     *
+     * @return array{success: bool, url: ?string, message: string}
+     */
+    public function uploadTemuVideoFromUrl(string $videoUrl): array
+    {
+        $videoUrl = trim($videoUrl);
+        if ($videoUrl === '' || ! preg_match('#^https?://#i', $videoUrl)) {
+            return ['success' => false, 'url' => null, 'message' => 'Invalid video URL.'];
+        }
+
+        $primary = trim((string) config('services.temu.video_upload_type', 'files/upload_video'));
+        $extra = config('services.temu.video_upload_types');
+        if (! is_array($extra)) {
+            $extra = [];
+        }
+        $types = array_values(array_unique(array_filter(array_map('trim', array_merge(
+            $primary !== '' ? [$primary] : [],
+            $extra
+        )))));
+        if ($types === []) {
+            $types = ['files/upload_video'];
+        }
+
+        $router = rtrim((string) config('services.temu.openapi_router_url', 'https://openapi-b-us.temu.com/openapi/router'), '/');
+        $lastMsg = '';
+
+        $postSigned = function (array $body) use ($router, &$lastMsg): ?string {
+            try {
+                $signedRequest = $this->generateSignValue($body);
+                $request = Http::withHeaders(['Content-Type' => 'application/json']);
+                if (config('filesystems.default') === 'local') {
+                    $request = $request->withoutVerifying();
+                }
+                $response = $request->timeout(300)->post($router, $signedRequest);
+                $data = $response->json() ?? [];
+                $lastMsg = (string) ($data['errorMsg'] ?? $data['message'] ?? $response->body());
+
+                if ($response->successful() && ($data['success'] ?? false)) {
+                    $hosted = $this->extractTemuUploadedImageUrl($data);
+
+                    return ($hosted !== null && $hosted !== '') ? $hosted : null;
+                }
+            } catch (\Throwable $e) {
+                $lastMsg = $e->getMessage();
+            }
+
+            return null;
+        };
+
+        $tryBase64 = function () use ($videoUrl, $types, $postSigned): ?array {
+            if (! config('services.temu.video_upload_try_base64', true)) {
+                return null;
+            }
+            try {
+                $vidResp = Http::withoutVerifying()->timeout(180)->get($videoUrl);
+                if (! $vidResp->successful()) {
+                    return null;
+                }
+                $bytes = $vidResp->body();
+                $b64 = base64_encode($bytes);
+                $mime = $vidResp->header('Content-Type') ?: 'video/mp4';
+                foreach ($types as $type) {
+                    if ($type === '') {
+                        continue;
+                    }
+                    $baseBodies = [
+                        ['type' => $type, 'video' => $b64],
+                        ['type' => $type, 'videoBase64' => $b64],
+                        ['type' => $type, 'base64' => $b64],
+                        ['type' => $type, 'fileBase64' => $b64],
+                        ['type' => $type, 'content' => $b64, 'mimeType' => $mime],
+                    ];
+                    foreach ($baseBodies as $body) {
+                        $hosted = $postSigned($body);
+                        if ($hosted !== null) {
+                            return ['success' => true, 'url' => $hosted, 'message' => 'OK (base64)'];
+                        }
+                    }
+                }
+            } catch (\Throwable) {
+            }
+
+            return null;
+        };
+
+        $tryUrl = function () use ($videoUrl, $types, $postSigned): ?array {
+            foreach ($types as $type) {
+                if ($type === '') {
+                    continue;
+                }
+
+                $urlVariants = [
+                    ['type' => $type, 'url' => $videoUrl],
+                    ['type' => $type, 'videoUrl' => $videoUrl],
+                    ['type' => $type, 'video_url' => $videoUrl],
+                ];
+
+                foreach ($urlVariants as $body) {
+                    $hosted = $postSigned($body);
+                    if ($hosted !== null) {
+                        return ['success' => true, 'url' => $hosted, 'message' => 'OK'];
+                    }
+                }
+            }
+
+            return null;
+        };
+
+        $preferBase64 = config('services.temu.video_upload_prefer_base64', false);
+        $attempts = $preferBase64 ? [$tryBase64, $tryUrl] : [$tryUrl, $tryBase64];
+        foreach ($attempts as $attempt) {
+            $result = $attempt();
+            if (is_array($result)) {
+                return $result;
+            }
+        }
+
+        $message = $lastMsg !== '' ? $lastMsg : 'Temu video upload failed for all configured types.';
+        if ($this->isTemuIpWhitelistError($message)) {
+            $message = $this->temuIpWhitelistHelpMessage($message);
+        }
+
+        return ['success' => false, 'url' => null, 'message' => $message];
+    }
+
+    /**
+     * @param  list<string>  $sourceUrls
+     * @return array{success: bool, urls: list<string>, message: string}
+     */
+    private function uploadTemuVideosFromSourceUrls(array $sourceUrls): array
+    {
+        $temuUrls = [];
+        $errors = [];
+        foreach ($sourceUrls as $i => $u) {
+            $up = $this->uploadTemuVideoFromUrl($u);
+            if ($up['success'] ?? false) {
+                $temuUrls[] = (string) ($up['url'] ?? '');
+            } else {
+                $errors[] = 'Video '.($i + 1).': '.($up['message'] ?? 'upload failed');
+            }
+        }
+        $temuUrls = array_values(array_filter($temuUrls, fn ($s) => $s !== ''));
+        if ($temuUrls === []) {
+            return ['success' => false, 'urls' => [], 'message' => implode(' | ', $errors) ?: 'Temu video upload failed.'];
+        }
+
+        $msg = 'Uploaded '.count($temuUrls).' video(s) to Temu.';
+        if ($errors !== []) {
+            $msg .= ' Partial failures: '.implode(' | ', $errors);
+        }
+
+        return ['success' => true, 'urls' => $temuUrls, 'message' => $msg];
+    }
+
     private function isTemuIpWhitelistError(string $message): bool
     {
         return stripos($message, 'NOT_IN_IP_WHITE_LIST') !== false
@@ -1822,5 +1982,95 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
 
             return false;
         }
+    }
+
+    /**
+     * Partial goods update: product video URL(s) in goodsBasic.
+     *
+     * @param  list<string>  $videoUrls
+     * @return array{success: bool, message: string}
+     */
+    public function updateListingVideos(string $identifier, array $videoUrls): array
+    {
+        $urls = array_values(array_filter(array_map('trim', $videoUrls), fn ($s) => $s !== ''));
+        $urls = array_slice($urls, 0, 5);
+        if (trim($identifier) === '' || $urls === []) {
+            return ['success' => false, 'message' => 'SKU (or goods_id) and video URLs are required.'];
+        }
+
+        $resolved = $this->resolveTemuGoodsAndSku($identifier);
+        $sku = $resolved['sku'];
+        $goodsId = $resolved['goods_id'] ?? $this->getGoodsIdBySku($sku);
+        if (! $goodsId) {
+            return ['success' => false, 'message' => 'goodsId not found for SKU. Sync Temu metrics or TemuPricing.'];
+        }
+
+        $apiType = config('services.temu.goods_update_type', 'bg.local.goods.partial.update');
+        $url = 'https://openapi-b-us.temu.com/openapi/router';
+        $goodsBasicField = config('services.temu.goods_basic_field', 'goodsBasic');
+        $videoField = config('services.temu.goods_video_urls_field', 'productVideoUrlList');
+
+        $requestBody = [
+            'type' => $apiType,
+            'goodsId' => (int) $goodsId,
+            $goodsBasicField => [
+                $videoField => $urls,
+                'mainVideoUrl' => $urls[0],
+            ],
+        ];
+
+        try {
+            $signedRequest = $this->generateSignValue($requestBody);
+            $request = Http::withHeaders(['Content-Type' => 'application/json']);
+            if (config('filesystems.default') === 'local') {
+                $request = $request->withoutVerifying();
+            }
+            $response = $request->post($url, $signedRequest);
+            $data = $response->json();
+            if ($response->successful() && ($data['success'] ?? false)) {
+                return ['success' => true, 'message' => 'Temu listing videos updated.'];
+            }
+
+            return ['success' => false, 'message' => $this->formatTemuApiErrorMessage((string) ($data['errorMsg'] ?? $data['message'] ?? $response->body()))];
+        } catch (\Throwable $e) {
+            Log::error('Temu updateListingVideos', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Video Master compatibility method: upload to Temu, push video field, persist source URLs in temu_metrics.
+     *
+     * @param  list<string>  $videos
+     * @return array{success: bool, message: string, normalized_urls?: list<string>}
+     */
+    public function updateVideos(string $identifier, array $videos, string $mode = 'replace'): array
+    {
+        $videos = array_slice(array_values(array_unique(array_filter(array_map('trim', $videos), fn ($v) => $v !== ''))), 0, 5);
+        if ($videos === []) {
+            return ['success' => false, 'message' => 'At least one video URL is required.'];
+        }
+
+        $uploaded = $this->uploadTemuVideosFromSourceUrls($videos);
+        if (! ($uploaded['success'] ?? false)) {
+            return ['success' => false, 'message' => (string) ($uploaded['message'] ?? 'Temu video upload failed.')];
+        }
+
+        $res = $this->updateListingVideos($identifier, $uploaded['urls']);
+        if (! ($res['success'] ?? false)) {
+            return $res;
+        }
+
+        $resolved = $this->resolveTemuGoodsAndSku($identifier);
+        $sku = trim((string) ($resolved['sku'] ?? $identifier));
+        $saved = $this->saveVideoUrlsToMetricsRow('temu_metrics', $sku, $videos);
+        if (! $saved) {
+            $res['message'] = ($res['message'] ?? 'Temu listing videos updated.').' Metrics save failed.';
+        }
+
+        $res['normalized_urls'] = $videos;
+
+        return $res;
     }
 }
