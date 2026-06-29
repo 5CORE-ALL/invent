@@ -252,6 +252,7 @@ use App\Http\Controllers\ProductMaster\ToBeDCController;
 use App\Http\Controllers\ProductMaster\ToOrderAnalysisController;
 use App\Http\Controllers\PurchaseMaster\CategoryController;
 use App\Http\Controllers\PurchaseMaster\ChinaLoadController;
+use App\Http\Controllers\PurchaseMaster\ComparisonController;
 use App\Http\Controllers\PurchaseMaster\ClaimReimbursementController;
 use App\Http\Controllers\PurchaseMaster\ContainerPlanningController;
 use App\Http\Controllers\PurchaseMaster\InstructionsItemPkgController;
@@ -4248,6 +4249,18 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/supplier/{supplierName}', 'getSupplierRemarks')->name('follow.up.history.supplier.remarks');
         Route::post('/store', 'store')->name('follow.up.history.store');
         Route::delete('/delete/{id}', 'destroy')->name('follow.up.history.delete');
+    });
+
+    // Comparison
+    Route::controller(ComparisonController::class)->prefix('purchase-master/comparison')->group(function () {
+        Route::get('/', 'index')->name('comparison.index');
+        Route::get('/data', 'getData')->name('comparison.data');
+        Route::get('/suppliers-for-sku', 'suppliersForSku')->name('comparison.suppliers-for-sku');
+        Route::get('/history', 'getHistory')->name('comparison.history');
+        Route::get('/sheet', 'getSheet')->name('comparison.sheet.get');
+        Route::post('/sheet/save', 'saveSheet')->name('comparison.sheet.save');
+        Route::post('/sheet/import-google', 'importGoogleSheet')->name('comparison.sheet.import-google');
+        Route::post('/sheet/sync-clink', 'syncFromClink')->name('comparison.sheet.sync-clink');
     });
 
     // Ready To Ship

@@ -622,7 +622,76 @@
     let increaseModeActive = false;
     let samePriceModeActive = false;
     let selectedSkus = new Set();
-    
+    /** Shared with /ebay3/campaign-ads SBID Rule (ebay_sbid_rules.key = ebay3). */
+    let currentSbidRule = { l7_views_threshold: 70, bands: [] };
+
+    function resolveSbidBandBid(band, ctx) {
+        const color = band.color || '#333';
+        const sub = band.sub;
+        if (sub && sub.metric && Array.isArray(sub.bands) && sub.bands.length) {
+            const val = parseFloat(ctx[sub.metric]) || 0;
+            for (let j = 0; j < sub.bands.length; j++) {
+                if (val <= parseFloat(sub.bands[j].max)) {
+                    return { bid: parseFloat(sub.bands[j].bid), color: color, skip: false };
+                }
+            }
+            const ls = sub.bands[sub.bands.length - 1];
+            return { bid: parseFloat(ls.bid), color: color, skip: false };
+        }
+        return { bid: parseFloat(band.bid), color: color, skip: false };
+    }
+
+    function getSbidFromRule(scvr, rowData) {
+        const s = parseFloat(scvr);
+        const safeScvr = (!isFinite(s) || s < 0) ? 0 : s;
+        const bands = currentSbidRule.bands || [];
+        const ctx = {
+            scvr: safeScvr,
+            ebay_price: parseFloat(rowData['eBay Price']) || 0,
+            ebay_l30: parseFloat(rowData['eBay L30']) || 0,
+            views: parseFloat(rowData.views) || 0,
+        };
+        for (let i = 0; i < bands.length; i++) {
+            if (safeScvr <= parseFloat(bands[i].scvr_max)) {
+                return resolveSbidBandBid(bands[i], ctx);
+            }
+        }
+        const last = bands[bands.length - 1] || { bid: 2.1, color: '#e83e8c' };
+        return resolveSbidBandBid(last, ctx);
+    }
+
+    function getCombinedSbid(rowData) {
+        const l7 = parseFloat(rowData.l7_views) || 0;
+        const esBidRaw = parseFloat(rowData.ca_suggested_bid);
+        const sold = parseFloat(rowData['eBay L30']) || 0;
+        const views = parseFloat(rowData.views) || 0;
+        const scvr = views > 0 ? (sold / views) * 100 : 0;
+        const threshold = parseFloat(currentSbidRule.l7_views_threshold);
+        const thr = isFinite(threshold) ? threshold : 70;
+
+        if (l7 < thr) {
+            if (!isFinite(esBidRaw) || esBidRaw <= 0) {
+                return { bid: 0, color: '#6c757d', skip: true };
+            }
+            return { bid: esBidRaw, color: '#0dcaf0', skip: false };
+        }
+        return getSbidFromRule(scvr, rowData);
+    }
+
+    function loadSbidRule() {
+        $.ajax({
+            url: '/ebay3/campaign-ads/rule',
+            method: 'GET',
+            dataType: 'json',
+            success: function(data) {
+                currentSbidRule = data || { l7_views_threshold: 70, bands: [] };
+                if (currentSbidRule.l7_views_threshold == null) currentSbidRule.l7_views_threshold = 70;
+                if (!Array.isArray(currentSbidRule.bands)) currentSbidRule.bands = [];
+                if (table) table.redraw(true);
+            }
+        });
+    }
+
     // Badge filter state variables
     let zeroSoldFilterActive = false;
     let moreSoldFilterActive = false;
@@ -2910,6 +2979,17 @@
                     },
                     width: 50
                 },
+                {
+                    title: "L7 View",
+                    field: "l7_views",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        var value = parseInt(cell.getValue() || 0);
+                        return value.toLocaleString();
+                    },
+                    width: 70
+                },
                
                 {
                     title: "NR/REQ",
@@ -3291,6 +3371,23 @@
                     }
                 },
                 {
+                    title: "S BID",
+                    field: "ca_suggested_bid",
+                    hozAlign: "center",
+                    width: 90,
+                    headerTooltip: "Suggested bid: if l7_views < L7 threshold → ES Bid; else SCVR-band lookup (same as /ebay3/campaign-ads).",
+                    sorter: function(a, b, aRow, bRow) {
+                        return getCombinedSbid(aRow.getData()).bid - getCombinedSbid(bRow.getData()).bid;
+                    },
+                    formatter: function(cell) {
+                        const match = getCombinedSbid(cell.getRow().getData());
+                        if (match.skip) {
+                            return '<span class="text-muted" title="No SBID — l7_views below threshold and no ES Bid available" style="font-size:11px;">—</span>';
+                        }
+                        return `<span style="color:${match.color}; font-weight:700;">${match.bid.toFixed(1)}%</span>`;
+                    }
+                },
+                {
                     title: "C BID",
                     field: "ca_bid_percentage",
                     hozAlign: "center",
@@ -3325,6 +3422,8 @@
                 },
             ]
         });
+
+        loadSbidRule();
 
         /** Tabulator dataTree always draws parent before children; move each parent row after its last visible descendant. */
         function reorderEbay3ParentRowsBelowSkus() {

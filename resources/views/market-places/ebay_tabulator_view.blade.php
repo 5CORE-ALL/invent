@@ -917,6 +917,62 @@
         let increaseModeActive = false; // Track increase mode state
         let samePriceModeActive = false;
         let selectedSkus = new Set(); // Track selected SKUs across all pages
+        /** Shared with /ebay/campaign-ads SBID Rule (ebay_sbid_rules.key = ebay1). */
+        let currentSbidRule = { l7_views_threshold: 70, bands: [] };
+
+        function resolveSbidBandBid(band, ctx) {
+            const color = band.color || '#333';
+            const sub = band.sub;
+            if (sub && sub.metric && Array.isArray(sub.bands) && sub.bands.length) {
+                const val = parseFloat(ctx[sub.metric]) || 0;
+                for (let j = 0; j < sub.bands.length; j++) {
+                    if (val <= parseFloat(sub.bands[j].max)) {
+                        return { bid: parseFloat(sub.bands[j].bid), color: color, skip: false };
+                    }
+                }
+                const ls = sub.bands[sub.bands.length - 1];
+                return { bid: parseFloat(ls.bid), color: color, skip: false };
+            }
+            return { bid: parseFloat(band.bid), color: color, skip: false };
+        }
+
+        function getSbidFromRule(scvr, rowData) {
+            const s = parseFloat(scvr);
+            const safeScvr = (!isFinite(s) || s < 0) ? 0 : s;
+            const bands = currentSbidRule.bands || [];
+            const ctx = {
+                scvr: safeScvr,
+                ebay_price: parseFloat(rowData['eBay Price']) || 0,
+                ebay_l30: parseFloat(rowData['eBay L30']) || 0,
+                views: parseFloat(rowData.views) || 0,
+            };
+            for (let i = 0; i < bands.length; i++) {
+                if (safeScvr <= parseFloat(bands[i].scvr_max)) {
+                    return resolveSbidBandBid(bands[i], ctx);
+                }
+            }
+            const last = bands[bands.length - 1] || { bid: 2.1, color: '#e83e8c' };
+            return resolveSbidBandBid(last, ctx);
+        }
+
+        // Same logic as /ebay/campaign-ads S Bid column; field names match this tabulator row.
+        function getCombinedSbid(rowData) {
+            const l7 = parseFloat(rowData.l7_views) || 0;
+            const esBidRaw = parseFloat(rowData.ca_suggested_bid);
+            const sold = parseFloat(rowData['eBay L30']) || 0;
+            const views = parseFloat(rowData.views) || 0;
+            const scvr = views > 0 ? (sold / views) * 100 : 0;
+            const threshold = parseFloat(currentSbidRule.l7_views_threshold);
+            const thr = isFinite(threshold) ? threshold : 70;
+
+            if (l7 < thr) {
+                if (!isFinite(esBidRaw) || esBidRaw <= 0) {
+                    return { bid: 0, color: '#6c757d', skip: true };
+                }
+                return { bid: esBidRaw, color: '#0dcaf0', skip: false };
+            }
+            return getSbidFromRule(scvr, rowData);
+        }
 
         /**
          * Child SKUs on the current pagination page only (respects filters + SKU Count).
@@ -3332,11 +3388,10 @@
                         width: 50
                     },
                     {
-                        title: "L7 VIEWS",
+                        title: "L7 View",
                         field: "l7_views",
                         hozAlign: "center",
                         sorter: "number",
-                        visible: false,
                         formatter: function(cell) {
                             var value = parseInt(cell.getValue() || 0);
                             return value.toLocaleString();
@@ -3801,6 +3856,23 @@
                             const v = parseFloat(cell.getValue());
                             if (isNaN(v)) return '<span class="text-muted">—</span>';
                             return `<span class="text-info fw-semibold">${v.toFixed(1)}%</span>`;
+                        }
+                    },
+                    {
+                        title: "S BID",
+                        field: "ca_suggested_bid",
+                        hozAlign: "center",
+                        width: 90,
+                        headerTooltip: "Suggested bid: if l7_views < L7 threshold → ES Bid; else SCVR-band lookup (same as /ebay/campaign-ads).",
+                        sorter: function(a, b, aRow, bRow) {
+                            return getCombinedSbid(aRow.getData()).bid - getCombinedSbid(bRow.getData()).bid;
+                        },
+                        formatter: function(cell) {
+                            const match = getCombinedSbid(cell.getRow().getData());
+                            if (match.skip) {
+                                return '<span class="text-muted" title="No SBID — l7_views below threshold and no ES Bid available" style="font-size:11px;">—</span>';
+                            }
+                            return `<span style="color:${match.color}; font-weight:700;">${match.bid.toFixed(1)}%</span>`;
                         }
                     },
                     {
@@ -4828,6 +4900,7 @@
                 'ROI%': 'GROI%',
                 'GPFT%': 'GPFT%',
                 'views': 'Views',
+                'l7_views': 'L7 Views',
                 'nr_req': 'NR/REQ',
                 'SPRICE': 'SPRICE',
                 'SPFT': 'SPFT',
@@ -5344,13 +5417,11 @@
 
         // ════════════════════════════════════════════════════════════════════
         // SBID Rule modal (shared with /ebay/campaign-ads; same endpoints)
-        // Edits L7 views threshold + SCVR band lookup + dynamic sub-rules.
-        // No S Bid column on this page — the rule is just editable here for convenience.
+        // Edits L7 views threshold + SCVR band lookup + dynamic sub-rules for the S BID column.
         // ════════════════════════════════════════════════════════════════════
         (function() {
             const ruleGetUrl  = '/ebay/campaign-ads/rule';
             const ruleSaveUrl = '/ebay/campaign-ads/rule';
-            let currentRule = { l7_views_threshold: 70, bands: [] };
 
             // Metric options for a band's dynamic sub-rule
             const SUB_METRICS = {
@@ -5483,8 +5554,8 @@
             window.sbidRuleUpdateBand = function(el) {
                 const idx   = parseInt(el.dataset.idx);
                 const field = el.dataset.field;
-                if (!currentRule.bands[idx]) return;
-                currentRule.bands[idx][field] = (field === 'scvr_max' || field === 'bid')
+                if (!currentSbidRule.bands[idx]) return;
+                currentSbidRule.bands[idx][field] = (field === 'scvr_max' || field === 'bid')
                     ? parseFloat(el.value) : el.value;
                 if (field === 'color') {
                     const badge = el.closest('tr').querySelector('.badge');
@@ -5493,46 +5564,46 @@
             };
 
             window.sbidRuleToggleSub = function(idx, enabled) {
-                if (!currentRule.bands[idx]) return;
+                if (!currentSbidRule.bands[idx]) return;
                 if (enabled) {
-                    currentRule.bands[idx].sub = {
+                    currentSbidRule.bands[idx].sub = {
                         metric: 'ebay_price',
-                        bands: [{ max: 9999, bid: parseFloat(currentRule.bands[idx].bid) || 2.1 }]
+                        bands: [{ max: 9999, bid: parseFloat(currentSbidRule.bands[idx].bid) || 2.1 }]
                     };
                 } else {
-                    delete currentRule.bands[idx].sub;
+                    delete currentSbidRule.bands[idx].sub;
                 }
-                renderBands(currentRule.bands);
+                renderBands(currentSbidRule.bands);
             };
 
             window.sbidRuleUpdateSubMetric = function(idx, metric) {
-                if (!currentRule.bands[idx] || !currentRule.bands[idx].sub) return;
-                currentRule.bands[idx].sub.metric = metric;
-                renderBands(currentRule.bands);
+                if (!currentSbidRule.bands[idx] || !currentSbidRule.bands[idx].sub) return;
+                currentSbidRule.bands[idx].sub.metric = metric;
+                renderBands(currentSbidRule.bands);
             };
 
             window.sbidRuleUpdateSubBand = function(el) {
                 const idx   = parseInt(el.dataset.idx);
                 const j     = parseInt(el.dataset.j);
                 const field = el.dataset.sub;
-                if (!currentRule.bands[idx] || !currentRule.bands[idx].sub) return;
-                currentRule.bands[idx].sub.bands[j][field] = parseFloat(el.value);
+                if (!currentSbidRule.bands[idx] || !currentSbidRule.bands[idx].sub) return;
+                currentSbidRule.bands[idx].sub.bands[j][field] = parseFloat(el.value);
             };
 
             window.sbidRuleAddSubBand = function(idx) {
-                if (!currentRule.bands[idx] || !currentRule.bands[idx].sub) return;
-                const sb = currentRule.bands[idx].sub.bands;
+                if (!currentSbidRule.bands[idx] || !currentSbidRule.bands[idx].sub) return;
+                const sb = currentSbidRule.bands[idx].sub.bands;
                 const lastIsCatch = sb.length && parseFloat(sb[sb.length - 1].max) >= 9999;
-                const newTier = { max: 0, bid: parseFloat(currentRule.bands[idx].bid) || 2.1 };
+                const newTier = { max: 0, bid: parseFloat(currentSbidRule.bands[idx].bid) || 2.1 };
                 if (lastIsCatch) sb.splice(sb.length - 1, 0, newTier);
                 else sb.push(newTier);
-                renderBands(currentRule.bands);
+                renderBands(currentSbidRule.bands);
             };
 
             window.sbidRuleRemoveSubBand = function(idx, j) {
-                if (!currentRule.bands[idx] || !currentRule.bands[idx].sub) return;
-                currentRule.bands[idx].sub.bands.splice(j, 1);
-                renderBands(currentRule.bands);
+                if (!currentSbidRule.bands[idx] || !currentSbidRule.bands[idx].sub) return;
+                currentSbidRule.bands[idx].sub.bands.splice(j, 1);
+                renderBands(currentSbidRule.bands);
             };
 
             // Fetches the saved rule and re-renders the L7 threshold input + bands table.
@@ -5544,12 +5615,13 @@
                     method: 'GET',
                     dataType: 'json',
                     success: function(data) {
-                        currentRule = data || { l7_views_threshold: 70, bands: [] };
-                        if (currentRule.l7_views_threshold == null) currentRule.l7_views_threshold = 70;
-                        if (!Array.isArray(currentRule.bands)) currentRule.bands = [];
+                        currentSbidRule = data || { l7_views_threshold: 70, bands: [] };
+                        if (currentSbidRule.l7_views_threshold == null) currentSbidRule.l7_views_threshold = 70;
+                        if (!Array.isArray(currentSbidRule.bands)) currentSbidRule.bands = [];
                         const thrEl = document.getElementById('sbid-l7-threshold-input');
-                        if (thrEl) thrEl.value = currentRule.l7_views_threshold;
-                        renderBands(currentRule.bands);
+                        if (thrEl) thrEl.value = currentSbidRule.l7_views_threshold;
+                        renderBands(currentSbidRule.bands);
+                        if (table) table.redraw(true);
                     },
                     error: function(xhr) {
                         const errEl = document.getElementById('sbid-rule-err');
@@ -5585,7 +5657,7 @@
 
             // Track threshold edits in-memory
             $(document).on('change', '#sbid-l7-threshold-input', function() {
-                currentRule.l7_views_threshold = parseFloat(this.value) || 0;
+                currentSbidRule.l7_views_threshold = parseFloat(this.value) || 0;
             });
 
             // Save
@@ -5604,13 +5676,14 @@
                     headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
                     contentType: 'application/json',
                     data: JSON.stringify({
-                        bands: currentRule.bands || [],
+                        bands: currentSbidRule.bands || [],
                         l7_views_threshold: isFinite(threshold) ? threshold : 70,
                     }),
                     success: function(resp) {
                         btn.disabled = false;
                         btn.innerHTML = '<i class="fas fa-check me-1"></i>Saved!';
-                        currentRule = resp.rule || currentRule;
+                        currentSbidRule = resp.rule || currentSbidRule;
+                        if (table) table.redraw(true);
                         if (typeof showToast === 'function') showToast('success', 'SBID Rule saved');
                         setTimeout(() => {
                             btn.innerHTML = '<i class="fas fa-save me-1"></i>Save Rule';

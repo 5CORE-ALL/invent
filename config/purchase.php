@@ -34,5 +34,6 @@ return [
         'container.planning' => 'container_planning',
         'quality.enhance' => 'quality_enhance',
         'follow.up.history' => 'follow_up_history',
+        'comparison.index' => 'comparison',
     ],
 ];
