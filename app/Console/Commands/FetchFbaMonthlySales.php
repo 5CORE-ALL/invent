@@ -14,6 +14,7 @@ class FetchFbaMonthlySales extends Command
     protected $signature = 'app:fetch-fba-monthly-sales
         {--year= : Year to fetch (default current year)}
         {--source=both : source of SKUs: inventory|prices|both}
+        {--sku= : Fetch a single SKU only (for testing or one-off refresh)}
         {--debug : show debug info}';
 
     protected $description = 'Fetch monthly sales (Jan-Dec) per SKU and insert/update fba_monthly_sales';
@@ -35,17 +36,23 @@ class FetchFbaMonthlySales extends Command
         $marketplace = config('services.amazon_sp.marketplace_id');
 
         // Collect SKUs
-        $skus = collect();
+        $singleSku = trim((string) $this->option('sku'));
+        if ($singleSku !== '') {
+            $skus = [$singleSku];
+            $this->info("ℹ️ Single-SKU mode: {$singleSku}");
+        } else {
+            $skus = collect();
 
-        if (in_array($source, ['inventory','both'])) {
-            $skus = $skus->merge(FbaTable::pluck('seller_sku')->filter()->unique());
+            if (in_array($source, ['inventory','both'])) {
+                $skus = $skus->merge(FbaTable::pluck('seller_sku')->filter()->unique());
+            }
+
+            if (in_array($source, ['prices','both'])) {
+                $skus = $skus->merge(FbaPrice::pluck('seller_sku')->filter()->unique());
+            }
+
+            $skus = $skus->unique()->values()->all();
         }
-
-        if (in_array($source, ['prices','both'])) {
-            $skus = $skus->merge(FbaPrice::pluck('seller_sku')->filter()->unique());
-        }
-
-        $skus = $skus->unique()->values()->all();
 
         if (empty($skus)) {
             $this->warn('⚠️ No SKUs found to fetch.');
@@ -72,8 +79,8 @@ class FetchFbaMonthlySales extends Command
         // Iterate SKUs
         foreach ($skus as $sku) {
             try {
-                // Build URL - note: adjust sku param name if SP-API expects something else.
-                $url = "{$endpoint}/sales/v1/orderMetrics?marketplaceIds={$marketplace}&interval={$interval}&granularity=Month&sku={$sku}";
+                $encodedSku = rawurlencode($sku);
+                $url = "{$endpoint}/sales/v1/orderMetrics?marketplaceIds={$marketplace}&interval={$interval}&granularity=Month&sku={$encodedSku}";
 
                 $res = Http::withHeaders([
                     'x-amz-access-token' => $accessToken,
@@ -92,11 +99,12 @@ class FetchFbaMonthlySales extends Command
                 $payload = $res->json()['payload'] ?? null;
                 if (!$payload || !is_array($payload) || count($payload) === 0) {
                     $this->warn("ℹ️ No metrics returned for SKU {$sku} (may be zero or restricted)");
-                    // ensure a 0 row exists
+                    $rolling = $this->fetchRollingMetrics($accessToken, $endpoint, $marketplace, $encodedSku, $interval30, $interval60);
                     FbaMonthlySale::updateOrCreate(
                         ['seller_sku' => $sku, 'year' => $year],
-                        ['total_units' => 0]
+                        array_merge(['total_units' => 0], $rolling)
                     );
+                    $this->syncRollingMetricsToAllYears($sku, $rolling);
                     continue;
                 }
 
@@ -109,14 +117,7 @@ class FetchFbaMonthlySales extends Command
                     $intervalStr = $period['interval'] ?? null;
                     $unitCount = intval($period['unitCount'] ?? 0);
 
-                    // Some responses provide 'orderedProductSales' => ['amount' => X]
-                    $orderedProductSales = 0;
-                    if (!empty($period['orderedProductSales']['amount'])) {
-                        $orderedProductSales = floatval($period['orderedProductSales']['amount']);
-                    } elseif (!empty($period['orderedProductSales'])) {
-                        // defensive: might be number directly
-                        $orderedProductSales = floatval($period['orderedProductSales']);
-                    }
+                    $orderedProductSales = $this->periodSalesAmount($period);
 
                     // some APIs include SKU+ASIN in the payload; try to capture asin:
                     $asin = $period['asin'] ?? null;
@@ -156,47 +157,11 @@ class FetchFbaMonthlySales extends Command
                     $avgPrice = $price ? floatval($price) : null;
                 }
 
-                // Fetch L30 data
-                $l30Units = 0;
-                $l30Revenue = 0.0;
-                try {
-                    $url30 = "{$endpoint}/sales/v1/orderMetrics?marketplaceIds={$marketplace}&interval={$interval30}&granularity=Total&sku={$sku}";
-                    $res30 = Http::withHeaders([
-                        'x-amz-access-token' => $accessToken,
-                        'Content-Type' => 'application/json',
-                    ])->get($url30);
-                    if ($res30->successful()) {
-                        $payload30 = $res30->json()['payload'] ?? [];
-                        if (!empty($payload30) && is_array($payload30)) {
-                            $l30Units = intval($payload30[0]['unitCount'] ?? 0);
-                            $l30Revenue = floatval($payload30[0]['orderedProductSales']['amount'] ?? 0);
-                        }
-                    }
-                    sleep(1);
-                } catch (\Throwable $e) {
-                    Log::error("L30 fetch error for SKU {$sku}: " . $e->getMessage());
-                }
-
-                // Fetch L60 data
-                $l60Units = 0;
-                $l60Revenue = 0.0;
-                try {
-                    $url60 = "{$endpoint}/sales/v1/orderMetrics?marketplaceIds={$marketplace}&interval={$interval60}&granularity=Total&sku={$sku}";
-                    $res60 = Http::withHeaders([
-                        'x-amz-access-token' => $accessToken,
-                        'Content-Type' => 'application/json',
-                    ])->get($url60);
-                    if ($res60->successful()) {
-                        $payload60 = $res60->json()['payload'] ?? [];
-                        if (!empty($payload60) && is_array($payload60)) {
-                            $l60Units = intval($payload60[0]['unitCount'] ?? 0);
-                            $l60Revenue = floatval($payload60[0]['orderedProductSales']['amount'] ?? 0);
-                        }
-                    }
-                    sleep(1);
-                } catch (\Throwable $e) {
-                    Log::error("L60 fetch error for SKU {$sku}: " . $e->getMessage());
-                }
+                $rolling = $this->fetchRollingMetrics($accessToken, $endpoint, $marketplace, $encodedSku, $interval30, $interval60);
+                $l30Units = $rolling['l30_units'];
+                $l30Revenue = $rolling['l30_revenue'];
+                $l60Units = $rolling['l60_units'];
+                $l60Revenue = $rolling['l60_revenue'];
 
                 // map to keys jan..dec
                 $dataToSave = [
@@ -226,8 +191,9 @@ class FetchFbaMonthlySales extends Command
                     ['seller_sku' => $sku, 'year' => $year],
                     $dataToSave
                 );
+                $this->syncRollingMetricsToAllYears($sku, $rolling);
 
-                $this->info("✅ Saved monthly metrics for {$sku} (units: {$totalUnits})");
+                $this->info("✅ Saved monthly metrics for {$sku} (year: {$year}, units: {$totalUnits}, L30: {$l30Units})");
 
             } catch (\Throwable $e) {
                 Log::error("Error for SKU {$sku}: " . $e->getMessage());
@@ -240,6 +206,82 @@ class FetchFbaMonthlySales extends Command
 
         $this->info('🏁 Done fetching monthly sales.');
         return 0;
+    }
+
+    private function periodSalesAmount(array $period): float
+    {
+        foreach (['orderedProductSales', 'totalSales'] as $key) {
+            if (!empty($period[$key]['amount'])) {
+                return floatval($period[$key]['amount']);
+            }
+            if (!empty($period[$key]) && is_numeric($period[$key])) {
+                return floatval($period[$key]);
+            }
+        }
+
+        return 0.0;
+    }
+
+    private function fetchRollingMetrics(
+        string $accessToken,
+        string $endpoint,
+        string $marketplace,
+        string $encodedSku,
+        string $interval30,
+        string $interval60
+    ): array {
+        $l30Units = 0;
+        $l30Revenue = 0.0;
+        $l60Units = 0;
+        $l60Revenue = 0.0;
+
+        try {
+            $url30 = "{$endpoint}/sales/v1/orderMetrics?marketplaceIds={$marketplace}&interval={$interval30}&granularity=Total&sku={$encodedSku}";
+            $res30 = Http::withHeaders([
+                'x-amz-access-token' => $accessToken,
+                'Content-Type' => 'application/json',
+            ])->get($url30);
+            if ($res30->successful()) {
+                $payload30 = $res30->json()['payload'] ?? [];
+                if (!empty($payload30) && is_array($payload30)) {
+                    $l30Units = intval($payload30[0]['unitCount'] ?? 0);
+                    $l30Revenue = $this->periodSalesAmount($payload30[0]);
+                }
+            }
+            sleep(1);
+        } catch (\Throwable $e) {
+            Log::error("L30 fetch error for SKU {$encodedSku}: " . $e->getMessage());
+        }
+
+        try {
+            $url60 = "{$endpoint}/sales/v1/orderMetrics?marketplaceIds={$marketplace}&interval={$interval60}&granularity=Total&sku={$encodedSku}";
+            $res60 = Http::withHeaders([
+                'x-amz-access-token' => $accessToken,
+                'Content-Type' => 'application/json',
+            ])->get($url60);
+            if ($res60->successful()) {
+                $payload60 = $res60->json()['payload'] ?? [];
+                if (!empty($payload60) && is_array($payload60)) {
+                    $l60Units = intval($payload60[0]['unitCount'] ?? 0);
+                    $l60Revenue = $this->periodSalesAmount($payload60[0]);
+                }
+            }
+            sleep(1);
+        } catch (\Throwable $e) {
+            Log::error("L60 fetch error for SKU {$encodedSku}: " . $e->getMessage());
+        }
+
+        return [
+            'l30_units' => $l30Units,
+            'l30_revenue' => $l30Revenue,
+            'l60_units' => $l60Units,
+            'l60_revenue' => $l60Revenue,
+        ];
+    }
+
+    private function syncRollingMetricsToAllYears(string $sku, array $rolling): void
+    {
+        FbaMonthlySale::where('seller_sku', $sku)->update($rolling);
     }
 
     private function getAccessToken()

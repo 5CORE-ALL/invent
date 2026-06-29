@@ -2009,7 +2009,7 @@ class AmazonAdsController extends Controller
     }
 
     /**
-     * Grid SBID from U7%/U1% + L1/L2/L7 CPC (or CPC1 / `costPerClick` fallback), aligned with auto-update commands.
+     * Grid SBID from U7%/U1% + CPC1/CPC2/CPC3 (`costPerClick`, `CPC2`, `CPC3`), aligned with auto-update commands.
      * Outside red+red / pink+pink bands, sbid is forced to null so the UI shows "--".
      */
     private static function applyGridSbidFromUb2Ub1AndCpc(array &$arr, array $u, array $rowArr, array $dbColumns, string $table): void
@@ -2026,27 +2026,20 @@ class AmazonAdsController extends Controller
             return;
         }
 
-        $l1 = self::rowPositiveFloatFromKeys($rowArr, ['l1_cpc', 'L1_cpc', 'l1Cpc']);
-        $l2 = self::rowPositiveFloatFromKeys($rowArr, ['l2_cpc', 'L2_cpc', 'l2Cpc']);
-        $l7 = self::rowPositiveFloatFromKeys($rowArr, ['l7_cpc', 'L7_cpc', 'l7Cpc']);
-        $cpcFb = self::rowPositiveFloatFromKeys($rowArr, ['costPerClick']);
-        if ($cpcFb <= 0 && isset($arr['costPerClick']) && $arr['costPerClick'] !== null && $arr['costPerClick'] !== '') {
-            $cpcFb = self::rowPositiveFloatFromKeys($arr, ['costPerClick']);
+        $cpc1 = self::rowPositiveFloatFromKeys($arr, ['costPerClick']);
+        if ($cpc1 <= 0) {
+            $cpc1 = self::rowPositiveFloatFromKeys($rowArr, ['costPerClick']);
         }
-        if ($cpcFb <= 0 && $table === 'amazon_sb_campaign_reports' && in_array('clicks', $dbColumns, true)
-            && (in_array('cost', $dbColumns, true) || in_array('spend', $dbColumns, true))) {
-            $hl = self::hlStyleCpcFromReportRowArray($rowArr);
-            $cpcFb = ($hl !== null && $hl > 0) ? $hl : 0.0;
-        }
-        $fallback = $cpcFb > 0 ? $cpcFb : null;
+        $cpc2 = self::rowPositiveFloatFromKeys($arr, ['CPC2']);
+        $cpc3 = self::rowPositiveFloatFromKeys($arr, ['CPC3']);
 
         $out = AmazonBidUtilizationService::sbidFromUb2Ub1Cpc(
             (float) $u2,
             (float) $u1,
-            $l1,
-            $l2,
-            $l7,
-            $fallback
+            $cpc1,
+            $cpc2,
+            $cpc3,
+            null
         );
 
         $arr['sbid'] = $out['sbid'];
