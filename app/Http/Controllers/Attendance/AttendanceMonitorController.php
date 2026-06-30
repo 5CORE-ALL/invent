@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Services\Attendance\AttendanceAiMisuseService;
 use App\Services\Attendance\AttendanceAnalysisService;
 use App\Services\Attendance\AttendanceService;
+use App\Services\Attendance\AttendanceTimelineService;
 use App\Support\AttendanceAccess;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -22,6 +23,7 @@ class AttendanceMonitorController extends Controller
         private readonly AttendanceService $attendanceService,
         private readonly AttendanceAnalysisService $analysisService,
         private readonly AttendanceAiMisuseService $aiMisuseService,
+        private readonly AttendanceTimelineService $timelineService,
     ) {
         $this->middleware('auth');
     }
@@ -31,48 +33,34 @@ class AttendanceMonitorController extends Controller
         abort_unless(AttendanceAccess::canMonitor(), 403, 'You do not have access to the attendance monitor.');
 
         $date = $request->input('date', now()->toDateString());
+        $team = $request->input('team', 'all');
+        $timezone = $request->input('timezone', config('attendance.timeline_timezone', 'Asia/Kolkata'));
+        $dayReset = $request->input('day_reset', config('attendance.timeline_day_reset', '04:00'));
+
         $viewableIds = AttendanceAccess::viewableUserIds();
         $employees = $this->attendanceService->monitorableEmployees($viewableIds);
 
-        $summaries = AttendanceDailySummary::query()
-            ->whereDate('work_date', $date)
-            ->when($viewableIds !== null, fn ($q) => $q->whereIn('user_id', $viewableIds))
-            ->with('user:id,name,email,designation,avatar')
-            ->get()
-            ->keyBy('user_id');
+        if ($team !== 'all') {
+            $employees = $employees->filter(fn (User $u) => (string) $u->designation === $team)->values();
+        }
 
-        $activeSessions = AttendanceSession::query()
-            ->whereIn('status', ['active', 'paused'])
-            ->when($viewableIds !== null, fn ($q) => $q->whereIn('user_id', $viewableIds))
-            ->with('user:id,name,email,designation')
-            ->get()
-            ->keyBy('user_id');
+        $teams = $this->attendanceService->monitorableEmployees($viewableIds)
+            ->pluck('designation')
+            ->filter()
+            ->unique()
+            ->sort()
+            ->values();
 
-        $openFlags = AttendanceAiFlag::query()
-            ->where('status', 'open')
-            ->when($viewableIds !== null, fn ($q) => $q->whereIn('user_id', $viewableIds))
-            ->whereDate('flag_date', '>=', Carbon::parse($date)->subDays(7))
-            ->with('user:id,name,email')
-            ->orderByDesc('created_at')
-            ->limit(50)
-            ->get();
-
-        $stats = [
-            'total_employees' => $employees->count(),
-            'present_today' => $summaries->whereIn('status', ['present', 'late'])->count(),
-            'active_now' => $activeSessions->count(),
-            'open_flags' => $openFlags->count(),
-            'avg_productivity' => $summaries->avg('productivity_score'),
-        ];
+        $timeline = $this->timelineService->teamTimeline($employees, $date, $timezone, $dayReset);
 
         return view('attendance.monitor', [
-            'title' => 'Attendance Monitor',
+            'title' => 'Team Timeline',
             'date' => $date,
-            'employees' => $employees,
-            'summaries' => $summaries,
-            'active_sessions' => $activeSessions,
-            'open_flags' => $openFlags,
-            'stats' => $stats,
+            'team' => $team,
+            'timezone' => $timezone,
+            'day_reset' => $dayReset,
+            'teams' => $teams,
+            'timeline' => $timeline,
             'can_admin' => AttendanceAccess::canAdmin(),
         ]);
     }
@@ -155,15 +143,17 @@ class AttendanceMonitorController extends Controller
         abort_unless(AttendanceAccess::canMonitor(), 403);
 
         $date = $request->input('date', now()->toDateString());
+        $team = $request->input('team', 'all');
+        $timezone = $request->input('timezone', config('attendance.timeline_timezone', 'Asia/Kolkata'));
+        $dayReset = $request->input('day_reset', config('attendance.timeline_day_reset', '04:00'));
         $viewableIds = AttendanceAccess::viewableUserIds();
 
-        $summaries = AttendanceDailySummary::query()
-            ->whereDate('work_date', $date)
-            ->when($viewableIds !== null, fn ($q) => $q->whereIn('user_id', $viewableIds))
-            ->with('user:id,name,email,designation')
-            ->get();
+        $employees = $this->attendanceService->monitorableEmployees($viewableIds);
+        if ($team !== 'all') {
+            $employees = $employees->filter(fn (User $u) => (string) $u->designation === $team)->values();
+        }
 
-        return response()->json(['summaries' => $summaries]);
+        return response()->json($this->timelineService->teamTimeline($employees, $date, $timezone, $dayReset));
     }
 
     public function analyzeDay(Request $request, User $user): JsonResponse

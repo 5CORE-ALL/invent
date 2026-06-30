@@ -74,7 +74,13 @@ return [
     'screenshot_interval_seconds' => (int) env('ATTENDANCE_SCREENSHOT_INTERVAL', 30),
     'screenshot_max_kb' => (int) env('ATTENDANCE_SCREENSHOT_MAX_KB', 5120),
     'screenshot_disk' => 'attendance',
-    'require_desktop_agent' => env('ATTENDANCE_REQUIRE_DESKTOP_AGENT', false),
+    'require_desktop_agent' => env('ATTENDANCE_REQUIRE_DESKTOP_AGENT', true),
+
+    /*
+    | Team timeline (monitor) defaults.
+    */
+    'timeline_timezone' => env('ATTENDANCE_TIMELINE_TIMEZONE', 'Asia/Kolkata'),
+    'timeline_day_reset' => env('ATTENDANCE_TIMELINE_DAY_RESET', '04:00'),
 
     /*
     | App names treated as productive / unproductive for scoring.
