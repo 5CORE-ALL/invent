@@ -62,7 +62,15 @@ class RunGoogleMapsExtractionJob implements ShouldQueue
         ]);
 
         while ($queryIndex < count($queries) && (! $hasResultLimit || $search->results()->count() < $limit)) {
+            if ($this->shouldAbortExtraction($search)) {
+                return;
+            }
+
             $controlAction = $this->waitIfPaused($search);
+
+            if ($this->shouldAbortExtraction($search)) {
+                return;
+            }
 
             if (in_array($controlAction, ['stop', 'cancel'], true)) {
                 $this->finishControlled($search, $controlAction);
@@ -115,6 +123,16 @@ class RunGoogleMapsExtractionJob implements ShouldQueue
             ]);
 
             sleep(($sourceUrl['source'] ?? '') === 'google_local' ? 3 : 2);
+
+            if ($this->shouldAbortExtraction($search)) {
+                return;
+            }
+
+            $controlAction = $this->readControlAction();
+            if (in_array($controlAction, ['stop', 'cancel'], true)) {
+                $this->finishControlled($search, $controlAction);
+                return;
+            }
         }
 
         $this->trimResultsToLimit($search, $limit);
@@ -152,17 +170,35 @@ class RunGoogleMapsExtractionJob implements ShouldQueue
     {
         $action = $this->readControlAction();
 
-        while ($action === 'pause') {
+        if ($action === 'pause') {
             $this->writeProgress([
                 'status' => 'paused',
                 'message' => 'Extraction paused. Waiting for resume...',
                 'records' => $search->results()->count(),
             ]);
+        }
+
+        while ($action === 'pause') {
+            if ($this->shouldAbortExtraction($search)) {
+                return null;
+            }
+
             sleep(2);
             $action = $this->readControlAction();
         }
 
         return $action;
+    }
+
+    private function shouldAbortExtraction(GoogleMapsExtractorSearch $search): bool
+    {
+        $search->refresh();
+
+        if (in_array($search->status, ['completed', 'cancelled', 'stopped', 'failed'], true)) {
+            return true;
+        }
+
+        return ! Cache::has($this->stateCacheKey());
     }
 
     private function finishControlled(GoogleMapsExtractorSearch $search, string $action): void
@@ -283,8 +319,14 @@ class RunGoogleMapsExtractionJob implements ShouldQueue
         $logs = $existing['logs'] ?? [];
 
         if ($message !== '') {
-            $logs[] = now()->format('H:i:s') . ' - ' . Str::limit($message, 220, '...');
-            $logs = array_slice($logs, -12);
+            $limitedMessage = Str::limit($message, 220, '...');
+            $lastLog = end($logs);
+            $lastMessage = is_string($lastLog) ? Str::after($lastLog, ' - ') : '';
+
+            if ($lastMessage !== $limitedMessage) {
+                $logs[] = now()->format('H:i:s') . ' - ' . $limitedMessage;
+                $logs = array_slice($logs, -12);
+            }
         }
 
         Cache::put($key, array_merge($existing, $progress, [

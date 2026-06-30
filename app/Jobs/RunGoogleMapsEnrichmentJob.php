@@ -60,7 +60,15 @@ class RunGoogleMapsEnrichmentJob implements ShouldQueue
         ]);
 
         while ($processed < $total) {
+            if (! Cache::has($this->enrichmentStateCacheKey())) {
+                return;
+            }
+
             $controlAction = $this->waitIfPaused($processed, $total);
+
+            if (! Cache::has($this->enrichmentStateCacheKey())) {
+                return;
+            }
 
             if (in_array($controlAction, ['stop', 'cancel'], true)) {
                 $this->finishControlled($processed, $total, $controlAction);
@@ -125,6 +133,16 @@ class RunGoogleMapsEnrichmentJob implements ShouldQueue
             ]);
 
             sleep(1);
+
+            if (! Cache::has($this->enrichmentStateCacheKey())) {
+                return;
+            }
+
+            $controlAction = $this->readControlAction();
+            if (in_array($controlAction, ['stop', 'cancel'], true)) {
+                $this->finishControlled($processed, $total, $controlAction);
+                return;
+            }
         }
 
         Cache::forget($this->enrichmentStateCacheKey());
@@ -151,7 +169,7 @@ class RunGoogleMapsEnrichmentJob implements ShouldQueue
     {
         $action = $this->readControlAction();
 
-        while ($action === 'pause') {
+        if ($action === 'pause') {
             $this->writeProgress([
                 'status' => 'paused',
                 'message' => 'Website enrichment paused. Waiting for resume...',
@@ -159,6 +177,13 @@ class RunGoogleMapsEnrichmentJob implements ShouldQueue
                 'current_query_number' => $processed,
                 'total_queries' => $total,
             ]);
+        }
+
+        while ($action === 'pause') {
+            if (! Cache::has($this->enrichmentStateCacheKey())) {
+                return null;
+            }
+
             sleep(2);
             $action = $this->readControlAction();
         }
@@ -272,8 +297,14 @@ class RunGoogleMapsEnrichmentJob implements ShouldQueue
         $logs = $existing['logs'] ?? [];
 
         if ($message !== '') {
-            $logs[] = now()->format('H:i:s') . ' - ' . Str::limit($message, 220, '...');
-            $logs = array_slice($logs, -12);
+            $limitedMessage = Str::limit($message, 220, '...');
+            $lastLog = end($logs);
+            $lastMessage = is_string($lastLog) ? Str::after($lastLog, ' - ') : '';
+
+            if ($lastMessage !== $limitedMessage) {
+                $logs[] = now()->format('H:i:s') . ' - ' . $limitedMessage;
+                $logs = array_slice($logs, -12);
+            }
         }
 
         Cache::put($key, array_merge($existing, $progress, [

@@ -43,17 +43,99 @@
             background: #ffffff;
             border-radius: 14px;
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+            display: flex;
+            flex-direction: column;
             max-width: 460px;
+            min-height: 430px;
             overflow: hidden;
             padding: 24px;
             width: calc(100% - 32px);
         }
 
-        #extractor-loading-text,
+        .extractor-loading-card-header {
+            align-items: flex-start;
+            display: flex;
+            flex-shrink: 0;
+            gap: 12px;
+            justify-content: space-between;
+            margin-bottom: 0.25rem;
+        }
+
+        .extractor-loading-card-header h4 {
+            flex: 1;
+            margin-bottom: 0 !important;
+        }
+
+        #extractor-overlay-close-btn {
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+
+        .extractor-loading-control-actions {
+            gap: 8px !important;
+            padding-top: 2px;
+            width: 100%;
+        }
+
+        .extractor-loading-control-actions .btn {
+            flex: 1 1 auto;
+        }
+
+        #extractor-loading-text {
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 3;
+            display: -webkit-box;
+            flex-shrink: 0;
+            line-height: 1.45;
+            margin-bottom: 1rem !important;
+            max-height: 4.35em;
+            min-height: 4.35em;
+            overflow: hidden;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+        }
+
+        .extractor-loading-stats {
+            flex-shrink: 0;
+            min-height: 1.25rem;
+        }
+
+        .extractor-loading-actions {
+            border-top: 1px solid #eef2f7;
+            flex-shrink: 0;
+            margin-top: auto;
+            padding-top: 16px;
+        }
+
+        .extractor-background-link {
+            background: none;
+            border: 0;
+            color: #0d9488;
+            display: block;
+            font-size: 0.8125rem;
+            font-weight: 500;
+            letter-spacing: 0.01em;
+            margin: 0 0 14px;
+            padding: 4px 0;
+            text-align: center;
+            text-decoration: none;
+            width: 100%;
+        }
+
+        .extractor-background-link:hover,
+        .extractor-background-link:focus {
+            color: #0f766e;
+            text-decoration: none;
+        }
+
         #extractor-loading-records,
         #extractor-loading-step {
             overflow-wrap: anywhere;
             word-break: break-word;
+        }
+
+        #extractor-loading-bar {
+            transition: width 0.45s ease;
         }
 
         .city-picker-menu {
@@ -81,10 +163,12 @@
             background: #0f172a;
             border-radius: 8px;
             color: #dbeafe;
+            flex-shrink: 0;
             font-size: 12px;
             line-height: 1.45;
             margin-top: 14px;
             max-height: 170px;
+            min-height: 170px;
             overflow-y: auto;
             padding: 10px 12px;
             white-space: pre-wrap;
@@ -141,7 +225,10 @@
 @section('content')
     <div class="extractor-loading-overlay" id="extractor-loading-overlay">
         <div class="extractor-loading-card">
-            <h4 class="mb-2" id="extractor-loading-title">Fetching Google Maps Leads</h4>
+            <div class="extractor-loading-card-header">
+                <h4 id="extractor-loading-title">Fetching Google Maps Leads</h4>
+                <button type="button" class="btn-close" id="extractor-overlay-close-btn" aria-label="Close"></button>
+            </div>
             <p class="text-muted mb-3" id="extractor-loading-text">
                 Starting extraction. Please keep this page open...
             </p>
@@ -154,18 +241,20 @@
                     aria-valuemin="0"
                     aria-valuemax="100"></div>
             </div>
-            <div class="d-flex justify-content-between small text-muted mt-2">
+            <div class="d-flex justify-content-between small text-muted mt-2 extractor-loading-stats">
                 <span id="extractor-loading-records">0 records fetched</span>
                 <span id="extractor-loading-step">Preparing...</span>
             </div>
             <div class="extractor-loading-log" id="extractor-loading-log">Waiting for scraper log...</div>
-            <div class="d-flex flex-wrap gap-2 mt-3">
-                <button type="button" class="btn btn-sm btn-primary" id="extractor-background-btn">
+            <div class="extractor-loading-actions">
+                <button type="button" class="extractor-background-link" id="extractor-background-link">
                     Run in Background
                 </button>
-                <button type="button" class="btn btn-sm btn-warning" id="extractor-pause-resume-btn" data-state="running">Pause</button>
-                <button type="button" class="btn btn-sm btn-secondary" id="extractor-stop-btn">Stop & Keep</button>
-                <button type="button" class="btn btn-sm btn-danger" id="extractor-cancel-btn">Cancel & Discard</button>
+                <div class="d-flex flex-wrap gap-2 extractor-loading-control-actions">
+                    <button type="button" class="btn btn-sm btn-warning" id="extractor-pause-resume-btn" data-state="running">Pause</button>
+                    <button type="button" class="btn btn-sm btn-secondary" id="extractor-stop-btn">Stop & Keep</button>
+                    <button type="button" class="btn btn-sm btn-danger" id="extractor-cancel-btn">Cancel & Discard</button>
+                </div>
             </div>
         </div>
     </div>
@@ -779,7 +868,7 @@
             const loadingStep = document.getElementById('extractor-loading-step');
             const loadingLog = document.getElementById('extractor-loading-log');
             const progressTokenInput = document.getElementById('progress_token');
-            const backgroundButton = document.getElementById('extractor-background-btn');
+            const backgroundLink = document.getElementById('extractor-background-link');
             const backgroundStatus = document.getElementById('extractor-background-status');
             const backgroundStatusTitle = document.getElementById('extractor-background-title');
             const backgroundStatusText = document.getElementById('extractor-background-text');
@@ -787,12 +876,16 @@
             const pauseResumeButton = document.getElementById('extractor-pause-resume-btn');
             const stopButton = document.getElementById('extractor-stop-btn');
             const cancelButton = document.getElementById('extractor-cancel-btn');
+            const overlayCloseButton = document.getElementById('extractor-overlay-close-btn');
             let activeProgressToken = '';
             let activeProgressPoller = null;
             let activeRunInBackground = false;
             let activeProgressType = 'fetch';
             let activeCompletionUrl = '';
             let latestProgressPayload = null;
+            let displayedProgressPercent = 8;
+            let indeterminateProgressPercent = 8;
+            let activeForegroundMonitor = false;
             const backgroundStorageKey = 'google_maps_extractor_background_job';
 
             function makeProgressToken() {
@@ -887,58 +980,122 @@
 
             async function sendExtractionControl(action) {
                 if (!activeProgressToken) {
+                    if (loadingText) {
+                        loadingText.textContent = 'No active job to control. Start a new run if needed.';
+                    }
                     return;
                 }
 
-                const response = await fetch(controlUrlForToken(activeProgressToken), {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
-                        'X-CSRF-TOKEN': '{{ csrf_token() }}',
-                    },
-                    body: JSON.stringify({ action }),
-                });
+                try {
+                    const response = await fetch(controlUrlForToken(activeProgressToken), {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                        },
+                        body: JSON.stringify({ action }),
+                    });
 
-                if (!response.ok) {
-                    throw new Error('Unable to update extraction control.');
-                }
-
-                const data = await response.json();
-
-                if (data.complete && loadingOverlay?.style.display === 'flex') {
-                    if (data.redirect_url) {
-                        activeCompletionUrl = data.redirect_url;
+                    if (!response.ok) {
+                        const errorPayload = await response.json().catch(() => ({}));
+                        throw new Error(errorPayload.message || 'Unable to update extraction control.');
                     }
-                    if (data.cancelled || data.stopped) {
+
+                    const data = await response.json();
+
+                    if (data.complete && loadingOverlay?.style.display === 'flex') {
+                        if (data.redirect_url) {
+                            activeCompletionUrl = data.redirect_url;
+                        }
+                        if (data.cancelled || data.stopped) {
+                            updateProgressOverlay({
+                                status: data.cancelled ? 'cancelled' : 'stopped',
+                                message: data.cancelled
+                                    ? (activeProgressType === 'enrich'
+                                        ? 'Website enrichment cancelled. Existing lead data was kept.'
+                                        : 'Extraction cancelled. Fetched records were discarded.')
+                                    : (activeProgressType === 'enrich'
+                                        ? 'Website enrichment stopped. Existing lead data was kept.'
+                                        : `Extraction stopped. Kept ${data.records || 0} fetched record(s).`),
+                                records: data.records || 0,
+                                redirect_url: data.redirect_url || '',
+                            });
+                            showCompletedOverlayActions();
+                        }
+                    } else if (data.ok && action === 'pause') {
                         updateProgressOverlay({
-                            status: data.cancelled ? 'cancelled' : 'stopped',
-                            message: data.cancelled
-                                ? 'Extraction cancelled. Fetched records were discarded.'
-                                : `Extraction stopped. Kept ${data.records || 0} fetched record(s).`,
-                            records: data.records || 0,
-                            redirect_url: data.redirect_url || '',
-                        }, 100);
-                        showCompletedOverlayActions();
+                            ...(latestProgressPayload || {}),
+                            status: 'paused',
+                            message: 'Extraction paused. Waiting for resume...',
+                        });
+                    } else if (data.ok && ['stop', 'cancel'].includes(action)) {
+                        if (loadingText) {
+                            loadingText.textContent = action === 'cancel'
+                                ? 'Cancel requested...'
+                                : 'Stop requested...';
+                        }
+                    }
+
+                    if (loadingText && !data.complete) {
+                        if (action === 'resume') {
+                            loadingText.textContent = 'Resume requested...';
+                        } else if (!['stop', 'cancel'].includes(action)) {
+                            loadingText.textContent = `${action.charAt(0).toUpperCase() + action.slice(1)} requested...`;
+                        }
+                    }
+
+                    if (pauseResumeButton && ['pause', 'resume'].includes(action)) {
+                        const isPaused = action === 'pause';
+                        pauseResumeButton.dataset.state = isPaused ? 'paused' : 'running';
+                        pauseResumeButton.textContent = isPaused ? 'Resume' : 'Pause';
+                        pauseResumeButton.classList.toggle('btn-success', isPaused);
+                        pauseResumeButton.classList.toggle('btn-warning', !isPaused);
+                    }
+                } catch (error) {
+                    if (loadingText) {
+                        loadingText.textContent = error.message || 'Control request failed. Please try again.';
                     }
                 }
+            }
 
-                if (loadingText) {
-                    loadingText.textContent = `${action.charAt(0).toUpperCase() + action.slice(1)} requested...`;
+            function isOverlayJobComplete() {
+                const completeStatuses = ['completed', 'stopped', 'cancelled', 'failed'];
+                return completeStatuses.includes(latestProgressPayload?.status)
+                    || stopButton?.dataset.action === 'reload';
+            }
+
+            function minimizeExtractorOverlay() {
+                if (isOverlayJobComplete()) {
+                    if (loadingOverlay) {
+                        loadingOverlay.style.display = 'none';
+                    }
+
+                    return;
                 }
 
-                if (pauseResumeButton && ['pause', 'resume'].includes(action)) {
-                    const isPaused = action === 'pause';
-                    pauseResumeButton.dataset.state = isPaused ? 'paused' : 'running';
-                    pauseResumeButton.textContent = isPaused ? 'Resume' : 'Pause';
-                    pauseResumeButton.classList.toggle('btn-success', isPaused);
-                    pauseResumeButton.classList.toggle('btn-warning', !isPaused);
+                activeRunInBackground = true;
+                saveBackgroundJob();
+                updateBackgroundStatus(latestProgressPayload || {
+                    status: 'running',
+                });
+                pollStoredBackgroundProgress(activeProgressToken);
+
+                if (activeProgressPoller) {
+                    clearInterval(activeProgressPoller);
+                    activeProgressPoller = null;
+                }
+
+                if (loadingOverlay) {
+                    loadingOverlay.style.display = 'none';
                 }
             }
 
             function resetOverlay(title, message, cancelLabel = 'Cancel & Discard') {
                 activeRunInBackground = false;
                 activeCompletionUrl = '';
+                displayedProgressPercent = 8;
+                indeterminateProgressPercent = 8;
 
                 if (backgroundStatus) {
                     backgroundStatus.style.display = 'none';
@@ -950,6 +1107,7 @@
 
                 if (loadingText) {
                     loadingText.textContent = message;
+                    loadingText.title = message;
                 }
 
                 if (loadingBar) {
@@ -984,11 +1142,8 @@
                     cancelButton.textContent = cancelLabel;
                 }
 
-                if (backgroundButton) {
-                    backgroundButton.textContent = 'Run in Background';
-                    backgroundButton.dataset.action = 'background';
-                    backgroundButton.classList.add('btn-primary');
-                    backgroundButton.classList.remove('btn-secondary');
+                if (backgroundLink) {
+                    backgroundLink.style.display = 'block';
                 }
 
                 if (stopButton) {
@@ -1036,11 +1191,8 @@
             }
 
             function showCompletedOverlayActions() {
-                if (backgroundButton) {
-                    backgroundButton.textContent = 'Close';
-                    backgroundButton.dataset.action = 'close';
-                    backgroundButton.classList.remove('btn-primary');
-                    backgroundButton.classList.add('btn-secondary');
+                if (backgroundLink) {
+                    backgroundLink.style.display = 'none';
                 }
 
                 if (pauseResumeButton) {
@@ -1086,7 +1238,7 @@
                     const isOverlayVisible = loadingOverlay?.style.display === 'flex';
 
                     if (isOverlayVisible) {
-                        updateProgressOverlay(payload, 12);
+                        updateProgressOverlay(payload);
                     }
 
                     if (activeRunInBackground || !isOverlayVisible) {
@@ -1143,7 +1295,59 @@
                 startStoredBackgroundMonitor(activeProgressToken);
             }
 
-            function updateProgressOverlay(payload, fallbackPercent) {
+            function computeProgressPercent(payload) {
+                const records = payload.records || 0;
+                const current = payload.current_query_number || 0;
+                const isEnrichment = activeProgressType === 'enrich';
+                const completeStatuses = ['completed', 'stopped', 'cancelled', 'failed'];
+
+                if (completeStatuses.includes(payload.status)) {
+                    return 100;
+                }
+
+                const limitTotal = isEnrichment
+                    ? (payload.total_queries || payload.total || 0)
+                    : (payload.result_limit || payload.limit || 0);
+                const queryTotal = payload.total_queries || 0;
+
+                if (limitTotal > 0) {
+                    return Math.min(95, Math.max(8, Math.round((records / limitTotal) * 100)));
+                }
+
+                if (queryTotal > 0) {
+                    const progressValue = isEnrichment ? records : current;
+                    return Math.min(95, Math.max(8, Math.round((progressValue / queryTotal) * 100)));
+                }
+
+                return null;
+            }
+
+            function applyProgressPercent(payload) {
+                const completeStatuses = ['completed', 'stopped', 'cancelled', 'failed'];
+                const isComplete = completeStatuses.includes(payload.status);
+                let computedPercent = computeProgressPercent(payload);
+
+                if (computedPercent === null) {
+                    if (['queued', 'running', 'paused'].includes(payload.status)) {
+                        indeterminateProgressPercent = Math.min(92, indeterminateProgressPercent + 1);
+                        computedPercent = indeterminateProgressPercent;
+                    } else {
+                        computedPercent = displayedProgressPercent;
+                    }
+                }
+
+                if (payload.status === 'paused') {
+                    computedPercent = displayedProgressPercent;
+                } else if (!isComplete) {
+                    computedPercent = Math.max(displayedProgressPercent, computedPercent);
+                }
+
+                displayedProgressPercent = isComplete ? 100 : computedPercent;
+                loadingBar.style.width = `${displayedProgressPercent}%`;
+                loadingBar.setAttribute('aria-valuenow', String(displayedProgressPercent));
+            }
+
+            function updateProgressOverlay(payload) {
                 latestProgressPayload = payload;
                 const records = payload.records || 0;
                 const current = payload.current_query_number || 0;
@@ -1154,19 +1358,16 @@
                 const queryTotal = payload.total_queries || 0;
                 const completeStatuses = ['completed', 'stopped', 'cancelled', 'failed'];
                 const isComplete = completeStatuses.includes(payload.status);
-                const computedPercent = isComplete
-                    ? 100
-                    : total > 0
-                    ? Math.min(95, Math.max(8, Math.round((records / total) * 100)))
-                    : queryTotal > 0 && current > 0
-                    ? Math.min(95, Math.max(8, Math.round((current / queryTotal) * 100)))
-                    : fallbackPercent;
 
-                loadingBar.style.width = `${computedPercent}%`;
-                loadingBar.setAttribute('aria-valuenow', String(computedPercent));
+                applyProgressPercent(payload);
 
-                if (payload.message) {
+                if (payload.current_query) {
+                    const enrichingLabel = `Enriching ${compactUrl(payload.current_query)}`;
+                    loadingText.textContent = enrichingLabel;
+                    loadingText.title = payload.message || payload.current_query;
+                } else if (payload.message) {
                     loadingText.textContent = payload.message;
+                    loadingText.title = payload.message;
                 }
 
                 if (loadingRecords) {
@@ -1179,7 +1380,7 @@
                     loadingStep.textContent = isComplete
                         ? (payload.status || 'completed')
                         : isEnrichment && total > 0
-                        ? `Search ${Math.min(current || 1, total)} of ${total}`
+                        ? `${Math.min(records, total)} of ${total}`
                         : total > 0
                         ? `${Math.min(records, total)} of ${total}`
                         : queryTotal > 0
@@ -1198,9 +1399,11 @@
             }
 
             function pollExtractionProgress(token) {
-                let fallbackPercent = 8;
-
                 return setInterval(async function () {
+                    if (activeForegroundMonitor) {
+                        return;
+                    }
+
                     try {
                         const response = await fetch(progressUrlForToken(token), {
                             headers: {
@@ -1212,14 +1415,12 @@
                             return;
                         }
 
-                        fallbackPercent = Math.min(92, fallbackPercent + 1);
                         const payload = await response.json();
-                        latestProgressPayload = payload;
-                        updateProgressOverlay(payload, fallbackPercent);
+                        updateProgressOverlay(payload);
                     } catch (error) {
-                        fallbackPercent = Math.min(92, fallbackPercent + 1);
+                        // Keep the last stable overlay state if polling fails briefly.
                     }
-                }, 1500);
+                }, 2000);
             }
 
             async function startExtractionRequest() {
@@ -1261,48 +1462,54 @@
             }
 
             async function runExtractionLoop(token) {
-                while (true) {
-                    const response = await fetch(progressUrlForToken(token), {
-                        headers: {
-                            'Accept': 'application/json',
-                        },
-                    });
+                activeForegroundMonitor = true;
 
-                    if (!response.ok) {
-                        throw new Error('Unable to read extraction progress.');
-                    }
+                try {
+                    while (true) {
+                        const response = await fetch(progressUrlForToken(token), {
+                            headers: {
+                                'Accept': 'application/json',
+                            },
+                        });
 
-                    const payload = await response.json();
-                    updateProgressOverlay(payload, 12);
+                        if (!response.ok) {
+                            throw new Error('Unable to read extraction progress.');
+                        }
 
-                    if (activeRunInBackground) {
-                        updateBackgroundStatus(payload);
-                    }
+                        const payload = await response.json();
+                        updateProgressOverlay(payload);
 
-                    if (payload.status === 'failed') {
-                        throw new Error(payload.message || 'Extraction failed.');
-                    }
-
-                    if (['completed', 'stopped', 'cancelled'].includes(payload.status)) {
-                        activeCompletionUrl = completionUrlFromPayload(payload);
-                        showCompletedOverlayActions();
-
-                        if (!activeRunInBackground && activeCompletionUrl) {
-                            clearBackgroundJob();
-                            window.location.href = activeCompletionUrl;
-                        } else if (activeRunInBackground) {
-                            saveBackgroundJob({
-                                completionUrl: activeCompletionUrl,
-                                status: payload.status,
-                                latestProgress: payload,
-                            });
+                        if (activeRunInBackground) {
                             updateBackgroundStatus(payload);
                         }
 
-                        break;
-                    }
+                        if (payload.status === 'failed') {
+                            throw new Error(payload.message || 'Extraction failed.');
+                        }
 
-                    await new Promise(resolve => setTimeout(resolve, payload.status === 'paused' ? 2000 : 2000));
+                        if (['completed', 'stopped', 'cancelled'].includes(payload.status)) {
+                            activeCompletionUrl = completionUrlFromPayload(payload);
+                            showCompletedOverlayActions();
+
+                            if (!activeRunInBackground && activeCompletionUrl) {
+                                clearBackgroundJob();
+                                window.location.href = activeCompletionUrl;
+                            } else if (activeRunInBackground) {
+                                saveBackgroundJob({
+                                    completionUrl: activeCompletionUrl,
+                                    status: payload.status,
+                                    latestProgress: payload,
+                                });
+                                updateBackgroundStatus(payload);
+                            }
+
+                            break;
+                        }
+
+                        await new Promise(resolve => setTimeout(resolve, payload.status === 'paused' ? 2000 : 2000));
+                    }
+                } finally {
+                    activeForegroundMonitor = false;
                 }
             }
 
@@ -1343,8 +1550,6 @@
                         ? `Fetching ${state}: ${plannedCities[0]} (1 of ${plannedCities.length}). Continuing until ${limitLabel} is fetched or all selected cities are checked...`
                         : `Fetching ${limitLabel}. Requests are throttled to reduce blocking risk...`);
 
-                    activeProgressPoller = pollExtractionProgress(progressToken);
-
                     try {
                         const startPayload = await startExtractionRequest();
                         activeCompletionUrl = '';
@@ -1355,11 +1560,7 @@
                             resultLimit: limit,
                         });
                         await runExtractionLoop(progressToken);
-                        clearInterval(activeProgressPoller);
-                        activeProgressPoller = null;
                     } catch (error) {
-                        clearInterval(activeProgressPoller);
-                        activeProgressPoller = null;
                         if (loadingText) {
                             loadingText.textContent = error.message || 'Extraction failed.';
                         }
@@ -1369,32 +1570,13 @@
 
             pauseResumeButton?.addEventListener('click', () => {
                 const isPaused = pauseResumeButton.dataset.state === 'paused';
-                sendExtractionControl(isPaused ? 'resume' : 'pause');
+                void sendExtractionControl(isPaused ? 'resume' : 'pause');
             });
-            backgroundButton?.addEventListener('click', () => {
-                if (backgroundButton.dataset.action === 'close') {
-                    if (loadingOverlay) {
-                        loadingOverlay.style.display = 'none';
-                    }
-
-                    return;
-                }
-
-                activeRunInBackground = true;
-                saveBackgroundJob();
-                updateBackgroundStatus(latestProgressPayload || {
-                    status: 'running',
-                });
-                pollStoredBackgroundProgress(activeProgressToken);
-
-                if (activeProgressPoller) {
-                    clearInterval(activeProgressPoller);
-                    activeProgressPoller = null;
-                }
-
-                if (loadingOverlay) {
-                    loadingOverlay.style.display = 'none';
-                }
+            backgroundLink?.addEventListener('click', () => {
+                minimizeExtractorOverlay();
+            });
+            overlayCloseButton?.addEventListener('click', () => {
+                minimizeExtractorOverlay();
             });
             backgroundStatus?.addEventListener('click', () => {
                 if (activeCompletionUrl) {
@@ -1413,7 +1595,7 @@
                     loadingOverlay.style.display = 'flex';
                 }
 
-                if (activeProgressToken && !activeProgressPoller) {
+                if (activeProgressToken && !activeProgressPoller && !activeForegroundMonitor) {
                     activeProgressPoller = pollExtractionProgress(activeProgressToken);
                 }
             });
@@ -1429,16 +1611,16 @@
                     return;
                 }
 
-                sendExtractionControl('stop');
+                void sendExtractionControl('stop');
             });
             cancelButton?.addEventListener('click', () => {
-                const isEnrichment = loadingTitle?.textContent === 'Enriching Website Data';
+                const isEnrichment = activeProgressType === 'enrich';
                 const message = isEnrichment
                     ? 'Cancel website enrichment? Existing extracted leads will be kept.'
                     : 'Cancel this extraction and discard fetched records from this run?';
 
                 if (window.confirm(message)) {
-                    sendExtractionControl('cancel');
+                    void sendExtractionControl('cancel');
                 }
             });
 
@@ -1680,16 +1862,15 @@
                             : 'Continuing enrichment for remaining missing rows...',
                         'Cancel'
                     );
-                    activeProgressPoller = pollExtractionProgress(progressToken);
 
                     try {
                         const queuedPayload = await runEnrichmentBatch(progressToken, enrichmentMode);
 
                         if (queuedPayload.complete) {
-                            clearInterval(activeProgressPoller);
-                            activeProgressPoller = null;
                             clearBackgroundJob();
+                            displayedProgressPercent = 100;
                             loadingText.textContent = queuedPayload.message || 'No website rows found for enrichment.';
+                            loadingText.title = loadingText.textContent;
                             loadingBar.style.width = '100%';
                             loadingBar.setAttribute('aria-valuenow', '100');
                             loadingBar.classList.remove('progress-bar-animated');
@@ -1697,75 +1878,61 @@
                             return;
                         }
 
-                        while (true) {
-                            const response = await fetch(progressUrlForToken(progressToken), {
-                                headers: {
-                                    'Accept': 'application/json',
-                                },
-                            });
+                        activeForegroundMonitor = true;
 
-                            if (!response.ok) {
-                                throw new Error('Unable to read enrichment progress.');
-                            }
+                        try {
+                            while (true) {
+                                const response = await fetch(progressUrlForToken(progressToken), {
+                                    headers: {
+                                        'Accept': 'application/json',
+                                    },
+                                });
 
-                            const payload = await response.json();
-                            latestProgressPayload = payload;
+                                if (!response.ok) {
+                                    throw new Error('Unable to read enrichment progress.');
+                                }
 
-                            const total = payload.total_queries || payload.total || 0;
-                            const processed = payload.records || payload.processed || 0;
-                            const percent = total > 0 ? Math.min(100, Math.round((processed / total) * 100)) : 100;
+                                const payload = await response.json();
+                                updateProgressOverlay(payload);
 
-                            if (activeRunInBackground) {
-                                updateBackgroundStatus(payload);
-                            }
-
-                            loadingBar.style.width = `${Math.max(8, percent)}%`;
-                            loadingBar.setAttribute('aria-valuenow', String(percent));
-                            loadingRecords.textContent = `${processed} of ${total} website rows processed`;
-                            loadingStep.textContent = total > 0 ? `${percent}%` : 'No websites';
-                            loadingText.textContent = payload.message || (total > 0
-                                ? `Enriched ${processed} of ${total} website rows...`
-                                : 'No website rows found for enrichment.');
-
-                            if (payload.current_query && loadingText) {
-                                loadingText.textContent = `Enriching ${compactUrl(payload.current_query)}`;
-                            }
-
-                            if (payload.status === 'failed') {
-                                throw new Error(payload.message || 'Enrichment failed.');
-                            }
-
-                            if (['completed', 'stopped', 'cancelled'].includes(payload.status)) {
-                                clearInterval(activeProgressPoller);
-                                activeProgressPoller = null;
-                                activeCompletionUrl = completionUrlFromPayload(payload) || window.location.href;
-                                showCompletedOverlayActions();
-                                loadingText.textContent = payload.message || 'Enrichment complete. Refreshing results...';
-                                loadingBar.classList.remove('progress-bar-animated');
                                 if (activeRunInBackground) {
-                                    saveBackgroundJob({
-                                        completionUrl: activeCompletionUrl,
-                                        status: payload.status,
-                                        latestProgress: payload,
-                                    });
                                     updateBackgroundStatus(payload);
                                 }
-                                if (!activeRunInBackground) {
-                                    clearBackgroundJob();
-                                    setTimeout(function () {
-                                        window.location.reload();
-                                    }, 900);
-                                }
-                                break;
-                            }
 
-                            await new Promise(function (resolve) {
-                                setTimeout(resolve, payload.status === 'paused' ? 2000 : 2000);
-                            });
+                                if (payload.status === 'failed') {
+                                    throw new Error(payload.message || 'Enrichment failed.');
+                                }
+
+                                if (['completed', 'stopped', 'cancelled'].includes(payload.status)) {
+                                    activeCompletionUrl = completionUrlFromPayload(payload) || window.location.href;
+                                    showCompletedOverlayActions();
+                                    loadingBar.classList.remove('progress-bar-animated');
+                                    if (activeRunInBackground) {
+                                        saveBackgroundJob({
+                                            completionUrl: activeCompletionUrl,
+                                            status: payload.status,
+                                            latestProgress: payload,
+                                        });
+                                        updateBackgroundStatus(payload);
+                                    }
+                                    if (!activeRunInBackground) {
+                                        clearBackgroundJob();
+                                        setTimeout(function () {
+                                            window.location.reload();
+                                        }, 900);
+                                    }
+                                    break;
+                                }
+
+                                await new Promise(function (resolve) {
+                                    setTimeout(resolve, payload.status === 'paused' ? 2000 : 2000);
+                                });
+                            }
+                        } finally {
+                            activeForegroundMonitor = false;
                         }
                     } catch (error) {
-                        clearInterval(activeProgressPoller);
-                        activeProgressPoller = null;
+                        activeForegroundMonitor = false;
                         enrichButton.disabled = false;
                         loadingText.textContent = error.message || 'Enrichment failed. Please try again.';
                         loadingBar.classList.remove('progress-bar-animated');
