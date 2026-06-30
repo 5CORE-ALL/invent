@@ -787,6 +787,11 @@
                 <div class="modal-body">
                     <label for="toaMoqModalInput" class="form-label fw-semibold">Approved quantity (MOQ)</label>
                     <input type="number" id="toaMoqModalInput" class="form-control" min="0" max="99999" step="1" placeholder="Enter MOQ">
+                    <div id="toaMoqModalDoaWrap" class="mt-3" style="display:none;">
+                        <label for="toaMoqModalDoaInput" class="form-label fw-semibold">DOA</label>
+                        <input type="date" id="toaMoqModalDoaInput" class="form-control">
+                        <div class="form-text small">Date of approval (president only).</div>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
@@ -1112,12 +1117,11 @@
                             <label class="form-label fw-semibold">MOQ</label>
                             <input type="number" id="toa-action-moq" class="form-control form-control-sm" min="0" max="99999" step="1" placeholder="— Keep current —">
                         </div>
-                        @if(strtolower((string)(auth()->user()->email ?? '')) === 'president@5core.com')
                         <div class="col-md-6">
                             <label class="form-label fw-semibold">DOA</label>
                             <input type="date" id="toa-action-doa" class="form-control form-control-sm" placeholder="— Keep current —">
+                            <div class="form-text small" id="toa-action-doa-note" style="display:none;">Only president@5core.com can change DOA.</div>
                         </div>
-                        @endif
                         <div class="col-md-6">
                             <label class="form-label fw-semibold">Supplier</label>
                             <select id="toa-action-supplier" class="form-select form-select-sm">
@@ -1871,12 +1875,29 @@
             function openToaMoqModal(rowData) {
                 const skuEl = document.getElementById("toaMoqModalSku");
                 const inp = document.getElementById("toaMoqModalInput");
+                const doaWrap = document.getElementById("toaMoqModalDoaWrap");
+                const doaInp = document.getElementById("toaMoqModalDoaInput");
                 const val = rowData.approved_qty;
                 const num = parseInt(val, 10);
                 skuEl.textContent = rowData.SKU ? `(${rowData.SKU})` : "";
                 inp.value = (val !== "" && val != null && !isNaN(num)) ? num : "";
+                if (doaWrap && doaInp) {
+                    doaWrap.style.display = canEditDoa ? '' : 'none';
+                    doaInp.value = canEditDoa ? toaDateInputValue(rowData['Date of Appr']) : '';
+                }
                 bootstrap.Modal.getOrCreateInstance(document.getElementById("toaMoqModal")).show();
                 setTimeout(function () { inp.focus(); inp.select(); }, 300);
+            }
+
+            function toaDateInputValue(raw) {
+                if (!raw) return '';
+                const m = String(raw).match(/^(\d{4})-(\d{2})-(\d{2})/);
+                if (m) return m[1] + '-' + m[2] + '-' + m[3];
+                const d = new Date(raw);
+                if (isNaN(d.getTime())) return '';
+                return d.getFullYear() + '-'
+                    + String(d.getMonth() + 1).padStart(2, '0') + '-'
+                    + String(d.getDate()).padStart(2, '0');
             }
 
             async function saveToaMoq(rowData, newValue) {
@@ -3295,6 +3316,11 @@
                     ? skuList.join(', ')
                     : skuList.slice(0, 6).join(', ') + ' (+' + (skuList.length - 6) + ' more)');
 
+                if (canEditDoa && toaActionModalState.currentRows.length === 1) {
+                    const d = toaActionModalState.currentRows[0].getData();
+                    $('#toa-action-doa').val(toaDateInputValue(d['Date of Appr']));
+                }
+
                 toaActionModalState.bsModal.show();
             }
 
@@ -3725,6 +3751,12 @@
                 if (!modalEl) return;
                 toaActionModalState.bsModal = bootstrap.Modal.getOrCreateInstance(modalEl);
                 toaActionModalState.initialized = true;
+                const doaField = document.getElementById('toa-action-doa');
+                const doaNote = document.getElementById('toa-action-doa-note');
+                if (doaField) {
+                    doaField.disabled = !canEditDoa;
+                    if (doaNote) doaNote.style.display = canEditDoa ? 'none' : '';
+                }
                 const $supplierSel = $('#toa-action-supplier');
                 const $execSel     = $('#toa-action-executive');
                 const $stageSel    = $('#toa-action-stage');
@@ -3766,10 +3798,14 @@
                             summary.push(line);
                         }
                         if (doaVal) {
-                            const res = await applyLinkColumnToRows(currentRows, 'Date of Appr', doaVal);
-                            let line = 'DOA → ' + doaVal + ': ' + res.ok + ' row(s)';
-                            if (res.failed.length) line += ' • errors: ' + res.failed.join('; ');
-                            summary.push(line);
+                            if (!canEditDoa) {
+                                alert('You are not allowed to edit DOA.');
+                            } else {
+                                const res = await applyLinkColumnToRows(currentRows, 'Date of Appr', doaVal);
+                                let line = 'DOA → ' + doaVal + ': ' + res.ok + ' row(s)';
+                                if (res.failed.length) line += ' • errors: ' + res.failed.join('; ');
+                                summary.push(line);
+                            }
                         }
                         if (supplierVal) {
                             const res = await applySupplierToRows(currentRows, supplierVal);
@@ -4798,6 +4834,13 @@
                 try {
                     await saveToaMoq(activeMoqRow.getData(), newValue);
                     activeMoqRow.update({ approved_qty: newValue });
+                    if (canEditDoa) {
+                        const doaInp = document.getElementById('toaMoqModalDoaInput');
+                        const doaVal = (doaInp?.value || '').trim();
+                        if (doaVal) {
+                            await applyLinkColumnToRows([activeMoqRow], 'Date of Appr', doaVal);
+                        }
+                    }
                     activeMoqRow.reformat();
                     bootstrap.Modal.getInstance(document.getElementById("toaMoqModal"))?.hide();
                 } catch (err) {
