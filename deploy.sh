@@ -43,6 +43,40 @@ fi
 echo "  ✓ Artisan found"
 echo "  ✓ .env file found"
 
+# Resolve web-server user (PHP-FPM). Path like /var/www/USER/data/www/... → USER.
+WEB_USER="${DEPLOY_WEB_USER:-}"
+if [ -z "${WEB_USER}" ]; then
+    if [[ "${PROJECT_DIR}" =~ /var/www/([^/]+)/ ]]; then
+        WEB_USER="${BASH_REMATCH[1]}"
+    elif id www-data &>/dev/null; then
+        WEB_USER="www-data"
+    fi
+fi
+
+fix_storage_permissions() {
+    mkdir -p "${PROJECT_DIR}/storage/logs"
+    mkdir -p "${PROJECT_DIR}/storage/framework/cache"
+    mkdir -p "${PROJECT_DIR}/storage/framework/sessions"
+    mkdir -p "${PROJECT_DIR}/storage/framework/views"
+    mkdir -p "${PROJECT_DIR}/bootstrap/cache"
+    touch "${PROJECT_DIR}/storage/logs/laravel.log" 2>/dev/null || true
+    touch "${PROJECT_DIR}/storage/logs/scheduler.log" 2>/dev/null || true
+    touch "${PROJECT_DIR}/storage/logs/cron.log" 2>/dev/null || true
+    if [ -n "${WEB_USER}" ] && id "${WEB_USER}" &>/dev/null; then
+        chown -R "${WEB_USER}:${WEB_USER}" "${PROJECT_DIR}/storage" "${PROJECT_DIR}/bootstrap/cache"
+    fi
+    chmod -R ug+rwX "${PROJECT_DIR}/storage" "${PROJECT_DIR}/bootstrap/cache"
+}
+
+echo ""
+echo "[1b/8] Ensuring storage permissions (before artisan writes)..."
+fix_storage_permissions
+if [ -n "${WEB_USER}" ]; then
+    echo "  ✓ storage/bootstrap/cache writable (owner: ${WEB_USER})"
+else
+    echo "  ⚠ WEB_USER not detected; set DEPLOY_WEB_USER if permission errors persist"
+fi
+
 # ─── Step 2: Maintenance mode ───────────────────────────────────────────────
 echo ""
 echo "[2/8] Entering maintenance mode..."
@@ -109,28 +143,7 @@ done
 # ─── Step 7: Permissions ────────────────────────────────────────────────────
 echo ""
 echo "[7/8] Fixing permissions..."
-
-# Ensure storage and cache directories exist
-mkdir -p "${PROJECT_DIR}/storage/logs"
-mkdir -p "${PROJECT_DIR}/storage/framework/cache"
-mkdir -p "${PROJECT_DIR}/storage/framework/sessions"
-mkdir -p "${PROJECT_DIR}/storage/framework/views"
-mkdir -p "${PROJECT_DIR}/bootstrap/cache"
-
-# Touch scheduler log so appendOutputTo doesn't fail
-touch "${PROJECT_DIR}/storage/logs/scheduler.log"
-touch "${PROJECT_DIR}/storage/logs/cron.log"
-
-# Set permissions (adjust user if not www-data)
-WEB_USER="www-data"
-if id "${WEB_USER}" &>/dev/null; then
-    chown -R ${WEB_USER}:${WEB_USER} "${PROJECT_DIR}/storage" 2>/dev/null || true
-    chown -R ${WEB_USER}:${WEB_USER} "${PROJECT_DIR}/bootstrap/cache" 2>/dev/null || true
-fi
-
-chmod -R 775 "${PROJECT_DIR}/storage"
-chmod -R 775 "${PROJECT_DIR}/bootstrap/cache"
-
+fix_storage_permissions
 echo "  ✓ Permissions set"
 
 # ─── Step 8: Exit maintenance mode ──────────────────────────────────────────
