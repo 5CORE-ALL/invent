@@ -259,7 +259,7 @@ class ReadyToShipController extends Controller
             }
         }
 
-        // Total CBM per zone (badges on index): same rules as grid — exclude NR rows; zone = zone_x or supplier-mapped zone; line CBM = Or. QTY × CBM (matches Total CBM column).
+        // Total CBM per zone (badges on index): include all r2s grid rows (NR included); zone = zone_x or supplier-mapped zone; line CBM = Or. QTY × CBM (matches Total CBM column).
         $resolveR2sRowZone = static function ($item, array $supplierZoneMap): string {
             $mfrgSup = trim((string) ($item->mfrg_supplier ?? ''));
             if ($mfrgSup === '') {
@@ -286,9 +286,6 @@ class ReadyToShipController extends Controller
         $r2sCbmBadgeZones = ['GHZ', 'Ningbo', 'Tianjin'];
         $r2sCbmByZone = array_fill_keys($r2sCbmBadgeZones, 0.0);
         foreach ($readyToShipData as $item) {
-            if (strtoupper(trim($item->nr ?? '')) === 'NR') {
-                continue;
-            }
             $zone = $resolveR2sRowZone($item, $supplierZoneMap);
             $qty = $item->qty;
             $cbm = $item->CBM ?? null;

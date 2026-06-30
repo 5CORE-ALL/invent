@@ -225,6 +225,8 @@
 @endsection
 @section('content')
     @php
+        use App\Services\PurchasePageExecService;
+        $canMipDelete = PurchasePageExecService::userCanEdit();
         $canMipArchive = strtolower(trim(auth()->user()->email ?? '')) === 'president@5core.com';
     @endphp
     @include('layouts.shared.page-title', ['page_title' => 'MIP', 'sub_title' => 'MIP'])
@@ -334,8 +336,10 @@
                                     <i class="fas fa-table-list"></i>
                                 </button>
                                 <button type="button" class="btn btn-sm btn-info text-white" id="mip-followup-btn" title="Follow-Up"><i class="fas fa-comment-dots"></i></button>
+                                @if ($canMipDelete)
+                                <button type="button" class="btn btn-sm btn-danger d-none" id="delete-selected-btn" title="Delete selected rows"><i class="fas fa-trash-alt"></i></button>
+                                @endif
                                 @if ($canMipArchive)
-                                <button type="button" class="btn btn-sm btn-warning d-none" id="archive-selected-btn" title="Archive selected"><i class="fas fa-archive"></i></button>
                                 <button type="button" class="btn btn-sm btn-success d-none" id="restore-selected-btn" title="Restore selected"><i class="fas fa-undo"></i></button>
                                 @endif
                             </div>
@@ -490,6 +494,7 @@
             const USER_EMAIL = '{{ strtolower(trim(auth()->user()->email ?? "")) }}';
             const PRIVILEGED_EMAILS = ['president@5core.com', 'purchase@5core.com', 'software5@5core.com'];
             const CAN_EDIT_ALL = PRIVILEGED_EMAILS.includes(USER_EMAIL);
+            const CAN_DELETE = @json($canMipDelete);
             const CAN_ARCHIVE = USER_EMAIL === 'president@5core.com';
             let uniqueSuppliers = [];
             let showArchived = false;
@@ -1143,6 +1148,12 @@
                             return '<button type="button" class="btn btn-sm btn-outline-primary mip-action-btn" title="Edit all fields"><i class="fas fa-pen"></i></button>';
                         }
                     }] : []),
+                    ...(CAN_DELETE ? [{
+                        title: "Del", field: "row_delete", width: 52, hozAlign: "center", headerSort: false,
+                        formatter: function () {
+                            return '<button type="button" class="btn btn-sm btn-outline-danger mip-delete-row-btn" title="Delete row"><i class="fas fa-trash-alt"></i></button>';
+                        }
+                    }] : []),
                 ],
                 ajaxResponse: function (url, params, response) {
                     let data = response.data || [];
@@ -1625,23 +1636,55 @@
             // Show-archived toggle, etc.) so the badge doesn't lie about its filter.
             table.on('dataLoaded', function () { if (isSupplierPlaying) stopSupplierPlay(); });
 
-            // ---- Archive / Restore ----
+            // ---- Delete / Restore ----
             function updateMfrgArchiveButtons() {
-                // Archive/Restore is restricted to president@5core.com only.
-                if (!CAN_ARCHIVE) {
-                    $('#archive-selected-btn').addClass('d-none');
-                    $('#restore-selected-btn').addClass('d-none');
-                } else {
-                    const n = getMipActiveSelectedRows().length;
+                const n = getMipActiveSelectedRows().length;
+                if (CAN_DELETE) {
                     if (showArchived) {
-                        $('#archive-selected-btn').addClass('d-none');
+                        $('#delete-selected-btn').addClass('d-none');
+                    } else {
+                        $('#delete-selected-btn').toggleClass('d-none', n === 0);
+                    }
+                }
+                if (CAN_ARCHIVE) {
+                    if (showArchived) {
                         $('#restore-selected-btn').removeClass('d-none').prop('disabled', n === 0);
                     } else {
                         $('#restore-selected-btn').addClass('d-none');
-                        $('#archive-selected-btn').toggleClass('d-none', n === 0);
                     }
                 }
                 updateMipBulkEditBadge();
+            }
+
+            function deleteMipRows(rows, confirmMsg) {
+                const items = (rows || []).map(function (r) {
+                    const d = r.getData();
+                    const source = (d.source_table === 'ready_to_ship') ? 'ready_to_ship' : 'mfrg_progress';
+                    return { id: d.id, source: source };
+                }).filter(x => x.id);
+                if (!items.length) {
+                    alert('No row to delete.');
+                    return;
+                }
+                if (!confirm(confirmMsg.replace('{n}', items.length))) return;
+                fetch('/mfrg-progresses/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': CSRF },
+                    body: JSON.stringify({ items: items })
+                })
+                    .then(r => r.json())
+                    .then(r => {
+                        if (r.success) {
+                            table.deselectRow();
+                            mipBulkSelectionCache = [];
+                            table.replaceData();
+                            updateMipBulkEditBadge();
+                            if (r.message) alert(r.message);
+                        } else {
+                            alert(r.message || 'Failed to delete.');
+                        }
+                    })
+                    .catch(() => alert('Network error.'));
             }
             table.on("rowSelectionChanged", function (data, rows) {
                 mipBulkSelectionCache = getMipActiveSelectedRows();
@@ -1655,24 +1698,50 @@
                 table.replaceData();
             });
 
-            function bulkArchiveRestore(endpoint, confirmMsg) {
+            $('#delete-selected-btn').on('click', function () {
+                deleteMipRows(getMipActiveSelectedRows(), 'Delete {n} selected row(s)?');
+            });
+            $('#restore-selected-btn').on('click', function () {
                 const selectedRows = getMipActiveSelectedRows();
-                // Archive by specific row id + source table so only the selected rows are affected
-                // (multiple rows can share the same SKU).
                 const items = selectedRows.map(function (r) {
                     const d = r.getData();
                     const source = (d.source_table === 'ready_to_ship') ? 'ready_to_ship' : 'mfrg_progress';
                     return { id: d.id, source: source };
                 }).filter(x => x.id);
                 if (!items.length) { alert('No rows selected in the current view.'); return; }
-                if (!confirm(confirmMsg.replace('{n}', items.length))) return;
-                fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': CSRF }, body: JSON.stringify({ items: items }) })
+                if (!confirm('Restore {n} row(s)?'.replace('{n}', items.length))) return;
+                fetch('/mfrg-progresses/restore', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': CSRF },
+                    body: JSON.stringify({ items: items })
+                })
                     .then(r => r.json())
-                    .then(r => { if (r.success) { table.deselectRow(); mipBulkSelectionCache = []; table.replaceData(); updateMipBulkEditBadge(); if (r.message) alert(r.message); } else alert(r.message || 'Failed.'); })
+                    .then(r => {
+                        if (r.success) {
+                            table.deselectRow();
+                            mipBulkSelectionCache = [];
+                            table.replaceData();
+                            updateMipBulkEditBadge();
+                            if (r.message) alert(r.message);
+                        } else {
+                            alert(r.message || 'Failed.');
+                        }
+                    })
                     .catch(() => alert('Network error.'));
-            }
-            $('#archive-selected-btn').on('click', function () { bulkArchiveRestore('/mfrg-progresses/delete', 'Archive {n} row(s)?'); });
-            $('#restore-selected-btn').on('click', function () { bulkArchiveRestore('/mfrg-progresses/restore', 'Restore {n} row(s)?'); });
+            });
+
+            document.addEventListener('click', function (e) {
+                const delBtn = e.target.closest('.mip-delete-row-btn');
+                if (!delBtn || !tableEl.contains(delBtn)) return;
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                e.preventDefault();
+                const tr = delBtn.closest('.tabulator-row');
+                const row = tr ? table.getRow(tr) : null;
+                if (!row) return;
+                const sku = String((row.getData() || {}).sku || '').trim();
+                deleteMipRows([row], sku ? ('Delete row for SKU "' + sku + '"?') : 'Delete this row?');
+            }, true);
 
             // ---- Edit All Fields modal (president@5core.com only) ----
             function toDateInput(raw) {
@@ -1866,7 +1935,7 @@
                         table.deselectRow();
                         mipBulkSelectionCache = [];
                         updateMipBulkEditBadge();
-                        if (CAN_ARCHIVE) updateMfrgArchiveButtons();
+                        if (CAN_DELETE || CAN_ARCHIVE) updateMfrgArchiveButtons();
                     }, 500);
                 }
             });

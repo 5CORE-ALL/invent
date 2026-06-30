@@ -29,6 +29,12 @@ class MFRGInProgressController extends Controller
         return $email === self::PRESIDENT_EMAIL;
     }
 
+    /** Delete (archive) MIP rows — president@5core.com or user name Candy. */
+    private function canDeleteMipRows(): bool
+    {
+        return PurchasePageExecService::userCanEdit();
+    }
+
     public function index()
     {
         $t0 = microtime(true);
@@ -882,7 +888,7 @@ class MFRGInProgressController extends Controller
 
     public function deleteBySkus(Request $request)
     {
-        if (! $this->isPresidentUser()) {
+        if (! $this->canDeleteMipRows()) {
             return response()->json(['success' => false, 'message' => 'Not authorized.'], 403);
         }
 
@@ -909,8 +915,8 @@ class MFRGInProgressController extends Controller
                     'success' => true,
                     'deleted_count' => $archivedCount,
                     'message' => $archivedCount > 0
-                        ? "Archived {$archivedCount} row(s). You can restore them from “Show archived”."
-                        : 'No matching rows to archive.',
+                        ? "Deleted {$archivedCount} row(s)."
+                        : 'No matching rows to delete.',
                 ]);
             }
 
@@ -947,8 +953,8 @@ class MFRGInProgressController extends Controller
                 'success' => true,
                 'deleted_count' => $archivedCount,
                 'message' => $archivedCount > 0
-                    ? "Archived {$archivedCount} row(s). You can restore them from “Show archived”."
-                    : 'No matching rows to archive.',
+                    ? "Deleted {$archivedCount} row(s)."
+                    : 'No matching rows to delete.',
             ]);
         } catch (\Exception $e) {
             Log::error('Error archiving MFRG Progress records: '.$e->getMessage());

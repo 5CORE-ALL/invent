@@ -1086,9 +1086,8 @@
                             @foreach($readyToShipList as $item)
                                 @php
                                     $nrValue = strtoupper(trim($item->nr ?? ''));
-                                @endphp
-                                @continue($nrValue === 'NR')
-                                @php
+                                    // NR (2BDC) excludes rows from MIP / to-order counts, but ready-to-ship
+                                    // rows must stay visible when forecast stage is r2s (matches MIP RTS rule).
                                     $r2sPackingNorm = \App\Services\ReadyToShipPackingListSheetService::normalizeSku($item->sku ?? '');
                                     $r2sPackingLink = ($packingListLinks ?? [])[$r2sPackingNorm] ?? null;
                                     $mfrgSup = trim((string) ($item->mfrg_supplier ?? ''));
@@ -1852,11 +1851,8 @@
                         this.value = value;
                         // Color already updated
                         
-                        // Hide/show row based on NRP value
-                        if (value === 'NR') {
-                            if (row) row.style.display = 'none';
-                        } else {
-                            if (row) row.style.display = '';
+                        if (typeof filterByR2SStage === 'function') {
+                            filterByR2SStage();
                         }
                     }, function() {
                         alert('Failed to save NRP.');
@@ -2715,8 +2711,6 @@
                 else if (value === 'LATER') { bg = '#ffc107'; tc = '#000000'; }
                 sel.style.backgroundColor = bg;
                 sel.style.color = tc;
-                if (value === 'NR') row.style.display = 'none';
-                else row.style.display = '';
             }
 
             if (bulkBtn && bulkModalEl && bulkField) {
