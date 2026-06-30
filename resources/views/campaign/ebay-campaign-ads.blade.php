@@ -417,6 +417,14 @@ $(document).ready(function () {
                 }
             },
             {
+                title: 'ES Bid', field: 'suggested_bid', width: 110, hozAlign: 'center',
+                sorter: 'number',
+                formatter: function(cell) {
+                    const v = parseFloat(cell.getValue());
+                    return isNaN(v) ? '—' : `<span class="text-info fw-semibold">${v.toFixed(1)}%</span>`;
+                }
+            },
+            {
                 title: 'C Bid', field: 'bid_percentage', width: 110, hozAlign: 'center',
                 sorter: 'number',
                 formatter: function(cell) {
@@ -424,14 +432,6 @@ $(document).ready(function () {
                     if (isNaN(v)) return '—';
                     const color = v <= 4 ? '#dc3545' : v <= 7 ? '#ffc107' : v <= 13 ? '#198754' : '#e83e8c';
                     return `<span style="color:${color}; font-weight:600;">${v.toFixed(1)}%</span>`;
-                }
-            },
-            {
-                title: 'ES Bid', field: 'suggested_bid', width: 110, hozAlign: 'center',
-                sorter: 'number',
-                formatter: function(cell) {
-                    const v = parseFloat(cell.getValue());
-                    return isNaN(v) ? '—' : `<span class="text-info fw-semibold">${v.toFixed(1)}%</span>`;
                 }
             },
             {
