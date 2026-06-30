@@ -453,9 +453,6 @@
                                 <button type="button" id="r2s-supplier-summary-btn" class="btn btn-info shadow-sm text-white" style="border-radius: 6px; margin-left: 8px;" title="Supplier-wise summary of visible table rows">
                                     <i class="fas fa-table-list"></i> Supplier Summary
                                 </button>
-                                <button type="button" id="r2s-bulk-edit-btn" class="btn btn-outline-primary shadow-sm fw-bold" style="border-radius: 6px; margin-left: 8px;" title="Apply the same field value to all selected rows (uses same save APIs as the grid)">
-                                    <i class="fas fa-pen-to-square me-1"></i> Bulk edit
-                                </button>
                             </div>
                         </div>
 
@@ -492,6 +489,42 @@
                             <label class="form-label fw-semibold mb-1 d-block" style="visibility: hidden;">Supplier</label>
                             <input type="search" id="r2sToolbarSupplierFilter" class="form-control border-2 rounded-2 fw-bold" style="min-width: 148px; height: 42px;" placeholder="Filter Supplier…" autocomplete="off" title="Contains match on Supplier column" aria-label="Filter rows by supplier">
                         </div>
+                        {{-- SKU/Supplier filter MUST register here: main page script is 1000+ lines; any JS error above blocks late listeners --}}
+                        <script>
+                        (function () {
+                            var r2sToolbarTextFilterTimer = null;
+                            function scheduleR2sToolbarFilter() {
+                                clearTimeout(r2sToolbarTextFilterTimer);
+                                r2sToolbarTextFilterTimer = setTimeout(function () {
+                                    r2sToolbarTextFilterTimer = null;
+                                    if (typeof window.filterByR2SStage === 'function') {
+                                        window.filterByR2SStage();
+                                    }
+                                }, 200);
+                            }
+                            function bindR2sToolbarFilters() {
+                                var skuEl = document.getElementById('r2sToolbarSkuFilter');
+                                var supEl = document.getElementById('r2sToolbarSupplierFilter');
+                                var zoneEl = document.getElementById('zoneFilter');
+                                ['input', 'keyup', 'search'].forEach(function (ev) {
+                                    if (skuEl) skuEl.addEventListener(ev, scheduleR2sToolbarFilter);
+                                    if (supEl) supEl.addEventListener(ev, scheduleR2sToolbarFilter);
+                                });
+                                if (zoneEl) {
+                                    zoneEl.addEventListener('change', function () {
+                                        if (typeof window.filterByR2SStage === 'function') {
+                                            window.filterByR2SStage();
+                                        }
+                                    });
+                                }
+                            }
+                            if (document.readyState === 'loading') {
+                                document.addEventListener('DOMContentLoaded', bindR2sToolbarFilters);
+                            } else {
+                                bindR2sToolbarFilters();
+                            }
+                        })();
+                        </script>
 
                         <!-- Move to transit: container + Move (always visible) -->
                         <div class="col-auto">
@@ -688,9 +721,98 @@
                                 <button id="delete-selected-btn" class="btn btn-primary text-black d-none" style="border-radius: 6px;">
                                     <i class="mdi mdi-backup-restore"></i> Revert to MFRG
                                 </button>
-                                <button id="delete-selected-item" class="btn btn-danger d-none" style="border-radius: 6px;">
-                                    <i class="mdi mdi-trash-can"></i> Delete
-                                </button>
+                                {{-- Revert MUST register here: main page script is 1000+ lines; any JS error above blocks late listeners --}}
+                                <script>
+                                (function () {
+                                    var R2S_CSRF_FALLBACK = @json(csrf_token());
+                                    var R2S_REVERT_URL = @json(url('/ready-to-ship/revert-back-mfrg'));
+                                    function r2sCsrf() {
+                                        var m = document.querySelector('meta[name="csrf-token"]');
+                                        return (m && m.getAttribute('content')) || R2S_CSRF_FALLBACK;
+                                    }
+                                    function r2sCheckedVisibleCheckboxes() {
+                                        var t = document.getElementById('readyToShipTable');
+                                        if (!t) return [];
+                                        return Array.prototype.slice.call(t.querySelectorAll('tbody .r2s-row-checkbox')).filter(function (cb) {
+                                            if (!cb.checked) return false;
+                                            var tr = cb.closest('tr');
+                                            return tr && tr.style.display !== 'none';
+                                        });
+                                    }
+                                    function r2sCheckedVisiblePayload() {
+                                        var cbs = r2sCheckedVisibleCheckboxes();
+                                        var ids = [];
+                                        var skus = [];
+                                        cbs.forEach(function (cb) {
+                                            var id = parseInt(cb.getAttribute('data-id'), 10);
+                                            if (!isNaN(id) && id > 0) ids.push(id);
+                                            var sku = (cb.getAttribute('data-sku') || '').trim();
+                                            if (sku) skus.push(sku);
+                                        });
+                                        return { ids: ids, skus: skus, checkboxes: cbs };
+                                    }
+                                    function r2sRemoveRowsByIds(ids) {
+                                        var set = {};
+                                        ids.forEach(function (id) { set[id] = true; });
+                                        document.querySelectorAll('#readyToShipTable tbody .r2s-row-checkbox').forEach(function (cb) {
+                                            var id = parseInt(cb.getAttribute('data-id'), 10);
+                                            if (set[id]) {
+                                                var tr = cb.closest('tr');
+                                                if (tr) tr.remove();
+                                            }
+                                        });
+                                        if (typeof window.r2sAfterRowRevertSuccess === 'function') {
+                                            try { window.r2sAfterRowRevertSuccess(); } catch (e) {}
+                                        }
+                                    }
+                                    function r2sPostJson(url, payload) {
+                                        return fetch(url, {
+                                            method: 'POST',
+                                            credentials: 'same-origin',
+                                            headers: {
+                                                'Content-Type': 'application/json',
+                                                'Accept': 'application/json',
+                                                'X-CSRF-TOKEN': r2sCsrf(),
+                                                'X-Requested-With': 'XMLHttpRequest'
+                                            },
+                                            body: JSON.stringify(payload)
+                                        }).then(function (res) {
+                                            return res.text().then(function (text) {
+                                                var data = {};
+                                                try { data = text ? JSON.parse(text) : {}; } catch (e) {}
+                                                return { res: res, data: data };
+                                            });
+                                        });
+                                    }
+                                    window.r2sRevertSelectedToMfrg = window.r2sRevertSelectedToMfrg || function () {
+                                        var payload = r2sCheckedVisiblePayload();
+                                        if (!payload.ids.length && !payload.skus.length) {
+                                            alert('No rows selected.');
+                                            return;
+                                        }
+                                        r2sPostJson(R2S_REVERT_URL, { ids: payload.ids, skus: payload.skus })
+                                        .then(function (o) {
+                                            if (o.res.ok && o.data.success) {
+                                                r2sRemoveRowsByIds(o.data.reverted_ids || payload.ids);
+                                                if (o.data.message) alert(o.data.message);
+                                            } else {
+                                                alert(o.data.message || ('Revert failed (HTTP ' + o.res.status + ').'));
+                                            }
+                                        }).catch(function () {
+                                            alert('Error occurred during revert.');
+                                        });
+                                    };
+                                    function bindR2sRevertButton() {
+                                        var revBtn = document.getElementById('delete-selected-btn');
+                                        if (revBtn) revBtn.addEventListener('click', function () { window.r2sRevertSelectedToMfrg(); });
+                                    }
+                                    if (document.readyState === 'loading') {
+                                        document.addEventListener('DOMContentLoaded', bindR2sRevertButton);
+                                    } else {
+                                        bindR2sRevertButton();
+                                    }
+                                })();
+                                </script>
                                 <button type="button" id="r2s-add-tab-btn" class="btn btn-primary btn-sm" style="border-radius: 6px;">
                                     <i class="fas fa-plus"></i> Add Container
                                 </button>
@@ -954,44 +1076,6 @@
                     </div>
                 </div>
 
-                <div class="modal fade" id="r2sBulkEditModal" tabindex="-1" aria-labelledby="r2sBulkEditModalLabel" aria-hidden="true">
-                    <div class="modal-dialog modal-dialog-centered">
-                        <div class="modal-content">
-                            <div class="modal-header bg-primary text-white">
-                                <h5 class="modal-title" id="r2sBulkEditModalLabel"><i class="fas fa-pen-to-square me-2"></i>Bulk edit selected rows</h5>
-                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-                            </div>
-                            <div class="modal-body">
-                                <p class="text-muted small mb-3" id="r2sBulkEditCountText">No rows selected.</p>
-                                <div class="mb-3">
-                                    <label class="form-label fw-bold" for="r2sBulkEditField">Field</label>
-                                    <select class="form-select" id="r2sBulkEditField">
-                                        <option value="">Choose field…</option>
-                                        <option value="zone_x" data-source="r2s">Zone</option>
-                                        <option value="pay_term" data-source="r2s">Terms (pay_term)</option>
-                                        <option value="payment_confirmation" data-source="r2s">ADV confirm</option>
-                                        <option value="rec_qty" data-source="r2s">Rec. QTY</option>
-                                        <option value="packing_list" data-source="r2s">Packing (Yes/No)</option>
-                                        <option value="photo_mail_send" data-source="r2s">New photo (Yes/No)</option>
-                                        <option value="supplier" data-source="r2s">Supplier (ready_to_ship)</option>
-                                        <option value="packing_list_link" data-source="r2s">Packing URL</option>
-                                        <option value="Stage" data-source="forecast">Stage (forecast)</option>
-                                        <option value="NR" data-source="forecast">NRP (forecast)</option>
-                                    </select>
-                                </div>
-                                <div id="r2sBulkEditValueWrap" class="mb-2"></div>
-                                <p class="text-danger small mb-0 d-none" id="r2sBulkEditError" style="white-space: pre-wrap;"></p>
-                            </div>
-                            <div class="modal-footer">
-                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                                <button type="button" class="btn btn-primary" id="r2sBulkEditApplyBtn" disabled>
-                                    <i class="fas fa-check me-1"></i> Apply to selected
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
                 <div class="modal fade" id="r2sRowEditModal" tabindex="-1" aria-labelledby="r2sRowEditModalLabel" aria-hidden="true">
                     <div class="modal-dialog modal-xl modal-dialog-scrollable">
                         <div class="modal-content">
@@ -1029,7 +1113,7 @@
                                     Parent
                                     <div class="resizer"></div>
                                 </th>
-                                <th data-column="0" style="width: 44px;" class="text-center" title="Select rows for Move / Bulk edit">
+                                <th data-column="0" style="width: 44px;" class="text-center" title="Select rows for Move / Revert">
                                     <input type="checkbox" id="selectAllCheckbox" title="Select All">
                                     <div class="resizer"></div>
                                 </th>
@@ -1114,7 +1198,7 @@
                                     }
                                     $r2sStageNorm = strtolower(trim((string) ($item->stage ?? '')));
                                 @endphp
-                            <tr data-stage="{{ e($r2sStageNorm) }}" class="stage-row" data-r2s-supplier="{{ e($item->supplier ?? '') }}" data-mfrg-supplier="{{ e($mfrgSup) }}">
+                            <tr data-stage="{{ e($r2sStageNorm) }}" class="stage-row" data-sku="{{ e($item->sku) }}" data-r2s-supplier="{{ e($item->supplier ?? '') }}" data-mfrg-supplier="{{ e($mfrgSup) }}">
                                 <td data-column="27" class="text-center align-middle">
                                     @if(!empty($item->Image))
                                         @php
@@ -1375,6 +1459,103 @@
                 <div class="d-flex flex-wrap justify-content-between align-items-center mt-2 px-1 gap-2" id="r2s-table-footer">
                     <div class="text-muted fw-medium" id="r2s-row-count">Showing 0 rows</div>
                 </div>
+                {{-- Select-all + Edit MUST register here: main page script is 1000+ lines; any JS error above blocks late listeners --}}
+                <script>
+                (function () {
+                    function r2sIsVisibleTr(tr) {
+                        return !!(tr && tr.style.display !== 'none');
+                    }
+                    function r2sVisibleRowCheckboxElsForSelectAll() {
+                        var t = document.getElementById('readyToShipTable');
+                        if (!t) return [];
+                        return Array.prototype.slice.call(t.querySelectorAll('tbody .r2s-row-checkbox')).filter(function (cb) {
+                            return r2sIsVisibleTr(cb.closest('tr'));
+                        });
+                    }
+                    function r2sUpdateSelectAllCheckboxState() {
+                        var hdr = document.getElementById('selectAllCheckbox');
+                        var rows = r2sVisibleRowCheckboxElsForSelectAll();
+                        if (!hdr) return;
+                        if (rows.length === 0) {
+                            hdr.checked = false;
+                            hdr.indeterminate = false;
+                            return;
+                        }
+                        var allChecked = rows.every(function (cb) { return cb.checked; });
+                        var someChecked = rows.some(function (cb) { return cb.checked; });
+                        hdr.checked = allChecked;
+                        hdr.indeterminate = someChecked && !allChecked;
+                    }
+                    function onR2sSelectAllChange() {
+                        var hdr = document.getElementById('selectAllCheckbox');
+                        if (!hdr) return;
+                        var rows = r2sVisibleRowCheckboxElsForSelectAll();
+                        rows.forEach(function (cb) {
+                            cb.checked = hdr.checked;
+                        });
+                        r2sUpdateSelectAllCheckboxState();
+                        if (typeof window.r2sRefreshSelectionUi === 'function') {
+                            try { window.r2sRefreshSelectionUi(); } catch (e) {}
+                        } else {
+                            var deleteBtn = document.getElementById('delete-selected-btn');
+                            var anyChecked = rows.some(function (cb) { return cb.checked; });
+                            if (deleteBtn) deleteBtn.classList.toggle('d-none', !anyChecked);
+                        }
+                    }
+                    function bindR2sSelectAllCheckbox() {
+                        var hdr = document.getElementById('selectAllCheckbox');
+                        if (!hdr || hdr.__r2sSelectAllBound) return;
+                        hdr.__r2sSelectAllBound = true;
+                        hdr.addEventListener('change', onR2sSelectAllChange);
+                        hdr.addEventListener('click', function (e) {
+                            e.stopPropagation();
+                        });
+                    }
+                    window.r2sUpdateSelectAllCheckboxState = r2sUpdateSelectAllCheckboxState;
+                    window.r2sVisibleRowCheckboxElsForSelection = r2sVisibleRowCheckboxElsForSelectAll;
+                    if (document.readyState === 'loading') {
+                        document.addEventListener('DOMContentLoaded', bindR2sSelectAllCheckbox);
+                    } else {
+                        bindR2sSelectAllCheckbox();
+                    }
+                })();
+                </script>
+                <script>
+                (function () {
+                    function onR2sEditClick(e) {
+                        var btn = e.target.closest('.r2s-row-edit-btn');
+                        if (!btn) return;
+                        var table = document.getElementById('readyToShipTable');
+                        if (!table || !table.contains(btn)) return;
+                        e.preventDefault();
+                        e.stopPropagation();
+                        var tr = btn.closest('tr.stage-row');
+                        if (!tr) return;
+                        if (typeof window.r2sOpenRowEditModal === 'function') {
+                            window.r2sOpenRowEditModal(tr);
+                        } else {
+                            (function retryOpen(n) {
+                                if (typeof window.r2sOpenRowEditModal === 'function') {
+                                    window.r2sOpenRowEditModal(tr);
+                                } else if (n < 40) {
+                                    setTimeout(function () { retryOpen(n + 1); }, 50);
+                                }
+                            })(0);
+                        }
+                    }
+                    function bindR2sEditColumn() {
+                        var table = document.getElementById('readyToShipTable');
+                        if (table) {
+                            table.addEventListener('click', onR2sEditClick, true);
+                        }
+                    }
+                    if (document.readyState === 'loading') {
+                        document.addEventListener('DOMContentLoaded', bindR2sEditColumn);
+                    } else {
+                        bindR2sEditColumn();
+                    }
+                })();
+                </script>
             </div>
         </div>
     </div>
@@ -1398,6 +1579,470 @@
     document.addEventListener('DOMContentLoaded', function() {
         /** null = all R2S; 'unassigned' = no supplier; string = that supplier (dropdown or play mode) */
         window.r2sSupplierNavLock = null;
+
+        // Row edit modal — register first so Edit works even if later init throws
+        (function setupR2sRowEditHelpersEarly() {
+            const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '{{ csrf_token() }}';
+
+            function updateForecastFieldAsync(payload) {
+                return fetch('/update-forecast-data', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': csrf,
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                }).then(function (r) { return r.json(); });
+            }
+
+            function inlineUpdateAsync(sku, column, value) {
+                return fetch('/ready-to-ship/inline-update-by-sku', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': csrf
+                    },
+                    body: JSON.stringify({ sku: sku, column: column, value: value })
+                }).then(function (r) { return r.json(); });
+            }
+
+            function syncDomAfterR2sField(row, column, value) {
+                if (!row) return;
+                if (column === 'zone_x') {
+                    const sel = row.querySelector('select.r2s-zone-x-select');
+                    if (sel) {
+                        const opt = Array.prototype.slice.call(sel.options).find(function (o) { return o.value === value; });
+                        if (opt || value === '') sel.value = value;
+                    }
+                    return;
+                }
+                if (column === 'pay_term') {
+                    const sel = row.querySelector('select.r2s-pay-term-select, select.auto-save[data-column="pay_term"]');
+                    if (sel) {
+                        sel.value = value;
+                        sel.setAttribute('data-committed', String(value));
+                        const disp = row.querySelector('.r2s-pay-term-display');
+                        if (disp) disp.textContent = value;
+                    }
+                    return;
+                }
+                if (column === 'payment_confirmation') {
+                    const sel = row.querySelector('select.auto-save[data-column="payment_confirmation"]');
+                    if (sel) sel.value = value;
+                    return;
+                }
+                if (column === 'rec_qty') {
+                    const inp = row.querySelector('input.r2s-rec-qty-input, input.auto-save[data-column="rec_qty"]');
+                    if (inp) {
+                        inp.value = value;
+                        inp.setAttribute('data-committed', String(value));
+                        const disp = row.querySelector('.r2s-rec-qty-display');
+                        if (disp) disp.textContent = value;
+                    }
+                    return;
+                }
+                if (column === 'packing_list') {
+                    const dot = row.querySelector('.packing-toggle');
+                    if (dot) {
+                        dot.dataset.value = value;
+                        dot.style.backgroundColor = (String(value).toLowerCase() === 'yes') ? '#28a745' : '#dc3545';
+                    }
+                    return;
+                }
+                if (column === 'photo_mail_send') {
+                    const dot = row.querySelector('.new-photo-toggle');
+                    if (dot) {
+                        dot.dataset.value = value;
+                        dot.style.backgroundColor = (String(value).toLowerCase() === 'yes') ? '#28a745' : '#dc3545';
+                    }
+                    return;
+                }
+                if (column === 'supplier') {
+                    row.setAttribute('data-r2s-supplier', value);
+                }
+                if (column === 'packing_list_link') {
+                    const cell = row.querySelector('td.r2s-packing-list-cell');
+                    const btn = cell ? cell.querySelector('.r2s-packing-link-edit') : null;
+                    const inner = cell ? cell.querySelector('.r2s-packing-list-inner') : null;
+                    if (btn) btn.setAttribute('data-current-url', value || '');
+                    if (inner) {
+                        let a = inner.querySelector('a.r2s-packing-list-link');
+                        const dot = inner.querySelector('.packing-toggle');
+                        if (value) {
+                            if (!a) {
+                                a = document.createElement('a');
+                                a.className = 'r2s-packing-list-link text-nowrap';
+                                a.target = '_blank';
+                                a.rel = 'noopener';
+                                a.textContent = 'ready-to-ship';
+                                a.style.color = '#0d9488';
+                                a.style.fontWeight = '600';
+                                inner.insertBefore(a, inner.firstChild);
+                            }
+                            a.href = value;
+                            a.classList.remove('d-none');
+                            if (dot) dot.classList.add('d-none');
+                        } else if (a) {
+                            a.remove();
+                            if (dot) dot.classList.remove('d-none');
+                        }
+                    }
+                }
+                if (column === 'rate') {
+                    const inp = row.querySelector('input[data-column="rate"]');
+                    if (inp) inp.value = value;
+                }
+            }
+
+            function syncDomAfterForecastStage(row, value) {
+                const sel = row.querySelector('.editable-select-stage');
+                if (!sel) return;
+                const v = String(value != null ? value : '').trim().toLowerCase();
+                sel.value = v;
+                sel.setAttribute('data-initial-stage', v);
+                row.setAttribute('data-stage', v);
+                if (typeof window.r2sStageMarkerRefresh === 'function') {
+                    window.r2sStageMarkerRefresh(sel, v);
+                } else if (typeof r2sStageMarkerRefresh === 'function') {
+                    r2sStageMarkerRefresh(sel, v);
+                }
+            }
+
+            function syncDomAfterForecastNr(row, value) {
+                const sel = row.querySelector('.editable-select-nrp');
+                if (!sel) return;
+                sel.value = value;
+                let bg = '#ffffff';
+                let tc = '#000000';
+                if (value === 'NR') { bg = '#dc3545'; tc = '#ffffff'; }
+                else if (value === 'REQ') { bg = '#28a745'; tc = '#000000'; }
+                else if (value === 'LATER') { bg = '#ffc107'; tc = '#000000'; }
+                sel.style.backgroundColor = bg;
+                sel.style.color = tc;
+            }
+
+            const modalEl = document.getElementById('r2sRowEditModal');
+            const formEl = document.getElementById('r2sRowEditForm');
+            const skuEl = document.getElementById('r2sRowEditSku');
+            const subEl = document.getElementById('r2sRowEditSubtitle');
+            const statusEl = document.getElementById('r2sRowEditStatus');
+            const saveBtn = document.getElementById('r2sRowEditSaveBtn');
+            const tableEl = document.getElementById('readyToShipTable');
+            const zones = Array.isArray(window.R2S_ZONE_OPTIONS) ? window.R2S_ZONE_OPTIONS : ['GHZ', 'Ningbo', 'Tianjin'];
+            const rowEditState = { anchorRow: null, targetRows: null, pendingTargets: null };
+            const YESNO = [['Yes', 'Yes'], ['No', 'No']];
+            const STAGE_OPTS = [
+                ['', 'Not Req Now'], ['appr_req', 'Appr Req'], ['mip', 'MIP'], ['r2s', 'R2S'],
+                ['transit', 'Trn'], ['to_order_analysis', 'Order'], ['all_good', 'All Good']
+            ];
+            const NR_OPTS = [['REQ', 'REQ'], ['NR', '2BDC'], ['LATER', 'LATER']];
+            const PAY_OPTS = [['EXW', 'EXW'], ['FOB', 'FOB']];
+
+            function r2sEscForm(s) {
+                return String(s != null ? s : '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+            }
+
+            function rowSku(tr) {
+                const cb = tr ? tr.querySelector('.r2s-row-checkbox') : null;
+                if (cb) {
+                    const s = (cb.getAttribute('data-sku') || '').trim();
+                    if (s) return s;
+                }
+                const span = tr ? tr.querySelector('td[data-column="3"] .r2s-cell-copy-text') : null;
+                return span ? String(span.textContent || '').trim() : '';
+            }
+
+            function dedupeR2sRows(rows) {
+                const seen = new Set();
+                return (rows || []).filter(function (tr) {
+                    if (!tr) return false;
+                    const sku = rowSku(tr);
+                    if (!sku || seen.has(sku)) return false;
+                    seen.add(sku);
+                    return true;
+                });
+            }
+
+            function getCheckedRowsForEdit() {
+                const out = [];
+                const tbl = document.getElementById('readyToShipTable');
+                if (!tbl) return out;
+                tbl.querySelectorAll('tbody .r2s-row-checkbox').forEach(function (cb) {
+                    if (!cb.checked) return;
+                    const tr = cb.closest('tr.stage-row');
+                    if (tr && tr.style.display !== 'none') out.push(tr);
+                });
+                return out;
+            }
+
+            function getBulkTargetRows(anchorTr) {
+                const checked = getCheckedRowsForEdit();
+                if (checked.length > 1) {
+                    return dedupeR2sRows(checked);
+                }
+                const merged = dedupeR2sRows([
+                    ...(rowEditState.pendingTargets || []),
+                    ...checked,
+                    ...(anchorTr ? [anchorTr] : [])
+                ]);
+                if (merged.length) return merged;
+                return anchorTr ? [anchorTr] : [];
+            }
+
+            function cellText(tr, col, sel) {
+                const td = tr.querySelector('td[data-column="' + col + '"]');
+                if (!td) return '';
+                const el = sel ? td.querySelector(sel) : td;
+                return el ? String(el.textContent || '').trim() : '';
+            }
+
+            function readR2sRowData(tr) {
+                const zoneSel = tr.querySelector('select.r2s-zone-x-select');
+                const stageSel = tr.querySelector('.editable-select-stage');
+                const nrSel = tr.querySelector('.editable-select-nrp');
+                const orQtyInp = tr.querySelector('td[data-column="4"] input');
+                const recInp = tr.querySelector('input[data-column="rec_qty"]');
+                const recDisp = tr.querySelector('.r2s-rec-qty-display');
+                const rateInp = tr.querySelector('input[data-column="rate"]');
+                const paySel = tr.querySelector('select[data-column="pay_term"]');
+                const payDisp = tr.querySelector('.r2s-pay-term-display');
+                const advSel = tr.querySelector('select[data-column="payment_confirmation"]');
+                const packDot = tr.querySelector('.packing-toggle');
+                const photoDot = tr.querySelector('.new-photo-toggle');
+                const linkBtn = tr.querySelector('.r2s-packing-link-edit');
+                const parentText = cellText(tr, '2', '.r2s-cell-copy-text').replace(/^—$/, '');
+
+                return {
+                    sku: rowSku(tr),
+                    parent: parentText,
+                    mfrg_supplier: cellText(tr, '1', '.forecast-supplier-name').replace(/^—$/, ''),
+                    zone_x: zoneSel ? zoneSel.value : '',
+                    supplier: tr.getAttribute('data-r2s-supplier') || '',
+                    stage: stageSel ? stageSel.value : (tr.getAttribute('data-stage') || ''),
+                    nr: nrSel ? nrSel.value : 'REQ',
+                    or_qty: orQtyInp ? orQtyInp.value : '',
+                    rec_qty: recInp ? recInp.value : (recDisp ? recDisp.textContent.trim() : ''),
+                    rate: rateInp ? rateInp.value : '',
+                    cbm: cellText(tr, '6').replace(/^N\/A$/i, ''),
+                    total_cbm: cellText(tr, '19'),
+                    cp: cellText(tr, '25'),
+                    amount: cellText(tr, '24'),
+                    packing_list: packDot ? (packDot.getAttribute('data-value') || 'No') : 'No',
+                    packing_list_link: linkBtn ? (linkBtn.getAttribute('data-current-url') || '') : '',
+                    pay_term: paySel ? paySel.value : (payDisp ? payDisp.textContent.trim() : 'EXW'),
+                    payment_confirmation: advSel ? advSel.value : 'No',
+                    photo_mail_send: photoDot ? (photoDot.getAttribute('data-value') || 'No') : 'No',
+                    model_number: cellText(tr, '12'),
+                    followup_delivery: cellText(tr, '14'),
+                    container_rfq: cellText(tr, '16'),
+                    quote_result: cellText(tr, '17'),
+                };
+            }
+
+            const R2S_EDIT_FIELDS = [
+                { key: 'sku', label: 'SKU', type: 'text', readonly: true },
+                { key: 'parent', label: 'Parent', type: 'text', readonly: true },
+                { key: 'mfrg_supplier', label: 'Mfrg Supplier', type: 'text', readonly: true },
+                { key: 'zone_x', label: 'Zone', type: 'select', source: 'r2s', column: 'zone_x', options: function () {
+                    return [['', '— (clear)']].concat(zones.map(function (z) { return [z, z]; }));
+                } },
+                { key: 'supplier', label: 'R2S Supplier', type: 'text', source: 'r2s', column: 'supplier' },
+                { key: 'stage', label: 'Stage', type: 'select', source: 'forecast', column: 'Stage', options: function () { return STAGE_OPTS; } },
+                { key: 'nr', label: 'NRP', type: 'select', source: 'forecast', column: 'NR', options: function () { return NR_OPTS; } },
+                { key: 'or_qty', label: 'Or. QTY', type: 'text', readonly: true },
+                { key: 'rec_qty', label: 'Rec. QTY', type: 'number', source: 'r2s', column: 'rec_qty' },
+                { key: 'rate', label: 'Rate', type: 'number', source: 'r2s', column: 'rate' },
+                { key: 'cbm', label: 'CBM (unit)', type: 'text', readonly: true },
+                { key: 'total_cbm', label: 'Total CBM', type: 'text', readonly: true },
+                { key: 'cp', label: 'CP', type: 'text', readonly: true },
+                { key: 'amount', label: 'Amount', type: 'text', readonly: true },
+                { key: 'packing_list', label: 'Packing', type: 'select', source: 'r2s', column: 'packing_list', options: function () { return YESNO; } },
+                { key: 'packing_list_link', label: 'Packing URL', type: 'url', source: 'r2s', column: 'packing_list_link' },
+                { key: 'pay_term', label: 'Terms', type: 'select', source: 'r2s', column: 'pay_term', options: function () { return PAY_OPTS; } },
+                { key: 'payment_confirmation', label: 'ADV Confirm', type: 'select', source: 'r2s', column: 'payment_confirmation', options: function () { return YESNO; } },
+                { key: 'photo_mail_send', label: 'New Photo', type: 'select', source: 'r2s', column: 'photo_mail_send', options: function () { return YESNO; } },
+                { key: 'model_number', label: 'Model Number', type: 'text', readonly: true },
+                { key: 'followup_delivery', label: 'Followup Delivery', type: 'text', readonly: true },
+                { key: 'container_rfq', label: 'Container RFQ', type: 'text', readonly: true },
+                { key: 'quote_result', label: 'Quote Result', type: 'text', readonly: true },
+            ];
+
+            function renderEditForm(baseline) {
+                if (!formEl) return;
+                let html = '';
+                R2S_EDIT_FIELDS.forEach(function (f) {
+                    const id = 'r2s-edit-' + f.key;
+                    let val = baseline[f.key] == null ? '' : baseline[f.key];
+                    let input = '';
+                    if (f.type === 'select') {
+                        const opts = (f.options ? f.options() : []).map(function (o) {
+                            return '<option value="' + r2sEscForm(o[0]) + '"' + (String(o[0]) === String(val) ? ' selected' : '') + '>' + r2sEscForm(o[1]) + '</option>';
+                        }).join('');
+                        input = '<select class="form-select form-select-sm" id="' + id + '" data-key="' + r2sEscForm(f.key) + '"' + (f.readonly ? ' disabled' : '') + '>' + opts + '</select>';
+                    } else {
+                        input = '<input type="' + (f.type === 'number' ? 'number' : f.type === 'url' ? 'url' : 'text') + '" class="form-control form-control-sm" id="' + id + '" data-key="' + r2sEscForm(f.key) + '" value="' + r2sEscForm(val) + '"' + (f.readonly ? ' readonly' : '') + '>';
+                    }
+                    html += '<div class="col-md-4 col-lg-3"><label class="form-label small fw-semibold mb-1" for="' + id + '">' + r2sEscForm(f.label) + '</label>' + input + '</div>';
+                });
+                formEl.innerHTML = html;
+            }
+
+            function openR2sRowEditModal(anchorTr) {
+                if (!modalEl || !anchorTr) return;
+                rowEditState.anchorRow = anchorTr;
+                const targets = getBulkTargetRows(anchorTr);
+                rowEditState.pendingTargets = null;
+                rowEditState.targetRows = targets;
+                const baselineTr = targets.indexOf(anchorTr) !== -1 ? anchorTr : targets[0];
+                const baseline = readR2sRowData(baselineTr);
+                const isBulk = targets.length > 1;
+
+                if (isBulk) {
+                    if (skuEl) skuEl.innerHTML = '<span class="badge bg-warning text-dark">' + targets.length + ' rows selected</span>';
+                    if (subEl) subEl.textContent = 'Changes apply to all ' + targets.length + ' selected rows. Only fields you change from the baseline row are overwritten on every row.';
+                } else {
+                    if (skuEl) skuEl.textContent = baseline.sku || '';
+                    if (subEl) subEl.textContent = baseline.parent ? (baseline.sku + ' · ' + baseline.parent) : (baseline.sku || '');
+                }
+                if (statusEl) statusEl.innerHTML = '';
+                renderEditForm(baseline);
+                if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                }
+            }
+
+            window.r2sOpenRowEditModal = openR2sRowEditModal;
+
+            if (tableEl) {
+                tableEl.addEventListener('mousedown', function (e) {
+                    const btn = e.target.closest('.r2s-row-edit-btn');
+                    if (!btn) return;
+                    e.stopPropagation();
+                    const tr = btn.closest('tr.stage-row');
+                    rowEditState.pendingTargets = dedupeR2sRows([
+                        ...getCheckedRowsForEdit(),
+                        ...(tr ? [tr] : [])
+                    ]);
+                }, true);
+            }
+
+            if (saveBtn && modalEl) {
+                saveBtn.addEventListener('click', async function () {
+                    const anchorRow = rowEditState.anchorRow;
+                    if (!anchorRow) return;
+                    const targets = (rowEditState.targetRows && rowEditState.targetRows.length) ? rowEditState.targetRows : [anchorRow];
+                    const baselineTr = targets.indexOf(anchorRow) !== -1 ? anchorRow : targets[0];
+                    const baseline = readR2sRowData(baselineTr);
+                    const btn = this;
+                    const origHtml = btn.innerHTML;
+                    const changes = [];
+
+                    document.querySelectorAll('#r2sRowEditForm [data-key]').forEach(function (el) {
+                        const key = el.dataset.key;
+                        const field = R2S_EDIT_FIELDS.find(function (f) { return f.key === key; });
+                        if (!field || field.readonly) return;
+                        const newVal = String(el.value != null ? el.value : '').trim();
+                        const oldVal = String(baseline[key] != null ? baseline[key] : '').trim();
+                        if (newVal === oldVal) return;
+                        changes.push({
+                            key: key,
+                            column: field.column || key,
+                            source: field.source,
+                            newVal: newVal
+                        });
+                    });
+
+                    if (!changes.length) {
+                        if (statusEl) statusEl.innerHTML = '<span class="text-muted">No changes to save.</span>';
+                        else bootstrap.Modal.getInstance(modalEl)?.hide();
+                        return;
+                    }
+
+                    btn.disabled = true;
+                    if (statusEl) statusEl.innerHTML = '<span class="text-muted">Saving ' + changes.length + ' field(s) to ' + targets.length + ' row(s)…</span>';
+
+                    const errors = [];
+                    let okRows = 0;
+
+                    for (let t = 0; t < targets.length; t++) {
+                        const row = targets[t];
+                        const sku = rowSku(row);
+                        if (!sku) continue;
+                        let rowOk = true;
+
+                        for (let c = 0; c < changes.length; c++) {
+                            const ch = changes[c];
+                            try {
+                                if (ch.source === 'r2s') {
+                                    let sendVal = ch.newVal;
+                                    if (ch.column === 'rec_qty' && sendVal !== '' && !isNaN(Number(sendVal))) {
+                                        sendVal = parseInt(sendVal, 10);
+                                    }
+                                    const res = await inlineUpdateAsync(sku, ch.column, sendVal);
+                                    if (!res.success) {
+                                        rowOk = false;
+                                        errors.push(sku + ' · ' + ch.key + ': ' + (res.message || 'failed'));
+                                    } else {
+                                        syncDomAfterR2sField(row, ch.column, ch.column === 'rec_qty' ? String(sendVal) : ch.newVal);
+                                    }
+                                } else if (ch.source === 'forecast') {
+                                    const stageSel = row.querySelector('.editable-select-stage');
+                                    const parent = stageSel ? (stageSel.getAttribute('data-parent') || '') : '';
+                                    if (ch.column === 'Stage') {
+                                        const qtyInput = row.querySelector('td[data-column="4"] input');
+                                        const orderQty = qtyInput ? parseFloat(qtyInput.value) : 0;
+                                        if (!orderQty || orderQty === 0) {
+                                            rowOk = false;
+                                            errors.push(sku + ': Order Qty cannot be empty or zero for Stage.');
+                                            continue;
+                                        }
+                                    }
+                                    const res = await updateForecastFieldAsync({
+                                        sku: sku,
+                                        parent: parent,
+                                        column: ch.column,
+                                        value: ch.newVal
+                                    });
+                                    if (!res.success) {
+                                        rowOk = false;
+                                        errors.push(sku + ' · ' + ch.key + ': ' + (res.message || 'forecast update failed'));
+                                    } else {
+                                        if (ch.column === 'Stage') syncDomAfterForecastStage(row, ch.newVal);
+                                        if (ch.column === 'NR') syncDomAfterForecastNr(row, ch.newVal);
+                                    }
+                                }
+                            } catch (err) {
+                                rowOk = false;
+                                errors.push(sku + ' · ' + ch.key + ': network error');
+                            }
+                        }
+                        if (rowOk) okRows++;
+                    }
+
+                    btn.disabled = false;
+                    btn.innerHTML = origHtml;
+
+                    if (errors.length) {
+                        const lines = ['Updated ' + okRows + ' row(s). Errors:'].concat(errors.slice(0, 12).map(function (e) { return '• ' + e; }));
+                        if (errors.length > 12) lines.push('…');
+                        if (statusEl) statusEl.innerHTML = '<span class="text-warning">' + lines.join('<br>') + '</span>';
+                    } else {
+                        if (statusEl) statusEl.innerHTML = '<span class="text-success">Saved ' + changes.length + ' field(s) on ' + targets.length + ' row(s).</span>';
+                        setTimeout(function () {
+                            bootstrap.Modal.getInstance(modalEl)?.hide();
+                            document.querySelectorAll('#readyToShipTable tbody .r2s-row-checkbox:checked').forEach(function (cb) { cb.checked = false; });
+                            if (typeof window.r2sRefreshSelectionUi === 'function') {
+                                window.r2sRefreshSelectionUi();
+                            }
+                        }, 450);
+                    }
+                    if (typeof window.filterByR2SStage === 'function') {
+                        window.filterByR2SStage();
+                    }
+                });
+            }
+        })();
 
         document.documentElement.setAttribute("data-sidenav-size", "condensed");
 
@@ -1512,9 +2157,10 @@
                     if (e.target.classList.contains('resizer')) return;
                     // Don't sort when focusing/typing column search inputs
                     if (e.target.matches && (e.target.matches('input') || e.target.matches('select') || e.target.matches('label'))) return;
+                    if (e.target.id === 'selectAllCheckbox' || (e.target.closest && e.target.closest('#selectAllCheckbox'))) return;
 
                     const col = this.getAttribute('data-column');
-                    if (!col) return;
+                    if (!col || col === '0') return;
 
                     const currentDir = this.dataset.sortDir === 'asc' ? 'asc' : (this.dataset.sortDir === 'desc' ? 'desc' : null);
                     const nextDir = currentDir === 'asc' ? 'desc' : 'asc';
@@ -1772,6 +2418,7 @@
                 host.innerHTML = '<span class="stage-status-dot" style="background-color:' + dotColor + ';" aria-hidden="true"></span>';
             }
         }
+        window.r2sStageMarkerRefresh = r2sStageMarkerRefresh;
 
         // Stage Update Handler (Forecast Analysis–style dot / truck + overlay select)
         function setupStageUpdate() {
@@ -1900,6 +2547,10 @@
             if (typeof updateSelectAllState === 'function') updateSelectAllState();
         }
 
+        function r2sNormalizeFilterText(value) {
+            return String(value != null ? value : '').toLowerCase().replace(/\s+/g, ' ').trim();
+        }
+
         function filterByR2SStage() {
             const table = document.getElementById('readyToShipTable');
             const zoneFilter = document.getElementById('zoneFilter');
@@ -1907,8 +2558,8 @@
             const selectedZone = rawZone.toLowerCase();
             const skuFilterInput = document.getElementById('r2sToolbarSkuFilter');
             const supFilterInput = document.getElementById('r2sToolbarSupplierFilter');
-            const skuNeedle = skuFilterInput ? skuFilterInput.value.trim().toLowerCase() : '';
-            const supNeedle = supFilterInput ? supFilterInput.value.trim().toLowerCase() : '';
+            const skuNeedle = r2sNormalizeFilterText(skuFilterInput ? skuFilterInput.value : '');
+            const supNeedle = r2sNormalizeFilterText(supFilterInput ? supFilterInput.value : '');
             const rows = table
                 ? table.querySelectorAll('tbody tr.stage-row')
                 : document.querySelectorAll('.wide-table tbody tr.stage-row');
@@ -1954,19 +2605,20 @@
                 let skuMatch = true;
                 if (skuNeedle) {
                     const cb = row.querySelector('.r2s-row-checkbox');
-                    const skuFromCb = cb ? String(cb.getAttribute('data-sku') || '').trim().toLowerCase() : '';
+                    const skuFromRow = row.getAttribute('data-sku') || '';
+                    const skuFromCb = cb ? String(cb.getAttribute('data-sku') || '') : '';
                     const skuTd = row.querySelector('td[data-column="3"]');
                     const skuSpanEl = skuTd ? skuTd.querySelector('.r2s-cell-copy-text') : null;
                     const skuFromTd = skuSpanEl
-                        ? skuSpanEl.textContent.trim().toLowerCase()
-                        : (skuTd ? skuTd.textContent.trim().toLowerCase() : '');
-                    const skuHaystack = skuFromCb || skuFromTd;
+                        ? skuSpanEl.textContent
+                        : (skuTd ? skuTd.textContent : '');
+                    const skuHaystack = r2sNormalizeFilterText(skuFromRow || skuFromCb || skuFromTd);
                     skuMatch = skuHaystack.includes(skuNeedle);
                 }
                 let supMatch = true;
                 if (supNeedle) {
                     const supSpan = row.querySelector('td[data-column="1"] .forecast-supplier-name');
-                    const supText = supSpan ? supSpan.textContent.trim().toLowerCase() : '';
+                    const supText = r2sNormalizeFilterText(supSpan ? supSpan.textContent : '');
                     supMatch = supText.includes(supNeedle);
                 }
                 if (!skuMatch || !supMatch) {
@@ -2421,7 +3073,6 @@
 
         const selectAllCheckbox = document.getElementById('selectAllCheckbox');
         const deleteBtn = document.getElementById('delete-selected-btn');
-        const deleteSelectedItemBtn = document.getElementById('delete-selected-item');
         const moveToTransitBtn = document.getElementById('r2s-move-to-transit-btn');
         let r2sSuppressRowCheckboxAlert = false;
 
@@ -2438,23 +3089,7 @@
             alert('[ReadyToShip] Move button NOT found (id=r2s-move-to-transit-btn). Check layout.');
         }
 
-        // Select All checkbox handler
-        if (selectAllCheckbox) {
-            selectAllCheckbox.addEventListener('change', function() {
-                const rows = r2sVisibleRowCheckboxEls();
-                r2sLog('SELECT ALL checkbox clicked', { checked: this.checked, rowCount: rows.length });
-                if (R2S_DEBUG_UI) {
-                    alert('[ReadyToShip] Select-all checkbox: ' + (this.checked ? 'CHECKED (all rows)' : 'UNCHECKED'));
-                }
-                r2sSuppressRowCheckboxAlert = true;
-                rows.forEach(function(checkbox) {
-                    checkbox.checked = selectAllCheckbox.checked;
-                });
-                r2sSuppressRowCheckboxAlert = false;
-                updateButtonVisibility();
-                updateSelectAllState();
-            });
-        }
+        // Select-all handler registered inline near table footer (early bindR2sSelectAllCheckbox)
 
         // Delegated change: works after sort/reorder; count only inside #readyToShipTable
         if (readyToShipTableEl) {
@@ -2479,20 +3114,34 @@
         }
 
         function updateSelectAllState() {
-            const rows = r2sVisibleRowCheckboxEls();
-            if (selectAllCheckbox && rows.length > 0) {
-                const allChecked = rows.every(function(cb) { return cb.checked; });
-                const someChecked = rows.some(function(cb) { return cb.checked; });
-                selectAllCheckbox.checked = allChecked;
-                selectAllCheckbox.indeterminate = someChecked && !allChecked;
+            if (typeof window.r2sUpdateSelectAllCheckboxState === 'function') {
+                window.r2sUpdateSelectAllCheckboxState();
+                return;
             }
+            const rows = r2sVisibleRowCheckboxEls();
+            if (!selectAllCheckbox) return;
+            if (rows.length === 0) {
+                selectAllCheckbox.checked = false;
+                selectAllCheckbox.indeterminate = false;
+                return;
+            }
+            const allChecked = rows.every(function(cb) { return cb.checked; });
+            const someChecked = rows.some(function(cb) { return cb.checked; });
+            selectAllCheckbox.checked = allChecked;
+            selectAllCheckbox.indeterminate = someChecked && !allChecked;
         }
 
         function updateButtonVisibility() {
             const anyChecked = r2sCheckedCount() > 0;
             if (deleteBtn) deleteBtn.classList.toggle('d-none', !anyChecked);
-            if (deleteSelectedItemBtn) deleteSelectedItemBtn.classList.toggle('d-none', !anyChecked);
         }
+
+        window.r2sRefreshSelectionUi = function () {
+            try {
+                updateButtonVisibility();
+                updateSelectAllState();
+            } catch (e) {}
+        };
 
         window.r2sAfterMoveSuccess = function() {
             try {
@@ -2501,713 +3150,22 @@
             } catch (e) {}
         };
 
+        window.r2sAfterRowRevertSuccess = function() {
+            try {
+                updateButtonVisibility();
+                updateSelectAllState();
+                if (typeof filterByR2SStage === 'function') {
+                    filterByR2SStage();
+                }
+            } catch (e) {}
+        };
+
         // Initialize select all state
         updateSelectAllState();
 
-        // --- Bulk edit (same APIs as single-cell edits: inline-update-by-sku + update-forecast-data) ---
-        (function setupR2sBulkEdit() {
-            const bulkModalEl = document.getElementById('r2sBulkEditModal');
-            const bulkBtn = document.getElementById('r2s-bulk-edit-btn');
-            const bulkField = document.getElementById('r2sBulkEditField');
-            const bulkValueWrap = document.getElementById('r2sBulkEditValueWrap');
-            const bulkCountText = document.getElementById('r2sBulkEditCountText');
-            const bulkApplyBtn = document.getElementById('r2sBulkEditApplyBtn');
-            const bulkErrorEl = document.getElementById('r2sBulkEditError');
-            const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '{{ csrf_token() }}';
-            const zones = Array.isArray(window.R2S_ZONE_OPTIONS) ? window.R2S_ZONE_OPTIONS : ['GHZ', 'Ningbo', 'Tianjin'];
+        // Row edit modal: initialized at start of DOMContentLoaded (setupR2sRowEditHelpersEarly).
 
-            function r2sRowForCheckbox(cb) {
-                return cb && cb.closest ? cb.closest('tr.stage-row') : null;
-            }
-
-            function getCheckedSkusAndRows() {
-                const out = [];
-                r2sVisibleRowCheckboxEls().forEach(function (cb) {
-                    if (!cb.checked) return;
-                    const sku = (cb.getAttribute('data-sku') || '').trim();
-                    if (!sku) return;
-                    out.push({ sku: sku, row: r2sRowForCheckbox(cb) });
-                });
-                return out;
-            }
-
-            function updateForecastFieldAsync(payload) {
-                return fetch('/update-forecast-data', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': csrf,
-                        'Accept': 'application/json'
-                    },
-                    body: JSON.stringify(payload)
-                }).then(function (r) { return r.json(); });
-            }
-
-            function inlineUpdateAsync(sku, column, value) {
-                return fetch('/ready-to-ship/inline-update-by-sku', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': csrf
-                    },
-                    body: JSON.stringify({ sku: sku, column: column, value: value })
-                }).then(function (r) { return r.json(); });
-            }
-
-            function renderBulkValueControl(field) {
-                bulkValueWrap.innerHTML = '';
-                bulkErrorEl.classList.add('d-none');
-                bulkErrorEl.textContent = '';
-                if (!field) {
-                    bulkApplyBtn.disabled = true;
-                    return;
-                }
-                let html = '';
-                if (field === 'zone_x') {
-                    html = '<label class="form-label fw-bold" for="r2sBulkEditValue">Zone</label><select class="form-select" id="r2sBulkEditValue"><option value="">— (clear)</option>';
-                    zones.forEach(function (z) {
-                        html += '<option value="' + String(z).replace(/"/g, '&quot;') + '">' + String(z).replace(/</g, '&lt;') + '</option>';
-                    });
-                    html += '</select>';
-                } else if (field === 'pay_term') {
-                    html = '<label class="form-label fw-bold" for="r2sBulkEditValue">Terms</label><select class="form-select" id="r2sBulkEditValue"><option value="EXW">EXW</option><option value="FOB">FOB</option></select>';
-                } else if (field === 'payment_confirmation') {
-                    html = '<label class="form-label fw-bold" for="r2sBulkEditValue">ADV confirm</label><select class="form-select" id="r2sBulkEditValue"><option value="Yes">Yes</option><option value="No">No</option></select>';
-                } else if (field === 'rec_qty') {
-                    html = '<label class="form-label fw-bold" for="r2sBulkEditValue">Rec. QTY</label><input type="number" class="form-control" id="r2sBulkEditValue" min="0" max="10000" step="1" placeholder="e.g. 0">';
-                } else if (field === 'packing_list' || field === 'photo_mail_send') {
-                    html = '<label class="form-label fw-bold" for="r2sBulkEditValue">Value</label><select class="form-select" id="r2sBulkEditValue"><option value="Yes">Yes</option><option value="No">No</option></select>';
-                } else if (field === 'supplier') {
-                    html = '<label class="form-label fw-bold" for="r2sBulkEditValue">Supplier</label><input type="text" class="form-control" id="r2sBulkEditValue" placeholder="Supplier name">';
-                } else if (field === 'packing_list_link') {
-                    html = '<label class="form-label fw-bold" for="r2sBulkEditValue">URL (https://…)</label><input type="url" class="form-control" id="r2sBulkEditValue" placeholder="https://...">';
-                } else if (field === 'Stage') {
-                    html = '<label class="form-label fw-bold" for="r2sBulkEditValue">Stage</label><select class="form-select" id="r2sBulkEditValue">';
-                    html += '<option value="">Not Req Now</option><option value="appr_req">Appr Req</option><option value="mip">MIP</option><option value="r2s">R2S</option><option value="transit">Trn</option><option value="to_order_analysis">Order</option><option value="all_good">All Good</option>';
-                    html += '</select><p class="small text-muted mt-1 mb-0">Rows with Order Qty 0 are skipped (same rule as single-row Stage).</p>';
-                } else if (field === 'NR') {
-                    html = '<label class="form-label fw-bold" for="r2sBulkEditValue">NRP</label><select class="form-select" id="r2sBulkEditValue">';
-                    html += '<option value="REQ">REQ</option><option value="NR">2BDC</option><option value="LATER">LATER</option></select>';
-                }
-                bulkValueWrap.innerHTML = html;
-                bulkApplyBtn.disabled = false;
-            }
-
-            function readBulkValue(field) {
-                const el = document.getElementById('r2sBulkEditValue');
-                if (!el) return '';
-                if (el.tagName === 'SELECT' || el.tagName === 'INPUT') return String(el.value != null ? el.value : '').trim();
-                return '';
-            }
-
-            function syncDomAfterR2sField(row, column, value) {
-                if (!row) return;
-                if (column === 'zone_x') {
-                    const sel = row.querySelector('select.r2s-zone-x-select');
-                    if (sel) {
-                        const opt = Array.prototype.slice.call(sel.options).find(function (o) { return o.value === value; });
-                        if (opt || value === '') sel.value = value;
-                    }
-                    return;
-                }
-                if (column === 'pay_term') {
-                    const sel = row.querySelector('select.r2s-pay-term-select, select.auto-save[data-column="pay_term"]');
-                    if (sel) {
-                        sel.value = value;
-                        sel.setAttribute('data-committed', String(value));
-                        const disp = row.querySelector('.r2s-pay-term-display');
-                        if (disp) disp.textContent = value;
-                    }
-                    return;
-                }
-                if (column === 'payment_confirmation') {
-                    const sel = row.querySelector('select.auto-save[data-column="payment_confirmation"]');
-                    if (sel) sel.value = value;
-                    return;
-                }
-                if (column === 'rec_qty') {
-                    const inp = row.querySelector('input.r2s-rec-qty-input, input.auto-save[data-column="rec_qty"]');
-                    if (inp) {
-                        inp.value = value;
-                        inp.setAttribute('data-committed', String(value));
-                        const disp = row.querySelector('.r2s-rec-qty-display');
-                        if (disp) disp.textContent = value;
-                    }
-                    return;
-                }
-                if (column === 'packing_list') {
-                    const dot = row.querySelector('.packing-toggle');
-                    if (dot) {
-                        dot.dataset.value = value;
-                        dot.style.backgroundColor = (String(value).toLowerCase() === 'yes') ? '#28a745' : '#dc3545';
-                    }
-                    return;
-                }
-                if (column === 'photo_mail_send') {
-                    const dot = row.querySelector('.new-photo-toggle');
-                    if (dot) {
-                        dot.dataset.value = value;
-                        dot.style.backgroundColor = (String(value).toLowerCase() === 'yes') ? '#28a745' : '#dc3545';
-                    }
-                    return;
-                }
-                if (column === 'supplier') {
-                    row.setAttribute('data-r2s-supplier', value);
-                }
-                if (column === 'packing_list_link') {
-                    const cell = row.querySelector('td.r2s-packing-list-cell');
-                    const btn = cell ? cell.querySelector('.r2s-packing-link-edit') : null;
-                    const inner = cell ? cell.querySelector('.r2s-packing-list-inner') : null;
-                    if (btn) btn.setAttribute('data-current-url', value || '');
-                    if (inner) {
-                        let a = inner.querySelector('a.r2s-packing-list-link');
-                        const dot = inner.querySelector('.packing-toggle');
-                        if (value) {
-                            if (!a) {
-                                a = document.createElement('a');
-                                a.className = 'r2s-packing-list-link text-nowrap';
-                                a.target = '_blank';
-                                a.rel = 'noopener';
-                                a.textContent = 'ready-to-ship';
-                                a.style.color = '#0d9488';
-                                a.style.fontWeight = '600';
-                                inner.insertBefore(a, inner.firstChild);
-                            }
-                            a.href = value;
-                            a.classList.remove('d-none');
-                            if (dot) dot.classList.add('d-none');
-                        } else if (a) {
-                            a.remove();
-                            if (dot) dot.classList.remove('d-none');
-                        }
-                    }
-                }
-                if (column === 'rate') {
-                    const inp = row.querySelector('input[data-column="rate"]');
-                    if (inp) inp.value = value;
-                }
-            }
-
-            function syncDomAfterForecastStage(row, value) {
-                const sel = row.querySelector('.editable-select-stage');
-                if (!sel) return;
-                const v = String(value != null ? value : '').trim().toLowerCase();
-                sel.value = v;
-                sel.setAttribute('data-initial-stage', v);
-                row.setAttribute('data-stage', v);
-                if (typeof r2sStageMarkerRefresh === 'function') {
-                    r2sStageMarkerRefresh(sel, v);
-                }
-            }
-
-            function syncDomAfterForecastNr(row, value) {
-                const sel = row.querySelector('.editable-select-nrp');
-                if (!sel) return;
-                sel.value = value;
-                let bg = '#ffffff';
-                let tc = '#000000';
-                if (value === 'NR') { bg = '#dc3545'; tc = '#ffffff'; }
-                else if (value === 'REQ') { bg = '#28a745'; tc = '#000000'; }
-                else if (value === 'LATER') { bg = '#ffc107'; tc = '#000000'; }
-                sel.style.backgroundColor = bg;
-                sel.style.color = tc;
-            }
-
-            if (bulkBtn && bulkModalEl && bulkField) {
-                bulkBtn.addEventListener('click', function () {
-                    const sel = getCheckedSkusAndRows();
-                    if (!sel.length) {
-                        alert('Select one or more rows using the checkboxes (column before SKU), then click Bulk edit.');
-                        return;
-                    }
-                    bulkCountText.textContent = sel.length + ' row(s) selected. Choose a field and value, then Apply.';
-                    bulkField.value = '';
-                    renderBulkValueControl('');
-                    bulkErrorEl.classList.add('d-none');
-                    bootstrap.Modal.getOrCreateInstance(bulkModalEl).show();
-                });
-
-                bulkField.addEventListener('change', function () {
-                    renderBulkValueControl(this.value);
-                });
-
-                bulkApplyBtn.addEventListener('click', async function () {
-                    const field = bulkField.value;
-                    const opt = bulkField.options[bulkField.selectedIndex];
-                    const source = opt ? opt.getAttribute('data-source') : '';
-                    const rawVal = readBulkValue(field);
-                    bulkErrorEl.classList.add('d-none');
-                    if (!field) {
-                        bulkErrorEl.textContent = 'Choose a field.';
-                        bulkErrorEl.classList.remove('d-none');
-                        return;
-                    }
-                    const pairs = getCheckedSkusAndRows();
-                    if (!pairs.length) {
-                        bulkErrorEl.textContent = 'No rows selected.';
-                        bulkErrorEl.classList.remove('d-none');
-                        return;
-                    }
-
-                    bulkApplyBtn.disabled = true;
-                    const origHtml = bulkApplyBtn.innerHTML;
-                    bulkApplyBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Working…';
-
-                    const errors = [];
-                    let ok = 0;
-
-                    for (let i = 0; i < pairs.length; i++) {
-                        const sku = pairs[i].sku;
-                        const row = pairs[i].row;
-                        try {
-                            if (source === 'r2s') {
-                                let sendVal = rawVal;
-                                if (field === 'rec_qty' && sendVal !== '' && !isNaN(Number(sendVal))) {
-                                    sendVal = parseInt(sendVal, 10);
-                                }
-                                const res = await inlineUpdateAsync(sku, field, sendVal);
-                                if (!res.success) {
-                                    errors.push(sku + ': ' + (res.message || 'failed'));
-                                } else {
-                                    ok++;
-                                    syncDomAfterR2sField(row, field, field === 'rec_qty' ? String(sendVal) : rawVal);
-                                }
-                            } else if (source === 'forecast') {
-                                const stageSel = row ? row.querySelector('.editable-select-stage') : null;
-                                const parent = stageSel ? (stageSel.getAttribute('data-parent') || '') : '';
-                                if (field === 'Stage') {
-                                    const qtyInput = row ? row.querySelector('td[data-column="4"] input') : null;
-                                    const orderQty = qtyInput ? parseFloat(qtyInput.value) : 0;
-                                    if (!orderQty || orderQty === 0) {
-                                        errors.push(sku + ': Order Qty cannot be empty or zero for Stage.');
-                                        continue;
-                                    }
-                                }
-                                const res = await updateForecastFieldAsync({
-                                    sku: sku,
-                                    parent: parent,
-                                    column: field,
-                                    value: rawVal
-                                });
-                                if (!res.success) {
-                                    errors.push(sku + ': ' + (res.message || 'forecast update failed'));
-                                } else {
-                                    ok++;
-                                    if (field === 'Stage') syncDomAfterForecastStage(row, rawVal);
-                                    if (field === 'NR') syncDomAfterForecastNr(row, rawVal);
-                                }
-                            }
-                        } catch (err) {
-                            errors.push(sku + ': network error');
-                        }
-                    }
-
-                    bulkApplyBtn.innerHTML = origHtml;
-                    bulkApplyBtn.disabled = false;
-
-                    if (errors.length) {
-                        const lines = ['Updated ' + ok + ' row(s). Errors:'].concat(errors.slice(0, 12).map(function (e) { return '• ' + e; }));
-                        if (errors.length > 12) lines.push('…');
-                        bulkErrorEl.textContent = lines.join('\n');
-                        bulkErrorEl.classList.remove('d-none');
-                    } else {
-                        bootstrap.Modal.getInstance(bulkModalEl)?.hide();
-                        alert('Updated ' + ok + ' row(s) successfully.');
-                    }
-                    if (typeof filterByR2SStage === 'function') filterByR2SStage();
-                });
-            }
-
-            // --- Row edit modal (all columns; bulk when checkboxes selected) ---
-            (function setupR2sRowEditModal() {
-                const modalEl = document.getElementById('r2sRowEditModal');
-                const formEl = document.getElementById('r2sRowEditForm');
-                const skuEl = document.getElementById('r2sRowEditSku');
-                const subEl = document.getElementById('r2sRowEditSubtitle');
-                const statusEl = document.getElementById('r2sRowEditStatus');
-                const saveBtn = document.getElementById('r2sRowEditSaveBtn');
-                const tableEl = document.getElementById('readyToShipTable');
-                const rowEditState = { anchorRow: null, targetRows: null, pendingTargets: null };
-                const YESNO = [['Yes', 'Yes'], ['No', 'No']];
-                const STAGE_OPTS = [
-                    ['', 'Not Req Now'], ['appr_req', 'Appr Req'], ['mip', 'MIP'], ['r2s', 'R2S'],
-                    ['transit', 'Trn'], ['to_order_analysis', 'Order'], ['all_good', 'All Good']
-                ];
-                const NR_OPTS = [['REQ', 'REQ'], ['NR', '2BDC'], ['LATER', 'LATER']];
-                const PAY_OPTS = [['EXW', 'EXW'], ['FOB', 'FOB']];
-
-                function r2sEscForm(s) {
-                    return String(s != null ? s : '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
-                }
-
-                function rowSku(tr) {
-                    const cb = tr ? tr.querySelector('.r2s-row-checkbox') : null;
-                    if (cb) {
-                        const s = (cb.getAttribute('data-sku') || '').trim();
-                        if (s) return s;
-                    }
-                    const span = tr ? tr.querySelector('td[data-column="3"] .r2s-cell-copy-text') : null;
-                    return span ? String(span.textContent || '').trim() : '';
-                }
-
-                function dedupeR2sRows(rows) {
-                    const seen = new Set();
-                    return (rows || []).filter(function (tr) {
-                        if (!tr) return false;
-                        const sku = rowSku(tr);
-                        if (!sku || seen.has(sku)) return false;
-                        seen.add(sku);
-                        return true;
-                    });
-                }
-
-                function getCheckedRows() {
-                    const out = [];
-                    r2sVisibleRowCheckboxEls().forEach(function (cb) {
-                        if (!cb.checked) return;
-                        const tr = cb.closest('tr.stage-row');
-                        if (tr) out.push(tr);
-                    });
-                    return out;
-                }
-
-                function getBulkTargetRows(anchorTr) {
-                    const merged = dedupeR2sRows([
-                        ...(rowEditState.pendingTargets || []),
-                        ...getCheckedRows(),
-                        ...(anchorTr ? [anchorTr] : [])
-                    ]);
-                    if (merged.length) return merged;
-                    return anchorTr ? [anchorTr] : [];
-                }
-
-                function cellText(tr, col, sel) {
-                    const td = tr.querySelector('td[data-column="' + col + '"]');
-                    if (!td) return '';
-                    const el = sel ? td.querySelector(sel) : td;
-                    return el ? String(el.textContent || '').trim() : '';
-                }
-
-                function readR2sRowData(tr) {
-                    const zoneSel = tr.querySelector('select.r2s-zone-x-select');
-                    const stageSel = tr.querySelector('.editable-select-stage');
-                    const nrSel = tr.querySelector('.editable-select-nrp');
-                    const orQtyInp = tr.querySelector('td[data-column="4"] input');
-                    const recInp = tr.querySelector('input[data-column="rec_qty"]');
-                    const recDisp = tr.querySelector('.r2s-rec-qty-display');
-                    const rateInp = tr.querySelector('input[data-column="rate"]');
-                    const paySel = tr.querySelector('select[data-column="pay_term"]');
-                    const payDisp = tr.querySelector('.r2s-pay-term-display');
-                    const advSel = tr.querySelector('select[data-column="payment_confirmation"]');
-                    const packDot = tr.querySelector('.packing-toggle');
-                    const photoDot = tr.querySelector('.new-photo-toggle');
-                    const linkBtn = tr.querySelector('.r2s-packing-link-edit');
-                    const parentText = cellText(tr, '2', '.r2s-cell-copy-text').replace(/^—$/, '');
-
-                    return {
-                        sku: rowSku(tr),
-                        parent: parentText,
-                        mfrg_supplier: cellText(tr, '1', '.forecast-supplier-name').replace(/^—$/, ''),
-                        zone_x: zoneSel ? zoneSel.value : '',
-                        supplier: tr.getAttribute('data-r2s-supplier') || '',
-                        stage: stageSel ? stageSel.value : (tr.getAttribute('data-stage') || ''),
-                        nr: nrSel ? nrSel.value : 'REQ',
-                        or_qty: orQtyInp ? orQtyInp.value : '',
-                        rec_qty: recInp ? recInp.value : (recDisp ? recDisp.textContent.trim() : ''),
-                        rate: rateInp ? rateInp.value : '',
-                        cbm: cellText(tr, '6').replace(/^N\/A$/i, ''),
-                        total_cbm: cellText(tr, '19'),
-                        cp: cellText(tr, '25'),
-                        amount: cellText(tr, '24'),
-                        packing_list: packDot ? (packDot.getAttribute('data-value') || 'No') : 'No',
-                        packing_list_link: linkBtn ? (linkBtn.getAttribute('data-current-url') || '') : '',
-                        pay_term: paySel ? paySel.value : (payDisp ? payDisp.textContent.trim() : 'EXW'),
-                        payment_confirmation: advSel ? advSel.value : 'No',
-                        photo_mail_send: photoDot ? (photoDot.getAttribute('data-value') || 'No') : 'No',
-                        model_number: cellText(tr, '12'),
-                        followup_delivery: cellText(tr, '14'),
-                        container_rfq: cellText(tr, '16'),
-                        quote_result: cellText(tr, '17'),
-                    };
-                }
-
-                const R2S_EDIT_FIELDS = [
-                    { key: 'sku', label: 'SKU', type: 'text', readonly: true },
-                    { key: 'parent', label: 'Parent', type: 'text', readonly: true },
-                    { key: 'mfrg_supplier', label: 'Mfrg Supplier', type: 'text', readonly: true },
-                    { key: 'zone_x', label: 'Zone', type: 'select', source: 'r2s', column: 'zone_x', options: function () {
-                        return [['', '— (clear)']].concat(zones.map(function (z) { return [z, z]; }));
-                    } },
-                    { key: 'supplier', label: 'R2S Supplier', type: 'text', source: 'r2s', column: 'supplier' },
-                    { key: 'stage', label: 'Stage', type: 'select', source: 'forecast', column: 'Stage', options: function () { return STAGE_OPTS; } },
-                    { key: 'nr', label: 'NRP', type: 'select', source: 'forecast', column: 'NR', options: function () { return NR_OPTS; } },
-                    { key: 'or_qty', label: 'Or. QTY', type: 'text', readonly: true },
-                    { key: 'rec_qty', label: 'Rec. QTY', type: 'number', source: 'r2s', column: 'rec_qty' },
-                    { key: 'rate', label: 'Rate', type: 'number', source: 'r2s', column: 'rate' },
-                    { key: 'cbm', label: 'CBM (unit)', type: 'text', readonly: true },
-                    { key: 'total_cbm', label: 'Total CBM', type: 'text', readonly: true },
-                    { key: 'cp', label: 'CP', type: 'text', readonly: true },
-                    { key: 'amount', label: 'Amount', type: 'text', readonly: true },
-                    { key: 'packing_list', label: 'Packing', type: 'select', source: 'r2s', column: 'packing_list', options: function () { return YESNO; } },
-                    { key: 'packing_list_link', label: 'Packing URL', type: 'url', source: 'r2s', column: 'packing_list_link' },
-                    { key: 'pay_term', label: 'Terms', type: 'select', source: 'r2s', column: 'pay_term', options: function () { return PAY_OPTS; } },
-                    { key: 'payment_confirmation', label: 'ADV Confirm', type: 'select', source: 'r2s', column: 'payment_confirmation', options: function () { return YESNO; } },
-                    { key: 'photo_mail_send', label: 'New Photo', type: 'select', source: 'r2s', column: 'photo_mail_send', options: function () { return YESNO; } },
-                    { key: 'model_number', label: 'Model Number', type: 'text', readonly: true },
-                    { key: 'followup_delivery', label: 'Followup Delivery', type: 'text', readonly: true },
-                    { key: 'container_rfq', label: 'Container RFQ', type: 'text', readonly: true },
-                    { key: 'quote_result', label: 'Quote Result', type: 'text', readonly: true },
-                ];
-
-                function renderEditForm(baseline) {
-                    let html = '';
-                    R2S_EDIT_FIELDS.forEach(function (f) {
-                        const id = 'r2s-edit-' + f.key;
-                        let val = baseline[f.key] == null ? '' : baseline[f.key];
-                        let input = '';
-                        if (f.type === 'select') {
-                            const opts = (f.options ? f.options() : []).map(function (o) {
-                                return '<option value="' + r2sEscForm(o[0]) + '"' + (String(o[0]) === String(val) ? ' selected' : '') + '>' + r2sEscForm(o[1]) + '</option>';
-                            }).join('');
-                            input = '<select class="form-select form-select-sm" id="' + id + '" data-key="' + r2sEscForm(f.key) + '"' + (f.readonly ? ' disabled' : '') + '>' + opts + '</select>';
-                        } else {
-                            input = '<input type="' + (f.type === 'number' ? 'number' : f.type === 'url' ? 'url' : 'text') + '" class="form-control form-control-sm" id="' + id + '" data-key="' + r2sEscForm(f.key) + '" value="' + r2sEscForm(val) + '"' + (f.readonly ? ' readonly' : '') + '>';
-                        }
-                        html += '<div class="col-md-4 col-lg-3"><label class="form-label small fw-semibold mb-1" for="' + id + '">' + r2sEscForm(f.label) + '</label>' + input + '</div>';
-                    });
-                    formEl.innerHTML = html;
-                }
-
-                function openR2sRowEditModal(anchorTr) {
-                    rowEditState.anchorRow = anchorTr;
-                    const targets = getBulkTargetRows(anchorTr);
-                    rowEditState.pendingTargets = null;
-                    rowEditState.targetRows = targets;
-                    const baselineTr = targets.indexOf(anchorTr) !== -1 ? anchorTr : targets[0];
-                    const baseline = readR2sRowData(baselineTr);
-                    const isBulk = targets.length > 1;
-
-                    if (isBulk) {
-                        skuEl.innerHTML = '<span class="badge bg-warning text-dark">' + targets.length + ' rows selected</span>';
-                        subEl.textContent = 'Changes apply to all ' + targets.length + ' selected rows. Only fields you change from the baseline row are overwritten on every row.';
-                    } else {
-                        skuEl.textContent = baseline.sku || '';
-                        subEl.textContent = baseline.parent ? (baseline.sku + ' · ' + baseline.parent) : (baseline.sku || '');
-                    }
-                    if (statusEl) statusEl.innerHTML = '';
-                    renderEditForm(baseline);
-                    bootstrap.Modal.getOrCreateInstance(modalEl).show();
-                }
-
-                if (tableEl) {
-                    tableEl.addEventListener('mousedown', function (e) {
-                        const btn = e.target.closest('.r2s-row-edit-btn');
-                        if (!btn) return;
-                        e.stopPropagation();
-                        const tr = btn.closest('tr.stage-row');
-                        rowEditState.pendingTargets = dedupeR2sRows([
-                            ...getCheckedRows(),
-                            ...(tr ? [tr] : [])
-                        ]);
-                    }, true);
-
-                    tableEl.addEventListener('click', function (e) {
-                        const btn = e.target.closest('.r2s-row-edit-btn');
-                        if (!btn) return;
-                        e.preventDefault();
-                        e.stopPropagation();
-                        const tr = btn.closest('tr.stage-row');
-                        if (!tr) return;
-                        openR2sRowEditModal(tr);
-                    }, true);
-                }
-
-                if (saveBtn) {
-                    saveBtn.addEventListener('click', async function () {
-                        const anchorRow = rowEditState.anchorRow;
-                        if (!anchorRow) return;
-                        const targets = (rowEditState.targetRows && rowEditState.targetRows.length) ? rowEditState.targetRows : [anchorRow];
-                        const baselineTr = targets.indexOf(anchorRow) !== -1 ? anchorRow : targets[0];
-                        const baseline = readR2sRowData(baselineTr);
-                        const isBulk = targets.length > 1;
-                        const btn = this;
-                        const origHtml = btn.innerHTML;
-                        const changes = [];
-
-                        document.querySelectorAll('#r2sRowEditForm [data-key]').forEach(function (el) {
-                            const key = el.dataset.key;
-                            const field = R2S_EDIT_FIELDS.find(function (f) { return f.key === key; });
-                            if (!field || field.readonly) return;
-                            const newVal = String(el.value != null ? el.value : '').trim();
-                            const oldVal = String(baseline[key] != null ? baseline[key] : '').trim();
-                            if (newVal === oldVal) return;
-                            changes.push({
-                                key: key,
-                                column: field.column || key,
-                                source: field.source,
-                                newVal: newVal
-                            });
-                        });
-
-                        if (!changes.length) {
-                            if (statusEl) statusEl.innerHTML = '<span class="text-muted">No changes to save.</span>';
-                            else bootstrap.Modal.getInstance(modalEl)?.hide();
-                            return;
-                        }
-
-                        btn.disabled = true;
-                        if (statusEl) statusEl.innerHTML = '<span class="text-muted">Saving ' + changes.length + ' field(s) to ' + targets.length + ' row(s)…</span>';
-
-                        const errors = [];
-                        let okRows = 0;
-
-                        for (let t = 0; t < targets.length; t++) {
-                            const row = targets[t];
-                            const sku = rowSku(row);
-                            if (!sku) continue;
-                            let rowOk = true;
-
-                            for (let c = 0; c < changes.length; c++) {
-                                const ch = changes[c];
-                                try {
-                                    if (ch.source === 'r2s') {
-                                        let sendVal = ch.newVal;
-                                        if (ch.column === 'rec_qty' && sendVal !== '' && !isNaN(Number(sendVal))) {
-                                            sendVal = parseInt(sendVal, 10);
-                                        }
-                                        const res = await inlineUpdateAsync(sku, ch.column, sendVal);
-                                        if (!res.success) {
-                                            rowOk = false;
-                                            errors.push(sku + ' · ' + ch.key + ': ' + (res.message || 'failed'));
-                                        } else {
-                                            syncDomAfterR2sField(row, ch.column, ch.column === 'rec_qty' ? String(sendVal) : ch.newVal);
-                                        }
-                                    } else if (ch.source === 'forecast') {
-                                        const stageSel = row.querySelector('.editable-select-stage');
-                                        const parent = stageSel ? (stageSel.getAttribute('data-parent') || '') : '';
-                                        if (ch.column === 'Stage') {
-                                            const qtyInput = row.querySelector('td[data-column="4"] input');
-                                            const orderQty = qtyInput ? parseFloat(qtyInput.value) : 0;
-                                            if (!orderQty || orderQty === 0) {
-                                                rowOk = false;
-                                                errors.push(sku + ': Order Qty cannot be empty or zero for Stage.');
-                                                continue;
-                                            }
-                                        }
-                                        const res = await updateForecastFieldAsync({
-                                            sku: sku,
-                                            parent: parent,
-                                            column: ch.column,
-                                            value: ch.newVal
-                                        });
-                                        if (!res.success) {
-                                            rowOk = false;
-                                            errors.push(sku + ' · ' + ch.key + ': ' + (res.message || 'forecast update failed'));
-                                        } else {
-                                            if (ch.column === 'Stage') syncDomAfterForecastStage(row, ch.newVal);
-                                            if (ch.column === 'NR') syncDomAfterForecastNr(row, ch.newVal);
-                                        }
-                                    }
-                                } catch (err) {
-                                    rowOk = false;
-                                    errors.push(sku + ' · ' + ch.key + ': network error');
-                                }
-                            }
-                            if (rowOk) okRows++;
-                        }
-
-                        btn.disabled = false;
-                        btn.innerHTML = origHtml;
-
-                        if (errors.length) {
-                            const lines = ['Updated ' + okRows + ' row(s). Errors:'].concat(errors.slice(0, 12).map(function (e) { return '• ' + e; }));
-                            if (errors.length > 12) lines.push('…');
-                            if (statusEl) statusEl.innerHTML = '<span class="text-warning">' + lines.join('<br>') + '</span>';
-                        } else {
-                            if (statusEl) statusEl.innerHTML = '<span class="text-success">Saved ' + changes.length + ' field(s) on ' + targets.length + ' row(s).</span>';
-                            setTimeout(function () {
-                                bootstrap.Modal.getInstance(modalEl)?.hide();
-                                r2sRowCheckboxEls().forEach(function (cb) { cb.checked = false; });
-                                updateButtonVisibility();
-                                updateSelectAllState();
-                            }, 450);
-                        }
-                        if (typeof filterByR2SStage === 'function') filterByR2SStage();
-                    });
-                }
-            })();
-        })();
-
-        // Delete selected rows
-        if (deleteBtn) {
-            deleteBtn.addEventListener('click', function() {
-                const selectedSkus = r2sVisibleRowCheckboxEls().filter(function(cb) { return cb.checked; })
-                    .map(function(cb) { return cb.getAttribute('data-sku'); }).filter(Boolean);
-
-                if (!selectedSkus.length) return alert("No rows selected.");
-
-                fetch('/ready-to-ship/revert-back-mfrg', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
-                    },
-                    body: JSON.stringify({ skus: selectedSkus })
-                })
-                .then(res => res.json())
-                .then(data => {
-                    if (data.success) {
-                        selectedSkus.forEach(function(sku) {
-                            const cb = r2sRowCheckboxEls().find(function(c) { return c.getAttribute('data-sku') === sku; });
-                            if (cb) cb.closest('tr')?.remove();
-                        });
-                        updateButtonVisibility();
-                        updateSelectAllState();
-                    } else {
-                        alert('Revert failed');
-                    }
-                })
-                .catch(() => alert('Error occurred during revert.'));
-            });
-        }
-
-        // Move is handled by inline script after the Move button (avoids duplicate fetch if main script errors earlier).
-
-        if (deleteSelectedItemBtn) {
-            deleteSelectedItemBtn.addEventListener('click', function() {
-                const selectedSkus = r2sVisibleRowCheckboxEls().filter(function(cb) { return cb.checked; })
-                    .map(function(cb) { return cb.getAttribute('data-sku'); }).filter(Boolean);
-
-                if (!selectedSkus.length) return alert("No rows selected.");
-
-                if (!confirm("Are you sure you want to delete the selected items? This action cannot be undone.")) {
-                    return;
-                }
-
-                fetch('/ready-to-ship/delete-items', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
-                    },
-                    body: JSON.stringify({ skus: selectedSkus })
-                })
-                .then(res => res.json())
-                .then(data => {
-                    if (data.success) {
-                        selectedSkus.forEach(function(sku) {
-                            const cb = r2sRowCheckboxEls().find(function(c) { return c.getAttribute('data-sku') === sku; });
-                            if (cb) cb.closest('tr')?.remove();
-                        });
-                        updateButtonVisibility();
-                        updateSelectAllState();
-                    } else {
-                        alert('Delete failed');
-                    }
-                })
-                .catch(() => alert('Error occurred during deletion.'));
-            });
-        }
+        // Revert: click handler registered inline near the button (see toolbar scripts).
 
         // Helper functions
         function capitalizeWords(str) {
@@ -3411,29 +3369,7 @@
             });
         }
 
-        const zoneFilterElement = document.getElementById('zoneFilter');
-        if (zoneFilterElement) {
-            zoneFilterElement.addEventListener('change', function () {
-                filterByR2SStage();
-            });
-        }
-
-        let r2sToolbarTextFilterTimer = null;
-        function scheduleFilterByR2SStageFromToolbar() {
-            clearTimeout(r2sToolbarTextFilterTimer);
-            r2sToolbarTextFilterTimer = setTimeout(function () {
-                r2sToolbarTextFilterTimer = null;
-                filterByR2SStage();
-            }, 200);
-        }
-        const r2sSkuFilterEl = document.getElementById('r2sToolbarSkuFilter');
-        const r2sSupFilterEl = document.getElementById('r2sToolbarSupplierFilter');
-        if (r2sSkuFilterEl) {
-            r2sSkuFilterEl.addEventListener('input', scheduleFilterByR2SStageFromToolbar);
-        }
-        if (r2sSupFilterEl) {
-            r2sSupFilterEl.addEventListener('input', scheduleFilterByR2SStageFromToolbar);
-        }
+        // SKU/Supplier/zone toolbar filters: bound inline near inputs + early after filterByR2SStage (above).
 
         function calculateSupplierTotals(visibleRows) {
             let totalAmount = 0;

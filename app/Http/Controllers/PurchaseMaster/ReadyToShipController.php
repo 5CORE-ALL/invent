@@ -15,8 +15,116 @@ use Illuminate\Support\Facades\Log;
 
 class ReadyToShipController extends Controller
 {
+    /**
+     * Active ready_to_ship rows belong on the R2S page even when forecast stage is
+     * "transit" (same SKU can be split across transit + ready-to-ship). MIP lists
+     * those rows as R2S; this page must match. Only exclude zero-qty rows and
+     * terminal stages that are not shippable.
+     */
+    private static function readyToShipRowBelongsOnPage(object $item, ?object $forecast): bool
+    {
+        $qty = (float) ($item->qty ?? 0);
+        if ($qty <= 0) {
+            return false;
+        }
+        if ($forecast === null) {
+            return true;
+        }
+        $stage = strtolower(trim((string) ($forecast->stage ?? '')));
+
+        return $stage !== 'all_good';
+    }
+
+    private static function normalizeReadyToShipSku(?string $sku): string
+    {
+        if (empty($sku)) {
+            return '';
+        }
+        $sku = strtoupper(trim($sku));
+        $sku = preg_replace('/\s+/u', ' ', $sku);
+        $sku = preg_replace('/[^\S\r\n]+/u', ' ', $sku);
+
+        return trim($sku);
+    }
+
+    /** After move/partial move, keep forecast stage aligned with remaining R2S qty. */
+    private static function syncForecastStageFromRemainingR2s(string $sku): void
+    {
+        $skuNorm = self::normalizeReadyToShipSku($sku);
+        if ($skuNorm === '') {
+            return;
+        }
+
+        $remaining = (float) ReadyToShip::query()
+            ->whereNull('deleted_at')
+            ->where('transit_inv_status', 0)
+            ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuNorm])
+            ->sum('qty');
+
+        $newStage = $remaining > 0 ? 'r2s' : 'transit';
+
+        DB::table('forecast_analysis')
+            ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuNorm])
+            ->update(['stage' => $newStage, 'updated_at' => now()]);
+    }
+
+    /**
+     * Heal duplicate ready_to_ship rows: when the same SKU has multiple active R2S
+     * lines and one line's qty exactly matches a container move, mark that line moved.
+     */
+    private static function reconcileDuplicateReadyToShipMovedToTransit(): void
+    {
+        $transitLines = TransitContainerDetail::query()
+            ->whereNull('deleted_at')
+            ->whereNotNull('created_by')
+            ->where(function ($q) {
+                $q->whereNull('status')->orWhere('status', '');
+            })
+            ->get(['id', 'our_sku', 'total_ctn']);
+
+        $skusSynced = [];
+
+        foreach ($transitLines as $line) {
+            $skuNorm = self::normalizeReadyToShipSku($line->our_sku ?? '');
+            $tQty = (float) ($line->total_ctn ?? 0);
+            if ($skuNorm === '' || $tQty <= 0) {
+                continue;
+            }
+
+            $activeRows = ReadyToShip::query()
+                ->whereNull('deleted_at')
+                ->where('transit_inv_status', 0)
+                ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuNorm])
+                ->where('qty', '>', 0)
+                ->get();
+
+            if ($activeRows->count() < 2) {
+                continue;
+            }
+
+            $match = $activeRows->first(fn ($r) => (float) ($r->qty ?? 0) === $tQty);
+            if (! $match) {
+                continue;
+            }
+
+            $match->update([
+                'qty' => 0,
+                'transit_inv_status' => 1,
+                'rec_qty' => null,
+                'updated_at' => now(),
+            ]);
+            $skusSynced[$skuNorm] = true;
+        }
+
+        foreach (array_keys($skusSynced) as $skuNorm) {
+            self::syncForecastStageFromRemainingR2s($skuNorm);
+        }
+    }
+
     public function index()
     {
+        self::reconcileDuplicateReadyToShipMovedToTransit();
+
         $normalizeSku = static function ($sku) {
             if (empty($sku)) {
                 return '';
@@ -128,14 +236,9 @@ class ReadyToShipController extends Controller
 
         $readyToShipData = $readyToShipData->filter(function ($item) use ($forecastData, $normalizeSku) {
             $sku = $normalizeSku($item->sku);
-            // Only include SKUs where stage is 'r2s' in forecast_analysis
-            if ($forecastData->has($sku)) {
-                $forecast = $forecastData->get($sku);
-                $stage = strtolower(trim($forecast->stage ?? ''));
-                return $stage === 'r2s';
-            }
-            // If no forecast record found, exclude it
-            return false;
+            $forecast = $forecastData->has($sku) ? $forecastData->get($sku) : null;
+
+            return self::readyToShipRowBelongsOnPage($item, $forecast);
         });
 
         $readyToShipData->transform(function ($item) use ($supplierMapByParent, $productMaster, $forecastData, $normalizeSku, $mfrgSuppliersBySku, $shopifyImageByKey) {
@@ -191,19 +294,13 @@ class ReadyToShipController extends Controller
                 }
             }
 
-            // Get stage and nr from forecast_analysis
-            $stage = '';
+            // Get nr from forecast_analysis; stage on this page is always r2s for listed rows.
             $nr = '';
             if ($forecastData->has($sku)) {
                 $forecast = $forecastData->get($sku);
-                $stage = $forecast->stage ?? '';
                 $nr = strtoupper(trim($forecast->nr ?? ''));
-                // Normalize stage value to lowercase
-                if (!empty($stage)) {
-                    $stage = strtolower(trim($stage));
-                }
             }
-            $item->stage = $stage;
+            $item->stage = 'r2s';
             $item->nr = $nr;
             $item->order_qty = $item->qty; // Add order_qty field for validation
 
@@ -374,15 +471,11 @@ class ReadyToShipController extends Controller
 
         foreach ($readyToShipRows as $item) {
             $sku = $normalizeSku($item->sku);
-            if (!$forecastData->has($sku)) {
+            $forecast = $forecastData->has($sku) ? $forecastData->get($sku) : null;
+            if (! self::readyToShipRowBelongsOnPage($item, $forecast)) {
                 continue;
             }
-            $forecast = $forecastData->get($sku);
-            $stage = strtolower(trim($forecast->stage ?? ''));
-            if ($stage !== 'r2s') {
-                continue;
-            }
-            $nr = strtoupper(trim($forecast->nr ?? ''));
+            $nr = strtoupper(trim($forecast ? ($forecast->nr ?? '') : ''));
             if ($nr === 'NR') {
                 continue;
             }
@@ -514,19 +607,75 @@ class ReadyToShipController extends Controller
 
     public function revertBackMfrg(Request $request)
     {
-        $skus = $request->input('skus');
+        $ids = array_values(array_filter(array_map('intval', (array) $request->input('ids', [])), fn ($id) => $id > 0));
+        $skus = array_values(array_filter(array_map(
+            fn ($s) => trim((string) $s),
+            (array) $request->input('skus', [])
+        ), fn ($s) => $s !== ''));
 
-        if (!is_array($skus) || empty($skus)) {
-            return response()->json(['success' => false, 'message' => 'No SKUs provided.']);
+        if ($ids === [] && $skus === []) {
+            return response()->json(['success' => false, 'message' => 'No rows provided.']);
         }
 
         try {
-            ReadyToShip::whereIn('sku', $skus)->delete();
-            MfrgProgress::whereIn('sku', $skus)->update(['ready_to_ship' => 'No']);
-            return response()->json(['success' => true]);
+            $rows = $this->resolveReadyToShipRowsForAction($ids, $skus);
+            if ($rows->isEmpty()) {
+                return response()->json(['success' => false, 'message' => 'No matching rows to revert.'], 404);
+            }
+
+            $revertedCount = 0;
+            foreach ($rows as $row) {
+                $skuNorm = strtoupper(trim((string) ($row->sku ?? '')));
+                $row->delete();
+                if ($skuNorm !== '') {
+                    MfrgProgress::query()
+                        ->whereRaw('UPPER(TRIM(sku)) = ?', [$skuNorm])
+                        ->update(['ready_to_ship' => 'No']);
+                }
+                $revertedCount++;
+            }
+
+            return response()->json([
+                'success' => true,
+                'reverted_count' => $revertedCount,
+                'reverted_ids' => $rows->pluck('id')->values()->all(),
+                'message' => "Reverted {$revertedCount} row(s) to MIP.",
+            ]);
         } catch (\Exception $e) {
             return response()->json(['success' => false, 'message' => 'Action failed: ' . $e->getMessage()]);
         }
+    }
+
+    /**
+     * @param  array<int>  $ids
+     * @param  array<int, string>  $skus
+     */
+    private function resolveReadyToShipRowsForAction(array $ids, array $skus)
+    {
+        $baseQuery = ReadyToShip::query()
+            ->where('transit_inv_status', 0)
+            ->whereNull('deleted_at');
+
+        if ($ids !== []) {
+            return $baseQuery->whereIn('id', $ids)->get();
+        }
+
+        $rows = collect();
+        foreach ($skus as $sku) {
+            $norm = strtoupper(trim($sku));
+            if ($norm === '') {
+                continue;
+            }
+            $row = (clone $baseQuery)
+                ->whereRaw('UPPER(TRIM(sku)) = ?', [$norm])
+                ->orderByDesc('id')
+                ->first();
+            if ($row) {
+                $rows->push($row);
+            }
+        }
+
+        return $rows->unique('id')->values();
     }
 
     public function moveToTransit(Request $request)
@@ -620,18 +769,13 @@ class ReadyToShipController extends Controller
 
         $removedIds = [];
         $partialUpdates = [];
+        $affectedSkus = [];
 
         try {
             DB::beginTransaction();
 
             $normalizeSku = function ($sku) {
-                if (empty($sku)) {
-                    return '';
-                }
-                $sku = strtoupper(trim($sku));
-                $sku = preg_replace('/\s+/u', ' ', $sku);
-
-                return trim($sku);
+                return self::normalizeReadyToShipSku($sku);
             };
 
             $productMaster = DB::table('product_master')
@@ -642,6 +786,11 @@ class ReadyToShipController extends Controller
                 $orderQty = (float) ($item->qty ?? 0);
                 if ($orderQty <= 0) {
                     continue;
+                }
+
+                $skuNorm = $normalizeSku($item->sku ?? '');
+                if ($skuNorm !== '') {
+                    $affectedSkus[$skuNorm] = true;
                 }
 
                 $recQtyInput = $recQtyById[$item->id] ?? null;
@@ -726,12 +875,17 @@ class ReadyToShipController extends Controller
                     ];
                 } else {
                     $item->update([
+                        'qty' => 0,
                         'transit_inv_status' => 1,
                         'rec_qty' => null,
                         'updated_at' => now(),
                     ]);
                     $removedIds[] = (int) $item->id;
                 }
+            }
+
+            foreach (array_keys($affectedSkus) as $skuNorm) {
+                self::syncForecastStageFromRemainingR2s($skuNorm);
             }
 
             DB::commit();
@@ -767,26 +921,43 @@ class ReadyToShipController extends Controller
     public function deleteItems(Request $request)
     {
         try {
-            $ids = $request->input('skus', []);
+            $ids = array_values(array_filter(array_map('intval', (array) $request->input('ids', [])), fn ($id) => $id > 0));
+            $skus = array_values(array_filter(array_map(
+                fn ($s) => trim((string) $s),
+                (array) $request->input('skus', [])
+            ), fn ($s) => $s !== ''));
 
-            if (!empty($ids)) {
-                $user = auth()->check() ? auth()->user()->name : 'System';
-
-                ReadyToShip::whereIn('sku', $ids)->update([
-                    'auth_user' => $user,
-                    'deleted_at' => now(),
-                ]);
-
+            if ($ids === [] && $skus === []) {
                 return response()->json([
-                    'success' => true,
-                    'message' => 'Records soft-deleted successfully by ' . $user,
-                ]);
+                    'success' => false,
+                    'message' => 'No rows provided.',
+                ], 400);
+            }
+
+            $user = auth()->check() ? auth()->user()->name : 'System';
+            $rows = $this->resolveReadyToShipRowsForAction($ids, $skus);
+
+            if ($rows->isEmpty()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No matching rows to delete.',
+                ], 404);
+            }
+
+            $deletedCount = 0;
+            foreach ($rows as $row) {
+                $row->auth_user = $user;
+                $row->save();
+                $row->delete();
+                $deletedCount++;
             }
 
             return response()->json([
-                'success' => false,
-                'message' => 'No IDs provided',
-            ], 400);
+                'success' => true,
+                'deleted_count' => $deletedCount,
+                'deleted_ids' => $rows->pluck('id')->values()->all(),
+                'message' => "Deleted {$deletedCount} row(s).",
+            ]);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
