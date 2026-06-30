@@ -1,0 +1,22 @@
+$hwnd = [System.Runtime.InteropServices.Marshal]::GetForegroundWindow()
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+public class WinForeground {
+    [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);
+    [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out int processId);
+}
+"@
+$h = [WinForeground]::GetForegroundWindow()
+$sb = New-Object System.Text.StringBuilder 512
+[void][WinForeground]::GetWindowText($h, $sb, 512)
+$pid = 0
+[void][WinForeground]::GetWindowThreadProcessId($h, [ref]$pid)
+$proc = ''
+if ($pid -gt 0) {
+    $p = Get-Process -Id $pid -ErrorAction SilentlyContinue
+    if ($p) { $proc = $p.ProcessName }
+}
+Write-Output ($sb.ToString() + '|||' + $proc)

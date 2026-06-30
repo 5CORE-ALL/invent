@@ -14,5 +14,6 @@ class VerifyCsrfToken extends Middleware
     protected $except = [
         'listing-master/amz-data/import',
         'mock-push-ebay-price',   // Local mock for eBay microservice testing (no browser session)
+        'attendance/desktop-api/*',
     ];
 }

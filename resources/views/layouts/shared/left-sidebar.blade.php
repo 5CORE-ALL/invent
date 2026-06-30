@@ -3244,6 +3244,49 @@
                 </div>
             </li>
 
+            {{-- Attendance --}}
+            @if(\App\Support\AttendanceAccess::canSeeMenu())
+            @php
+                $attendanceActive = request()->routeIs('attendance.*');
+            @endphp
+            <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#sidebarAttendance" aria-expanded="{{ $attendanceActive ? 'true' : 'false' }}" aria-controls="sidebarAttendance"
+                    class="side-nav-link {{ $attendanceActive ? 'active' : '' }}">
+                    <i class="ri-time-line"></i>
+                    <span>Attendance</span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse {{ $attendanceActive ? 'show' : '' }}" id="sidebarAttendance">
+                    <ul class="side-nav-second-level">
+                        <li>
+                            <a href="{{ route('attendance.index') }}" class="{{ request()->routeIs('attendance.index') ? 'active' : '' }}">
+                                <i class="ri-calendar-check-line me-2"></i>My Attendance
+                            </a>
+                        </li>
+                        @if(\App\Support\AttendanceAccess::canMonitor())
+                        <li>
+                            <a href="{{ route('attendance.monitor') }}" class="{{ request()->routeIs('attendance.monitor*') || request()->routeIs('attendance.employee') ? 'active' : '' }}">
+                                <i class="ri-dashboard-line me-2"></i>Monitor
+                            </a>
+                        </li>
+                        @endif
+                        <li>
+                            <a href="{{ route('attendance.agent') }}" class="{{ request()->routeIs('attendance.agent') ? 'active' : '' }}">
+                                <i class="ri-computer-line me-2"></i>Desktop Agent
+                            </a>
+                        </li>
+                        @if(\App\Support\AttendanceAccess::canAdmin())
+                        <li>
+                            <a href="{{ route('attendance.policies') }}" class="{{ request()->routeIs('attendance.policies*') ? 'active' : '' }}">
+                                <i class="ri-settings-3-line me-2"></i>Policies
+                            </a>
+                        </li>
+                        @endif
+                    </ul>
+                </div>
+            </li>
+            @endif
+
             {{-- Team Management --}}
             @can('team.management.view')
             @php

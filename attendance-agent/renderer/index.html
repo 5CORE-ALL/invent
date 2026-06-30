@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'">
+    <title>5Core Attendance</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app">
+    <header class="titlebar">
+        <div class="brand">
+            <div class="logo">⏱</div>
+            <span>5Core Attendance</span>
+        </div>
+        <div class="titlebar-actions no-drag">
+            <button class="icon-btn" id="btnMinimize" title="Minimize to tray">—</button>
+        </div>
+    </header>
+
+    <main class="content">
+        <!-- Setup -->
+        <div id="setupView" class="view">
+            <h2>Welcome</h2>
+            <p class="sub">Connect this app to your 5Core server. Ask IT if you're unsure of the URL.</p>
+            <div class="alert alert-info show">Use your site base URL only — no /api or /attendance at the end.<br>Local dev: <code>http://127.0.0.1:8000</code></div>
+            <div class="field">
+                <label>Server URL</label>
+                <input type="url" id="apiUrl" placeholder="https://your-5core-site.com">
+            </div>
+            <div class="alert alert-error" id="setupError"></div>
+            <button class="btn btn-primary" id="btnSaveSetup">Continue</button>
+        </div>
+
+        <!-- Login -->
+        <div id="loginView" class="view">
+            <h2>Sign in</h2>
+            <p class="sub">Use the same email and password as the 5Core portal.</p>
+            <div class="field">
+                <label>Email</label>
+                <input type="email" id="email" autocomplete="username" placeholder="you@5core.com">
+            </div>
+            <div class="field">
+                <label>Password</label>
+                <input type="password" id="password" autocomplete="current-password" placeholder="••••••••">
+            </div>
+            <div class="alert alert-error" id="loginError"></div>
+            <button class="btn btn-primary" id="btnLogin">Sign In</button>
+            <p class="hint" style="margin-top:14px">
+                <button type="button" class="link-btn" id="btnChangeServer">Change server URL</button>
+            </p>
+        </div>
+
+        <!-- Dashboard -->
+        <div id="dashView" class="view">
+            <div class="user-row no-drag">
+                <div>
+                    <div class="name" id="userName">—</div>
+                    <div class="email" id="userEmail">—</div>
+                </div>
+                <button type="button" class="link-btn" id="btnSignOut">Sign out</button>
+            </div>
+
+            <div class="status-card">
+                <div id="statusBadge" class="status-badge status-off">
+                    <span class="dot"></span>
+                    <span id="statusText">Not clocked in</span>
+                </div>
+                <div class="timer" id="timerDisplay">00:00:00</div>
+                <div class="timer-label" id="timerLabel">Today's work time</div>
+            </div>
+
+            <div class="stats-row">
+                <div class="stat-box">
+                    <div class="val" id="activeTime">0:00</div>
+                    <div class="lbl">Active</div>
+                </div>
+                <div class="stat-box">
+                    <div class="val" id="idleTime">0:00</div>
+                    <div class="lbl">Idle</div>
+                </div>
+            </div>
+
+            <div class="now-app">
+                <div class="app-icon">🖥</div>
+                <div style="min-width:0;flex:1">
+                    <div class="app-title" id="currentApp">—</div>
+                    <div class="app-sub" id="currentWindow">Waiting for clock in…</div>
+                </div>
+            </div>
+
+            <div class="field no-drag" id="locationField">
+                <label>Work location</label>
+                <select id="workLocation">
+                    <option value="wfh">Work from home</option>
+                    <option value="office">Office</option>
+                    <option value="hybrid">Hybrid</option>
+                </select>
+            </div>
+
+            <div class="actions-grid no-drag">
+                <button class="btn btn-success btn-full" id="btnClockIn">▶ Clock In</button>
+                <button class="btn btn-danger btn-full" id="btnClockOut" style="display:none">■ Clock Out</button>
+                <button class="btn btn-ghost" id="btnPause" style="display:none">⏸ Pause</button>
+                <button class="btn btn-ghost" id="btnResume" style="display:none">▶ Resume</button>
+            </div>
+
+            <p class="hint">
+                Click <strong>—</strong> above to hide to system tray.<br>
+                Tracking runs only while clocked in.
+            </p>
+        </div>
+    </main>
+
+    <footer class="footer-note no-drag">
+        Screenshots &amp; app usage collected during active sessions · v1.0
+    </footer>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
