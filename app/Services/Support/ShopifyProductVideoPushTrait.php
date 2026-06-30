@@ -10,17 +10,17 @@ trait ShopifyProductVideoPushTrait
 {
     private function shopifyProductMediaNodesQuery(): string
     {
-        return 'query($id: ID!) { product(id: $id) { media(first: 100) { nodes { id mediaContentType } } } } }';
+        return 'query($id: ID!) { product(id: $id) { media(first: 100) { nodes { id mediaContentType } } } }';
     }
 
     private function shopifyProductMediaNodesQueryLarge(): string
     {
-        return 'query($id: ID!) { product(id: $id) { media(first: 250) { nodes { id mediaContentType } } } } }';
+        return 'query($id: ID!) { product(id: $id) { media(first: 250) { nodes { id mediaContentType } } } }';
     }
 
     private function shopifyProductVideoCountQuery(): string
     {
-        return 'query($id: ID!) { product(id: $id) { media(first: 100) { nodes { mediaContentType status } } } } }';
+        return 'query($id: ID!) { product(id: $id) { media(first: 100) { nodes { mediaContentType status } } } }';
     }
 
     /**
@@ -40,6 +40,12 @@ trait ShopifyProductVideoPushTrait
         $oldVideoMediaIds = [];
         if ($mode === 'replace') {
             $lr = $post($this->shopifyProductMediaNodesQuery(), ['id' => $pgid]);
+            if ($gqlErrs = $lr->json('errors')) {
+                Log::warning('Shopify product media list GraphQL errors', [
+                    'product_id' => $productId,
+                    'errors' => $gqlErrs,
+                ]);
+            }
             foreach ($lr->json('data.product.media.nodes') ?: [] as $node) {
                 if (! is_array($node)) {
                     continue;
