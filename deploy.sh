@@ -79,20 +79,32 @@ echo "[6/8] Restarting queue workers..."
 ${PHP_BIN} ${ARTISAN} queue:restart
 echo "  ✓ Queue restart signal sent"
 
-# Permanent watchdog: only manages google-maps-extractor (never default queue).
-if [ -x "${PROJECT_DIR}/scripts/cron-google-maps-extractor-watchdog.sh" ]; then
+# Permanent watchdog: keeps all dedicated queue workers alive (explicit --queue only).
+if [ -x "${PROJECT_DIR}/scripts/cron-queue-watchdog-daemon.sh" ]; then
+    bash "${PROJECT_DIR}/scripts/cron-queue-watchdog-daemon.sh"
+    echo "  ✓ Dedicated queue watchdog daemon ensured"
+elif [ -x "${PROJECT_DIR}/scripts/cron-google-maps-extractor-watchdog.sh" ]; then
     bash "${PROJECT_DIR}/scripts/cron-google-maps-extractor-watchdog.sh"
-    echo "  ✓ Google Maps extractor watchdog daemon ensured"
+    echo "  ✓ Dedicated queue watchdog daemon ensured (legacy script)"
 else
     ${PHP_BIN} ${ARTISAN} queue:ensure-watchdog-daemon >/dev/null 2>&1 || true
-    echo "  ✓ Google Maps extractor watchdog daemon invoked (artisan)"
+    echo "  ✓ Dedicated queue watchdog daemon invoked (artisan)"
 fi
 
-# Legacy per-queue worker script (starts only --queue=google-maps-extractor).
-if [ -x "${PROJECT_DIR}/scripts/cron-google-maps-extractor-worker.sh" ]; then
-    bash "${PROJECT_DIR}/scripts/cron-google-maps-extractor-worker.sh"
-    echo "  ✓ Google Maps extractor worker script invoked"
-fi
+# Per-queue worker scripts (fallback if watchdog is not running yet).
+for worker_script in \
+    "${PROJECT_DIR}/scripts/cron-google-maps-extractor-worker.sh" \
+    "${PROJECT_DIR}/scripts/cron-shopify-image-pull-worker.sh" \
+    "${PROJECT_DIR}/scripts/cron-shopify-bullet-pull-worker.sh" \
+    "${PROJECT_DIR}/scripts/cron-shopify-video-pull-worker.sh" \
+    "${PROJECT_DIR}/scripts/cron-image-master-push-worker.sh" \
+    "${PROJECT_DIR}/scripts/cron-video-master-push-worker.sh"
+do
+    if [ -x "${worker_script}" ]; then
+        bash "${worker_script}"
+        echo "  ✓ Invoked $(basename "${worker_script}")"
+    fi
+done
 
 # ─── Step 7: Permissions ────────────────────────────────────────────────────
 echo ""

@@ -12,9 +12,7 @@ class QueueWorkerWatchdog
      */
     public static function watchdogQueues(): array
     {
-        return config('queue_workers.watchdog_queues', [
-            'google-maps-extractor' => ['timeout' => 3700, 'max_time' => 7200],
-        ]);
+        return config('queue_workers.watchdog_queues', []);
     }
 
     /**
@@ -22,10 +20,7 @@ class QueueWorkerWatchdog
      */
     public static function allConfiguredQueues(): array
     {
-        return array_merge(
-            self::watchdogQueues(),
-            config('queue_workers.optional_dedicated_queues', [])
-        );
+        return self::watchdogQueues();
     }
 
     public static function isWatchdogDaemonRunning(): bool
