@@ -376,12 +376,66 @@ class GoogleMapsDataExtractorController extends Controller
     {
         abort_if(! preg_match('/^[A-Za-z0-9_-]{16,80}$/', $token), 404);
 
-        return response()->json(Cache::get($this->progressCacheKey($token), [
+        $progress = Cache::get($this->progressCacheKey($token));
+
+        if (is_array($progress) && $progress !== []) {
+            return response()->json($progress);
+        }
+
+        $fallback = $this->progressFallbackForToken($token);
+
+        if ($fallback !== null) {
+            return response()->json($fallback);
+        }
+
+        return response()->json([
             'status' => 'pending',
             'message' => 'Waiting for extraction to start...',
             'records' => 0,
             'logs' => [],
-        ]));
+        ]);
+    }
+
+    /**
+     * When the progress cache entry is briefly missing, avoid flashing "pending"
+     * if extraction/enrichment state for this token still exists.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function progressFallbackForToken(string $token): ?array
+    {
+        $extractState = Cache::get($this->stateCacheKey($token));
+
+        if (is_array($extractState) && ! empty($extractState['search_id'])) {
+            return [
+                'status' => in_array($extractState['status'] ?? '', ['running', 'queued'], true)
+                    ? $extractState['status']
+                    : 'queued',
+                'message' => 'Extraction is starting...',
+                'records' => 0,
+                'logs' => [],
+                'search_id' => $extractState['search_id'],
+                'result_limit' => $extractState['limit'] ?? 0,
+                'total_queries' => is_countable($extractState['queries'] ?? null)
+                    ? count($extractState['queries'])
+                    : 0,
+            ];
+        }
+
+        $enrichmentState = Cache::get($this->enrichmentStateCacheKey($token));
+
+        if (is_array($enrichmentState) && ! empty($enrichmentState['search_id'])) {
+            return [
+                'status' => 'queued',
+                'message' => 'Website enrichment is starting...',
+                'records' => 0,
+                'logs' => [],
+                'search_id' => $enrichmentState['search_id'],
+                'total_queries' => $enrichmentState['total'] ?? 0,
+            ];
+        }
+
+        return null;
     }
 
     public function control(Request $request, string $token)

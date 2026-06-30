@@ -888,6 +888,53 @@
             let activeForegroundMonitor = false;
             let extractionQueuedAt = 0;
             let queueWorkerNudgeCount = 0;
+
+            const PROGRESS_STATUS_RANK = {
+                pending: 0,
+                queued: 1,
+                running: 2,
+                paused: 2,
+                completed: 3,
+                stopped: 3,
+                cancelled: 3,
+                failed: 3,
+            };
+
+            function stopProgressPolling() {
+                if (activeProgressPoller) {
+                    clearInterval(activeProgressPoller);
+                    activeProgressPoller = null;
+                }
+            }
+
+            function stabilizeProgressPayload(incoming) {
+                const payload = incoming || {};
+                const previous = latestProgressPayload || {};
+                const incomingRank = PROGRESS_STATUS_RANK[payload.status] ?? 0;
+                const previousRank = PROGRESS_STATUS_RANK[previous.status] ?? 0;
+
+                if (incomingRank < previousRank && previousRank >= PROGRESS_STATUS_RANK.queued) {
+                    return {
+                        ...payload,
+                        ...previous,
+                        status: previous.status,
+                        message: previous.message || payload.message,
+                        records: Math.max(previous.records || 0, payload.records || 0),
+                        logs: Array.isArray(payload.logs) && payload.logs.length > 0
+                            ? payload.logs
+                            : (previous.logs || []),
+                    };
+                }
+
+                return {
+                    ...previous,
+                    ...payload,
+                    records: Math.max(previous.records || 0, payload.records || 0),
+                    logs: Array.isArray(payload.logs) && payload.logs.length > 0
+                        ? payload.logs
+                        : (previous.logs || payload.logs || []),
+                };
+            }
             const backgroundStorageKey = 'google_maps_extractor_background_job';
 
             function makeProgressToken() {
@@ -1133,11 +1180,9 @@
                 updateBackgroundStatus(latestProgressPayload || {
                     status: 'running',
                 });
-                pollStoredBackgroundProgress(activeProgressToken);
 
-                if (activeProgressPoller) {
-                    clearInterval(activeProgressPoller);
-                    activeProgressPoller = null;
+                if (!activeForegroundMonitor) {
+                    startStoredBackgroundMonitor(activeProgressToken);
                 }
 
                 if (loadingOverlay) {
@@ -1146,6 +1191,9 @@
             }
 
             function resetOverlay(title, message, cancelLabel = 'Cancel & Discard') {
+                stopProgressPolling();
+                activeForegroundMonitor = false;
+                latestProgressPayload = null;
                 activeRunInBackground = false;
                 activeCompletionUrl = '';
                 displayedProgressPercent = 8;
@@ -1289,7 +1337,7 @@
                         return;
                     }
 
-                    const payload = await response.json();
+                    const payload = stabilizeProgressPayload(await response.json());
                     latestProgressPayload = payload;
                     const isOverlayVisible = loadingOverlay?.style.display === 'flex';
 
@@ -1404,6 +1452,7 @@
             }
 
             function updateProgressOverlay(payload) {
+                payload = stabilizeProgressPayload(payload);
                 latestProgressPayload = payload;
                 const records = payload.records || 0;
                 const current = payload.current_query_number || 0;
@@ -1652,8 +1701,9 @@
                     loadingOverlay.style.display = 'flex';
                 }
 
-                if (activeProgressToken && !activeProgressPoller && !activeForegroundMonitor) {
-                    activeProgressPoller = pollExtractionProgress(activeProgressToken);
+                if (activeProgressToken && !activeForegroundMonitor) {
+                    stopProgressPolling();
+                    void runExtractionLoop(activeProgressToken);
                 }
             });
             stopButton?.addEventListener('click', () => {
