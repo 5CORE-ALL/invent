@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Throwable;
 
@@ -36,27 +37,15 @@ class GoogleMapsDataExtractorController extends Controller
             set_time_limit(0);
         }
 
-        if ($request->filled('location_city_payload')) {
-            $decodedCities = json_decode((string) $request->input('location_city_payload'), true);
-
-            if (is_array($decodedCities)) {
-                $request->merge([
-                    'location_city' => array_values(array_filter($decodedCities, 'is_string')),
-                ]);
-            }
-        }
-
-        $validated = $request->validate([
+        $validated = $this->validateExtractionRequest($request, [
             'query' => ['required', 'string', 'max:255'],
             'location' => ['nullable', 'string', 'max:255'],
             'location_country' => ['nullable', 'string', 'max:100'],
-            'location_state' => ['nullable', 'string', 'max:100'],
-            'location_scope' => ['nullable', 'string', 'in:specific_city,specific_zip'],
+            'location_state' => ['required', 'string', 'max:100'],
             'location_city_payload' => ['nullable', 'string'],
             'progress_token' => ['nullable', 'string', 'max:80'],
             'location_city' => ['nullable', 'array'],
             'location_city.*' => ['nullable', 'string', 'max:100'],
-            'location_zip' => ['nullable', 'string', 'max:20'],
             'limit' => ['required', 'integer', 'min:1', 'max:5000'],
         ]);
         $scraperLocation = $this->buildStructuredLocation($validated);
@@ -177,27 +166,15 @@ class GoogleMapsDataExtractorController extends Controller
 
     public function start(Request $request, GoogleMapsScraperService $scraper)
     {
-        if ($request->filled('location_city_payload')) {
-            $decodedCities = json_decode((string) $request->input('location_city_payload'), true);
-
-            if (is_array($decodedCities)) {
-                $request->merge([
-                    'location_city' => array_values(array_filter($decodedCities, 'is_string')),
-                ]);
-            }
-        }
-
-        $validated = $request->validate([
+        $validated = $this->validateExtractionRequest($request, [
             'query' => ['required', 'string', 'max:255'],
             'location' => ['nullable', 'string', 'max:255'],
             'location_country' => ['nullable', 'string', 'max:100'],
-            'location_state' => ['nullable', 'string', 'max:100'],
-            'location_scope' => ['nullable', 'string', 'in:specific_city,specific_zip'],
+            'location_state' => ['required', 'string', 'max:100'],
             'location_city_payload' => ['nullable', 'string'],
             'progress_token' => ['required', 'string', 'max:80'],
             'location_city' => ['nullable', 'array'],
             'location_city.*' => ['nullable', 'string', 'max:100'],
-            'location_zip' => ['nullable', 'string', 'max:20'],
             'limit' => ['required'],
         ]);
 
@@ -399,13 +376,33 @@ class GoogleMapsDataExtractorController extends Controller
 
         if ($action === 'resume') {
             Cache::forget($this->controlCacheKey($token));
+            $this->writeProgress($token, [
+                'status' => 'running',
+                'message' => 'Resume requested. Scraper will continue.',
+            ]);
+
+            return response()->json([
+                'ok' => true,
+                'action' => $action,
+            ]);
+        }
+
+        if (in_array($action, ['stop', 'cancel'], true)) {
+            $state = Cache::get($this->stateCacheKey($token));
+
+            if (is_array($state) && ! empty($state['search_id'])) {
+                $search = GoogleMapsExtractorSearch::find($state['search_id']);
+
+                if ($search && ! in_array($search->status, ['completed', 'cancelled', 'stopped', 'failed'], true)) {
+                    return $this->finishControlledExtraction($token, $search, $action);
+                }
+            }
         }
 
         $this->writeProgress($token, [
-            'status' => $action === 'resume' ? 'running' : $action,
+            'status' => $action,
             'message' => match ($action) {
                 'pause' => 'Pause requested. Scraper will pause after the current request.',
-                'resume' => 'Resume requested. Scraper will continue.',
                 'stop' => 'Stop requested. Scraper will stop and keep fetched records.',
                 'cancel' => 'Cancel requested. Scraper will stop and discard fetched records.',
             },
@@ -606,6 +603,39 @@ class GoogleMapsDataExtractorController extends Controller
         ]);
     }
 
+    private function validateExtractionRequest(Request $request, array $rules): array
+    {
+        if ($request->filled('location_city_payload')) {
+            $decodedCities = json_decode((string) $request->input('location_city_payload'), true);
+
+            if (is_array($decodedCities)) {
+                $request->merge([
+                    'location_city' => array_values(array_filter($decodedCities, 'is_string')),
+                ]);
+            }
+        }
+
+        $request->merge(['location_scope' => 'specific_city']);
+
+        $validated = $request->validate($rules);
+        $validated['location_scope'] = 'specific_city';
+
+        $cities = collect($validated['location_city'] ?? [])
+            ->map(fn ($city) => trim((string) $city))
+            ->filter()
+            ->values();
+
+        if ($cities->isEmpty()) {
+            throw ValidationException::withMessages([
+                'location_city' => 'Select at least one city.',
+            ]);
+        }
+
+        $validated['location_city'] = $cities->all();
+
+        return $validated;
+    }
+
     private function buildStructuredLocation(array $validated, bool $compact = false): ?string
     {
         $country = trim((string) ($validated['location_country'] ?? ''));
@@ -787,6 +817,7 @@ class GoogleMapsDataExtractorController extends Controller
                 'status' => 'cancelled',
                 'message' => 'Extraction cancelled. Fetched records were discarded.',
                 'records' => 0,
+                'redirect_url' => route('google-maps-data-extractor.index', [], false),
             ]);
 
             return response()->json([
