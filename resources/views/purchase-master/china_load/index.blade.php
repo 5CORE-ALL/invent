@@ -88,8 +88,21 @@
         border-top: 1px solid #e5e7eb;
         font-size: 1rem;
         color: #4b5563;
-        padding: 5px;
-        height: 100px;
+        padding: 5px 12px;
+        min-height: 56px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .tabulator .tabulator-footer .tabulator-page-counter {
+        display: block !important;
+        font-weight: 500;
+        color: #374151;
+        padding: 8px 4px;
+        white-space: nowrap;
     }
 
     .tabulator .tabulator-footer:hover {
@@ -166,6 +179,7 @@
             placeholder: "No records available",
             pagination: "local",
             paginationSize: 10,
+            paginationCounter: "rows",
             height: "700px",
             rowFormatter: function (row) {
                 const data = row.getData();

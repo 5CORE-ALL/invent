@@ -4204,6 +4204,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/to-order-analysis/data', 'getToOrderAnalysis')->name('to.order.analysis.data');
         Route::post('/update-link', 'updateLink')->name('update.rfq.link');
         Route::post('/to-order-analysis/bulk-update-supplier', 'bulkUpdateSupplier')->name('to.order.analysis.bulk.supplier');
+        Route::post('/to-order-analysis/bulk-update-category', 'bulkUpdateCategory')->name('to.order.analysis.bulk.category');
         Route::post('/to-order-analysis/import-supplier', 'importSupplier')->name('to.order.analysis.import.supplier');
         Route::get('/to-order-analysis/import-supplier/sample', 'importSupplierSample')->name('to.order.analysis.import.supplier.sample');
         Route::get('/to-order-analysis/suppliers-by-category', 'suppliersByCategory')->name('to.order.analysis.suppliers.by.category');

@@ -15,9 +15,12 @@ use App\Models\ProductCategory;
 use App\Models\ProductGroup;
 use App\Models\ProductMaster;
 use App\Models\QcImprovementReqBeforeItemPkg;
+use App\Models\RfqForm;
+use App\Models\Supplier;
 use App\Models\ShippingMasterHistory;
 use App\Models\ShopifySku;
 use App\Services\AmazonSpApiService;
+use App\Services\LinkedSkuGroupService;
 use App\Services\EbayApiService;
 use App\Services\WalmartApiService;
 use App\Support\OpenAiRequest;
@@ -39,37 +42,182 @@ class CategoryController extends Controller
     public function categoryList()
     {
         $categories = Category::paginate(20);
+        $categoryIds = $categories->pluck('id')->all();
+
+        if ($categoryIds === []) {
+            return view('purchase-master.category.category_list', compact('categories'));
+        }
+
+        $suppliers = Supplier::query()
+            ->where(function ($query) use ($categoryIds) {
+                foreach ($categoryIds as $categoryId) {
+                    $query->orWhereRaw('FIND_IN_SET(?, REPLACE(category_id, " ", ""))', [$categoryId]);
+                }
+            })
+            ->get(['id', 'category_id', 'sku', 'parent']);
+
+        $suppliersByCategoryId = [];
+        foreach ($suppliers as $supplier) {
+            foreach (preg_split('/\s*,\s*/', (string) ($supplier->category_id ?? ''), -1, PREG_SPLIT_NO_EMPTY) ?: [] as $rawId) {
+                $catId = (int) trim($rawId);
+                if ($catId > 0) {
+                    $suppliersByCategoryId[$catId][] = $supplier;
+                }
+            }
+        }
+
+        $linkedSkuContext = $this->buildCategoryLinkedSkuContext();
+        $linkedSkuGroupService = app(LinkedSkuGroupService::class);
+        $seedSkusByCategoryId = [];
+        $allSeedSkus = [];
 
         foreach ($categories as $category) {
-            $category->supplier_count = DB::table('suppliers')
-                ->whereRaw('FIND_IN_SET(?, category_id)', [$category->id])
-                ->count();
-
-            // Build the deduped, sorted list of parents (products) across all suppliers
-            // that belong to this category. Mirrors the Product column shown on the
-            // supplier list page.
-            $parentStrings = DB::table('suppliers')
-                ->whereRaw('FIND_IN_SET(?, category_id)', [$category->id])
-                ->whereNotNull('parent')
-                ->where('parent', '!=', '')
-                ->pluck('parent')
-                ->all();
+            $categorySuppliers = $suppliersByCategoryId[$category->id] ?? [];
+            $category->supplier_count = count($categorySuppliers);
 
             $parents = [];
-            foreach ($parentStrings as $row) {
-                foreach (explode(',', (string) $row) as $p) {
-                    $p = trim($p);
-                    if ($p !== '') {
-                        $parents[$p] = true;
+            $seeds = [];
+            foreach ($categorySuppliers as $supplier) {
+                foreach (preg_split('/\s*,\s*/', (string) ($supplier->parent ?? ''), -1, PREG_SPLIT_NO_EMPTY) ?: [] as $parent) {
+                    $parent = trim($parent);
+                    if ($parent !== '') {
+                        $parents[$parent] = true;
+                    }
+                }
+
+                foreach (preg_split('/\s*,\s*/', (string) ($supplier->sku ?? ''), -1, PREG_SPLIT_NO_EMPTY) ?: [] as $token) {
+                    $token = trim($token);
+                    if ($token !== '') {
+                        $seeds[$token] = true;
+                    }
+                }
+
+                foreach ($this->rfqLinkedSkusForCategorySupplier($supplier, $linkedSkuContext) as $linkedSku) {
+                    $seeds[$linkedSku] = true;
+                }
+            }
+
+            $parentsList = array_keys($parents);
+            sort($parentsList, SORT_NATURAL | SORT_FLAG_CASE);
+            $category->parents_list = $parentsList;
+
+            $seedList = array_keys($seeds);
+            $seedSkusByCategoryId[$category->id] = $seedList;
+            $allSeedSkus = array_merge($allSeedSkus, $seedList);
+        }
+
+        $allSeedSkus = array_values(array_unique(array_filter($allSeedSkus)));
+        if ($allSeedSkus !== []) {
+            $linkedSkuGroupService->prepareForSkus($allSeedSkus);
+        }
+
+        foreach ($categories as $category) {
+            $merged = [];
+            foreach ($seedSkusByCategoryId[$category->id] ?? [] as $seedSku) {
+                foreach ($linkedSkuGroupService->groupContaining($seedSku) as $memberSku) {
+                    $memberSku = trim((string) $memberSku);
+                    if ($memberSku !== '') {
+                        $merged[$memberSku] = true;
                     }
                 }
             }
-            $parents = array_keys($parents);
-            sort($parents, SORT_NATURAL | SORT_FLAG_CASE);
-            $category->parents_list = $parents;
+
+            $linkedList = array_keys($merged);
+            sort($linkedList, SORT_NATURAL | SORT_FLAG_CASE);
+            $category->linked_skus_list = $linkedList;
         }
 
         return view('purchase-master.category.category_list', compact('categories'));
+    }
+
+    /**
+     * @return array{rfq_by_norm: array<string, array<string, true>>, parent_by_sku_norm: array<string, string>}
+     */
+    private function buildCategoryLinkedSkuContext(): array
+    {
+        $rfqByNorm = [];
+        foreach (RfqForm::query()->whereNotNull('linked_skus')->get(['linked_skus']) as $form) {
+            $linked = $form->linked_skus;
+            if (! is_array($linked)) {
+                $linked = json_decode((string) $linked, true) ?: [];
+            }
+
+            $displaySkus = array_values(array_unique(array_filter(array_map(
+                fn ($value) => trim((string) $value),
+                $linked
+            ))));
+
+            foreach ($displaySkus as $sku) {
+                $norm = strtoupper($sku);
+                if ($norm === '') {
+                    continue;
+                }
+
+                foreach ($displaySkus as $relatedSku) {
+                    $rfqByNorm[$norm][$relatedSku] = true;
+                }
+            }
+        }
+
+        $parentBySkuNorm = [];
+        foreach (ProductMaster::query()->select('sku', 'parent')->get() as $product) {
+            $norm = strtoupper(trim((string) ($product->sku ?? '')));
+            if ($norm === '') {
+                continue;
+            }
+
+            $parentBySkuNorm[$norm] = str_replace(' ', '', strtoupper(trim((string) ($product->parent ?? ''))));
+        }
+
+        return [
+            'rfq_by_norm' => $rfqByNorm,
+            'parent_by_sku_norm' => $parentBySkuNorm,
+        ];
+    }
+
+    /**
+     * @param  array{rfq_by_norm: array<string, array<string, true>>, parent_by_sku_norm: array<string, string>}  $context
+     * @return list<string>
+     */
+    private function rfqLinkedSkusForCategorySupplier(Supplier $supplier, array $context): array
+    {
+        $rfqByNorm = $context['rfq_by_norm'] ?? [];
+        $parentBySkuNorm = $context['parent_by_sku_norm'] ?? [];
+        if ($rfqByNorm === []) {
+            return [];
+        }
+
+        $supplierSkuNorms = array_filter(array_map(
+            static fn ($value) => strtoupper(trim($value)),
+            preg_split('/\s*,\s*/', (string) ($supplier->sku ?? ''), -1, PREG_SPLIT_NO_EMPTY) ?: []
+        ));
+
+        $supplierParentNorms = array_filter(array_map(
+            static fn ($value) => str_replace(' ', '', strtoupper(trim($value))),
+            preg_split('/\s*,\s*/', (string) ($supplier->parent ?? ''), -1, PREG_SPLIT_NO_EMPTY) ?: []
+        ));
+
+        $matched = [];
+        foreach ($rfqByNorm as $normSku => $displayMap) {
+            if (in_array($normSku, $supplierSkuNorms, true)) {
+                $matched = array_merge($matched, array_keys($displayMap));
+                continue;
+            }
+
+            $skuParentNorm = $parentBySkuNorm[$normSku] ?? '';
+            if ($skuParentNorm === '') {
+                continue;
+            }
+
+            foreach ($supplierParentNorms as $supplierParentNorm) {
+                if ($supplierParentNorm !== '' && $supplierParentNorm === $skuParentNorm) {
+                    $matched = array_merge($matched, array_keys($displayMap));
+                    break;
+                }
+            }
+        }
+
+        return array_values(array_unique(array_filter(array_map('trim', $matched))));
     }
 
     public function show($id)

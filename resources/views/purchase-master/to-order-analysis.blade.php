@@ -21,6 +21,16 @@
         .toa-cd-cell:hover i {
             transform: scale(1.12);
         }
+        .toa-supplier-count {
+            font-weight: 600;
+            color: #2563eb;
+            text-decoration: none;
+            line-height: 1.2;
+            cursor: pointer;
+        }
+        .toa-supplier-count:hover {
+            text-decoration: underline;
+        }
         #toa-cd-hover-preview {
             position: fixed;
             z-index: 1080;
@@ -143,8 +153,21 @@
             border-top: 1px solid #262626;
             font-size: 1rem;
             color: #4b5563;
-            padding: 5px;
-            height: 100px;
+            padding: 5px 12px;
+            min-height: 100px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .tabulator .tabulator-footer .tabulator-page-counter {
+            display: block !important;
+            font-weight: 500;
+            color: #374151;
+            padding: 8px 4px;
+            white-space: nowrap;
         }
 
         .tabulator .tabulator-footer:hover {
@@ -191,11 +214,45 @@
         .red-bg {
             color: #ff2727 !important;
         }
-        .to-order-filter-row { gap: 1.25rem; padding: 1rem 0; }
+        .to-order-filter-row { gap: 0.75rem; padding: 0.5rem 0; }
         .filter-item .form-label { white-space: nowrap; font-size: 0.95rem !important; margin-bottom: 0.4rem !important; }
         .filter-item .form-select,
         .filter-item .form-control { min-height: 38px; font-size: 0.95rem; padding: 0.4rem 0.65rem; }
         .filter-item .form-select { min-width: 145px; }
+        .filter-item .toa-search-input { min-width: 130px; max-width: 160px; }
+        .toa-readonly-cell-text {
+            color: #111827;
+            font-weight: 600;
+        }
+        .toa-supplier-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 0.85rem;
+            line-height: 1.2;
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .toa-bl-dot {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #198754;
+        }
+        .toa-bl-dot-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            text-decoration: none;
+            line-height: 1;
+        }
+        #toOrderAnalysis-table .tabulator-header .tabulator-col .tabulator-col-sorter {
+            display: none !important;
+        }
 
         /* Summary badges — full-width row above filters, autosize left to right */
         .toa-summary {
@@ -471,9 +528,17 @@
             <div class="card shadow-sm">
                 <div class="card-body">
 
-                    {{-- Filters row --}}
-                    <div class="d-flex flex-wrap align-items-end to-order-filter-row mb-4">
+                    {{-- Filters + search row --}}
+                    <div class="d-flex flex-wrap align-items-end to-order-filter-row mb-3">
                         @include('purchase-master.partials.page-info-toolbar', ['pageKey' => 'to_order'])
+                        <div class="filter-item">
+                            <label class="form-label fw-semibold d-block">Parent</label>
+                            <input type="text" id="toa-search-parent" class="form-control toa-search-input border border-primary" placeholder="Search Parent...">
+                        </div>
+                        <div class="filter-item">
+                            <label class="form-label fw-semibold d-block">SKU</label>
+                            <input type="text" id="toa-search-sku" class="form-control toa-search-input border border-primary" placeholder="Search SKU...">
+                        </div>
                         <div class="filter-item">
                             <label class="form-label fw-semibold d-block">▶️ Navigation</label>
                             <div class="d-flex align-items-center gap-1">
@@ -516,22 +581,6 @@
                                 <option value="to_order_analysis">2 Order</option>
                                 <option value="mip">MIP</option>
                                 <option value="r2s">R2S</option>
-                            </select>
-                        </div>
-                        <div class="filter-item">
-                            <label class="form-label fw-semibold d-block" title="Minimum order quantity">📦 MOQ</label>
-                            <select id="moq-filter" class="form-select border border-primary" title="Filter by approved quantity (MOQ)">
-                                <option value="" selected>All (0 &amp; &gt;0)</option>
-                                <option value="zero">MOQ = 0</option>
-                                <option value="gt0">MOQ &gt; 0</option>
-                            </select>
-                        </div>
-                        <div class="filter-item">
-                            <label class="form-label fw-semibold d-block">🔍 NRP</label>
-                            <select id="nrp-filter" class="form-select">
-                                <option value="all" selected>All</option>
-                                <option value="show_nr">2BDC</option>
-                                <option value="show_later">LATER</option>
                             </select>
                         </div>
                         <div class="filter-item">
@@ -806,6 +855,47 @@
         </div>
     </div>
 
+    <!-- Fix modal: Issues, IR, Amz., LMP & Review for a SKU -->
+    <div class="modal fade" id="toaFixModal" tabindex="-1" aria-labelledby="toaFixModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title fw-bold" id="toaFixModalLabel">
+                        <i class="fas fa-wrench me-2"></i> Fix <span id="toaFixModalSku" class="ms-2 fw-normal"></span>
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" style="background-color:#fff;">
+                    <div class="row g-4">
+                        <div class="col-lg-6">
+                            <h6 class="fw-bold text-secondary border-bottom pb-2 mb-3">Issues</h6>
+                            <div id="toaFixIssues"></div>
+                        </div>
+                        <div class="col-lg-6">
+                            <h6 class="fw-bold text-secondary border-bottom pb-2 mb-3">IR</h6>
+                            <div id="toaFixIr"></div>
+                        </div>
+                        <div class="col-lg-6">
+                            <h6 class="fw-bold text-secondary border-bottom pb-2 mb-3">Amz.</h6>
+                            <div id="toaFixAmz"></div>
+                        </div>
+                        <div class="col-lg-6">
+                            <h6 class="fw-bold text-secondary border-bottom pb-2 mb-3">LMP</h6>
+                            <div id="toaFixLmp"></div>
+                        </div>
+                        <div class="col-12">
+                            <h6 class="fw-bold text-secondary border-bottom pb-2 mb-3">Review</h6>
+                            <div id="toaFixReview"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- QC / Improvement Required Modal (data from /customer-care/qc-and-packing) -->
     <div class="modal fade" id="qcIssueModal" tabindex="-1" aria-labelledby="qcIssueModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
@@ -1016,6 +1106,16 @@
                             </select>
                         </div>
                         <div class="col-md-6">
+                            <label class="form-label fw-semibold">Category</label>
+                            <select id="toa-action-category" class="form-select form-select-sm">
+                                <option value="">— Keep current —</option>
+                                @foreach($allCategories ?? [] as $catName)
+                                    <option value="{{ $catName }}">{{ $catName }}</option>
+                                @endforeach
+                            </select>
+                            <div class="form-text small">Updates the supplier&rsquo;s category (row must have a supplier set).</div>
+                        </div>
+                        <div class="col-md-6">
                             <label class="form-label fw-semibold">Executive</label>
                             <select id="toa-action-executive" class="form-select form-select-sm">
                                 <option value="">— Keep current —</option>
@@ -1057,10 +1157,6 @@
                         <div class="col-md-6">
                             <label class="form-label fw-semibold">C link</label>
                             <input type="text" id="toa-action-clink" class="form-control form-control-sm" maxlength="500" placeholder="— Keep current —">
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label fw-semibold">RFQ Form Link</label>
-                            <input type="text" id="toa-action-rfq" class="form-control form-control-sm" maxlength="500" placeholder="— Keep current —">
                         </div>
                         <div class="col-12">
                             <label class="form-label fw-semibold">Reviews (improvement note)</label>
@@ -1230,7 +1326,7 @@
                 const modalIds = [
                     'toaActionModal', 'toaPreOrderClModal', 'reviewModal', 'monthModal',
                     'toaLmpModal', 'toaMoqModal', 'toaDataModal', 'supplierCategoryModal',
-                    'pkgModal', 'qcIssueModal', 'addSupplierModal'
+                    'pkgModal', 'toaFixModal', 'qcIssueModal', 'addSupplierModal'
                 ];
 
                 function fixBackdrop() {
@@ -1301,6 +1397,39 @@
                     .replace(/&/g, '&amp;')
                     .replace(/</g, '&lt;')
                     .replace(/>/g, '&gt;');
+            }
+
+            const TOA_SUPPLIER_PALETTE = [
+                { bg: '#dbeafe', text: '#1e3a8a' },
+                { bg: '#dcfce7', text: '#14532d' },
+                { bg: '#fce7f3', text: '#831843' },
+                { bg: '#e0e7ff', text: '#3730a3' },
+                { bg: '#ffedd5', text: '#9a3412' },
+                { bg: '#ccfbf1', text: '#115e59' },
+                { bg: '#f3e8ff', text: '#581c87' },
+                { bg: '#fee2e2', text: '#991b1b' },
+                { bg: '#fef3c7', text: '#92400e' },
+                { bg: '#cffafe', text: '#155e75' },
+            ];
+
+            function toaSupplierColors(name) {
+                const key = String(name || '').trim().toUpperCase();
+                if (!key) return null;
+                if (key === 'FIND') return { bg: '#ffc107', text: '#111827' };
+                let hash = 0;
+                for (let i = 0; i < key.length; i++) {
+                    hash = ((hash << 5) - hash) + key.charCodeAt(i);
+                    hash |= 0;
+                }
+                return TOA_SUPPLIER_PALETTE[Math.abs(hash) % TOA_SUPPLIER_PALETTE.length];
+            }
+
+            function formatToaSupplierCell(name) {
+                const v = String(name || '').trim();
+                if (!v) return '<span class="text-muted">—</span>';
+                const colors = toaSupplierColors(v);
+                if (!colors) return `<span class="toa-readonly-cell-text">${escapeHtml(v)}</span>`;
+                return `<span class="toa-supplier-badge" style="background:${colors.bg};color:${colors.text};">${escapeHtml(v)}</span>`;
             }
 
             const TOA_DATA_FIELD_META = {
@@ -1410,6 +1539,148 @@
                 bootstrap.Modal.getOrCreateInstance(document.getElementById("pkgModal")).show();
             }
 
+            function toaFixTextBlock(label, value) {
+                const raw = String(value ?? '').trim();
+                const body = raw
+                    ? `<div class="border rounded p-2 bg-light" style="font-size:13px;white-space:pre-wrap;">${escapeHtml(raw)}</div>`
+                    : '<span class="text-muted">—</span>';
+                return `<div class="mb-3"><div class="fw-semibold small mb-1">${escapeHtml(label)}</div>${body}</div>`;
+            }
+
+            function renderToaFixAmzHtml(row) {
+                const rating = row.rating;
+                const reviews = row.reviews || 0;
+                if (!rating || rating === 0) {
+                    return '<span class="text-muted">No Amazon rating data</span>';
+                }
+                let ratingColor = '#6c757d';
+                const ratingVal = parseFloat(rating);
+                if (ratingVal < 3) ratingColor = '#a00211';
+                else if (ratingVal <= 3.5) ratingColor = '#ffc107';
+                else if (ratingVal <= 3.99) ratingColor = '#3591dc';
+                else if (ratingVal <= 4.5) ratingColor = '#28a745';
+                else ratingColor = '#e83e8c';
+                const reviewColor = reviews < 4 ? '#a00211' : '#6c757d';
+                return `<div class="d-flex flex-column align-items-start gap-1">
+                    <span style="color:${ratingColor};font-weight:600;font-size:15px;"><i class="fa fa-star"></i> ${ratingVal.toFixed(1)}</span>
+                    <span style="font-size:13px;color:${reviewColor};font-weight:600;">${parseInt(reviews, 10).toLocaleString()} reviews</span>
+                </div>`;
+            }
+
+            function renderToaFixLmpHtml(row) {
+                const sku = row.SKU || '';
+                const lmpPrice = row.lmp_price;
+                const totalCompetitors = parseInt(row.lmp_entries_total, 10) || 0;
+                const lmpLink = String(row.lmp_link || '').trim();
+                if (!lmpPrice && totalCompetitors === 0) {
+                    return '<span class="text-muted">N/A</span>';
+                }
+                let html = '<div class="d-flex flex-column gap-2">';
+                if (lmpPrice) {
+                    const priceFormatted = '$' + parseFloat(lmpPrice).toFixed(2);
+                    if (lmpLink) {
+                        html += `<a href="${escapeHtmlAttr(lmpLink)}" target="_blank" rel="noopener" style="color:#28a745;font-weight:600;text-decoration:none;">${priceFormatted}</a>`;
+                    } else {
+                        html += `<span style="color:#28a745;font-weight:600;">${priceFormatted}</span>`;
+                    }
+                }
+                if (totalCompetitors > 0) {
+                    html += `<button type="button" class="btn btn-sm btn-outline-primary toa-fix-lmp-btn" data-sku="${escapeHtmlAttr(sku)}">
+                        <i class="fa fa-eye me-1"></i> View ${totalCompetitors} competitor(s)
+                    </button>`;
+                }
+                html += '</div>';
+                return html;
+            }
+
+            function renderToaFixReviewHtml(row) {
+                if (!row.has_review) {
+                    return '<span class="text-muted">No review recorded for this SKU.</span>';
+                }
+                return [
+                    toaFixTextBlock('Positive Review', row.positive_review),
+                    toaFixTextBlock('Negative Review', row.negative_review),
+                    toaFixTextBlock('Improvement Required', row.improvement),
+                    toaFixTextBlock('Date Updated', row.date_updated),
+                    toaFixTextBlock('Reviews Note', row.Reviews),
+                ].join('');
+            }
+
+            function renderToaFixQcIssuesTable(issues, containerId) {
+                const el = document.getElementById(containerId);
+                if (!el) return;
+                const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                const txt = v => { const s = esc(v); return s.trim() ? s : '<span class="text-muted">—</span>'; };
+                const dot = v => String(v ?? '').trim()
+                    ? '<span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:#198754;"></span>'
+                    : '<span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:#dc3545;"></span>';
+                if (!issues.length) {
+                    el.innerHTML = '<div class="text-muted fst-italic">No QC / packing issues recorded.</div>';
+                    return;
+                }
+                const rows = issues.map(function (it) {
+                    const found = [it.issue, it.issue_remark].filter(Boolean).join(': ');
+                    const fixed = [it.c_action_1, it.c_action_1_remark].filter(Boolean).join(': ');
+                    return `<tr>
+                        <td>${txt(it.what_happened)}</td>
+                        <td class="text-center">${dot(it.issue)}</td>
+                        <td>${txt(found)}</td>
+                        <td class="text-center">${dot(it.c_action_1)}</td>
+                        <td>${txt(fixed)}</td>
+                    </tr>`;
+                }).join('');
+                el.innerHTML = `<div class="table-responsive">
+                    <table class="table table-sm table-bordered align-middle mb-0" style="font-size:13px;">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Issue?</th><th class="text-center">RC Found</th><th>Root Cause Found</th>
+                                <th class="text-center">RC Fixed</th><th>Root Cause Fixed</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                </div>`;
+            }
+
+            function openToaFixModal(rowData) {
+                const sku = String(rowData.SKU || '').trim();
+                document.getElementById('toaFixModalSku').textContent = sku ? `( ${sku} )` : '';
+
+                const issuesRaw = String(rowData.issues || '').trim();
+                document.getElementById('toaFixIssues').innerHTML = issuesRaw
+                    ? `<div class="border rounded p-2 bg-light" style="font-size:13px;white-space:pre-wrap;">${escapeHtml(issuesRaw)}</div>`
+                    : '<span class="text-muted">No issues text on this row.</span>';
+
+                document.getElementById('toaFixIr').innerHTML = '<div class="text-center py-3"><i class="fas fa-spinner fa-spin text-primary"></i></div>';
+                document.getElementById('toaFixAmz').innerHTML = renderToaFixAmzHtml(rowData);
+                document.getElementById('toaFixLmp').innerHTML = renderToaFixLmpHtml(rowData);
+                document.getElementById('toaFixReview').innerHTML = renderToaFixReviewHtml(rowData);
+
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('toaFixModal')).show();
+
+                if (!sku) {
+                    document.getElementById('toaFixIr').innerHTML = '<span class="text-muted">—</span>';
+                    return;
+                }
+
+                fetch('{{ route('to.order.analysis.qc.issues') }}?sku=' + encodeURIComponent(sku), {
+                    headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
+                })
+                .then(res => res.json())
+                .then(res => {
+                    renderToaFixQcIssuesTable((res && res.issues) || [], 'toaFixIr');
+                })
+                .catch(function () {
+                    document.getElementById('toaFixIr').innerHTML = '<div class="text-danger">Failed to load IR / QC issues.</div>';
+                });
+            }
+
+            $(document).on('click', '.toa-fix-lmp-btn', function (e) {
+                e.preventDefault();
+                const sku = $(this).data('sku');
+                if (sku) loadToaLmpModal(sku);
+            });
+
             // Open a modal listing all suppliers in the given category.
             function openSupplierCategoryModal(category) {
                 const nameEl = document.getElementById("supplierCategoryName");
@@ -1469,7 +1740,9 @@
                 });
             }
 
-            $(document).on('click', '.toa-supplier-cat-btn', function() {
+            $(document).on('click', '.toa-supplier-cat-btn', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
                 openSupplierCategoryModal(this.getAttribute('data-category') || '');
             });
 
@@ -2091,9 +2364,16 @@
                     {
                         formatter: "rowSelection",
                         titleFormatter: "rowSelection",
+                        titleFormatterParams: { rowRange: "active" },
                         hozAlign: "center",
                         width: 50,
-                        headerSort: false
+                        headerSort: false,
+                        cellClick: function (e, cell) {
+                            e.stopPropagation();
+                            const row = cell.getRow();
+                            if (!isToaSelectableRow(row)) return;
+                            row.toggleSelect();
+                        }
                     },
                     {
                         title: "#",
@@ -2315,28 +2595,9 @@
                         field: "Supplier",
                         width: 160,
                         minWidth: 130,
-                        formatter: function(cell){
-                            let value = cell.getValue() || "";
-                            const rowData = cell.getRow().getData();
-                            let sku = escapeHtmlAttr(rowData.SKU || "");
-                            let parentAttr = escapeHtmlAttr(rowData.Parent || "");
-                            let list = [...new Set([...(allSuppliers || []), value].filter(Boolean))].sort();
-                            let options = list.map(supplier => {
-                                let selected = (supplier === value) ? "selected" : "";
-                                return `<option value="${(supplier || "").replace(/"/g, "&quot;")}" ${selected}>${(supplier || "").replace(/</g, "&lt;")}</option>`;
-                            }).join("");
-                            let selectSelected = (!value || value.trim() === "") ? " selected" : "";
-                            let categoryAttr = escapeHtmlAttr(rowData.Category || "");
-                            return `
-                                <div class="d-flex align-items-center justify-content-center gap-1">
-                                    <select class="form-select form-select-sm editable-select" data-sku="${sku}" data-parent="${parentAttr}" data-column="Supplier" style="width: 110px; max-width: 100%;">
-                                        <option value=""${selectSelected}>-- Select --</option>
-                                        ${options}
-                                    </select>
-                                    <button type="button" class="btn btn-sm btn-link p-0 toa-supplier-cat-btn" data-category="${categoryAttr}" title="View suppliers in this category">
-                                        <i class="fas fa-search" style="font-size:14px;color:#2563eb;"></i>
-                                    </button>
-                                </div>`;
+                        hozAlign: "center",
+                        formatter: function (cell) {
+                            return formatToaSupplierCell(cell.getValue());
                         }
                     },
                     {
@@ -2353,27 +2614,22 @@
                     {
                         title: "Suppliers",
                         field: "category_supplier_count",
-                        width: 100,
-                        minWidth: 80,
+                        width: 72,
+                        minWidth: 56,
                         hozAlign: "center",
-                        headerTooltip: "Total suppliers in this category (from supplier list)",
+                        headerTooltip: "Suppliers in this category — click count to view all",
                         formatter: function (cell) {
                             const row = cell.getRow().getData();
                             const cat = (row.Category || "").trim();
-                            const n = cell.getValue();
-                            if (!cat || n == null || n === '') {
+                            if (!cat) {
+                                return '<span class="text-muted">—</span>';
+                            }
+                            const count = parseInt(cell.getValue(), 10);
+                            if (!Number.isFinite(count)) {
                                 return '<span class="text-muted">—</span>';
                             }
                             const catEsc = escapeHtmlAttr(cat);
-                            return `<button type="button" class="btn btn-sm btn-light py-0 px-2 toa-supplier-cat-btn" data-category="${catEsc}" title="${n} suppliers in ${catEsc}">
-                                <i class="mdi mdi-account-group text-info me-1"></i><span class="fw-semibold text-info">${n}</span>
-                            </button>`;
-                        },
-                        cellClick: function (e, cell) {
-                            if (e.target.closest('.toa-supplier-cat-btn')) {
-                                e.stopPropagation();
-                                openSupplierCategoryModal(cell.getRow().getData().Category);
-                            }
+                            return `<button type="button" class="btn btn-link btn-sm p-0 border-0 toa-supplier-cat-btn toa-supplier-count" data-category="${catEsc}" title="View ${count} supplier(s) in ${catEsc}">${count}</button>`;
                         }
                     },
                     {
@@ -2399,6 +2655,32 @@
                                 const row = cell.getRow().getData();
                                 if (row.is_parent) return;
                                 openPkgModal(row);
+                            }
+                        }
+                    },
+                    {
+                        title: "fix",
+                        field: "fix_view",
+                        hozAlign: "center",
+                        vertAlign: "middle",
+                        width: 60,
+                        minWidth: 50,
+                        headerSort: false,
+                        headerTooltip: "Issues, IR, Amz., LMP & Review",
+                        formatter: function (cell) {
+                            const row = cell.getRow().getData();
+                            if (row.is_parent) {
+                                return '<span class="text-muted small">—</span>';
+                            }
+                            return `<button type="button" class="btn btn-sm btn-link p-0 toa-fix-view-btn" title="View Issues, IR, Amz, LMP & Review">
+                                <i class="fas fa-search" style="font-size:16px;color:#2563eb;"></i>
+                            </button>`;
+                        },
+                        cellClick: function (e, cell) {
+                            if (e.target.closest('.toa-fix-view-btn')) {
+                                const row = cell.getRow().getData();
+                                if (row.is_parent) return;
+                                openToaFixModal(row);
                             }
                         }
                     },
@@ -2487,11 +2769,9 @@
                         }
                     },
                     {
-                        title: "Reviews",
-                        titleFormatter: function() {
-                            return '<img src="{{ asset('assets/images/improvement.png') }}" alt="Improvement Required" title="Improvement Required" style="width:28px;height:28px;object-fit:contain;vertical-align:middle;">';
-                        },
+                        title: "IR",
                         field: "Reviews",
+                        visible: false,
                         width: 90,
                         minWidth: 70,
                         hozAlign: "center",
@@ -2524,6 +2804,7 @@
                     {
                         title: "Amz.",
                         field: "rating",
+                        visible: false,
                         hozAlign: "center",
                         headerSort: false,
                         headerTooltip: "Amazon reviews",
@@ -2552,6 +2833,7 @@
                     {
                         title: "LMP",
                         field: "lmp_price",
+                        visible: false,
                         hozAlign: "center",
                         headerSort: true,
                         headerTooltip: "Lowest market price and competition product links",
@@ -2596,6 +2878,48 @@
                         }
                     },
                     {
+                        title: "Review",
+                        field: "Review",
+                        visible: false,
+                        formatter: function(cell){
+                            const data = cell.getRow().getData();
+                            if(data.has_review){
+                                return `<button class="btn btn-sm btn-outline-info review-btn" data-action="view"><i class="fas fa-eye"></i> View</button>`;
+                            } else {
+                                return `<button class="btn btn-sm btn-outline-dark review-btn" data-action="review"><i class="fas fa-plus"></i> Review</button>`;
+                            }
+                        }
+                    },
+                    {
+                        title: "BL",
+                        field: "buyer_link",
+                        hozAlign: "center",
+                        headerTooltip: "Buyer link (Amazon product link)",
+                        formatter: function(cell) {
+                            const buyerLink = (cell.getRow().getData().buyer_link || "").trim();
+
+                            if (!buyerLink) {
+                                return '<span class="text-muted">-</span>';
+                            }
+
+                            return `<a href="${escapeHtmlAttr(buyerLink)}" target="_blank" rel="noopener noreferrer"
+                                class="toa-bl-dot-link" title="Open buyer link" aria-label="Open buyer link">
+                                <span class="toa-bl-dot"></span>
+                            </a>`;
+                        },
+                    },
+                    {
+                        title: "C link",
+                        field: "Clink",
+                        headerTooltip: "Comparison link",
+                        formatter: linkFormatter,
+                        editor: "input",
+                        hozAlign: "center",
+                        cellEdited: function(cell) {
+                            saveLinkUpdate(cell, cell.getValue());
+                        }
+                    },
+                    {
                         title: "CD",
                         field: "cd_view",
                         hozAlign: "center",
@@ -2637,64 +2961,6 @@
                             e.stopPropagation();
                             openToaComparisonCd(cell.getRow().getData());
                         },
-                    },
-                    {
-                        title: "Review",
-                        field: "Review",
-                        formatter: function(cell){
-                            const data = cell.getRow().getData();
-                            if(data.has_review){
-                                return `<button class="btn btn-sm btn-outline-info review-btn" data-action="view"><i class="fas fa-eye"></i> View</button>`;
-                            } else {
-                                return `<button class="btn btn-sm btn-outline-dark review-btn" data-action="review"><i class="fas fa-plus"></i> Review</button>`;
-                            }
-                        }
-                    },
-                    {
-                        title: "Amz",
-                        field: "buyer_link",
-                        hozAlign: "center",
-                        headerTooltip: "Our product link to amazon",
-                        formatter: function(cell) {
-                            const buyerLink = (cell.getRow().getData().buyer_link || "").trim();
-
-                            if (!buyerLink) {
-                                return '<span class="text-muted">-</span>';
-                            }
-
-                            return `<div style="display:flex;align-items:center;justify-content:center;">
-                                <a href="${escapeHtmlAttr(buyerLink)}" target="_blank" rel="noopener noreferrer"
-                                    class="btn btn-sm btn-outline-primary py-0 px-2"
-                                    title="Our product link to amazon" aria-label="Our product link to amazon">
-                                    <i class="mdi mdi-link"></i>
-                                </a>
-                            </div>`;
-                        },
-                    },
-                    {
-                        title: "C link",
-                        field: "Clink",
-                        headerTooltip: "Comparison link",
-                        formatter: linkFormatter,
-                        editor: "input",
-                        hozAlign: "center",
-                        cellEdited: function(cell) {
-                            saveLinkUpdate(cell, cell.getValue());
-                        }
-                    },
-                    {
-                        title: "RFQ",
-                        field: "RFQ Form Link",
-                        headerTooltip: "Request for quote form (linked from RFQ Form list)",
-                        formatter: rfqFormLinkFormatter,
-                        editor: "input",  
-                        hozAlign: "center",
-                        cellClick: function(e, cell){
-                            handleRfqCopyClick(e);
-                        },
-                        cellEdited: function(cell){
-                            saveLinkUpdate(cell, cell.getValue());
-                        }
                     },
                     {
                         title: "Adv date",
@@ -2890,6 +3156,26 @@
                 return sku && !sku.startsWith('PARENT');
             }
 
+            function getToaActiveSelectedRows() {
+                if (!table) return [];
+                const activeSet = new Set(table.getRows('active'));
+                return dedupeToaRows((table.getSelectedRows() || []).filter(function (row) {
+                    return activeSet.has(row);
+                }));
+            }
+
+            function pruneToaSelectionToActive() {
+                if (!table) return;
+                const activeSet = new Set(table.getRows('active'));
+                (table.getSelectedRows() || []).forEach(function (row) {
+                    if (!activeSet.has(row)) {
+                        row.deselect();
+                    }
+                });
+                toaBulkSelectionCache = getToaActiveSelectedRows();
+                updateToaBulkEditBadge();
+            }
+
             let toaBulkSelectionCache = [];
             let toaActionPendingTargets = null;
             const toaActionModalState = { currentRows: [], bsModal: null, initialized: false };
@@ -2925,7 +3211,7 @@
                 const badge = document.getElementById('toa-bulk-edit-badge');
                 const countEl = document.getElementById('toa-bulk-edit-count');
                 if (!badge || !countEl) return;
-                const n = dedupeToaRows(table ? table.getSelectedRows() : []).length;
+                const n = getToaActiveSelectedRows().length;
                 if (n > 0) {
                     badge.classList.remove('d-none');
                     badge.classList.add('d-flex');
@@ -2951,7 +3237,7 @@
             function getToaBulkTargetRows(primarySku, extraRows) {
                 const merged = dedupeToaRows([
                     ...(toaBulkSelectionCache || []),
-                    ...(table.getSelectedRows() || []),
+                    ...getToaActiveSelectedRows(),
                     ...(extraRows || [])
                 ]);
                 if (merged.length > 0) return merged;
@@ -2978,14 +3264,27 @@
                 });
             }
 
+            function toaTodayIsoDate() {
+                const d = new Date();
+                const y = d.getFullYear();
+                const m = String(d.getMonth() + 1).padStart(2, '0');
+                const day = String(d.getDate()).padStart(2, '0');
+                return y + '-' + m + '-' + day;
+            }
+
             async function applyStageToRow(row, stageVal) {
                 const d = row.getData();
                 const sku = String(d.SKU || '').trim();
                 const parent = String(d.Parent || '').trim();
+                const prevStage = String(d.stage || '').trim().toLowerCase();
                 const moq = parseInt(d.approved_qty, 10) || 0;
                 if (!moq) return { ok: false, skippedMoq: true, sku: sku };
                 try {
                     await postStageUpdate(sku, parent, stageVal);
+                    const rowPatch = { stage: stageVal };
+                    if (stageVal === 'to_order_analysis' && prevStage === 'appr_req') {
+                        rowPatch['Date of Appr'] = toaTodayIsoDate();
+                    }
                     if (stageVal === 'mip') {
                         const insertRes = await fetch('/mfrg-progresses/insert', {
                             method: 'POST',
@@ -3005,10 +3304,15 @@
                             row.delete();
                             return { ok: true, deleted: true, sku: sku };
                         }
-                        row.update({ stage: stageVal }, true);
+                        row.update(rowPatch, true);
+                        if (rowPatch['Date of Appr']) row.reformat();
                         return { ok: false, error: insertRes.message || 'insert failed', sku: sku };
                     }
-                    row.update({ stage: stageVal }, true);
+                    row.update(rowPatch, true);
+                    if (rowPatch['Date of Appr']) {
+                        row.reformat();
+                        updateCounts();
+                    }
                     return { ok: true, sku: sku };
                 } catch (e) {
                     return { ok: false, error: e.message || 'error', sku: sku };
@@ -3089,7 +3393,6 @@
                 const fieldMap = {
                     'Date of Appr': 'Date of Appr',
                     'Adv date': 'Adv date',
-                    'RFQ Form Link': 'RFQ Form Link',
                     'Clink': 'Clink',
                     'Reviews': 'Reviews'
                 };
@@ -3152,17 +3455,17 @@
             }
 
             function resetToaActionModalFields() {
-                $('#toa-action-supplier, #toa-action-executive, #toa-action-stage, #toa-action-nrp').val('');
-                $('#toa-action-moq, #toa-action-doa, #toa-action-adv-date, #toa-action-clink, #toa-action-rfq').val('');
+                $('#toa-action-supplier, #toa-action-executive, #toa-action-stage, #toa-action-nrp, #toa-action-category').val('');
+                $('#toa-action-moq, #toa-action-doa, #toa-action-adv-date, #toa-action-clink').val('');
                 $('#toa-action-reviews, #toa-action-item-pkg, #toa-action-ctn-instr, #toa-action-carton-design').val('');
             }
 
             function toaActionHasAnyField() {
                 const checks = [
-                    '#toa-action-moq', '#toa-action-doa', '#toa-action-supplier', '#toa-action-executive',
-                    '#toa-action-nrp', '#toa-action-stage', '#toa-action-adv-date', '#toa-action-clink',
-                    '#toa-action-rfq', '#toa-action-reviews', '#toa-action-item-pkg', '#toa-action-ctn-instr',
-                    '#toa-action-carton-design'
+                    '#toa-action-moq', '#toa-action-doa', '#toa-action-supplier', '#toa-action-category',
+                    '#toa-action-executive', '#toa-action-nrp', '#toa-action-stage', '#toa-action-adv-date',
+                    '#toa-action-clink', '#toa-action-reviews', '#toa-action-item-pkg',
+                    '#toa-action-ctn-instr', '#toa-action-carton-design'
                 ];
                 return checks.some(function (sel) {
                     const el = document.querySelector(sel);
@@ -3192,6 +3495,39 @@
                         row.update({ Supplier: supplierName }, true);
                     });
                     return { ok: skus.length, skipped: rows.length - skus.length, message: res.message };
+                });
+            }
+
+            function applyCategoryToRows(rows, categoryName) {
+                const skus = rows.map(function (r) { return (r.getData().SKU || '').trim().toUpperCase(); })
+                    .filter(function (s) { return s && !s.startsWith('PARENT'); });
+                if (skus.length === 0) {
+                    return Promise.resolve({ ok: 0, skipped: rows.length, noSupplier: [], notFound: [] });
+                }
+                return fetch('{{ route('to.order.analysis.bulk.category') }}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                    },
+                    body: JSON.stringify({ skus: skus, category: categoryName })
+                }).then(function (res) { return res.json(); }).then(function (res) {
+                    if (!res || !res.success) {
+                        throw new Error((res && res.message) ? res.message : 'Category update failed');
+                    }
+                    rows.forEach(function (row) {
+                        const sku = (row.getData().SKU || '').trim().toUpperCase();
+                        if (skus.includes(sku)) {
+                            row.update({ Category: categoryName }, true);
+                        }
+                    });
+                    return {
+                        ok: res.updated || 0,
+                        skipped: rows.length - skus.length,
+                        noSupplier: res.skipped_no_supplier || 0,
+                        notFound: res.skipped_supplier_not_found || 0,
+                        message: res.message
+                    };
                 });
             }
 
@@ -3258,7 +3594,7 @@
             });
 
             table.on("rowSelectionChanged", function(data, rows) {
-                toaBulkSelectionCache = dedupeToaRows(rows || table.getSelectedRows());
+                toaBulkSelectionCache = getToaActiveSelectedRows();
                 updateToaBulkEditBadge();
             });
 
@@ -3271,7 +3607,7 @@
                 const clickedRow = table.getRow(rowEl);
                 toaActionPendingTargets = dedupeToaRows([
                     ...(toaBulkSelectionCache || []),
-                    ...(table.getSelectedRows() || []),
+                    ...getToaActiveSelectedRows(),
                     ...(clickedRow ? [clickedRow] : [])
                 ]);
                 e.stopPropagation();
@@ -3288,7 +3624,7 @@
             // (checkbox-selected rows), deduped. Only filled fields are applied.
             //
             // Endpoints match inline editors:
-            //   • /update-link (MOQ, DOA, C link, RFQ, Adv date, Reviews)
+            //   • /update-link (MOQ, DOA, C link, Adv date, Reviews)
             //   • bulk supplier / bulk exec routes
             //   • /update-forecast-data (NRP, Stage)
             //   • instruction endpoints (Item Pkg, Instr Carton, Design Instr Carton)
@@ -3315,12 +3651,12 @@
                     const moqVal      = ($('#toa-action-moq').val() || '').trim();
                     const doaVal      = ($('#toa-action-doa').val() || '').trim();
                     const supplierVal = ($supplierSel.val() || '').trim();
+                    const categoryVal = ($('#toa-action-category').val() || '').trim();
                     const execVal     = ($execSel.val() || '').trim();
                     const nrpVal      = ($('#toa-action-nrp').val() || '').trim();
                     const stageVal    = ($stageSel.val() || '').trim();
                     const advDateVal  = ($('#toa-action-adv-date').val() || '').trim();
                     const clinkVal    = ($('#toa-action-clink').val() || '').trim();
-                    const rfqVal      = ($('#toa-action-rfq').val() || '').trim();
                     const reviewsVal  = ($('#toa-action-reviews').val() || '').trim();
                     const itemPkgVal  = ($('#toa-action-item-pkg').val() || '').trim();
                     const ctnInstrVal = ($('#toa-action-ctn-instr').val() || '').trim();
@@ -3348,6 +3684,13 @@
                             const res = await applySupplierToRows(currentRows, supplierVal);
                             summary.push('Supplier → ' + supplierVal + ': ' + res.ok + ' row(s)' +
                                 (res.skipped ? ' (' + res.skipped + ' parent/empty skipped)' : ''));
+                        }
+                        if (categoryVal) {
+                            const res = await applyCategoryToRows(currentRows, categoryVal);
+                            let line = 'Category → ' + categoryVal + ': ' + res.ok + ' supplier(s) updated';
+                            if (res.noSupplier) line += ' • ' + res.noSupplier + ' row(s) with no supplier skipped';
+                            if (res.notFound) line += ' • ' + res.notFound + ' supplier(s) not found';
+                            summary.push(line);
                         }
                         if (execVal) {
                             const res = await applyExecutiveToRows(currentRows, execVal);
@@ -3377,12 +3720,6 @@
                         if (clinkVal) {
                             const res = await applyLinkColumnToRows(currentRows, 'Clink', clinkVal);
                             let line = 'C link: ' + res.ok + ' row(s)';
-                            if (res.failed.length) line += ' • errors: ' + res.failed.join('; ');
-                            summary.push(line);
-                        }
-                        if (rfqVal) {
-                            const res = await applyLinkColumnToRows(currentRows, 'RFQ Form Link', rfqVal);
-                            let line = 'RFQ Form Link: ' + res.ok + ' row(s)';
                             if (res.failed.length) line += ' • errors: ' + res.failed.join('; ');
                             summary.push(line);
                         }
@@ -3443,113 +3780,6 @@
                 }
             }
 
-            // RFQ Form column: show form link(s) coming from the RFQ Form list (linked_skus),
-            // plus any manually entered link as a fallback.
-            function rfqFormLinkFormatter(cell) {
-                const rowData = cell.getRow().getData();
-                let forms = rowData.rfq_linked_forms || [];
-                if (typeof forms === "string") {
-                    try { forms = JSON.parse(forms) || []; } catch (e) { forms = []; }
-                }
-                if (!Array.isArray(forms)) forms = [];
-
-                const manual = cell.getValue() || "";
-                let html = '<div style="display:flex;align-items:center;justify-content:center;gap:4px;flex-wrap:wrap;">';
-
-                forms.forEach(f => {
-                    if (!f || !f.slug) return;
-                    const base = window.location.origin + '/api/rfq-form/' + f.slug;
-                    const basicsUrl = base + '?part=basics';
-                    const detailsUrl = base + '?part=details';
-                    const name = (f.name || 'RFQ Form').replace(/"/g, '&quot;');
-                    html += `<span style="display:inline-flex;align-items:center;gap:2px;margin:1px 3px;">
-                                <a href="${basicsUrl}" target="_blank" rel="noopener noreferrer"
-                                    class="btn btn-sm btn-primary" title="Basics - ${name}" aria-label="Basics - ${name}"
-                                    style="padding:2px 6px;">
-                                    <i class="mdi mdi-file-document-outline"></i> B
-                                </a>
-                                <button type="button" class="btn btn-sm btn-outline-primary rfq-copy-btn"
-                                    data-copy="${basicsUrl}" title="Copy Basics link" aria-label="Copy Basics link"
-                                    style="padding:2px 5px;">
-                                    <i class="mdi mdi-content-copy"></i>
-                                </button>
-                                <a href="${detailsUrl}" target="_blank" rel="noopener noreferrer"
-                                    class="btn btn-sm btn-success" title="Details - ${name}" aria-label="Details - ${name}"
-                                    style="padding:2px 6px;">
-                                    <i class="mdi mdi-file-document-outline"></i> D
-                                </a>
-                                <button type="button" class="btn btn-sm btn-outline-success rfq-copy-btn"
-                                    data-copy="${detailsUrl}" title="Copy Details link" aria-label="Copy Details link"
-                                    style="padding:2px 5px;">
-                                    <i class="mdi mdi-content-copy"></i>
-                                </button>
-                            </span>`;
-                });
-
-                if (manual && manual.trim() !== "") {
-                    html += `<a href="${manual}" target="_blank" rel="noopener noreferrer"
-                                class="btn btn-sm btn-outline-primary"
-                                title="Open link" aria-label="Open link">
-                                <i class="mdi mdi-link"></i>
-                            </a>`;
-                }
-
-                html += '</div>';
-                return html;
-            }
-
-            // Copy the RFQ link to clipboard when a copy button inside the cell is clicked
-            function handleRfqCopyClick(e) {
-                const btn = e.target.closest('.rfq-copy-btn');
-                if (!btn) return;
-                e.preventDefault();
-                e.stopPropagation();
-                const url = btn.getAttribute('data-copy') || '';
-                if (!url) return;
-                navigator.clipboard.writeText(url).then(() => {
-                    const icon = btn.querySelector('i');
-                    const prev = icon ? icon.className : '';
-                    if (icon) icon.className = 'mdi mdi-check';
-                    setTimeout(() => { if (icon) icon.className = prev; }, 1200);
-                }).catch(() => {});
-            }
-
-            // RFQ Report column: show report link(s) coming from the RFQ Form list (linked_skus),
-            // plus any manually entered link as a fallback.
-            function rfqReportLinkFormatter(cell) {
-                const rowData = cell.getRow().getData();
-                let forms = rowData.rfq_linked_forms || [];
-                if (typeof forms === "string") {
-                    try { forms = JSON.parse(forms) || []; } catch (e) { forms = []; }
-                }
-                if (!Array.isArray(forms)) forms = [];
-
-                const manual = cell.getValue() || "";
-                let html = '<div style="display:flex;align-items:center;justify-content:center;gap:4px;flex-wrap:wrap;">';
-
-                forms.forEach(f => {
-                    if (!f || !f.slug) return;
-                    const url = window.location.origin + '/rfq-form/reports/' + f.slug;
-                    const name = (f.name || 'RFQ Report').replace(/"/g, '&quot;');
-                    html += `<a href="${url}" target="_blank" rel="noopener noreferrer"
-                                class="btn btn-sm btn-outline-info"
-                                title="${name}" aria-label="${name}">
-                                <i class="mdi mdi-chart-box-outline"></i>
-                            </a>`;
-                });
-
-                if (manual && manual.trim() !== "") {
-                    html += `<a href="${manual}" target="_blank" rel="noopener noreferrer"
-                                class="btn btn-sm btn-outline-primary"
-                                title="Open link" aria-label="Open link">
-                                <i class="mdi mdi-link"></i>
-                            </a>`;
-                }
-
-                html += '</div>';
-                return html;
-            }
-
             // edit field updated
             function saveLinkUpdate(cell, value) {
                 const rowData = cell.getRow().getData();
@@ -3607,13 +3837,13 @@
                 });
             }
 
-            // Keep row selection when opening inline Stage / NRP / Supplier dropdowns.
+            // Keep row selection when opening inline Stage / NRP dropdowns.
             $(document).off('mousedown.toaBulkSelect click.toaBulkSelect', '.editable-select, .toa-exec-select')
                 .on('mousedown.toaBulkSelect click.toaBulkSelect', '.editable-select, .toa-exec-select', function (e) {
                     e.stopPropagation();
                 });
 
-            // Handle editable select fields (Stage, NRP, Supplier) — applies to all checkbox-selected rows
+            // Handle editable select fields (Stage, NRP) — applies to all checkbox-selected rows
             $(document).off('change', '.editable-select').on('change', '.editable-select', async function() {
                 const $el = $(this);
                 const sku = $el.data('sku');
@@ -3706,34 +3936,8 @@
                     return;
                 }
 
-                if (column === 'Supplier') {
-                    targets.forEach(function (row) {
-                        const supSel = row.getElement().querySelector('.editable-select[data-column="Supplier"]');
-                        if (supSel) supSel.value = value;
-                    });
-                    try {
-                        await applySupplierToRows(targets, value);
-                    } catch (error) {
-                        console.error('Network error:', error);
-                        alert('Error saving supplier: ' + (error.message || 'Please try again.'));
-                        table.replaceData();
-                    }
-                    return;
-                }
-
-                // Other columns (RFQ links, Adv date, etc.) — single row only
+                // Other columns (Adv date, C link, Reviews, etc.) — single row only
                 const payload = { sku, column, value };
-                if (column === 'Supplier') {
-                    let pSave = $el.data('parent') != null ? String($el.data('parent')).trim() : '';
-                    if (!pSave) {
-                        const tblP = Tabulator.findTable("#toOrderAnalysis-table")[0];
-                        const rP = tblP ? tblP.searchRows("SKU", "=", sku)[0] : null;
-                        if (rP) {
-                            pSave = (rP.getData().Parent || '').trim();
-                        }
-                    }
-                    payload.parent = pSave;
-                }
                 fetch('/update-link', {
                     method: 'POST',
                     headers: {
@@ -3758,7 +3962,7 @@
                     if (tbl && column) {
                         const row = tbl.searchRows("SKU", "=", sku)[0];
                         if (row) {
-                            const fieldMap = { 'Supplier': 'Supplier', 'Adv date': 'Adv date', 'RFQ Form Link': 'RFQ Form Link', 'Rfq Report Link': 'Rfq Report Link', 'Reviews': 'Reviews' };
+                            const fieldMap = { 'Adv date': 'Adv date', 'Rfq Report Link': 'Rfq Report Link', 'Reviews': 'Reviews' };
                             const dataField = fieldMap[column] || column;
                             row.update({ [dataField]: value }, true);
                         }
@@ -3777,20 +3981,26 @@
             function rowPassesToaFilters(row, skipSupplierFilters) {
                 const pending = document.getElementById("row-data-pending-status").value;
                 const stage = document.getElementById("stage-filter").value.toLowerCase().trim();
-                const moqFilter = (document.getElementById("moq-filter") && document.getElementById("moq-filter").value) || "";
                 const supplierFilterEl = document.getElementById("supplier-filter");
                 const manualSupplierFilter = supplierFilterEl ? supplierFilterEl.value.trim() : '';
                 const executiveFilterEl = document.getElementById("executive-filter");
                 const executiveFilter = executiveFilterEl ? executiveFilterEl.value.trim() : '';
+                const parentSearchEl = document.getElementById("toa-search-parent");
+                const parentTerm = parentSearchEl ? (parentSearchEl.value || '').trim().toLowerCase() : '';
+                const skuSearchEl = document.getElementById("toa-search-sku");
+                const skuTerm = skuSearchEl ? (skuSearchEl.value || '').trim().toLowerCase() : '';
 
                 let keep = true;
 
-                if (stage) keep = keep && (row.stage || '').toLowerCase() === stage;
+                if (parentTerm) {
+                    keep = keep && String(row.Parent || '').toLowerCase().includes(parentTerm);
+                }
 
-                const moqNum = parseFloat(row.approved_qty);
-                const moqVal = Number.isFinite(moqNum) ? moqNum : 0;
-                if (moqFilter === "zero") keep = keep && moqVal === 0;
-                else if (moqFilter === "gt0") keep = keep && moqVal > 0;
+                if (skuTerm) {
+                    keep = keep && String(row.SKU || '').toLowerCase().includes(skuTerm);
+                }
+
+                if (stage) keep = keep && (row.stage || '').toLowerCase() === stage;
 
                 if (pending) keep = keep && getRowColor(row) === pending;
 
@@ -3981,8 +4191,8 @@
                 const ocdEl = document.getElementById("ocdAverageDays");
                 if (ocdEl) {
                     const ocd = pendingItems > 0 ? (totalOrderDays / pendingItems) : 0;
-                    ocdEl.textContent = pendingItems > 0 ? ocd.toFixed(1) : "0";
-                    ocdEl.title = "Order Completion Days — sum of days since DOA (" + totalOrderDays + ") ÷ pending rows (" + pendingItems + ")";
+                    ocdEl.textContent = pendingItems > 0 ? String(Math.round(ocd)) : "0";
+                    ocdEl.title = "Order Completion Days — sum of days since DOA (" + totalOrderDays + ") ÷ pending rows (" + pendingItems + ") = " + (pendingItems > 0 ? Math.round(ocd) : 0);
                 }
             }
 
@@ -4037,14 +4247,14 @@
             table.on('dataLoaded', function () {
                 if (isSupplierPlaying) stopToaSupplierPlay();
                 document.getElementById("stage-filter").value = "";
-                document.getElementById("moq-filter").value = "";
                 applyFilters();
             });
 
             // Filter change events
             document.getElementById("row-data-pending-status").addEventListener("change", () => applyToolbarFilters());
             document.getElementById("stage-filter").addEventListener("change", () => applyToolbarFilters());
-            document.getElementById("moq-filter").addEventListener("change", () => applyToolbarFilters());
+            document.getElementById("toa-search-parent")?.addEventListener("input", debounce(() => applyFilters(), 300));
+            document.getElementById("toa-search-sku")?.addEventListener("input", debounce(() => applyFilters(), 300));
             document.getElementById("supplier-filter").addEventListener("change", function () {
                 if (isSupplierPlaying) stopToaSupplierPlay();
                 else applyFilters();
@@ -4055,10 +4265,12 @@
             })();
 
             document.getElementById("stage-filter").value = "";
-            document.getElementById("moq-filter").value = "";
 
             // Table events
-            table.on("dataFiltered", updateCounts);
+            table.on("dataFiltered", function () {
+                pruneToaSelectionToActive();
+                updateCounts();
+            });
             table.on("dataSorted", updateCounts);
             table.on("dataChanged", updateCounts);
             table.on("cellEdited", updateCounts);
@@ -4071,6 +4283,14 @@
                 const colBtn = document.getElementById('toa-columns-btn');
                 const colMenu = document.getElementById('toa-columns-menu');
                 if (!colBtn || !colMenu) return;
+
+                const TOA_FORCE_HIDDEN_FIELDS = ['issues', 'Reviews', 'rating', 'lmp_price', 'Review', 'RFQ Form Link'];
+
+                function enforceToaHiddenColumns() {
+                    TOA_FORCE_HIDDEN_FIELDS.forEach(function (field) {
+                        try { table.hideColumn(field); } catch (e) { /* column may not exist */ }
+                    });
+                }
 
                 function escAttr(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
                 function columnLabel(col) {
@@ -4089,6 +4309,7 @@
                         if (!field) return;
                         // CL + Action stay visible — core workflow columns
                         if (field === 'pre_order_checklist_status' || field === '_action') return;
+                        if (TOA_FORCE_HIDDEN_FIELDS.indexOf(field) !== -1) return;
                         const checked = col.isVisible() ? 'checked' : '';
                         rows += '<div class="form-check">' +
                             '<input class="form-check-input toa-col-toggle" type="checkbox" data-field="' + escAttr(field) + '" id="toacol-' + escAttr(field) + '" ' + checked + '>' +
@@ -4100,12 +4321,55 @@
                         '<button type="button" class="btn btn-sm btn-link p-0 small" id="toa-columns-all">Show all</button></div>' + rows;
                 }
                 function saveVisibility() {
-                    /* no-op — column visibility is not persisted across refresh */
+                    const visibility = {};
+                    table.getColumns().forEach(function (col) {
+                        const field = col.getField();
+                        if (field && TOA_FORCE_HIDDEN_FIELDS.indexOf(field) === -1) visibility[field] = col.isVisible();
+                    });
+                    fetch(TOA_COLUMN_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': TOA_CSRF },
+                        body: JSON.stringify({ channel: TOA_COLUMN_CHANNEL, visibility: visibility })
+                    }).catch(function () {});
                 }
                 function applyVisibility() {
-                    /* no-op — always use default column layout on load */
-                    return Promise.resolve();
+                    return fetch(TOA_COLUMN_URL + '?channel=' + encodeURIComponent(TOA_COLUMN_CHANNEL), {
+                        method: 'GET',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': TOA_CSRF }
+                    })
+                        .then(function (r) { return r.json(); })
+                        .then(function (saved) {
+                            if (!saved || typeof saved !== 'object' || !Object.keys(saved).length) return;
+                            let needsCleanup = false;
+                            TOA_FORCE_HIDDEN_FIELDS.forEach(function (forced) {
+                                if (Object.prototype.hasOwnProperty.call(saved, forced)) {
+                                    delete saved[forced];
+                                    needsCleanup = true;
+                                }
+                            });
+                            table.getColumns().forEach(function (col) {
+                                const field = col.getField();
+                                if (!field) return;
+                                if (field === 'pre_order_checklist_status' || field === '_action' || TOA_FORCE_HIDDEN_FIELDS.indexOf(field) !== -1) return;
+                                if (saved[field] === false) col.hide();
+                                else if (saved[field] === true) col.show();
+                            });
+                            enforceToaHiddenColumns();
+                            table.redraw(true);
+                            if (needsCleanup) {
+                                fetch(TOA_COLUMN_URL, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': TOA_CSRF },
+                                    body: JSON.stringify({ channel: TOA_COLUMN_CHANNEL, visibility: saved })
+                                }).catch(function () {});
+                            }
+                        })
+                        .catch(function () {});
                 }
+                table.on('tableBuilt', function () {
+                    applyVisibility().finally(enforceToaHiddenColumns);
+                });
+                enforceToaHiddenColumns();
 
                 colBtn.addEventListener('click', function (e) {
                     e.stopPropagation();
@@ -4448,11 +4712,6 @@
                 globalPreview.style.display = "none";
             });
 
-            // NRP Filter dropdown
-            document.getElementById('nrp-filter').addEventListener('change', function() {
-                reloadTableWithFilters();
-            });
-
             document.getElementById('toa-cl-items-list').addEventListener('change', function (e) {
                 const chk = e.target.closest('.toa-cl-item-chk');
                 if (!chk) return;
@@ -4487,40 +4746,13 @@
             document.getElementById('toa-cl-clear-btn').addEventListener('click', function () { saveToaClChecklist('clear_to_load'); });
             document.getElementById('toa-cl-escalate-btn').addEventListener('click', function () { saveToaClChecklist('escalate'); });
             document.getElementById('toa-bulk-cl-btn').addEventListener('click', function () {
-                const selected = dedupeToaRows(table.getSelectedRows() || []);
+                const selected = getToaActiveSelectedRows();
                 if (!selected.length) {
                     alert('Select one or more rows with checkboxes first.');
                     return;
                 }
                 openToaClModal('bulk', selected);
             });
-
-            function reloadTableWithFilters() {
-                const stage = document.getElementById("stage-filter").value;
-                const nrpFilter = document.getElementById("nrp-filter").value;
-                
-                let showNR = '0';
-                let showLATER = '0';
-                
-                if (nrpFilter === 'show_nr') {
-                    showNR = '1';
-                } else if (nrpFilter === 'show_later') {
-                    showLATER = '1';
-                }
-                
-                // Update AJAX URL with parameters
-                const params = new URLSearchParams({
-                    stage: stage || '',
-                    showNR: showNR,
-                    showLATER: showLATER
-                });
-                
-                table.setData('/to-order-analysis/data?' + params.toString())
-                    .then(() => {
-                        updateCounts();
-                    })
-                    .catch(err => console.error('Error reloading table:', err));
-            }
         });
     </script>
 @endsection

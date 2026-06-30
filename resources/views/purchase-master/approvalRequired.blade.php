@@ -10,8 +10,21 @@
             border-top: 1px solid #262626;
             font-size: 1rem;
             color: #4b5563;
-            padding: 5px;
-            height: 70px;
+            padding: 5px 12px;
+            min-height: 70px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .tabulator .tabulator-footer .tabulator-page-counter {
+            display: block !important;
+            font-weight: 500;
+            color: #374151;
+            padding: 8px 4px;
+            white-space: nowrap;
         }
 
         /* Pagination styling */

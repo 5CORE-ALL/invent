@@ -5,6 +5,28 @@
 <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
 <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
 <style>
+    .tabulator .tabulator-footer {
+        background: #f4f7fa;
+        border-top: 1px solid #e5e7eb;
+        font-size: 1rem;
+        color: #4b5563;
+        padding: 5px 12px;
+        min-height: 56px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .tabulator .tabulator-footer .tabulator-page-counter {
+        display: block !important;
+        font-weight: 500;
+        color: #374151;
+        padding: 8px 4px;
+        white-space: nowrap;
+    }
+
     /* Pagination styling */
     .tabulator .tabulator-footer .tabulator-paginator .tabulator-page {
         padding: 8px 16px;
@@ -220,6 +242,8 @@ document.addEventListener('DOMContentLoaded', function () {
         pagination: true,
         paginationSize: 50,
         paginationMode: "local",
+        paginationCounter: "rows",
+        selectableRows: true,
         movableColumns: false,
         resizableColumns: true,
         height: "500px",
@@ -227,9 +251,14 @@ document.addEventListener('DOMContentLoaded', function () {
             {
                 formatter: "rowSelection",
                 titleFormatter: "rowSelection",
+                titleFormatterParams: { rowRange: "active" },
                 hozAlign: "center",
                 headerSort: false,
-                width: 50
+                width: 50,
+                cellClick: function (e, cell) {
+                    e.stopPropagation();
+                    cell.getRow().toggleSelect();
+                }
             },
             {
                 title: "S.No",
@@ -291,28 +320,60 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         ]
     });
-    
-    table.on("rowSelectionChanged", function(data, rows){
-        if(data.length > 0){
-            $('#delete-selected-btn').removeClass('d-none');
+
+    function getPurchaseActiveSelectedRows() {
+        const activeSet = new Set(table.getRows("active"));
+        return (table.getSelectedRows() || []).filter(function (row) {
+            return activeSet.has(row);
+        });
+    }
+
+    function updatePurchaseDeleteButton() {
+        const n = getPurchaseActiveSelectedRows().length;
+        if (n > 0) {
+            $("#delete-selected-btn").removeClass("d-none");
         } else {
-            $('#delete-selected-btn').addClass('d-none');
+            $("#delete-selected-btn").addClass("d-none");
         }
+    }
+
+    function prunePurchaseSelectionToActive() {
+        const activeSet = new Set(table.getRows("active"));
+        (table.getSelectedRows() || []).forEach(function (row) {
+            if (!activeSet.has(row)) {
+                row.deselect();
+            }
+        });
+        updatePurchaseDeleteButton();
+    }
+
+    function applyPurchaseFilters() {
+        const keyword = (document.getElementById("purchase-search").value || "").toLowerCase().trim();
+        const selectedDate = document.getElementById("po-date-filter").value;
+
+        table.setFilter(function (data) {
+            const vo = String(data.vo_number || "").toLowerCase();
+            const supplier = String(data.supplier_name || "").toLowerCase();
+            const matchesSearch = !keyword || vo.includes(keyword) || supplier.includes(keyword);
+            const matchesDate = !selectedDate || data.purchase_date === selectedDate;
+            return matchesSearch && matchesDate;
+        });
+    }
+    
+    table.on("rowSelectionChanged", function () {
+        updatePurchaseDeleteButton();
     });
 
-    document.getElementById("purchase-search").addEventListener("input", function (e) {
-        const keyword = e.target.value.toLowerCase();
-
-        table.setFilter([
-            [
-                { field: "vo_number", type: "like", value: keyword },
-                { field: "supplier_name", type: "like", value: keyword },
-            ]
-        ]);
+    table.on("dataFiltered", function () {
+        prunePurchaseSelectionToActive();
     });
+
+    document.getElementById("purchase-search").addEventListener("input", applyPurchaseFilters);
     
     $('#delete-selected-btn').on('click', function() {
-        const selectedData = table.getSelectedData();
+        const selectedData = getPurchaseActiveSelectedRows().map(function (row) {
+            return row.getData();
+        });
 
         if (selectedData.length === 0) {
             alert('Please select at least one record to delete.');
@@ -335,6 +396,7 @@ document.addEventListener('DOMContentLoaded', function () {
             success: function(response) {
                 table.deleteRow(ids);
                 updateApprovalPendingCount();
+                updatePurchaseDeleteButton();
             },
             error: function(xhr) {
                 console.error(xhr.responseText);
@@ -342,15 +404,7 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
-    // Date filter
-    document.getElementById("po-date-filter").addEventListener("change", function (e) {
-        const selectedDate = e.target.value;
-        if (selectedDate) {
-            table.setFilter("purchase_date", "=", selectedDate);
-        } else {
-            table.clearFilter(true); // clear all filters
-        }
-    });
+    document.getElementById("po-date-filter").addEventListener("change", applyPurchaseFilters);
 
     const productTableBody = document.getElementById('productRowsWrapper');
     const addRowBtn = document.getElementById('addProductRowBtn');

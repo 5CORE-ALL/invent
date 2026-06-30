@@ -221,6 +221,10 @@ class GoogleMapsDataExtractorController extends Controller
             'logs' => [],
         ]);
 
+        if ($request->hasSession()) {
+            $request->session()->save();
+        }
+
         RunGoogleMapsExtractionJob::dispatch($progressToken)->onQueue('google-maps-extractor');
 
         return response()->json([
@@ -372,13 +376,29 @@ class GoogleMapsDataExtractorController extends Controller
         ]);
         $action = $validated['action'];
 
+        if ($request->hasSession()) {
+            $request->session()->save();
+        }
+
         Cache::put($this->controlCacheKey($token), $action, now()->addHours(2));
 
         if ($action === 'resume') {
             Cache::forget($this->controlCacheKey($token));
             $this->writeProgress($token, [
                 'status' => 'running',
-                'message' => 'Resume requested. Scraper will continue.',
+                'message' => 'Resume requested. Worker will continue.',
+            ]);
+
+            return response()->json([
+                'ok' => true,
+                'action' => $action,
+            ]);
+        }
+
+        if ($action === 'pause') {
+            $this->writeProgress($token, [
+                'status' => 'paused',
+                'message' => 'Pause requested. Worker will pause after the current step.',
             ]);
 
             return response()->json([
@@ -388,25 +408,30 @@ class GoogleMapsDataExtractorController extends Controller
         }
 
         if (in_array($action, ['stop', 'cancel'], true)) {
-            $state = Cache::get($this->stateCacheKey($token));
+            $extractState = Cache::get($this->stateCacheKey($token));
 
-            if (is_array($state) && ! empty($state['search_id'])) {
-                $search = GoogleMapsExtractorSearch::find($state['search_id']);
+            if (is_array($extractState) && ! empty($extractState['search_id'])) {
+                $search = GoogleMapsExtractorSearch::find($extractState['search_id']);
 
                 if ($search && ! in_array($search->status, ['completed', 'cancelled', 'stopped', 'failed'], true)) {
                     return $this->finishControlledExtraction($token, $search, $action);
                 }
             }
-        }
 
-        $this->writeProgress($token, [
-            'status' => $action,
-            'message' => match ($action) {
-                'pause' => 'Pause requested. Scraper will pause after the current request.',
-                'stop' => 'Stop requested. Scraper will stop and keep fetched records.',
-                'cancel' => 'Cancel requested. Scraper will stop and discard fetched records.',
-            },
-        ]);
+            $enrichmentState = Cache::get($this->enrichmentStateCacheKey($token));
+
+            if (is_array($enrichmentState) && ! empty($enrichmentState['search_id'])) {
+                return $this->finishControlledEnrichment($token, $enrichmentState, $action);
+            }
+
+            $this->writeProgress($token, [
+                'status' => $action === 'cancel' ? 'cancelled' : 'stopped',
+                'message' => match ($action) {
+                    'stop' => 'Stop requested. Waiting for worker to finish the current step.',
+                    'cancel' => 'Cancel requested. Waiting for worker to finish the current step.',
+                },
+            ]);
+        }
 
         return response()->json([
             'ok' => true,
@@ -530,6 +555,10 @@ class GoogleMapsDataExtractorController extends Controller
         ]);
 
         if ($total > 0) {
+            if ($request->hasSession()) {
+                $request->session()->save();
+            }
+
             RunGoogleMapsEnrichmentJob::dispatch($progressToken)->onQueue('google-maps-extractor');
         } else {
             Cache::forget($enrichmentStateKey);
@@ -682,8 +711,14 @@ class GoogleMapsDataExtractorController extends Controller
         $logs = $existing['logs'] ?? [];
 
         if ($message !== '') {
-            $logs[] = now()->format('H:i:s') . ' - ' . Str::limit($message, 220, '...');
-            $logs = array_slice($logs, -12);
+            $limitedMessage = Str::limit($message, 220, '...');
+            $lastLog = end($logs);
+            $lastMessage = is_string($lastLog) ? Str::after($lastLog, ' - ') : '';
+
+            if ($lastMessage !== $limitedMessage) {
+                $logs[] = now()->format('H:i:s') . ' - ' . $limitedMessage;
+                $logs = array_slice($logs, -12);
+            }
         }
 
         Cache::put($key, array_merge($existing, $progress, [
@@ -799,6 +834,44 @@ class GoogleMapsDataExtractorController extends Controller
             'complete' => true,
             'records' => $count,
             'redirect_url' => route('google-maps-data-extractor.show', $search),
+        ]);
+    }
+
+    private function finishControlledEnrichment(string $token, array $enrichmentState, string $action)
+    {
+        $processed = (int) ($enrichmentState['processed'] ?? 0);
+        $total = (int) ($enrichmentState['total'] ?? 0);
+        $searchId = (int) ($enrichmentState['search_id'] ?? 0);
+
+        Cache::forget($this->enrichmentStateCacheKey($token));
+        Cache::forget($this->controlCacheKey($token));
+
+        $status = $action === 'cancel' ? 'cancelled' : 'stopped';
+        $message = $action === 'cancel'
+            ? 'Website enrichment cancelled. Existing lead data was kept.'
+            : 'Website enrichment stopped. Existing lead data was kept.';
+
+        $this->writeProgress($token, [
+            'status' => $status,
+            'message' => $message,
+            'records' => $processed,
+            'current_query_number' => $processed,
+            'total_queries' => $total,
+            'search_id' => $searchId > 0 ? $searchId : null,
+            'redirect_url' => $searchId > 0
+                ? route('google-maps-data-extractor.show', $searchId, false)
+                : route('google-maps-data-extractor.index', [], false),
+        ]);
+
+        return response()->json([
+            'ok' => true,
+            'complete' => true,
+            'cancelled' => $action === 'cancel',
+            'stopped' => $action === 'stop',
+            'records' => $processed,
+            'redirect_url' => $searchId > 0
+                ? route('google-maps-data-extractor.show', $searchId)
+                : route('google-maps-data-extractor.index'),
         ]);
     }
 

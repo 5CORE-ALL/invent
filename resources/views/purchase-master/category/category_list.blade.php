@@ -150,11 +150,12 @@
                             <thead class="table-light">
                                 <tr>
                                     <th class="text-center align-middle" style="width: 5%">#</th>
-                                    <th class="text-center align-middle" style="width: 22%">Category Name</th>
-                                    <th class="text-center align-middle" style="width: 18%">Suppliers</th>
-                                    <th class="text-center align-middle" style="width: 15%">Product</th>
-                                    <th class="text-center align-middle" style="width: 15%">Status</th>
-                                    <th class="text-center align-middle" style="width: 20%">Action</th>
+                                    <th class="text-center align-middle" style="width: 20%">Link Sku Purchase</th>
+                                    <th class="text-center align-middle" style="width: 18%">MFR category</th>
+                                    <th class="text-center align-middle" style="width: 15%">Suppliers</th>
+                                    <th class="text-center align-middle" style="width: 12%">Product</th>
+                                    <th class="text-center align-middle" style="width: 12%">Status</th>
+                                    <th class="text-center align-middle" style="width: 18%">Action</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -166,6 +167,25 @@
                                                     id="category-{{ $category->id }}" value="{{ $category->id }}"
                                                     style="cursor: pointer; width: 1.2rem; height: 1.2rem;">
                                             </div>
+                                        </td>
+                                        <td class="text-center">
+                                            @php $linkedSkus = $category->linked_skus_list ?? []; @endphp
+                                            @if (count($linkedSkus) > 0)
+                                                <div class="d-flex flex-wrap align-items-start justify-content-center py-1"
+                                                    style="line-height:1.6;">
+                                                    @foreach ($linkedSkus as $linkedSku)
+                                                        <span
+                                                            class="linked-sku-badge-wrap badge bg-info-subtle text-dark border me-1 mb-1">
+                                                            <a href="{{ route('supplier.list', ['category' => $category->name, 'search' => $linkedSku]) }}"
+                                                                target="_blank" rel="noopener noreferrer"
+                                                                class="text-decoration-none text-dark linked-sku-badge"
+                                                                title="Open {{ $category->name }} for {{ $linkedSku }}">{{ $linkedSku }}</a>
+                                                        </span>
+                                                    @endforeach
+                                                </div>
+                                            @else
+                                                <span class="text-muted fst-italic">No SKUs</span>
+                                            @endif
                                         </td>
                                         <td class="text-center">
                                             <div class="d-flex justify-content-center align-items-center">
@@ -288,7 +308,7 @@
                                     </div>
                                 @empty
                                     <tr>
-                                        <td colspan="6" class="text-center">No categories found</td>
+                                        <td colspan="7" class="text-center">No categories found</td>
                                     </tr>
                                 @endforelse
                             </tbody>

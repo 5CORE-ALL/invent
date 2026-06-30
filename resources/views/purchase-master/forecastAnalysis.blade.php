@@ -12,11 +12,20 @@
             border-top: 1px solid #262626;
             font-size: 1rem;
             color: #4b5563;
-            padding: 5px;
-            height: 70px;
+            padding: 5px 12px;
+            min-height: 70px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 8px;
         }
         .tabulator .tabulator-footer .tabulator-page-counter {
-            display: none !important;
+            display: block !important;
+            font-weight: 500;
+            color: #374151;
+            padding: 8px 4px;
+            white-space: nowrap;
         }
 
         /* Pagination styling */
@@ -1886,11 +1895,32 @@
             });
         }
 
+        function getForecastActiveSelectedRows() {
+            if (!table) return [];
+            const activeSet = new Set(table.getRows('active'));
+            return dedupeForecastRows((table.getSelectedRows() || []).filter(function (row) {
+                return activeSet.has(row);
+            }));
+        }
+
+        function pruneForecastSelectionToActive() {
+            if (!table) return;
+            const activeSet = new Set(table.getRows('active'));
+            (table.getSelectedRows() || []).forEach(function (row) {
+                if (!activeSet.has(row)) {
+                    row.deselect();
+                }
+            });
+            forecastBulkSelectionCache = getForecastActiveSelectedRows();
+            updateBulkEditBadge();
+            if (FORECAST_IS_PRESIDENT) forecastArchiveUpdateButton();
+        }
+
         /** Checkbox-selected rows; keeps multi-select when focus moves to a dropdown. */
         function getForecastBulkTargetRows(primarySku, extraRows) {
             const merged = dedupeForecastRows([
                 ...(forecastBulkSelectionCache || []),
-                ...(typeof table !== 'undefined' && table && table.getSelectedRows ? table.getSelectedRows() : []),
+                ...getForecastActiveSelectedRows(),
                 ...(extraRows || [])
             ]);
             if (merged.length > 0) return merged;
@@ -1974,7 +2004,7 @@
         }
 
         function forecastArchiveUpdateButton() {
-            const count = dedupeForecastRows(table ? table.getSelectedRows() : []).length;
+            const count = getForecastActiveSelectedRows().length;
             const $btn = $('#archive-selected-btn');
             if ($btn.length) {
                 $btn.prop('disabled', count === 0);
@@ -2154,7 +2184,7 @@
                             if (checkbox.checked) {
                                 activeRows.forEach(function(row) { row.select(); });
                             } else {
-                                cell.getTable().deselectRow();
+                                activeRows.forEach(function(row) { row.deselect(); });
                             }
                         });
                         return checkbox;
@@ -3799,11 +3829,10 @@
         }
         // Bulk edit badge: show when rows selected, update count
         function updateBulkEditBadge() {
-            const selected = table.getSelectedRows();
             const badge = document.getElementById('bulk-edit-badge');
             const countEl = document.getElementById('bulk-edit-count');
             if (!badge || !countEl) return;
-            const n = selected.length;
+            const n = getForecastActiveSelectedRows().length;
             if (n > 0) {
                 badge.classList.remove('d-none');
                 badge.classList.add('d-flex');
@@ -3814,7 +3843,7 @@
             }
         }
         table.on("rowSelectionChanged", function(data, rows) {
-            forecastBulkSelectionCache = dedupeForecastRows(rows || table.getSelectedRows());
+            forecastBulkSelectionCache = getForecastActiveSelectedRows();
             const scrollEl = table.rowManager?.element;
             const savedTop  = scrollEl?.scrollTop  || 0;
             const savedLeft = scrollEl?.scrollLeft || 0;
@@ -3843,7 +3872,10 @@
             });
         });
         table.on("dataLoaded", function() { updateTopRowCounter(); });
-        table.on("dataFiltered", function() { updateTopRowCounter(); });
+        table.on("dataFiltered", function() {
+            pruneForecastSelectionToActive();
+            updateTopRowCounter();
+        });
         table.on("pageLoaded", function() { updateTopRowCounter(); });
 
         // Preserve checkbox multi-select before Edit click collapses Tabulator selection.
@@ -3858,7 +3890,7 @@
             });
             forecastRowEditState.pendingBulkTargets = dedupeForecastRows([
                 ...(forecastBulkSelectionCache || []),
-                ...(table.getSelectedRows() || []),
+                ...getForecastActiveSelectedRows(),
                 ...(clickedRow ? [clickedRow] : [])
             ]);
         });
@@ -4163,7 +4195,7 @@
 
         $(document).on('click', '#archive-selected-btn', function() {
             if (!FORECAST_IS_PRESIDENT) return;
-            const selectedRows = dedupeForecastRows(table.getSelectedRows());
+            const selectedRows = getForecastActiveSelectedRows();
             if (selectedRows.length === 0) return;
 
             const itemsBySku = new Map();

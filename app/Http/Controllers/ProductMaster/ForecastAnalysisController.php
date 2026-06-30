@@ -283,7 +283,7 @@ class ForecastAnalysisController extends Controller
             };
             return (object)[
                 'sku' => $preferred->sku ?? '',
-                'qty' => (float)($pick('qty') ?? 0),
+                'qty' => (float) $rows->sum(fn ($r) => (float) ($r->qty ?? 0)),
                 'rec_qty' => $pick('rec_qty'),
                 'rate' => (float)($pick('rate') ?? 0),
                 'payment' => $pick('payment') ?? 'No',
@@ -1011,6 +1011,10 @@ class ForecastAnalysisController extends Controller
                         $stagePendingUpdates[$sheetSku] = $derivedStage;
                     }
                     $item->stage = $derivedStage;
+                } elseif ($currentStage === 'transit' && (float) ($item->readyToShipQty ?? 0) > 0) {
+                    // Split pipeline: partial move to transit — balance still on Ready to Ship.
+                    $item->stage = 'r2s';
+                    $stagePendingUpdates[$sheetSku] = 'r2s';
                 }
             }
 
@@ -1588,13 +1592,61 @@ class ForecastAnalysisController extends Controller
                 ]);
             }
 
-            // 2. Clear ready_to_ship qty so auto-detection does not revert stage to 'r2s'
-            DB::table('ready_to_ship')
-                ->whereRaw('UPPER(TRIM(sku)) = ?', [$skuUpper])
+            // 2. Reduce ready_to_ship by moved qty (partial move support)
+            $skuUpper = strtoupper(trim($sku));
+            $remainingR2s = 0.0;
+            $activeRows = DB::table('ready_to_ship')
+                ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper])
                 ->whereNull('deleted_at')
-                ->update(['qty' => 0, 'updated_at' => now()]);
+                ->where('transit_inv_status', 0)
+                ->orderByDesc('updated_at')
+                ->orderByDesc('id')
+                ->get();
 
-            // 3. Update forecast_analysis.stage = 'transit'
+            $toMove = $valueNum;
+            foreach ($activeRows as $row) {
+                if ($toMove <= 0) {
+                    break;
+                }
+                $rowQty = (float) ($row->qty ?? 0);
+                if ($rowQty <= 0) {
+                    continue;
+                }
+                if ($toMove >= $rowQty) {
+                    DB::table('ready_to_ship')->where('id', $row->id)->update([
+                        'qty' => 0,
+                        'transit_inv_status' => 1,
+                        'updated_at' => now(),
+                    ]);
+                    $toMove -= $rowQty;
+                } else {
+                    DB::table('ready_to_ship')->where('id', $row->id)->update([
+                        'qty' => $rowQty - $toMove,
+                        'rec_qty' => null,
+                        'updated_at' => now(),
+                    ]);
+                    $remainingR2s = $rowQty - $toMove;
+                    $toMove = 0;
+                }
+            }
+
+            if ($toMove > 0) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Transit qty exceeds ready-to-ship balance for this SKU.',
+                ], 422);
+            }
+
+            if ($remainingR2s <= 0) {
+                $remainingR2s = (float) DB::table('ready_to_ship')
+                    ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper])
+                    ->whereNull('deleted_at')
+                    ->where('transit_inv_status', 0)
+                    ->sum('qty');
+            }
+
+            // 3. Update forecast_analysis.stage from remaining R2S balance
+            $newStage = $remainingR2s > 0 ? 'r2s' : 'transit';
             $existingFa = DB::table('forecast_analysis')
                 ->whereRaw('TRIM(LOWER(sku)) = ?', [strtolower($sku)])
                 ->orderByRaw("CASE WHEN stage IS NOT NULL AND stage != '' THEN 0 ELSE 1 END")
@@ -1604,19 +1656,19 @@ class ForecastAnalysisController extends Controller
             if ($existingFa) {
                 DB::table('forecast_analysis')
                     ->where('id', $existingFa->id)
-                    ->update(['stage' => 'transit', 'updated_at' => now()]);
+                    ->update(['stage' => $newStage, 'updated_at' => now()]);
             } else {
                 DB::table('forecast_analysis')->insert([
                     'sku'        => $sku,
                     'parent'     => $parent !== '' ? $parent : null,
-                    'stage'      => 'transit',
+                    'stage'      => $newStage,
                     'created_at' => now(),
                     'updated_at' => now(),
                 ]);
             }
 
             $this->logForecastAnalysisChange($sku, $parent, 'transit', $oldTransit, $valueNum);
-            $this->logForecastAnalysisChange($sku, $parent, 'stage', $oldStage, 'transit');
+            $this->logForecastAnalysisChange($sku, $parent, 'stage', $oldStage, $newStage);
 
             return response()->json(['success' => true, 'message' => 'Moved to Transit successfully']);
         }
@@ -1703,17 +1755,12 @@ class ForecastAnalysisController extends Controller
                 }
                 
                 if(strtolower($value) === 'to_order_analysis'){
-                    DB::table('to_order_analysis')->updateOrInsert(
-                        ['sku' => $sku, 'parent' => $parent],
-                        [
-                            'approved_qty' => $orderQty,
-                            'date_apprvl' => now()->toDateString(),
-                            'stage' => '',
-                            'auth_user' => Auth::user()->name,
-                            'updated_at' => now(),
-                            'created_at' => now(),
-                            'deleted_at' => null,
-                        ]
+                    $this->syncToOrderAnalysisForStage(
+                        $sku,
+                        $parent,
+                        (string) ($currentValue ?? ''),
+                        $orderQty,
+                        isset($existing->approved_qty) ? $existing->approved_qty : null
                     );
                 }
 
@@ -1753,17 +1800,7 @@ class ForecastAnalysisController extends Controller
                 }
 
                 if(strtolower($value) === 'r2s'){
-                    DB::table('ready_to_ship')->updateOrInsert(
-                        ['sku' => $sku, 'parent' => $parent],
-                        [
-                            'qty' => $orderQty,
-                            'transit_inv_status' => 0,
-                            'auth_user' => Auth::user()->name,
-                            'updated_at' => now(),
-                            'created_at' => now(),
-                            'deleted_at' => null,
-                        ]
-                    );
+                    $this->upsertReadyToShipQtyForSku($sku, $parent, (float) ($orderQty ?? 0));
                 }
 
                 // Switching stages must clear the OTHER pipeline tables for this
@@ -1849,15 +1886,7 @@ class ForecastAnalysisController extends Controller
                 }
                     
                 if(strtolower($value) === 'to_order_analysis'){
-                    DB::table('to_order_analysis')->updateOrInsert(
-                        ['sku' => $sku, 'parent' => $parent],
-                        [
-                            'approved_qty' => $orderQty,
-                            'date_apprvl' => now()->toDateString(),
-                            'updated_at' => now(),
-                            'created_at' => now(),
-                        ]
-                    );
+                    $this->syncToOrderAnalysisForStage($sku, $parent, '', $orderQty, null);
                 }
 
                 if(strtolower($value) === 'mip'){
@@ -1895,14 +1924,7 @@ class ForecastAnalysisController extends Controller
                 }
 
                 if(strtolower($value) === 'r2s'){
-                    DB::table('ready_to_ship')->updateOrInsert(
-                        ['sku' => $sku, 'parent' => $parent],
-                        [
-                            'qty' => $orderQty,
-                            'updated_at' => now(),
-                            'created_at' => now(),
-                        ]
-                    );
+                    $this->upsertReadyToShipQtyForSku($sku, $parent, (float) ($orderQty ?? 0));
                 }
 
                 // Clear OTHER pipeline tables (see comment in the existing-record
@@ -2154,6 +2176,81 @@ class ForecastAnalysisController extends Controller
                 'error' => $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * Upsert one active ready_to_ship row per SKU (merge duplicate parent variants).
+     */
+    private function upsertReadyToShipQtyForSku(string $sku, ?string $parent, float $qty): void
+    {
+        $skuUpper = strtoupper(trim($sku));
+        if ($skuUpper === '') {
+            return;
+        }
+
+        $rows = DB::table('ready_to_ship')
+            ->whereNull('deleted_at')
+            ->where('transit_inv_status', 0)
+            ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper])
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id')
+            ->get();
+
+        $parentNorm = trim((string) ($parent ?? ''));
+
+        if ($rows->isNotEmpty()) {
+            $keep = $rows->first();
+            DB::table('ready_to_ship')->where('id', $keep->id)->update([
+                'qty' => $qty,
+                'parent' => $parentNorm !== '' ? $parentNorm : ($keep->parent ?? null),
+                'transit_inv_status' => 0,
+                'deleted_at' => null,
+                'auth_user' => optional(Auth::user())->name,
+                'updated_at' => now(),
+            ]);
+            foreach ($rows->skip(1) as $dup) {
+                DB::table('ready_to_ship')->where('id', $dup->id)->update([
+                    'qty' => 0,
+                    'deleted_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
+
+            return;
+        }
+
+        DB::table('ready_to_ship')->insert([
+            'sku' => $sku,
+            'parent' => $parentNorm !== '' ? $parentNorm : null,
+            'qty' => $qty,
+            'transit_inv_status' => 0,
+            'auth_user' => optional(Auth::user())->name,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+
+    /**
+     * After R2S qty changes, set forecast stage to r2s when balance remains, else transit.
+     */
+    private function syncForecastStageFromRemainingR2s(string $sku): void
+    {
+        $skuUpper = strtoupper(trim($sku));
+        if ($skuUpper === '') {
+            return;
+        }
+
+        $remaining = (float) DB::table('ready_to_ship')
+            ->whereNull('deleted_at')
+            ->where('transit_inv_status', 0)
+            ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper])
+            ->sum('qty');
+
+        $newStage = $remaining > 0 ? 'r2s' : 'transit';
+
+        DB::table('forecast_analysis')
+            ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper])
+            ->update(['stage' => $newStage, 'updated_at' => now()]);
     }
 
     // -----------------------------------------------------------------------
@@ -2591,6 +2688,55 @@ class ForecastAnalysisController extends Controller
             'parent' => $parent !== '' ? $parent : null,
             'history' => $history,
         ]);
+    }
+
+    /**
+     * When stage moves from appr_req → to_order_analysis, stamp DOA on the
+     * to_order_analysis row (matched by normalized SKU) and keep approved_qty.
+     */
+    private function syncToOrderAnalysisForStage(
+        string $sku,
+        string $parent,
+        string $previousStage,
+        $fallbackOrderQty,
+        $forecastApprovedQty = null
+    ): void {
+        $skuUpper = strtoupper(trim($sku));
+        if ($skuUpper === '') {
+            return;
+        }
+
+        $existingOrder = DB::table('to_order_analysis')
+            ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper])
+            ->whereNull('deleted_at')
+            ->orderByDesc('id')
+            ->first();
+
+        $orderQty = $existingOrder->approved_qty ?? $forecastApprovedQty ?? $fallbackOrderQty;
+
+        $payload = [
+            'approved_qty' => $orderQty,
+            'auth_user' => optional(Auth::user())->name,
+            'updated_at' => now(),
+            'deleted_at' => null,
+        ];
+
+        if (strtolower(trim($previousStage)) === 'appr_req') {
+            $payload['date_apprvl'] = now()->toDateString();
+        }
+
+        if ($existingOrder) {
+            DB::table('to_order_analysis')->where('id', $existingOrder->id)->update($payload);
+
+            return;
+        }
+
+        DB::table('to_order_analysis')->insert(array_merge($payload, [
+            'sku' => $skuUpper,
+            'parent' => $parent !== '' ? $parent : null,
+            'stage' => '',
+            'created_at' => now(),
+        ]));
     }
 
 }
