@@ -151,11 +151,15 @@ class UpdateEbaySuggestedBid extends Command
                 ->keyBy('listing_id');
             
         // Load SCVR → Bid rule from ebay_sbid_rules table (fallback to hardcoded defaults)
-        $sbidRule = DB::table('ebay_sbid_rules')->where('key', 'ebay1')->first();
-        $sbidBands = $sbidRule
-            ? (json_decode($sbidRule->rule, true)['bands'] ?? $this->defaultBands())
-            : $this->defaultBands();
+        $sbidRuleRow = DB::table('ebay_sbid_rules')->where('key', 'ebay1')->first();
+        $sbidRuleData = $sbidRuleRow
+            ? (json_decode($sbidRuleRow->rule, true) ?: [])
+            : [];
+        $sbidBands = $sbidRuleData['bands'] ?? $this->defaultBands();
+        $l30SoldEsBidMax = (float) ($sbidRuleData['l30_sold_es_bid_max'] ?? 0);
+        $l7ViewsThreshold = (float) ($sbidRuleData['l7_views_threshold'] ?? 70);
         $this->info('SBID Rule bands: ' . collect($sbidBands)->map(fn($b) => "SCVR≤{$b['scvr_max']}%→{$b['bid']}")->implode(', '));
+        $this->info("SBID ES Bid fallback: L30 sold ≤ {$l30SoldEsBidMax} or L7 views < {$l7ViewsThreshold}");
 
         // Load DIL → Bid rule (ebay1_dil). Used together with SCVR: if EITHER the SCVR or
         // the DIL value falls in its Pink (catch-all / last) band, the Pink bid is pushed.
@@ -179,6 +183,8 @@ class UpdateEbaySuggestedBid extends Command
                 $campaignListings,
                 $sbidBands,
                 $dilBands,
+                $l30SoldEsBidMax,
+                $l7ViewsThreshold,
                 $ebayGeneralL30, 
                 &$updatedListings,
                 $normalizeSku
@@ -194,6 +200,7 @@ class UpdateEbaySuggestedBid extends Command
                         // SCVR-based PMT S BID rule
                         $soldL30  = (float) ($ebayMetric->ebay_l30 ?? 0);
                         $views    = (float) ($ebayMetric->views ?? 0);
+                        $l7Views  = (float) ($ebayMetric->l7_views ?? 0);
                         $esbid    = (float) ($listing->suggested_bid ?? 0);
                         $scvr     = $views > 0 ? ($soldL30 / $views) * 100 : 0;
 
@@ -202,13 +209,16 @@ class UpdateEbaySuggestedBid extends Command
                         $qty = (float) ($shopify->quantity ?? 0);
                         $dil = $inv > 0 ? ($qty / $inv) * 100 : 0;
 
-                        // Combined rule: if SCVR OR DIL is Pink (catch-all) → push the Pink bid;
-                        // otherwise fall back to the normal SCVR bid (which skips when SCVR = 0).
-                        $newBid = $this->resolveCombinedBid($scvr, $sbidBands, $dil, $dilBands, [
-                            'ebay_price' => (float) ($ebayMetric->ebay_price ?? 0),
-                            'ebay_l30'   => $soldL30,
-                            'views'      => $views,
-                        ]);
+                        // ES Bid fallback (configurable) or SCVR/DIL Pink / SCVR bands.
+                        if ($soldL30 <= $l30SoldEsBidMax || $l7Views < $l7ViewsThreshold) {
+                            $newBid = $esbid;
+                        } else {
+                            $newBid = $this->resolveCombinedBid($scvr, $sbidBands, $dil, $dilBands, [
+                                'ebay_price' => (float) ($ebayMetric->ebay_price ?? 0),
+                                'ebay_l30'   => $soldL30,
+                                'views'      => $views,
+                            ]);
+                        }
 
                         $listing->new_bid = $newBid;
                         $listing->sku = $pm->sku;
@@ -220,8 +230,8 @@ class UpdateEbaySuggestedBid extends Command
                             : '';
 
                         if ($newBid <= 0) {
-                            // No signal (SCVR=0 and not Pink) → no SBID. Excluded from API push below.
-                            $this->warn("SKU: {$pm->sku} | Listing ID: {$ebayMetric->item_id} | SCVR: 0% (sold={$soldL30}, views={$views}) DIL: " . round($dil, 2) . "% → No SBID (skipped)");
+                            // No ES Bid available when L30 sold = 0, or no SCVR/DIL signal otherwise.
+                            $this->warn("SKU: {$pm->sku} | Listing ID: {$ebayMetric->item_id} | SCVR: " . round($scvr, 2) . "% (sold={$soldL30}, views={$views}) DIL: " . round($dil, 2) . "% → No SBID (skipped)");
                         } else {
                             $this->info("SKU: {$pm->sku} | Listing ID: {$ebayMetric->item_id} | SCVR: " . round($scvr, 2) . "% | DIL: " . round($dil, 2) . "% | SBID: {$newBid}{$pinkTag}");
                             $updatedListings++;

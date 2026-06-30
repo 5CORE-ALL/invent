@@ -787,13 +787,25 @@
                 </div>
                 <div class="modal-body">
                     <p class="small text-muted mb-3">
-                        Step 1: if a row's <code>l7_views</code> is below the threshold &rarr; S Bid = <strong>ES Bid</strong> (raw eBay <code>suggested_bid</code>).
-                        Step 2: otherwise SCVR bands are evaluated <strong>top to bottom</strong> &mdash; first match wins.
+                        Step 1: if L30 sold &le; the threshold below &rarr; S Bid = <strong>ES Bid</strong> (raw eBay <code>suggested_bid</code>).
+                        Step 2: if a row's <code>l7_views</code> is below the threshold &rarr; S Bid = <strong>ES Bid</strong>.
+                        Step 3: otherwise SCVR bands are evaluated <strong>top to bottom</strong> &mdash; first match wins.
                         <code>SCVR = (Sold L30 / Views) &times; 100</code>.
                     </p>
 
-                    {{-- L7 views threshold --}}
+                    {{-- L30 sold + L7 views thresholds --}}
                     <div class="row g-2 align-items-end mb-3">
+                        <div class="col-md-5">
+                            <label class="form-label fw-semibold mb-1">L30 Sold ES Bid Max</label>
+                            <div class="input-group input-group-sm">
+                                <input type="number" class="form-control" id="sbid-l30-sold-max-input"
+                                       step="1" min="0" value="0">
+                                <span class="input-group-text">sold</span>
+                            </div>
+                            <small class="text-muted">
+                                If a row's <code>eBay L30</code> &le; this value &rarr; S Bid = ES Bid (default <code>0</code> = zero sold only).
+                            </small>
+                        </div>
                         <div class="col-md-5">
                             <label class="form-label fw-semibold mb-1">L7 Views Threshold</label>
                             <div class="input-group input-group-sm">
@@ -918,7 +930,22 @@
         let samePriceModeActive = false;
         let selectedSkus = new Set(); // Track selected SKUs across all pages
         /** Shared with /ebay/campaign-ads SBID Rule (ebay_sbid_rules.key = ebay1). */
-        let currentSbidRule = { l7_views_threshold: 70, bands: [] };
+        let currentSbidRule = { l7_views_threshold: 70, l30_sold_es_bid_max: 0, bands: [] };
+
+        function shouldUseEsBid(sold, l7, rule) {
+            const l30Max = parseFloat(rule && rule.l30_sold_es_bid_max);
+            const l7Thr = parseFloat(rule && rule.l7_views_threshold);
+            const l30Limit = isFinite(l30Max) ? l30Max : 0;
+            const l7Limit = isFinite(l7Thr) ? l7Thr : 70;
+            return sold <= l30Limit || l7 < l7Limit;
+        }
+
+        function esBidResult(esBidRaw) {
+            if (!isFinite(esBidRaw) || esBidRaw <= 0) {
+                return { bid: 0, color: '#6c757d', skip: true };
+            }
+            return { bid: esBidRaw, color: '#0dcaf0', skip: false };
+        }
 
         function resolveSbidBandBid(band, ctx) {
             const color = band.color || '#333';
@@ -962,14 +989,9 @@
             const sold = parseFloat(rowData['eBay L30']) || 0;
             const views = parseFloat(rowData.views) || 0;
             const scvr = views > 0 ? (sold / views) * 100 : 0;
-            const threshold = parseFloat(currentSbidRule.l7_views_threshold);
-            const thr = isFinite(threshold) ? threshold : 70;
 
-            if (l7 < thr) {
-                if (!isFinite(esBidRaw) || esBidRaw <= 0) {
-                    return { bid: 0, color: '#6c757d', skip: true };
-                }
-                return { bid: esBidRaw, color: '#0dcaf0', skip: false };
+            if (shouldUseEsBid(sold, l7, currentSbidRule)) {
+                return esBidResult(esBidRaw);
             }
             return getSbidFromRule(scvr, rowData);
         }
@@ -3859,6 +3881,19 @@
                         }
                     },
                     {
+                        title: "C BID",
+                        field: "ca_bid_percentage",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 90,
+                        formatter: function(cell) {
+                            const v = parseFloat(cell.getValue());
+                            if (isNaN(v)) return '<span class="text-muted">—</span>';
+                            const color = v <= 4 ? '#dc3545' : v <= 7 ? '#ffc107' : v <= 13 ? '#198754' : '#e83e8c';
+                            return `<span style="color:${color}; font-weight:600;">${v.toFixed(1)}%</span>`;
+                        }
+                    },
+                    {
                         title: "S BID",
                         field: "ca_suggested_bid",
                         hozAlign: "center",
@@ -3873,19 +3908,6 @@
                                 return '<span class="text-muted" title="No SBID — l7_views below threshold and no ES Bid available" style="font-size:11px;">—</span>';
                             }
                             return `<span style="color:${match.color}; font-weight:700;">${match.bid.toFixed(1)}%</span>`;
-                        }
-                    },
-                    {
-                        title: "C BID",
-                        field: "ca_bid_percentage",
-                        hozAlign: "center",
-                        sorter: "number",
-                        width: 90,
-                        formatter: function(cell) {
-                            const v = parseFloat(cell.getValue());
-                            if (isNaN(v)) return '<span class="text-muted">—</span>';
-                            const color = v <= 4 ? '#dc3545' : v <= 7 ? '#ffc107' : v <= 13 ? '#198754' : '#e83e8c';
-                            return `<span style="color:${color}; font-weight:600;">${v.toFixed(1)}%</span>`;
                         }
                     },
                     {
@@ -5615,11 +5637,14 @@
                     method: 'GET',
                     dataType: 'json',
                     success: function(data) {
-                        currentSbidRule = data || { l7_views_threshold: 70, bands: [] };
+                        currentSbidRule = data || { l7_views_threshold: 70, l30_sold_es_bid_max: 0, bands: [] };
                         if (currentSbidRule.l7_views_threshold == null) currentSbidRule.l7_views_threshold = 70;
+                        if (currentSbidRule.l30_sold_es_bid_max == null) currentSbidRule.l30_sold_es_bid_max = 0;
                         if (!Array.isArray(currentSbidRule.bands)) currentSbidRule.bands = [];
                         const thrEl = document.getElementById('sbid-l7-threshold-input');
                         if (thrEl) thrEl.value = currentSbidRule.l7_views_threshold;
+                        const l30El = document.getElementById('sbid-l30-sold-max-input');
+                        if (l30El) l30El.value = currentSbidRule.l30_sold_es_bid_max;
                         renderBands(currentSbidRule.bands);
                         if (table) table.redraw(true);
                     },
@@ -5659,6 +5684,9 @@
             $(document).on('change', '#sbid-l7-threshold-input', function() {
                 currentSbidRule.l7_views_threshold = parseFloat(this.value) || 0;
             });
+            $(document).on('change', '#sbid-l30-sold-max-input', function() {
+                currentSbidRule.l30_sold_es_bid_max = parseFloat(this.value) || 0;
+            });
 
             // Save
             $('#sbid-rule-save-btn').on('click', function() {
@@ -5669,6 +5697,7 @@
                 btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Saving…';
 
                 const threshold = parseFloat(document.getElementById('sbid-l7-threshold-input').value);
+                const l30SoldMax = parseFloat(document.getElementById('sbid-l30-sold-max-input').value);
 
                 $.ajax({
                     url: ruleSaveUrl,
@@ -5678,6 +5707,7 @@
                     data: JSON.stringify({
                         bands: currentSbidRule.bands || [],
                         l7_views_threshold: isFinite(threshold) ? threshold : 70,
+                        l30_sold_es_bid_max: isFinite(l30SoldMax) ? l30SoldMax : 0,
                     }),
                     success: function(resp) {
                         btn.disabled = false;
