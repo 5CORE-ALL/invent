@@ -60,10 +60,7 @@ class RunQueueWorkerWatchdogCommand extends Command
         $raw = trim((string) $this->option('queues'));
 
         if ($raw !== '') {
-            $configured = array_merge(
-                config('queue_workers.watchdog_queues', []),
-                config('queue_workers.optional_dedicated_queues', [])
-            );
+            $configured = QueueWorkerWatchdog::watchdogQueues();
             $queues = [];
 
             foreach (array_filter(array_map('trim', explode(',', $raw))) as $queue) {
@@ -73,6 +70,6 @@ class RunQueueWorkerWatchdogCommand extends Command
             return $queues;
         }
 
-        return config('queue_workers.watchdog_queues', []);
+        return QueueWorkerWatchdog::watchdogQueues();
     }
 }

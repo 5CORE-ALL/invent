@@ -1539,10 +1539,11 @@ class Kernel extends ConsoleKernel
 
         /*
         |--------------------------------------------------------------------------
-        | GOOGLE MAPS EXTRACTOR QUEUE (permanent watchdog)
+        | DEDICATED QUEUE WORKERS (permanent watchdog)
         |--------------------------------------------------------------------------
-        | Keeps queue:watchdog running (checks every 30s). The daemon only ever
-        | starts queue:work --queue=google-maps-extractor — never the default queue.
+        | Keeps queue:watchdog running. The daemon ensures each configured
+        | dedicated worker (google-maps-extractor, shopify-*-pull, *-master-push)
+        | stays alive with an explicit --queue flag — never the default queue.
         */
         $schedule->command('queue:ensure-watchdog-daemon')
             ->everyMinute()

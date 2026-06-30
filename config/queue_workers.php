@@ -7,15 +7,12 @@ return [
     | Permanent queue worker watchdog
     |--------------------------------------------------------------------------
     |
-    | The watchdog daemon only starts dedicated queue:work processes with an
-    | explicit --queue flag. It never runs a generic worker that could process
-    | other jobs from the default queue.
+    | queue:watchdog runs forever and keeps one dedicated queue:work process
+    | alive per queue below. Each worker uses an explicit --queue flag only —
+    | never the default queue, so unrelated jobs are not processed.
     |
-    | Run permanently via Supervisor:
     |   php artisan queue:watchdog
-    |
-    | Or the shell fallback:
-    |   scripts/cron-google-maps-extractor-watchdog.sh
+    |   scripts/cron-queue-watchdog-daemon.sh
     |
     */
 
@@ -26,23 +23,26 @@ return [
             'timeout' => 3700,
             'max_time' => 7200,
         ],
-    ],
-
-    /*
-    |--------------------------------------------------------------------------
-    | Optional dedicated workers (manual / separate supervisor programs)
-    |--------------------------------------------------------------------------
-    |
-    | Not started by the Google Maps watchdog daemon. Other masters can keep
-    | their own scripts or supervisor entries when needed.
-    */
-
-    'optional_dedicated_queues' => [
-        'shopify-image-pull' => ['timeout' => 14400, 'max_time' => 14400],
-        'shopify-bullet-pull' => ['timeout' => 14400, 'max_time' => 14400],
-        'shopify-video-pull' => ['timeout' => 14400, 'max_time' => 14400],
-        'image-master-push' => ['timeout' => 7200, 'max_time' => 7200],
-        'video-master-push' => ['timeout' => 7200, 'max_time' => 7200],
+        'shopify-image-pull' => [
+            'timeout' => 14400,
+            'max_time' => 14400,
+        ],
+        'shopify-bullet-pull' => [
+            'timeout' => 14400,
+            'max_time' => 14400,
+        ],
+        'shopify-video-pull' => [
+            'timeout' => 14400,
+            'max_time' => 14400,
+        ],
+        'image-master-push' => [
+            'timeout' => 7200,
+            'max_time' => 7200,
+        ],
+        'video-master-push' => [
+            'timeout' => 7200,
+            'max_time' => 7200,
+        ],
     ],
 
 ];
