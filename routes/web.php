@@ -661,7 +661,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/opportunities/save', 'saveOpportunity');
         Route::post('/import-opportunities', 'importOpportunities')->name('import.opportunities');
         Route::get('/opportunities/export', 'exportOpportunities')->name('opportunities.export');
-        Route::post('/opportunities/delete', 'deleteOpportunities')->name('opportunities.export');
+        Route::post('/opportunities/delete', 'deleteOpportunities')->name('opportunities.delete');
     });
     Route::controller(ApprovalsChannelMasterController::class)->group(function () {
         Route::get('/channerl-master-active/application-and-approvals', 'index')->name('application.approvals.index');
@@ -2669,9 +2669,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     require __DIR__.'/crm-web.php';
 
-    Route::get('/dar', [DARController::class, 'index'])->name('dar.index');
-    Route::post('/dar', [DARController::class, 'store'])->name('dar.store');
-    Route::get('/dar/window-status', [DARController::class, 'windowStatus'])->name('dar.window');
+    Route::get('/dar', [DARController::class, 'index'])->name('customer-care.dar.index');
+    Route::post('/dar', [DARController::class, 'store'])->name('customer-care.dar.store');
+    Route::get('/dar/window-status', [DARController::class, 'windowStatus'])->name('customer-care.dar.window');
 
     // incoming
     Route::get('/incoming-view', [IncomingController::class, 'index'])->name('incoming.view');
@@ -3321,9 +3321,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/fbainv/view-data', [AmazonFbaInvController::class, 'getViewAmazonfbaInvData'])->name('fbainv.viewData');
     Route::get('/product-master-data', [ProductMasterController::class, 'product_master_data']);
 
-    Route::get('/reverb-pricing-cvr', [ReverbController::class, 'reverbPricingCvr'])->name('reverb');
-    Route::get('/reverb-pricing-increase-cvr', [ReverbController::class, 'reverbPricingIncreaseCvr'])->name('reverb');
-    Route::get('/reverb-pricing-decrease-cvr', [ReverbController::class, 'reverbPricingDecreaseCvr'])->name('reverb');
+    Route::get('/reverb-pricing-cvr', [ReverbController::class, 'reverbPricingCvr'])->name('reverb.pricing.cvr');
+    Route::get('/reverb-pricing-increase-cvr', [ReverbController::class, 'reverbPricingIncreaseCvr'])->name('reverb.pricing.increase.cvr');
+    Route::get('/reverb-pricing-decrease-cvr', [ReverbController::class, 'reverbPricingDecreaseCvr'])->name('reverb.pricing.decrease.cvr');
 
     Route::post('/reverb/save-sprice', [ReverbController::class, 'saveSpriceToDatabase'])->name('reverb.save-sprice');
 
@@ -3900,7 +3900,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/listing_reverb/sample', [ListingReverbController::class, 'downloadSample'])->name('listing_reverb.sample');
     Route::post('/reverb/saveLowProfit', [ReverbController::class, 'saveLowProfit']);
     Route::get('/reverb/zero/view', [ReverbZeroController::class, 'index'])->name('reverb.zero.view');
-    Route::get('/reverb-low-visiblity-view', [ReverbLowVisibilityController::class, 'reverbLowVisibilityview'])->name('reverb.low.visibility.view');
 
     // listing temu
     Route::get('/listing-temu', [ListingTemuController::class, 'listingTemu'])->name('listing.temu');
@@ -4439,7 +4438,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // ebay db save routes
     Route::post('/ebay/save-nr', [EbayController::class, 'saveNrToDatabase']);
     Route::post('/ebay/update-listed-live', [EbayController::class, 'updateListedLive']);
-    Route::post('/ebay-one/save-sprice', [EbayController::class, 'saveSpriceToDatabase'])->name('ebay.save-sprice');
+    Route::post('/ebay-one/save-sprice', [EbayController::class, 'saveSpriceToDatabase'])->name('ebay-one.save-sprice');
     Route::post('/ebay-clear-sprice', [EbayController::class, 'clearEbaySprice']);
     Route::post('/ebay/save-sprice', [EbayTwoController::class, 'saveSpriceToDatabase'])->name('ebay.save-sprice');
 

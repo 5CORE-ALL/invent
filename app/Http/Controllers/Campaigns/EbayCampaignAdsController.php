@@ -17,6 +17,9 @@ class EbayCampaignAdsController extends Controller
         if (!isset($ruleData['l7_views_threshold'])) {
             $ruleData['l7_views_threshold'] = 70;
         }
+        if (!isset($ruleData['l30_sold_es_bid_max'])) {
+            $ruleData['l30_sold_es_bid_max'] = 0;
+        }
 
         $dil = DB::table('ebay_sbid_rules')->where('key', 'ebay1_dil')->first();
         $dilData = $dil ? json_decode($dil->rule, true) : $this->defaultDilRule();
@@ -35,8 +38,9 @@ class EbayCampaignAdsController extends Controller
 
     public function saveRule(Request $request)
     {
-        $bands     = $request->input('bands', []);
-        $threshold = $request->input('l7_views_threshold', 70);
+        $bands       = $request->input('bands', []);
+        $threshold   = $request->input('l7_views_threshold', 70);
+        $l30SoldMax  = $request->input('l30_sold_es_bid_max', 0);
 
         if (empty($bands) || !is_array($bands)) {
             return response()->json(['error' => 'Invalid rule data'], 422);
@@ -44,13 +48,17 @@ class EbayCampaignAdsController extends Controller
         if (!is_numeric($threshold) || $threshold < 0) {
             return response()->json(['error' => 'l7_views_threshold must be a non-negative number'], 422);
         }
+        if (!is_numeric($l30SoldMax) || $l30SoldMax < 0) {
+            return response()->json(['error' => 'l30_sold_es_bid_max must be a non-negative number'], 422);
+        }
 
         // Sort bands by scvr_max ascending
         usort($bands, fn($a, $b) => $a['scvr_max'] <=> $b['scvr_max']);
 
         $rule = [
-            'l7_views_threshold' => (float) $threshold,
-            'bands'              => $bands,
+            'l7_views_threshold'   => (float) $threshold,
+            'l30_sold_es_bid_max' => (float) $l30SoldMax,
+            'bands'                => $bands,
         ];
 
         DB::table('ebay_sbid_rules')->updateOrInsert(
@@ -113,9 +121,9 @@ class EbayCampaignAdsController extends Controller
         }
 
         // Load rule
-        $sbidRule  = DB::table('ebay_sbid_rules')->where('key', 'ebay1')->first();
-        $bands     = $sbidRule ? (json_decode($sbidRule->rule, true)['bands'] ?? []) : [];
-        $dilBands  = $this->dilBands();
+        $ruleConfig = $this->sbidRuleConfig();
+        $bands      = $ruleConfig['bands'] ?? [];
+        $dilBands   = $this->dilBands();
 
         // Get ebay metrics for these listings
         $metrics = \App\Models\EbayMetric::whereIn('item_id', $listingIds)->get()->keyBy('item_id');
@@ -158,21 +166,27 @@ class EbayCampaignAdsController extends Controller
             // Calculate bid from SCVR + DIL (Pink in either → push Pink bid)
             $metric = $metrics->get($lid);
             $views  = (float)($metric?->views ?? 0);
+            $l7     = (float)($metric?->l7_views ?? 0);
             $l30    = (float)($metric?->ebay_l30 ?? 0);
             $scvr   = $views > 0 ? ($l30 / $views) * 100 : 0;
+            $esBid  = (float)($ad?->suggested_bid ?? 0);
 
             $shop = $metric ? ($shopifyMap[$this->normSku($metric->sku)] ?? null) : null;
             $inv  = (float)($shop->inv ?? 0);
             $qty  = (float)($shop->quantity ?? 0);
             $dil  = $inv > 0 ? ($qty / $inv) * 100 : 0;
 
-            $newBid = $this->resolveCombinedBid($scvr, $bands, $dil, $dilBands, [
-                'ebay_price' => (float)($metric?->ebay_price ?? 0),
-                'ebay_l30'   => $l30,
-                'views'      => $views,
-            ]);
+            if ($this->shouldUseEsBid($l30, $l7, $ruleConfig)) {
+                $newBid = $esBid;
+            } else {
+                $newBid = $this->resolveCombinedBid($scvr, $bands, $dil, $dilBands, [
+                    'ebay_price' => (float)($metric?->ebay_price ?? 0),
+                    'ebay_l30'   => $l30,
+                    'views'      => $views,
+                ]);
+            }
             if ($newBid <= 0) {
-                $results[] = ['listing_id' => $lid, 'status' => 'skipped', 'reason' => 'No SBID — 0 CVR & DIL not Pink'];
+                $results[] = ['listing_id' => $lid, 'status' => 'skipped', 'reason' => 'No SBID — ES Bid fallback with no ES Bid, or 0 CVR & DIL not Pink'];
                 $skipped++;
                 continue;
             }
@@ -353,9 +367,9 @@ class EbayCampaignAdsController extends Controller
         }
 
         // Load rule
-        $sbidRule = DB::table('ebay_sbid_rules')->where('key', 'ebay1')->first();
-        $bands    = $sbidRule ? (json_decode($sbidRule->rule, true)['bands'] ?? []) : [];
-        $dilBands = $this->dilBands();
+        $ruleConfig = $this->sbidRuleConfig();
+        $bands        = $ruleConfig['bands'] ?? [];
+        $dilBands     = $this->dilBands();
 
         // Get metrics for SCVR calculation
         $metrics = \App\Models\EbayMetric::whereIn('item_id', $listingIds)
@@ -363,6 +377,11 @@ class EbayCampaignAdsController extends Controller
 
         // Shopify inv/quantity for DIL, keyed by normalized SKU
         $shopifyMap = $this->shopifyByNormSku($metrics->pluck('sku')->filter()->unique()->values()->all());
+
+        $ads = DB::table('ebay_campaign_ads')
+            ->whereIn('listing_id', $listingIds)
+            ->get()
+            ->keyBy('listing_id');
 
         try {
             $service = new \App\Services\EbayApiService();
@@ -380,6 +399,7 @@ class EbayCampaignAdsController extends Controller
             $lid    = (string)$lid;
             $metric = $metrics->get($lid);
             $views  = (float)($metric?->views ?? 0);
+            $l7     = (float)($metric?->l7_views ?? 0);
             $l30    = (float)($metric?->ebay_l30 ?? 0);
             $scvr   = $views > 0 ? ($l30 / $views) * 100 : 0;
 
@@ -388,14 +408,21 @@ class EbayCampaignAdsController extends Controller
             $qty  = (float)($shop->quantity ?? 0);
             $dil  = $inv > 0 ? ($qty / $inv) * 100 : 0;
 
-            $bid    = $this->resolveCombinedBid($scvr, $bands, $dil, $dilBands, [
-                'ebay_price' => (float)($metric?->ebay_price ?? 0),
-                'ebay_l30'   => $l30,
-                'views'      => $views,
-            ]);
+            $adRow = $ads->get($lid);
+            $esBid = (float)($adRow?->suggested_bid ?? 0);
+
+            if ($this->shouldUseEsBid($l30, $l7, $ruleConfig)) {
+                $bid = $esBid;
+            } else {
+                $bid = $this->resolveCombinedBid($scvr, $bands, $dil, $dilBands, [
+                    'ebay_price' => (float)($metric?->ebay_price ?? 0),
+                    'ebay_l30'   => $l30,
+                    'views'      => $views,
+                ]);
+            }
 
             if ($bid <= 0) {
-                $results[] = ['listing_id' => $lid, 'sku' => $metric?->sku, 'status' => 'skipped', 'reason' => 'No SBID — 0 CVR & DIL not Pink'];
+                $results[] = ['listing_id' => $lid, 'sku' => $metric?->sku, 'status' => 'skipped', 'reason' => 'No SBID — ES Bid fallback with no ES Bid, or 0 CVR & DIL not Pink'];
                 $skipped++;
                 continue;
             }
@@ -457,10 +484,35 @@ class EbayCampaignAdsController extends Controller
         }
     }
 
+    /** Parsed ebay1 SBID rule with defaults for missing keys. */
+    private function sbidRuleConfig(): array
+    {
+        $rule = DB::table('ebay_sbid_rules')->where('key', 'ebay1')->first();
+        $data = $rule ? (json_decode($rule->rule, true) ?: []) : $this->defaultRule();
+        if (!isset($data['l7_views_threshold'])) {
+            $data['l7_views_threshold'] = 70;
+        }
+        if (!isset($data['l30_sold_es_bid_max'])) {
+            $data['l30_sold_es_bid_max'] = 0;
+        }
+
+        return $data;
+    }
+
+    /** True when S Bid should fall back to raw ES Bid (suggested_bid). */
+    private function shouldUseEsBid(float $l30Sold, float $l7Views, array $rule): bool
+    {
+        $l30Max = (float) ($rule['l30_sold_es_bid_max'] ?? 0);
+        $l7Thr  = (float) ($rule['l7_views_threshold'] ?? 70);
+
+        return $l30Sold <= $l30Max || $l7Views < $l7Thr;
+    }
+
     private function defaultRule(): array
     {
         return [
-            'l7_views_threshold' => 70,
+            'l7_views_threshold'    => 70,
+            'l30_sold_es_bid_max'   => 0,
             'bands' => [
                 ['scvr_max' => 4,    'bid' => 10.1, 'label' => 'Red',    'color' => '#dc3545'],
                 ['scvr_max' => 7,    'bid' => 8.1,  'label' => 'Yellow', 'color' => '#ffc107'],

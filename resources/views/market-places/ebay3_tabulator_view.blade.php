@@ -623,7 +623,22 @@
     let samePriceModeActive = false;
     let selectedSkus = new Set();
     /** Shared with /ebay3/campaign-ads SBID Rule (ebay_sbid_rules.key = ebay3). */
-    let currentSbidRule = { l7_views_threshold: 70, bands: [] };
+    let currentSbidRule = { l7_views_threshold: 70, l30_sold_es_bid_max: 0, bands: [] };
+
+    function shouldUseEsBid(sold, l7, rule) {
+        const l30Max = parseFloat(rule && rule.l30_sold_es_bid_max);
+        const l7Thr = parseFloat(rule && rule.l7_views_threshold);
+        const l30Limit = isFinite(l30Max) ? l30Max : 0;
+        const l7Limit = isFinite(l7Thr) ? l7Thr : 70;
+        return sold <= l30Limit || l7 < l7Limit;
+    }
+
+    function esBidResult(esBidRaw) {
+        if (!isFinite(esBidRaw) || esBidRaw <= 0) {
+            return { bid: 0, color: '#6c757d', skip: true };
+        }
+        return { bid: esBidRaw, color: '#0dcaf0', skip: false };
+    }
 
     function resolveSbidBandBid(band, ctx) {
         const color = band.color || '#333';
@@ -666,14 +681,9 @@
         const sold = parseFloat(rowData['eBay L30']) || 0;
         const views = parseFloat(rowData.views) || 0;
         const scvr = views > 0 ? (sold / views) * 100 : 0;
-        const threshold = parseFloat(currentSbidRule.l7_views_threshold);
-        const thr = isFinite(threshold) ? threshold : 70;
 
-        if (l7 < thr) {
-            if (!isFinite(esBidRaw) || esBidRaw <= 0) {
-                return { bid: 0, color: '#6c757d', skip: true };
-            }
-            return { bid: esBidRaw, color: '#0dcaf0', skip: false };
+        if (shouldUseEsBid(sold, l7, currentSbidRule)) {
+            return esBidResult(esBidRaw);
         }
         return getSbidFromRule(scvr, rowData);
     }
@@ -684,8 +694,9 @@
             method: 'GET',
             dataType: 'json',
             success: function(data) {
-                currentSbidRule = data || { l7_views_threshold: 70, bands: [] };
+                currentSbidRule = data || { l7_views_threshold: 70, l30_sold_es_bid_max: 0, bands: [] };
                 if (currentSbidRule.l7_views_threshold == null) currentSbidRule.l7_views_threshold = 70;
+                if (currentSbidRule.l30_sold_es_bid_max == null) currentSbidRule.l30_sold_es_bid_max = 0;
                 if (!Array.isArray(currentSbidRule.bands)) currentSbidRule.bands = [];
                 if (table) table.redraw(true);
             }
@@ -3371,6 +3382,19 @@
                     }
                 },
                 {
+                    title: "C BID",
+                    field: "ca_bid_percentage",
+                    hozAlign: "center",
+                    sorter: "number",
+                    width: 90,
+                    formatter: function(cell) {
+                        const v = parseFloat(cell.getValue());
+                        if (isNaN(v)) return '<span class="text-muted">—</span>';
+                        const color = v <= 4 ? '#dc3545' : v <= 7 ? '#ffc107' : v <= 13 ? '#198754' : '#e83e8c';
+                        return `<span style="color:${color}; font-weight:600;">${v.toFixed(1)}%</span>`;
+                    }
+                },
+                {
                     title: "S BID",
                     field: "ca_suggested_bid",
                     hozAlign: "center",
@@ -3385,19 +3409,6 @@
                             return '<span class="text-muted" title="No SBID — l7_views below threshold and no ES Bid available" style="font-size:11px;">—</span>';
                         }
                         return `<span style="color:${match.color}; font-weight:700;">${match.bid.toFixed(1)}%</span>`;
-                    }
-                },
-                {
-                    title: "C BID",
-                    field: "ca_bid_percentage",
-                    hozAlign: "center",
-                    sorter: "number",
-                    width: 90,
-                    formatter: function(cell) {
-                        const v = parseFloat(cell.getValue());
-                        if (isNaN(v)) return '<span class="text-muted">—</span>';
-                        const color = v <= 4 ? '#dc3545' : v <= 7 ? '#ffc107' : v <= 13 ? '#198754' : '#e83e8c';
-                        return `<span style="color:${color}; font-weight:600;">${v.toFixed(1)}%</span>`;
                     }
                 },
                 {

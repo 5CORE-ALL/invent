@@ -18,6 +18,18 @@ return [
 
     'watchdog_interval_seconds' => (int) env('QUEUE_WATCHDOG_INTERVAL', 30),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Stale worker detection (zombie queue:work processes)
+    |--------------------------------------------------------------------------
+    |
+    | Workers stuck in blocking I/O may ignore --max-time. The watchdog kills
+    | and respawns when process age or worker log staleness exceeds thresholds.
+    |
+    */
+    'stale_process_grace_seconds' => (int) env('QUEUE_WATCHDOG_STALE_PROCESS_GRACE', 300),
+    'stale_log_grace_seconds' => (int) env('QUEUE_WATCHDOG_STALE_LOG_GRACE', 600),
+
     'watchdog_queues' => [
         'google-maps-extractor' => [
             'timeout' => 3700,

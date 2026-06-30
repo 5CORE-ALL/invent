@@ -92,8 +92,78 @@ class QueueWorkerWatchdog
 
     public static function isRunning(string $queue): bool
     {
+        return self::findWorkerPids($queue) !== [];
+    }
+
+    /**
+     * Kill stuck workers and start a fresh one when needed.
+     */
+    public static function ensureRunning(string $queue, ?int $timeout = null, ?int $maxTime = null): bool
+    {
+        $configured = self::allConfiguredQueues();
+        $defaults = $configured[$queue] ?? ['timeout' => 3600, 'max_time' => 3600];
+        $timeout = $timeout ?? $defaults['timeout'];
+        $maxTime = $maxTime ?? $defaults['max_time'];
+
+        if (self::isRunning($queue)) {
+            if (! self::isStale($queue, $timeout, $maxTime)) {
+                return false;
+            }
+
+            $reason = self::staleReason($queue, $timeout, $maxTime) ?? 'stale';
+            $killed = self::terminateWorkers($queue);
+
+            Log::warning('Queue worker watchdog terminated stale worker(s)', [
+                'queue' => $queue,
+                'reason' => $reason,
+                'killed' => $killed,
+            ]);
+
+            usleep(500000);
+        }
+
+        if (self::isRunning($queue)) {
+            return false;
+        }
+
+        return self::spawnWorker($queue, $timeout, $maxTime);
+    }
+
+    public static function isStale(string $queue, int $timeout, int $maxTime): bool
+    {
+        if (! self::isRunning($queue)) {
+            return false;
+        }
+
+        return self::staleReason($queue, $timeout, $maxTime) !== null;
+    }
+
+    public static function terminateWorkers(string $queue): int
+    {
         if (PHP_OS_FAMILY === 'Windows') {
-            return self::isRunningOnWindows($queue);
+            return 0;
+        }
+
+        $killed = 0;
+
+        foreach (self::findWorkerPids($queue) as $pid) {
+            exec(sprintf('kill -9 %d 2>/dev/null', $pid), $output, $exitCode);
+
+            if ($exitCode === 0) {
+                $killed++;
+            }
+        }
+
+        return $killed;
+    }
+
+    /**
+     * @return list<int>
+     */
+    public static function findWorkerPids(string $queue): array
+    {
+        if (PHP_OS_FAMILY === 'Windows') {
+            return self::isRunningOnWindows($queue) ? [0] : [];
         }
 
         $pattern = sprintf('artisan queue:work.*--queue=%s', preg_quote($queue, '/'));
@@ -101,20 +171,15 @@ class QueueWorkerWatchdog
 
         exec($command, $output, $exitCode);
 
-        return $exitCode === 0;
-    }
-
-    public static function ensureRunning(string $queue, ?int $timeout = null, ?int $maxTime = null): bool
-    {
-        if (self::isRunning($queue)) {
-            return false;
+        if ($exitCode !== 0) {
+            return [];
         }
 
-        $configured = self::allConfiguredQueues();
-        $defaults = $configured[$queue] ?? ['timeout' => 3600, 'max_time' => 3600];
-        $timeout = $timeout ?? $defaults['timeout'];
-        $maxTime = $maxTime ?? $defaults['max_time'];
+        return array_values(array_filter(array_map('intval', $output), fn (int $pid) => $pid > 0));
+    }
 
+    private static function spawnWorker(string $queue, int $timeout, int $maxTime): bool
+    {
         $logFile = storage_path('logs/' . $queue . '-worker.log');
         $logDir = dirname($logFile);
         if (! is_dir($logDir)) {
@@ -159,6 +224,86 @@ class QueueWorkerWatchdog
 
             return false;
         }
+    }
+
+    private static function staleReason(string $queue, int $timeout, int $maxTime): ?string
+    {
+        $processGrace = (int) config('queue_workers.stale_process_grace_seconds', 300);
+        $logGrace = (int) config('queue_workers.stale_log_grace_seconds', 600);
+        $logStaleAfter = max($timeout + $logGrace, 900);
+
+        if ($maxTime > 0) {
+            $logStaleAfter = min($logStaleAfter, $maxTime);
+        }
+
+        foreach (self::findWorkerPids($queue) as $pid) {
+            $age = self::getProcessAgeSeconds($pid);
+
+            if ($age !== null && $maxTime > 0 && $age > ($maxTime + $processGrace)) {
+                return "process_age_exceeded:{$age}s";
+            }
+        }
+
+        $logFile = storage_path('logs/' . $queue . '-worker.log');
+
+        if (! is_file($logFile)) {
+            return null;
+        }
+
+        $logAge = time() - (int) filemtime($logFile);
+
+        if ($logAge > $logStaleAfter) {
+            return "log_stale:{$logAge}s";
+        }
+
+        $tail = self::readWorkerLogTail($logFile);
+
+        if ($tail !== null && str_contains($tail, 'RUNNING') && $logAge > ($timeout + $logGrace)) {
+            return "job_running_log_stale:{$logAge}s";
+        }
+
+        return null;
+    }
+
+    private static function getProcessAgeSeconds(int $pid): ?int
+    {
+        if ($pid <= 0 || PHP_OS_FAMILY === 'Windows') {
+            return null;
+        }
+
+        exec(sprintf('ps -o etimes= -p %d 2>/dev/null', $pid), $output, $exitCode);
+
+        if ($exitCode !== 0 || ! isset($output[0])) {
+            return null;
+        }
+
+        $age = trim((string) $output[0]);
+
+        return is_numeric($age) ? (int) $age : null;
+    }
+
+    private static function readWorkerLogTail(string $logFile): ?string
+    {
+        $handle = @fopen($logFile, 'rb');
+
+        if ($handle === false) {
+            return null;
+        }
+
+        $size = filesize($logFile);
+
+        if ($size === false || $size === 0) {
+            fclose($handle);
+
+            return null;
+        }
+
+        $readSize = (int) min(4096, $size);
+        fseek($handle, -$readSize, SEEK_END);
+        $tail = fread($handle, $readSize);
+        fclose($handle);
+
+        return is_string($tail) ? $tail : null;
     }
 
     private static function isWatchdogDaemonRunningOnWindows(): bool

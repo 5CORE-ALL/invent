@@ -134,9 +134,22 @@ class UpdateEbayTwoSuggestedBid extends Command
                 ->where('report_range', 'L30')
                 ->get()
                 ->keyBy('listing_id');
+
+        $sbidRuleRow = DB::table('ebay_sbid_rules')->where('key', 'ebay2')->first();
+        $sbidRuleData = $sbidRuleRow ? (json_decode($sbidRuleRow->rule, true) ?: []) : [];
+        $sbidBands = $sbidRuleData['bands'] ?? $this->defaultBands();
+        $l30SoldEsBidMax = (float) ($sbidRuleData['l30_sold_es_bid_max'] ?? 0);
+        $l7ViewsThreshold = (float) ($sbidRuleData['l7_views_threshold'] ?? 70);
+        $this->info('SBID Rule bands: ' . collect($sbidBands)->map(fn($b) => "SCVR≤{$b['scvr_max']}%→{$b['bid']}")->implode(', '));
+        $this->info("SBID ES Bid fallback: L30 sold ≤ {$l30SoldEsBidMax} or L7 views < {$l7ViewsThreshold}");
+
+        $dilRule = DB::table('ebay_sbid_rules')->where('key', 'ebay2_dil')->first();
+        $dilBands = $dilRule
+            ? (json_decode($dilRule->rule, true)['bands'] ?? $this->defaultDilBands())
+            : $this->defaultDilBands();
             
         // Process ProductMaster data in chunks and update campaign listings
-        $this->info('Processing bid updates based on L30 eBay sold...');
+        $this->info('Processing bid updates based on SCVR (eBay L30 / Views) thresholds...');
         $updatedListings = 0;
         // Track SKU-specific bids to handle multiple SKUs with same listing_id
         $skuBids = []; // [listing_id => [sku => bid]]
@@ -149,7 +162,11 @@ class UpdateEbayTwoSuggestedBid extends Command
                 $shopifyData, 
                 $ebayMetricsNormalized, 
                 $campaignListings, 
-                $ebayGeneralL30, 
+                $ebayGeneralL30,
+                $sbidBands,
+                $dilBands,
+                $l30SoldEsBidMax,
+                $l7ViewsThreshold,
                 &$updatedListings,
                 &$skuBids
             ) {
@@ -170,47 +187,47 @@ class UpdateEbayTwoSuggestedBid extends Command
                     }
 
                     $listing = $campaignListings[$ebayMetric->item_id];
-                    $l30Data = $ebayGeneralL30->get($ebayMetric->item_id);
                     
-                    // L30 eBay sold (eBay L30) for this SKU
-                    $soldL30 = (int) ($ebayMetric->ebay_l30 ?? 0);
-                    
-                    // Get ESBID (suggested bid from campaign listing)
-                    $esbid = (float) ($listing->suggested_bid ?? 0);
-                    
-                    // PMT S BID rules: L30 sold = 0 → ESbid; 1-5 → 9; <7 (i.e. 6) → 7; >=7 → ESbid
-                    if ($soldL30 === 0) {
+                    $soldL30 = (float) ($ebayMetric->ebay_l30 ?? 0);
+                    $views   = (float) ($ebayMetric->views ?? 0);
+                    $l7Views = (float) ($ebayMetric->l7_views ?? 0);
+                    $esbid   = (float) ($listing->suggested_bid ?? 0);
+                    $scvr    = $views > 0 ? ($soldL30 / $views) * 100 : 0;
+
+                    $inv = (float) ($shopify->inv ?? 0);
+                    $qty = (float) ($shopify->quantity ?? 0);
+                    $dil = $inv > 0 ? ($qty / $inv) * 100 : 0;
+
+                    if ($soldL30 <= $l30SoldEsBidMax || $l7Views < $l7ViewsThreshold) {
                         $newBid = $esbid;
-                    } elseif ($soldL30 >= 1 && $soldL30 <= 5) {
-                        $newBid = 9.0;
-                    } elseif ($soldL30 > 5) {
-                        $newBid = 7.0;
                     } else {
-                        $newBid = $esbid;
+                        $newBid = $this->resolveCombinedBid($scvr, $sbidBands, $dil, $dilBands, [
+                            'ebay_price' => (float) ($ebayMetric->ebay_price ?? 0),
+                            'ebay_l30'   => $soldL30,
+                            'views'      => $views,
+                        ]);
+                    }
+
+                    if ($newBid <= 0) {
+                        continue;
                     }
                     
-                    // Cap newBid to maximum of 12
-                    $newBid = min($newBid, 12.0);
-                    
-                    // Store bid per SKU for this listing_id
                     $listingId = $ebayMetric->item_id;
                     if (!isset($skuBids[$listingId])) {
                         $skuBids[$listingId] = [];
                     }
                     $skuBids[$listingId][$pm->sku] = $newBid;
                     
-                    // For listings with multiple SKUs, use the lowest bid (most conservative)
-                    // This ensures we don't overbid when multiple SKUs share the same listing
                     $listing->new_bid = min($skuBids[$listingId]);
-                    $listing->sku = $pm->sku; // Store last processed SKU for logging
-                    $listing->all_skus = array_keys($skuBids[$listingId]); // Store all SKUs
+                    $listing->sku = $pm->sku;
+                    $listing->all_skus = array_keys($skuBids[$listingId]);
                     
                     $allSkusStr = implode(', ', array_keys($skuBids[$listingId]));
                     $allBidsStr = implode(', ', array_map(function($sku) use ($skuBids, $listingId) {
                         return "{$sku}:{$skuBids[$listingId][$sku]}";
                     }, array_keys($skuBids[$listingId])));
                     $finalBid = min($skuBids[$listingId]);
-                    $this->info("SKU: {$pm->sku} | Listing ID: {$listingId} | Calculated SBID: {$newBid} | L30 eBay sold: {$soldL30} | All SKUs: [{$allSkusStr}] | All Bids: [{$allBidsStr}] | Final Bid (min): {$finalBid}");
+                    $this->info("SKU: {$pm->sku} | Listing ID: {$listingId} | SCVR: " . round($scvr, 2) . "% | DIL: " . round($dil, 2) . "% | SBID: {$newBid} | All SKUs: [{$allSkusStr}] | All Bids: [{$allBidsStr}] | Final Bid (min): {$finalBid}");
                     $updatedListings++;
                 }
             });
@@ -334,6 +351,90 @@ class UpdateEbayTwoSuggestedBid extends Command
         } finally {
             DB::connection()->disconnect();
         }
+    }
+
+    private function resolveCombinedBid(float $scvr, array $sbidBands, float $dil, array $dilBands, array $ctx = []): float
+    {
+        if ($this->isPinkBand($dil, $dilBands)) {
+            return $this->pinkBid($dilBands);
+        }
+        if ($this->isPinkBand($scvr, $sbidBands)) {
+            return $this->pinkBid($sbidBands);
+        }
+
+        return $this->getBidFromRule($scvr, $sbidBands, $ctx);
+    }
+
+    private function isPinkBand(float $value, array $bands): bool
+    {
+        $n = count($bands);
+        if ($n === 0) {
+            return false;
+        }
+        foreach ($bands as $i => $band) {
+            $max = (float) ($band['scvr_max'] ?? $band['dil_max'] ?? 9999);
+            if ($value <= $max) {
+                return $i === $n - 1;
+            }
+        }
+        return true;
+    }
+
+    private function pinkBid(array $bands): float
+    {
+        $last = end($bands);
+        return (float) ($last['bid'] ?? 2.1);
+    }
+
+    private function defaultDilBands(): array
+    {
+        return [
+            ['dil_max' => 16.66, 'bid' => 9.1, 'label' => 'Red',    'color' => '#a00211'],
+            ['dil_max' => 25,    'bid' => 7.1, 'label' => 'Yellow', 'color' => '#ffc107'],
+            ['dil_max' => 50,    'bid' => 4.1, 'label' => 'Green',  'color' => '#28a745'],
+            ['dil_max' => 9999,  'bid' => 2.1, 'label' => 'Pink',   'color' => '#e83e8c'],
+        ];
+    }
+
+    private function getBidFromRule(float $scvr, array $bands, array $ctx = []): float
+    {
+        if ($scvr <= 0) {
+            return 0.0;
+        }
+        $ctx['scvr'] = $scvr;
+        foreach ($bands as $band) {
+            if ($scvr <= (float)($band['scvr_max'] ?? 9999)) {
+                return $this->resolveBandBid($band, $ctx);
+            }
+        }
+        $last = end($bands);
+        return $last ? $this->resolveBandBid($last, $ctx) : 2.1;
+    }
+
+    private function resolveBandBid(array $band, array $ctx): float
+    {
+        $sub = $band['sub'] ?? null;
+        if (is_array($sub) && !empty($sub['metric']) && !empty($sub['bands']) && is_array($sub['bands'])) {
+            $val = (float)($ctx[$sub['metric']] ?? 0);
+            foreach ($sub['bands'] as $sb) {
+                if ($val <= (float)($sb['max'] ?? 9999)) {
+                    return (float)($sb['bid'] ?? $band['bid'] ?? 2.1);
+                }
+            }
+            $lastSub = end($sub['bands']);
+            return (float)($lastSub['bid'] ?? $band['bid'] ?? 2.1);
+        }
+        return (float)($band['bid'] ?? 9.1);
+    }
+
+    private function defaultBands(): array
+    {
+        return [
+            ['scvr_max' => 4,    'bid' => 9.1],
+            ['scvr_max' => 7,    'bid' => 7.1],
+            ['scvr_max' => 13,   'bid' => 4.1],
+            ['scvr_max' => 9999, 'bid' => 2.1],
+        ];
     }
 
     private function getEbayAccessToken()

@@ -18,19 +18,28 @@ class EnsureQueueWorkerCommand extends Command
     {
         $queue = (string) $this->argument('queue');
 
-        if (QueueWorkerWatchdog::isRunning($queue)) {
-            $this->line("Worker already running for queue [{$queue}].");
-
-            return self::SUCCESS;
-        }
-
         $timeout = $this->option('timeout') !== null ? (int) $this->option('timeout') : null;
         $maxTime = $this->option('max-time') !== null ? (int) $this->option('max-time') : null;
+
+        $configured = QueueWorkerWatchdog::allConfiguredQueues();
+        $defaults = $configured[$queue] ?? ['timeout' => 3600, 'max_time' => 3600];
+        $resolvedTimeout = $timeout ?? $defaults['timeout'];
+        $resolvedMaxTime = $maxTime ?? $defaults['max_time'];
+
+        if (QueueWorkerWatchdog::isRunning($queue) && QueueWorkerWatchdog::isStale($queue, $resolvedTimeout, $resolvedMaxTime)) {
+            $this->warn("Stale worker detected for queue [{$queue}] — terminating and respawning.");
+        }
 
         $started = QueueWorkerWatchdog::ensureRunning($queue, $timeout, $maxTime);
 
         if ($started) {
             $this->info("Started queue worker for [{$queue}].");
+
+            return self::SUCCESS;
+        }
+
+        if (QueueWorkerWatchdog::isRunning($queue)) {
+            $this->line("Worker already running for queue [{$queue}].");
 
             return self::SUCCESS;
         }

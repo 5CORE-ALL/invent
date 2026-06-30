@@ -31,21 +31,18 @@ class RunQueueWorkerWatchdogCommand extends Command
 
         while (true) {
             foreach ($queues as $queue => $options) {
-                if (QueueWorkerWatchdog::isRunning($queue)) {
-                    continue;
+                $timeout = (int) $options['timeout'];
+                $maxTime = (int) $options['max_time'];
+
+                if (QueueWorkerWatchdog::isRunning($queue) && QueueWorkerWatchdog::isStale($queue, $timeout, $maxTime)) {
+                    $this->line('[' . now()->toDateTimeString() . "] Stale worker detected for [{$queue}] — terminating and respawning");
                 }
 
-                $started = QueueWorkerWatchdog::ensureRunning(
-                    $queue,
-                    (int) $options['timeout'],
-                    (int) $options['max_time']
-                );
+                $started = QueueWorkerWatchdog::ensureRunning($queue, $timeout, $maxTime);
 
-                $message = $started
-                    ? "Started dedicated worker for [{$queue}]"
-                    : "Failed to start worker for [{$queue}] — see storage/logs/{$queue}-worker.log";
-
-                $this->line('[' . now()->toDateTimeString() . '] ' . $message);
+                if ($started) {
+                    $this->line('[' . now()->toDateTimeString() . "] Started dedicated worker for [{$queue}]");
+                }
             }
 
             sleep($interval);

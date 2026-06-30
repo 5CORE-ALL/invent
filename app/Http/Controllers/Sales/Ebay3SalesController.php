@@ -5,9 +5,6 @@ namespace App\Http\Controllers\Sales;
 use App\Http\Controllers\Controller;
 use App\Models\Ebay3DailyData;
 use App\Models\ProductMaster;
-use App\Models\MarketplacePercentage;
-use App\Models\Ebay3GeneralReport;
-use App\Models\Ebay3PriorityReport;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -16,27 +13,7 @@ class Ebay3SalesController extends Controller
 {
     public function index()
     {
-        // Use California timezone for consistent 30-day calculation (matching FetchEbay3DailyData)
-        $thirtyDaysAgo = \Carbon\Carbon::now('America/Los_Angeles')->subDays(30);
-        
-        // Calculate KW Spent (from ebay_3_priority_reports - parent-wise)
-        $kwSpent = DB::table('ebay_3_priority_reports')
-            ->where('report_range', 'L30')
-            ->whereDate('updated_at', '>=', $thirtyDaysAgo->format('Y-m-d'))
-            ->selectRaw('SUM(CAST(REPLACE(REPLACE(cpc_ad_fees_payout_currency, "USD ", ""), ",", "") AS DECIMAL(10,2))) as total_spend')
-            ->value('total_spend') ?? 0;
-
-        // Calculate PMT Spent (from ebay_3_general_reports - item-wise)
-        $pmtSpent = DB::table('ebay_3_general_reports')
-            ->where('report_range', 'L30')
-            ->whereDate('updated_at', '>=', $thirtyDaysAgo->format('Y-m-d'))
-            ->selectRaw('SUM(CAST(REPLACE(REPLACE(ad_fees, "USD ", ""), ",", "") AS DECIMAL(10,2))) as total_spend')
-            ->value('total_spend') ?? 0;
-
-        return view('sales.ebay3_daily_sales_data', [
-            'kwSpent' => (float) $kwSpent,
-            'pmtSpent' => (float) $pmtSpent,
-        ]);
+        return view('sales.ebay3_daily_sales_data');
     }
 
     public function getData(Request $request)
@@ -50,50 +27,17 @@ class Ebay3SalesController extends Controller
 
         Log::info('Found ' . $orders->count() . ' eBay 3 orders');
 
-        // Get unique SKUs and legacy_item_ids (item_ids)
+        // Get unique SKUs
         $skus = $orders->pluck('sku')->filter()->unique()->toArray();
-        $itemIds = $orders->pluck('legacy_item_id')->filter()->unique()->toArray();
 
         // Fetch ProductMaster data for LP, Ship and Parent info
         $productMasters = ProductMaster::whereIn('sku', $skus)->get()->keyBy('sku');
 
-        // Get parents for grouping KW spend (from ProductMaster)
+        // Get parents for display (from ProductMaster)
         $parents = [];
         foreach ($productMasters as $sku => $pm) {
             $parents[$sku] = $pm->parent ?? '';
         }
-
-        // Calculate KW Spent per parent (from ebay_3_priority_reports - campaigns are named by parent)
-        $kwSpentByParent = [];
-        $priorityReports = DB::table('ebay_3_priority_reports')
-            ->where('report_range', 'L30')
-            ->get();
-        
-        foreach ($priorityReports as $report) {
-            $campaignName = $report->campaign_name ?? '';
-            $spent = (float) preg_replace('/[^\d.]/', '', $report->cpc_ad_fees_payout_currency ?? '0');
-            // Campaign name contains the parent SKU
-            $kwSpentByParent[$campaignName] = ($kwSpentByParent[$campaignName] ?? 0) + $spent;
-        }
-
-        // Calculate PMT Spent per item_id (from ebay_3_general_reports)
-        $pmtSpentByItemId = [];
-        $generalReports = DB::table('ebay_3_general_reports')
-            ->whereIn('listing_id', $itemIds)
-            ->where('report_range', 'L30')
-            ->get();
-        
-        foreach ($generalReports as $report) {
-            $spent = (float) preg_replace('/[^\d.]/', '', $report->ad_fees ?? '0');
-            $pmtSpentByItemId[$report->listing_id] = ($pmtSpentByItemId[$report->listing_id] ?? 0) + $spent;
-        }
-
-        Log::info('eBay 3 Ads Data - KW campaigns: ' . count($kwSpentByParent) . ', PMT entries: ' . count($pmtSpentByItemId));
-
-        // Get marketplace percentage (same as eBay 2 - 85%)
-        $marketplaceData = MarketplacePercentage::where('marketplace', 'EbayThree')->first();
-        $percentage = $marketplaceData ? $marketplaceData->percentage : 85;
-        $percentageDecimal = $percentage / 100;
 
         $data = [];
         foreach ($orders as $order) {
@@ -156,21 +100,6 @@ class Ebay3SalesController extends Controller
             // ROI = (PFT / COGS) * 100
             $roi = $cogs > 0 ? ($pft / $cogs) * 100 : 0;
 
-            // Get KW Spent for this parent (match campaign name containing parent)
-            $kwSpent = 0;
-            if (!empty($parent)) {
-                $cleanParent = str_replace('PARENT ', '', $parent);
-                foreach ($kwSpentByParent as $campaignName => $spent) {
-                    if (stripos($campaignName, $cleanParent) !== false || stripos($campaignName, $parent) !== false) {
-                        $kwSpent = $spent;
-                        break;
-                    }
-                }
-            }
-
-            // Get PMT Spent for this item_id
-            $pmtSpent = $pmtSpentByItemId[$order->legacy_item_id] ?? 0;
-
             $data[] = [
                 'order_id' => $order->order_id,
                 'item_id' => $order->legacy_item_id,
@@ -193,8 +122,6 @@ class Ebay3SalesController extends Controller
                 'pft_each_pct' => round($pftEachPct, 2),
                 'pft' => round($pft, 2),
                 'roi' => round($roi, 2),
-                'kw_spent' => round($kwSpent, 2),
-                'pmt_spent' => round($pmtSpent, 2),
             ];
         }
 
@@ -230,9 +157,6 @@ class Ebay3SalesController extends Controller
                 'pft_each_pct' => true,
                 'pft' => true,
                 'roi' => true,
-                'kw_spent' => true,
-                'pmt_spent' => true,
-                'total_spent' => true,
             ];
 
             if (file_exists($filePath)) {
