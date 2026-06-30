@@ -399,6 +399,20 @@
             text-decoration: underline !important;
         }
 
+        .toa-barcode-cell {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 44px;
+        }
+        .toa-barcode-img {
+            max-width: 110px;
+            max-height: 44px;
+            object-fit: contain;
+            border-radius: 4px;
+            background: #fff;
+        }
+
         /* Column header tooltips (Tabulator) — up to 2× header size, bold */
         .tabulator-tooltip {
             font-size: 2.16rem !important;
@@ -592,6 +606,14 @@
                                 <option value="{{ $s }}">{{ $s }}</option>
                                 @endforeach
                             </select>
+                        </div>
+                        <div class="filter-item">
+                            <label class="form-label fw-semibold d-block" style="visibility: hidden;">Export</label>
+                            <button type="button" id="toa-export-btn" class="btn btn-sm btn-success fw-semibold d-flex align-items-center"
+                                title="Export filtered rows: Image, SKU, MOQ, PKG, QC, CP, Amount (MOQ × CP)"
+                                aria-label="Export filtered rows">
+                                <i class="fas fa-download me-1"></i> Export
+                            </button>
                         </div>
                         <div class="filter-item toa-columns-wrap">
                             <button type="button" class="btn btn-sm btn-outline-secondary" id="toa-columns-btn" title="Show / hide columns" aria-label="Show / hide columns">
@@ -2457,6 +2479,75 @@
                         headerTooltip: "Short name of product",
                     },
                     {
+                        title: "Specs",
+                        field: "specs",
+                        width: 180,
+                        minWidth: 120,
+                        hozAlign: "left",
+                        headerTooltip: "Product specifications (product master)",
+                        editor: "input",
+                        formatter: function (cell) {
+                            const v = cell.getValue();
+                            if (v == null || String(v).trim() === '') {
+                                return '<span class="text-muted">—</span>';
+                            }
+                            return escapeHtml(String(v));
+                        },
+                        cellEdited: function (cell) {
+                            saveProductMasterField(cell, cell.getValue());
+                        },
+                    },
+                    {
+                        title: "Barcode",
+                        field: "barcode",
+                        width: 120,
+                        minWidth: 100,
+                        headerSort: false,
+                        hozAlign: "center",
+                        headerTooltip: "Barcode image from product master",
+                        formatter: function (cell) {
+                            const row = cell.getRow().getData();
+                            const imgUrl = String(row.barcode_image || '').trim();
+                            if (imgUrl) {
+                                const safeUrl = escapeHtmlAttr(imgUrl);
+                                return `<span class="toa-barcode-cell" title="Barcode image">
+                                    <img src="${safeUrl}" alt="Barcode" class="toa-barcode-img hover-thumb" data-full="${safeUrl}">
+                                </span>`;
+                            }
+                            const code = String(row.barcode || cell.getValue() || '').trim();
+                            if (!code) {
+                                return '<span class="text-muted">—</span>';
+                            }
+                            const src = 'https://bwipjs-api.metafloor.com/?bcid=code128&text='
+                                + encodeURIComponent(code)
+                                + '&scale=2&height=10&includetext&backgroundcolor=ffffff';
+                            const safeSrc = escapeHtmlAttr(src);
+                            const safeCode = escapeHtmlAttr(code);
+                            return `<span class="toa-barcode-cell" title="${safeCode}">
+                                <img src="${safeSrc}" alt="Barcode" class="toa-barcode-img hover-thumb" data-full="${safeSrc}">
+                            </span>`;
+                        },
+                        cellMouseOver: function (e, cell) {
+                            clearTimeout(hideTimeout);
+                            const img = cell.getElement().querySelector('.hover-thumb');
+                            if (!img) return;
+                            globalPreview.innerHTML = `<img src="${img.dataset.full}" style="max-width:350px;max-height:350px;object-fit:contain;">`;
+                            globalPreview.style.display = 'block';
+                            globalPreview.style.top = `${e.clientY + 15}px`;
+                            globalPreview.style.left = `${e.clientX + 15}px`;
+                        },
+                        cellMouseMove: function (e) {
+                            if (globalPreview.style.display !== 'block') return;
+                            globalPreview.style.top = `${e.clientY + 15}px`;
+                            globalPreview.style.left = `${e.clientX + 15}px`;
+                        },
+                        cellMouseOut: function () {
+                            hideTimeout = setTimeout(function () {
+                                globalPreview.style.display = 'none';
+                            }, 150);
+                        },
+                    },
+                    {
                         title: "MOQ",
                         field: "approved_qty",
                         headerTooltip: "Minimum order quantity",
@@ -2659,7 +2750,7 @@
                         }
                     },
                     {
-                        title: "fix",
+                        title: "QC",
                         field: "fix_view",
                         hozAlign: "center",
                         vertAlign: "middle",
@@ -3817,6 +3908,36 @@
                 .catch(err => console.error(err));
             }
 
+            function saveProductMasterField(cell, value) {
+                const rowData = cell.getRow().getData();
+                const sku = rowData.SKU;
+                const field = cell.getColumn().getField();
+                if (!sku || !field) return;
+
+                fetch('/product_master/update-field', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                    },
+                    body: JSON.stringify({
+                        sku: sku,
+                        field: field,
+                        value: value == null ? '' : String(value)
+                    })
+                })
+                .then(function (res) { return res.json(); })
+                .then(function (res) {
+                    if (!res.success) {
+                        alert('Error: ' + (res.message || 'Could not save'));
+                    }
+                })
+                .catch(function (err) {
+                    console.error(err);
+                    alert('Error saving product master field.');
+                });
+            }
+
             // Reusable AJAX call for forecast data updates
             function updateForecastField(data, onSuccess = () => {}, onFail = () => {}) {
                 $.post('/update-forecast-data', {
@@ -4264,7 +4385,187 @@
                 if (el) el.addEventListener("change", () => applyToolbarFilters());
             })();
 
+            function buildToaPkgExportCell(rowData) {
+                const pkgFields = [
+                    'instructions_item_pkg',
+                    'ctn_instructions',
+                    'packing_instructions',
+                    'instructions_carton_design',
+                    'packing_cdr_path',
+                ];
+                return pkgFields.map(function (fieldKey) {
+                    const meta = TOA_DATA_FIELD_META[fieldKey] || {};
+                    const label = meta.title || fieldKey;
+                    const raw = String(rowData[fieldKey] ?? '').trim();
+                    if (!raw) {
+                        return label + ': (no data)';
+                    }
+                    return label + ': ' + raw;
+                }).join('\n');
+            }
+
+            function buildToaQcAmzExportText(rowData) {
+                const rating = rowData.rating;
+                const reviews = rowData.reviews || 0;
+                if (!rating || rating === 0) {
+                    return 'Amazon: No rating data';
+                }
+                return 'Amazon: ' + parseFloat(rating).toFixed(1) + ' stars, ' + parseInt(reviews, 10).toLocaleString() + ' reviews';
+            }
+
+            function buildToaQcLmpExportText(rowData) {
+                const lmpPrice = rowData.lmp_price;
+                const totalCompetitors = parseInt(rowData.lmp_entries_total, 10) || 0;
+                const lmpLink = String(rowData.lmp_link || '').trim();
+                let line = 'LMP: ';
+                if (lmpPrice) {
+                    line += '$' + parseFloat(lmpPrice).toFixed(2);
+                    if (lmpLink) line += ' (' + lmpLink + ')';
+                } else {
+                    line += 'N/A';
+                }
+                if (totalCompetitors > 0) {
+                    line += ' | ' + totalCompetitors + ' competitor(s)';
+                }
+                return line;
+            }
+
+            function buildToaQcReviewExportText(rowData) {
+                if (!rowData.has_review) {
+                    return 'Review: No review recorded';
+                }
+                const parts = ['Review:'];
+                [
+                    ['Positive', rowData.positive_review],
+                    ['Negative', rowData.negative_review],
+                    ['Improvement', rowData.improvement],
+                    ['Date Updated', rowData.date_updated],
+                    ['Reviews Note', rowData.Reviews],
+                ].forEach(function (pair) {
+                    const v = String(pair[1] ?? '').trim();
+                    if (v) parts.push(pair[0] + ': ' + v);
+                });
+                return parts.join('\n');
+            }
+
+            function buildToaQcIrExportText(irIssues) {
+                if (!irIssues || !irIssues.length) {
+                    return 'IR: No QC / packing issues recorded';
+                }
+                const lines = ['IR:'];
+                irIssues.forEach(function (it, idx) {
+                    const found = [it.issue, it.issue_remark].filter(Boolean).join(': ');
+                    const fixed = [it.c_action_1, it.c_action_1_remark].filter(Boolean).join(': ');
+                    lines.push(
+                        (idx + 1) + '. ' + (it.what_happened || '—')
+                        + ' | RC Found: ' + (found || '—')
+                        + ' | RC Fixed: ' + (fixed || '—')
+                    );
+                });
+                return lines.join('\n');
+            }
+
+            function buildToaQcExportCell(rowData, irIssues) {
+                const issuesRaw = String(rowData.issues || '').trim();
+                return [
+                    'Issues: ' + (issuesRaw || 'No issues text'),
+                    buildToaQcIrExportText(irIssues),
+                    buildToaQcAmzExportText(rowData),
+                    buildToaQcLmpExportText(rowData),
+                    buildToaQcReviewExportText(rowData),
+                ].join('\n\n');
+            }
+
+            function fetchToaQcIssuesForExport(sku) {
+                return fetch('{{ route('to.order.analysis.qc.issues') }}?sku=' + encodeURIComponent(sku), {
+                    headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
+                })
+                    .then(function (res) { return res.json(); })
+                    .then(function (data) { return (data && data.issues) || []; })
+                    .catch(function () { return []; });
+            }
+
+            function downloadToaExportCsv(csvData, filename) {
+                const escapeCsv = function (v) {
+                    return '"' + String(v ?? '').replace(/"/g, '""') + '"';
+                };
+                const csv = csvData.map(function (row) {
+                    return row.map(escapeCsv).join(',');
+                }).join('\r\n');
+                const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = filename;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+            }
+
             document.getElementById("stage-filter").value = "";
+
+            // Export filtered rows: Image, SKU, MOQ, PKG, QC, CP, Amount (MOQ × CP)
+            (function () {
+                const exportBtn = document.getElementById('toa-export-btn');
+                if (!exportBtn) return;
+                exportBtn.addEventListener('click', async function () {
+                    const btn = this;
+                    const origHtml = btn.innerHTML;
+                    btn.disabled = true;
+                    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Exporting…';
+
+                    try {
+                        const activeRows = table.getRows('active').filter(function (row) {
+                            const d = row.getData();
+                            return !d.is_parent && !(d.SKU && String(d.SKU).startsWith('PARENT'));
+                        });
+
+                        if (!activeRows.length) {
+                            alert('No filtered rows to export.');
+                            return;
+                        }
+
+                        const irBySku = {};
+                        await Promise.all(activeRows.map(async function (row) {
+                            const sku = String(row.getData().SKU || '').trim();
+                            if (!sku) return;
+                            irBySku[sku] = await fetchToaQcIssuesForExport(sku);
+                        }));
+
+                        const headers = ['Image', 'SKU', 'MOQ', 'PKG', 'QC', 'CP', 'Amount'];
+                        const csvData = [headers];
+
+                        activeRows.forEach(function (row) {
+                            const d = row.getData();
+                            const sku = String(d.SKU || '').trim();
+                            const moqRaw = d.approved_qty;
+                            const moq = moqRaw != null && moqRaw !== '' ? parseInt(moqRaw, 10) : NaN;
+                            const cpRaw = d.CP;
+                            const cp = cpRaw != null && cpRaw !== '' ? parseFloat(cpRaw) : NaN;
+                            const amount = Number.isFinite(moq) && Number.isFinite(cp) ? moq * cp : '';
+                            csvData.push([
+                                d.Image || '',
+                                d.SKU || '',
+                                Number.isFinite(moq) ? moq : '',
+                                buildToaPkgExportCell(d),
+                                buildToaQcExportCell(d, irBySku[sku] || []),
+                                Number.isFinite(cp) ? cp : '',
+                                amount !== '' ? amount : '',
+                            ]);
+                        });
+
+                        const date = new Date().toISOString().slice(0, 10);
+                        downloadToaExportCsv(csvData, 'to_order_analysis_export_' + date + '.csv');
+                    } catch (err) {
+                        console.error('TOA export error:', err);
+                        alert('Export failed. Please try again.');
+                    } finally {
+                        btn.disabled = false;
+                        btn.innerHTML = origHtml;
+                    }
+                });
+            })();
 
             // Table events
             table.on("dataFiltered", function () {
