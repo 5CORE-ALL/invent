@@ -31,22 +31,16 @@ class RunGoogleMapsExtractionJob implements ShouldQueue
         $state = Cache::get($this->stateCacheKey());
 
         if (! is_array($state) || empty($state['search_id'])) {
-            $this->writeProgress([
-                'status' => 'failed',
-                'message' => 'Extraction state was not found for queued job.',
-            ]);
-
             return;
         }
 
         $search = GoogleMapsExtractorSearch::find($state['search_id']);
 
         if (! $search) {
-            $this->writeProgress([
-                'status' => 'failed',
-                'message' => 'Extraction search record was not found.',
-            ]);
+            return;
+        }
 
+        if (in_array($search->status, ['completed', 'cancelled', 'stopped', 'failed'], true)) {
             return;
         }
 

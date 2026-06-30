@@ -259,18 +259,12 @@
                             <input type="hidden" name="location_country" id="location_country" value="United States">
                         </div>
 
-                        <div class="mb-3">
-                            <label for="location_state" class="form-label">State / Region</label>
-                            <select name="location_state" id="location_state" class="form-select">
-                                <option value="">Select state / region</option>
-                            </select>
-                        </div>
+                        <input type="hidden" name="location_scope" value="specific_city">
 
                         <div class="mb-3">
-                            <label for="location_scope" class="form-label">Location Scope</label>
-                            <select name="location_scope" id="location_scope" class="form-select">
-                                <option value="specific_city" selected>Specific city</option>
-                                <option value="specific_zip">Specific ZIP code</option>
+                            <label for="location_state" class="form-label">State / Region</label>
+                            <select name="location_state" id="location_state" class="form-select" required>
+                                <option value="">Select state / region</option>
                             </select>
                         </div>
 
@@ -300,17 +294,8 @@
                             </div>
                         </div>
 
-                        <div class="mb-3 d-none" id="location_zip_wrap">
-                            <label for="location_zip" class="form-label">ZIP Code</label>
-                            <input type="text" name="location_zip" id="location_zip" class="form-control"
-                                placeholder="Example: 90210">
-                            <div class="form-text">
-                                The city library does not include ZIP-code lists, so enter a specific ZIP manually.
-                            </div>
-                        </div>
-
                         <div class="alert alert-light border small py-2" id="location_preview">
-                            Select country and state to build a broader search location.
+                            Select a state, then choose one or more cities.
                         </div>
 
                         <div class="mb-3">
@@ -331,7 +316,9 @@
                             </div>
                         </div>
 
-                        <button type="submit" class="btn btn-primary w-100">
+                        <div class="form-text text-danger mb-2 d-none" id="extractor-form-error"></div>
+
+                        <button type="submit" class="btn btn-primary w-100" id="extract-submit-btn" disabled>
                             <i class="ri-search-line me-1"></i>Extract Real Data
                         </button>
                     </form>
@@ -540,9 +527,10 @@
 
             const countrySelect = document.getElementById('location_country');
             const stateSelect = document.getElementById('location_state');
-            const scopeSelect = document.getElementById('location_scope');
             const cityWrap = document.getElementById('location_city_wrap');
-            const zipWrap = document.getElementById('location_zip_wrap');
+            const extractSubmitBtn = document.getElementById('extract-submit-btn');
+            const extractorFormError = document.getElementById('extractor-form-error');
+            const queryInput = document.getElementById('query');
             const cityPickerToggle = document.getElementById('city_picker_toggle');
             const cityPickerMenu = document.getElementById('city_picker_menu');
             const cityPickerSearch = document.getElementById('city_picker_search');
@@ -550,7 +538,6 @@
             const cityPickerSelectAll = document.getElementById('city_picker_select_all');
             const cityPickerClear = document.getElementById('city_picker_clear');
             const selectedCityPayloadInput = document.getElementById('location_city_payload');
-            const zipInput = document.getElementById('location_zip');
             const locationInput = document.getElementById('location');
             const locationPreview = document.getElementById('location_preview');
             let availableCities = [];
@@ -662,28 +649,19 @@
             }
 
             function getPlannedCityFetches() {
-                const scope = scopeSelect?.value || 'specific_city';
-                const selectedCities = getSelectedCities();
-
-                if (scope !== 'specific_city' || selectedCities.length === 0) {
-                    return [];
-                }
-
-                return Array.from(new Set(selectedCities.filter(Boolean)));
+                return Array.from(new Set(getSelectedCities().filter(Boolean)));
             }
 
             function composeLocation(compact = false) {
                 const country = countrySelect?.value || '';
                 const state = stateSelect?.value || '';
-                const scope = scopeSelect?.value || 'specific_city';
                 const selectedCities = getSelectedCities();
-                const zip = zipInput?.value.trim() || '';
 
-                if (!country && !state) {
+                if (!state) {
                     return '';
                 }
 
-                if (scope === 'specific_city' && selectedCities.length > 0) {
+                if (selectedCities.length > 0) {
                     if (compact) {
                         return [`${selectedCities.length} selected cities`, state, country].filter(Boolean).join(', ');
                     }
@@ -691,19 +669,48 @@
                     return [selectedCities.join(', '), state, country].filter(Boolean).join(', ');
                 }
 
-                if (scope === 'specific_zip' && zip) {
-                    return [zip, state, country].filter(Boolean).join(', ');
-                }
-
                 return [state, country].filter(Boolean).join(', ');
             }
 
-            function updateLocationFields() {
-                const scope = scopeSelect?.value || 'specific_city';
-                const selectedCities = getSelectedCities();
+            function isExtractionFormValid() {
+                const query = queryInput?.value.trim() || '';
+                const state = stateSelect?.value.trim() || '';
+                return query !== '' && state !== '' && getSelectedCities().length > 0;
+            }
 
-                cityWrap?.classList.toggle('d-none', scope !== 'specific_city');
-                zipWrap?.classList.toggle('d-none', scope !== 'specific_zip');
+            function showExtractorFormError(message = '') {
+                if (!extractorFormError) {
+                    return;
+                }
+
+                if (message) {
+                    extractorFormError.textContent = message;
+                    extractorFormError.classList.remove('d-none');
+                    return;
+                }
+
+                extractorFormError.textContent = '';
+                extractorFormError.classList.add('d-none');
+            }
+
+            function updateExtractSubmitState() {
+                if (!extractSubmitBtn) {
+                    return;
+                }
+
+                const valid = isExtractionFormValid();
+                extractSubmitBtn.disabled = !valid;
+
+                if (valid) {
+                    showExtractorFormError();
+                }
+            }
+
+            function updateLocationFields() {
+                const selectedCities = getSelectedCities();
+                const hasState = Boolean(stateSelect?.value);
+
+                cityWrap?.classList.toggle('d-none', !hasState);
                 populateCities();
 
                 const composed = composeLocation(true);
@@ -712,17 +719,18 @@
                 }
 
                 if (locationPreview) {
-                    if (composed) {
-                        locationPreview.textContent = scope === 'specific_city'
-                            ? `Specific city: ${selectedCities.length} selected in ${[stateSelect?.value || '', countrySelect?.value || ''].filter(Boolean).join(', ')}`
-                            : `Specific ZIP code: ${composed}`;
+                    if (!hasState) {
+                        locationPreview.textContent = 'Select a state, then choose one or more cities.';
+                    } else if (selectedCities.length > 0) {
+                        locationPreview.textContent = `${selectedCities.length} city(ies) selected in ${[stateSelect.value, countrySelect?.value || ''].filter(Boolean).join(', ')}`;
                     } else {
-                        locationPreview.textContent = 'Select country and state to build a broader search location.';
+                        locationPreview.textContent = `Select one or more cities in ${[stateSelect.value, countrySelect?.value || ''].filter(Boolean).join(', ')}.`;
                     }
                 }
 
                 updateCityPickerLabel();
                 syncSelectedCityInputs();
+                updateExtractSubmitState();
             }
 
             countrySelect?.addEventListener('change', populateStates);
@@ -730,8 +738,7 @@
                 selectedCityValues.clear();
                 updateLocationFields();
             });
-            scopeSelect?.addEventListener('change', updateLocationFields);
-            zipInput?.addEventListener('input', updateLocationFields);
+            queryInput?.addEventListener('input', updateExtractSubmitState);
             cityPickerToggle?.addEventListener('click', function () {
                 if (!cityPickerMenu) {
                     return;
@@ -895,6 +902,25 @@
 
                 if (!response.ok) {
                     throw new Error('Unable to update extraction control.');
+                }
+
+                const data = await response.json();
+
+                if (data.complete && loadingOverlay?.style.display === 'flex') {
+                    if (data.redirect_url) {
+                        activeCompletionUrl = data.redirect_url;
+                    }
+                    if (data.cancelled || data.stopped) {
+                        updateProgressOverlay({
+                            status: data.cancelled ? 'cancelled' : 'stopped',
+                            message: data.cancelled
+                                ? 'Extraction cancelled. Fetched records were discarded.'
+                                : `Extraction stopped. Kept ${data.records || 0} fetched record(s).`,
+                            records: data.records || 0,
+                            redirect_url: data.redirect_url || '',
+                        }, 100);
+                        showCompletedOverlayActions();
+                    }
                 }
 
                 if (loadingText) {
@@ -1284,6 +1310,13 @@
                 searchForm.addEventListener('submit', async function (event) {
                     event.preventDefault();
                     updateLocationFields();
+
+                    if (!isExtractionFormValid()) {
+                        showExtractorFormError('Enter a search query, select a state, and choose at least one city.');
+                        return;
+                    }
+
+                    showExtractorFormError();
 
                     const limitValue = document.getElementById('limit')?.value || '10';
                     const isAllData = limitValue === 'all';
