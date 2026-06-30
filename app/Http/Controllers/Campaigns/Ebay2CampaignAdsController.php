@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\Artisan;
  *   - Metrics:       `ebay_2_metrics` (App\Models\Ebay2Metric)
  *   - Rule keys:     `ebay2` (SCVR bands) and `ebay2_dil` (DIL bands)
  *                    in the shared `ebay_sbid_rules` table
- *   - Token / push:  EbayTwoApiService + `ebay2:update-suggestedbid`
+ *   - Token / push:  Ebay2ApiService + `ebay2:update-suggestedbid`
  */
 class Ebay2CampaignAdsController extends Controller
 {
@@ -147,7 +147,7 @@ class Ebay2CampaignAdsController extends Controller
         $skipped = 0;
 
         try {
-            $service = new \App\Services\EbayTwoApiService();
+            $service = new \App\Services\Ebay2ApiService();
             $token   = $service->generateBearerToken();
         } catch (\Exception $e) {
             return response()->json(['error' => 'Token error: ' . $e->getMessage()], 500);
@@ -376,7 +376,7 @@ class Ebay2CampaignAdsController extends Controller
             ->keyBy('listing_id');
 
         try {
-            $service = new \App\Services\EbayTwoApiService();
+            $service = new \App\Services\Ebay2ApiService();
             $token   = $service->generateBearerToken();
         } catch (\Exception $e) {
             return response()->json(['error' => 'Token error: ' . $e->getMessage()], 500);
