@@ -1536,6 +1536,20 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(170)
             ->runInBackground()
             ->appendOutputTo($log);
+
+        /*
+        |--------------------------------------------------------------------------
+        | GOOGLE MAPS EXTRACTOR QUEUE (permanent watchdog)
+        |--------------------------------------------------------------------------
+        | Keeps queue:watchdog running (checks every 30s). The daemon only ever
+        | starts queue:work --queue=google-maps-extractor — never the default queue.
+        */
+        $schedule->command('queue:ensure-watchdog-daemon')
+            ->everyMinute()
+            ->name('queue-ensure-watchdog-daemon')
+            ->withoutOverlapping(55)
+            ->runInBackground()
+            ->appendOutputTo($log);
     }
 
     /**

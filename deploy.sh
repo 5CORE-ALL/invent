@@ -79,6 +79,21 @@ echo "[6/8] Restarting queue workers..."
 ${PHP_BIN} ${ARTISAN} queue:restart
 echo "  ✓ Queue restart signal sent"
 
+# Permanent watchdog: only manages google-maps-extractor (never default queue).
+if [ -x "${PROJECT_DIR}/scripts/cron-google-maps-extractor-watchdog.sh" ]; then
+    bash "${PROJECT_DIR}/scripts/cron-google-maps-extractor-watchdog.sh"
+    echo "  ✓ Google Maps extractor watchdog daemon ensured"
+else
+    ${PHP_BIN} ${ARTISAN} queue:ensure-watchdog-daemon >/dev/null 2>&1 || true
+    echo "  ✓ Google Maps extractor watchdog daemon invoked (artisan)"
+fi
+
+# Legacy per-queue worker script (starts only --queue=google-maps-extractor).
+if [ -x "${PROJECT_DIR}/scripts/cron-google-maps-extractor-worker.sh" ]; then
+    bash "${PROJECT_DIR}/scripts/cron-google-maps-extractor-worker.sh"
+    echo "  ✓ Google Maps extractor worker script invoked"
+fi
+
 # ─── Step 7: Permissions ────────────────────────────────────────────────────
 echo ""
 echo "[7/8] Fixing permissions..."
@@ -120,6 +135,8 @@ echo ""
 echo " Next steps:"
 echo "   1. Verify cron: crontab -l"
 echo "   2. Verify supervisor: supervisorctl status"
-echo "   3. Test site: curl -s -o /dev/null -w '%{http_code}' http://localhost"
-echo "   4. Check logs: tail -f ${PROJECT_DIR}/storage/logs/scheduler.log"
+echo "   3. Google Maps extractor worker log:"
+echo "      tail -f ${PROJECT_DIR}/storage/logs/google-maps-extractor-worker.log"
+echo "   4. Test site: curl -s -o /dev/null -w '%{http_code}' http://localhost"
+echo "   5. Check logs: tail -f ${PROJECT_DIR}/storage/logs/scheduler.log"
 echo ""

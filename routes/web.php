@@ -448,6 +448,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/', [GoogleMapsDataExtractorController::class, 'index'])->name('index');
         Route::post('/search', [GoogleMapsDataExtractorController::class, 'search'])->name('search');
         Route::post('/search/start', [GoogleMapsDataExtractorController::class, 'start'])->name('start');
+        Route::post('/search/ensure-worker', [GoogleMapsDataExtractorController::class, 'ensureWorker'])->name('ensure-worker');
         Route::post('/search/process', [GoogleMapsDataExtractorController::class, 'process'])->name('process');
         Route::get('/progress/{token}', [GoogleMapsDataExtractorController::class, 'progress'])->name('progress');
         Route::post('/control/{token}', [GoogleMapsDataExtractorController::class, 'control'])->name('control');

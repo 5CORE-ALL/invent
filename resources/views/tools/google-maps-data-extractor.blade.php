@@ -886,6 +886,8 @@
             let displayedProgressPercent = 8;
             let indeterminateProgressPercent = 8;
             let activeForegroundMonitor = false;
+            let extractionQueuedAt = 0;
+            let queueWorkerNudgeCount = 0;
             const backgroundStorageKey = 'google_maps_extractor_background_job';
 
             function makeProgressToken() {
@@ -902,6 +904,10 @@
 
             function startUrl() {
                 return `{{ route('google-maps-data-extractor.start') }}`;
+            }
+
+            function ensureWorkerUrl() {
+                return `{{ route('google-maps-data-extractor.ensure-worker') }}`;
             }
 
             function processUrl() {
@@ -975,6 +981,54 @@
                 } catch (error) {
                     clearBackgroundJob();
                     return null;
+                }
+            }
+
+            async function nudgeQueueWorker() {
+                try {
+                    const response = await fetch(ensureWorkerUrl(), {
+                        method: 'POST',
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                        },
+                    });
+
+                    if (!response.ok) {
+                        return null;
+                    }
+
+                    return response.json();
+                } catch (error) {
+                    return null;
+                }
+            }
+
+            async function maybeNudgeQueueWorker(payload) {
+                const waitingStatuses = ['pending', 'queued'];
+                if (!waitingStatuses.includes(payload.status)) {
+                    extractionQueuedAt = 0;
+                    return;
+                }
+
+                if (!extractionQueuedAt) {
+                    extractionQueuedAt = Date.now();
+                    return;
+                }
+
+                const waitingMs = Date.now() - extractionQueuedAt;
+                if (waitingMs < 8000 || queueWorkerNudgeCount >= 3) {
+                    return;
+                }
+
+                queueWorkerNudgeCount += 1;
+                const result = await nudgeQueueWorker();
+
+                if (loadingText) {
+                    loadingText.textContent = result?.worker_running
+                        ? 'Background worker detected. Extraction should begin shortly...'
+                        : 'Starting background worker...';
+                    loadingText.title = loadingText.textContent;
                 }
             }
 
@@ -1096,6 +1150,8 @@
                 activeCompletionUrl = '';
                 displayedProgressPercent = 8;
                 indeterminateProgressPercent = 8;
+                extractionQueuedAt = 0;
+                queueWorkerNudgeCount = 0;
 
                 if (backgroundStatus) {
                     backgroundStatus.style.display = 'none';
@@ -1478,6 +1534,7 @@
 
                         const payload = await response.json();
                         updateProgressOverlay(payload);
+                        await maybeNudgeQueueWorker(payload);
 
                         if (activeRunInBackground) {
                             updateBackgroundStatus(payload);
@@ -1894,6 +1951,7 @@
 
                                 const payload = await response.json();
                                 updateProgressOverlay(payload);
+                                await maybeNudgeQueueWorker(payload);
 
                                 if (activeRunInBackground) {
                                     updateBackgroundStatus(payload);

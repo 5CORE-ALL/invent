@@ -2,8 +2,8 @@
 # Ensures the google-maps-extractor queue worker is running (crontab watchdog).
 #
 # Used by CRM > Data Extractor (RunGoogleMapsExtractionJob / RunGoogleMapsEnrichmentJob).
-#
-# Crontab example (inventory_5c_usr, every 5 minutes):
+# Prefer Laravel scheduler: queue:ensure-worker google-maps-extractor (every minute in app/Console/Kernel.php).
+# This script remains as a fallback when invoked from deploy.sh or manual ops.
 #   */5 * * * * /var/www/inventory_5c_usr/data/www/inventory.5coremanagement.com/scripts/cron-google-maps-extractor-worker.sh #google-maps-extractor queue worker
 #
 # chmod +x scripts/cron-google-maps-extractor-worker.sh
