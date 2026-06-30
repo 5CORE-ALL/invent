@@ -427,12 +427,15 @@ class GoogleMapsScraperService
 
         $action = $controlCallback();
 
-        while ($action === 'pause') {
+        if ($action === 'pause') {
             $this->reportProgress($progressCallback, [
                 'status' => 'paused',
                 'message' => 'Extraction paused. Waiting for resume...',
                 'records' => $recordCount,
             ]);
+        }
+
+        while ($action === 'pause') {
             sleep(2);
             $action = $controlCallback();
         }
