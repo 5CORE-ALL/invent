@@ -4,6 +4,8 @@
   "description": "5Core employee attendance desktop agent — clock in/out, app tracking, screenshots",
   "main": "main.js",
   "scripts": {
+    "icons": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/generate-icons.ps1",
+    "prestart": "npm run icons",
     "start": "electron .",
     "build": "electron-builder --win nsis",
     "build:portable": "electron-builder --win portable"
@@ -37,7 +39,8 @@
           "arch": ["x64"]
         }
       ],
-      "signAndEditExecutable": false
+      "signAndEditExecutable": false,
+      "icon": "assets/icon.ico"
     },
     "nsis": {
       "oneClick": false,

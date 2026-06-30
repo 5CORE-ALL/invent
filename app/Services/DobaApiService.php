@@ -8,9 +8,13 @@ use Exception;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use App\Models\ProductStockMapping;
+use App\Services\Support\VideoMasterMarketplaceMethods;
+use App\Services\Support\SavesMarketplaceImageMetrics;
 
 class DobaApiService
 {
+    use VideoMasterMarketplaceMethods;
+    use SavesMarketplaceImageMetrics;
     protected $baseUrl;
 
     public function __construct()
@@ -948,5 +952,198 @@ class DobaApiService
     public function updateProductDescription(string $identifier, string $description): array
     {
         return $this->updateBulletPoints($identifier, $description);
+    }
+
+    /**
+     * Push product video URL to Doba OpenAPI (goods/info/update).
+     * Doba accepts one custom video link per listing (videoSource=2).
+     *
+     * @param  list<string>  $videos
+     * @return array{success: bool, message: string, normalized_urls?: list<string>}
+     */
+    public function updateVideos(string $identifier, array $videos, string $mode = 'replace'): array
+    {
+        Log::info('Doba updateVideos', ['identifier' => $identifier, 'mode' => $mode]);
+
+        try {
+            $videos = array_slice(
+                array_values(array_unique(array_filter(array_map('trim', $videos), fn ($v) => $v !== ''))),
+                0,
+                1
+            );
+            if (trim($identifier) === '' || $videos === []) {
+                return ['success' => false, 'message' => 'SKU (or item_id) and at least one video URL are required.'];
+            }
+
+            foreach ($videos as $url) {
+                if (! preg_match('#^https?://#i', $url)) {
+                    return ['success' => false, 'message' => 'Invalid video URL (must be http/https).'];
+                }
+            }
+
+            $itemNo = $this->resolveSkuToItemNo($identifier);
+            if (! $itemNo) {
+                return ['success' => false, 'message' => 'SKU or item_id not found in DobaMetric/DobaDataView.'];
+            }
+
+            $primaryUrl = $videos[0];
+            $timestamp = $this->getMillisecond();
+            $content = $this->getContent($timestamp);
+            $sign = $this->generateSignature($content);
+
+            $headers = [
+                'appKey' => config('services.doba.app_key'),
+                'signType' => 'rsa2',
+                'timestamp' => $timestamp,
+                'sign' => $sign,
+                'Content-Type' => 'application/x-www-form-urlencoded',
+            ];
+
+            $payloadAttempts = [
+                [
+                    'itemNo' => (string) $itemNo,
+                    'video' => $primaryUrl,
+                    'videoSource' => 2,
+                    'videoStatus' => 1,
+                ],
+                [
+                    'itemNo' => (string) $itemNo,
+                    'video' => $primaryUrl,
+                    'videoSource' => '2',
+                    'videoStatus' => '1',
+                ],
+                [
+                    'itemNo' => (string) $itemNo,
+                    'productVideoUrl' => $primaryUrl,
+                ],
+                [
+                    'itemNo' => (string) $itemNo,
+                    'videoUrl' => $primaryUrl,
+                ],
+            ];
+
+            $attempts = [
+                'https://openapi.doba.com/api/goods/info/update',
+                'https://openapi.doba.com/api/goods/update',
+            ];
+
+            $lastMessage = 'Doba video update failed for all endpoints.';
+            foreach ($attempts as $url) {
+                foreach ($payloadAttempts as $payload) {
+                    Log::info('Doba video update attempt', ['url' => $url, 'item_no' => $itemNo, 'payload_keys' => array_keys($payload)]);
+
+                    $response = Http::withHeaders($headers)->asForm()->post($url, $payload);
+                    $responseData = $response->json() ?? [];
+                    Log::info('Doba video update response', ['url' => $url, 'status' => $response->status(), 'response' => $responseData]);
+
+                    if (! $response->successful()) {
+                        $lastMessage = 'HTTP '.$response->status().': '.($responseData['responseMessage'] ?? $response->body());
+                        continue;
+                    }
+
+                    if (isset($responseData['responseCode']) && $responseData['responseCode'] !== '000000') {
+                        $lastMessage = (string) ($responseData['responseMessage'] ?? 'Unknown Doba API error');
+                        continue;
+                    }
+
+                    return [
+                        'success' => true,
+                        'message' => 'Doba product video updated.',
+                        'normalized_urls' => $videos,
+                    ];
+                }
+            }
+
+            return ['success' => false, 'message' => $lastMessage];
+        } catch (\Throwable $e) {
+            Log::error('Doba updateVideos failed', ['identifier' => $identifier, 'error' => $e->getMessage()]);
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * @param  list<string>  $images
+     * @return array{success: bool, message: string, normalized_urls?: list<string>}
+     */
+    public function updateImages(string $identifier, array $images, string $mode = 'replace'): array
+    {
+        Log::info('Doba updateImages', ['identifier' => $identifier, 'mode' => $mode, 'count' => count($images)]);
+
+        try {
+            $images = array_slice(
+                array_values(array_unique(array_filter(array_map('trim', $images), fn ($v) => $v !== ''))),
+                0,
+                12
+            );
+            if (trim($identifier) === '' || $images === []) {
+                return ['success' => false, 'message' => 'SKU (or item_id) and at least one image URL are required.'];
+            }
+
+            foreach ($images as $url) {
+                if (! preg_match('#^https?://#i', $url)) {
+                    return ['success' => false, 'message' => 'Invalid image URL (must be http/https).'];
+                }
+            }
+
+            $itemNo = $this->resolveSkuToItemNo($identifier);
+            if (! $itemNo) {
+                return ['success' => false, 'message' => 'SKU or item_id not found in DobaMetric/DobaDataView.'];
+            }
+
+            $timestamp = $this->getMillisecond();
+            $content = $this->getContent($timestamp);
+            $sign = $this->generateSignature($content);
+            $headers = [
+                'appKey' => config('services.doba.app_key'),
+                'signType' => 'rsa2',
+                'timestamp' => $timestamp,
+                'sign' => $sign,
+                'Content-Type' => 'application/x-www-form-urlencoded',
+            ];
+
+            $picList = array_map(fn ($url) => ['picUrl' => $url, 'picType' => 1], $images);
+            $payloadAttempts = [
+                ['itemNo' => (string) $itemNo, 'mainPic' => $images[0], 'productPicList' => json_encode($picList)],
+                ['itemNo' => (string) $itemNo, 'mainPic' => $images[0], 'picList' => json_encode($images)],
+                ['itemNo' => (string) $itemNo, 'productImageList' => json_encode($images)],
+            ];
+
+            $attempts = [
+                'https://openapi.doba.com/api/goods/info/update',
+                'https://openapi.doba.com/api/goods/update',
+            ];
+
+            $lastMessage = 'Doba image update failed for all endpoints.';
+            foreach ($attempts as $url) {
+                foreach ($payloadAttempts as $payload) {
+                    $response = Http::withHeaders($headers)->asForm()->post($url, $payload);
+                    $responseData = $response->json() ?? [];
+                    if (! $response->successful()) {
+                        $lastMessage = 'HTTP '.$response->status().': '.($responseData['responseMessage'] ?? $response->body());
+                        continue;
+                    }
+                    if (isset($responseData['responseCode']) && $responseData['responseCode'] !== '000000') {
+                        $lastMessage = (string) ($responseData['responseMessage'] ?? 'Unknown Doba API error');
+                        continue;
+                    }
+
+                    $sku = trim($identifier);
+                    $this->saveImageUrlsToMetricsRow('doba_metrics', $sku, $images);
+
+                    return [
+                        'success' => true,
+                        'message' => 'Doba product images updated.',
+                        'normalized_urls' => $images,
+                    ];
+                }
+            }
+
+            return ['success' => false, 'message' => $lastMessage];
+        } catch (\Throwable $e) {
+            Log::error('Doba updateImages failed', ['identifier' => $identifier, 'error' => $e->getMessage()]);
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
     }
 }

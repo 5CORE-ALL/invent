@@ -94,7 +94,20 @@
                                 </td>
                                 <td>
                                     @if($live)
-                                        <span class="live-dot" title="{{ ucfirst($live->status) }}"></span>
+                                        @php
+                                            $liveState = $live->last_activity_state ?? ($live->status === 'paused' ? 'break' : 'working');
+                                        @endphp
+                                        <span class="badge bg-{{ $liveState === 'idle' ? 'warning' : ($liveState === 'break' ? 'secondary' : 'success') }}">
+                                            @if($liveState === 'idle')
+                                                <span class="live-dot" style="background:#f97316"></span> Idle
+                                            @elseif($liveState === 'break')
+                                                Break
+                                            @else
+                                                <span class="live-dot"></span> Working
+                                            @endif
+                                        </span>
+                                    @else
+                                        <span class="text-muted small">—</span>
                                     @endif
                                 </td>
                                 <td>

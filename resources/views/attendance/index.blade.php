@@ -13,7 +13,12 @@
     .status-late { background: #fff3cd; color: #664d03; }
     .status-absent { background: #f8d7da; color: #842029; }
     .status-half_day { background: #e2e3e5; color: #41464b; }
-    .session-live { animation: pulse 2s infinite; }
+    .stat-idle { background: #fff7ed; border: 1px solid #fdba74; }
+    .stat-idle .val { color: #ea580c; }
+    .stat-break { background: #f8fafc; border: 1px solid #cbd5e1; }
+    .activity-idle { color: #ea580c; font-weight: 600; }
+    .activity-break { color: #64748b; font-weight: 600; }
+    .activity-working { color: #16a34a; font-weight: 600; }
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.6} }
     .progress-thin { height: 6px; }
 </style>
@@ -58,9 +63,13 @@
                             {{ ucfirst($active_session->status) }} since {{ $active_session->started_at->format('h:i A') }}
                         </span>
                         <div class="small text-muted mt-2">
-                            Active: <span id="liveActive">{{ gmdate('H:i:s', $active_session->total_active_seconds) }}</span>
-                            · Idle: <span id="liveIdle">{{ gmdate('H:i:s', $active_session->total_idle_seconds) }}</span>
+                            Active: <span id="liveActive" class="activity-working">{{ gmdate('H:i:s', $active_session->total_active_seconds) }}</span>
+                            · Idle: <span id="liveIdle" class="{{ ($active_session->last_activity_state ?? '') === 'idle' ? 'activity-idle' : '' }}">{{ gmdate('H:i:s', $active_session->total_idle_seconds) }}</span>
+                            · Break: <span id="liveBreak" class="activity-break">{{ gmdate('H:i:s', $active_session->total_break_seconds ?? 0) }}</span>
                         </div>
+                        @if(($active_session->last_activity_state ?? '') === 'idle')
+                        <div class="small activity-idle mt-1"><i class="ri-alert-line"></i> Employee appears idle</div>
+                        @endif
                     @else
                         <span class="badge bg-secondary">Not clocked in</span>
                     @endif
@@ -80,7 +89,7 @@
                         <i class="ri-logout-circle-line me-1"></i> Clock Out
                     </button>
                     <button type="button" class="btn btn-outline-warning btn-sm" id="btnPause" {{ ($active_session && $active_session->status === 'active') ? '' : 'disabled' }}>
-                        Pause
+                        Take a Break
                     </button>
                     <button type="button" class="btn btn-outline-info btn-sm" id="btnResume" {{ ($active_session && $active_session->status === 'paused') ? '' : 'disabled' }}>
                         Resume
@@ -142,7 +151,7 @@
                 <h6 class="mb-3">Today's Sessions</h6>
                 <div class="table-responsive">
                     <table class="table table-sm table-hover mb-0">
-                        <thead><tr><th>Start</th><th>End</th><th>Location</th><th>Active</th><th>Idle</th><th>Status</th></tr></thead>
+                        <thead><tr><th>Start</th><th>End</th><th>Location</th><th>Active</th><th>Idle</th><th>Break</th><th>Status</th></tr></thead>
                         <tbody>
                         @forelse($sessions as $s)
                             <tr>
@@ -150,11 +159,12 @@
                                 <td>{{ $s->ended_at?->format('h:i A') ?? '—' }}</td>
                                 <td><span class="badge bg-light text-dark">{{ strtoupper($s->work_location) }}</span></td>
                                 <td>{{ gmdate('H:i', $s->total_active_seconds) }}</td>
-                                <td>{{ gmdate('H:i', $s->total_idle_seconds) }}</td>
+                                <td class="{{ ($s->last_activity_state ?? '') === 'idle' ? 'activity-idle' : '' }}">{{ gmdate('H:i', $s->total_idle_seconds) }}</td>
+                                <td>{{ gmdate('H:i', $s->total_break_seconds ?? 0) }}</td>
                                 <td>{{ ucfirst($s->status) }}</td>
                             </tr>
                         @empty
-                            <tr><td colspan="6" class="text-muted text-center py-3">No sessions for this date</td></tr>
+                            <tr><td colspan="7" class="text-muted text-center py-3">No sessions for this date</td></tr>
                         @endforelse
                         </tbody>
                     </table>
@@ -240,6 +250,34 @@
     if (window.AttendanceTracker) {
         window.AttendanceTracker.init({ baseUrl: base, csrf: csrf });
     }
+
+    function fmt(sec) {
+        sec = Math.max(0, parseInt(sec, 10) || 0);
+        const h = Math.floor(sec / 3600);
+        const m = Math.floor((sec % 3600) / 60);
+        const s = sec % 60;
+        return [h, m, s].map(n => String(n).padStart(2, '0')).join(':');
+    }
+
+    async function pollLiveStatus() {
+        try {
+            const r = await fetch(base + '/status', { headers: { Accept: 'application/json' } });
+            const data = await r.json();
+            if (!data.session) return;
+            const s = data.session;
+            const activeEl = document.getElementById('liveActive');
+            const idleEl = document.getElementById('liveIdle');
+            const breakEl = document.getElementById('liveBreak');
+            if (activeEl) activeEl.textContent = fmt(s.active_seconds);
+            if (idleEl) {
+                idleEl.textContent = fmt(s.idle_seconds);
+                idleEl.className = s.activity_state === 'idle' ? 'activity-idle' : '';
+            }
+            if (breakEl) breakEl.textContent = fmt(s.break_seconds || 0);
+        } catch (_) {}
+    }
+
+    setInterval(pollLiveStatus, 15000);
 })();
 </script>
 @endsection

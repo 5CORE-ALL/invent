@@ -52,10 +52,12 @@ class AttendanceController extends Controller
                 'work_location' => $session->work_location,
                 'active_seconds' => $session->total_active_seconds,
                 'idle_seconds' => $session->total_idle_seconds,
+                'break_seconds' => $session->total_break_seconds,
+                'activity_state' => $session->last_activity_state ?? ($session->status === 'paused' ? 'break' : 'working'),
             ] : null,
             'monitoring_enabled' => $policy?->monitoring_enabled ?? true,
-            'heartbeat_interval' => (int) config('attendance.heartbeat_interval_seconds', 60),
-            'idle_threshold' => (int) config('attendance.idle_threshold_seconds', 120),
+            'heartbeat_interval' => (int) config('attendance.heartbeat_interval_seconds', 15),
+            'idle_threshold' => (int) config('attendance.idle_threshold_seconds', 30),
         ]);
     }
 

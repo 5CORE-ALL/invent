@@ -18,6 +18,9 @@ class AttendanceSession extends Model
         'clock_source',
         'total_active_seconds',
         'total_idle_seconds',
+        'total_break_seconds',
+        'paused_at',
+        'last_activity_state',
         'heartbeat_count',
         'missed_heartbeat_count',
         'ip_address',
@@ -28,6 +31,7 @@ class AttendanceSession extends Model
     protected $casts = [
         'started_at' => 'datetime',
         'ended_at' => 'datetime',
+        'paused_at' => 'datetime',
     ];
 
     public function user(): BelongsTo

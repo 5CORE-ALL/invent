@@ -45,6 +45,7 @@ class AttendanceService
             'status' => 'active',
             'work_location' => $workLocation,
             'clock_source' => $clockSource,
+            'last_activity_state' => 'working',
             'ip_address' => $ip,
             'user_agent' => $userAgent,
         ]);
@@ -74,7 +75,11 @@ class AttendanceService
             return $session;
         }
 
-        $session->update(['status' => 'paused']);
+        $session->update([
+            'status' => 'paused',
+            'paused_at' => now(),
+            'last_activity_state' => 'break',
+        ]);
 
         return $session->fresh();
     }
@@ -91,13 +96,23 @@ class AttendanceService
             return $this->activeSession($user);
         }
 
-        $session->update(['status' => 'active']);
+        $breakSeconds = 0;
+        if ($session->paused_at) {
+            $breakSeconds = max(0, $session->paused_at->diffInSeconds(now()));
+        }
+
+        $session->update([
+            'status' => 'active',
+            'paused_at' => null,
+            'last_activity_state' => 'working',
+            'total_break_seconds' => $session->total_break_seconds + $breakSeconds,
+        ]);
 
         return $session->fresh();
     }
 
     /**
-     * @param  array{is_active?: bool, idle_seconds?: int, window_title?: string|null, page_url?: string|null, source?: string, app_name?: string|null, process_name?: string|null, device_id?: int|null, keystroke_count?: int, mouse_click_count?: int}  $payload
+     * @param  array{is_active?: bool, idle_seconds?: int, elapsed_seconds?: int, activity_state?: string|null, window_title?: string|null, page_url?: string|null, source?: string, app_name?: string|null, process_name?: string|null, device_id?: int|null, keystroke_count?: int, mouse_click_count?: int}  $payload
      */
     public function recordHeartbeat(User $user, array $payload): array
     {
@@ -107,19 +122,32 @@ class AttendanceService
         }
 
         if ($session->status === 'paused') {
-            return ['ok' => true, 'paused' => true, 'session_id' => $session->id];
+            return [
+                'ok' => true,
+                'paused' => true,
+                'session_id' => $session->id,
+                'active_seconds' => $session->total_active_seconds,
+                'idle_seconds' => $session->total_idle_seconds,
+                'break_seconds' => $session->total_break_seconds,
+                'activity_state' => 'break',
+                'today' => $this->todayStats($user),
+            ];
         }
 
-        $isActive = (bool) ($payload['is_active'] ?? true);
-        $interval = (int) config('attendance.heartbeat_interval_seconds', 60);
+        $activityState = in_array($payload['activity_state'] ?? 'working', ['working', 'idle', 'break'], true)
+            ? $payload['activity_state']
+            : 'working';
+        $isActive = $activityState === 'working' && (bool) ($payload['is_active'] ?? true);
+        $interval = max(1, min(120, (int) ($payload['elapsed_seconds'] ?? config('attendance.heartbeat_interval_seconds', 15))));
         $source = in_array($payload['source'] ?? 'web', ['web', 'desktop'], true) ? $payload['source'] : 'web';
 
-        DB::transaction(function () use ($session, $user, $payload, $isActive, $interval, $source) {
+        DB::transaction(function () use ($session, $user, $payload, $isActive, $interval, $source, $activityState) {
             AttendanceActivityLog::create([
                 'attendance_session_id' => $session->id,
                 'user_id' => $user->id,
                 'recorded_at' => now(),
                 'is_active' => $isActive,
+                'activity_state' => $activityState,
                 'idle_seconds' => max(0, (int) ($payload['idle_seconds'] ?? 0)),
                 'window_title' => isset($payload['window_title']) ? mb_substr((string) $payload['window_title'], 0, 500) : null,
                 'page_url' => isset($payload['page_url']) ? mb_substr((string) $payload['page_url'], 0, 1000) : null,
@@ -137,14 +165,20 @@ class AttendanceService
             } else {
                 $session->increment('total_idle_seconds', $interval);
             }
+            $session->update(['last_activity_state' => $activityState]);
             $session->touch();
         });
 
+        $fresh = $session->fresh();
+
         return [
             'ok' => true,
-            'session_id' => $session->id,
-            'active_seconds' => $session->fresh()->total_active_seconds,
-            'idle_seconds' => $session->fresh()->total_idle_seconds,
+            'session_id' => $fresh->id,
+            'active_seconds' => $fresh->total_active_seconds,
+            'idle_seconds' => $fresh->total_idle_seconds,
+            'break_seconds' => $fresh->total_break_seconds,
+            'activity_state' => $fresh->last_activity_state,
+            'today' => $this->todayStats($user),
         ];
     }
 
@@ -236,5 +270,50 @@ class AttendanceService
         }
 
         return $query->orderBy('name')->get(['id', 'name', 'email', 'designation', 'avatar']);
+    }
+
+    /**
+     * Calendar-day totals (active / idle / break) for the employee.
+     *
+     * @return array{date: string, date_label: string, active_seconds: int, idle_seconds: int, break_seconds: int}
+     */
+    public function todayStats(User $user, ?string $date = null): array
+    {
+        $carbon = Carbon::parse($date ?: now()->toDateString());
+        $dateStr = $carbon->toDateString();
+
+        $sessions = AttendanceSession::query()
+            ->where('user_id', $user->id)
+            ->where(function ($q) use ($dateStr) {
+                $q->whereDate('started_at', $dateStr)
+                    ->orWhereIn('status', ['active', 'paused']);
+            })
+            ->get();
+
+        $active = 0;
+        $idle = 0;
+        $break = 0;
+
+        foreach ($sessions as $session) {
+            if ($session->started_at->toDateString() !== $dateStr && ! $session->isActive()) {
+                continue;
+            }
+
+            $active += (int) $session->total_active_seconds;
+            $idle += (int) $session->total_idle_seconds;
+            $break += (int) ($session->total_break_seconds ?? 0);
+
+            if ($session->status === 'paused' && $session->paused_at) {
+                $break += max(0, $session->paused_at->diffInSeconds(now()));
+            }
+        }
+
+        return [
+            'date' => $dateStr,
+            'date_label' => $carbon->format('l, M j, Y'),
+            'active_seconds' => $active,
+            'idle_seconds' => $idle,
+            'break_seconds' => $break,
+        ];
     }
 }

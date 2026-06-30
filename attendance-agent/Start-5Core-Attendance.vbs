@@ -1,26 +1,16 @@
-' Launch 5Core Attendance without showing a CMD window
+' Launch 5Core Attendance — always uses latest source (npm start) unless use-built.flag exists
 Set fso = CreateObject("Scripting.FileSystemObject")
 Set shell = CreateObject("WScript.Shell")
 folder = fso.GetParentFolderName(WScript.ScriptFullName)
 shell.CurrentDirectory = folder
 
-' Prefer installed / built app
-portable = folder & "\dist\5Core-Attendance-Portable.exe"
-If fso.FileExists(portable) Then
-    shell.Run """" & portable & """", 1, False
+builtFlag = folder & "\use-built.flag"
+unpacked = folder & "\dist\win-unpacked\5Core Attendance.exe"
+
+If fso.FileExists(builtFlag) And fso.FileExists(unpacked) Then
+    shell.Run """" & unpacked & """", 1, False
     WScript.Quit 0
 End If
 
-' Any setup exe in dist
-Set distFolder = fso.GetFolder(folder & "\dist")
-On Error Resume Next
-For Each f In distFolder.Files
-    If LCase(fso.GetExtensionName(f.Name)) = "exe" Then
-        shell.Run """" & f.Path & """", 1, False
-        WScript.Quit 0
-    End If
-Next
-On Error GoTo 0
-
-' Dev fallback: electron without visible cmd
+' Default: run from source (latest UI + fixes)
 shell.Run "cmd /c npm start", 0, False

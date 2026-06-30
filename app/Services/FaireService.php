@@ -10,10 +10,16 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use App\Services\Concerns\ResolvesBulletPointIdentifier;
+use App\Services\Support\SavesMarketplaceVideoMetrics;
+use App\Services\Support\SavesMarketplaceImageMetrics;
+use App\Services\Support\VideoMasterMarketplaceMethods;
 
 class FaireService
 {
     use ResolvesBulletPointIdentifier;
+    use SavesMarketplaceVideoMetrics;
+    use SavesMarketplaceImageMetrics;
+    use VideoMasterMarketplaceMethods;
 
     protected $clientId;
     protected $clientSecret;
@@ -210,6 +216,143 @@ class FaireService
     public function updateProductDescription(string $identifier, string $description): array
     {
         return $this->updateBulletPoints($identifier, $description);
+    }
+
+    /**
+     * @param  list<string>  $videos
+     * @return array{success: bool, message: string, normalized_urls?: list<string>}
+     */
+    public function updateVideos(string $identifier, array $videos, string $mode = 'replace'): array
+    {
+        $videos = array_slice(array_values(array_unique(array_filter(array_map('trim', $videos), fn ($v) => $v !== ''))), 0, 5);
+        if (trim($identifier) === '' || $videos === []) {
+            return ['success' => false, 'message' => 'SKU (or Faire product id) and at least one video URL are required.'];
+        }
+
+        foreach ($videos as $url) {
+            if (! preg_match('#^https?://#i', $url)) {
+                return ['success' => false, 'message' => 'Invalid video URL (must be http/https).'];
+            }
+        }
+
+        $token = config('services.faire.bearer_token')
+            ?? config('services.faire.access_token')
+            ?? config('services.faire.token');
+        if (! $token) {
+            return ['success' => false, 'message' => 'Faire API token is missing'];
+        }
+
+        $productId = null;
+        if (Schema::hasTable('faire_metrics')) {
+            $row = $this->findMetricRowBySkuOrAlternateIds('faire_metrics', $identifier, ['product_id', 'faire_product_id']);
+            if ($row && ! empty($row->product_id)) {
+                $productId = (string) $row->product_id;
+            }
+        }
+        if (! $productId) {
+            $productId = $this->getProductIdBySku(trim($identifier));
+        }
+        if (! $productId) {
+            return ['success' => false, 'message' => 'Faire product not found for SKU or marketplace product id.'];
+        }
+
+        $primary = $videos[0];
+        $headers = [
+            'X-FAIRE-ACCESS-TOKEN' => $token,
+            'Content-Type' => 'application/json',
+            'Accept' => 'application/json',
+        ];
+        $payloadAttempts = [
+            ['video_url' => $primary, 'video_urls' => $videos],
+            ['videos' => $videos, 'product_video_url' => $primary],
+        ];
+
+        $baseUrl = 'https://www.faire.com/external-api/v2';
+        $lastMessage = 'Faire video update failed.';
+        foreach ($payloadAttempts as $payload) {
+            try {
+                $res = Http::withoutVerifying()->withHeaders($headers)->timeout(45)->patch("{$baseUrl}/products/{$productId}", $payload);
+                if ($res->successful()) {
+                    $sku = trim($identifier);
+                    $this->saveVideoUrlsToMetricsRow('faire_metrics', $sku, $videos);
+
+                    return ['success' => true, 'message' => 'Faire product video updated.', 'normalized_urls' => $videos];
+                }
+                $lastMessage = 'Faire update failed: '.$res->body();
+            } catch (\Throwable $e) {
+                $lastMessage = $e->getMessage();
+            }
+        }
+
+        return ['success' => false, 'message' => $lastMessage];
+    }
+
+    /**
+     * @param  list<string>  $images
+     * @return array{success: bool, message: string, normalized_urls?: list<string>}
+     */
+    public function updateImages(string $identifier, array $images, string $mode = 'replace'): array
+    {
+        $images = array_slice(array_values(array_unique(array_filter(array_map('trim', $images), fn ($v) => $v !== ''))), 0, 12);
+        if (trim($identifier) === '' || $images === []) {
+            return ['success' => false, 'message' => 'SKU (or Faire product id) and at least one image URL are required.'];
+        }
+
+        foreach ($images as $url) {
+            if (! preg_match('#^https?://#i', $url)) {
+                return ['success' => false, 'message' => 'Invalid image URL (must be http/https).'];
+            }
+        }
+
+        $token = config('services.faire.bearer_token')
+            ?? config('services.faire.access_token')
+            ?? config('services.faire.token');
+        if (! $token) {
+            return ['success' => false, 'message' => 'Faire API token is missing'];
+        }
+
+        $productId = null;
+        if (Schema::hasTable('faire_metrics')) {
+            $row = $this->findMetricRowBySkuOrAlternateIds('faire_metrics', $identifier, ['product_id', 'faire_product_id']);
+            if ($row && ! empty($row->product_id)) {
+                $productId = (string) $row->product_id;
+            }
+        }
+        if (! $productId) {
+            $productId = $this->getProductIdBySku(trim($identifier));
+        }
+        if (! $productId) {
+            return ['success' => false, 'message' => 'Faire product not found for SKU or marketplace product id.'];
+        }
+
+        $headers = [
+            'X-FAIRE-ACCESS-TOKEN' => $token,
+            'Content-Type' => 'application/json',
+            'Accept' => 'application/json',
+        ];
+        $payloadAttempts = [
+            ['image_url' => $images[0], 'image_urls' => $images, 'images' => $images],
+            ['images' => array_map(fn ($url) => ['url' => $url], $images)],
+        ];
+
+        $baseUrl = 'https://www.faire.com/external-api/v2';
+        $lastMessage = 'Faire image update failed.';
+        foreach ($payloadAttempts as $payload) {
+            try {
+                $res = Http::withoutVerifying()->withHeaders($headers)->timeout(45)->patch("{$baseUrl}/products/{$productId}", $payload);
+                if ($res->successful()) {
+                    $sku = trim($identifier);
+                    $this->saveImageUrlsToMetricsRow('faire_metrics', $sku, $images);
+
+                    return ['success' => true, 'message' => 'Faire product images updated.', 'normalized_urls' => $images];
+                }
+                $lastMessage = 'Faire update failed: '.$res->body();
+            } catch (\Throwable $e) {
+                $lastMessage = $e->getMessage();
+            }
+        }
+
+        return ['success' => false, 'message' => $lastMessage];
     }
 
 }

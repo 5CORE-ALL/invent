@@ -4,6 +4,7 @@
     @vite(['node_modules/admin-resources/rwd-table/rwd-table.min.css'])
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+    @include('partials.marketplace-master-button-colors')
     <style>
         .card.im-master-card { border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 2px 12px rgba(44,110,213,.06); }
         .table-responsive { position:relative; border:1px solid #e2e8f0; border-radius:10px; max-height:640px; overflow:auto; background:#fff; }
@@ -22,11 +23,6 @@
         .bp-mp-dot.pushed { background:#22c55e; border-color:#22c55e; }
         .bp-mp-dot.failed { background:#ef4444; border-color:#ef4444; }
         .marketplace-btn { width:28px; height:28px; border:none; border-radius:4px; color:#fff; font-weight:600; font-size:11px; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; transition:all .2s; padding:0; }
-        .btn-ebay1 { background-color:#0d6efd; } .btn-ebay2 { background-color:#198754; } .btn-ebay3 { background-color:#fd7e14; }
-        .btn-macy { background-color:#0d6efd; } .btn-amazon { background-color:#ff9900; color:#232f3e!important; }
-        .btn-temu { background-color:#ff6b00; } .btn-reverb { background-color:#333333; }
-        .btn-shopify { background-color:#7cb342; } .btn-shopify-pls { background-color:#5c6bc0; }
-        .btn-wayfair { background-color:#7a3ff2; } .btn-bestbuy { background-color:#0046be; }
         .modal-header-gradient { background:linear-gradient(135deg,#6B73FF 0%,#000DFF 100%); color:#fff; }
         /* ── Image card grid ─────────────────────────────────────── */
         .im-grid { display:flex; flex-wrap:wrap; gap:10px; min-height:40px; padding:4px 0; }
@@ -297,34 +293,30 @@
 @endsection
 
 @section('script')
+@include('partials.marketplace-api-config')
+@include('partials.all-marketplace-master-channels', ['allMpMaster' => 'image'])
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', () => {
     const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-    const MARKETPLACES = ['ebay','ebay2','ebay3','amazon','temu','wayfair','bestbuy','macy','reverb','shopify_main','shopify_pls'];
-    const ENABLED_MARKETPLACES = ['ebay','ebay2','ebay3','amazon','temu','wayfair','bestbuy','macy','reverb','shopify_main','shopify_pls'];
-    const LABELS = {
-        ebay:'eBay1', ebay2:'eBay2', ebay3:'eBay3', amazon:'Amazon', temu:'Temu', wayfair:'Wayfair', bestbuy:'Best Buy', macy:"Macy's", reverb:'Reverb',
-        shopify_main:'Shopify Main', shopify_pls:'Shopify PLS',
-    };
-    const MP_TILE = {
-        ebay:'btn-ebay1', ebay2:'btn-ebay2', ebay3:'btn-ebay3', amazon:'btn-amazon', temu:'btn-temu', wayfair:'btn-wayfair', bestbuy:'btn-bestbuy', macy:'btn-macy', reverb:'btn-reverb',
-        shopify_main:'btn-shopify', shopify_pls:'btn-shopify-pls',
-    };
-    const MP_SHORT = {
-        ebay:'E1', ebay2:'E2', ebay3:'E3', amazon:'A', temu:'T', wayfair:'W', bestbuy:'B', macy:'M', reverb:'R',
-        shopify_main:'SM', shopify_pls:'PLS',
-    };
-    const GROUPS = {
-        gChannels: ['ebay','ebay2','ebay3','macy','amazon','temu','reverb','wayfair','bestbuy'],
-        gShopify: ['shopify_main','shopify_pls'],
-    };
+    const __mp = window.__ALL_MP__ || {};
+    const MARKETPLACES = __mp.marketplaces || [];
+    const ENABLED_MARKETPLACES = __mp.enabled || [];
+    const LABELS = __mp.labels || {};
+    const MP_TILE = {};
+    const MP_SHORT = {};
+    Object.entries(__mp.tiles || {}).forEach(([k, v]) => {
+        MP_TILE[k] = v.cls;
+        MP_SHORT[k] = v.short;
+    });
+    const GROUPS = __mp.groups || { gChannels: [], gShopify: [] };
     const ADD_MODE_MARKETPLACES = ['shopify_main', 'shopify_pls', 'reverb'];
     const SHOPIFY_MARKETPLACES = ['shopify_main', 'shopify_pls'];
     const PM_MAX_IMAGES = 20;
     const MP_IMAGE_LIMITS = {
-        ebay: 12, ebay2: 12, ebay3: 12, amazon: 9, temu: 12, wayfair: 12, bestbuy: 12, macy: 12, reverb: 25,
+        ebay: 12, ebay2: 12, ebay3: 12, amazon: 9, temu: 12, temu2: 12, wayfair: 12, bestbuy: 12, macy: 12, reverb: 25,
+        doba: 12, walmart: 12, faire: 12, shein: 12, aliexpress: 12,
         shopify_main: 20, shopify_pls: 20,
     };
     const EBAY3_WARN = 'eBay3 has different listing structure. Please verify images before pushing.';
@@ -535,9 +527,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const pushed = hasPushedImages(val);
         const tile = MP_TILE[mp] || 'btn-secondary';
         const short = MP_SHORT[mp] || mp;
-        const enabled = ENABLED_MARKETPLACES.includes(mp);
-        const title = enabled ? LABELS[mp] : `${LABELS[mp]} image push is not implemented yet`;
-        return `<button type="button" class="bp-mp-stack" data-push-mp="${esc(mp)}" data-sku="${esc(sku)}" title="${esc(title)}" ${enabled ? '' : 'disabled'}>
+        const st = mpPushTileState(mp, { label: LABELS[mp], implemented: ENABLED_MARKETPLACES.includes(mp) });
+        return `<button type="button" class="bp-mp-stack${st.noApiClass}" data-push-mp="${esc(mp)}" data-sku="${esc(sku)}" data-api-configured="${st.configured ? '1' : '0'}" title="${esc(st.title)}" ${st.disabled ? 'disabled' : ''}>
             <span class="bp-mp-dot ${pushed?'pushed':''}"></span>
             <span class="marketplace-btn ${tile}">${esc(short)}</span>
         </button>`;
@@ -577,7 +568,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }).join('');
         document.querySelectorAll('.edit-btn[data-edit]').forEach(b => b.addEventListener('click', () => openEditModal(b.dataset.edit)));
         document.querySelectorAll('.shopify-row-pull-btn[data-shopify-pull-sku]').forEach(b => b.addEventListener('click', () => startSingleShopifyPull(b.dataset.shopifyPullSku, b)));
-        document.querySelectorAll('.bp-mp-stack[data-push-mp]:not(:disabled)').forEach(b => b.addEventListener('click', () => quickPush(b.dataset.sku, b.dataset.pushMp)));
+        document.querySelectorAll('.bp-mp-stack[data-push-mp]:not(:disabled)').forEach(b => b.addEventListener('click', () => {
+            quickPush(b.dataset.sku, b.dataset.pushMp);
+        }));
     }
 
     function defaultMainByMarketplace() {
@@ -1224,6 +1217,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // ── End push mode popup ────────────────────────────────────────────────────
 
     function quickPush(sku, mp) {
+        if (!marketplaceApiGuard(mp, LABELS[mp])) return;
         const row = bySku.get(String(sku));
         if (!row) return;
         const urls = pmImageUrls(row);
@@ -1316,14 +1310,21 @@ document.addEventListener('DOMContentLoaded', () => {
             toast('No products with images in the current view.', false);
             return;
         }
-        const mpCount = ENABLED_MARKETPLACES.length;
+        const configuredMps = typeof filterConfiguredMarketplaces === 'function'
+            ? filterConfiguredMarketplaces(ENABLED_MARKETPLACES)
+            : ENABLED_MARKETPLACES.filter(mp => isMarketplaceApiConfigured(mp));
+        if (!configuredMps.length) {
+            toast('No marketplaces have API credentials configured.', false);
+            return;
+        }
+        const mpCount = configuredMps.length;
         const skuLabel = rows.length === 1 ? '1 product' : `${rows.length} products`;
         if (!window.confirm(
-            `Push images to ALL ${mpCount} marketplaces for ${skuLabel}?\n\n`
+            `Push images to ${mpCount} configured marketplace(s) for ${skuLabel}?\n\n`
             + 'Per-platform main image settings (Image 1 by default) will be applied.\n'
             + 'Each product is sent in one batch; this may take a long time.'
         )) return;
-        if (!confirmEbay3Push(ENABLED_MARKETPLACES)) return;
+        if (!confirmEbay3Push(configuredMps)) return;
 
         bulkPushAllRunning = true;
         const pushAllBtn = document.getElementById('pushAllBtn');
@@ -1341,7 +1342,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const urls = pmImageUrls(row);
             if (!urls.length) continue;
 
-            const updates = ENABLED_MARKETPLACES.map(mp => ({ marketplace: mp, images: urls }));
+            const updates = configuredMps.map(mp => ({ marketplace: mp, images: urls }));
             const main_by_marketplace = mainByMarketplacePayloadFromRow(row);
             setPushProgress(
                 true,

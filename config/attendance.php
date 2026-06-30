@@ -24,12 +24,22 @@ return [
     /*
     | Heartbeat interval in seconds (client-side).
     */
-    'heartbeat_interval_seconds' => 60,
+    'heartbeat_interval_seconds' => (int) env('ATTENDANCE_HEARTBEAT_INTERVAL', 15),
 
     /*
-    | Idle threshold — no mouse/keyboard for this many seconds = idle.
+    | Show "still working?" popup after this many seconds without input.
     */
-    'idle_threshold_seconds' => 120,
+    'idle_prompt_seconds' => (int) env('ATTENDANCE_IDLE_PROMPT_SECONDS', 30),
+
+    /*
+    | If user does not answer the popup within this many seconds, count as idle.
+    */
+    'idle_prompt_timeout_seconds' => (int) env('ATTENDANCE_IDLE_PROMPT_TIMEOUT', 60),
+
+    /*
+    | Legacy idle threshold for system idle detection.
+    */
+    'idle_threshold_seconds' => (int) env('ATTENDANCE_IDLE_THRESHOLD', 30),
 
     /*
     | Auto-close sessions with no heartbeat for this many minutes.
@@ -59,9 +69,9 @@ return [
     /*
     | Desktop agent
     */
-    'agent_version' => '1.0.0',
+    'agent_version' => '1.1.0',
     'screenshots_enabled' => env('ATTENDANCE_SCREENSHOTS_ENABLED', true),
-    'screenshot_interval_seconds' => (int) env('ATTENDANCE_SCREENSHOT_INTERVAL', 300),
+    'screenshot_interval_seconds' => (int) env('ATTENDANCE_SCREENSHOT_INTERVAL', 30),
     'screenshot_max_kb' => (int) env('ATTENDANCE_SCREENSHOT_MAX_KB', 5120),
     'screenshot_disk' => 'attendance',
     'require_desktop_agent' => env('ATTENDANCE_REQUIRE_DESKTOP_AGENT', false),

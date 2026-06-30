@@ -10,8 +10,11 @@
 <div class="app">
     <header class="titlebar">
         <div class="brand">
-            <div class="logo">⏱</div>
-            <span>5Core Attendance</span>
+            <div class="logo"><img src="../assets/icon-48.png" width="32" height="32" alt=""></div>
+            <div>
+                <div class="brand-title">5Core Attendance</div>
+                <div class="brand-sub">Employee time tracking</div>
+            </div>
         </div>
         <div class="titlebar-actions no-drag">
             <button class="icon-btn" id="btnMinimize" title="Minimize to tray">—</button>
@@ -19,11 +22,10 @@
     </header>
 
     <main class="content">
-        <!-- Setup -->
         <div id="setupView" class="view">
             <h2>Welcome</h2>
-            <p class="sub">Connect this app to your 5Core server. Ask IT if you're unsure of the URL.</p>
-            <div class="alert alert-info show">Use your site base URL only — no /api or /attendance at the end.<br>Local dev: <code>http://127.0.0.1:8000</code></div>
+            <p class="sub">Connect this app to your 5Core server.</p>
+            <div class="alert alert-info show">Base URL only — e.g. <code>http://127.0.0.1:8000</code></div>
             <div class="field">
                 <label>Server URL</label>
                 <input type="url" id="apiUrl" placeholder="https://your-5core-site.com">
@@ -32,10 +34,9 @@
             <button class="btn btn-primary" id="btnSaveSetup">Continue</button>
         </div>
 
-        <!-- Login -->
         <div id="loginView" class="view">
             <h2>Sign in</h2>
-            <p class="sub">Use the same email and password as the 5Core portal.</p>
+            <p class="sub">Use your 5Core portal email and password.</p>
             <div class="field">
                 <label>Email</label>
                 <input type="email" id="email" autocomplete="username" placeholder="you@5core.com">
@@ -46,74 +47,75 @@
             </div>
             <div class="alert alert-error" id="loginError"></div>
             <button class="btn btn-primary" id="btnLogin">Sign In</button>
-            <p class="hint" style="margin-top:14px">
-                <button type="button" class="link-btn" id="btnChangeServer">Change server URL</button>
-            </p>
+            <p class="hint"><button type="button" class="link-btn" id="btnChangeServer">Change server URL</button></p>
         </div>
 
-        <!-- Dashboard -->
         <div id="dashView" class="view">
-            <div class="user-row no-drag">
-                <div>
+            <div class="dash-header no-drag">
+                <div class="user-block">
                     <div class="name" id="userName">—</div>
                     <div class="email" id="userEmail">—</div>
                 </div>
-                <button type="button" class="link-btn" id="btnSignOut">Sign out</button>
+                <div class="header-right">
+                    <div class="date-block">
+                        <div class="date-label">Today</div>
+                        <div class="date-val" id="todayDate">—</div>
+                    </div>
+                    <button type="button" class="btn-signout" id="btnSignOut">Sign out</button>
+                </div>
             </div>
 
-            <div class="status-card">
+            <div class="hero-card">
                 <div id="statusBadge" class="status-badge status-off">
                     <span class="dot"></span>
-                    <span id="statusText">Not clocked in</span>
+                    <span id="statusText">Off duty</span>
                 </div>
-                <div class="timer" id="timerDisplay">00:00:00</div>
-                <div class="timer-label" id="timerLabel">Today's work time</div>
-            </div>
-
-            <div class="stats-row">
-                <div class="stat-box">
-                    <div class="val" id="activeTime">0:00</div>
-                    <div class="lbl">Active</div>
-                </div>
-                <div class="stat-box">
-                    <div class="val" id="idleTime">0:00</div>
-                    <div class="lbl">Idle</div>
+                <div class="session-row" id="sessionRow">
+                    <span class="session-label" id="sessionLabel">Current session</span>
+                    <span class="session-timer" id="sessionTimer">00:00:00</span>
                 </div>
             </div>
 
-            <div class="now-app">
-                <div class="app-icon">🖥</div>
-                <div style="min-width:0;flex:1">
-                    <div class="app-title" id="currentApp">—</div>
-                    <div class="app-sub" id="currentWindow">Waiting for clock in…</div>
+            <div class="panel">
+                <div class="panel-head">
+                    <h3>Today's time</h3>
+                    <span class="panel-hint">Resets at midnight · up to 24h</span>
+                </div>
+                <div class="stats-grid">
+                    <div class="stat-card stat-active" id="activeStatBox">
+                        <div class="stat-icon">●</div>
+                        <div class="stat-val" id="dailyActive">00:00:00</div>
+                        <div class="stat-lbl">Active</div>
+                    </div>
+                    <div class="stat-card stat-idle" id="idleStatBox">
+                        <div class="stat-icon">◐</div>
+                        <div class="stat-val" id="dailyIdle">00:00:00</div>
+                        <div class="stat-lbl">Idle</div>
+                    </div>
+                    <div class="stat-card stat-break" id="breakStatBox">
+                        <div class="stat-icon">☕</div>
+                        <div class="stat-val" id="dailyBreak">00:00:00</div>
+                        <div class="stat-lbl">Break</div>
+                    </div>
                 </div>
             </div>
 
-            <div class="field no-drag" id="locationField">
-                <label>Work location</label>
-                <select id="workLocation">
-                    <option value="wfh">Work from home</option>
-                    <option value="office">Office</option>
-                    <option value="hybrid">Hybrid</option>
-                </select>
+            <div class="actions-zone no-drag" id="actionsZone">
+                <div class="clock-in-center" id="clockInWrap">
+                    <button class="btn btn-clock-in" id="btnClockIn">Clock In</button>
+                </div>
+                <div class="actions-bar" id="activeActions" style="display:none">
+                    <button class="btn btn-danger" id="btnClockOut">Clock Out</button>
+                    <button class="btn btn-ghost" id="btnPause" style="display:none">Break</button>
+                    <button class="btn btn-primary-outline" id="btnResume" style="display:none">Resume</button>
+                </div>
             </div>
 
-            <div class="actions-grid no-drag">
-                <button class="btn btn-success btn-full" id="btnClockIn">▶ Clock In</button>
-                <button class="btn btn-danger btn-full" id="btnClockOut" style="display:none">■ Clock Out</button>
-                <button class="btn btn-ghost" id="btnPause" style="display:none">⏸ Pause</button>
-                <button class="btn btn-ghost" id="btnResume" style="display:none">▶ Resume</button>
-            </div>
-
-            <p class="hint">
-                Click <strong>—</strong> above to hide to system tray.<br>
-                Tracking runs only while clocked in.
-            </p>
         </div>
     </main>
 
     <footer class="footer-note no-drag">
-        Screenshots &amp; app usage collected during active sessions · v1.0
+        Runs in background · all monitors captured · tray <strong>—</strong> · v1.2
     </footer>
 </div>
 <script src="app.js"></script>

@@ -1,4 +1,3 @@
-$hwnd = [System.Runtime.InteropServices.Marshal]::GetForegroundWindow()
 Add-Type @"
 using System;
 using System.Runtime.InteropServices;

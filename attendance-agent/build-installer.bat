@@ -6,6 +6,10 @@ echo Installing build dependencies...
 call npm install
 if errorlevel 1 ( pause & exit /b 1 )
 
+echo Generating app icons...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\generate-icons.ps1"
+if errorlevel 1 ( pause & exit /b 1 )
+
 echo.
 echo Building Windows installer (this may take a few minutes)...
 call npm run build

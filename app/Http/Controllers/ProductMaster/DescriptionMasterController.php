@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\ProductMaster;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\ProductMaster\Concerns\GuardsMarketplaceApiConfiguration;
 use App\Http\Controllers\ProductMaster\Concerns\RetriesMarketplacePush;
 use App\Models\ProductMaster;
 use App\Services\AmazonSpApiService;
@@ -15,6 +16,7 @@ use App\Services\ReverbApiService;
 use App\Services\ShopifyApiService;
 use App\Services\ShopifyPLSApiService;
 use App\Services\Support\DescriptionWithImagesFormatter;
+use App\Services\Support\ProductMasterMarketplaceMaps;
 use App\Services\TemuApiService;
 use App\Services\WayfairApiService;
 use Illuminate\Http\Request;
@@ -25,6 +27,7 @@ use Illuminate\Support\Facades\Schema;
 
 class DescriptionMasterController extends Controller
 {
+    use GuardsMarketplaceApiConfiguration;
     use RetriesMarketplacePush;
 
     public function index(Request $request)
@@ -148,6 +151,11 @@ class DescriptionMasterController extends Controller
                 if (! in_array($marketplace, $allowedMarketplaces, true)) {
                     $results[$marketplace] = ['success' => false, 'message' => 'Unknown or unsupported marketplace'];
 
+                    continue;
+                }
+
+                if ($blocked = $this->marketplaceApiNotConfiguredResult($marketplace)) {
+                    $results[$marketplace] = $blocked;
                     continue;
                 }
 
@@ -844,31 +852,19 @@ class DescriptionMasterController extends Controller
 
     private function marketplaceTableMap(): array
     {
-        return [
-            'amazon' => 'amazon_metrics',
-            'temu' => 'temu_metrics',
-            'reverb' => 'reverb_metrics',
-            'shopify_main' => 'shopify_metrics',
-            'shopify_pls' => 'shopify_pls_metrics',
-            'ebay' => 'ebay_metrics',
-            'ebay2' => 'ebay_2_metrics',
-            'ebay3' => 'ebay_3_metrics',
-            'macy' => 'macy_metrics',
-            'wayfair' => 'wayfair_metrics',
-            'bestbuy' => 'bestbuy_metrics',
-        ];
+        return ProductMasterMarketplaceMaps::descriptionTableMap();
     }
 
     private function maxCharsForMarketplace(string $marketplace): int
     {
         // Platform listing limits (Amazon/Temu: plain text; Shopify: no hard cap; eBay: 500k — ~800 visible on mobile).
         return match ($marketplace) {
-            'amazon', 'temu' => 2000,
+            'amazon', 'temu', 'temu2', 'walmart', 'shein', 'aliexpress' => 2000,
             'shopify_main', 'shopify_pls' => 500000,
             'ebay', 'ebay2', 'ebay3' => 500000,
-            'reverb', 'bestbuy' => 1500,
+            'reverb', 'bestbuy', 'doba' => 1500,
             'wayfair' => 2000,
-            'macy' => 600,
+            'macy', 'faire' => 600,
             default => 1500,
         };
     }
@@ -1182,17 +1178,7 @@ class DescriptionMasterController extends Controller
             return app(ShopifyPLSApiService::class)->updateDescription($sku, $text, $imageUrls);
         }
 
-        $map = [
-            'amazon' => [AmazonSpApiService::class, 'updateAplusContent'],
-            'temu' => [TemuApiService::class, 'updateDescription'],
-            'reverb' => [ReverbApiService::class, 'updateDescription'],
-            'macy' => [MacysApiService::class, 'updateDescription'],
-            'ebay' => [EbayApiService::class, 'updateDescription'],
-            'ebay2' => [Ebay2ApiService::class, 'updateDescription'],
-            'ebay3' => [EbayThreeApiService::class, 'updateDescription'],
-            'wayfair' => [WayfairApiService::class, 'updateProductDescription'],
-            'bestbuy' => [BestBuyApiService::class, 'updateDescription'],
-        ];
+        $map = ProductMasterMarketplaceMaps::descriptionServiceMap();
 
         try {
             if (! isset($map[$marketplace])) {
@@ -1204,7 +1190,10 @@ class DescriptionMasterController extends Controller
                 return ['success' => false, 'message' => 'Service method not available'];
             }
 
-            $result = $service->{$method}($sku, $text, $imageUrls);
+            $twoArgOnly = in_array($marketplace, ['ebay', 'ebay2', 'ebay3', 'doba', 'walmart', 'faire', 'shein', 'aliexpress'], true);
+            $result = $twoArgOnly
+                ? $service->{$method}($sku, $text)
+                : $service->{$method}($sku, $text, $imageUrls);
             if (is_array($result)) {
                 return [
                     'success' => (bool) ($result['success'] ?? false),
@@ -1242,9 +1231,9 @@ class DescriptionMasterController extends Controller
         $d800 = trim((string) ($pm->description_800 ?? ''));
         $d600 = trim((string) ($pm->description_600 ?? ''));
 
-        if (in_array($marketplace, ['amazon', 'temu', 'reverb', 'wayfair', 'bestbuy'], true)) {
+        if (in_array($marketplace, ['amazon', 'temu', 'temu2', 'reverb', 'wayfair', 'bestbuy', 'walmart', 'shein', 'aliexpress'], true)) {
             $text = $d1500;
-        } elseif (in_array($marketplace, ['shopify_main', 'shopify_pls'], true)) {
+        } elseif (in_array($marketplace, ['shopify_main', 'shopify_pls', 'doba'], true)) {
             $text = $d1000 !== '' ? $d1000 : $d1500;
         } elseif (in_array($marketplace, ['ebay', 'ebay2', 'ebay3'], true)) {
             $text = $d800 !== '' ? $d800 : $d1500;

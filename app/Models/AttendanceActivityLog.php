@@ -12,6 +12,7 @@ class AttendanceActivityLog extends Model
         'user_id',
         'recorded_at',
         'is_active',
+        'activity_state',
         'idle_seconds',
         'window_title',
         'page_url',

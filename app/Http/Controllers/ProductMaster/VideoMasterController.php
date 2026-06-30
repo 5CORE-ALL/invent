@@ -27,7 +27,16 @@ use App\Services\Support\EbaySellInventoryListingResolver;
 use App\Services\Support\EbayTradingReviseItem;
 use App\Services\WayfairApiService;
 use Illuminate\Support\Facades\Storage;
+use App\Services\DobaApiService;
 use App\Services\TemuApiService;
+use App\Services\Temu2ApiService;
+use App\Services\WalmartService;
+use App\Services\FaireService;
+use App\Services\SheinApiService;
+use App\Services\AliExpressApiService;
+use App\Services\NeweggApiService;
+use App\Services\TopDawgApiService;
+use App\Services\TikTokShopService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -830,6 +839,25 @@ class VideoMasterController extends Controller
                     return app(MacysApiService::class)->updateVideos($sku, $imageUrls);
                 case 'reverb':
                     return app(ReverbApiService::class)->updateVideos($sku, $imageUrls, $mode);
+                case 'doba':
+                    return app(DobaApiService::class)->updateVideos($sku, $imageUrls, $mode);
+                case 'temu2':
+                    return app(Temu2ApiService::class)->updateVideos($sku, $imageUrls, $mode);
+                case 'walmart':
+                    return app(WalmartService::class)->updateVideos($sku, $imageUrls, $mode);
+                case 'faire':
+                    return app(FaireService::class)->updateVideos($sku, $imageUrls, $mode);
+                case 'shein':
+                    return app(SheinApiService::class)->updateVideos($sku, $imageUrls, $mode);
+                case 'aliexpress':
+                    return app(AliExpressApiService::class)->updateVideos($sku, $imageUrls, $mode);
+                case 'newegg':
+                    return app(NeweggApiService::class)->updateVideos($sku, $imageUrls, $mode);
+                case 'topdawg':
+                    return app(TopDawgApiService::class)->updateVideos($sku, $imageUrls, $mode);
+                case 'tiktok':
+                case 'tiktok2':
+                    return app(TikTokShopService::class)->updateVideos($sku, $imageUrls, $mode);
                 default:
                     return [
                         'success' => false,
@@ -920,6 +948,16 @@ class VideoMasterController extends Controller
             'reverb' => 'reverb_products', // reverb_metrics may not exist; reverb_products has image_urls + unique sku
             'shopify_main' => 'shopify_metrics',
             'shopify_pls' => 'shopify_pls_metrics',
+            'doba' => 'doba_metrics',
+            'temu2' => 'temu2_metrics',
+            'walmart' => 'walmart_metrics',
+            'faire' => 'faire_metrics',
+            'shein' => 'shein_metrics',
+            'aliexpress' => 'aliexpress_metrics',
+            'newegg' => 'newegg_metrics',
+            'topdawg' => 'topdawg_metrics',
+            'tiktok' => 'tiktok_metrics',
+            'tiktok2' => 'tiktok_metrics',
         ];
     }
 
@@ -935,6 +973,8 @@ class VideoMasterController extends Controller
     {
         return match ($marketplace) {
             'amazon' => 3,
+            'doba' => 1,
+            'walmart' => 1,
             'reverb' => 5,
             'shopify_main', 'shopify_pls' => self::PM_MAX_VIDEOS,
             default => 5,

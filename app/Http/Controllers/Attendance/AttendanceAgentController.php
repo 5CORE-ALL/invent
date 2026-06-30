@@ -88,7 +88,10 @@ class AttendanceAgentController extends Controller
                 'started_at' => $session->started_at->toIso8601String(),
                 'active_seconds' => $session->total_active_seconds,
                 'idle_seconds' => $session->total_idle_seconds,
+                'break_seconds' => $session->total_break_seconds,
+                'activity_state' => $session->last_activity_state ?? ($session->status === 'paused' ? 'break' : 'working'),
             ] : null,
+            'today' => $this->attendanceService->todayStats($user),
             'config' => $this->agentConfig(),
         ]);
     }
@@ -123,7 +126,10 @@ class AttendanceAgentController extends Controller
                 'status' => $session->status,
                 'active_seconds' => $session->total_active_seconds,
                 'idle_seconds' => $session->total_idle_seconds,
+                'break_seconds' => $session->total_break_seconds,
+                'activity_state' => $session->last_activity_state ?? 'working',
             ],
+            'today' => $this->attendanceService->todayStats($user),
         ]);
     }
 
@@ -137,6 +143,7 @@ class AttendanceAgentController extends Controller
                 'id' => $session->id,
                 'ended_at' => $session->ended_at?->toIso8601String(),
             ] : null,
+            'today' => $this->attendanceService->todayStats($request->user()),
         ]);
     }
 
@@ -144,14 +151,40 @@ class AttendanceAgentController extends Controller
     {
         $session = $this->attendanceService->pause($request->user());
 
-        return response()->json(['ok' => (bool) $session, 'status' => $session?->status]);
+        return response()->json([
+            'ok' => (bool) $session,
+            'status' => $session?->status,
+            'session' => $session ? [
+                'id' => $session->id,
+                'status' => $session->status,
+                'started_at' => $session->started_at->toIso8601String(),
+                'active_seconds' => $session->total_active_seconds,
+                'idle_seconds' => $session->total_idle_seconds,
+                'break_seconds' => $session->total_break_seconds,
+                'activity_state' => 'break',
+            ] : null,
+            'today' => $this->attendanceService->todayStats($request->user()),
+        ]);
     }
 
     public function resume(Request $request): JsonResponse
     {
         $session = $this->attendanceService->resume($request->user());
 
-        return response()->json(['ok' => (bool) $session, 'status' => $session?->status]);
+        return response()->json([
+            'ok' => (bool) $session,
+            'status' => $session?->status,
+            'session' => $session ? [
+                'id' => $session->id,
+                'status' => $session->status,
+                'started_at' => $session->started_at->toIso8601String(),
+                'active_seconds' => $session->total_active_seconds,
+                'idle_seconds' => $session->total_idle_seconds,
+                'break_seconds' => $session->total_break_seconds,
+                'activity_state' => 'working',
+            ] : null,
+            'today' => $this->attendanceService->todayStats($request->user()),
+        ]);
     }
 
     public function heartbeat(Request $request): JsonResponse
@@ -163,7 +196,9 @@ class AttendanceAgentController extends Controller
 
         $validated = $request->validate([
             'is_active' => 'nullable|boolean',
+            'activity_state' => 'nullable|in:working,idle,break',
             'idle_seconds' => 'nullable|integer|min:0|max:86400',
+            'elapsed_seconds' => 'nullable|integer|min:1|max:120',
             'window_title' => 'nullable|string|max:500',
             'page_url' => 'nullable|string|max:1000',
             'app_name' => 'nullable|string|max:200',
@@ -254,9 +289,11 @@ class AttendanceAgentController extends Controller
     private function agentConfig(): array
     {
         return [
-            'heartbeat_interval_seconds' => (int) config('attendance.heartbeat_interval_seconds', 60),
-            'screenshot_interval_seconds' => (int) config('attendance.screenshot_interval_seconds', 300),
-            'idle_threshold_seconds' => (int) config('attendance.idle_threshold_seconds', 120),
+            'heartbeat_interval_seconds' => (int) config('attendance.heartbeat_interval_seconds', 15),
+            'screenshot_interval_seconds' => (int) config('attendance.screenshot_interval_seconds', 30),
+            'idle_threshold_seconds' => (int) config('attendance.idle_threshold_seconds', 30),
+            'idle_prompt_seconds' => (int) config('attendance.idle_prompt_seconds', 30),
+            'idle_prompt_timeout_seconds' => (int) config('attendance.idle_prompt_timeout_seconds', 60),
             'screenshots_enabled' => (bool) config('attendance.screenshots_enabled', true),
             'agent_version' => (string) config('attendance.agent_version', '1.0.0'),
         ];

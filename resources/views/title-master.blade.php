@@ -7,6 +7,7 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
     <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
+    @include('partials.marketplace-master-button-colors')
 
     <style>
         .card.title-master-card {
@@ -478,72 +479,17 @@
             min-width: 120px;
         }
 
-        /* Title Master: align status dots with buttons (same grid per row) */
-        #title-master-table .marketplaces-150-cell,
-        #title-master-table .marketplaces-100-cell,
-        #title-master-table .marketplaces-80-cell {
-            vertical-align: middle !important;
-            padding: 6px 8px !important;
-            min-width: 148px;
-        }
-        #title-master-table .marketplaces-dots-wrapper {
-            width: 100%;
-            margin-bottom: 3px;
-            padding-bottom: 0;
-            box-sizing: border-box;
-        }
-        #title-master-table .marketplaces-150-cell .marketplaces-dots,
-        #title-master-table .marketplaces-100-cell .marketplaces-dots,
-        #title-master-table .marketplaces-80-cell .marketplaces-dots {
-            display: grid;
-            grid-template-columns: repeat(3, minmax(32px, 1fr));
-            column-gap: 12px;
-            row-gap: 0;
-            align-items: center;
-            justify-items: center;
-            width: 100%;
-            min-height: 16px;
-        }
-        #title-master-table .marketplaces-150-cell .marketplace-buttons,
-        #title-master-table .marketplaces-100-cell .marketplace-buttons,
-        #title-master-table .marketplaces-80-cell .marketplace-buttons {
-            display: grid;
-            grid-template-columns: repeat(3, minmax(32px, 1fr));
-            column-gap: 12px;
-            row-gap: 8px;
-            align-items: center;
-            justify-items: center;
-            justify-content: center;
-            min-width: 0;
-            flex-wrap: nowrap;
-            width: 100%;
-        }
-        #title-master-table .marketplaces-150-cell .mp-dot,
-        #title-master-table .marketplaces-100-cell .mp-dot,
-        #title-master-table .marketplaces-80-cell .mp-dot {
-            flex-shrink: 0;
-        }
-        /* PLS label is wider than icon-only buttons — keep column alignment */
-        #title-master-table .marketplaces-100-cell .marketplace-btn.btn-shopify-pls {
-            width: auto;
-            min-width: 36px;
-            padding: 0 6px;
-        }
-        @media (max-width: 768px) {
-            #title-master-table .marketplaces-150-cell .marketplaces-dots,
-            #title-master-table .marketplaces-100-cell .marketplaces-dots,
-            #title-master-table .marketplaces-80-cell .marketplaces-dots,
-            #title-master-table .marketplaces-150-cell .marketplace-buttons,
-            #title-master-table .marketplaces-100-cell .marketplace-buttons,
-            #title-master-table .marketplaces-80-cell .marketplace-buttons {
-                column-gap: 8px;
-            }
-            #title-master-table .marketplaces-150-cell,
-            #title-master-table .marketplaces-100-cell,
-            #title-master-table .marketplaces-80-cell {
-                min-width: 0;
-            }
-        }
+        .bp-mp-th-title { font-size:10px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; }
+        .bp-mp-th-icons { display:flex; flex-wrap:wrap; gap:4px; margin-top:6px; justify-content:center; align-items:center; }
+        .bp-mp-th-pill { width:22px; height:22px; border-radius:4px; font-size:8px; font-weight:700; color:#fff; display:inline-flex; align-items:center; justify-content:center; line-height:1; }
+        .bp-mp-stack { display:flex; flex-direction:column; align-items:center; gap:3px; border:none; background:transparent; padding:0; cursor:pointer; }
+        .bp-mp-stack:hover .marketplace-btn:not(:disabled) { transform:translateY(-1px); box-shadow:0 2px 6px rgba(0,0,0,.18); }
+        .bp-mp-stack:disabled { cursor:not-allowed; }
+        .bp-mp-dot { width:10px; height:10px; border-radius:50%; border:2px solid #94a3b8; background:transparent; flex-shrink:0; }
+        .bp-mp-dot.pushed { background:#22c55e; border-color:#22c55e; }
+        .bp-mp-dot.failed { background:#ef4444; border-color:#ef4444; }
+        .bp-mp-inline { display:flex; flex-wrap:wrap; gap:8px; align-items:flex-start; justify-content:center; }
+        #title-master-table .marketplaces-cell { vertical-align:middle !important; padding:6px 8px !important; min-width:120px; overflow:visible; }
 
         .marketplace-btn {
             width: 28px;
@@ -573,32 +519,13 @@
             box-shadow: none;
         }
 
-        .btn-amazon { background-color: #146eb4; }
-        .btn-temu { background-color: #28a745; }
-        .btn-reverb { background-color: #ffc107; color: #333; }
-        .btn-wayfair { background-color: #dc3545; }
-        .btn-walmart { background-color: #dc3545; }
-        .btn-shopify-main { background-color: #198754; }
-        .btn-shopify-pls { background-color: #6f42c1; }
-        .btn-doba { background-color: #fd7e14; }
-        .btn-ebay1 { background-color: #0d6efd; }
-        .btn-ebay2 { background-color: #198754; }
-        .btn-ebay3 { background-color: #fd7e14; }
-        .btn-macy { background-color: #0d6efd; }
-        .btn-faire { background-color: #6f42c1; }
-        .mp-dot.ebay1 { color: #0d6efd; }
-        .mp-dot.ebay2 { color: #198754; }
-        .mp-dot.ebay3 { color: #fd7e14; }
-        .mp-dot.walmart { color: #0071ce; }
-        .mp-dot.macy { color: #0d6efd; }
-        .mp-dot.faire { color: #6f42c1; }
-
-        /* Tooltips use Bootstrap (container: body, top) — see initMarketplaceTooltips() */
-        #title-master-table .marketplaces-cell,
-        #title-master-table .marketplaces-100-cell,
-        #title-master-table .marketplaces-80-cell {
-            overflow: visible;
+        .marketplace-btn.btn-shopify-pls {
+            width: auto;
+            min-width: 36px;
+            padding: 0 4px;
+            font-size: 9px;
         }
+
         .action-btn i {
             font-size: 11px;
         }
@@ -887,6 +814,9 @@
 @endsection
 
 @section('content')
+    @php
+        $tmMpConfig = app(\App\Services\Support\AllMarketplaceChannelRegistry::class)->jsConfig('title');
+    @endphp
     <meta name="csrf-token" content="{{ csrf_token() }}">
 
     @include('layouts.shared/page-title', [
@@ -1024,9 +954,28 @@
                                         <i class="fas fa-eye" aria-hidden="true"></i>
                                         <span class="visually-hidden">View</span>
                                     </th>
-                                    <th title="Amazon, Temu, Reverb">MARKET (170)</th>
-                                    <th title="Shopify Main, Shopify PLS, Macy's (Title 60 push)">MARKET (100)</th>
-                                    <th title="eBay 1 (AmarjitK), eBay 2 (ProLight), eBay 3 (KaneerKa)">MARKET (80)</th>
+                                    <th title="All marketplace title push buttons (tier per channel)">
+                                        <div class="bp-mp-th-title">MARKET PLACES</div>
+                                        <div class="bp-mp-th-icons">
+                                            @foreach ($tmMpConfig['groups']['gChannels'] ?? [] as $mpKey)
+                                                @php $tile = $tmMpConfig['tiles'][$mpKey] ?? null; @endphp
+                                                @if ($tile)
+                                                    <span class="bp-mp-th-pill {{ $tile['cls'] }}">{{ $tile['short'] }}</span>
+                                                @endif
+                                            @endforeach
+                                        </div>
+                                    </th>
+                                    <th title="Shopify stores title push">
+                                        <div class="bp-mp-th-title">SHOPIFY</div>
+                                        <div class="bp-mp-th-icons">
+                                            @foreach ($tmMpConfig['groups']['gShopify'] ?? [] as $mpKey)
+                                                @php $tile = $tmMpConfig['tiles'][$mpKey] ?? null; @endphp
+                                                @if ($tile)
+                                                    <span class="bp-mp-th-pill {{ $tile['cls'] }}">{{ $tile['short'] }}</span>
+                                                @endif
+                                            @endforeach
+                                        </div>
+                                    </th>
                                     <th class="push-to-all-th" title="Push Title 170 to Amazon, Temu, Reverb">
                                         <div class="push-all-th-inner">
                                             <img src="{{ asset('images/title-master/distribute-all-icon.png') }}" alt="" class="tm-push-all-icon" width="20" height="20">
@@ -1785,10 +1734,72 @@
         window.titleMasterAiStackDraftsUrl = @json(route('title.master.ai.stack.drafts', [], false));
         window.titleMasterPushAllIconUrl = @json(asset('images/title-master/distribute-all-icon.png'));
     </script>
+    @include('partials.marketplace-api-config')
+    @include('partials.all-marketplace-master-channels', ['allMpMaster' => 'title'])
     <script>
         @verbatim
         const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
         const TM_PUSH_ALL_ICON_URL = typeof window.titleMasterPushAllIconUrl === 'string' ? window.titleMasterPushAllIconUrl : '';
+        const __tmMp = window.__ALL_MP__ || {};
+        const TM_GROUPS = __tmMp.groups || { gChannels: [], gShopify: [] };
+        const TM_LABELS = __tmMp.labels || {};
+        const TM_TILES = __tmMp.tiles || {};
+        const TM_ENABLED = __tmMp.enabled || [];
+        const TM_TITLE_META = __tmMp.titleMeta || {};
+
+        function tmPushKey(mp) {
+            const meta = TM_TITLE_META[mp];
+            return (meta && meta.push) ? meta.push : mp;
+        }
+
+        function tmTitleType(mp) {
+            const meta = TM_TITLE_META[mp];
+            return (meta && meta.type) ? meta.type : '150';
+        }
+
+        function tmTitleText(item, mp) {
+            if (!item) return '';
+            const type = tmTitleType(mp);
+            if (type === '150') return titleMasterGetTitle170Text(item);
+            if (type === '100') return String(item.title100 || '').trim();
+            if (type === '80') return String(item.title80 || '').trim();
+            if (type === '60') return String(item.title60 || '').trim();
+            return '';
+        }
+
+        function tmUpdateMpDot(btn, status) {
+            const dot = btn ? btn.querySelector('.bp-mp-dot') : null;
+            if (!dot) return;
+            dot.classList.remove('pushed', 'failed');
+            if (status === 'success') dot.classList.add('pushed');
+            else if (status === 'failed') dot.classList.add('failed');
+        }
+
+        function tmMpStackHtml(sku, mp, item) {
+            const pushKey = tmPushKey(mp);
+            const titleType = tmTitleType(mp);
+            const hasContent = tmTitleText(item, mp) !== '';
+            const tile = TM_TILES[mp] || { cls: 'btn-secondary', short: '?' };
+            const implemented = TM_ENABLED.includes(mp);
+            const st = mpPushTileState(pushKey, {
+                label: TM_LABELS[mp] || mp,
+                implemented: implemented,
+                statusHint: hasContent ? ('Title ' + titleType) : ('No Title ' + titleType),
+            });
+            const disabled = (!hasContent || st.disabled) ? 'disabled' : '';
+            return '<button type="button" class="bp-mp-stack tm-mp-push-btn' + st.noApiClass + '" data-mp="' + escapeHtml(mp) + '" data-push-key="' + escapeHtml(pushKey) + '" data-title-type="' + escapeHtml(titleType) + '" data-sku="' + escapeHtml(sku) + '" title="' + escapeHtml(st.title) + '" ' + disabled + '>'
+                + '<span class="bp-mp-dot" aria-hidden="true"></span>'
+                + '<span class="marketplace-btn ' + tile.cls + '">' + escapeHtml(tile.short) + '</span>'
+                + '</button>';
+        }
+
+        function tmGroupCellInner(groupKey, sku, item) {
+            const keys = TM_GROUPS[groupKey] || [];
+            return '<div class="bp-mp-inline">'
+                + keys.map(function (mp) { return tmMpStackHtml(sku, mp, item); }).join('')
+                + '</div>';
+        }
+
         const TM_AI_STACK_DRAFT_MAX = 175;
         /** Amazon / Title column display limit (✅/❌ and “Exceeds N chars” filter). */
         const TITLE_MASTER_AMAZON_TITLE_MAX = 170;
@@ -3383,12 +3394,98 @@
             return html;
         }
 
+        function setupIndividualMarketplaceButtons() {
+            document.querySelectorAll('.tm-mp-push-btn:not(:disabled)').forEach(btn => {
+                btn.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    const button = this;
+                    const sku = button.getAttribute('data-sku');
+                    const mp = button.getAttribute('data-mp');
+                    const marketplace = button.getAttribute('data-push-key');
+                    const titleType = button.getAttribute('data-title-type');
+                    const marketplaceName = TM_LABELS[mp] || marketplace.toUpperCase();
+                    const item = tableData.find(x => x.SKU === sku);
+                    const title = tmTitleText(item, mp);
+
+                    if (!title) {
+                        if (typeof showToast === 'function') {
+                            showToast('error', 'No Title ' + titleType + ' available for SKU ' + sku + '.');
+                        } else {
+                            alert('No Title ' + titleType + ' available for SKU ' + sku + '.');
+                        }
+                        return;
+                    }
+
+                    if (marketplace === 'ebay3' && !confirm('Warning! This is a Variation Platform, ARE YOU SURE?')) {
+                        return;
+                    }
+
+                    const originalHtml = button.innerHTML;
+                    button.disabled = true;
+                    button.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>';
+
+                    if (typeof showToast === 'function') {
+                        showToast('info', 'Pushing Title ' + titleType + ' to ' + marketplaceName + '...', 0);
+                    }
+
+                    fetch('/api/marketplaces/push-single', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken
+                        },
+                        body: JSON.stringify({
+                            sku: sku,
+                            marketplace: marketplace,
+                            title_type: titleType,
+                            title: title
+                        })
+                    })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.success) {
+                                if (typeof showToast === 'function') {
+                                    showToast('success', marketplaceName + ' (Title ' + titleType + ') updated for ' + sku);
+                                }
+                                const log = data.statuses && data.statuses[marketplace] ? data.statuses[marketplace].status : 'success';
+                                tmUpdateMpDot(button, log);
+                            } else {
+                                const msg = data.message || 'Unknown error';
+                                if (typeof showToast === 'function') {
+                                    showToast('error', marketplaceName + ' (Title ' + titleType + ') failed: ' + msg);
+                                }
+                                tmUpdateMpDot(button, 'failed');
+                            }
+                        })
+                        .catch(error => {
+                            if (typeof showToast === 'function') {
+                                showToast('error', marketplaceName + ' push error: ' + error.message);
+                            }
+                            tmUpdateMpDot(button, 'failed');
+                        })
+                        .finally(() => {
+                            const itemAfter = tableData.find(x => x.SKU === sku);
+                            const stillHasTitle = tmTitleText(itemAfter, mp) !== '';
+                            const pushKey = tmPushKey(mp);
+                            const implemented = TM_ENABLED.includes(mp);
+                            const st = mpPushTileState(pushKey, {
+                                label: TM_LABELS[mp] || mp,
+                                implemented: implemented,
+                                statusHint: stillHasTitle ? ('Title ' + titleType) : ('No Title ' + titleType),
+                            });
+                            button.disabled = !stillHasTitle || st.disabled;
+                            button.innerHTML = originalHtml;
+                        });
+                });
+            });
+        }
+
         function renderTable(data) {
             const tbody = document.getElementById('table-body');
             const frag = document.createDocumentFragment();
 
             if (data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="18" class="text-center">No products found</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="17" class="text-center">No products found</td></tr>';
                 return;
             }
 
@@ -3398,7 +3495,7 @@
             });
 
             if (filteredData.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="18" class="text-center">No products found</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="17" class="text-center">No products found</td></tr>';
                 return;
             }
 
@@ -3485,48 +3582,17 @@
                     '</div>';
                 row.appendChild(actionCell);
 
-                // MARKET (150): Amazon, Temu, Reverb only
-                const marketplaces150Cell = document.createElement('td');
-                marketplaces150Cell.className = 'marketplaces-cell marketplaces-150-cell';
+                // Marketplace push columns (all channels — same layout as other masters)
                 const skuEscaped = escapeHtml(item.SKU);
-                const hasTitle150 = t170.trim() !== '';
-                let mp150Html = '<div class="marketplaces-dots-wrapper">' +
-                    renderMarketplaceDots(skuEscaped, null) +
-                    '</div>';
-                mp150Html += '<div class="marketplace-buttons">';
-                mp150Html += '<button type="button" class="marketplace-btn marketplace-tooltip marketplace-btn-150 btn-amazon" data-sku="' + skuEscaped + '" data-marketplace="amazon" data-title-type="150" title="Amazon (Title 170)" ' + (hasTitle150 ? '' : 'disabled') + '><i class="fab fa-amazon"></i></button>';
-                mp150Html += '<button type="button" class="marketplace-btn marketplace-tooltip marketplace-btn-150 btn-temu" data-sku="' + skuEscaped + '" data-marketplace="temu" data-title-type="150" title="Temu (Title 170)" ' + (hasTitle150 ? '' : 'disabled') + '>T</button>';
-                mp150Html += '<button type="button" class="marketplace-btn marketplace-tooltip marketplace-btn-150 btn-reverb" data-sku="' + skuEscaped + '" data-marketplace="reverb" data-title-type="150" title="Reverb (Title 170)" ' + (hasTitle150 ? '' : 'disabled') + '><i class="fas fa-guitar"></i></button>';
-                mp150Html += '</div>';
-                marketplaces150Cell.innerHTML = mp150Html;
-                row.appendChild(marketplaces150Cell);
+                const mpChannelsCell = document.createElement('td');
+                mpChannelsCell.className = 'marketplaces-cell';
+                mpChannelsCell.innerHTML = tmGroupCellInner('gChannels', skuEscaped, item);
+                row.appendChild(mpChannelsCell);
 
-                // MARKET (100): Shopify Main, PLS + Macy's (Title 60 push)
-                const marketplaces100Cell = document.createElement('td');
-                marketplaces100Cell.className = 'marketplaces-100-cell';
-                const hasTitle100 = !!(item.title100 && String(item.title100).trim() !== '');
-                const hasTitle60 = !!(item.title60 && String(item.title60).trim() !== '');
-                let mp100Html = '<div class="marketplaces-dots-wrapper marketplaces-dots-100" data-sku="' + skuEscaped + '">' + renderMarketplaceDots100(skuEscaped, null) + '</div>';
-                mp100Html += '<div class="marketplace-buttons">';
-                mp100Html += '<button type="button" class="marketplace-btn marketplace-tooltip marketplace-btn-100 btn-shopify-pls" data-sku="' + skuEscaped + '" data-marketplace="shopify_pls" data-title-type="100" title="Push Title 100 to ProLight Sounds" ' + (hasTitle100 ? '' : 'disabled') + '>PLS</button>';
-                mp100Html += '<button type="button" class="marketplace-btn marketplace-tooltip marketplace-btn-100 btn-shopify-main" data-sku="' + skuEscaped + '" data-marketplace="shopify_main" data-title-type="100" title="Push Title 100 to Main Shopify" ' + (hasTitle100 ? '' : 'disabled') + '><i class="fab fa-shopify"></i></button>';
-                mp100Html += '<button type="button" class="marketplace-btn marketplace-tooltip marketplace-btn-100 btn-macy" data-sku="' + skuEscaped + '" data-marketplace="macy" data-title-type="60" title="Push Title 60 to Macy&#39;s" ' + (hasTitle60 ? '' : 'disabled') + '>M</button>';
-                mp100Html += '</div>';
-                marketplaces100Cell.innerHTML = mp100Html;
-                row.appendChild(marketplaces100Cell);
-
-                // MARKET (80): status dots + E1, E2, E3 buttons (eBay 1, 2, 3)
-                const marketplaces80Cell = document.createElement('td');
-                marketplaces80Cell.className = 'marketplaces-80-cell';
-                const hasTitle80 = !!(item.title80 && String(item.title80).trim() !== '');
-                let mp80Html = '<div class="marketplaces-dots-wrapper marketplaces-dots-80" data-sku="' + skuEscaped + '">' + renderMarketplaceDots80(skuEscaped, null) + '</div>';
-                mp80Html += '<div class="marketplace-buttons">';
-                mp80Html += '<button type="button" class="marketplace-btn marketplace-tooltip marketplace-btn-80 btn-ebay1" data-sku="' + skuEscaped + '" data-marketplace="ebay1" data-title-type="80" title="Push Title 80 to eBay Account 1 (AmarjitK)" ' + (hasTitle80 ? '' : 'disabled') + '>E1</button>';
-                mp80Html += '<button type="button" class="marketplace-btn marketplace-tooltip marketplace-btn-80 btn-ebay2" data-sku="' + skuEscaped + '" data-marketplace="ebay2" data-title-type="80" title="Push Title 80 to eBay Account 2 (ProLight)" ' + (hasTitle80 ? '' : 'disabled') + '>E2</button>';
-                mp80Html += '<button type="button" class="marketplace-btn marketplace-tooltip marketplace-btn-80 btn-ebay3" data-sku="' + skuEscaped + '" data-marketplace="ebay3" data-title-type="80" title="Push Title 80 to eBay Account 3 (KaneerKa)" ' + (hasTitle80 ? '' : 'disabled') + '>E3</button>';
-                mp80Html += '</div>';
-                marketplaces80Cell.innerHTML = mp80Html;
-                row.appendChild(marketplaces80Cell);
+                const mpShopifyCell = document.createElement('td');
+                mpShopifyCell.className = 'marketplaces-cell';
+                mpShopifyCell.innerHTML = tmGroupCellInner('gShopify', skuEscaped, item);
+                row.appendChild(mpShopifyCell);
 
                 // Distribute to all markets column
                 const pushCell = document.createElement('td');
@@ -3546,129 +3612,6 @@
             setupIndividualMarketplaceButtons();
             updateSelectedCount();
             initMarketplaceTooltips(document.getElementById('title-master-table'));
-        }
-
-        const marketplaceLabels = {
-            amazon: 'Amazon',
-            temu: 'Temu',
-            reverb: 'Reverb',
-            wayfair: 'Wayfair',
-            walmart: 'Walmart',
-            shopify: 'Shopify',
-            shopify_main: 'Shopify',
-            shopify_pls: 'PLS',
-            doba: 'Doba',
-            ebay1: 'eBay 1 (AmarjitK)',
-            ebay2: 'eBay 2 (ProLight)',
-            ebay3: 'eBay 3 (KaneerKa)',
-            macy: "Macy's",
-            faire: 'Faire',
-        };
-
-        function setupIndividualMarketplaceButtons() {
-            document.querySelectorAll('.marketplace-btn-150, .marketplace-btn-100, .marketplace-btn-80, .marketplace-btn-60').forEach(btn => {
-                btn.addEventListener('click', function (e) {
-                    e.preventDefault();
-                    const button = this;
-                    const sku = button.getAttribute('data-sku');
-                    const marketplace = button.getAttribute('data-marketplace');
-                    const titleType = button.getAttribute('data-title-type'); // '150', '100', or '80'
-                    const marketplaceName = marketplaceLabels[marketplace] || marketplace.toUpperCase();
-
-                    const item = tableData.find(x => x.SKU === sku);
-                    let title = '';
-                    if (item) {
-                        if (titleType === '150') title = titleMasterGetTitle170Text(item);
-                        else if (titleType === '100') title = item.title100 || '';
-                        else if (titleType === '80') title = item.title80 || '';
-                        else if (titleType === '60') title = item.title60 || '';
-                    }
-
-                    if (!title || String(title).trim() === '') {
-                        if (typeof showToast === 'function') {
-                            showToast('error', `No Title ${titleType} available for SKU ${sku}.`);
-                        } else {
-                            alert(`No Title ${titleType} available for SKU ${sku}.`);
-                        }
-                        return;
-                    }
-
-                    if (marketplace === 'ebay3') {
-                        if (!confirm('Warning! This is a Variation Platform, ARE YOU SURE?')) {
-                            return;
-                        }
-                    }
-
-                    const originalHtml = button.innerHTML;
-                    button.disabled = true;
-                    button.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>';
-
-                    console.log(`🖱️ Pushing ${titleType} to ${marketplaceName}`, { sku, title: String(title).substring(0, 50) });
-
-                    if (typeof showToast === 'function') {
-                        // 0 duration hint for persistent loading toast; ignored if not supported
-                        showToast('info', `⏳ Pushing Title ${titleType} to ${marketplaceName}...`, 0);
-                    }
-
-                    const row = button.closest('tr');
-
-                    fetch('/api/marketplaces/push-single', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRF-TOKEN': csrfToken
-                        },
-                        body: JSON.stringify({
-                            sku: sku,
-                            marketplace: marketplace,
-                            title_type: titleType,
-                            title: title
-                        })
-                    })
-                        .then(response => response.json())
-                        .then(data => {
-                            if (data.success) {
-                                if (typeof showToast === 'function') {
-                                    showToast('success', `✅ ${marketplaceName} (Title ${titleType}) updated for ${sku}`);
-                                }
-                                console.log('✅ Push successful', data);
-                                if (data.statuses && row) {
-                                    if (marketplace === 'ebay1' || marketplace === 'ebay2' || marketplace === 'ebay3') {
-                                        const wrapper80 = row.querySelector('.marketplaces-dots-80');
-                                        if (wrapper80) {
-                                            const statusMap80 = {};
-                                            ['ebay1', 'ebay2', 'ebay3'].forEach(function(mp) {
-                                                statusMap80[mp] = (data.statuses[mp] && data.statuses[mp].status) ? data.statuses[mp].status : 'pending';
-                                            });
-                                            wrapper80.innerHTML = renderMarketplaceDots80(sku, statusMap80);
-                                            initMarketplaceTooltips(wrapper80);
-                                        }
-                                    } else if (marketplace === 'macy' || marketplace === 'shopify' || marketplace === 'shopify_main' || marketplace === 'shopify_pls') {
-                                        updateMarketplaceDots100InRow(row, data.statuses);
-                                    } else {
-                                        updateMarketplaceDotsInRow(row, data.statuses);
-                                    }
-                                }
-                            } else {
-                                const msg = data.message || 'Unknown error';
-                                if (typeof showToast === 'function') {
-                                    showToast('error', `❌ ${marketplaceName} (Title ${titleType}) failed: ${msg}`);
-                                }
-                                console.error('❌ Push failed', data);
-                            }
-                        })
-                        .catch(error => {
-                            if (typeof showToast === 'function') {
-                                showToast('error', `❌ ${marketplaceName} push error: ${error.message}`);
-                            }
-                            console.error('❌ Push error', error);
-                        })
-                        .finally(() => {
-                            button.disabled = false;
-                            button.innerHTML = originalHtml;
-                        });
-                });
-            });
         }
 
         function setupViewButtons() {
@@ -3849,16 +3792,23 @@
             var t60p = item.title60 != null ? String(item.title60) : '';
             var c60 = tds[13];
             if (c60) titleMasterFillTitleDotCell(c60, t60p.trim() !== '', 'No Title 60', t60p);
-            var hasTitle150 = titleMasterGetTitle170Text(item).trim() !== '';
-            var hasTitle100 = !!(item.title100 && String(item.title100).trim() !== '');
-            var hasTitle80 = !!(item.title80 && String(item.title80).trim() !== '');
-            var hasTitle60 = !!(item.title60 && String(item.title60).trim() !== '');
-            row.querySelectorAll('.marketplace-btn-150').forEach(function(btn) { btn.disabled = !hasTitle150; });
-            row.querySelectorAll('.marketplace-btn-100').forEach(function(btn) {
-                var isMacy = btn.classList.contains('btn-macy');
-                btn.disabled = isMacy ? !hasTitle60 : !hasTitle100;
+            row.querySelectorAll('.tm-mp-push-btn').forEach(function(btn) {
+                const mp = btn.getAttribute('data-mp');
+                if (!mp) return;
+                const titleType = tmTitleType(mp);
+                const hasContent = tmTitleText(item, mp) !== '';
+                const pushKey = tmPushKey(mp);
+                const implemented = TM_ENABLED.includes(mp);
+                const st = mpPushTileState(pushKey, {
+                    label: TM_LABELS[mp] || mp,
+                    implemented: implemented,
+                    statusHint: hasContent ? ('Title ' + titleType) : ('No Title ' + titleType),
+                });
+                btn.disabled = !hasContent || st.disabled;
+                btn.title = st.title;
+                btn.classList.toggle('bp-mp-stack--no-api', st.noApiClass !== '');
             });
-            row.querySelectorAll('.marketplace-btn-80').forEach(function(btn) { btn.disabled = !hasTitle80; });
+            setupIndividualMarketplaceButtons();
         }
 
         function tmAiStackFlashApplyButton(btn) {

@@ -1,21 +1,20 @@
 const $ = (id) => document.getElementById(id);
 
-const views = {
-    setup: $('setupView'),
-    login: $('loginView'),
-    dash: $('dashView'),
-};
+const views = { setup: $('setupView'), login: $('loginView'), dash: $('dashView') };
 
-/** @type {{ session: object|null, activeSeconds: number, idleSeconds: number, syncedAt: number, pausedAt: number|null }} */
-let clock = {
+let state = {
     session: null,
-    activeSeconds: 0,
-    idleSeconds: 0,
-    syncedAt: 0,
-    pausedAt: null,
+    sessionStartedAtMs: 0,
+    sessionActive: 0,
+    sessionIdle: 0,
+    sessionBreak: 0,
+    daily: { active: 0, idle: 0, break: 0, date: '', date_label: '' },
+    activityState: 'off',
 };
 
+let sessionFrozenSeconds = null;
 let localTick = null;
+let midnightTimer = null;
 
 function showView(name) {
     Object.values(views).forEach((v) => v.classList.remove('active'));
@@ -23,24 +22,9 @@ function showView(name) {
 }
 
 function showError(el, msg) {
-    if (!msg) {
-        el.classList.remove('show');
-        el.textContent = '';
-        return;
-    }
+    if (!msg) { el.classList.remove('show'); el.textContent = ''; return; }
     el.textContent = msg;
     el.classList.add('show');
-}
-
-function formatDuration(seconds) {
-    const s = Math.max(0, Math.floor(seconds || 0));
-    const h = Math.floor(s / 3600);
-    const m = Math.floor((s % 3600) / 60);
-    const sec = s % 60;
-    if (h > 0) {
-        return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
-    }
-    return `${m}:${String(sec).padStart(2, '0')}`;
 }
 
 function formatHms(seconds) {
@@ -51,123 +35,164 @@ function formatHms(seconds) {
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
 }
 
-function wallClockElapsed(session) {
-    if (!session?.started_at) return 0;
-    const start = new Date(session.started_at).getTime();
-    if (session.status === 'paused' && clock.pausedAt) {
-        return Math.floor((clock.pausedAt - start) / 1000);
+function sessionElapsed() {
+    if (!state.session) return 0;
+    if (state.session.status === 'paused' || state.activityState === 'break') {
+        return sessionFrozenSeconds ?? (state.sessionActive + state.sessionIdle);
     }
-    return Math.floor((Date.now() - start) / 1000);
+    return state.sessionActive + state.sessionIdle;
 }
 
-function projectedActiveIdle() {
-    let active = clock.activeSeconds;
-    let idle = clock.idleSeconds;
-    if (clock.session?.status === 'active' && clock.syncedAt > 0) {
-        const extra = Math.floor((Date.now() - clock.syncedAt) / 1000);
-        active += extra;
+function currentStatusLabel() {
+    const status = state.session?.status || 'off';
+    if (!state.session || status === 'off') return { cls: 'status-off', text: 'Off duty' };
+    if (status === 'paused' || state.activityState === 'break') {
+        return { cls: 'status-paused', text: 'On break' };
     }
-    return { active, idle };
+    if (state.activityState === 'idle') {
+        return { cls: 'status-idle', text: 'Idle — no activity' };
+    }
+    return { cls: 'status-active', text: 'Active — working' };
 }
 
-function applyClockToUi(live) {
-    const session = clock.session;
-    const status = session?.status || 'off';
-    const badge = $('statusBadge');
-    const statusText = $('statusText');
-
-    badge.className = 'status-badge ';
-    if (status === 'active') {
-        badge.className += 'status-active';
-        statusText.textContent = 'Clocked in — tracking';
-    } else if (status === 'paused') {
-        badge.className += 'status-paused';
-        statusText.textContent = 'Paused';
-    } else {
-        badge.className += 'status-off';
-        statusText.textContent = 'Not clocked in';
-    }
-
-    $('timerDisplay').textContent = formatHms(wallClockElapsed(session));
-    const { active, idle } = projectedActiveIdle();
-    $('activeTime').textContent = formatDuration(active);
-    $('idleTime').textContent = formatDuration(idle);
-
-    if (live) {
-        $('currentApp').textContent = live.process || live.app || '—';
-        $('currentWindow').textContent = live.title || (status === 'active' ? 'Monitoring…' : 'Start your day with Clock In');
-    }
-
-    const clockedIn = status === 'active' || status === 'paused';
-    $('btnClockIn').style.display = clockedIn ? 'none' : 'block';
-    $('btnClockOut').style.display = clockedIn ? 'block' : 'none';
-    $('btnPause').style.display = status === 'active' ? 'block' : 'none';
-    $('btnResume').style.display = status === 'paused' ? 'block' : 'none';
-    $('locationField').style.display = clockedIn ? 'none' : 'block';
+function applyDailyFromToday(today) {
+    if (today == null) return;
+    state.daily = {
+        active: Number(today.active_seconds ?? 0),
+        idle: Number(today.idle_seconds ?? 0),
+        break: Number(today.break_seconds ?? 0),
+        date: today.date ?? state.daily.date ?? '',
+        date_label: today.date_label ?? state.daily.date_label ?? '',
+    };
+    renderDailyDom();
 }
 
-function syncClockFromSession(session, live) {
-    if (!session) {
-        clock.session = null;
-        clock.activeSeconds = 0;
-        clock.idleSeconds = 0;
-        clock.syncedAt = 0;
-        clock.pausedAt = null;
-        stopLocalTick();
-        applyClockToUi(live);
-        return;
+function renderDailyDom() {
+    if ($('todayDate')) {
+        $('todayDate').textContent = state.daily.date_label || '—';
     }
+    if ($('dailyActive')) $('dailyActive').textContent = formatHms(state.daily.active);
+    if ($('dailyIdle')) $('dailyIdle').textContent = formatHms(state.daily.idle);
+    if ($('dailyBreak')) $('dailyBreak').textContent = formatHms(state.daily.break);
+}
 
-    const wasPaused = clock.session?.status === 'paused';
-    clock.session = { ...session };
-
-    if (session.active_seconds !== undefined) {
-        clock.activeSeconds = session.active_seconds;
-        clock.idleSeconds = session.idle_seconds || 0;
-        clock.syncedAt = Date.now();
+function applyUi(live) {
+    if (live?.activity_state) state.activityState = live.activity_state;
+    if (live?.today) {
+        applyDailyFromToday({
+            active_seconds: Math.max(state.daily.active, Number(live.today.active_seconds ?? 0)),
+            idle_seconds: Math.max(state.daily.idle, Number(live.today.idle_seconds ?? 0)),
+            break_seconds: Math.max(state.daily.break, Number(live.today.break_seconds ?? 0)),
+            date_label: live.today.date_label ?? state.daily.date_label,
+            date: live.today.date ?? state.daily.date,
+        });
     }
-
-    if (session.status === 'paused') {
-        if (!wasPaused || !clock.pausedAt) {
-            clock.pausedAt = Date.now();
+    if (live?.active_seconds !== undefined && state.session
+        && state.session.status !== 'paused' && state.activityState !== 'break') {
+        state.sessionActive = live.active_seconds;
+    }
+    if (live?.idle_seconds_total !== undefined && state.session
+        && state.session.status !== 'paused' && state.activityState !== 'break') {
+        state.sessionIdle = live.idle_seconds_total;
+    }
+    if (live?.break_seconds !== undefined && state.session) {
+        state.sessionBreak = live.break_seconds;
+    }
+    if (live?.session) {
+        const wasBreak = state.session?.status === 'paused' || state.activityState === 'break';
+        state.session = { ...state.session, ...live.session };
+        if (live.session.started_at) {
+            state.sessionStartedAtMs = new Date(live.session.started_at).getTime();
         }
+        const nowBreak = live.session.status === 'paused' || live.session.activity_state === 'break';
+        if (nowBreak && !wasBreak) {
+            sessionFrozenSeconds = state.sessionActive + state.sessionIdle;
+        } else if (!nowBreak && wasBreak) {
+            sessionFrozenSeconds = null;
+        }
+    }
+
+    const onBreak = state.session?.status === 'paused' || state.activityState === 'break';
+    if (onBreak && sessionFrozenSeconds === null && state.session) {
+        sessionFrozenSeconds = state.sessionActive + state.sessionIdle;
+    }
+    const { cls, text } = currentStatusLabel();
+    const badge = $('statusBadge');
+    badge.className = `status-badge ${cls}`;
+    $('statusText').textContent = text;
+
+    $('sessionTimer').textContent = state.session ? formatHms(sessionElapsed()) : '00:00:00';
+    $('sessionRow')?.classList.toggle('frozen', onBreak);
+    if (onBreak) {
+        $('sessionLabel') && ($('sessionLabel').textContent = 'Session paused');
+    } else if ($('sessionLabel')) {
+        $('sessionLabel').textContent = 'Current session';
+    }
+    renderDailyDom();
+
+    $('activeStatBox')?.classList.toggle('stat-live', state.session?.status === 'active' && state.activityState === 'working');
+    $('idleStatBox')?.classList.toggle('stat-live', state.activityState === 'idle');
+    $('breakStatBox')?.classList.toggle('stat-live', state.session?.status === 'paused' || state.activityState === 'break');
+
+    const clockedIn = state.session && (state.session.status === 'active' || state.session.status === 'paused');
+    $('actionsZone')?.classList.toggle('actions-bottom', clockedIn);
+    $('clockInWrap').style.display = clockedIn ? 'none' : 'flex';
+    $('activeActions').style.display = clockedIn ? 'flex' : 'none';
+    $('btnClockOut').style.display = clockedIn ? 'inline-flex' : 'none';
+    $('btnPause').style.display = state.session?.status === 'active' ? 'inline-flex' : 'none';
+    $('btnResume').style.display = state.session?.status === 'paused' ? 'inline-flex' : 'none';
+}
+
+function syncFromServer({ session, today, live }) {
+    state.session = session ? { ...session } : null;
+    state.sessionStartedAtMs = session?.started_at ? new Date(session.started_at).getTime() : 0;
+    state.sessionActive = session?.active_seconds ?? 0;
+    state.sessionIdle = session?.idle_seconds ?? 0;
+    state.sessionBreak = session?.break_seconds ?? 0;
+    state.activityState = session?.activity_state
+        || (session?.status === 'paused' ? 'break' : session ? 'working' : 'off');
+
+    if (session?.status === 'paused') {
+        sessionFrozenSeconds = (session.active_seconds ?? 0) + (session.idle_seconds ?? 0);
         stopLocalTick();
-    } else if (session.status === 'active') {
-        clock.pausedAt = null;
+    } else if (session?.status === 'active') {
+        sessionFrozenSeconds = null;
         startLocalTick();
     } else {
-        clock.pausedAt = null;
+        sessionFrozenSeconds = null;
         stopLocalTick();
     }
 
-    applyClockToUi(live);
+    if (today != null) {
+        applyDailyFromToday(today);
+    }
+
+    applyUi({ ...(live || {}), today: today ?? undefined });
+    scheduleMidnightRefresh();
 }
 
 function startLocalTick() {
     if (localTick) return;
-    localTick = setInterval(() => applyClockToUi(null), 1000);
+    localTick = setInterval(() => applyUi(null), 1000);
 }
 
 function stopLocalTick() {
-    if (localTick) {
-        clearInterval(localTick);
-        localTick = null;
-    }
+    if (localTick) { clearInterval(localTick); localTick = null; }
 }
 
-function updateDashboard(state, live) {
-    if (live?.session) {
-        syncClockFromSession(live.session, live);
-        return;
-    }
-    if (state.session) {
-        syncClockFromSession(state.session, live);
-        return;
-    }
-    applyClockToUi(live);
+function scheduleMidnightRefresh() {
+    if (midnightTimer) clearTimeout(midnightTimer);
+    const now = new Date();
+    const next = new Date(now);
+    next.setHours(24, 0, 0, 0);
+    const ms = next - now;
+    midnightTimer = setTimeout(() => {
+        state.daily = { active: 0, idle: 0, break: 0, date: '', date_label: '' };
+        refresh().catch(() => {});
+    }, ms + 500);
 }
 
-async function refresh() {
+async function refresh(opts = {}) {
     const setup = await window.agent.getSetup();
     if (!setup.configured) {
         $('apiUrl').value = setup.apiUrl || '';
@@ -175,33 +200,50 @@ async function refresh() {
         return;
     }
 
-    const state = await window.agent.getState();
-    if (!state.loggedIn) {
-        syncClockFromSession(null);
+    const res = await window.agent.getState();
+    if (!res.loggedIn) {
+        syncFromServer({ session: null, today: null });
         showView('login');
+        if (res.error) showError($('loginError'), res.error);
         return;
     }
 
-    $('userName').textContent = state.user?.name || 'Employee';
-    $('userEmail').textContent = state.user?.email || '';
-    syncClockFromSession(state.session, state.live || {});
+    $('userName').textContent = res.user?.name || opts.user?.name || 'Employee';
+    $('userEmail').textContent = res.user?.email || opts.user?.email || '';
+    syncFromServer({ session: res.session, today: res.today, live: res.live || {} });
+    renderDailyDom();
     showView('dash');
+    showError($('loginError'), '');
 }
 
 async function init() {
+    if (typeof window.agent.onToday === 'function') {
+        window.agent.onToday((today) => applyDailyFromToday(today));
+    }
+
+    if (typeof window.agent.onStats === 'function') {
+        window.agent.onStats((live) => {
+            if (live?.today) applyDailyFromToday(live.today);
+            if (!views.dash.classList.contains('active')) return;
+            applyUi(live);
+        });
+    }
+
+    if (typeof window.agent.onSessionPaused === 'function') {
+        window.agent.onSessionPaused(() => refresh().catch(() => {}));
+    }
+
+    if (typeof window.agent.onShow === 'function') {
+        window.agent.onShow(() => refresh().catch(() => {}));
+    }
+
     $('btnSaveSetup').onclick = async () => {
         const url = $('apiUrl').value.trim();
-        if (!url) {
-            showError($('setupError'), 'Please enter the server URL.');
-            return;
-        }
+        if (!url) { showError($('setupError'), 'Please enter the server URL.'); return; }
         $('btnSaveSetup').disabled = true;
         const r = await window.agent.saveSetup({ apiUrl: url });
         $('btnSaveSetup').disabled = false;
-        if (!r.ok) {
-            showError($('setupError'), r.message || 'Could not save.');
-            return;
-        }
+        if (!r.ok) { showError($('setupError'), r.message || 'Could not save.'); return; }
         showError($('setupError'), '');
         await refresh();
     };
@@ -210,23 +252,30 @@ async function init() {
         showError($('loginError'), '');
         $('btnLogin').disabled = true;
         $('btnLogin').textContent = 'Signing in…';
-        const r = await window.agent.login({
-            email: $('email').value.trim(),
-            password: $('password').value,
-        });
-        $('btnLogin').disabled = false;
-        $('btnLogin').textContent = 'Sign In';
-        if (!r.ok) {
-            showError($('loginError'), r.message || 'Login failed.');
-            return;
+        try {
+            const r = await window.agent.login({
+                email: $('email').value.trim(),
+                password: $('password').value,
+            });
+            if (!r.ok) {
+                showError($('loginError'), r.message || 'Login failed.');
+                return;
+            }
+            $('userName').textContent = r.user?.name || 'Employee';
+            $('userEmail').textContent = r.user?.email || '';
+            showView('dash');
+            await refresh({ user: r.user });
+        } catch (err) {
+            showError($('loginError'), err?.message || 'Sign in failed.');
+        } finally {
+            $('btnLogin').disabled = false;
+            $('btnLogin').textContent = 'Sign In';
         }
-        await refresh();
     };
 
     $('btnChangeServer').onclick = async () => {
         await window.agent.signOut();
-        const setup = await window.agent.getSetup();
-        $('apiUrl').value = setup.apiUrl || '';
+        $('apiUrl').value = (await window.agent.getSetup()).apiUrl || '';
         showView('setup');
     };
 
@@ -239,74 +288,38 @@ async function init() {
 
     $('btnClockIn').onclick = async () => {
         $('btnClockIn').disabled = true;
-        $('btnClockIn').textContent = 'Clocking in…';
-        const r = await window.agent.clockIn({ work_location: $('workLocation').value });
+        const r = await window.agent.clockIn();
         $('btnClockIn').disabled = false;
-        $('btnClockIn').textContent = '▶ Clock In';
-        if (!r.ok) {
-            alert(r.message || 'Clock in failed. Is Laravel running?');
-            return;
-        }
-        if (r.session) {
-            syncClockFromSession(r.session);
-            showView('dash');
-        }
-        refresh().catch(() => {});
+        if (!r.ok) { alert(r.message || 'Clock in failed.'); return; }
+        await refresh();
     };
 
     $('btnClockOut').onclick = async () => {
         if (!confirm('Clock out and stop tracking?')) return;
         await window.agent.clockOut();
-        syncClockFromSession(null);
         await refresh();
     };
 
     $('btnPause').onclick = async () => {
-        const r = await window.agent.pause();
-        if (r.session) {
-            syncClockFromSession(r.session);
-        } else if (clock.session) {
-            clock.session.status = 'paused';
-            clock.pausedAt = Date.now();
-            stopLocalTick();
-            applyClockToUi(null);
-        }
-        refresh().catch(() => {});
+        await window.agent.pause();
+        await refresh();
     };
 
     $('btnResume').onclick = async () => {
-        const r = await window.agent.resume();
-        if (r.session) {
-            syncClockFromSession(r.session);
-        } else if (clock.session) {
-            clock.session.status = 'active';
-            clock.pausedAt = null;
-            startLocalTick();
-            applyClockToUi(null);
-        }
-        refresh().catch(() => {});
+        await window.agent.resume();
+        await refresh();
     };
 
     $('btnMinimize').onclick = () => window.agent.minimizeToTray();
 
-    window.agent.onStats((live) => {
-        if (!views.dash.classList.contains('active')) return;
-        if (live.session) {
-            clock.session = { ...clock.session, ...live.session };
-        }
-        if (live.active_seconds !== undefined) {
-            clock.activeSeconds = live.active_seconds;
-            clock.idleSeconds = live.idle_seconds_total ?? live.idle_seconds ?? 0;
-            clock.syncedAt = Date.now();
-        }
-        applyClockToUi(live);
-    });
-
-    setInterval(() => {
-        if (views.dash.classList.contains('active')) refresh();
-    }, 60000);
-
     await refresh();
 }
 
-init();
+init().catch((err) => {
+    console.error('init failed', err);
+    const loginError = document.getElementById('loginError');
+    if (loginError) {
+        loginError.textContent = 'App failed to start. Please restart the app.';
+        loginError.classList.add('show');
+    }
+});

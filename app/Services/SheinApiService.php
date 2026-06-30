@@ -11,8 +11,15 @@ use ZipArchive;
 use Illuminate\Support\Str;
 use App\Models\ProductStockMapping;
 use App\Models\SheinMetric;
+use App\Services\Support\SavesMarketplaceVideoMetrics;
+use App\Services\Support\SavesMarketplaceImageMetrics;
+use App\Services\Support\VideoMasterMarketplaceMethods;
+
 class SheinApiService
 {
+    use SavesMarketplaceVideoMetrics;
+    use SavesMarketplaceImageMetrics;
+    use VideoMasterMarketplaceMethods;
 
     protected $appId;
 
@@ -914,5 +921,148 @@ public function getStock(array $skuCodes)
     public function updateProductDescription(string $identifier, string $description): array
     {
         return $this->updateBulletPoints($identifier, $description);
+    }
+
+    /**
+     * @param  list<string>  $videos
+     * @return array{success: bool, message: string, normalized_urls?: list<string>}
+     */
+    public function updateVideos(string $identifier, array $videos, string $mode = 'replace'): array
+    {
+        $videos = array_slice(array_values(array_unique(array_filter(array_map('trim', $videos), fn ($v) => $v !== ''))), 0, 5);
+        if (trim($identifier) === '' || $videos === []) {
+            return ['success' => false, 'message' => 'SKU (or spu) and at least one video URL are required.'];
+        }
+
+        foreach ($videos as $url) {
+            if (! preg_match('#^https?://#i', $url)) {
+                return ['success' => false, 'message' => 'Invalid video URL (must be http/https).'];
+            }
+        }
+
+        $sku = $this->resolveSheinSellerSku($identifier);
+        $openKeyId = config('services.shein.open_key_id');
+        $secretKey = config('services.shein.secret_key');
+        if (empty($openKeyId) || empty($secretKey)) {
+            return ['success' => false, 'message' => 'Configure SHEIN_OPEN_KEY_ID and SHEIN_SECRET_KEY in .env.'];
+        }
+
+        $endpoint = (string) config('services.shein.product_update_path', '/open-api/openapi-business-backend/product/update');
+        $url = $this->baseUrl.$endpoint;
+        $timestamp = (int) round(microtime(true) * 1000);
+        $random = Str::random(5);
+        $signature = $this->generateSheinSignature($endpoint, $timestamp, $random);
+        $metric = $this->safeSheinMetricFindBySku($sku);
+        $productName = $metric && ! empty($metric->product_name) ? $metric->product_name : $sku;
+
+        $payloadAttempts = [
+            ['skuCode' => $sku, 'productName' => $productName, 'videoUrl' => $videos[0], 'productVideoUrl' => $videos[0]],
+            ['skuCode' => $sku, 'productName' => $productName, 'videoList' => array_map(fn ($v) => ['videoUrl' => $v], $videos)],
+        ];
+        if ($metric && ! empty($metric->spu_name)) {
+            foreach ($payloadAttempts as &$payload) {
+                $payload['spuCode'] = $metric->spu_name;
+            }
+            unset($payload);
+        }
+
+        $lastMessage = 'Shein video update failed.';
+        foreach ($payloadAttempts as $payload) {
+            try {
+                $response = Http::withoutVerifying()->timeout(60)->withHeaders([
+                    'Language' => 'en-us',
+                    'x-lt-openKeyId' => $openKeyId,
+                    'x-lt-timestamp' => (string) $timestamp,
+                    'x-lt-signature' => $signature,
+                    'Content-Type' => 'application/json',
+                ])->post($url, $payload);
+
+                $json = is_array($response->json()) ? $response->json() : null;
+                if ($response->successful() && $this->sheinResponseIndicatesSuccess($json)) {
+                    $this->saveVideoUrlsToMetricsRow('shein_metrics', $sku, $videos);
+
+                    return ['success' => true, 'message' => 'Shein product video updated.', 'normalized_urls' => $videos];
+                }
+                $lastMessage = $this->sheinExtractErrorMessage($json) ?: ('HTTP '.$response->status());
+            } catch (\Throwable $e) {
+                $lastMessage = $e->getMessage();
+            }
+        }
+
+        return ['success' => false, 'message' => $lastMessage];
+    }
+
+    /**
+     * @param  list<string>  $images
+     * @return array{success: bool, message: string, normalized_urls?: list<string>}
+     */
+    public function updateImages(string $identifier, array $images, string $mode = 'replace'): array
+    {
+        $images = array_slice(array_values(array_unique(array_filter(array_map('trim', $images), fn ($v) => $v !== ''))), 0, 12);
+        if (trim($identifier) === '' || $images === []) {
+            return ['success' => false, 'message' => 'SKU (or spu) and at least one image URL are required.'];
+        }
+
+        foreach ($images as $url) {
+            if (! preg_match('#^https?://#i', $url)) {
+                return ['success' => false, 'message' => 'Invalid image URL (must be http/https).'];
+            }
+        }
+
+        $sku = $this->resolveSheinSellerSku($identifier);
+        $openKeyId = config('services.shein.open_key_id');
+        $secretKey = config('services.shein.secret_key');
+        if (empty($openKeyId) || empty($secretKey)) {
+            return ['success' => false, 'message' => 'Configure SHEIN_OPEN_KEY_ID and SHEIN_SECRET_KEY in .env.'];
+        }
+
+        $endpoint = (string) config('services.shein.product_update_path', '/open-api/openapi-business-backend/product/update');
+        $url = $this->baseUrl.$endpoint;
+        $timestamp = (int) round(microtime(true) * 1000);
+        $random = Str::random(5);
+        $signature = $this->generateSheinSignature($endpoint, $timestamp, $random);
+        $metric = $this->safeSheinMetricFindBySku($sku);
+        $productName = $metric && ! empty($metric->product_name) ? $metric->product_name : $sku;
+        $imageList = array_map(fn ($imageUrl, $i) => [
+            'imageUrl' => $imageUrl,
+            'imageSort' => $i + 1,
+            'imageType' => $i === 0 ? 1 : 2,
+        ], $images, array_keys($images));
+
+        $payloadAttempts = [
+            ['skuCode' => $sku, 'productName' => $productName, 'imageList' => $imageList],
+            ['skuCode' => $sku, 'productName' => $productName, 'mainImageUrl' => $images[0], 'imageUrls' => $images],
+        ];
+        if ($metric && ! empty($metric->spu_name)) {
+            foreach ($payloadAttempts as &$payload) {
+                $payload['spuCode'] = $metric->spu_name;
+            }
+            unset($payload);
+        }
+
+        $lastMessage = 'Shein image update failed.';
+        foreach ($payloadAttempts as $payload) {
+            try {
+                $response = Http::withoutVerifying()->timeout(60)->withHeaders([
+                    'Language' => 'en-us',
+                    'x-lt-openKeyId' => $openKeyId,
+                    'x-lt-timestamp' => (string) $timestamp,
+                    'x-lt-signature' => $signature,
+                    'Content-Type' => 'application/json',
+                ])->post($url, $payload);
+
+                $json = is_array($response->json()) ? $response->json() : null;
+                if ($response->successful() && $this->sheinResponseIndicatesSuccess($json)) {
+                    $this->saveImageUrlsToMetricsRow('shein_metrics', $sku, $images);
+
+                    return ['success' => true, 'message' => 'Shein product images updated.', 'normalized_urls' => $images];
+                }
+                $lastMessage = $this->sheinExtractErrorMessage($json) ?: ('HTTP '.$response->status());
+            } catch (\Throwable $e) {
+                $lastMessage = $e->getMessage();
+            }
+        }
+
+        return ['success' => false, 'message' => $lastMessage];
     }
 }

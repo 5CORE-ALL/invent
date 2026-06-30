@@ -15,4 +15,13 @@ contextBridge.exposeInMainWorld('agent', {
     onStats: (cb) => {
         ipcRenderer.on('stats-update', (_e, data) => cb(data));
     },
+    onSessionPaused: (cb) => {
+        ipcRenderer.on('session-paused', () => cb());
+    },
+    onShow: (cb) => {
+        ipcRenderer.on('app-show', () => cb());
+    },
+    onToday: (cb) => {
+        ipcRenderer.on('today-update', (_e, today) => cb(today));
+    },
 });

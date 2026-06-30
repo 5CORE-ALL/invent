@@ -55,5 +55,33 @@
         window.alertMarketplaceApiNotConfigured(mp, label);
         return false;
     };
+
+    window.filterConfiguredMarketplaces = function (list) {
+        return (list || []).filter(function (mp) { return lookupConfigured(mp); });
+    };
+
+    window.mpPushTileState = function (mp, opts) {
+        opts = opts || {};
+        const label = opts.label || mp || 'Marketplace';
+        const implemented = opts.implemented !== false;
+        const configured = lookupConfigured(mp);
+        let title = label;
+        if (!implemented) {
+            title = label + ' push is not implemented yet';
+        } else if (!configured) {
+            title = label + '. API not configured.';
+        } else if (opts.extraTitle) {
+            title = opts.extraTitle;
+        } else if (opts.statusHint) {
+            title = label + '. ' + opts.statusHint + '. Click to push.';
+        }
+        return {
+            configured: configured,
+            implemented: implemented,
+            disabled: !implemented || !configured,
+            noApiClass: (implemented && configured) ? '' : ' bp-mp-stack--no-api',
+            title: title,
+        };
+    };
 })();
 </script>
