@@ -7,6 +7,7 @@ use App\Jobs\RunGoogleMapsExtractionJob;
 use App\Models\GoogleMapsExtractorResult;
 use App\Models\GoogleMapsExtractorSearch;
 use App\Services\GoogleMapsScraperService;
+use App\Services\Support\QueueWorkerWatchdog;
 use App\Services\WebsiteContactExtractorService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -226,13 +227,29 @@ class GoogleMapsDataExtractorController extends Controller
         }
 
         RunGoogleMapsExtractionJob::dispatch($progressToken)->onQueue('google-maps-extractor');
+        QueueWorkerWatchdog::ensureWatchdogDaemonRunning();
 
         return response()->json([
             'ok' => true,
             'queued' => true,
+            'worker_started' => QueueWorkerWatchdog::isRunning('google-maps-extractor'),
+            'watchdog_running' => QueueWorkerWatchdog::isWatchdogDaemonRunning(),
             'search_id' => $search->id,
             'token' => $progressToken,
             'total_queries' => count($searchQueries),
+        ]);
+    }
+
+    public function ensureWorker()
+    {
+        QueueWorkerWatchdog::ensureWatchdogDaemonRunning();
+        QueueWorkerWatchdog::ensureRunning('google-maps-extractor');
+
+        return response()->json([
+            'ok' => true,
+            'worker_started' => QueueWorkerWatchdog::isRunning('google-maps-extractor'),
+            'watchdog_running' => QueueWorkerWatchdog::isWatchdogDaemonRunning(),
+            'worker_running' => QueueWorkerWatchdog::isRunning('google-maps-extractor'),
         ]);
     }
 
@@ -560,6 +577,7 @@ class GoogleMapsDataExtractorController extends Controller
             }
 
             RunGoogleMapsEnrichmentJob::dispatch($progressToken)->onQueue('google-maps-extractor');
+            QueueWorkerWatchdog::ensureWatchdogDaemonRunning();
         } else {
             Cache::forget($enrichmentStateKey);
         }
