@@ -14,6 +14,7 @@ use App\Models\ToOrderAnalysis;
 use App\Models\ToOrderPreChecklist;
 use App\Models\ToOrderReview;
 use App\Models\AmazonSkuCompetitor;
+use App\Services\LinkedSkuGroupService;
 use App\Services\PurchasePageExecService;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -912,19 +913,19 @@ class ToOrderAnalysisController extends Controller
         if ($column === 'Clink') {
             $value = trim((string) $value);
             try {
-                $skuWhere = ['TRIM(UPPER(sku)) = ?', [$sku]];
-                if (DB::table('forecast_analysis')->whereRaw(...$skuWhere)->exists()) {
-                    DB::table('forecast_analysis')->whereRaw(...$skuWhere)->update(['clink' => $value, 'updated_at' => now()]);
-                } else {
-                    DB::table('forecast_analysis')->insert([
-                        'sku' => $sku,
-                        'clink' => $value,
-                        'created_at' => now(),
-                        'updated_at' => now(),
-                    ]);
-                }
+                /** @var LinkedSkuGroupService $linkedSkuGroupService */
+                $linkedSkuGroupService = app(LinkedSkuGroupService::class);
+                $linkedSkus = is_array($request->input('linked_skus')) ? $request->input('linked_skus') : [];
+                $affected = $linkedSkuGroupService->propagateClink(
+                    trim((string) $request->input('sku', $sku)),
+                    $value,
+                    $linkedSkus
+                );
 
-                return response()->json(['success' => true]);
+                return response()->json([
+                    'success' => true,
+                    'affected' => $affected,
+                ]);
             } catch (\Throwable $e) {
                 Log::error('ToOrderAnalysis updateLink Clink failed', ['sku' => $sku, 'error' => $e->getMessage()]);
 

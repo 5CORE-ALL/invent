@@ -4279,6 +4279,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/sheet/save', 'saveSheet')->name('comparison.sheet.save');
         Route::post('/sheet/import-google', 'importGoogleSheet')->name('comparison.sheet.import-google');
         Route::post('/sheet/sync-clink', 'syncFromClink')->name('comparison.sheet.sync-clink');
+        Route::get('/shipping-slab-rate', 'shippingSlabRate')->name('comparison.shipping-slab-rate');
+        Route::get('/lmp-rates', 'lmpRates')->name('comparison.lmp-rates');
+        Route::post('/roi/save-cell', 'saveRoiCell')->name('comparison.roi.save-cell');
+        Route::post('/linked-skus/add', 'addLinkedSku')->name('comparison.linked-skus.add');
+        Route::post('/linked-skus/bulk-link', 'bulkLinkSkus')->name('comparison.linked-skus.bulk-link');
+        Route::post('/linked-skus/remove', 'removeLinkedSku')->name('comparison.linked-skus.remove');
     });
 
     // Ready To Ship

@@ -64,6 +64,10 @@
         cursor: pointer;
     }
 
+    .tabulator-cell[tabulator-field="cd_edit"] {
+        cursor: default;
+    }
+
     .comparison-cd-cell {
         display: flex;
         align-items: center;
@@ -102,6 +106,50 @@
 
     .comparison-clink-dot-link:hover .comparison-clink-dot {
         background-color: #1e3a8a;
+    }
+
+    .comparison-clink-dot-muted {
+        background-color: #94a3b8;
+    }
+
+    .comparison-clink-dot-empty:hover .comparison-clink-dot,
+    .comparison-clink-dot-link:hover .comparison-clink-dot-muted {
+        background-color: #64748b;
+    }
+
+    .comparison-cd-clink-url-wrap {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 31px;
+        position: relative;
+    }
+
+    .comparison-cd-clink-url-wrap .comparison-cd-clink-url-input {
+        width: 0;
+        min-width: 0;
+        max-width: 0;
+        padding: 0;
+        margin: 0;
+        border: 0;
+        opacity: 0;
+        pointer-events: none;
+        transition: max-width 0.15s ease, opacity 0.15s ease;
+    }
+
+    .comparison-cd-clink-url-wrap.is-editing .comparison-cd-clink-url-input {
+        width: auto;
+        min-width: 200px;
+        max-width: 320px;
+        padding: 0.25rem 0.5rem;
+        border: 1px solid #ced4da;
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    .comparison-cd-clink-url-edit-btn {
+        line-height: 1;
+        padding: 2px 6px;
     }
 
     .comparison-company-dot {
@@ -165,6 +213,86 @@
 
     .tabulator .tabulator-cell.linked-sku-col .linked-sku-badge:hover {
         background-color: #cffafe !important;
+    }
+
+    .linked-sku-badge-wrap {
+        display: inline-flex;
+        align-items: center;
+        gap: 2px;
+    }
+
+    .linked-sku-badge-wrap .comparison-linked-sku-remove {
+        font-size: 0.55rem;
+        opacity: 0.65;
+        padding: 0;
+        margin-left: 2px;
+    }
+
+    .linked-sku-badge-wrap .comparison-linked-sku-remove:hover {
+        opacity: 1;
+    }
+
+    .comparison-category-cell {
+        width: 100%;
+        min-height: 28px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        padding: 2px 4px;
+        border-radius: 4px;
+    }
+
+    .comparison-category-cell:hover {
+        background: #f1f5f9;
+    }
+
+    .comparison-category-dropdown {
+        position: fixed;
+        z-index: 2000;
+        background: #fff;
+        border: 1px solid #ced4da;
+        border-radius: 6px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+        min-width: 240px;
+        max-width: 340px;
+    }
+
+    .comparison-category-dropdown .dropdown-search-input {
+        width: 100%;
+        border: none;
+        border-bottom: 1px solid #e5e7eb;
+        border-radius: 6px 6px 0 0;
+        padding: 8px 10px;
+        font-size: 13px;
+        outline: none;
+    }
+
+    .comparison-category-dropdown .dropdown-search-results {
+        max-height: 240px;
+        overflow-y: auto;
+    }
+
+    .comparison-category-dropdown .dropdown-search-item {
+        padding: 8px 10px;
+        cursor: pointer;
+        font-size: 13px;
+    }
+
+    .comparison-category-dropdown .dropdown-search-item:hover,
+    .comparison-category-dropdown .dropdown-search-item.active {
+        background: #e0e7ff;
+    }
+
+    .comparison-category-dropdown .dropdown-search-item.no-results {
+        cursor: default;
+        color: #6c757d;
+    }
+
+    .comparison-category-dropdown .dropdown-search-item.clear-option {
+        border-bottom: 1px solid #e5e7eb;
+        color: #64748b;
+        font-style: italic;
     }
 
     #comparison-cd-modal-sku-badge {
@@ -304,6 +432,63 @@
         line-height: 0;
     }
 
+    .cd-sheet-table .cd-sheet-comm-cell {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 34px;
+        background: #b2ebf2;
+        padding: 4px;
+    }
+
+    .cd-sheet-table .cd-sheet-comm-btn {
+        border: 0;
+        background: transparent;
+        color: #111827;
+        font-size: 18px;
+        line-height: 1;
+        padding: 2px 6px;
+        cursor: pointer;
+        border-radius: 4px;
+    }
+
+    .cd-sheet-table .cd-sheet-comm-btn:hover {
+        background: rgba(255, 255, 255, 0.45);
+        transform: scale(1.05);
+    }
+
+    .cd-sheet-table tr.cd-comm-row td:not(.cd-label-cell):not(.cd-row-num) {
+        background: #e0f7fa;
+    }
+
+    .comparison-comm-plat-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+        gap: 10px;
+    }
+
+    .comparison-comm-plat-card {
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 12px;
+        text-align: center;
+        text-decoration: none;
+        color: inherit;
+        transition: box-shadow 0.15s, transform 0.15s;
+    }
+
+    .comparison-comm-plat-card:hover {
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+        transform: translateY(-1px);
+        color: inherit;
+    }
+
+    .comparison-comm-plat-card i {
+        font-size: 1.35rem;
+        display: block;
+        margin-bottom: 6px;
+    }
+
     .cd-sheet-table .cd-sheet-link-btn {
         display: inline-flex;
         align-items: center;
@@ -343,20 +528,136 @@
         text-align: center;
     }
 
+    .comparison-roi-table thead th {
+        background: #fde047;
+        font-size: 12px;
+        text-align: center;
+        vertical-align: middle;
+        white-space: nowrap;
+    }
+
+    .comparison-roi-table tbody td {
+        font-size: 12px;
+        text-align: center;
+        vertical-align: middle;
+        padding: 4px 6px;
+    }
+
+    .comparison-roi-table .comparison-roi-channel {
+        font-weight: 600;
+        background: #fff;
+        text-align: left;
+    }
+
+    .comparison-roi-table .comparison-roi-input-cell {
+        background: #fdba74;
+        padding: 2px;
+    }
+
+    .comparison-roi-table .comparison-roi-input-cell input {
+        width: 100%;
+        min-width: 58px;
+        border: 1px solid #f97316;
+        border-radius: 4px;
+        padding: 2px 4px;
+        font-size: 12px;
+        text-align: center;
+        background: #fff7ed;
+    }
+
+    .comparison-roi-table .comparison-roi-calc-cell {
+        background: #e5e7eb;
+        font-weight: 600;
+    }
+
+    .comparison-roi-table .comparison-roi-calc-cell.comparison-roi-tier-green {
+        background: #86efac;
+    }
+
+    .comparison-roi-table .comparison-roi-calc-cell.comparison-roi-tier-red {
+        background: #fca5a5;
+    }
+
+    .comparison-roi-table .comparison-roi-calc-cell.comparison-roi-tier-magenta {
+        background: #f0abfc;
+    }
+
+    .comparison-roi-table .comparison-roi-calc-cell[data-calc="roi"].comparison-roi-tier-green {
+        background: #4ade80;
+        color: #14532d;
+    }
+
+    .comparison-roi-table .comparison-roi-calc-cell[data-calc="roi"].comparison-roi-tier-red {
+        background: #f87171;
+        color: #7f1d1d;
+    }
+
+    .comparison-roi-table .comparison-roi-calc-cell[data-calc="roi"].comparison-roi-tier-magenta {
+        background: #e879f9;
+        color: #701a75;
+    }
+
+    .comparison-roi-table .comparison-roi-calc-cell[data-calc="pPct"].comparison-roi-tier-green {
+        background: #4ade80;
+        color: #14532d;
+    }
+
+    .comparison-roi-table .comparison-roi-calc-cell[data-calc="pPct"].comparison-roi-tier-red {
+        background: #f87171;
+        color: #7f1d1d;
+    }
+
+    .comparison-roi-table .comparison-roi-calc-cell[data-calc="pPct"].comparison-roi-tier-magenta {
+        background: #e879f9;
+        color: #701a75;
+    }
+
+    .comparison-roi-table .comparison-roi-lmp-header-btn,
+    .comparison-roi-table .comparison-roi-lmp-link {
+        font-size: 12px;
+        font-weight: 600;
+        text-decoration: underline;
+        color: #1d4ed8;
+        vertical-align: baseline;
+    }
+
+    .comparison-roi-table .comparison-roi-lmp-header-btn:hover,
+    .comparison-roi-table .comparison-roi-lmp-link:hover {
+        color: #1e3a8a;
+    }
+
+    .comparison-roi-table .comparison-roi-lmp-cell {
+        background: #fff;
+        font-weight: 600;
+    }
+
+    #comparisonRoiModal.comparison-roi-modal-stacked {
+        z-index: 1075;
+    }
+
     .cd-sheet-table .cd-label-cell:focus {
         box-shadow: inset 0 0 0 2px #2563eb;
     }
 
-    .cd-sheet-fill-toolbar {
-        border-top: 1px solid #dee2e6;
-        margin-top: 10px;
-        padding-top: 10px;
-    }
-
-    .cd-sheet-fill-toolbar .form-control-color {
+    .cd-sheet-toolbar .form-control-color {
         width: 42px;
         height: 32px;
         padding: 2px;
+    }
+
+    .cd-sheet-toolbar .cd-sheet-fill-target-select {
+        width: auto;
+        min-width: 72px;
+    }
+
+    .cd-sheet-layout-menu .dropdown-header {
+        font-size: 11px;
+        padding: 4px 12px 2px;
+    }
+
+    .cd-sheet-layout-menu .dropdown-item {
+        font-size: 12px;
+        padding: 4px 12px;
     }
 
     .cd-sheet-status {
@@ -381,13 +682,53 @@
                 </div>
                 <div class="card-body">
                     <div class="mb-3 d-flex gap-2 flex-wrap align-items-center">
-                        <input type="text" id="comparison-search" class="form-control form-control-sm" style="max-width: 280px;" placeholder="Search SKU or Parent...">
-                        <span class="badge bg-info text-white fs-6 px-3 py-2">
-                            <i class="fas fa-list"></i> Total SKUs: <strong id="comparison-total-badge">0</strong>
-                        </span>
+                        <input type="text" id="comparison-search-parent" class="form-control form-control-sm" style="max-width: 220px;" placeholder="Search Parent...">
+                        <input type="text" id="comparison-search-sku" class="form-control form-control-sm" style="max-width: 220px;" placeholder="Search SKU...">
                     </div>
                     <div id="comparison-table"></div>
                 </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="comparisonLinkedSkuModal" tabindex="-1" aria-labelledby="comparisonLinkedSkuModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="comparisonLinkedSkuModalLabel">Link Sku Purchase</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small mb-2">Link another SKU to <strong id="comparison-linked-sku-source"></strong>. Both SKUs will show each other.</p>
+                <label for="comparison-linked-sku-input" class="form-label mb-1">SKU to link</label>
+                <input type="text" id="comparison-linked-sku-input" class="form-control" placeholder="Search or enter SKU..." autocomplete="off">
+                <div id="comparison-linked-sku-suggestions" class="list-group mt-2 d-none" style="max-height: 180px; overflow-y: auto;"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="comparison-linked-sku-save-btn">
+                    <i class="mdi mdi-link"></i> Link SKU
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="comparisonCommModal" tabindex="-1" aria-labelledby="comparisonCommModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-info text-white">
+                <h5 class="modal-title" id="comparisonCommModalLabel">
+                    <i class="fas fa-comments"></i> Supplier Communication
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-1"><strong id="comparison-comm-supplier-name"></strong></p>
+                <p class="text-muted small mb-3" id="comparison-comm-supplier-company"></p>
+                <div id="comparison-comm-platforms" class="comparison-comm-plat-grid"></div>
+                <p class="text-muted small mb-0 d-none" id="comparison-comm-empty">No communication details on file for this supplier.</p>
             </div>
         </div>
     </div>
@@ -423,71 +764,110 @@
                 <div class="tab-content">
                     <div class="tab-pane fade show active" id="cd-sheet-tab-pane" role="tabpanel">
                         <div class="cd-sheet-toolbar mb-3">
-                            <div class="row g-2 align-items-end">
-                                <div class="col-lg-5">
+                            <div class="d-flex flex-wrap align-items-end gap-2">
+                                <div>
                                     <label class="form-label small mb-1">C link Sheet URL</label>
-                                    <input type="url" id="comparison-cd-google-url" class="form-control form-control-sm" placeholder="Set C link in the table — Google Sheet URL loads automatically" readonly>
+                                    <div class="comparison-cd-clink-url-wrap" id="comparison-cd-google-url-wrap">
+                                        <a id="comparison-cd-google-url-link" href="#" target="_blank" rel="noopener noreferrer"
+                                            class="comparison-clink-dot-link comparison-clink-dot-empty"
+                                            title="Set Google Sheet URL">
+                                            <span class="comparison-clink-dot comparison-clink-dot-muted" id="comparison-cd-google-url-dot" aria-hidden="true"></span>
+                                        </a>
+                                        <input type="url" id="comparison-cd-google-url" class="form-control form-control-sm comparison-cd-clink-url-input"
+                                            placeholder="Google Sheet URL" autocomplete="off" spellcheck="false">
+                                        <button type="button" class="btn btn-sm btn-outline-secondary comparison-cd-clink-url-edit-btn"
+                                            id="comparison-cd-google-url-edit-btn" title="Edit C link Sheet URL" aria-label="Edit C link Sheet URL">
+                                            <i class="mdi mdi-pencil-outline"></i>
+                                        </button>
+                                    </div>
                                 </div>
-                                <div class="col-lg-2">
+                                <div>
                                     <label class="form-label small mb-1">Tab name</label>
                                     <input type="text" id="comparison-cd-google-tab" class="form-control form-control-sm" value="Sheet1">
                                 </div>
-                                <div class="col-lg-5 d-flex flex-wrap gap-2">
-                                    <button type="button" class="btn btn-sm btn-success" id="comparison-cd-import-btn">
-                                        <i class="fab fa-google"></i> Refresh from C link
+                                <button type="button" class="btn btn-sm btn-success" id="comparison-cd-import-btn">
+                                    <i class="fab fa-google"></i> Refresh
+                                </button>
+                                <button type="button" class="btn btn-sm btn-info text-white" id="comparison-cd-autopopulate-suppliers-btn" title="Add suppliers into blank columns from column D; update C-link preloaded names when they match supplier.list for this category">
+                                    <i class="mdi mdi-account-multiple-plus"></i> Suppliers
+                                </button>
+                                <button type="button" class="btn btn-sm btn-warning text-dark" id="comparison-cd-roi-btn" title="Open cost calculator ROI from lowest supplier price column">
+                                    <i class="mdi mdi-percent"></i> ROI%
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="comparison-cd-copy-specs-btn" title="Copy Spec column labels to memory and clipboard">
+                                    <i class="mdi mdi-content-copy"></i> Copy Specs
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="comparison-cd-replace-specs-btn" title="Replace Spec column with the saved template from memory">
+                                    <i class="mdi mdi-clipboard-arrow-down"></i> Replace Specs
+                                </button>
+                                <div class="dropdown">
+                                    <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" id="comparison-cd-layout-menu-btn"
+                                        data-bs-toggle="dropdown" aria-expanded="false" title="Move, insert, or delete rows and columns">
+                                        <i class="mdi mdi-table-edit"></i> Layout
                                     </button>
-                                    <button type="button" class="btn btn-sm btn-info text-white" id="comparison-cd-autopopulate-suppliers-btn" title="Fill supplier name row from supplier.list using SKU and linked SKUs">
-                                        <i class="mdi mdi-account-multiple-plus"></i> Autopopulate Suppliers
+                                    <ul class="dropdown-menu dropdown-menu-sm cd-sheet-layout-menu" aria-labelledby="comparison-cd-layout-menu-btn">
+                                        <li><h6 class="dropdown-header">Row</h6></li>
+                                        <li>
+                                            <button type="button" class="dropdown-item" id="comparison-cd-move-row-up-btn">
+                                                <i class="mdi mdi-arrow-up"></i> Move up
+                                            </button>
+                                        </li>
+                                        <li>
+                                            <button type="button" class="dropdown-item" id="comparison-cd-move-row-down-btn">
+                                                <i class="mdi mdi-arrow-down"></i> Move down
+                                            </button>
+                                        </li>
+                                        <li>
+                                            <button type="button" class="dropdown-item" id="comparison-cd-insert-row-btn">
+                                                <i class="mdi mdi-table-row-plus-after"></i> Insert row
+                                            </button>
+                                        </li>
+                                        <li>
+                                            <button type="button" class="dropdown-item text-danger" id="comparison-cd-delete-row-btn">
+                                                <i class="mdi mdi-table-row-remove"></i> Delete row
+                                            </button>
+                                        </li>
+                                        <li><hr class="dropdown-divider"></li>
+                                        <li><h6 class="dropdown-header">Column</h6></li>
+                                        <li>
+                                            <button type="button" class="dropdown-item" id="comparison-cd-move-col-left-btn">
+                                                <i class="mdi mdi-arrow-left"></i> Move left
+                                            </button>
+                                        </li>
+                                        <li>
+                                            <button type="button" class="dropdown-item" id="comparison-cd-move-col-right-btn">
+                                                <i class="mdi mdi-arrow-right"></i> Move right
+                                            </button>
+                                        </li>
+                                        <li>
+                                            <button type="button" class="dropdown-item" id="comparison-cd-insert-col-btn">
+                                                <i class="mdi mdi-table-column-plus-after"></i> Insert column
+                                            </button>
+                                        </li>
+                                        <li>
+                                            <button type="button" class="dropdown-item text-danger" id="comparison-cd-delete-col-btn">
+                                                <i class="mdi mdi-table-column-remove"></i> Delete column
+                                            </button>
+                                        </li>
+                                    </ul>
+                                </div>
+                                <div class="d-flex align-items-center gap-1">
+                                    <label class="small mb-0 fw-semibold" for="comparison-cd-fill-color">Fill</label>
+                                    <input type="color" id="comparison-cd-fill-color" class="form-control form-control-color" value="#f97316" title="Pick fill color">
+                                    <select id="comparison-cd-fill-target" class="form-select form-select-sm cd-sheet-fill-target-select" title="Fill target">
+                                        <option value="cell" selected>Cell</option>
+                                        <option value="row">Row</option>
+                                        <option value="col">Column</option>
+                                    </select>
+                                    <button type="button" class="btn btn-sm btn-outline-primary" id="comparison-cd-apply-fill-btn" title="Apply fill color to selected cell, row, or column">
+                                        <i class="mdi mdi-format-color-fill"></i>
                                     </button>
-                                    <div class="btn-group btn-group-sm" role="group" aria-label="Row actions">
-                                        <button type="button" class="btn btn-outline-secondary" id="comparison-cd-move-row-up-btn" title="Move selected row up">
-                                            <i class="mdi mdi-arrow-up"></i>
-                                        </button>
-                                        <button type="button" class="btn btn-outline-secondary" id="comparison-cd-move-row-down-btn" title="Move selected row down">
-                                            <i class="mdi mdi-arrow-down"></i>
-                                        </button>
-                                        <button type="button" class="btn btn-outline-secondary" id="comparison-cd-insert-row-btn" title="Insert row after selected row">
-                                            <i class="mdi mdi-table-row-plus-after"></i> Insert Row
-                                        </button>
-                                        <button type="button" class="btn btn-outline-danger" id="comparison-cd-delete-row-btn" title="Delete selected row">
-                                            <i class="mdi mdi-table-row-remove"></i> Delete Row
-                                        </button>
-                                    </div>
-                                    <div class="btn-group btn-group-sm" role="group" aria-label="Column actions">
-                                        <button type="button" class="btn btn-outline-secondary" id="comparison-cd-move-col-left-btn" title="Move selected column left">
-                                            <i class="mdi mdi-arrow-left"></i>
-                                        </button>
-                                        <button type="button" class="btn btn-outline-secondary" id="comparison-cd-move-col-right-btn" title="Move selected column right">
-                                            <i class="mdi mdi-arrow-right"></i>
-                                        </button>
-                                        <button type="button" class="btn btn-outline-secondary" id="comparison-cd-insert-col-btn" title="Insert column after selected column">
-                                            <i class="mdi mdi-table-column-plus-after"></i> Insert Column
-                                        </button>
-                                        <button type="button" class="btn btn-outline-danger" id="comparison-cd-delete-col-btn" title="Delete selected column">
-                                            <i class="mdi mdi-table-column-remove"></i> Delete Column
-                                        </button>
-                                    </div>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" id="comparison-cd-clear-fill-btn" title="Clear fill color from selected cell, row, or column">
+                                        <i class="mdi mdi-format-color-marker-cancel"></i>
+                                    </button>
                                 </div>
                             </div>
-                            <div class="cd-sheet-fill-toolbar d-flex flex-wrap align-items-center gap-2">
-                                <label class="small mb-0 fw-semibold" for="comparison-cd-fill-color">Fill color</label>
-                                <input type="color" id="comparison-cd-fill-color" class="form-control form-control-color" value="#f97316" title="Pick fill color">
-                                <div class="btn-group btn-group-sm" role="group" aria-label="Fill target">
-                                    <input type="radio" class="btn-check" name="comparison-cd-fill-target" id="comparison-cd-fill-target-cell" value="cell" checked>
-                                    <label class="btn btn-outline-secondary" for="comparison-cd-fill-target-cell">Cell</label>
-                                    <input type="radio" class="btn-check" name="comparison-cd-fill-target" id="comparison-cd-fill-target-row" value="row">
-                                    <label class="btn btn-outline-secondary" for="comparison-cd-fill-target-row">Row</label>
-                                    <input type="radio" class="btn-check" name="comparison-cd-fill-target" id="comparison-cd-fill-target-col" value="col">
-                                    <label class="btn btn-outline-secondary" for="comparison-cd-fill-target-col">Column</label>
-                                </div>
-                                <button type="button" class="btn btn-sm btn-outline-primary" id="comparison-cd-apply-fill-btn" title="Apply fill color to selected cell, row, or column">
-                                    <i class="mdi mdi-format-color-fill"></i> Apply Fill
-                                </button>
-                                <button type="button" class="btn btn-sm btn-outline-secondary" id="comparison-cd-clear-fill-btn" title="Clear fill color from selected cell, row, or column">
-                                    <i class="mdi mdi-format-color-marker-cancel"></i> Clear Fill
-                                </button>
-                            </div>
-                            <div class="cd-sheet-status mt-2" id="comparison-cd-sheet-status">CD uses the C link Google Sheet. Changes auto-save. Click a row #, column letter, or cell to select, then apply fill color or move/insert/delete.</div>
+                            <div class="cd-sheet-status mt-2 d-none" id="comparison-cd-sheet-status" aria-hidden="true"></div>
                         </div>
                         <div id="comparison-cd-sheet-loading" class="text-center py-4 d-none">
                             <div class="spinner-border text-primary" role="status">
@@ -512,7 +892,46 @@
                             <div id="comparison-cd-clink-text" class="small text-muted mt-1 text-break"></div>
                         </div>
                         <div id="comparison-cd-lmp-wrap">
-                            <div class="fw-semibold mb-2">LMP Competitors</div>
+                            <div class="card mb-3 border-success">
+                                <div class="card-header bg-success text-white">
+                                    <strong><i class="fa fa-plus-circle"></i> Add New Competitor</strong>
+                                </div>
+                                <div class="card-body">
+                                    <form id="comparison-cd-lmp-add-form" class="row g-3">
+                                        <div class="col-md-3">
+                                            <label class="form-label"><strong>SKU</strong></label>
+                                            <input type="text" class="form-control" id="comparison-cd-add-comp-sku" readonly>
+                                        </div>
+                                        <div class="col-md-2">
+                                            <label class="form-label"><strong>ASIN</strong> <span class="text-danger">*</span></label>
+                                            <input type="text" class="form-control" id="comparison-cd-add-comp-asin" placeholder="B07ABC123" required>
+                                        </div>
+                                        <div class="col-md-2">
+                                            <label class="form-label"><strong>Price</strong> <span class="text-danger">*</span></label>
+                                            <input type="number" class="form-control" id="comparison-cd-add-comp-price" placeholder="29.99" step="0.01" min="0.01" required>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label"><strong>Product Link</strong></label>
+                                            <input type="url" class="form-control" id="comparison-cd-add-comp-link" placeholder="https://amazon.com/dp/...">
+                                        </div>
+                                        <div class="col-md-2">
+                                            <label class="form-label"><strong>Marketplace</strong></label>
+                                            <select class="form-select" id="comparison-cd-add-comp-marketplace">
+                                                <option value="amazon" selected>Amazon</option>
+                                                <option value="US">US</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-12">
+                                            <button type="submit" class="btn btn-success">
+                                                <i class="fa fa-plus"></i> Add Competitor
+                                            </button>
+                                            <button type="reset" class="btn btn-secondary">
+                                                <i class="fa fa-undo"></i> Clear
+                                            </button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
                             <div id="comparison-cd-lmp-list">
                                 <div class="text-center py-4 text-muted">Open this tab to load LMP competitors.</div>
                             </div>
@@ -529,11 +948,51 @@
         <div class="modal-content">
             <div class="modal-header bg-primary text-white">
                 <h5 class="modal-title" id="comparisonLmpModalLabel">
-                    <i class="fa fa-shopping-cart"></i> LMP Competitors for SKU: <span id="comparison-lmp-modal-sku"></span>
+                    <i class="fa fa-shopping-cart"></i> Competitors for SKU: <span id="comparison-lmp-modal-sku"></span>
                 </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
+                <div id="comparison-lmp-add-wrap" class="card mb-3 border-success">
+                    <div class="card-header bg-success text-white">
+                        <strong><i class="fa fa-plus-circle"></i> Add New Competitor</strong>
+                    </div>
+                    <div class="card-body">
+                        <form id="comparison-lmp-add-form" class="row g-3">
+                            <div class="col-md-3">
+                                <label class="form-label"><strong>SKU</strong></label>
+                                <input type="text" class="form-control" id="comparison-lmp-add-comp-sku" readonly>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label"><strong>ASIN</strong> <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" id="comparison-lmp-add-comp-asin" placeholder="B07ABC123" required>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label"><strong>Price</strong> <span class="text-danger">*</span></label>
+                                <input type="number" class="form-control" id="comparison-lmp-add-comp-price" placeholder="29.99" step="0.01" min="0.01" required>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label"><strong>Product Link</strong></label>
+                                <input type="url" class="form-control" id="comparison-lmp-add-comp-link" placeholder="https://amazon.com/dp/...">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label"><strong>Marketplace</strong></label>
+                                <select class="form-select" id="comparison-lmp-add-comp-marketplace">
+                                    <option value="amazon" selected>Amazon</option>
+                                    <option value="US">US</option>
+                                </select>
+                            </div>
+                            <div class="col-12">
+                                <button type="submit" class="btn btn-success">
+                                    <i class="fa fa-plus"></i> Add Competitor
+                                </button>
+                                <button type="reset" class="btn btn-secondary">
+                                    <i class="fa fa-undo"></i> Clear
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
                 <div id="comparison-lmp-data-list">
                     <div class="text-center py-5">
                         <div class="spinner-border text-primary" role="status">
@@ -597,7 +1056,20 @@ document.addEventListener('DOMContentLoaded', function () {
     const suppliersForSkuUrl = @json(route('comparison.suppliers-for-sku'));
     const supplierListUrl = @json(route('supplier.list'));
     const competitorsUrl = @json(route('amazon.competitors.get'));
+    const amazonLmpAddUrl = @json(route('amazon.lmp.add'));
+    const amazonLmpDeleteUrl = @json(route('amazon.lmp.delete.post'));
+    const ebayLmpDataUrl = @json(route('ebay.lmp.data'));
     const updateLinkUrl = @json(route('update.rfq.link'));
+    const groupMasterCategoriesUrl = @json(route('group.master.categories'));
+    const groupMasterUpdateFieldUrl = @json(route('group.master.update.field'));
+    const groupMasterStoreCategoryUrl = @json(route('group.master.store.category'));
+    const supplierCategoriesUrl = @json(route('supplier.categories.json'));
+    const shippingSlabRateUrl = @json(route('comparison.shipping-slab-rate'));
+    const lmpRatesUrl = @json(route('comparison.lmp-rates'));
+    const roiSaveUrl = @json(route('comparison.roi.save-cell'));
+    const linkedSkuAddUrl = @json(route('comparison.linked-skus.add'));
+    const linkedSkuBulkLinkUrl = @json(route('comparison.linked-skus.bulk-link'));
+    const linkedSkuRemoveUrl = @json(route('comparison.linked-skus.remove'));
     const cdHoverPreview = document.getElementById('cd-hover-preview');
     const cdModalEl = document.getElementById('comparisonCdModal');
     const cdModal = cdModalEl ? new bootstrap.Modal(cdModalEl) : null;
@@ -605,25 +1077,108 @@ document.addEventListener('DOMContentLoaded', function () {
     const historyModal = historyModalEl ? new bootstrap.Modal(historyModalEl) : null;
     const lmpModalEl = document.getElementById('comparisonLmpModal');
     const lmpModal = lmpModalEl ? new bootstrap.Modal(lmpModalEl) : null;
+    const linkedSkuModalEl = document.getElementById('comparisonLinkedSkuModal');
+    const linkedSkuModal = linkedSkuModalEl ? new bootstrap.Modal(linkedSkuModalEl) : null;
+    const commModalEl = document.getElementById('comparisonCommModal');
+    const commModal = commModalEl ? new bootstrap.Modal(commModalEl) : null;
+
+    let linkedSkuModalRow = null;
+    let comparisonSuppliersByName = {};
+
+    const COMM_PLAT_ICON = {
+        Website: 'fas fa-globe',
+        Email: 'fas fa-envelope',
+        Phone: 'fas fa-phone',
+        WhatsApp: 'fab fa-whatsapp',
+        WeChat: 'fab fa-weixin',
+        QQ: 'mdi mdi-qqchat',
+        Alibaba: 'fas fa-store',
+        '1688': 'fas fa-shopping-bag',
+    };
+    const COMM_PLAT_COLOR = {
+        Website: '#2563eb',
+        Email: '#dc3545',
+        Phone: '#0d9488',
+        WhatsApp: '#25d366',
+        WeChat: '#09b83e',
+        QQ: '#1565c0',
+        Alibaba: '#ff6a00',
+        '1688': '#e65100',
+    };
+
+    const ROI_CHANNELS = ['Amazon', 'Ebay'];
+    const ROI_LMP_SALE_FACTOR = 0.9;
+    const ROI_SALE_NET_FACTOR = 0.7;
+    const ROI_FIELD_OFFSETS = {
+        cp: 1,
+        cbm: 2,
+        freight: 3,
+        gw: 4,
+        shipping: 5,
+        sale: 6,
+        pPct: 7,
+        profit: 8,
+        roi: 9,
+    };
 
     let currentCdRow = null;
+    let comparisonBulkEditSkus = null;
     let currentSheetCells = [];
     let currentSheetFormats = { cells: {}, rows: {}, cols: {} };
     let selectedSheetRow = null;
     let selectedSheetCol = null;
     let selectedSheetCell = null;
     let lmpLoadedForSku = null;
+    let currentAmazonLmpSku = null;
+    let currentAmazonLmpListEl = null;
+    let currentAmazonLmpFormPrefix = null;
     let table;
 
     const SPEC_COLUMN_COLOR = '#fed7aa';
     const LOWEST_PRICE_COLOR = '#bbf7d0';
     const SUPPLIER_NAME_ROW_COLOR = '#42c4f0';
+    const FIRST_SUPPLIER_COLUMN = 3; // Column D
     let autoSheetFormats = { cells: {}, rows: {}, cols: {} };
     let sheetEditorHydrating = false;
     let sheetAutoSaveTimer = null;
     let sheetSaveInFlight = false;
     let sheetSaveQueued = false;
     let tableRefreshTimer = null;
+    let copiedSpecLabels = [];
+    const COPIED_SPECS_STORAGE_KEY = 'comparison_copied_spec_labels';
+    let allProductCategories = [];
+    let supplierCategoryOptions = [];
+    let productCategoriesByName = {};
+    let activeCategoryDropdown = null;
+    let clinkPreloadedSupplierByCol = {};
+    let clinkPreloadedSupplierNames = new Set();
+    let roiCellEditPrevious = {};
+    let roiSaveInFlight = false;
+
+    function getCopiedSpecLabels() {
+        if (copiedSpecLabels.length) {
+            return copiedSpecLabels.slice();
+        }
+        try {
+            const stored = sessionStorage.getItem(COPIED_SPECS_STORAGE_KEY);
+            if (!stored) {
+                return [];
+            }
+            const parsed = JSON.parse(stored);
+            return Array.isArray(parsed) ? parsed.slice() : [];
+        } catch (e) {
+            return [];
+        }
+    }
+
+    function saveCopiedSpecLabelsToMemory(labels) {
+        copiedSpecLabels = Array.isArray(labels) ? labels.slice() : [];
+        try {
+            sessionStorage.setItem(COPIED_SPECS_STORAGE_KEY, JSON.stringify(copiedSpecLabels));
+        } catch (e) {
+            // sessionStorage unavailable — in-memory copy still works for this page session
+        }
+    }
 
     function escapeHtml(text) {
         if (!text) return '';
@@ -645,6 +1200,56 @@ document.addEventListener('DOMContentLoaded', function () {
         return /^https?:\/\/(docs|sheets)\.google\.com\/spreadsheets/i.test(String(url || '').trim());
     }
 
+    function linkedSkusForRow(row) {
+        if (!row) {
+            return [];
+        }
+        return Array.isArray(row.linked_skus) ? row.linked_skus.filter(Boolean) : [];
+    }
+
+    function comparisonBulkEditPayload() {
+        if (!Array.isArray(comparisonBulkEditSkus) || comparisonBulkEditSkus.length <= 1) {
+            return [];
+        }
+        return comparisonBulkEditSkus.filter(Boolean);
+    }
+
+    function getSelectedComparisonRows() {
+        return table ? table.getSelectedRows() : [];
+    }
+
+    function clearComparisonRowSelection() {
+        if (table) {
+            table.deselectRow();
+        }
+    }
+
+    function resolveComparisonBulkEditSkus(rowData, tabulatorRow) {
+        const selected = getSelectedComparisonRows();
+        const selectedSkus = selected.map(r => r.getData().sku).filter(Boolean);
+        if (selectedSkus.length > 1 && tabulatorRow?.isSelected?.()) {
+            return selectedSkus;
+        }
+        return null;
+    }
+
+    function openComparisonModalForEdit(rowData, tabulatorRow) {
+        comparisonBulkEditSkus = resolveComparisonBulkEditSkus(rowData, tabulatorRow);
+        openComparisonModal(rowData);
+    }
+
+    function buildSheetRequestParams(row) {
+        const params = new URLSearchParams({ sku: row?.sku || '' });
+        const linked = linkedSkusForRow(row);
+        if (linked.length) {
+            params.set('linked_skus', linked.join(','));
+        }
+        if (row?.parent) {
+            params.set('parent', row.parent);
+        }
+        return params;
+    }
+
     function buildCdHoverHtml(row) {
         const clink = (row.clink || '').trim();
         const clinkIsSheet = !!row.clink_is_sheet || isGoogleSheetUrl(clink);
@@ -652,17 +1257,25 @@ document.addEventListener('DOMContentLoaded', function () {
         const count = parseInt(row.lmp_entries_total, 10) || 0;
         const hasSheet = !!row.has_sheet_data;
         const supplierCount = parseInt(row.sheet_supplier_count, 10) || 0;
+        const sheetSku = row.sheet_sku || row.sku;
 
         let sheetLabel = 'No sheet saved';
         if (hasSheet) {
             sheetLabel = supplierCount + ' supplier column(s) saved';
+            if (sheetSku && sheetSku !== row.sku) {
+                sheetLabel += ` (shared from ${sheetSku})`;
+            }
         } else if (clinkIsSheet) {
             sheetLabel = 'C link sheet ready — click to load';
         }
 
         let html = '';
         html += `<div><span class="cd-hover-label">Sheet:</span> ${sheetLabel}</div>`;
-        html += `<div><span class="cd-hover-label">C link:</span> ${clink ? escapeHtml(clink) : '—'}</div>`;
+        const clinkSku = row.clink_sku && row.clink_sku !== row.sku ? row.clink_sku : '';
+        const clinkLabel = clink
+            ? (clinkSku ? `${escapeHtml(clink)} (shared from ${escapeHtml(clinkSku)})` : escapeHtml(clink))
+            : '—';
+        html += `<div><span class="cd-hover-label">C link:</span> ${clinkLabel}</div>`;
         html += `<div><span class="cd-hover-label">LMP:</span> ${lmpPrice ? '$' + parseFloat(lmpPrice).toFixed(2) : 'N/A'}</div>`;
         html += `<div><span class="cd-hover-label">Competitors:</span> ${count}</div>`;
         html += `<div class="mt-1 text-white-50">Click to view and edit</div>`;
@@ -707,6 +1320,188 @@ document.addEventListener('DOMContentLoaded', function () {
         return label.includes('company name');
     }
 
+    function isCommRow(rowIndex, cells) {
+        if (rowIndex === null || rowIndex === undefined || Number.isNaN(rowIndex)) {
+            return false;
+        }
+        const specCol = detectSpecColumnIndex(cells || currentSheetCells);
+        const label = String(((cells || currentSheetCells)[rowIndex] || [])[specCol] || '').trim().toLowerCase();
+        return label === 'comm' || label.includes('communication');
+    }
+
+    function isCommDataCell(rowIndex, colIndex) {
+        if (isSheetSpecColumn(colIndex) || !isCommRow(rowIndex, currentSheetCells)) {
+            return false;
+        }
+        return true;
+    }
+
+    function getSupplierNameForColumn(colIndex, cells) {
+        const sheetCells = cells || currentSheetCells;
+        const specCol = detectSpecColumnIndex(sheetCells);
+        const supplierRowIndex = findSupplierNameRowIndex(sheetCells, specCol);
+        if (supplierRowIndex === null) {
+            return '';
+        }
+        return String((sheetCells[supplierRowIndex] || [])[colIndex] || '').trim();
+    }
+
+    function cacheComparisonSuppliers(suppliers) {
+        comparisonSuppliersByName = {};
+        (suppliers || []).forEach(function (supplier) {
+            const key = normalizeSupplierNameKey(supplier?.name);
+            if (key) {
+                comparisonSuppliersByName[key] = supplier;
+            }
+        });
+    }
+
+    function loadComparisonSuppliersForCategory(category) {
+        const normalizedCategory = String(category || '').trim();
+        if (!normalizedCategory || !currentCdRow?.sku) {
+            return Promise.resolve([]);
+        }
+
+        const params = new URLSearchParams();
+        params.set('sku', currentCdRow.sku || '');
+        params.set('category', normalizedCategory);
+        params.set('by_category', '1');
+
+        return fetch(`${suppliersForSkuUrl}?${params.toString()}`, {
+            headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+        })
+        .then(function (response) { return response.json(); })
+        .then(function (data) {
+            const suppliers = data.success ? (data.suppliers || []) : [];
+            cacheComparisonSuppliers(suppliers);
+            return suppliers;
+        })
+        .catch(function () {
+            return [];
+        });
+    }
+
+    function commCellEditorHtml(rowIndex, colIndex, supplierName) {
+        const name = String(supplierName || '').trim();
+        if (!name) {
+            return `<div class="cd-sheet-comm-cell cd-sheet-comm-cell-empty"><span class="text-muted">-</span></div>`;
+        }
+        return `<div class="cd-sheet-comm-cell">
+            <button type="button" class="cd-sheet-comm-btn" data-row="${rowIndex}" data-col="${colIndex}"
+                data-supplier-name="${escapeHtmlAttr(name)}"
+                title="Communication: ${escapeHtmlAttr(name)}" aria-label="Open communication details for ${escapeHtmlAttr(name)}">
+                <i class="fas fa-comments"></i>
+            </button>
+        </div>`;
+    }
+
+    function openComparisonCommModal(supplierName) {
+        if (!commModal) {
+            return;
+        }
+
+        const name = String(supplierName || '').trim();
+        let supplier = comparisonSuppliersByName[normalizeSupplierNameKey(name)] || null;
+
+        if (!supplier && name) {
+            const category = String(currentCdRow?.category || '').trim();
+            if (category && Object.keys(comparisonSuppliersByName).length === 0) {
+                loadComparisonSuppliersForCategory(category).then(function () {
+                    openComparisonCommModal(supplierName);
+                });
+                return;
+            }
+        }
+
+        const links = supplier?.platform_links || [];
+        const nameEl = document.getElementById('comparison-comm-supplier-name');
+        const companyEl = document.getElementById('comparison-comm-supplier-company');
+        const gridEl = document.getElementById('comparison-comm-platforms');
+        const emptyEl = document.getElementById('comparison-comm-empty');
+
+        if (nameEl) {
+            nameEl.textContent = name || 'Supplier';
+        }
+        if (companyEl) {
+            const company = String(supplier?.company || '').trim();
+            companyEl.textContent = company;
+            companyEl.classList.toggle('d-none', !company);
+        }
+
+        if (!links.length) {
+            if (gridEl) {
+                gridEl.innerHTML = '';
+                gridEl.classList.add('d-none');
+            }
+            emptyEl?.classList.remove('d-none');
+        } else {
+            emptyEl?.classList.add('d-none');
+            if (gridEl) {
+                gridEl.classList.remove('d-none');
+                gridEl.innerHTML = links.map(function (link) {
+                    const icon = COMM_PLAT_ICON[link.label] || 'fas fa-link';
+                    const color = COMM_PLAT_COLOR[link.label] || '#6b7280';
+                    const display = link.display || link.url || link.label;
+                    const title = escapeHtmlAttr(link.label + (link.display ? ': ' + link.display : ''));
+                    if (link.url) {
+                        const ext = link.external ? ' target="_blank" rel="noopener noreferrer"' : '';
+                        return `<a href="${escapeHtmlAttr(link.url)}" class="comparison-comm-plat-card"${ext} title="${title}">
+                            <i class="${icon}" style="color:${color};"></i>
+                            <div class="fw-semibold small">${escapeHtml(link.label)}</div>
+                            <div class="text-muted small text-truncate">${escapeHtml(String(display))}</div>
+                        </a>`;
+                    }
+                    return `<div class="comparison-comm-plat-card" title="${title}">
+                        <i class="${icon}" style="color:${color};"></i>
+                        <div class="fw-semibold small">${escapeHtml(link.label)}</div>
+                        <div class="text-muted small text-truncate">${escapeHtml(String(display))}</div>
+                    </div>`;
+                }).join('');
+            }
+        }
+
+        commModal.show();
+    }
+
+    function ensureCommRow(cells, specCol) {
+        specCol = specCol ?? detectSpecColumnIndex(cells);
+        let rowIndex = findRowIndexByLabel(cells, 'comm', specCol);
+        if (rowIndex !== null) {
+            return { cells, rowIndex };
+        }
+
+        const colCount = Math.max(...cells.map(row => row.length), 6);
+        const newRow = Array.from({ length: colCount }, () => '');
+        newRow[specCol] = 'Comm';
+
+        let insertAt = 0;
+        const supplierNameRow = findSupplierNameRowIndex(cells, specCol);
+        if (supplierNameRow !== null) {
+            insertAt = supplierNameRow + 1;
+        } else {
+            const companyRowIndex = findRowIndexByLabel(cells, 'company name', specCol);
+            if (companyRowIndex !== null) {
+                insertAt = companyRowIndex;
+            } else {
+                const supplierLinkRow = findRowIndexByLabel(cells, 'supplier link', specCol);
+                if (supplierLinkRow !== null) {
+                    insertAt = supplierLinkRow + 1;
+                }
+            }
+        }
+
+        const nextCells = cells.slice();
+        nextCells.splice(insertAt, 0, newRow);
+
+        return { cells: nextCells, rowIndex: insertAt };
+    }
+
+    function syncCommRowOnSheet() {
+        const specCol = detectSpecColumnIndex(currentSheetCells);
+        const commEnsured = ensureCommRow(currentSheetCells, specCol);
+        currentSheetCells = commEnsured.cells;
+    }
+
     function isCompanyNameDataCell(rowIndex, colIndex, forceText) {
         if (forceText || isSheetSpecColumn(colIndex)) {
             return false;
@@ -721,46 +1516,366 @@ document.addEventListener('DOMContentLoaded', function () {
         positionCdHover(event);
     }
 
-    function renderCompetitorsList(competitors, lowestPrice) {
+    function showComparisonToast(type, message) {
+        const bg = (type === 'error' || type === 'danger') ? 'danger' : (type === 'success' ? 'success' : (type === 'warning' ? 'warning' : 'info'));
+        let container = document.querySelector('.toast-container');
+        if (!container) {
+            container = document.createElement('div');
+            container.className = 'toast-container position-fixed top-0 end-0 p-3';
+            container.style.zIndex = '20000';
+            document.body.appendChild(container);
+        }
+        const toast = document.createElement('div');
+        toast.className = `toast align-items-center text-white bg-${bg} border-0`;
+        toast.setAttribute('role', 'alert');
+        toast.innerHTML = `<div class="d-flex"><div class="toast-body">${escapeHtml(message || '')}</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div>`;
+        container.appendChild(toast);
+        bootstrap.Toast.getOrCreateInstance(toast).show();
+        toast.addEventListener('hidden.bs.toast', () => toast.remove());
+    }
+
+    function amazonSellerTypeBadge(type) {
+        if (!type) {
+            return '<span class="text-muted">—</span>';
+        }
+        const normalized = String(type).toUpperCase();
+        let cls = 'secondary';
+        if (normalized === 'FBA') {
+            cls = 'warning';
+        } else if (normalized === 'AMZ') {
+            cls = 'dark';
+        }
+        return `<span class="badge bg-${cls}">${escapeHtml(type)}</span>`;
+    }
+
+    function renderAmazonCompetitorsListHtml(competitors, lowestPrice) {
         if (!competitors || competitors.length === 0) {
             return '<div class="alert alert-info mb-0"><i class="fa fa-info-circle"></i> No competitors found for this SKU.</div>';
         }
 
         let html = '<div class="table-responsive"><table class="table table-hover table-bordered table-sm mb-0">';
         html += `<thead class="table-light"><tr>
-            <th>#</th><th>Image</th><th>ASIN</th><th>Product Title</th><th>Seller</th>
-            <th>Price</th><th>Rating</th><th>Reviews</th><th>Link</th>
+            <th style="width:30px;">#</th>
+            <th style="width:60px;">Image</th>
+            <th style="width:100px;">ASIN</th>
+            <th style="width:250px;">Product Title</th>
+            <th>Seller</th>
+            <th style="width:80px;">Price</th>
+            <th style="width:90px;">Revenue<br><small>(30d)</small></th>
+            <th style="width:70px;">Units<br><small>(30d)</small></th>
+            <th style="width:100px;">Buy Box</th>
+            <th style="width:60px;">Type</th>
+            <th style="width:70px;">Rating</th>
+            <th style="width:70px;">Reviews</th>
+            <th style="width:140px;">Delivery</th>
+            <th style="width:60px;">Link</th>
+            <th style="width:80px;">Actions</th>
         </tr></thead><tbody>`;
 
         competitors.forEach(function (item, index) {
+            const basePrice = parseFloat(item.price) || 0;
+            let shipCost = 0;
+            if (item.delivery) {
+                const paidMatch = String(item.delivery).match(/\$\s*([\d,]+\.?\d*)\s*delivery/i);
+                if (paidMatch) {
+                    shipCost = parseFloat(paidMatch[1].replace(/,/g, '')) || 0;
+                }
+            }
+            const totalPrice = basePrice + shipCost;
             const isLowest = lowestPrice != null && Math.abs(parseFloat(item.price) - parseFloat(lowestPrice)) < 0.01;
             const rowClass = isLowest ? 'table-success' : '';
-            const priceFormatted = '$' + parseFloat(item.price).toFixed(2);
+            const totalFormatted = '$' + totalPrice.toFixed(2);
+            const priceInner = shipCost > 0
+                ? `${totalFormatted}<br><small style="color:#888;font-weight:400;">$${basePrice.toFixed(2)} + $${shipCost.toFixed(2)} ship</small>`
+                : totalFormatted;
+            const priceBadge = isLowest
+                ? `<span class="badge bg-success">${priceInner} <i class="fa fa-trophy"></i></span>`
+                : `<strong>${priceInner}</strong>`;
+
             const productLink = item.link || item.product_link || '#';
             const productTitle = item.title || item.product_title || 'N/A';
             const sellerName = item.seller_name || '—';
             const imageUrl = item.image || '';
             const imageHtml = imageUrl
                 ? `<img src="${escapeHtmlAttr(imageUrl)}" style="width:50px;height:50px;object-fit:contain;" alt="">`
-                : '<span class="text-muted">—</span>';
+                : '<span style="color:#999;">—</span>';
+            const revenue = item.monthly_revenue
+                ? `<span style="color:#28a745;font-weight:600;">$${parseFloat(item.monthly_revenue).toFixed(0)}</span>`
+                : '<span style="color:#999;">—</span>';
+            const units = item.monthly_units_sold
+                ? `<span style="color:#007bff;font-weight:600;">${parseInt(item.monthly_units_sold, 10)}</span>`
+                : '<span style="color:#999;">—</span>';
+            const buyBox = item.buy_box_owner
+                ? `<span style="font-size:11px;">${escapeHtml(item.buy_box_owner)}</span>`
+                : '<span style="color:#999;">—</span>';
             const rating = item.rating
                 ? `<span style="color:#ffc107;">${parseFloat(item.rating).toFixed(1)} <i class="fa fa-star"></i></span>`
-                : '<span class="text-muted">—</span>';
+                : '<span style="color:#999;">—</span>';
             const reviews = item.reviews
                 ? `<span>${parseInt(item.reviews, 10).toLocaleString()}</span>`
+                : '<span style="color:#999;">—</span>';
+
+            let deliveryHtml = '<span style="color:#999;">—</span>';
+            if (item.delivery) {
+                const isFree = /free/i.test(item.delivery);
+                const paidMatch = String(item.delivery).match(/\$\s*([\d,]+\.?\d*)\s*delivery/i);
+                if (paidMatch) {
+                    deliveryHtml = `<span style="color:#dc3545;font-weight:600;" title="${escapeHtmlAttr(item.delivery)}">$${paidMatch[1]} ship</span>`;
+                } else if (isFree) {
+                    deliveryHtml = `<span style="color:#28a745;font-weight:600;" title="${escapeHtmlAttr(item.delivery)}">FREE</span>`;
+                } else {
+                    const deliveryText = String(item.delivery);
+                    deliveryHtml = `<span style="font-size:10px;" title="${escapeHtmlAttr(deliveryText)}">${escapeHtml(deliveryText.substring(0, 22))}${deliveryText.length > 22 ? '…' : ''}</span>`;
+                }
+            }
+
+            html += `<tr class="${rowClass}">
+                <td class="text-center"><strong>${index + 1}</strong></td>
+                <td class="text-center">${imageHtml}</td>
+                <td><span class="text-primary fw-semibold" style="font-size:11px;">${escapeHtml(item.asin || 'N/A')}</span></td>
+                <td style="font-size:11px;" title="${escapeHtmlAttr(productTitle)}">${escapeHtml(productTitle.length > 60 ? productTitle.substring(0, 60) + '…' : productTitle)}</td>
+                <td style="font-size:11px;">${escapeHtml(sellerName)}</td>
+                <td>${priceBadge}</td>
+                <td class="text-center">${revenue}</td>
+                <td class="text-center">${units}</td>
+                <td style="font-size:11px;">${buyBox}</td>
+                <td class="text-center">${amazonSellerTypeBadge(item.seller_type)}</td>
+                <td class="text-center">${rating}</td>
+                <td class="text-center">${reviews}</td>
+                <td class="text-center">${deliveryHtml}</td>
+                <td class="text-center">
+                    <a href="${escapeHtmlAttr(productLink)}" target="_blank" rel="noopener" class="btn btn-sm btn-info" title="View Product on Amazon">
+                        <i class="fa fa-external-link"></i>
+                    </a>
+                </td>
+                <td class="text-center">
+                    <button type="button" class="btn btn-sm btn-danger comparison-delete-lmp-btn"
+                        data-id="${escapeHtmlAttr(String(item.id ?? ''))}"
+                        data-asin="${escapeHtmlAttr(item.asin || '')}"
+                        data-price="${escapeHtmlAttr(String(item.price ?? ''))}"
+                        title="Delete this competitor">
+                        <i class="fa fa-trash"></i>
+                    </button>
+                </td>
+            </tr>`;
+        });
+
+        html += '</tbody></table></div>';
+        return html;
+    }
+
+    function renderCompetitorsList(competitors, lowestPrice) {
+        return renderAmazonCompetitorsListHtml(competitors, lowestPrice);
+    }
+
+    function amazonLmpLoadingHtml() {
+        return `<div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-2 mb-0">Loading competitors...</p>
+        </div>`;
+    }
+
+    function fillAmazonLmpAddForm(prefix, sku) {
+        const skuInput = document.getElementById(`${prefix}-add-comp-sku`);
+        const asinInput = document.getElementById(`${prefix}-add-comp-asin`);
+        const priceInput = document.getElementById(`${prefix}-add-comp-price`);
+        const linkInput = document.getElementById(`${prefix}-add-comp-link`);
+        const marketplaceInput = document.getElementById(`${prefix}-add-comp-marketplace`);
+        if (skuInput) skuInput.value = sku || '';
+        if (asinInput) asinInput.value = '';
+        if (priceInput) priceInput.value = '';
+        if (linkInput) linkInput.value = '';
+        if (marketplaceInput) marketplaceInput.value = 'amazon';
+    }
+
+    function loadAmazonCompetitors(sku, listEl, fieldPrefix) {
+        if (!sku || !listEl) {
+            return Promise.resolve();
+        }
+
+        currentAmazonLmpSku = sku;
+        currentAmazonLmpListEl = listEl;
+        currentAmazonLmpFormPrefix = fieldPrefix || null;
+        if (fieldPrefix) {
+            fillAmazonLmpAddForm(fieldPrefix, sku);
+        }
+
+        listEl.innerHTML = amazonLmpLoadingHtml();
+
+        return fetch(`${competitorsUrl}?sku=${encodeURIComponent(sku)}`, {
+            headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                listEl.innerHTML = renderAmazonCompetitorsListHtml(data.competitors || [], data.lowest_price);
+            } else {
+                listEl.innerHTML = '<div class="alert alert-warning mb-0"><i class="fa fa-info-circle"></i> No competitors found yet. Add your first competitor above!</div>';
+            }
+        })
+        .catch(() => {
+            listEl.innerHTML = '<div class="alert alert-warning mb-0"><i class="fa fa-info-circle"></i> No competitors found yet. Add your first competitor above!</div>';
+        });
+    }
+
+    function reloadCurrentAmazonLmp() {
+        if (currentAmazonLmpSku && currentAmazonLmpListEl) {
+            return loadAmazonCompetitors(currentAmazonLmpSku, currentAmazonLmpListEl, currentAmazonLmpFormPrefix);
+        }
+        return Promise.resolve();
+    }
+
+    function submitAmazonLmpAddForm(fieldPrefix, formId) {
+        const sku = document.getElementById(`${fieldPrefix}-add-comp-sku`)?.value.trim();
+        const asin = document.getElementById(`${fieldPrefix}-add-comp-asin`)?.value.trim();
+        const price = parseFloat(document.getElementById(`${fieldPrefix}-add-comp-price`)?.value);
+        const link = document.getElementById(`${fieldPrefix}-add-comp-link`)?.value.trim();
+        const marketplace = document.getElementById(`${fieldPrefix}-add-comp-marketplace`)?.value || 'amazon';
+        const form = document.getElementById(formId);
+
+        if (!asin) {
+            showComparisonToast('error', 'ASIN is required');
+            return Promise.resolve();
+        }
+        if (!price || price <= 0) {
+            showComparisonToast('error', 'Valid price is required');
+            return Promise.resolve();
+        }
+
+        const submitBtn = form?.querySelector('button[type="submit"]');
+        const originalHtml = submitBtn?.innerHTML || '';
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Adding...';
+        }
+
+        return fetch(amazonLmpAddUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrfToken,
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json',
+            },
+            body: JSON.stringify({
+                sku,
+                asin,
+                price,
+                product_link: link || null,
+                product_title: null,
+                marketplace,
+            }),
+        })
+        .then(response => response.json().then(data => ({ ok: response.ok, status: response.status, data })))
+        .then(({ ok, status, data }) => {
+            if (!ok) {
+                let errorMsg = 'Failed to add competitor';
+                if (status === 409) {
+                    errorMsg = 'This ASIN is already saved for this SKU';
+                } else if (data?.error) {
+                    errorMsg = data.error;
+                } else if (data?.message) {
+                    errorMsg = data.message;
+                }
+                throw new Error(errorMsg);
+            }
+            showComparisonToast('success', 'Competitor added successfully');
+            document.getElementById(`${fieldPrefix}-add-comp-asin`).value = '';
+            document.getElementById(`${fieldPrefix}-add-comp-price`).value = '';
+            document.getElementById(`${fieldPrefix}-add-comp-link`).value = '';
+            clearTimeout(tableRefreshTimer);
+            tableRefreshTimer = setTimeout(() => table?.replaceData(), 500);
+            return reloadCurrentAmazonLmp();
+        })
+        .catch(err => {
+            showComparisonToast('error', err.message || 'Failed to add competitor');
+        })
+        .finally(() => {
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalHtml;
+            }
+        });
+    }
+
+    function deleteAmazonLmpCompetitor(button) {
+        const id = button.dataset.id;
+        const asin = button.dataset.asin || '';
+        const price = button.dataset.price || '';
+
+        if (!id) {
+            showComparisonToast('error', 'Invalid competitor ID');
+            return;
+        }
+        if (!confirm(`Delete competitor ${asin} ($${price}) from tracking?`)) {
+            return;
+        }
+
+        const originalHtml = button.innerHTML;
+        button.disabled = true;
+        button.innerHTML = '<i class="fa fa-spinner fa-spin"></i>';
+
+        fetch(amazonLmpDeleteUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrfToken,
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json',
+            },
+            body: JSON.stringify({ id }),
+        })
+        .then(response => response.json().then(data => ({ ok: response.ok, data })))
+        .then(({ ok, data }) => {
+            if (!ok) {
+                throw new Error(data?.error || 'Failed to delete competitor');
+            }
+            showComparisonToast('success', 'Competitor deleted successfully');
+            clearTimeout(tableRefreshTimer);
+            tableRefreshTimer = setTimeout(() => table?.replaceData(), 500);
+            return reloadCurrentAmazonLmp();
+        })
+        .catch(err => {
+            button.disabled = false;
+            button.innerHTML = originalHtml;
+            showComparisonToast('error', err.message || 'Failed to delete competitor');
+        });
+    }
+
+    function renderEbayCompetitorsList(competitors, lowestPrice) {
+        if (!competitors || competitors.length === 0) {
+            return '<div class="alert alert-info mb-0"><i class="fa fa-info-circle"></i> No eBay competitors found for this SKU.</div>';
+        }
+
+        let html = '<div class="table-responsive"><table class="table table-hover table-bordered table-sm mb-0">';
+        html += `<thead class="table-light"><tr>
+            <th>#</th><th>Image</th><th>Item ID</th><th>Product Title</th>
+            <th>Price</th><th>Shipping</th><th>Total</th><th>Link</th>
+        </tr></thead><tbody>`;
+
+        competitors.forEach(function (item, index) {
+            const total = parseFloat(item.total_price ?? 0);
+            const isLowest = lowestPrice != null && Math.abs(total - parseFloat(lowestPrice)) < 0.01;
+            const rowClass = isLowest ? 'table-success' : '';
+            const productLink = item.link || '#';
+            const productTitle = item.title || 'N/A';
+            const imageUrl = item.image || '';
+            const imageHtml = imageUrl
+                ? `<img src="${escapeHtmlAttr(imageUrl)}" style="width:50px;height:50px;object-fit:contain;" alt="">`
                 : '<span class="text-muted">—</span>';
 
             html += `<tr class="${rowClass}">
                 <td class="text-center"><strong>${index + 1}</strong></td>
                 <td class="text-center">${imageHtml}</td>
-                <td><span class="text-primary fw-semibold" style="font-size:11px;">${escapeHtmlAttr(item.asin || 'N/A')}</span></td>
+                <td><span class="text-primary fw-semibold" style="font-size:11px;">${escapeHtmlAttr(item.item_id || 'N/A')}</span></td>
                 <td style="font-size:11px;" title="${escapeHtmlAttr(productTitle)}">${escapeHtml(productTitle.length > 60 ? productTitle.substring(0, 60) + '…' : productTitle)}</td>
-                <td style="font-size:11px;">${escapeHtml(sellerName)}</td>
-                <td><strong>${priceFormatted}${isLowest ? ' <i class="fa fa-trophy text-success"></i>' : ''}</strong></td>
-                <td class="text-center">${rating}</td>
-                <td class="text-center">${reviews}</td>
+                <td>$${parseFloat(item.price || 0).toFixed(2)}</td>
+                <td>$${parseFloat(item.shipping_cost || 0).toFixed(2)}</td>
+                <td><strong>$${total.toFixed(2)}${isLowest ? ' <i class="fa fa-trophy text-success"></i>' : ''}</strong></td>
                 <td class="text-center">
-                    <a href="${escapeHtmlAttr(productLink)}" target="_blank" rel="noopener" class="btn btn-sm btn-info" title="View product">
+                    <a href="${escapeHtmlAttr(productLink)}" target="_blank" rel="noopener" class="btn btn-sm btn-info" title="View listing">
                         <i class="fa fa-external-link"></i>
                     </a>
                 </td>
@@ -806,37 +1921,63 @@ document.addEventListener('DOMContentLoaded', function () {
         return html;
     }
 
-    function loadComparisonLmpModal(sku) {
-        if (!lmpModal || !sku) return;
+    function loadComparisonLmpModal(sku, platform) {
+        if (!sku) {
+            return;
+        }
+
+        platform = String(platform || 'amazon').toLowerCase();
+        const platformLabel = platform === 'ebay' ? 'eBay' : 'Amazon';
+
+        const lmpModalEl = document.getElementById('comparisonLmpModal');
+        if (!lmpModalEl || !window.bootstrap?.Modal) {
+            return;
+        }
+
+        if (lmpModalEl.parentElement !== document.body) {
+            document.body.appendChild(lmpModalEl);
+        }
 
         document.getElementById('comparison-lmp-modal-sku').textContent = sku;
-        document.getElementById('comparison-lmp-data-list').innerHTML = `
-            <div class="text-center py-5">
-                <div class="spinner-border text-primary" role="status">
-                    <span class="visually-hidden">Loading...</span>
-                </div>
-                <p class="mt-2 mb-0">Loading competitors...</p>
-            </div>
-        `;
-        lmpModal.show();
+        const addWrap = document.getElementById('comparison-lmp-add-wrap');
+        if (addWrap) {
+            addWrap.classList.toggle('d-none', platform === 'ebay');
+        }
 
-        fetch(`${competitorsUrl}?sku=${encodeURIComponent(sku)}`, {
-            headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                document.getElementById('comparison-lmp-data-list').innerHTML =
-                    renderCompetitorsList(data.competitors || [], data.lowest_price);
-            } else {
-                document.getElementById('comparison-lmp-data-list').innerHTML =
-                    '<div class="alert alert-warning mb-0"><i class="fa fa-info-circle"></i> No competitors found for this SKU.</div>';
+        const listEl = document.getElementById('comparison-lmp-data-list');
+        listEl.innerHTML = amazonLmpLoadingHtml();
+
+        const lmpModalInstance = bootstrap.Modal.getOrCreateInstance(lmpModalEl);
+        lmpModalEl.addEventListener('shown.bs.modal', function () {
+            const openModals = document.querySelectorAll('.modal.show');
+            const baseZ = 1050 + (openModals.length * 20);
+            lmpModalEl.style.zIndex = String(baseZ + 10);
+            const backdrops = document.querySelectorAll('.modal-backdrop');
+            if (backdrops.length) {
+                backdrops[backdrops.length - 1].style.zIndex = String(baseZ);
             }
-        })
-        .catch(() => {
-            document.getElementById('comparison-lmp-data-list').innerHTML =
-                '<div class="alert alert-warning mb-0"><i class="fa fa-info-circle"></i> Could not load competitor data.</div>';
-        });
+        }, { once: true });
+        lmpModalInstance.show();
+
+        if (platform === 'ebay') {
+            fetch(`${ebayLmpDataUrl}?sku=${encodeURIComponent(sku)}`, {
+                headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    listEl.innerHTML = renderEbayCompetitorsList(data.competitors || [], data.lowest_price);
+                } else {
+                    listEl.innerHTML = `<div class="alert alert-warning mb-0"><i class="fa fa-info-circle"></i> No ${platformLabel} competitors found for this SKU.</div>`;
+                }
+            })
+            .catch(() => {
+                listEl.innerHTML = '<div class="alert alert-warning mb-0"><i class="fa fa-info-circle"></i> Could not load competitor data.</div>';
+            });
+            return;
+        }
+
+        loadAmazonCompetitors(sku, listEl, 'comparison-lmp');
     }
 
     function columnLetter(index) {
@@ -1147,7 +2288,13 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function isSupplierNameRowLabel(text) {
         const label = String(text || '').trim().toLowerCase();
-        return label !== '' && label.includes('supplier name');
+        if (!label || label.includes('company name')) {
+            return false;
+        }
+        if (label.includes('supplier name')) {
+            return true;
+        }
+        return label === 'supplier' || label === 'suppliers';
     }
 
     function isSupplierNameRow(cells, rowIndex, specCol) {
@@ -1315,7 +2462,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function getSheetFillTarget() {
-        return document.querySelector('input[name="comparison-cd-fill-target"]:checked')?.value || 'cell';
+        return document.getElementById('comparison-cd-fill-target')?.value || 'cell';
     }
 
     function getSheetFillColor() {
@@ -1515,6 +2662,9 @@ document.addEventListener('DOMContentLoaded', function () {
                 <span class="comparison-company-dot" aria-hidden="true"></span>
             </div>`;
         }
+        if (!forceText && isCommDataCell(rowIndex, colIndex)) {
+            return commCellEditorHtml(rowIndex, colIndex, getSupplierNameForColumn(colIndex));
+        }
         if (!text) {
             return `<div class="cd-sheet-cell cd-sheet-cell-empty" contenteditable="true" spellcheck="false" data-row="${rowIndex}" data-col="${colIndex}"></div>`;
         }
@@ -1565,7 +2715,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
         body.innerHTML = currentSheetCells.map((row, r) => {
             const rowSelectedClass = selectedSheetRow === r ? ' cd-axis-selected' : '';
-            let rowHtml = `<tr class="${selectedSheetRow === r ? 'cd-row-selected' : ''}"><td class="cd-row-num cd-select-row${rowSelectedClass}" data-row="${r}" title="Select row ${r + 1}">${r + 1}</td>`;
+            const commRowClass = isCommRow(r, currentSheetCells) ? ' cd-comm-row' : '';
+            let rowHtml = `<tr class="${selectedSheetRow === r ? 'cd-row-selected' : ''}${commRowClass}"><td class="cd-row-num cd-select-row${rowSelectedClass}" data-row="${r}" title="Select row ${r + 1}">${r + 1}</td>`;
             for (let c = 0; c < colCount; c++) {
                 const value = row[c] ?? '';
                 const isSpec = c === specCol;
@@ -1573,7 +2724,11 @@ document.addEventListener('DOMContentLoaded', function () {
                 const cellSelectedClass = selectedSheetCell && selectedSheetCell.row === r && selectedSheetCell.col === c
                     ? ' cd-cell-selected'
                     : '';
-                rowHtml += `<td class="${isSpec ? 'cd-label-cell' : ''}${colSelectedClass}${cellSelectedClass}"${sheetCellTdStyle(r, c, isSpec)}>${sheetCellEditorHtml(value, r, c, isSpec)}</td>`;
+                let cellInner = sheetCellEditorHtml(value, r, c, isSpec);
+                if (!isSpec && isCommRow(r, currentSheetCells)) {
+                    cellInner = commCellEditorHtml(r, c, getSupplierNameForColumn(c));
+                }
+                rowHtml += `<td class="${isSpec ? 'cd-label-cell' : ''}${colSelectedClass}${cellSelectedClass}"${sheetCellTdStyle(r, c, isSpec)}>${cellInner}</td>`;
             }
             rowHtml += '</tr>';
             return rowHtml;
@@ -1767,9 +2922,24 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!body) return currentSheetCells;
 
         const rows = [];
-        body.querySelectorAll('tr').forEach(tr => {
+        body.querySelectorAll('tr').forEach((tr, rowIndex) => {
             const row = [];
-            tr.querySelectorAll('.cd-sheet-cell').forEach(cell => {
+            tr.querySelectorAll('td').forEach((td, tdIndex) => {
+                if (tdIndex === 0) {
+                    return;
+                }
+                const colIndex = tdIndex - 1;
+                if (isCommRow(rowIndex, currentSheetCells)) {
+                    row.push((currentSheetCells[rowIndex] || [])[colIndex] || '');
+                    return;
+                }
+
+                const cell = td.querySelector('.cd-sheet-cell');
+                if (!cell) {
+                    row.push((currentSheetCells[rowIndex] || [])[colIndex] || '');
+                    return;
+                }
+
                 const stored = cell.dataset.value || '';
                 const img = cell.querySelector('img');
                 if (img && img.src && (!stored || stored.startsWith('[embedded-image:'))) {
@@ -1791,10 +2961,20 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function setSheetStatus(message, isError) {
         const el = document.getElementById('comparison-cd-sheet-status');
-        if (!el) return;
+        if (!el) {
+            return;
+        }
+        if (!isError) {
+            el.classList.add('d-none');
+            el.setAttribute('aria-hidden', 'true');
+            el.textContent = '';
+            return;
+        }
         el.textContent = message;
-        el.classList.toggle('text-danger', !!isError);
-        el.classList.toggle('text-success', !isError && message.toLowerCase().includes('saved'));
+        el.classList.remove('d-none');
+        el.setAttribute('aria-hidden', 'false');
+        el.classList.add('text-danger');
+        el.classList.remove('text-success');
     }
 
     function cancelScheduledAutoSave() {
@@ -1820,7 +3000,6 @@ document.addEventListener('DOMContentLoaded', function () {
         const cells = readCellsFromEditor();
 
         sheetSaveInFlight = true;
-        setSheetStatus('Saving...', false);
 
         fetch(sheetSaveUrl, {
             method: 'POST',
@@ -1833,6 +3012,8 @@ document.addEventListener('DOMContentLoaded', function () {
             body: JSON.stringify({
                 sku: currentCdRow.sku,
                 parent: currentCdRow.parent || '',
+                linked_skus: linkedSkusForRow(currentCdRow),
+                bulk_edit_skus: comparisonBulkEditPayload(),
                 cells: cells,
                 formats: currentSheetFormats,
                 google_sheet_url: document.getElementById('comparison-cd-google-url').value.trim(),
@@ -1860,8 +3041,6 @@ document.addEventListener('DOMContentLoaded', function () {
                 applyAutoSheetFormatsFromPayload(data, returnedCells);
             }
 
-            setSheetStatus(`Auto-saved at ${new Date().toLocaleTimeString()}`, false);
-
             clearTimeout(tableRefreshTimer);
             tableRefreshTimer = setTimeout(() => table.replaceData(), 500);
         })
@@ -1884,26 +3063,22 @@ document.addEventListener('DOMContentLoaded', function () {
         const clink = (row?.clink || data.clink || '').trim();
         const sheetUrl = data.google_sheet_url || (isGoogleSheetUrl(clink) ? clink : '');
         document.getElementById('comparison-cd-google-url').value = sheetUrl;
+        updateCdGoogleUrlDotUI();
         document.getElementById('comparison-cd-google-tab').value = data.google_sheet_tab || 'Sheet1';
         currentSheetFormats = normalizeSheetFormats(data.formats || {});
         applyAutoSheetFormatsFromPayload(data, data.cells || []);
-        renderSheetEditor(data.cells || []);
+        let sheetCells = ensureLeadColumns(data.cells || []);
+        const specCol = detectSpecColumnIndex(sheetCells);
+        sheetCells = ensureCommRow(sheetCells, specCol).cells;
+        renderSheetEditor(sheetCells);
+        captureClinkPreloadedSuppliers(currentSheetCells);
+        const category = String(row?.category || currentCdRow?.category || '').trim();
+        loadComparisonSuppliersForCategory(category).then(function () {
+            if (document.getElementById('comparison-cd-sheet-wrap')?.classList.contains('d-none') === false) {
+                renderSheetEditor(currentSheetCells);
+            }
+        });
         sheetEditorHydrating = false;
-
-        let statusMsg = 'New sheet — changes auto-save.';
-        if (data.updated_at) {
-            statusMsg = `Last saved ${data.updated_at} by ${data.updated_by || 'N/A'}`;
-        } else if (data.has_sheet_data) {
-            statusMsg = 'Comparison sheet loaded from C link.';
-        } else if (isGoogleSheetUrl(clink)) {
-            statusMsg = 'C link sheet URL found. Click Refresh from C link to load data.';
-        } else {
-            statusMsg = 'Set a Google Sheet URL in the C link column first.';
-        }
-        if (data.sheet_file) {
-            statusMsg += ` Stored in ${data.sheet_file}.`;
-        }
-        setSheetStatus(statusMsg, false);
     }
 
     function syncComparisonFromClink(row, options) {
@@ -1949,7 +3124,7 @@ document.addEventListener('DOMContentLoaded', function () {
         wrapEl?.classList.add('d-none');
         setSheetStatus('Loading comparison sheet...', false);
 
-        fetch(`${sheetGetUrl}?sku=${encodeURIComponent(row.sku || '')}`, {
+        fetch(`${sheetGetUrl}?${buildSheetRequestParams(row).toString()}`, {
             headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
         })
         .then(response => response.json())
@@ -1958,7 +3133,20 @@ document.addEventListener('DOMContentLoaded', function () {
                 throw new Error(data.message || 'Failed to load sheet.');
             }
 
-            applySheetPayload(data, row);
+            if (data.sheet_sku) {
+                row.sheet_sku = data.sheet_sku;
+            }
+            if (Array.isArray(data.linked_skus) && data.linked_skus.length) {
+                row.linked_skus = data.linked_skus;
+            }
+            if (data.clink) {
+                row.clink = data.clink;
+                row.clink_is_sheet = !!data.clink_is_sheet;
+                row.clink_sku = data.clink_sku || null;
+            }
+            currentCdRow = { ...row, sheet_sku: data.sheet_sku || row.sheet_sku };
+
+            applySheetPayload(data, currentCdRow || row);
 
             const clinkIsSheet = !!data.clink_is_sheet || isGoogleSheetUrl(row.clink);
             if (clinkIsSheet && !data.has_sheet_data) {
@@ -2019,48 +3207,241 @@ document.addEventListener('DOMContentLoaded', function () {
             clinkText.textContent = '';
         }
 
-        document.getElementById('comparison-cd-lmp-list').innerHTML = `
-            <div class="text-center py-4">
-                <div class="spinner-border text-primary" role="status">
-                    <span class="visually-hidden">Loading...</span>
-                </div>
-                <p class="mt-2 mb-0">Loading competitors...</p>
-            </div>
-        `;
-
-        fetch(`${competitorsUrl}?sku=${encodeURIComponent(sku)}`, {
-            headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                document.getElementById('comparison-cd-lmp-list').innerHTML =
-                    renderCompetitorsList(data.competitors || [], data.lowest_price);
-            } else {
-                document.getElementById('comparison-cd-lmp-list').innerHTML =
-                    '<div class="alert alert-warning mb-0"><i class="fa fa-info-circle"></i> No competitors found for this SKU.</div>';
-            }
-        })
-        .catch(() => {
-            document.getElementById('comparison-cd-lmp-list').innerHTML =
-                '<div class="alert alert-warning mb-0"><i class="fa fa-info-circle"></i> Could not load competitor data.</div>';
-        });
+        document.getElementById('comparison-cd-lmp-list').innerHTML = amazonLmpLoadingHtml();
+        loadAmazonCompetitors(sku, document.getElementById('comparison-cd-lmp-list'), 'comparison-cd');
     }
 
     function findSupplierNameRowIndex(cells, specCol) {
+        specCol = specCol ?? detectSpecColumnIndex(cells);
         for (let rowIndex = 0; rowIndex < cells.length; rowIndex++) {
-            const label = String((cells[rowIndex] || [])[specCol] || '').trim().toLowerCase();
-            if (label.includes('supplier name') && !label.includes('company name')) {
+            if (isSupplierNameRow(cells, rowIndex, specCol)) {
                 return rowIndex;
             }
         }
         return null;
     }
 
-    function ensureSupplierColumnCount(cells, specCol, neededCount) {
-        const firstSupplierCol = specCol + 1;
-        const colCount = Math.max(...cells.map(row => row.length), firstSupplierCol + 1);
-        const currentSupplierCols = Math.max(0, colCount - firstSupplierCol);
+    function ensureSupplierLinkRow(cells, specCol) {
+        specCol = specCol ?? detectSpecColumnIndex(cells);
+        let rowIndex = findRowIndexByLabel(cells, 'supplier link', specCol);
+        if (rowIndex !== null) {
+            return { cells, rowIndex };
+        }
+
+        const colCount = Math.max(...cells.map(row => row.length), 6);
+        const newRow = Array.from({ length: colCount }, () => '');
+        newRow[specCol] = 'Supplier Link';
+
+        let insertAt = 0;
+        const personRowIndex = findRowIndexByLabel(cells, 'person name review', specCol);
+        const photoRowIndex = findRowIndexByLabel(cells, 'product photo', specCol);
+        if (personRowIndex !== null) {
+            insertAt = personRowIndex + 1;
+        } else if (photoRowIndex !== null) {
+            insertAt = photoRowIndex + 1;
+        }
+
+        const nextCells = cells.slice();
+        nextCells.splice(insertAt, 0, newRow);
+
+        return { cells: nextCells, rowIndex: insertAt };
+    }
+
+    function ensureSupplierNameRow(cells, specCol) {
+        specCol = specCol ?? detectSpecColumnIndex(cells);
+        let rowIndex = findSupplierNameRowIndex(cells, specCol);
+        if (rowIndex !== null) {
+            return { cells, rowIndex };
+        }
+
+        const colCount = Math.max(...cells.map(row => row.length), 6);
+        const newRow = Array.from({ length: colCount }, () => '');
+        newRow[specCol] = 'Supplier Name';
+
+        const companyRowIndex = findRowIndexByLabel(cells, 'company name', specCol);
+        let insertAt = 0;
+        if (companyRowIndex !== null) {
+            insertAt = companyRowIndex;
+        } else {
+            const supplierLinkRow = findRowIndexByLabel(cells, 'supplier link', specCol);
+            if (supplierLinkRow !== null) {
+                insertAt = supplierLinkRow + 1;
+            }
+        }
+
+        const nextCells = cells.slice();
+        nextCells.splice(insertAt, 0, newRow);
+
+        return { cells: nextCells, rowIndex: insertAt };
+    }
+
+    function ensureCompanyNameRow(cells, specCol) {
+        specCol = specCol ?? detectSpecColumnIndex(cells);
+        let rowIndex = findRowIndexByLabel(cells, 'company name', specCol);
+        if (rowIndex !== null) {
+            return { cells, rowIndex };
+        }
+
+        const colCount = Math.max(...cells.map(row => row.length), 6);
+        const newRow = Array.from({ length: colCount }, () => '');
+        newRow[specCol] = 'Company Name';
+
+        let insertAt = 0;
+        const supplierNameRow = findSupplierNameRowIndex(cells, specCol);
+        if (supplierNameRow !== null) {
+            insertAt = supplierNameRow + 1;
+        } else {
+            const supplierLinkRow = findRowIndexByLabel(cells, 'supplier link', specCol);
+            if (supplierLinkRow !== null) {
+                insertAt = supplierLinkRow + 1;
+            }
+        }
+
+        const nextCells = cells.slice();
+        nextCells.splice(insertAt, 0, newRow);
+
+        return { cells: nextCells, rowIndex: insertAt };
+    }
+
+    function normalizeSupplierNameKey(name) {
+        return String(name || '').trim().toLowerCase();
+    }
+
+    function supplierNamesMatch(a, b) {
+        return normalizeSupplierNameKey(a) === normalizeSupplierNameKey(b);
+    }
+
+    function captureClinkPreloadedSuppliers(cells) {
+        clinkPreloadedSupplierByCol = {};
+        clinkPreloadedSupplierNames = new Set();
+        if (!Array.isArray(cells) || !cells.length) {
+            return;
+        }
+
+        const specCol = detectSpecColumnIndex(cells);
+        const supplierRowIndex = findSupplierNameRowIndex(cells, specCol);
+        if (supplierRowIndex === null) {
+            return;
+        }
+
+        const row = cells[supplierRowIndex] || [];
+        for (let col = FIRST_SUPPLIER_COLUMN; col < row.length; col++) {
+            const name = String(row[col] || '').trim();
+            if (!name) {
+                continue;
+            }
+            clinkPreloadedSupplierByCol[col] = name;
+            clinkPreloadedSupplierNames.add(normalizeSupplierNameKey(name));
+        }
+    }
+
+    function isSupplierNameColumnBlank(cells, supplierRowIndex, col) {
+        return !String((cells[supplierRowIndex] || [])[col] || '').trim();
+    }
+
+    function writeSupplierToColumn(cells, col, supplier, supplierRowIndex, supplierLinkRowIndex, companyRowIndex) {
+        if (!cells[supplierRowIndex]) {
+            cells[supplierRowIndex] = [];
+        }
+        cells[supplierRowIndex][col] = supplier.name || '';
+
+        if (supplierLinkRowIndex !== null) {
+            if (!cells[supplierLinkRowIndex]) {
+                cells[supplierLinkRowIndex] = [];
+            }
+            cells[supplierLinkRowIndex][col] = supplier.link || '';
+        }
+
+        if (companyRowIndex !== null) {
+            if (!cells[companyRowIndex]) {
+                cells[companyRowIndex] = [];
+            }
+            cells[companyRowIndex][col] = supplier.company || '';
+        }
+    }
+
+    function applySuppliersAddOnly(suppliers, supplierRowIndex, supplierLinkRowIndex, companyRowIndex) {
+        const placedIds = new Set();
+        let updated = 0;
+        let added = 0;
+
+        let maxCol = Math.max(
+            ...currentSheetCells.map(row => row.length),
+            FIRST_SUPPLIER_COLUMN
+        );
+
+        Object.keys(clinkPreloadedSupplierByCol).forEach(key => {
+            const col = parseInt(key, 10);
+            if (Number.isNaN(col)) {
+                return;
+            }
+
+            const preloadedName = clinkPreloadedSupplierByCol[col];
+            const existingName = String((currentSheetCells[supplierRowIndex] || [])[col] || '').trim();
+            const supplier = suppliers.find(item => {
+                if (placedIds.has(item.id)) {
+                    return false;
+                }
+                return supplierNamesMatch(item.name, preloadedName)
+                    || (existingName && supplierNamesMatch(item.name, existingName));
+            });
+
+            if (!supplier) {
+                return;
+            }
+
+            writeSupplierToColumn(
+                currentSheetCells,
+                col,
+                supplier,
+                supplierRowIndex,
+                supplierLinkRowIndex,
+                companyRowIndex
+            );
+            placedIds.add(supplier.id);
+            updated++;
+        });
+
+        let col = FIRST_SUPPLIER_COLUMN;
+        while (placedIds.size < suppliers.length) {
+            const supplier = suppliers.find(item => !placedIds.has(item.id));
+            if (!supplier) {
+                break;
+            }
+
+            while (col < maxCol && !isSupplierNameColumnBlank(currentSheetCells, supplierRowIndex, col)) {
+                col++;
+            }
+
+            if (col >= maxCol) {
+                currentSheetCells = ensureSupplierColumnCount(
+                    currentSheetCells,
+                    FIRST_SUPPLIER_COLUMN,
+                    col - FIRST_SUPPLIER_COLUMN + 1
+                );
+                maxCol = Math.max(...currentSheetCells.map(row => row.length), maxCol + 1);
+            }
+
+            writeSupplierToColumn(
+                currentSheetCells,
+                col,
+                supplier,
+                supplierRowIndex,
+                supplierLinkRowIndex,
+                companyRowIndex
+            );
+            placedIds.add(supplier.id);
+            added++;
+            col++;
+        }
+
+        return { added, updated, placed: placedIds.size, total: suppliers.length };
+    }
+
+    function ensureSupplierColumnCount(cells, firstSupplierCol, neededCount) {
+        const startCol = Math.max(0, parseInt(firstSupplierCol, 10) || 0);
+        const colCount = Math.max(...cells.map(row => row.length), startCol + 1);
+        const currentSupplierCols = Math.max(0, colCount - startCol);
         if (neededCount <= currentSupplierCols) {
             return cells;
         }
@@ -2077,37 +3458,789 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
+    function copySpecsToMemory() {
+        readCellsFromEditor();
+        if (!currentSheetCells.length) {
+            setSheetStatus('No comparison sheet loaded.', true);
+            return;
+        }
+
+        const specCol = detectSpecColumnIndex(currentSheetCells);
+        saveCopiedSpecLabelsToMemory(currentSheetCells.map(row => String((row || [])[specCol] ?? '').trimEnd()));
+        const text = copiedSpecLabels.join('\n');
+        const nonEmptyCount = copiedSpecLabels.filter(label => label.trim() !== '').length;
+
+        const finish = (message, isError) => {
+            setSheetStatus(message, isError);
+        };
+
+        if (navigator.clipboard && window.isSecureContext) {
+            navigator.clipboard.writeText(text)
+                .then(() => finish(`Copied ${copiedSpecLabels.length} spec row(s) to memory (${nonEmptyCount} with labels).`, false))
+                .catch(() => finish(`Saved ${copiedSpecLabels.length} spec row(s) to memory (${nonEmptyCount} with labels).`, false));
+            return;
+        }
+
+        finish(`Saved ${copiedSpecLabels.length} spec row(s) to memory (${nonEmptyCount} with labels).`, false);
+    }
+
+    function formatRoiNumber(value, decimals) {
+        if (value === null || value === undefined || value === '') {
+            return '';
+        }
+        const num = parseFloat(value);
+        if (Number.isNaN(num)) {
+            return String(value).trim();
+        }
+        return Number(num.toFixed(decimals ?? 2)).toString();
+    }
+
+    function formatRoiCbm(value) {
+        if (value === null || value === undefined || value === '') {
+            return '';
+        }
+        const num = parseFloat(value);
+        if (Number.isNaN(num)) {
+            return String(value).trim();
+        }
+        return num.toFixed(3);
+    }
+
+    function computeFreightFromCbm(cbm) {
+        const num = parseSheetNumber(cbm);
+        if (num == null) {
+            return '';
+        }
+        return formatRoiNumber(200 * num);
+    }
+
+    async function fetchPlatformLmpRates(sku) {
+        if (!sku) {
+            return { amazon: null, ebay: null };
+        }
+
+        try {
+            const res = await fetch(`${lmpRatesUrl}?sku=${encodeURIComponent(sku)}`, {
+                headers: { 'Accept': 'application/json' },
+            });
+            const data = await res.json();
+            if (!data.success) {
+                return { amazon: null, ebay: null };
+            }
+            return {
+                amazon: data.amazon_lmp != null ? data.amazon_lmp : null,
+                ebay: data.ebay_lmp != null ? data.ebay_lmp : null,
+            };
+        } catch (e) {
+            return { amazon: null, ebay: null };
+        }
+    }
+
+    function getChannelRawLmp(channel, lmpRates) {
+        const key = String(channel || '').toLowerCase();
+        const lmp = key === 'amazon' ? lmpRates?.amazon : (key === 'ebay' ? lmpRates?.ebay : null);
+        return lmp != null ? formatRoiNumber(lmp) : '';
+    }
+
+    function getChannelLmpSale(channel, lmpRates) {
+        const key = String(channel || '').toLowerCase();
+        const lmp = key === 'amazon' ? lmpRates?.amazon : (key === 'ebay' ? lmpRates?.ebay : null);
+        if (lmp == null) {
+            return '';
+        }
+        return formatRoiNumber(lmp * ROI_LMP_SALE_FACTOR);
+    }
+
+    function updateManualLmpSection(lmpRates) {
+        const wrap = document.getElementById('comparison-roi-manual-lmp-wrap');
+        const hint = document.getElementById('comparison-roi-manual-lmp-hint');
+        if (!wrap) {
+            return;
+        }
+
+        const missingAmazon = lmpRates?.amazon == null;
+        const missingEbay = lmpRates?.ebay == null;
+        const show = missingAmazon || missingEbay;
+        wrap.classList.toggle('d-none', !show);
+
+        if (hint) {
+            const parts = [];
+            if (missingAmazon) {
+                parts.push('Amazon');
+            }
+            if (missingEbay) {
+                parts.push('Ebay');
+            }
+            hint.textContent = parts.length
+                ? `No LMP found for ${parts.join(' and ')}. Enter manual LMP (sale = LMP × ${ROI_LMP_SALE_FACTOR}) for both platforms.`
+                : '';
+        }
+    }
+
+    function applyManualLmpToBoth() {
+        const input = document.getElementById('comparison-roi-manual-lmp');
+        const tbody = document.getElementById('comparison-roi-tbody');
+        if (!input || !tbody || !tbody.roiRows) {
+            return;
+        }
+
+        const parsed = parseSheetNumber(input.value);
+        const rawLmp = parsed != null ? formatRoiNumber(parsed) : '';
+        const sale = parsed != null
+            ? formatRoiNumber(parsed * ROI_LMP_SALE_FACTOR)
+            : String(input.value || '').trim();
+
+        tbody.roiRows.forEach(function (row, rowIndex) {
+            row.sale = sale;
+            row.lmp = rawLmp;
+            const tr = tbody.children[rowIndex];
+            const saleInput = tr?.querySelector('[data-field="sale"]');
+            if (saleInput) {
+                saleInput.value = sale;
+            }
+            const lmpBtn = tr?.querySelector('.comparison-roi-lmp-link');
+            if (lmpBtn) {
+                lmpBtn.textContent = rawLmp || '—';
+                lmpBtn.disabled = !rawLmp;
+            }
+            refreshRoiRowCalculations(tr, tbody, rowIndex);
+            saveRoiCellEdit(rowIndex, 'sale', '', sale, sale);
+        });
+    }
+
+    function setRoiSaveStatus(message, isError) {
+        const el = document.getElementById('comparison-roi-save-status');
+        if (!el) {
+            return;
+        }
+        el.textContent = message;
+        el.classList.toggle('text-danger', !!isError);
+        el.classList.toggle('text-success', !isError && !!message);
+    }
+
+    function writeRoiChannelToSheet(cells, channel, rowData) {
+        const specCol = detectSpecColumnIndex(cells);
+        let rowIndex = findCostCalculatorChannelRow(cells, channel, specCol);
+        const colCount = Math.max(...cells.map(row => row.length), specCol + 10, 6);
+
+        if (rowIndex === null) {
+            const newRow = Array.from({ length: colCount }, () => '');
+            newRow[specCol] = channel;
+            cells.push(newRow);
+            rowIndex = cells.length - 1;
+        }
+
+        while (cells[rowIndex].length < colCount) {
+            cells[rowIndex].push('');
+        }
+
+        Object.entries(ROI_FIELD_OFFSETS).forEach(([key, offset]) => {
+            let value = rowData[key] ?? '';
+            if ((key === 'pPct' || key === 'roi') && value) {
+                value = String(value).replace('%', '');
+            }
+            cells[rowIndex][specCol + offset] = value;
+        });
+
+        return cells;
+    }
+
+    function saveRoiCellEdit(rowIndex, field, oldValue, newValue, displayNewValue) {
+        if (!currentCdRow?.sku || roiSaveInFlight) {
+            return Promise.resolve();
+        }
+
+        const tbody = document.getElementById('comparison-roi-tbody');
+        const row = tbody?.roiRows?.[rowIndex];
+        if (!row || !field) {
+            return Promise.resolve();
+        }
+
+        const normalizedOld = String(oldValue ?? '').trim();
+        const normalizedNew = String(displayNewValue ?? newValue ?? '').trim();
+        if (normalizedOld === normalizedNew) {
+            return Promise.resolve();
+        }
+
+        readCellsFromEditor();
+        currentSheetCells = writeRoiChannelToSheet(currentSheetCells, row.channel, row);
+
+        roiSaveInFlight = true;
+        setRoiSaveStatus('Saving...', false);
+
+        return fetch(roiSaveUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrfToken,
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json',
+            },
+            body: JSON.stringify({
+                sku: currentCdRow.sku,
+                parent: currentCdRow.parent || '',
+                linked_skus: linkedSkusForRow(currentCdRow),
+                bulk_edit_skus: comparisonBulkEditPayload(),
+                channel: row.channel,
+                field,
+                old_value: normalizedOld,
+                new_value: normalizedNew,
+                row,
+            }),
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (!data.success) {
+                throw new Error(data.message || 'Save failed.');
+            }
+            if (Array.isArray(data.cells)) {
+                currentSheetCells = data.cells;
+            }
+            setRoiSaveStatus(`Saved by ${data.updated_by || 'N/A'} at ${data.updated_at || new Date().toLocaleTimeString()}`, false);
+            clearTimeout(tableRefreshTimer);
+            tableRefreshTimer = setTimeout(() => table?.replaceData(), 500);
+        })
+        .catch(err => {
+            setRoiSaveStatus(err.message || 'Save failed.', true);
+        })
+        .finally(() => {
+            roiSaveInFlight = false;
+        });
+    }
+
+    async function fetchShippingSlabRate(weightLb, sku) {
+        const weight = parseSheetNumber(weightLb);
+        if (weight == null) {
+            return null;
+        }
+
+        const params = new URLSearchParams({
+            weight_lb: String(weight),
+            carrier: 'ship',
+        });
+        if (sku) {
+            params.set('sku', sku);
+        }
+
+        try {
+            const res = await fetch(`${shippingSlabRateUrl}?${params.toString()}`, {
+                headers: { 'Accept': 'application/json' },
+            });
+            const data = await res.json();
+            return data.success ? data : null;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function refreshRoiRowCalculations(tr, tbody, rowIndex) {
+        const row = tbody.roiRows[rowIndex];
+        if (!row) {
+            return;
+        }
+
+        const calc = calculateRoiMetrics(row);
+        row.profit = calc.profit != null ? formatRoiNumber(calc.profit) : '';
+        row.pPct = calc.pPct != null ? `${formatRoiNumber(calc.pPct, 0)}%` : '';
+        row.roi = calc.roi != null ? `${formatRoiNumber(calc.roi, 0)}%` : '';
+
+        if (!tr) {
+            return;
+        }
+
+        const pPctCell = tr.querySelector('[data-calc="pPct"]');
+        const profitCell = tr.querySelector('[data-calc="profit"]');
+        const roiCell = tr.querySelector('[data-calc="roi"]');
+        if (pPctCell) {
+            pPctCell.textContent = row.pPct;
+            applyRoiCalcCellTier(pPctCell, 'pPct', row.pPct);
+        }
+        if (profitCell) {
+            profitCell.textContent = row.profit;
+        }
+        if (roiCell) {
+            roiCell.textContent = row.roi;
+            applyRoiCalcCellTier(roiCell, 'roi', row.roi);
+        }
+    }
+
+    function parseRoiPercentValue(value) {
+        const num = parseFloat(String(value || '').replace('%', '').trim());
+        return Number.isFinite(num) ? num : null;
+    }
+
+    function getPPctTierClass(pct) {
+        if (pct == null) {
+            return '';
+        }
+        if (pct > 33) {
+            return 'comparison-roi-tier-magenta';
+        }
+        if (pct >= 20 && pct <= 33) {
+            return 'comparison-roi-tier-green';
+        }
+        return 'comparison-roi-tier-red';
+    }
+
+    function getRoiPctTierClass(pct) {
+        if (pct == null) {
+            return '';
+        }
+        if (pct > 100) {
+            return 'comparison-roi-tier-magenta';
+        }
+        if (pct >= 40 && pct <= 100) {
+            return 'comparison-roi-tier-green';
+        }
+        return 'comparison-roi-tier-red';
+    }
+
+    function applyRoiCalcCellTier(cell, field, displayValue) {
+        if (!cell) {
+            return;
+        }
+        cell.classList.remove('comparison-roi-tier-red', 'comparison-roi-tier-green', 'comparison-roi-tier-magenta');
+        const pct = parseRoiPercentValue(displayValue);
+        const tier = field === 'pPct'
+            ? getPPctTierClass(pct)
+            : (field === 'roi' ? getRoiPctTierClass(pct) : '');
+        if (tier) {
+            cell.classList.add(tier);
+        }
+    }
+
+    function roiCalcCellHtml(rowIndex, field, value) {
+        const tier = field === 'pPct'
+            ? getPPctTierClass(parseRoiPercentValue(value))
+            : (field === 'roi' ? getRoiPctTierClass(parseRoiPercentValue(value)) : '');
+        const tierClass = tier ? ` ${tier}` : '';
+        return `<td class="comparison-roi-calc-cell${tierClass}" data-row="${rowIndex}" data-calc="${field}">${escapeHtml(value || '')}</td>`;
+    }
+
+    function getSheetCellText(cells, rowIndex, colIndex) {
+        if (rowIndex === null || rowIndex === undefined || colIndex === null || colIndex === undefined) {
+            return '';
+        }
+        return String((cells[rowIndex] || [])[colIndex] ?? '').trim();
+    }
+
+    function findCostCalculatorChannelRow(cells, channel, specCol) {
+        const needle = channel.toLowerCase();
+        for (let rowIndex = 0; rowIndex < cells.length; rowIndex++) {
+            const label = getSheetCellText(cells, rowIndex, specCol).toLowerCase();
+            if (label === needle || label === needle + ' ' || label.startsWith(needle + ' ')) {
+                return rowIndex;
+            }
+        }
+        return null;
+    }
+
+    function readCostCalculatorRowFromSheet(cells, channel, specCol) {
+        const rowIndex = findCostCalculatorChannelRow(cells, channel, specCol);
+        if (rowIndex === null) {
+            return {};
+        }
+
+        const data = {};
+        Object.entries(ROI_FIELD_OFFSETS).forEach(([key, offset]) => {
+            data[key] = getSheetCellText(cells, rowIndex, specCol + offset);
+        });
+        return data;
+    }
+
+    function extractLowestPriceColumnMetrics(cells) {
+        const specCol = detectSpecColumnIndex(cells);
+        let priceLabel = 'usd';
+        let lowestCol = findLowestSupplierColumn(cells, specCol, priceLabel);
+        if (lowestCol === null) {
+            priceLabel = 'rmb';
+            lowestCol = findLowestSupplierColumn(cells, specCol, priceLabel);
+        }
+        if (lowestCol === null) {
+            lowestCol = FIRST_SUPPLIER_COLUMN;
+        }
+
+        const priceRow = findRowIndexByLabel(cells, priceLabel, specCol)
+            ?? findRowIndexByLabel(cells, 'supplier price', specCol);
+        const gwRow = findRowIndexByLabel(cells, 'gw', specCol)
+            ?? findRowIndexByLabel(cells, 'g.w', specCol)
+            ?? findRowIndexByLabel(cells, 'weight', specCol);
+        const cbmRow = findRowIndexByLabel(cells, 'cbm', specCol);
+
+        const cp = parseSheetNumber(getSheetCellText(cells, priceRow, lowestCol));
+        const gw = parseSheetNumber(getSheetCellText(cells, gwRow, lowestCol));
+        const cbm = parseSheetNumber(getSheetCellText(cells, cbmRow, lowestCol));
+        const freight = cbm != null ? 200 * cbm : null;
+
+        return {
+            specCol,
+            col: lowestCol,
+            colLetter: columnLetter(lowestCol),
+            priceLabel,
+            cp,
+            gw,
+            cbm,
+            freight,
+        };
+    }
+
+    function calculateRoiMetrics(row) {
+        const cp = parseSheetNumber(row.cp) ?? 0;
+        const freight = parseSheetNumber(row.freight) ?? 0;
+        const shipping = parseSheetNumber(row.shipping) ?? 0;
+        const sale = parseSheetNumber(row.sale) ?? 0;
+
+        const profit = (sale * ROI_SALE_NET_FACTOR) - shipping - cp - freight;
+        const hasInputs = sale > 0 || cp > 0 || freight > 0 || shipping > 0;
+        const pPct = sale > 0 ? (profit / sale) * 100 : null;
+        const roi = (cp + freight) > 0 ? (profit / (cp + freight)) * 100 : null;
+
+        return {
+            profit: hasInputs ? profit : null,
+            pPct,
+            roi,
+        };
+    }
+
+    function buildRoiChannelRow(channel, cells, metrics, slabShipping, lmpRates) {
+        const fromSheet = readCostCalculatorRowFromSheet(cells, channel, metrics.specCol);
+        const cbm = fromSheet.cbm
+            ? formatRoiCbm(fromSheet.cbm)
+            : (metrics.cbm != null ? formatRoiCbm(metrics.cbm) : '');
+        const lmpSale = getChannelLmpSale(channel, lmpRates);
+        const rawLmp = getChannelRawLmp(channel, lmpRates);
+        const row = {
+            channel,
+            cp: fromSheet.cp || (metrics.cp != null ? formatRoiNumber(metrics.cp) : ''),
+            cbm,
+            freight: computeFreightFromCbm(fromSheet.cbm || (metrics.cbm != null ? metrics.cbm : cbm)),
+            gw: fromSheet.gw || (metrics.gw != null ? formatRoiNumber(metrics.gw) : ''),
+            shipping: fromSheet.shipping || (slabShipping != null && slabShipping !== ''
+                ? formatRoiNumber(slabShipping)
+                : ''),
+            sale: fromSheet.sale || lmpSale || '',
+            lmp: rawLmp,
+        };
+
+        const calc = calculateRoiMetrics(row);
+        row.profit = calc.profit != null ? formatRoiNumber(calc.profit) : (fromSheet.profit || '');
+        row.pPct = calc.pPct != null ? `${formatRoiNumber(calc.pPct, 0)}%` : (fromSheet.pPct || '');
+        row.roi = calc.roi != null ? `${formatRoiNumber(calc.roi, 0)}%` : (fromSheet.roi || '');
+
+        return row;
+    }
+
+    function roiLmpCellHtml(rowIndex, row) {
+        const platform = String(row.channel || 'amazon').toLowerCase();
+        const display = row.lmp || '';
+        if (!display) {
+            return `<td class="comparison-roi-lmp-cell text-muted">—</td>`;
+        }
+        return `<td class="comparison-roi-lmp-cell">
+            <button type="button" class="btn btn-link comparison-roi-lmp-link p-0 border-0"
+                data-row="${rowIndex}" data-platform="${escapeHtmlAttr(platform)}"
+                title="View ${escapeHtml(platform === 'ebay' ? 'eBay' : 'Amazon')} LMP competitors">
+                ${escapeHtml(display)}
+            </button>
+        </td>`;
+    }
+
+    function renderRoiModalTable(rows) {
+        const tbody = document.getElementById('comparison-roi-tbody');
+        if (!tbody) {
+            return;
+        }
+
+        tbody.innerHTML = rows.map((row, rowIndex) => {
+            const inputCell = (field, value) =>
+                `<td class="comparison-roi-input-cell"><input type="text" class="comparison-roi-input" data-row="${rowIndex}" data-field="${field}" value="${escapeHtmlAttr(value || '')}"></td>`;
+
+            return `<tr>
+                <td class="comparison-roi-channel">${escapeHtml(row.channel)}</td>
+                ${inputCell('cp', row.cp)}
+                ${inputCell('cbm', row.cbm)}
+                ${inputCell('gw', row.gw)}
+                ${inputCell('shipping', row.shipping)}
+                ${inputCell('sale', row.sale)}
+                ${roiLmpCellHtml(rowIndex, row)}
+                ${roiCalcCellHtml(rowIndex, 'pPct', row.pPct)}
+                ${roiCalcCellHtml(rowIndex, 'roi', row.roi)}
+            </tr>`;
+        }).join('');
+
+        tbody.querySelectorAll('.comparison-roi-input').forEach(input => {
+            input.addEventListener('input', handleRoiInputChange);
+            input.addEventListener('focus', handleRoiInputFocus);
+            input.addEventListener('blur', handleRoiInputBlur);
+        });
+        tbody.querySelectorAll('.comparison-roi-lmp-link').forEach(btn => {
+            btn.addEventListener('click', function (e) {
+                e.preventDefault();
+                const sku = currentCdRow?.sku || '';
+                const platform = btn.dataset.platform || 'amazon';
+                if (sku) {
+                    loadComparisonLmpModal(sku, platform);
+                }
+            });
+        });
+        tbody.roiRows = rows;
+    }
+
+    function handleRoiCbmBlur(event) {
+        const input = event.target;
+        const formatted = formatRoiCbm(input.value);
+        if (formatted === '') {
+            return;
+        }
+        input.value = formatted;
+        const tbody = document.getElementById('comparison-roi-tbody');
+        const rowIndex = parseInt(input.dataset.row, 10);
+        if (!tbody?.roiRows || Number.isNaN(rowIndex) || !tbody.roiRows[rowIndex]) {
+            return;
+        }
+        tbody.roiRows[rowIndex].cbm = formatted;
+    }
+
+    function handleRoiInputFocus(event) {
+        const input = event.target;
+        if (!input.classList.contains('comparison-roi-input')) {
+            return;
+        }
+        const key = `${input.dataset.row}-${input.dataset.field}`;
+        roiCellEditPrevious[key] = input.value;
+    }
+
+    async function handleRoiInputBlur(event) {
+        const input = event.target;
+        if (!input.classList.contains('comparison-roi-input')) {
+            return;
+        }
+
+        const rowIndex = parseInt(input.dataset.row, 10);
+        const field = input.dataset.field;
+        const tbody = document.getElementById('comparison-roi-tbody');
+        if (Number.isNaN(rowIndex) || !field || !tbody?.roiRows?.[rowIndex]) {
+            return;
+        }
+
+        if (field === 'cbm') {
+            handleRoiCbmBlur(event);
+        }
+
+        const tr = input.closest('tr');
+        if (field === 'gw') {
+            await fetchShippingSlabRate(input.value, currentCdRow?.sku || '').then(function (slabInfo) {
+                const shipRate = slabInfo?.rate != null ? formatRoiNumber(slabInfo.rate) : '';
+                tbody.roiRows[rowIndex].shipping = shipRate;
+                const shippingInput = tr?.querySelector('[data-field="shipping"]');
+                if (shippingInput) {
+                    shippingInput.value = shipRate;
+                }
+            });
+        }
+
+        refreshRoiRowCalculations(tr, tbody, rowIndex);
+
+        const key = `${rowIndex}-${field}`;
+        const oldValue = roiCellEditPrevious[key] ?? '';
+        const newValue = input.value;
+        delete roiCellEditPrevious[key];
+
+        await saveRoiCellEdit(rowIndex, field, oldValue, newValue, input.value);
+    }
+
+    function handleRoiInputChange(event) {
+        const input = event.target;
+        const tbody = document.getElementById('comparison-roi-tbody');
+        if (!tbody || !tbody.roiRows) {
+            return;
+        }
+
+        const rowIndex = parseInt(input.dataset.row, 10);
+        const field = input.dataset.field;
+        if (Number.isNaN(rowIndex) || !field || !tbody.roiRows[rowIndex]) {
+            return;
+        }
+
+        tbody.roiRows[rowIndex][field] = input.value;
+
+        const tr = input.closest('tr');
+        if (field === 'cbm') {
+            const freightVal = computeFreightFromCbm(input.value);
+            tbody.roiRows[rowIndex].freight = freightVal;
+            const freightCell = tr?.querySelector('[data-calc="freight"]');
+            if (freightCell) {
+                freightCell.textContent = freightVal;
+            }
+        }
+
+        if (field === 'gw') {
+            fetchShippingSlabRate(input.value, currentCdRow?.sku || '').then(function (slabInfo) {
+                const shipRate = slabInfo?.rate != null ? formatRoiNumber(slabInfo.rate) : '';
+                tbody.roiRows[rowIndex].shipping = shipRate;
+                const shippingInput = tr?.querySelector('[data-field="shipping"]');
+                if (shippingInput) {
+                    shippingInput.value = shipRate;
+                }
+                refreshRoiRowCalculations(tr, tbody, rowIndex);
+            });
+        }
+
+        refreshRoiRowCalculations(tr, tbody, rowIndex);
+    }
+
+    function getRoiModalElement() {
+        const el = document.getElementById('comparisonRoiModal');
+        if (!el) {
+            return null;
+        }
+        if (el.parentElement !== document.body) {
+            document.body.appendChild(el);
+        }
+        return el;
+    }
+
+    function getRoiModalInstance() {
+        const el = getRoiModalElement();
+        if (!el || !window.bootstrap?.Modal) {
+            return null;
+        }
+        return bootstrap.Modal.getOrCreateInstance(el, { backdrop: true, focus: true });
+    }
+
+    function fixRoiModalStacking() {
+        const el = getRoiModalElement();
+        if (!el) {
+            return;
+        }
+
+        el.classList.add('comparison-roi-modal-stacked');
+        const openModals = document.querySelectorAll('.modal.show');
+        const baseZ = 1050 + (openModals.length * 20);
+        el.style.zIndex = String(baseZ + 10);
+
+        const backdrops = document.querySelectorAll('.modal-backdrop');
+        if (backdrops.length) {
+            backdrops[backdrops.length - 1].style.zIndex = String(baseZ);
+        }
+    }
+
+    async function openRoiModal() {
+        readCellsFromEditor();
+        if (!currentSheetCells.length) {
+            setSheetStatus('Load a comparison sheet first.', true);
+            return;
+        }
+
+        const metrics = extractLowestPriceColumnMetrics(currentSheetCells);
+        const sku = currentCdRow?.sku || '';
+        const [slabInfo, lmpRates] = await Promise.all([
+            metrics.gw != null ? fetchShippingSlabRate(metrics.gw, sku) : Promise.resolve(null),
+            fetchPlatformLmpRates(sku),
+        ]);
+        const rows = ROI_CHANNELS.map(channel => buildRoiChannelRow(
+            channel,
+            currentSheetCells,
+            metrics,
+            slabInfo?.rate,
+            lmpRates
+        ));
+        renderRoiModalTable(rows);
+        updateManualLmpSection(lmpRates);
+        setRoiSaveStatus('', false);
+
+        const manualLmpInput = document.getElementById('comparison-roi-manual-lmp');
+        if (manualLmpInput) {
+            manualLmpInput.value = '';
+        }
+
+        const roiModal = getRoiModalInstance();
+        if (!roiModal) {
+            setSheetStatus('ROI modal unavailable. Refresh the page and try again.', true);
+            return;
+        }
+
+        const roiModalEl = getRoiModalElement();
+        roiModalEl?.addEventListener('shown.bs.modal', fixRoiModalStacking, { once: true });
+        roiModal.show();
+    }
+
+    function replaceSpecsFromMemory() {
+        readCellsFromEditor();
+        const template = getCopiedSpecLabels();
+        if (!template.length) {
+            setSheetStatus('No copied specs in memory. Use Copy Specs on a template sheet first.', true);
+            return;
+        }
+
+        const specCol = detectSpecColumnIndex(currentSheetCells);
+        let colCount = Math.max(
+            ...currentSheetCells.map(row => row.length),
+            specCol + 1,
+            6
+        );
+
+        while (currentSheetCells.length < template.length) {
+            currentSheetCells.push(Array.from({ length: colCount }, () => ''));
+        }
+
+        template.forEach((label, rowIndex) => {
+            if (!currentSheetCells[rowIndex]) {
+                currentSheetCells[rowIndex] = Array.from({ length: colCount }, () => '');
+            }
+            while (currentSheetCells[rowIndex].length < colCount) {
+                currentSheetCells[rowIndex].push('');
+            }
+            currentSheetCells[rowIndex][specCol] = label;
+            colCount = Math.max(colCount, currentSheetCells[rowIndex].length);
+        });
+
+        renderSheetEditor(currentSheetCells);
+        const appliedCount = template.length;
+        setSheetStatus(`Replaced spec labels for ${appliedCount} row(s) from saved template.`, false);
+        scheduleAutoSaveComparisonSheet(400);
+    }
+
     function autopopulateSupplierNamesFromList() {
         if (!currentCdRow) {
             setSheetStatus('Open a comparison row first.', true);
             return;
         }
 
-        readCellsFromEditor();
-        const specCol = detectSpecColumnIndex(currentSheetCells);
-        const supplierRowIndex = findSupplierNameRowIndex(currentSheetCells, specCol);
-        if (supplierRowIndex === null) {
-            setSheetStatus('Could not find a Supplier Name row in the sheet.', true);
+        // Use row category first; fall back to latest table row if CD modal was opened before category was set.
+        let category = String(currentCdRow.category || '').trim();
+        if (!category && table && currentCdRow.sku) {
+            const liveRow = table.getRows().find(row => row.getData().sku === currentCdRow.sku);
+            if (liveRow) {
+                category = String(liveRow.getData().category || '').trim();
+                currentCdRow.category = category;
+            }
+        }
+        if (!category) {
+            setSheetStatus('Set a category on this row before autopopulating suppliers.', true);
             return;
         }
 
-        const linkedSkus = Array.isArray(currentCdRow.linked_skus) && currentCdRow.linked_skus.length
-            ? currentCdRow.linked_skus.slice()
-            : [currentCdRow.sku].filter(Boolean);
+        readCellsFromEditor();
+        const specCol = detectSpecColumnIndex(currentSheetCells);
+        const linkEnsured = ensureSupplierLinkRow(currentSheetCells, specCol);
+        currentSheetCells = linkEnsured.cells;
+        const supplierLinkRowIndex = linkEnsured.rowIndex;
+        const nameEnsured = ensureSupplierNameRow(currentSheetCells, specCol);
+        currentSheetCells = nameEnsured.cells;
+        const supplierRowIndex = nameEnsured.rowIndex;
+        const companyEnsured = ensureCompanyNameRow(currentSheetCells, specCol);
+        currentSheetCells = companyEnsured.cells;
+        const companyRowIndex = companyEnsured.rowIndex;
 
         const btn = document.getElementById('comparison-cd-autopopulate-suppliers-btn');
         if (btn) btn.disabled = true;
-        setSheetStatus('Loading suppliers from supplier.list...', false);
+        setSheetStatus(`Loading suppliers for category "${category}" from supplier.list...`, false);
 
         const params = new URLSearchParams();
         params.set('sku', currentCdRow.sku || '');
-        if (currentCdRow.parent) {
-            params.set('parent', currentCdRow.parent);
-        }
-        if (currentCdRow.category) {
-            params.set('category', currentCdRow.category);
-        }
-        linkedSkus.forEach(sku => params.append('linked_skus[]', sku));
+        params.set('category', category);
+        params.set('by_category', '1');
 
         fetch(`${suppliersForSkuUrl}?${params.toString()}`, {
             headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
@@ -2120,22 +4253,30 @@ document.addEventListener('DOMContentLoaded', function () {
 
             const suppliers = data.suppliers || [];
             if (!suppliers.length) {
-                setSheetStatus('No suppliers matched this SKU or linked SKUs on supplier.list.', true);
+                setSheetStatus(`No suppliers found on supplier.list for category "${category}".`, true);
                 return;
             }
 
-            currentSheetCells = ensureSupplierColumnCount(currentSheetCells, specCol, suppliers.length);
-            const firstSupplierCol = specCol + 1;
+            const result = applySuppliersAddOnly(
+                suppliers,
+                supplierRowIndex,
+                supplierLinkRowIndex,
+                companyRowIndex
+            );
 
-            suppliers.forEach((supplier, index) => {
-                if (!currentSheetCells[supplierRowIndex]) {
-                    currentSheetCells[supplierRowIndex] = [];
-                }
-                currentSheetCells[supplierRowIndex][firstSupplierCol + index] = supplier.name || '';
-            });
-
+            cacheComparisonSuppliers(suppliers);
+            syncCommRowOnSheet();
             renderSheetEditor(currentSheetCells);
-            setSheetStatus(`Autopopulated ${suppliers.length} supplier name(s) from supplier.list.`, false);
+            const skipped = result.total - result.placed;
+            let statusMsg = `Added ${result.added} supplier(s) in blank columns`;
+            if (result.updated) {
+                statusMsg += ` and updated ${result.updated} C-link match(es)`;
+            }
+            statusMsg += ` for "${category}".`;
+            if (skipped > 0) {
+                statusMsg += ` ${skipped} supplier(s) skipped (no blank columns left).`;
+            }
+            setSheetStatus(statusMsg, false);
             scheduleAutoSaveComparisonSheet(400);
         })
         .catch(err => {
@@ -2159,8 +4300,19 @@ document.addEventListener('DOMContentLoaded', function () {
         currentSheetFormats = normalizeSheetFormats({});
         const skuBadge = document.getElementById('comparison-cd-modal-sku-badge');
         const skuHidden = document.getElementById('comparison-cd-modal-sku');
+        let badgeText = row.sheet_sku && row.sheet_sku !== row.sku
+            ? `${row.sku} (sheet: ${row.sheet_sku})`
+            : (row.sku || '');
+        if (Array.isArray(comparisonBulkEditSkus) && comparisonBulkEditSkus.length > 1) {
+            badgeText = `Bulk edit: ${comparisonBulkEditSkus.length} SKUs (${comparisonBulkEditSkus.slice(0, 3).join(', ')}${comparisonBulkEditSkus.length > 3 ? '…' : ''})`;
+        }
         if (skuBadge) {
-            skuBadge.textContent = row.sku || '';
+            skuBadge.textContent = badgeText;
+            skuBadge.title = Array.isArray(comparisonBulkEditSkus) && comparisonBulkEditSkus.length > 1
+                ? `Changes save to: ${comparisonBulkEditSkus.join(', ')}`
+                : (row.sheet_sku && row.sheet_sku !== row.sku
+                    ? `Shared comparison sheet from linked SKU ${row.sheet_sku}`
+                    : '');
         }
         if (skuHidden) {
             skuHidden.textContent = row.sku || '';
@@ -2240,12 +4392,23 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
+    function cdEditFormatter() {
+        const title = 'Edit comparison data for this SKU';
+        return `<button type="button" class="btn btn-sm btn-outline-primary comparison-cd-edit-btn py-0 px-2"
+            title="${escapeHtmlAttr(title)}" aria-label="${escapeHtmlAttr(title)}">
+            <i class="mdi mdi-pencil"></i>
+        </button>`;
+    }
+
     function cdFormatter(cell) {
         const row = cell.getRow().getData();
         const hasSheet = !!row.has_sheet_data;
         const clinkIsSheet = !!row.clink_is_sheet || isGoogleSheetUrl(row.clink);
+        const sharedFrom = row.sheet_sku && row.sheet_sku !== row.sku ? row.sheet_sku : '';
         const title = hasSheet
-            ? 'View/edit comparison sheet'
+            ? (sharedFrom
+                ? `View/edit shared comparison sheet (latest from ${sharedFrom})`
+                : 'View/edit comparison sheet')
             : (clinkIsSheet ? 'Load comparison sheet from C link' : 'View comparison data');
         const color = hasSheet ? '#16a34a' : (clinkIsSheet ? '#d97706' : '#2563eb');
 
@@ -2299,6 +4462,7 @@ document.addEventListener('DOMContentLoaded', function () {
     function linkedSkuFormatter(cell) {
         const row = cell.getRow().getData();
         const category = (row.category || '').trim();
+        const rowSku = String(row.sku || '').trim();
         let skus = row.linked_skus || [];
         if (typeof skus === 'string') {
             try {
@@ -2310,44 +4474,265 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!Array.isArray(skus)) {
             skus = [];
         }
-        if (!skus.length && row.sku) {
-            skus = [row.sku];
+        if (!skus.length && rowSku) {
+            skus = [rowSku];
         }
 
         const badges = skus.length
-            ? skus.map(sku => {
-                const href = supplierListCategoryUrl(category, sku);
-                return `<a href="${escapeHtmlAttr(href)}" target="_blank" rel="noopener noreferrer"
-                    class="badge bg-info-subtle text-dark border me-1 mb-1 text-decoration-none linked-sku-badge"
-                    title="Open ${escapeHtmlAttr(category || 'supplier.list')} for ${escapeHtmlAttr(sku)}">${escapeHtml(sku)}</a>`;
+            ? skus.map(function (sku) {
+                const skuText = String(sku || '').trim();
+                const isSelf = skuText.toUpperCase() === rowSku.toUpperCase();
+                const href = supplierListCategoryUrl(category, skuText);
+                const removeBtn = isSelf
+                    ? ''
+                    : `<button type="button" class="btn-close comparison-linked-sku-remove"
+                        data-linked-sku="${escapeHtmlAttr(skuText)}" aria-label="Remove link to ${escapeHtmlAttr(skuText)}"></button>`;
+                return `<span class="linked-sku-badge-wrap badge bg-info-subtle text-dark border me-1 mb-1">
+                    <a href="${escapeHtmlAttr(href)}" target="_blank" rel="noopener noreferrer"
+                        class="text-decoration-none text-dark linked-sku-badge"
+                        title="Open ${escapeHtmlAttr(category || 'supplier.list')} for ${escapeHtmlAttr(skuText)}">${escapeHtml(skuText)}</a>${removeBtn}
+                </span>`;
             }).join('')
             : '<span class="text-muted fst-italic">No SKUs</span>';
 
-        const manageHref = supplierListCategoryUrl(category, row.sku || '');
-        const manageTitle = category
-            ? `Manage linked SKUs on supplier.list (${category})`
-            : 'Manage linked SKUs on supplier.list';
+        return `<div class="d-flex flex-wrap align-items-start py-1" style="line-height:1.6;">${badges}</div>`;
+    }
 
-        return `<div class="d-flex flex-column align-items-start py-1">
-            <div class="mb-1" style="line-height:1.6;">${badges}</div>
-            <a href="${escapeHtmlAttr(manageHref)}" target="_blank" rel="noopener noreferrer"
-                class="btn btn-sm btn-outline-primary" title="${escapeHtmlAttr(manageTitle)}"
-                style="padding:2px 8px;" onclick="event.stopPropagation();">
+    function linkedSkuAddFormatter(cell) {
+        const rowSku = String(cell.getRow().getData().sku || '').trim();
+        if (!rowSku) {
+            return '';
+        }
+
+        return `<div class="d-flex align-items-center justify-content-center py-1">
+            <button type="button" class="btn btn-sm btn-outline-primary comparison-linked-sku-add-btn"
+                title="Link another SKU" style="padding:2px 8px;" data-sku="${escapeHtmlAttr(rowSku)}">
                 <i class="mdi mdi-plus"></i>
-            </a>
+            </button>
         </div>`;
     }
 
+    function applyAffectedLinkedSkuRows(affected) {
+        if (!table || !Array.isArray(affected)) {
+            return;
+        }
+
+        const bySku = {};
+        affected.forEach(function (item) {
+            if (item?.sku) {
+                bySku[item.sku] = item.linked_skus || [];
+            }
+        });
+
+        table.getRows().forEach(function (row) {
+            const data = row.getData();
+            if (!Object.prototype.hasOwnProperty.call(bySku, data.sku)) {
+                return;
+            }
+            row.update({ linked_skus: bySku[data.sku] });
+        });
+    }
+
+    function bulkLinkSelectedSkus(rowData, addBtn) {
+        const selectedSkus = getSelectedComparisonRows()
+            .map(function (row) { return String(row.getData().sku || '').trim(); })
+            .filter(Boolean);
+
+        if (selectedSkus.length < 2) {
+            openLinkedSkuModal(rowData);
+            return;
+        }
+
+        const original = addBtn?.innerHTML || '';
+        if (addBtn) {
+            addBtn.disabled = true;
+            addBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        }
+
+        fetch(linkedSkuBulkLinkUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrfToken,
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json',
+            },
+            body: JSON.stringify({ skus: selectedSkus }),
+        })
+        .then(function (res) { return res.json(); })
+        .then(function (res) {
+            if (!res.success) {
+                throw new Error(res.message || 'Could not link selected SKUs.');
+            }
+            applyAffectedLinkedSkuRows(res.affected);
+            showComparisonToast('success', selectedSkus.length + ' SKUs linked as related.');
+        })
+        .catch(function (err) {
+            alert(err.message || 'Could not link selected SKUs.');
+        })
+        .finally(function () {
+            if (addBtn) {
+                addBtn.disabled = false;
+                addBtn.innerHTML = original;
+            }
+        });
+    }
+
+    function openLinkedSkuModal(rowData) {
+        if (!linkedSkuModal || !rowData?.sku) {
+            return;
+        }
+
+        linkedSkuModalRow = rowData;
+        document.getElementById('comparison-linked-sku-source').textContent = rowData.sku;
+        const input = document.getElementById('comparison-linked-sku-input');
+        input.value = '';
+        renderLinkedSkuSuggestions('');
+        linkedSkuModal.show();
+        setTimeout(function () { input?.focus(); }, 200);
+    }
+
+    function renderLinkedSkuSuggestions(term) {
+        const wrap = document.getElementById('comparison-linked-sku-suggestions');
+        if (!wrap || !table) {
+            return;
+        }
+
+        const query = String(term || '').trim().toLowerCase();
+        const currentSku = String(linkedSkuModalRow?.sku || '').trim().toUpperCase();
+        const existing = new Set(
+            (Array.isArray(linkedSkuModalRow?.linked_skus) ? linkedSkuModalRow.linked_skus : [])
+                .map(function (sku) { return String(sku || '').trim().toUpperCase(); })
+        );
+
+        const matches = table.getData()
+            .filter(function (row) {
+                const sku = String(row.sku || '').trim();
+                if (!sku) return false;
+                const norm = sku.toUpperCase();
+                if (norm === currentSku || existing.has(norm)) return false;
+                if (!query) return true;
+                return sku.toLowerCase().includes(query)
+                    || String(row.parent || '').toLowerCase().includes(query);
+            })
+            .map(function (row) { return String(row.sku || '').trim(); })
+            .slice(0, 8);
+
+        if (!query || !matches.length) {
+            wrap.classList.add('d-none');
+            wrap.innerHTML = '';
+            return;
+        }
+
+        wrap.classList.remove('d-none');
+        wrap.innerHTML = matches.map(function (sku) {
+            return `<button type="button" class="list-group-item list-group-item-action py-2 comparison-linked-sku-suggestion"
+                data-sku="${escapeHtmlAttr(sku)}">${escapeHtml(sku)}</button>`;
+        }).join('');
+    }
+
+    function saveLinkedSkuFromModal() {
+        if (!linkedSkuModalRow?.sku) {
+            return;
+        }
+
+        const linkedSku = document.getElementById('comparison-linked-sku-input')?.value.trim();
+        if (!linkedSku) {
+            alert('Enter a SKU to link.');
+            return;
+        }
+
+        const btn = document.getElementById('comparison-linked-sku-save-btn');
+        const original = btn?.innerHTML || '';
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Linking...';
+        }
+
+        fetch(linkedSkuAddUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrfToken,
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json',
+            },
+            body: JSON.stringify({
+                sku: linkedSkuModalRow.sku,
+                linked_sku: linkedSku,
+            }),
+        })
+        .then(function (res) { return res.json(); })
+        .then(function (res) {
+            if (!res.success) {
+                throw new Error(res.message || 'Could not link SKU.');
+            }
+            applyAffectedLinkedSkuRows(res.affected);
+            linkedSkuModal?.hide();
+            showComparisonToast('success', 'Linked SKU updated for all related rows.');
+        })
+        .catch(function (err) {
+            alert(err.message || 'Could not link SKU.');
+        })
+        .finally(function () {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = original;
+            }
+        });
+    }
+
+    function removeLinkedSkuFromRow(rowData, linkedSku) {
+        if (!rowData?.sku || !linkedSku) {
+            return;
+        }
+
+        if (!confirm(`Remove link between "${rowData.sku}" and "${linkedSku}"?`)) {
+            return;
+        }
+
+        fetch(linkedSkuRemoveUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrfToken,
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json',
+            },
+            body: JSON.stringify({
+                sku: rowData.sku,
+                linked_sku: linkedSku,
+            }),
+        })
+        .then(function (res) { return res.json(); })
+        .then(function (res) {
+            if (!res.success) {
+                throw new Error(res.message || 'Could not remove linked SKU.');
+            }
+            applyAffectedLinkedSkuRows(res.affected);
+            showComparisonToast('success', 'Linked SKU removed from related rows.');
+        })
+        .catch(function (err) {
+            alert(err.message || 'Could not remove linked SKU.');
+        });
+    }
+
     function clinkFormatter(cell) {
-        const url = (cell.getValue() || '').trim();
+        const row = cell.getRow().getData();
+        const url = (cell.getValue() || row.clink || '').trim();
         if (!url) {
             return '<span class="text-muted">-</span>';
         }
 
+        const sharedFrom = row.clink_sku && row.clink_sku !== row.sku ? row.clink_sku : '';
+        const title = sharedFrom
+            ? `Shared C link from linked SKU ${sharedFrom}`
+            : 'Open comparison link';
+
         return `<div style="display:flex;align-items:center;justify-content:center;">
             <a href="${escapeHtmlAttr(url)}" target="_blank" rel="noopener noreferrer"
                 class="comparison-clink-dot-link"
-                title="Open comparison link" aria-label="Open comparison link">
+                title="${escapeHtmlAttr(title)}" aria-label="${escapeHtmlAttr(title)}">
                 <span class="comparison-clink-dot" aria-hidden="true"></span>
             </a>
         </div>`;
@@ -2370,41 +4755,407 @@ document.addEventListener('DOMContentLoaded', function () {
                 sku: sku,
                 column: 'Clink',
                 value: value,
+                linked_skus: linkedSkusForRow(rowData),
             }),
         })
         .then(res => res.json())
         .then(res => {
             if (!res.success) {
                 alert('Error: ' + (res.message || 'Could not save C link.'));
+                return;
             }
+            applyAffectedClinkRows(res.affected || [{ sku: sku, clink: value }]);
+            if (currentCdRow && currentCdRow.sku === sku) {
+                currentCdRow.clink = value;
+            }
+            showComparisonToast('success', 'C link saved for all linked SKUs.');
         })
         .catch(() => alert('Could not save C link.'));
     }
 
+    function applyAffectedClinkRows(affected) {
+        if (!table || !Array.isArray(affected)) {
+            return;
+        }
+
+        const bySku = {};
+        affected.forEach(function (item) {
+            if (item?.sku) {
+                bySku[item.sku] = item.clink || '';
+            }
+        });
+
+        table.getRows().forEach(function (row) {
+            const data = row.getData();
+            if (!Object.prototype.hasOwnProperty.call(bySku, data.sku)) {
+                return;
+            }
+            const clink = bySku[data.sku];
+            row.update({
+                clink: clink,
+                clink_is_sheet: isGoogleSheetUrl(clink),
+                clink_sku: null,
+            });
+        });
+    }
+
+    function loadProductCategories() {
+        return Promise.all([
+            fetch(supplierCategoriesUrl, {
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+            }).then(res => res.json()).catch(() => ({ categories: [] })),
+            fetch(groupMasterCategoriesUrl, {
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+            }).then(res => res.json()).catch(() => ({ success: false, categories: [] })),
+        ]).then(function ([supplierRes, productRes]) {
+            supplierCategoryOptions = Array.isArray(supplierRes.categories) ? supplierRes.categories : [];
+            allProductCategories = productRes.success && Array.isArray(productRes.categories)
+                ? productRes.categories
+                : [];
+            productCategoriesByName = {};
+            allProductCategories.forEach(function (cat) {
+                const key = String(cat.category_name || '').trim().toLowerCase();
+                if (key) {
+                    productCategoriesByName[key] = cat;
+                }
+            });
+        });
+    }
+
+    function categoryFormatter(cell) {
+        const val = String(cell.getValue() || '').trim();
+        const display = val ? escapeHtml(val) : '<span class="text-muted">—</span>';
+        return `<div class="comparison-category-cell" title="Click to search and select category">${display}</div>`;
+    }
+
+    function closeCategoryDropdown() {
+        if (activeCategoryDropdown) {
+            activeCategoryDropdown.remove();
+            activeCategoryDropdown = null;
+        }
+    }
+
+    function positionCategoryDropdown(dropdown, cellEl) {
+        const rect = cellEl.getBoundingClientRect();
+        dropdown.style.left = `${Math.max(8, rect.left)}px`;
+        dropdown.style.top = `${rect.bottom + 4}px`;
+        const dropdownRect = dropdown.getBoundingClientRect();
+        if (dropdownRect.right > window.innerWidth - 8) {
+            dropdown.style.left = `${Math.max(8, window.innerWidth - dropdownRect.width - 8)}px`;
+        }
+        if (dropdownRect.bottom > window.innerHeight - 8) {
+            dropdown.style.top = `${Math.max(8, rect.top - dropdownRect.height - 4)}px`;
+        }
+    }
+
+    function renderCategoryDropdownResults(resultsEl, searchTerm, onSelect) {
+        const term = String(searchTerm || '').trim().toLowerCase();
+        const filtered = term
+            ? supplierCategoryOptions.filter(cat => String(cat.name || '').toLowerCase().includes(term))
+            : supplierCategoryOptions.slice();
+
+        resultsEl.innerHTML = '';
+
+        const clearItem = document.createElement('div');
+        clearItem.className = 'dropdown-search-item clear-option';
+        clearItem.textContent = '— No Category —';
+        clearItem.addEventListener('mousedown', function (e) {
+            e.preventDefault();
+            onSelect('');
+        });
+        resultsEl.appendChild(clearItem);
+
+        if (!filtered.length) {
+            const empty = document.createElement('div');
+            empty.className = 'dropdown-search-item no-results';
+            empty.textContent = term ? 'No matching categories' : 'No categories loaded';
+            resultsEl.appendChild(empty);
+            return;
+        }
+
+        filtered.forEach(cat => {
+            const item = document.createElement('div');
+            item.className = 'dropdown-search-item';
+            item.textContent = cat.name || '';
+            item.addEventListener('mousedown', function (e) {
+                e.preventDefault();
+                onSelect(cat.name || '');
+            });
+            resultsEl.appendChild(item);
+        });
+    }
+
+    function refreshComparisonRowFromServer(sku, extraSkus) {
+        if (!sku || !table) return;
+
+        const pending = [sku, ...(Array.isArray(extraSkus) ? extraSkus : [])].filter(Boolean);
+        const params = new URLSearchParams({ skus: pending.join(',') });
+
+        fetch(`${dataUrl}?${params.toString()}`, {
+            headers: {
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+        })
+        .then(res => res.json())
+        .then(res => {
+            if (!res.success) return;
+            const rows = res.data || [];
+            const pending = [sku, ...(Array.isArray(extraSkus) ? extraSkus : [])].filter(Boolean);
+            const seen = new Set();
+
+            while (pending.length) {
+                const targetSku = pending.pop();
+                if (seen.has(targetSku)) {
+                    continue;
+                }
+                seen.add(targetSku);
+
+                const updated = rows.find(row => row.sku === targetSku);
+                if (!updated) {
+                    continue;
+                }
+
+                const tabulatorRow = table.getRows().find(row => row.getData().sku === targetSku);
+                if (tabulatorRow) {
+                    tabulatorRow.update({
+                        category_id: updated.category_id,
+                        category: updated.category,
+                        linked_skus: updated.linked_skus,
+                        has_sheet_data: updated.has_sheet_data,
+                        sheet_sku: updated.sheet_sku,
+                        clink: updated.clink,
+                        clink_is_sheet: updated.clink_is_sheet,
+                        clink_sku: updated.clink_sku,
+                    });
+                }
+
+                if (Array.isArray(updated.linked_skus)) {
+                    updated.linked_skus.forEach(function (relatedSku) {
+                        if (relatedSku && !seen.has(relatedSku)) {
+                            pending.push(relatedSku);
+                        }
+                    });
+                }
+            }
+        })
+        .catch(() => {});
+    }
+
+    function resolveProductCategoryId(categoryName) {
+        const key = String(categoryName || '').trim().toLowerCase();
+        if (!key) {
+            return Promise.resolve(null);
+        }
+
+        const existing = productCategoriesByName[key];
+        if (existing) {
+            return Promise.resolve(parseInt(existing.id, 10));
+        }
+
+        return fetch(groupMasterStoreCategoryUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrfToken,
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json',
+            },
+            body: JSON.stringify({
+                category_name: String(categoryName).trim(),
+                status: 'active',
+            }),
+        })
+        .then(res => res.json())
+        .then(function (res) {
+            if (res.success && res.category) {
+                productCategoriesByName[key] = res.category;
+                allProductCategories.push(res.category);
+                return parseInt(res.category.id, 10);
+            }
+
+            return loadProductCategories().then(function () {
+                const refreshed = productCategoriesByName[key];
+                return refreshed ? parseInt(refreshed.id, 10) : null;
+            });
+        })
+        .catch(function () {
+            return loadProductCategories().then(function () {
+                const refreshed = productCategoriesByName[key];
+                return refreshed ? parseInt(refreshed.id, 10) : null;
+            });
+        });
+    }
+
+    function saveProductCategory(cell, categoryName) {
+        const rowData = cell.getRow().getData();
+        const productId = rowData.id;
+        const sku = rowData.sku;
+        if (!productId || !sku) return;
+
+        const normalizedName = String(categoryName || '').trim();
+        const currentName = String(rowData.category || '').trim();
+        if (normalizedName === currentName) {
+            return;
+        }
+
+        const cellEl = cell.getElement();
+        cellEl.style.opacity = '0.6';
+
+        resolveProductCategoryId(normalizedName).then(function (productCategoryId) {
+            return fetch(groupMasterUpdateFieldUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken,
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json',
+                },
+                body: JSON.stringify({
+                    product_id: productId,
+                    sku: sku,
+                    field: 'category_id',
+                    value: productCategoryId,
+                }),
+            });
+        })
+        .then(res => res.json())
+        .then(function (res) {
+            cellEl.style.opacity = '1';
+            if (!res.success) {
+                alert('Error: ' + (res.message || 'Could not save category.'));
+                return;
+            }
+
+            const savedName = res.data?.category_name || normalizedName;
+            cell.getRow().update({
+                category_id: res.data?.category_id ?? null,
+                category: savedName,
+            });
+            refreshComparisonRowFromServer(sku);
+        })
+        .catch(function () {
+            cellEl.style.opacity = '1';
+            alert('Could not save category.');
+        });
+    }
+
+    function openCategoryDropdown(cell) {
+        closeCategoryDropdown();
+
+        const cellEl = cell.getElement();
+        const rowData = cell.getRow().getData();
+        const currentCategoryName = String(rowData.category || '').trim();
+
+        const dropdown = document.createElement('div');
+        dropdown.className = 'comparison-category-dropdown comparison-category-dropdown-panel';
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'dropdown-search-input';
+        input.placeholder = 'Search categories...';
+        input.autocomplete = 'off';
+
+        const results = document.createElement('div');
+        results.className = 'dropdown-search-results';
+
+        dropdown.appendChild(input);
+        dropdown.appendChild(results);
+        document.body.appendChild(dropdown);
+        activeCategoryDropdown = dropdown;
+        positionCategoryDropdown(dropdown, cellEl);
+
+        const handleSelect = function (categoryName) {
+            closeCategoryDropdown();
+            const nextName = String(categoryName || '').trim();
+            if (nextName === currentCategoryName) {
+                return;
+            }
+            saveProductCategory(cell, nextName);
+        };
+
+        renderCategoryDropdownResults(results, '', handleSelect);
+        input.focus();
+
+        input.addEventListener('input', function () {
+            renderCategoryDropdownResults(results, input.value, handleSelect);
+        });
+
+        input.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                closeCategoryDropdown();
+            }
+        });
+    }
+
+    document.addEventListener('click', function (e) {
+        if (!activeCategoryDropdown) return;
+        if (e.target.closest('.comparison-category-dropdown-panel')) return;
+        if (e.target.closest('.comparison-category-cell')) return;
+        closeCategoryDropdown();
+    });
+
+    loadProductCategories().then(function () {
+        initComparisonTable();
+    });
+
+    function initComparisonTable() {
     table = new Tabulator('#comparison-table', {
         ajaxURL: dataUrl,
         ajaxConfig: 'GET',
-        ajaxResponse: function (url, params, response) {
-            const rows = response.data || [];
-            document.getElementById('comparison-total-badge').textContent = rows.length;
-            return rows;
+        ajaxURLGenerator: function (url, config, params) {
+            const query = new URLSearchParams({
+                page: String(params.page || 1),
+                size: String(params.size || 50),
+            });
+            const skuTerm = (document.getElementById('comparison-search-sku')?.value || '').trim();
+            const parentTerm = (document.getElementById('comparison-search-parent')?.value || '').trim();
+            if (skuTerm) {
+                query.set('sku', skuTerm);
+            }
+            if (parentTerm) {
+                query.set('parent', parentTerm);
+            }
+            return `${url}?${query.toString()}`;
         },
-        layout: 'fitColumns',
+        ajaxResponse: function (url, params, response) {
+            if (!response.success) {
+                throw new Error(response.message || 'Failed to load comparison data.');
+            }
+            return {
+                data: response.data || [],
+                last_page: response.last_page || 1,
+            };
+        },
         pagination: true,
+        paginationMode: 'remote',
+        filterMode: 'remote',
+        sortMode: 'local',
         paginationSize: 50,
         paginationSizeSelector: [25, 50, 100, 200],
+        paginationInitialPage: 1,
+        layout: 'fitColumns',
         movableColumns: true,
         resizableColumns: true,
         height: '650px',
         placeholder: 'No comparison data found',
+        selectableRows: true,
+        selectableRowsPersistence: false,
         columns: [
             {
-                title: 'S.No',
-                formatter: 'rownum',
+                formatter: 'rowSelection',
+                titleFormatter: 'rowSelection',
                 hozAlign: 'center',
                 headerHozAlign: 'center',
-                width: 70,
                 headerSort: false,
+                width: 44,
             },
             {
                 title: 'Image',
@@ -2430,7 +5181,21 @@ document.addEventListener('DOMContentLoaded', function () {
                 width: 220,
             },
             {
-                title: 'Linked SKU',
+                title: 'Category',
+                field: 'category',
+                hozAlign: 'center',
+                headerHozAlign: 'center',
+                width: 180,
+                headerSort: true,
+                cssClass: 'comparison-category-col',
+                formatter: categoryFormatter,
+                cellClick: function (e, cell) {
+                    e.stopPropagation();
+                    openCategoryDropdown(cell);
+                },
+            },
+            {
+                title: 'Link Sku Purchase',
                 field: 'linked_skus',
                 hozAlign: 'left',
                 headerHozAlign: 'center',
@@ -2438,6 +5203,36 @@ document.addEventListener('DOMContentLoaded', function () {
                 headerSort: false,
                 cssClass: 'linked-sku-col',
                 formatter: linkedSkuFormatter,
+                cellClick: function (e, cell) {
+                    if (e.target.closest('.comparison-linked-sku-remove')) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        removeLinkedSkuFromRow(
+                            cell.getRow().getData(),
+                            e.target.closest('.comparison-linked-sku-remove').dataset.linkedSku || ''
+                        );
+                    }
+                },
+            },
+            {
+                title: '+',
+                field: 'linked_sku_add',
+                hozAlign: 'center',
+                headerHozAlign: 'center',
+                width: 52,
+                headerSort: false,
+                cssClass: 'linked-sku-add-col',
+                formatter: linkedSkuAddFormatter,
+                cellClick: function (e, cell) {
+                    if (e.target.closest('.comparison-linked-sku-add-btn')) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        bulkLinkSelectedSkus(
+                            cell.getRow().getData(),
+                            e.target.closest('.comparison-linked-sku-add-btn')
+                        );
+                    }
+                },
             },
             {
                 title: 'C link',
@@ -2493,7 +5288,26 @@ document.addEventListener('DOMContentLoaded', function () {
                 cellClick: function (e, cell) {
                     e.preventDefault();
                     e.stopPropagation();
+                    comparisonBulkEditSkus = null;
                     openComparisonModal(cell.getRow().getData());
+                },
+            },
+            {
+                title: 'Edit',
+                field: 'cd_edit',
+                hozAlign: 'center',
+                headerHozAlign: 'center',
+                width: 70,
+                headerSort: false,
+                headerTooltip: 'Edit comparison data',
+                formatter: cdEditFormatter,
+                cellClick: function (e, cell) {
+                    if (!e.target.closest('.comparison-cd-edit-btn')) {
+                        return;
+                    }
+                    e.preventDefault();
+                    e.stopPropagation();
+                    openComparisonModalForEdit(cell.getRow().getData(), cell.getRow());
                 },
             },
             {
@@ -2514,17 +5328,155 @@ document.addEventListener('DOMContentLoaded', function () {
         ],
     });
 
-    document.getElementById('comparison-search').addEventListener('input', function () {
-        const value = this.value.trim().toLowerCase();
-        table.setFilter(function (data) {
-            if (!value) return true;
-            return (data.sku || '').toLowerCase().includes(value)
-                || (data.parent || '').toLowerCase().includes(value);
-        });
+    table.on('pageLoaded', function () {
+        table.deselectRow();
     });
+
+    document.getElementById('comparison-linked-sku-save-btn')?.addEventListener('click', saveLinkedSkuFromModal);
+    document.getElementById('comparison-linked-sku-input')?.addEventListener('input', function () {
+        renderLinkedSkuSuggestions(this.value);
+    });
+    document.getElementById('comparison-linked-sku-input')?.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            saveLinkedSkuFromModal();
+        }
+    });
+    document.getElementById('comparison-linked-sku-suggestions')?.addEventListener('click', function (e) {
+        const item = e.target.closest('.comparison-linked-sku-suggestion');
+        if (!item) {
+            return;
+        }
+        const input = document.getElementById('comparison-linked-sku-input');
+        if (input) {
+            input.value = item.dataset.sku || '';
+        }
+        renderLinkedSkuSuggestions('');
+    });
+
+    cdModalEl?.addEventListener('hidden.bs.modal', function () {
+        comparisonBulkEditSkus = null;
+    });
+
+    function applyComparisonTableSearch() {
+        if (!table) {
+            return;
+        }
+        clearComparisonRowSelection();
+        table.setPage(1);
+    }
+
+    let comparisonSearchTimer = null;
+    function scheduleComparisonTableSearch() {
+        clearTimeout(comparisonSearchTimer);
+        comparisonSearchTimer = setTimeout(applyComparisonTableSearch, 300);
+    }
+
+    document.getElementById('comparison-search-sku')?.addEventListener('input', scheduleComparisonTableSearch);
+    document.getElementById('comparison-search-parent')?.addEventListener('input', scheduleComparisonTableSearch);
+    }
 
     document.getElementById('comparison-cd-import-btn')?.addEventListener('click', importComparisonGoogleSheet);
     document.getElementById('comparison-cd-autopopulate-suppliers-btn')?.addEventListener('click', autopopulateSupplierNamesFromList);
+    document.getElementById('comparison-cd-roi-btn')?.addEventListener('click', openRoiModal);
+    document.getElementById('comparison-roi-apply-manual-lmp')?.addEventListener('click', applyManualLmpToBoth);
+    document.getElementById('comparison-roi-manual-lmp')?.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            applyManualLmpToBoth();
+        }
+    });
+    document.getElementById('comparison-cd-copy-specs-btn')?.addEventListener('click', copySpecsToMemory);
+    document.getElementById('comparison-cd-replace-specs-btn')?.addEventListener('click', replaceSpecsFromMemory);
+    function updateCdGoogleUrlDotUI() {
+        const input = document.getElementById('comparison-cd-google-url');
+        const link = document.getElementById('comparison-cd-google-url-link');
+        if (!input || !link) {
+            return;
+        }
+
+        const url = input.value.trim();
+        if (url) {
+            link.href = url;
+            link.classList.remove('comparison-clink-dot-empty');
+            link.title = url;
+            link.setAttribute('aria-label', 'Open Google Sheet');
+        } else {
+            link.href = '#';
+            link.classList.add('comparison-clink-dot-empty');
+            link.title = 'Click to set C link Sheet URL';
+            link.setAttribute('aria-label', 'Set C link Sheet URL');
+        }
+
+        const dot = document.getElementById('comparison-cd-google-url-dot');
+        if (dot) {
+            dot.classList.toggle('comparison-clink-dot-muted', !url);
+        }
+    }
+
+    function setCdGoogleUrlEditing(editing) {
+        const wrap = document.getElementById('comparison-cd-google-url-wrap');
+        const input = document.getElementById('comparison-cd-google-url');
+        if (!wrap || !input) {
+            return;
+        }
+
+        wrap.classList.toggle('is-editing', editing);
+        if (editing) {
+            input.focus();
+            input.select();
+        }
+    }
+
+    document.getElementById('comparison-cd-google-url-wrap')?.addEventListener('click', function (e) {
+        const editBtn = e.target.closest('#comparison-cd-google-url-edit-btn');
+        if (editBtn) {
+            e.preventDefault();
+            setCdGoogleUrlEditing(true);
+            return;
+        }
+
+        const link = e.target.closest('#comparison-cd-google-url-link');
+        if (!link) {
+            return;
+        }
+
+        const input = document.getElementById('comparison-cd-google-url');
+        const url = input?.value.trim() || '';
+        if (!url) {
+            e.preventDefault();
+            setCdGoogleUrlEditing(true);
+        }
+    });
+
+    document.getElementById('comparison-cd-google-url-link')?.addEventListener('dblclick', function (e) {
+        e.preventDefault();
+        setCdGoogleUrlEditing(true);
+    });
+
+    document.getElementById('comparison-cd-google-url')?.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            this.blur();
+        } else if (e.key === 'Escape') {
+            e.preventDefault();
+            setCdGoogleUrlEditing(false);
+            updateCdGoogleUrlDotUI();
+        }
+    });
+
+    document.getElementById('comparison-cd-google-url')?.addEventListener('blur', function () {
+        window.setTimeout(function () {
+            const wrap = document.getElementById('comparison-cd-google-url-wrap');
+            if (wrap?.contains(document.activeElement)) {
+                return;
+            }
+            setCdGoogleUrlEditing(false);
+            updateCdGoogleUrlDotUI();
+        }, 120);
+    });
+
+    document.getElementById('comparison-cd-google-url')?.addEventListener('input', updateCdGoogleUrlDotUI);
     document.getElementById('comparison-cd-google-url')?.addEventListener('change', () => scheduleAutoSaveComparisonSheet(600));
     document.getElementById('comparison-cd-google-tab')?.addEventListener('change', () => scheduleAutoSaveComparisonSheet(600));
     document.getElementById('comparison-cd-apply-fill-btn')?.addEventListener('click', applySheetFillColor);
@@ -2574,6 +5526,14 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
 
+        readCellsFromEditor();
+        const rowIndex = parseInt(cell.dataset.row, 10);
+        const specCol = detectSpecColumnIndex(currentSheetCells);
+        if (isSupplierNameRow(currentSheetCells, rowIndex, specCol)) {
+            syncCommRowOnSheet();
+            renderSheetEditor(currentSheetCells);
+        }
+
         scheduleAutoSaveComparisonSheet(300);
     }, true);
 
@@ -2601,6 +5561,15 @@ document.addEventListener('DOMContentLoaded', function () {
     }, true);
 
     document.getElementById('comparison-cd-sheet-wrap')?.addEventListener('click', function (e) {
+        const commBtn = e.target.closest('.cd-sheet-comm-btn');
+        if (commBtn) {
+            e.preventDefault();
+            e.stopPropagation();
+            const supplierName = commBtn.dataset.supplierName || getSupplierNameForColumn(parseInt(commBtn.dataset.col, 10));
+            openComparisonCommModal(supplierName);
+            return;
+        }
+
         if (e.target.closest('.cd-sheet-link-btn')) {
             e.stopPropagation();
             return;
@@ -2661,6 +5630,71 @@ document.addEventListener('DOMContentLoaded', function () {
             loadLmpTab(currentCdRow);
         }
     });
+
+    document.getElementById('comparison-cd-lmp-add-form')?.addEventListener('submit', function (e) {
+        e.preventDefault();
+        submitAmazonLmpAddForm('comparison-cd', 'comparison-cd-lmp-add-form');
+    });
+
+    document.getElementById('comparison-lmp-add-form')?.addEventListener('submit', function (e) {
+        e.preventDefault();
+        submitAmazonLmpAddForm('comparison-lmp', 'comparison-lmp-add-form');
+    });
+
+    document.addEventListener('click', function (e) {
+        const deleteBtn = e.target.closest('.comparison-delete-lmp-btn');
+        if (!deleteBtn) {
+            return;
+        }
+        e.preventDefault();
+        deleteAmazonLmpCompetitor(deleteBtn);
+    });
 });
 </script>
+@endsection
+
+@section('modal')
+<div class="modal fade" id="comparisonRoiModal" tabindex="-1" aria-labelledby="comparisonRoiModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title mb-0" id="comparisonRoiModalLabel">
+                    <i class="mdi mdi-percent"></i> Cost Calculator — ROI%
+                </h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-3">
+                <div id="comparison-roi-manual-lmp-wrap" class="d-none border rounded p-2 mb-2 bg-light">
+                    <div class="small text-muted mb-2" id="comparison-roi-manual-lmp-hint"></div>
+                    <div class="d-flex flex-wrap align-items-center gap-2">
+                        <label class="small mb-0 fw-semibold" for="comparison-roi-manual-lmp">Manual LMP (both):</label>
+                        <input type="text" id="comparison-roi-manual-lmp" class="form-control form-control-sm" style="width: 120px;" placeholder="LMP $">
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="comparison-roi-apply-manual-lmp">
+                            Apply LMP × 0.9 to both
+                        </button>
+                    </div>
+                </div>
+                <div class="small text-end mb-2" id="comparison-roi-save-status"></div>
+                <div class="table-responsive">
+                    <table class="table table-bordered comparison-roi-table mb-0">
+                        <thead>
+                            <tr>
+                                <th>cost calculator</th>
+                                <th>CP</th>
+                                <th>CBM</th>
+                                <th>GW LB</th>
+                                <th>Shipping</th>
+                                <th>Sale</th>
+                                <th>lmp</th>
+                                <th>P%</th>
+                                <th>ROI (G)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="comparison-roi-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 @endsection

@@ -1343,11 +1343,15 @@ class ComparisonSheetService
     public function isSupplierNameRowLabel(string $text): bool
     {
         $text = strtolower(trim($text));
-        if ($text === '') {
+        if ($text === '' || str_contains($text, 'company name')) {
             return false;
         }
 
-        return str_contains($text, 'supplier name');
+        if (str_contains($text, 'supplier name')) {
+            return true;
+        }
+
+        return in_array($text, ['supplier', 'suppliers'], true);
     }
 
     /**
@@ -1528,6 +1532,72 @@ class ComparisonSheetService
         arsort($scores);
 
         return (int) array_key_first($scores);
+    }
+
+    /**
+     * @param  array<int, array<int, string>>  $cells
+     * @return array<int, array<int, string>>
+     */
+    public function writeRoiChannelRow(array $cells, string $channel, array $rowData): array
+    {
+        $specCol = $this->detectSpecColumnIndex($cells);
+        $rowIndex = $this->findCostCalculatorChannelRow($cells, $channel, $specCol);
+        $colCount = max(
+            $specCol + 10,
+            6,
+            ...array_map(fn ($row) => is_array($row) ? count($row) : 0, $cells),
+        );
+
+        if ($rowIndex === null) {
+            $newRow = array_fill(0, $colCount, '');
+            $newRow[$specCol] = ucfirst(strtolower(trim($channel))) === 'Ebay' ? 'Ebay' : 'Amazon';
+            $cells[] = $newRow;
+            $rowIndex = count($cells) - 1;
+        }
+
+        while (count($cells[$rowIndex]) < $colCount) {
+            $cells[$rowIndex][] = '';
+        }
+
+        $offsets = [
+            'cp' => 1,
+            'cbm' => 2,
+            'freight' => 3,
+            'gw' => 4,
+            'shipping' => 5,
+            'sale' => 6,
+            'pPct' => 7,
+            'profit' => 8,
+            'roi' => 9,
+        ];
+
+        foreach ($offsets as $key => $offset) {
+            $value = $rowData[$key] ?? '';
+            if (in_array($key, ['pPct', 'roi'], true) && $value !== '') {
+                $value = str_replace('%', '', (string) $value);
+            }
+            $cells[$rowIndex][$specCol + $offset] = (string) $value;
+        }
+
+        return $cells;
+    }
+
+    /**
+     * @param  array<int, array<int, string>>  $cells
+     */
+    public function findCostCalculatorChannelRow(array $cells, string $channel, ?int $specCol = null): ?int
+    {
+        $specCol ??= $this->detectSpecColumnIndex($cells);
+        $needle = strtolower(trim($channel));
+
+        for ($rowIndex = 0; $rowIndex < count($cells); $rowIndex++) {
+            $label = strtolower(trim((string) ($cells[$rowIndex][$specCol] ?? '')));
+            if ($label === $needle || str_starts_with($label, $needle.' ')) {
+                return $rowIndex;
+            }
+        }
+
+        return null;
     }
 
     /**

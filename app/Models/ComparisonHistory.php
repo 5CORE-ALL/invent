@@ -36,6 +36,35 @@ class ComparisonHistory extends Model
         ];
     }
 
+    public static function resolveFieldLabel(string $field): string
+    {
+        $labels = self::fieldLabels();
+        if (isset($labels[$field])) {
+            return $labels[$field];
+        }
+
+        if (preg_match('/^roi_(amazon|ebay)_(.+)$/', $field, $matches)) {
+            return self::roiFieldLabel($matches[1], $matches[2]);
+        }
+
+        return $field === 'clink' ? 'Comparison Link' : $field;
+    }
+
+    public static function roiFieldLabel(string $channel, string $field): string
+    {
+        $channelLabel = ucfirst(strtolower($channel));
+        $fieldNames = [
+            'cp' => 'CP',
+            'cbm' => 'CBM',
+            'freight' => 'Freight',
+            'gw' => 'GW LB',
+            'shipping' => 'Shipping',
+            'sale' => 'Sale',
+        ];
+
+        return 'ROI '.$channelLabel.' '.($fieldNames[$field] ?? ucfirst($field));
+    }
+
     public static function logChange(
         string $sku,
         ?string $parent,
@@ -51,7 +80,7 @@ class ComparisonHistory extends Model
             return;
         }
 
-        $label = self::fieldLabels()[$field] ?? $field;
+        $label = self::resolveFieldLabel($field);
         $changes = sprintf('%s changed from "%s" to "%s"', $label, $old ?: 'empty', $new ?: 'empty');
 
         self::create([

@@ -2190,8 +2190,16 @@
             .then(r => r.json())
             .then(res => {
                 if(res.success){
-                    const row = table.getRow(id);
-                    if(row){ row.update({ linked_skus: res.linked_skus }); }
+                    const merged = Array.isArray(res.linked_skus) ? res.linked_skus : [];
+                    const mergedNorms = new Set(merged.map(s => String(s || '').trim().toUpperCase()).filter(Boolean));
+                    table.getRows().forEach(row => {
+                        const data = row.getData();
+                        const rowSkus = Array.isArray(data.linked_skus) ? data.linked_skus : [];
+                        const overlaps = rowSkus.some(s => mergedNorms.has(String(s || '').trim().toUpperCase()));
+                        if (overlaps || String(data.id) === String(id)) {
+                            row.update({ linked_skus: merged });
+                        }
+                    });
                     showToast('success', 'Linked SKUs updated successfully!');
                     bootstrap.Modal.getInstance(document.getElementById('linkedSkusModal')).hide();
                 } else {

@@ -8,6 +8,7 @@ use App\Models\ProductMaster;
 use App\Models\RfqForm;
 use App\Models\RfqSubmission;
 use App\Models\Supplier;
+use App\Services\ComparisonSkuLinkService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Mail;
@@ -494,15 +495,36 @@ class RFQController extends Controller
                 array_map('trim', $request->input('linked_skus', []))
             )));
 
+            $merged = $this->expandLinkedSkuClosure($skus);
+            $user = Auth::user()->name ?? 'System';
+            $mergedNorms = array_map(fn ($sku) => strtoupper(trim($sku)), $merged);
+
+            foreach (RfqForm::query()->whereNotNull('linked_skus')->get() as $otherForm) {
+                $otherSkus = is_array($otherForm->linked_skus) ? $otherForm->linked_skus : [];
+                if ($otherSkus === []) {
+                    continue;
+                }
+
+                $otherNorms = array_map(fn ($sku) => strtoupper(trim((string) $sku)), $otherSkus);
+                if (array_intersect($mergedNorms, $otherNorms) !== []) {
+                    $otherForm->update([
+                        'linked_skus' => $merged,
+                        'updated_by' => $user,
+                    ]);
+                }
+            }
+
             $form->update([
-                'linked_skus' => $skus,
-                'updated_by' => Auth::user()->name ?? 'System',
+                'linked_skus' => $merged,
+                'updated_by' => $user,
             ]);
+
+            app(ComparisonSkuLinkService::class)->syncFullyConnectedGroup($merged, $user);
 
             return response()->json([
                 'success' => true,
                 'message' => 'Linked SKUs updated successfully!',
-                'linked_skus' => $skus,
+                'linked_skus' => $merged,
             ]);
         } catch (\Exception $e) {
             Log::error('Error in updateLinkedSkus: ' . $e->getMessage());
@@ -511,6 +533,65 @@ class RFQController extends Controller
                 'message' => 'Failed to update linked SKUs',
             ], 500);
         }
+    }
+
+    /**
+     * Expand seed SKUs to the full transitive linked group (RFQ forms + supplier multi-SKU rows).
+     *
+     * @param  list<string>  $seedSkus
+     * @return list<string>
+     */
+    private function expandLinkedSkuClosure(array $seedSkus): array
+    {
+        $merged = array_values(array_unique(array_filter(array_map('trim', $seedSkus))));
+        $norm = fn ($sku) => strtoupper(trim((string) $sku));
+
+        $changed = true;
+        while ($changed) {
+            $changed = false;
+            $mergedNorms = array_map($norm, $merged);
+
+            foreach (RfqForm::query()->whereNotNull('linked_skus')->get(['linked_skus']) as $form) {
+                $linked = $form->linked_skus;
+                if (! is_array($linked)) {
+                    $linked = json_decode((string) $linked, true) ?: [];
+                }
+                if ($linked === []) {
+                    continue;
+                }
+
+                $linkedNorms = array_map($norm, $linked);
+                if (array_intersect($mergedNorms, $linkedNorms) === []) {
+                    continue;
+                }
+
+                $before = count($merged);
+                $merged = array_values(array_unique(array_merge($merged, array_map('trim', $linked))));
+                if (count($merged) > $before) {
+                    $changed = true;
+                }
+            }
+
+            foreach (Supplier::query()->whereNotNull('sku')->get(['sku']) as $supplier) {
+                $tokens = preg_split('/\s*,\s*/', (string) ($supplier->sku ?? ''), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+                if (count($tokens) < 2) {
+                    continue;
+                }
+
+                $tokenNorms = array_map($norm, $tokens);
+                if (array_intersect($mergedNorms, $tokenNorms) === []) {
+                    continue;
+                }
+
+                $before = count($merged);
+                $merged = array_values(array_unique(array_merge($merged, array_map('trim', $tokens))));
+                if (count($merged) > $before) {
+                    $changed = true;
+                }
+            }
+        }
+
+        return $merged;
     }
 
     public function searchSuppliers(Request $request)
