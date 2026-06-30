@@ -433,28 +433,6 @@ class ToOrderAnalysisController extends Controller
             $movementMap = DB::table('movement_analysis')->get()->keyBy(fn($item) => strtoupper(trim($item->sku ?? '')));
             $qcIssuesBySku = $this->buildQcPackingIssuesBySku($allSkus);
 
-            // RFQ forms linked to each SKU (from /rfq-form/list "Linked SKU" data)
-            $rfqFormsBySku = [];
-            foreach (\App\Models\RfqForm::select('name', 'slug', 'linked_skus')->whereNotNull('linked_skus')->get() as $rfqForm) {
-                $linked = $rfqForm->linked_skus;
-                if (is_string($linked)) {
-                    $linked = json_decode($linked, true) ?: [];
-                }
-                if (!is_array($linked)) {
-                    continue;
-                }
-                foreach ($linked as $linkedSku) {
-                    $norm = strtoupper(trim((string) $linkedSku));
-                    if ($norm === '') {
-                        continue;
-                    }
-                    $rfqFormsBySku[$norm][] = [
-                        'name' => $rfqForm->name,
-                        'slug' => $rfqForm->slug,
-                    ];
-                }
-            }
-
             $processedData = [];
             $execService = app(PurchasePageExecService::class);
             $pageExec = $execService->getAssignment('to_order') ?? '';
@@ -596,8 +574,6 @@ class ToOrderAnalysisController extends Controller
                     'lp_msl'          => $lpMsl,
                     'rating'          => $rr['rating'],
                     'reviews'         => $rr['reviews'],
-                    'RFQ Form Link'   => $toOrder->rfq_form_link ?? '',
-                    'rfq_linked_forms' => $rfqFormsBySku[$sheetSku] ?? [],
                     'sheet_link'      => $toOrder->sheet_link ?? '',
                     'Rfq Report Link' => $toOrder->rfq_report_link ?? '',
                     'stage'           => strtolower(trim((string) ($faItem->stage ?? ($forecast?->stage ?? '')))),
@@ -1165,6 +1141,95 @@ class ToOrderAnalysisController extends Controller
             ]);
         } catch (\Throwable $e) {
             Log::error('ToOrderAnalysis bulkUpdateSupplier failed', ['skus' => $skus, 'error' => $e->getMessage()]);
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Bulk update supplier category for selected SKUs (updates suppliers.category_id).
+     */
+    public function bulkUpdateCategory(Request $request)
+    {
+        $skus = $request->input('skus', []);
+        $categoryName = trim((string) $request->input('category', ''));
+
+        if (empty($skus) || ! is_array($skus)) {
+            return response()->json(['success' => false, 'message' => 'No rows selected'], 400);
+        }
+
+        if ($categoryName === '') {
+            return response()->json(['success' => false, 'message' => 'Please select a category'], 400);
+        }
+
+        $categoryId = DB::table('categories')
+            ->whereRaw('TRIM(LOWER(name)) = ?', [strtolower($categoryName)])
+            ->value('id');
+
+        if (! $categoryId) {
+            return response()->json(['success' => false, 'message' => 'Unknown category: ' . $categoryName], 422);
+        }
+
+        $skus = array_values(array_unique(array_filter(array_map(
+            fn ($sku) => trim(strtoupper((string) $sku)),
+            $skus
+        ))));
+
+        if ($skus === []) {
+            return response()->json(['success' => false, 'message' => 'No valid SKUs'], 400);
+        }
+
+        $updatedSuppliers = 0;
+        $skippedNoSupplier = 0;
+        $skippedSupplierNotFound = 0;
+        $updatedSupplierNames = [];
+
+        try {
+            foreach ($skus as $sku) {
+                $toOrder = ToOrderAnalysis::query()
+                    ->whereRaw('TRIM(UPPER(sku)) = ?', [$sku])
+                    ->first(['supplier_name']);
+
+                $supplierName = trim((string) ($toOrder->supplier_name ?? ''));
+                if ($supplierName === '') {
+                    $skippedNoSupplier++;
+                    continue;
+                }
+
+                $supplierNorm = strtoupper($supplierName);
+                if (isset($updatedSupplierNames[$supplierNorm])) {
+                    continue;
+                }
+
+                $count = (int) DB::table('suppliers')
+                    ->whereRaw('TRIM(UPPER(name)) = ?', [$supplierNorm])
+                    ->update(['category_id' => $categoryId]);
+
+                if ($count > 0) {
+                    $updatedSuppliers += $count;
+                    $updatedSupplierNames[$supplierNorm] = true;
+                } else {
+                    $skippedSupplierNotFound++;
+                }
+            }
+
+            $msg = $updatedSuppliers . ' supplier category link(s) updated';
+            if ($skippedNoSupplier > 0) {
+                $msg .= ', ' . $skippedNoSupplier . ' row(s) skipped (no supplier)';
+            }
+            if ($skippedSupplierNotFound > 0) {
+                $msg .= ', ' . $skippedSupplierNotFound . ' row(s) skipped (supplier not found)';
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => $msg . '.',
+                'updated' => $updatedSuppliers,
+                'skipped_no_supplier' => $skippedNoSupplier,
+                'skipped_supplier_not_found' => $skippedSupplierNotFound,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('ToOrderAnalysis bulkUpdateCategory failed', ['skus' => $skus, 'error' => $e->getMessage()]);
+
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
     }

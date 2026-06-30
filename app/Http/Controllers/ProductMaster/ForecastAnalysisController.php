@@ -1703,17 +1703,12 @@ class ForecastAnalysisController extends Controller
                 }
                 
                 if(strtolower($value) === 'to_order_analysis'){
-                    DB::table('to_order_analysis')->updateOrInsert(
-                        ['sku' => $sku, 'parent' => $parent],
-                        [
-                            'approved_qty' => $orderQty,
-                            'date_apprvl' => now()->toDateString(),
-                            'stage' => '',
-                            'auth_user' => Auth::user()->name,
-                            'updated_at' => now(),
-                            'created_at' => now(),
-                            'deleted_at' => null,
-                        ]
+                    $this->syncToOrderAnalysisForStage(
+                        $sku,
+                        $parent,
+                        (string) ($currentValue ?? ''),
+                        $orderQty,
+                        isset($existing->approved_qty) ? $existing->approved_qty : null
                     );
                 }
 
@@ -1849,15 +1844,7 @@ class ForecastAnalysisController extends Controller
                 }
                     
                 if(strtolower($value) === 'to_order_analysis'){
-                    DB::table('to_order_analysis')->updateOrInsert(
-                        ['sku' => $sku, 'parent' => $parent],
-                        [
-                            'approved_qty' => $orderQty,
-                            'date_apprvl' => now()->toDateString(),
-                            'updated_at' => now(),
-                            'created_at' => now(),
-                        ]
-                    );
+                    $this->syncToOrderAnalysisForStage($sku, $parent, '', $orderQty, null);
                 }
 
                 if(strtolower($value) === 'mip'){
@@ -2591,6 +2578,55 @@ class ForecastAnalysisController extends Controller
             'parent' => $parent !== '' ? $parent : null,
             'history' => $history,
         ]);
+    }
+
+    /**
+     * When stage moves from appr_req → to_order_analysis, stamp DOA on the
+     * to_order_analysis row (matched by normalized SKU) and keep approved_qty.
+     */
+    private function syncToOrderAnalysisForStage(
+        string $sku,
+        string $parent,
+        string $previousStage,
+        $fallbackOrderQty,
+        $forecastApprovedQty = null
+    ): void {
+        $skuUpper = strtoupper(trim($sku));
+        if ($skuUpper === '') {
+            return;
+        }
+
+        $existingOrder = DB::table('to_order_analysis')
+            ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper])
+            ->whereNull('deleted_at')
+            ->orderByDesc('id')
+            ->first();
+
+        $orderQty = $existingOrder->approved_qty ?? $forecastApprovedQty ?? $fallbackOrderQty;
+
+        $payload = [
+            'approved_qty' => $orderQty,
+            'auth_user' => optional(Auth::user())->name,
+            'updated_at' => now(),
+            'deleted_at' => null,
+        ];
+
+        if (strtolower(trim($previousStage)) === 'appr_req') {
+            $payload['date_apprvl'] = now()->toDateString();
+        }
+
+        if ($existingOrder) {
+            DB::table('to_order_analysis')->where('id', $existingOrder->id)->update($payload);
+
+            return;
+        }
+
+        DB::table('to_order_analysis')->insert(array_merge($payload, [
+            'sku' => $skuUpper,
+            'parent' => $parent !== '' ? $parent : null,
+            'stage' => '',
+            'created_at' => now(),
+        ]));
     }
 
 }
