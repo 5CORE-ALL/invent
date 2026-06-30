@@ -58,6 +58,23 @@ class AttendanceScreenshot extends Model
         return $this->imageUrl();
     }
 
+    public function activePercent(): int
+    {
+        $idle = (int) $this->idle_seconds;
+        if ($idle <= 0) {
+            return 100;
+        }
+
+        $prompt = max(1, (int) config('attendance.idle_prompt_seconds', 30));
+
+        return max(5, min(100, 100 - (int) round(($idle / $prompt) * 100)));
+    }
+
+    public function activityLabel(): string
+    {
+        return $this->app_name ?: ($this->window_title ?: 'Desktop');
+    }
+
     public function diskPath(string $type = 'full'): string
     {
         return $type === 'thumb' && $this->thumbnail_path

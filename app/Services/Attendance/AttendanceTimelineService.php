@@ -89,7 +89,11 @@ class AttendanceTimelineService
         'live_state' => $activeSession
           ? ($activeSession->last_activity_state ?? ($activeSession->status === 'paused' ? 'break' : 'working'))
           : null,
-        'detail_url' => route('attendance.employee', $employee).'?date='.$date,
+        'detail_url' => route('attendance.employee', $employee).'?'.(
+            $date === now()->timezone($timezone)->toDateString()
+                ? 'period=today'
+                : 'period=custom&from='.$date.'&to='.$date
+        ),
       ];
     }
 
@@ -412,6 +416,197 @@ class AttendanceTimelineService
     }
 
     return $labels;
+  }
+
+  /**
+   * @return array<string, mixed>
+   */
+  public function employeePeriodStats(User $employee, string $from, string $to, ?string $timezone = null): array
+  {
+    $timezone = $timezone ?: (string) config('attendance.timeline_timezone', 'Asia/Kolkata');
+    $fromDate = Carbon::parse($from, $timezone)->startOfDay();
+    $toDate = Carbon::parse($to, $timezone)->startOfDay();
+    $now = now()->timezone($timezone);
+
+    $summaries = AttendanceDailySummary::query()
+      ->where('user_id', $employee->id)
+      ->whereBetween('work_date', [$fromDate->toDateString(), $toDate->toDateString()])
+      ->get()
+      ->keyBy(fn (AttendanceDailySummary $s) => $s->work_date->toDateString());
+
+    $active = 0;
+    $idle = 0;
+    $break = 0;
+    $daysWorked = 0;
+    $productivityScores = [];
+
+    $cursor = $fromDate->copy();
+    while ($cursor->lte($toDate)) {
+      $dateStr = $cursor->toDateString();
+      $summary = $summaries->get($dateStr);
+
+      $sessions = AttendanceSession::query()
+        ->where('user_id', $employee->id)
+        ->whereDate('started_at', $dateStr)
+        ->get();
+
+      $activeSession = $sessions->first(fn (AttendanceSession $s) => $s->isActive());
+      $stats = $this->rowStats($sessions, $summary, $activeSession, $now);
+
+      $active += (int) $stats['worked_seconds'];
+      $idle += (int) $stats['idle_seconds'];
+      $break += (int) $stats['break_seconds'];
+
+      if ($stats['worked_seconds'] > 0) {
+        $daysWorked++;
+      }
+      if ($summary?->productivity_score !== null) {
+        $productivityScores[] = (int) $summary->productivity_score;
+      }
+
+      $cursor->addDay();
+    }
+
+    $total = $active + $idle + $break;
+    $activePercent = ($active + $idle) > 0 ? (int) round(($active / ($active + $idle)) * 100) : 0;
+
+    return [
+      'from' => $fromDate->toDateString(),
+      'to' => $toDate->toDateString(),
+      'range_label' => $fromDate->format('d M Y').' — '.$toDate->format('d M Y'),
+      'days_worked' => $daysWorked,
+      'active_seconds' => $active,
+      'idle_seconds' => $idle,
+      'break_seconds' => $break,
+      'total_seconds' => $total,
+      'active_label' => $this->formatDuration($active),
+      'idle_label' => $this->formatDuration($idle),
+      'break_label' => $this->formatDuration($break),
+      'total_label' => $this->formatDuration($total),
+      'active_percent' => $activePercent,
+      'avg_productivity' => $productivityScores !== [] ? (int) round(array_sum($productivityScores) / count($productivityScores)) : null,
+    ];
+  }
+
+  /**
+   * @return array<string, mixed>
+   */
+  public function employeeDayDetail(User $employee, string $date, ?string $timezone = null, ?string $dayReset = null): array
+  {
+    $timezone = $timezone ?: (string) config('attendance.timeline_timezone', 'Asia/Kolkata');
+    $dayReset = $dayReset ?: (string) config('attendance.timeline_day_reset', '04:00');
+
+    $timeline = $this->teamTimeline(collect([$employee]), $date, $timezone, $dayReset);
+    $row = $timeline['rows'][0] ?? null;
+
+    [$dayStart, $dayEnd] = $this->dayWindow($date, $timezone, $dayReset);
+
+    $screenshotPage = $this->employeeScreenshots($employee, $date, 1, $timezone, $dayReset);
+
+    [$segStart, $segEnd] = $this->calendarWindow($date, $timezone);
+
+    $appUsage = AttendanceActivityLog::query()
+      ->where('user_id', $employee->id)
+      ->whereBetween('recorded_at', [$segStart, $segEnd])
+      ->whereNotNull('app_name')
+      ->selectRaw('app_name, COUNT(*) as hits')
+      ->groupBy('app_name')
+      ->orderByDesc('hits')
+      ->limit(10)
+      ->get()
+      ->map(fn ($row) => ['app' => $row->app_name, 'hits' => (int) $row->hits])
+      ->values()
+      ->all();
+
+    return [
+      'date' => $date,
+      'timezone' => $timezone,
+      'day_reset' => $dayReset,
+      'day_range_label' => $dayStart->format('d M Y, H:i').' to '.$dayEnd->format('d M Y, H:i'),
+      'axis_hours' => $timeline['axis_hours'],
+      'segments' => $row['segments'] ?? [],
+      'stats' => $row['stats'] ?? [
+        'worked_label' => '0h 0',
+        'idle_label' => '0h 0',
+        'break_label' => '0h 0',
+        'total_label' => '0h 0',
+        'active_percent' => 0,
+      ],
+      'is_live' => $row['is_live'] ?? false,
+      'live_state' => $row['live_state'] ?? null,
+      'screenshots' => $screenshotPage['screenshots'],
+      'screenshot_total' => $screenshotPage['total'],
+      'screenshot_has_more' => $screenshotPage['has_more'],
+      'screenshot_per_page' => $screenshotPage['per_page'],
+      'app_usage' => $appUsage,
+    ];
+  }
+
+  /**
+   * @return array{screenshots: array<int, array<string, mixed>>, page: int, per_page: int, total: int, has_more: bool}
+   */
+  public function employeeScreenshots(
+    User $employee,
+    string $date,
+    int $page = 1,
+    ?string $timezone = null,
+    ?string $dayReset = null,
+  ): array {
+    $timezone = $timezone ?: (string) config('attendance.timeline_timezone', 'Asia/Kolkata');
+    $page = max(1, $page);
+    $perPage = max(12, min(96, (int) config('attendance.screenshot_page_size', 48)));
+
+    $query = $this->screenshotDayQuery($employee->id, $date, $timezone);
+    $total = (clone $query)->count();
+
+    $screenshots = $query
+      ->orderByDesc('captured_at')
+      ->skip(($page - 1) * $perPage)
+      ->take($perPage)
+      ->get()
+      ->map(fn (\App\Models\AttendanceScreenshot $shot) => $this->formatScreenshot($shot, $timezone))
+      ->values()
+      ->all();
+
+    return [
+      'screenshots' => $screenshots,
+      'page' => $page,
+      'per_page' => $perPage,
+      'total' => $total,
+      'has_more' => ($page * $perPage) < $total,
+    ];
+  }
+
+  /**
+   * @return \Illuminate\Database\Eloquent\Builder<\App\Models\AttendanceScreenshot>
+   */
+  private function screenshotDayQuery(int $userId, string $date, string $timezone)
+  {
+    [$segStart, $segEnd] = $this->calendarWindow($date, $timezone);
+    $nowInTz = now()->timezone($timezone);
+    $windowEnd = $nowInTz->lt($segEnd) ? $nowInTz : $segEnd;
+
+    return \App\Models\AttendanceScreenshot::query()
+      ->where('user_id', $userId)
+      ->whereBetween('captured_at', [$segStart, $windowEnd]);
+  }
+
+  /**
+   * @return array<string, mixed>
+   */
+  private function formatScreenshot(\App\Models\AttendanceScreenshot $shot, string $timezone): array
+  {
+    $at = $shot->captured_at->timezone($timezone);
+
+    return [
+      'id' => $shot->id,
+      'captured_at' => $at->format('H:i'),
+      'captured_label' => $at->format('M j, h:i A'),
+      'app' => $shot->activityLabel(),
+      'active_percent' => $shot->activePercent(),
+      'image_url' => $shot->imageUrl(),
+      'thumb_url' => $shot->thumbnailUrl(),
+    ];
   }
 
   /**

@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Models\AttendanceAiFlag;
 use App\Models\AttendanceDailySummary;
 use App\Models\AttendancePolicy;
-use App\Models\AttendanceSession;
 use App\Models\User;
 use App\Services\Attendance\AttendanceAiMisuseService;
 use App\Services\Attendance\AttendanceAnalysisService;
@@ -69,62 +68,156 @@ class AttendanceMonitorController extends Controller
     {
         abort_unless(AttendanceAccess::canViewUser($user->id), 403);
 
-        $date = $request->input('date', now()->toDateString());
-        $from = $request->input('from', Carbon::parse($date)->subDays(6)->toDateString());
-        $to = $request->input('to', $date);
+        $timezone = $request->input('timezone', config('attendance.timeline_timezone', 'Asia/Kolkata'));
+        $dayReset = $request->input('day_reset', config('attendance.timeline_day_reset', '04:00'));
 
-        $summaries = AttendanceDailySummary::query()
-            ->where('user_id', $user->id)
-            ->whereBetween('work_date', [$from, $to])
-            ->orderBy('work_date')
-            ->get();
+        [$from, $to, $periodKey] = $this->resolveEmployeePeriod($request, $timezone);
 
-        $sessions = AttendanceSession::query()
-            ->where('user_id', $user->id)
-            ->whereBetween('started_at', [Carbon::parse($from)->startOfDay(), Carbon::parse($to)->endOfDay()])
-            ->orderByDesc('started_at')
-            ->limit(30)
-            ->get();
+        $date = $to;
+
+        $period = $this->timelineService->employeePeriodStats($user, $from, $to, $timezone);
+        $day = $this->timelineService->employeeDayDetail($user, $date, $timezone, $dayReset);
 
         $flags = AttendanceAiFlag::query()
             ->where('user_id', $user->id)
             ->whereBetween('flag_date', [$from, $to])
             ->orderByDesc('created_at')
-            ->get();
-
-        $screenshots = \App\Models\AttendanceScreenshot::query()
-            ->where('user_id', $user->id)
-            ->whereBetween('captured_at', [Carbon::parse($from)->startOfDay(), Carbon::parse($to)->endOfDay()])
-            ->orderByDesc('captured_at')
-            ->limit(48)
-            ->get();
-
-        $appUsage = \App\Models\AttendanceActivityLog::query()
-            ->where('user_id', $user->id)
-            ->where('source', 'desktop')
-            ->whereBetween('recorded_at', [Carbon::parse($from)->startOfDay(), Carbon::parse($to)->endOfDay()])
-            ->whereNotNull('app_name')
-            ->selectRaw('app_name, COUNT(*) as hits')
-            ->groupBy('app_name')
-            ->orderByDesc('hits')
-            ->limit(12)
+            ->limit(30)
             ->get();
 
         $policy = AttendancePolicy::resolveForUser($user);
 
+        $periodOptions = $this->employeePeriodOptions($timezone);
+
         return view('attendance.employee-detail', [
-            'title' => $user->name.' — Attendance',
+            'title' => $user->name.' — Activity',
             'employee' => $user,
-            'summaries' => $summaries,
-            'sessions' => $sessions,
-            'flags' => $flags,
-            'screenshots' => $screenshots,
-            'app_usage' => $appUsage,
-            'policy' => $policy,
+            'day' => $day,
+            'period' => $period,
+            'date' => $date,
             'from' => $from,
             'to' => $to,
+            'period_key' => $periodKey,
+            'period_options' => $periodOptions,
+            'timezone' => $timezone,
+            'day_reset' => $dayReset,
+            'flags' => $flags,
+            'policy' => $policy,
             'can_admin' => AttendanceAccess::canAdmin(),
         ]);
+    }
+
+    /**
+     * @return array{0: string, 1: string, 2: string}
+     */
+    private function resolveEmployeePeriod(Request $request, string $timezone): array
+    {
+        $now = now()->timezone($timezone);
+        $today = $now->toDateString();
+        $period = $request->input('period');
+
+        if (! $period) {
+            if ($request->has('date') && ! $request->has('from') && ! $request->has('to') && ! $request->has('month')) {
+                $day = (string) $request->input('date', $today);
+
+                return [$day, $day, $day === $today ? 'today' : 'custom'];
+            }
+
+            $legacyMonth = $request->input('month');
+            if ($legacyMonth && preg_match('/^\d{4}-\d{2}$/', (string) $legacyMonth)) {
+                $start = Carbon::parse($legacyMonth.'-01', $timezone);
+                $from = $start->copy()->startOfMonth()->toDateString();
+                $to = $start->copy()->endOfMonth()->toDateString();
+                if ($legacyMonth === $now->format('Y-m')) {
+                    $to = $today;
+                }
+
+                return [$from, $to, 'custom'];
+            } elseif ($request->has('from') || $request->has('to')) {
+                $period = 'custom';
+            } else {
+                $period = 'today';
+            }
+        }
+
+        if ($period === 'today') {
+            return [$today, $today, 'today'];
+        }
+
+        if ($period === 'week') {
+            return [
+                $now->copy()->startOfWeek()->toDateString(),
+                $today,
+                'week',
+            ];
+        }
+
+        if ($period === 'month') {
+            return [
+                $now->copy()->startOfMonth()->toDateString(),
+                $today,
+                'month',
+            ];
+        }
+
+        if ($period === 'prev_month') {
+            $prev = $now->copy()->subMonth();
+
+            return [
+                $prev->copy()->startOfMonth()->toDateString(),
+                $prev->copy()->endOfMonth()->toDateString(),
+                'prev_month',
+            ];
+        }
+
+        if (preg_match('/^\d{4}-\d{2}$/', (string) $period)) {
+            $start = Carbon::parse($period.'-01', $timezone);
+            $from = $start->copy()->startOfMonth()->toDateString();
+            $to = $start->copy()->endOfMonth()->toDateString();
+            if ($period === $now->format('Y-m')) {
+                $to = $today;
+            }
+
+            return [$from, $to, 'custom'];
+        }
+
+        $to = $request->input('to', $today);
+        $from = $request->input('from', Carbon::parse($to)->subDays(6)->toDateString());
+        if ($from > $to) {
+            [$from, $to] = [$to, $from];
+        }
+
+        return [$from, $to, 'custom'];
+    }
+
+    /**
+     * @return list<array{value: string, label: string}>
+     */
+    private function employeePeriodOptions(string $timezone): array
+    {
+        $prevMonth = now()->timezone($timezone)->subMonth();
+
+        return [
+            ['value' => 'today', 'label' => 'Today'],
+            ['value' => 'week', 'label' => 'This week'],
+            ['value' => 'month', 'label' => 'This month'],
+            ['value' => 'prev_month', 'label' => 'Previous month ('.$prevMonth->format('F Y').')'],
+            ['value' => 'custom', 'label' => 'Custom range'],
+        ];
+    }
+
+    public function employeeScreenshots(Request $request, User $user): JsonResponse
+    {
+        abort_unless(AttendanceAccess::canViewUser($user->id), 403);
+
+        $date = $request->input('date', now()->toDateString());
+        $timezone = $request->input('timezone', config('attendance.timeline_timezone', 'Asia/Kolkata'));
+        $dayReset = $request->input('day_reset', config('attendance.timeline_day_reset', '04:00'));
+        $page = max(1, (int) $request->input('page', 1));
+
+        return response()->json(
+            $this->timelineService->employeeScreenshots($user, $date, $page, $timezone, $dayReset)
+        );
     }
 
     public function agentDownload()

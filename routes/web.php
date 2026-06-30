@@ -6123,6 +6123,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
         Route::get('/monitor', [AttendanceMonitorController::class, 'index'])->name('monitor');
         Route::get('/monitor/team-data', [AttendanceMonitorController::class, 'teamData'])->name('monitor.team-data');
+        Route::get('/employee/{user}/screenshots', [AttendanceMonitorController::class, 'employeeScreenshots'])->name('employee.screenshots');
         Route::get('/employee/{user}', [AttendanceMonitorController::class, 'employeeDetail'])->name('employee');
         Route::post('/employee/{user}/analyze', [AttendanceMonitorController::class, 'analyzeDay'])->name('analyze');
         Route::post('/flags/{flag}/review', [AttendanceMonitorController::class, 'reviewFlag'])->name('flags.review');

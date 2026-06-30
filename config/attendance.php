@@ -73,6 +73,8 @@ return [
     'screenshots_enabled' => env('ATTENDANCE_SCREENSHOTS_ENABLED', true),
     'screenshot_interval_seconds' => (int) env('ATTENDANCE_SCREENSHOT_INTERVAL', 30),
     'screenshot_max_kb' => (int) env('ATTENDANCE_SCREENSHOT_MAX_KB', 5120),
+    'screenshot_grid_limit' => (int) env('ATTENDANCE_SCREENSHOT_GRID_LIMIT', 300),
+    'screenshot_page_size' => (int) env('ATTENDANCE_SCREENSHOT_PAGE_SIZE', 48),
     'screenshot_disk' => 'attendance',
     'require_desktop_agent' => env('ATTENDANCE_REQUIRE_DESKTOP_AGENT', true),
 
