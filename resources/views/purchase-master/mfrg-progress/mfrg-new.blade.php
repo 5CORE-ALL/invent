@@ -58,7 +58,24 @@
         .mip-plat-menu { padding: 6px; min-width: auto; }
 
         /* Footer / pagination */
-        .tabulator .tabulator-footer { background: #f4f7fa; border-top: 1px solid #cbd5e1; padding: 6px; }
+        .tabulator .tabulator-footer {
+            background: #f4f7fa;
+            border-top: 1px solid #cbd5e1;
+            padding: 6px 12px;
+            min-height: 56px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .tabulator .tabulator-footer .tabulator-page-counter {
+            display: block !important;
+            font-weight: 500;
+            color: #374151;
+            padding: 8px 4px;
+            white-space: nowrap;
+        }
         .tabulator .tabulator-footer .tabulator-page { padding: 6px 12px; margin: 0 3px; border-radius: 6px; }
         .tabulator .tabulator-footer .tabulator-page.active { background: #3bc0c3; color: #fff; }
         /* Default to ellipsis-truncation so cells don't blow up vertically, but the
@@ -497,11 +514,31 @@
                 });
             }
 
+            function getMipActiveSelectedRows() {
+                if (!table) return [];
+                const activeSet = new Set(table.getRows('active'));
+                return dedupeMipRows((table.getSelectedRows() || []).filter(function (row) {
+                    return activeSet.has(row);
+                }));
+            }
+
+            function pruneMipSelectionToActive() {
+                if (!table) return;
+                const activeSet = new Set(table.getRows('active'));
+                (table.getSelectedRows() || []).forEach(function (row) {
+                    if (!activeSet.has(row)) {
+                        row.deselect();
+                    }
+                });
+                mipBulkSelectionCache = getMipActiveSelectedRows();
+                updateMfrgArchiveButtons();
+            }
+
             /** Checkbox-selected rows; keeps multi-select when focus moves to the Edit button. */
             function getMipBulkTargetRows(primarySku, extraRows) {
                 const merged = dedupeMipRows([
                     ...(mipBulkSelectionCache || []),
-                    ...(table && table.getSelectedRows ? table.getSelectedRows() : []),
+                    ...getMipActiveSelectedRows(),
                     ...(extraRows || [])
                 ]);
                 if (merged.length > 0) return merged;
@@ -519,7 +556,7 @@
                 const badge = document.getElementById('mip-bulk-edit-badge');
                 const countEl = document.getElementById('mip-bulk-edit-count');
                 if (!badge || !countEl) return;
-                const n = dedupeMipRows(table ? table.getSelectedRows() : []).length;
+                const n = getMipActiveSelectedRows().length;
                 if (n > 0) {
                     badge.classList.remove('d-none');
                     badge.classList.add('d-flex');
@@ -1325,7 +1362,10 @@
             }
 
             table.on("dataLoaded", function () { applyFilters(); updateMfrgArchiveButtons(); });
-            table.on("dataFiltered", updateStats);
+            table.on("dataFiltered", function () {
+                pruneMipSelectionToActive();
+                updateStats();
+            });
             document.getElementById('mip-stage-filter').addEventListener('change', applyToolbarFilters);
             document.getElementById('mip-exec-filter').addEventListener('change', applyToolbarFilters);
             document.getElementById('search-input').addEventListener('input', function () { clearTimeout(window._mipS); window._mipS = setTimeout(applyToolbarFilters, 300); });
@@ -1412,7 +1452,7 @@
                 const row = tr ? table.getRow(tr) : null;
                 mipRowEditState.pendingBulkTargets = dedupeMipRows([
                     ...(mipBulkSelectionCache || []),
-                    ...(table.getSelectedRows() || []),
+                    ...getMipActiveSelectedRows(),
                     ...(row ? [row] : [])
                 ]);
             }, true /* capture */);
@@ -1592,7 +1632,7 @@
                     $('#archive-selected-btn').addClass('d-none');
                     $('#restore-selected-btn').addClass('d-none');
                 } else {
-                    const n = dedupeMipRows(table.getSelectedRows() || []).length;
+                    const n = getMipActiveSelectedRows().length;
                     if (showArchived) {
                         $('#archive-selected-btn').addClass('d-none');
                         $('#restore-selected-btn').removeClass('d-none').prop('disabled', n === 0);
@@ -1604,7 +1644,7 @@
                 updateMipBulkEditBadge();
             }
             table.on("rowSelectionChanged", function (data, rows) {
-                mipBulkSelectionCache = dedupeMipRows(rows || table.getSelectedRows());
+                mipBulkSelectionCache = getMipActiveSelectedRows();
                 updateMfrgArchiveButtons();
             });
 
@@ -1616,10 +1656,7 @@
             });
 
             function bulkArchiveRestore(endpoint, confirmMsg) {
-                // Only act on rows that are BOTH selected AND currently visible under the active
-                // filter — a "select all" header check can otherwise include filtered-out rows.
-                const activeSet = new Set(table.getRows("active"));
-                const selectedRows = table.getSelectedRows().filter(r => activeSet.has(r));
+                const selectedRows = getMipActiveSelectedRows();
                 // Archive by specific row id + source table so only the selected rows are affected
                 // (multiple rows can share the same SKU).
                 const items = selectedRows.map(function (r) {
@@ -2094,7 +2131,7 @@
             document.getElementById('mip-cl-update-btn').addEventListener('click', function () { saveMipClChecklist('update'); });
             document.getElementById('mip-cl-escalate-btn').addEventListener('click', function () { saveMipClChecklist('escalate'); });
             document.getElementById('mip-bulk-cl-btn').addEventListener('click', function () {
-                const selected = dedupeMipRows(table.getSelectedRows() || []);
+                const selected = getMipActiveSelectedRows();
                 if (!selected.length) {
                     alert('Select one or more rows with checkboxes first.');
                     return;

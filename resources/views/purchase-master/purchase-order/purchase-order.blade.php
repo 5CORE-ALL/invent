@@ -354,7 +354,10 @@
                         </tbody>
                     </table>
                 </div>
-                <div class="text-center mt-3" id="po-pagination"></div>
+                <div class="d-flex flex-wrap justify-content-between align-items-center mt-3 gap-2 px-1" id="po-table-footer">
+                    <div class="text-muted fw-medium" id="po-row-count">Showing 0 rows</div>
+                    <div id="po-pagination" class="d-flex flex-wrap justify-content-end"></div>
+                </div>
 
                 <!-- Modal for Items -->
                 <div class="modal fade" id="poItemsModal" tabindex="-1" aria-hidden="true">
@@ -925,9 +928,59 @@
         });
     }
 
+    function updatePoRowCount(data) {
+        const el = document.getElementById("po-row-count");
+        if (!el) return;
+
+        const source = Array.isArray(data) ? data : getFilteredData();
+        const total = source.length;
+
+        if (total === 0) {
+            el.textContent = "Showing 0 rows";
+            return;
+        }
+
+        const start = (currentPage - 1) * itemsPerPage + 1;
+        const end = Math.min(currentPage * itemsPerPage, total);
+        el.textContent = "Showing " + start + " to " + end + " of " + total + " rows";
+    }
+
+    function resetPoSelectionUi() {
+        const selectAll = document.getElementById("select-all-po");
+        if (selectAll) selectAll.checked = false;
+        const deleteBtn = document.getElementById("delete-selected-btn");
+        if (deleteBtn) deleteBtn.style.display = "none";
+    }
+
+    function getVisiblePoCheckboxes() {
+        return Array.from(document.querySelectorAll("#po-table-body .order-checkbox"));
+    }
+
+    function syncPoSelectAllCheckbox() {
+        const selectAll = document.getElementById("select-all-po");
+        if (!selectAll) return;
+        const boxes = getVisiblePoCheckboxes();
+        if (!boxes.length) {
+            selectAll.checked = false;
+            selectAll.indeterminate = false;
+            return;
+        }
+        const checkedCount = boxes.filter(function (cb) { return cb.checked; }).length;
+        selectAll.checked = checkedCount === boxes.length;
+        selectAll.indeterminate = checkedCount > 0 && checkedCount < boxes.length;
+    }
+
+    function updatePoDeleteButtonVisibility() {
+        const deleteBtn = document.getElementById("delete-selected-btn");
+        if (!deleteBtn) return;
+        const anyChecked = getVisiblePoCheckboxes().some(function (cb) { return cb.checked; });
+        deleteBtn.style.display = anyChecked ? "inline-block" : "none";
+    }
+
     function renderPurchaseOrderTable(data) {
         const tbody = document.getElementById("po-table-body");
         tbody.innerHTML = "";
+        resetPoSelectionUi();
 
         let source = Array.isArray(data) ? data : getFilteredData();
         if (sortColumn) source = sortData(source, sortColumn, sortDir);
@@ -956,6 +1009,7 @@
             const tr = document.createElement("tr");
             tr.innerHTML = `<td colspan="${colCount}" class="text-center text-muted py-4">No data found</td>`;
             tbody.appendChild(tr);
+            updatePoRowCount(source);
             return;
         }
 
@@ -1007,13 +1061,20 @@
         attachItemModalListeners();
         attachExportExcelListeners();
         attachArchiveRestoreListeners();
+        updatePoRowCount(source);
     }
 
     function renderPaginationControls(data) {
-        const source = data && data.length >= 0 ? data : allPurchaseOrders;
+        const source = Array.isArray(data) ? data : getFilteredData();
         const totalPages = Math.max(1, Math.ceil(source.length / itemsPerPage));
+        if (currentPage > totalPages) currentPage = totalPages;
         const paginationContainer = document.getElementById("po-pagination");
         paginationContainer.innerHTML = "";
+
+        if (source.length === 0) {
+            updatePoRowCount(source);
+            return;
+        }
 
         for (let i = 1; i <= totalPages; i++) {
             const btn = document.createElement("button");
@@ -1021,11 +1082,13 @@
             btn.innerText = i;
             btn.addEventListener("click", function () {
                 currentPage = i;
-                renderPurchaseOrderTable(data);
-                renderPaginationControls(data);
+                renderPurchaseOrderTable(source);
+                renderPaginationControls(source);
             });
             paginationContainer.appendChild(btn);
         }
+
+        updatePoRowCount(source);
     }
 
     function attachArchiveRestoreListeners() {
@@ -1223,15 +1286,15 @@
         // Listen for checkbox changes
         document.addEventListener("change", function (e) {
             if (e.target.classList.contains("order-checkbox")) {
-                const anyChecked = document.querySelectorAll(".order-checkbox:checked").length > 0;
-                document.getElementById("delete-selected-btn").style.display = anyChecked ? "inline-block" : "none";
+                syncPoSelectAllCheckbox();
+                updatePoDeleteButtonVisibility();
             }
             if (e.target.id === "select-all-po") {
-                document.querySelectorAll("#po-table-body .order-checkbox").forEach(cb => {
+                getVisiblePoCheckboxes().forEach(function (cb) {
                     cb.checked = e.target.checked;
                 });
-                const anyChecked = document.querySelectorAll(".order-checkbox:checked").length > 0;
-                document.getElementById("delete-selected-btn").style.display = anyChecked ? "inline-block" : "none";
+                e.target.indeterminate = false;
+                updatePoDeleteButtonVisibility();
             }
         });
 

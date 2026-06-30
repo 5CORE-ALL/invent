@@ -4,6 +4,28 @@
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <style>
+        .tabulator .tabulator-footer {
+            background: #f4f7fa;
+            border-top: 1px solid #e5e7eb;
+            font-size: 1rem;
+            color: #4b5563;
+            padding: 5px 12px;
+            min-height: 56px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .tabulator .tabulator-footer .tabulator-page-counter {
+            display: block !important;
+            font-weight: 500;
+            color: #374151;
+            padding: 8px 4px;
+            white-space: nowrap;
+        }
+
         /* Pagination styling */
         .tabulator .tabulator-footer .tabulator-paginator .tabulator-page {
             padding: 8px 16px;
@@ -208,6 +230,8 @@
                 pagination: true,
                 paginationSize: 50,
                 paginationMode: "local",
+                paginationCounter: "rows",
+                selectableRows: true,
                 movableColumns: false,
                 resizableColumns: true,
                 height: "500px",
@@ -215,9 +239,14 @@
                     {
                         formatter: "rowSelection",
                         titleFormatter: "rowSelection",
+                        titleFormatterParams: { rowRange: "active" },
                         hozAlign: "center",
                         headerSort: false,
-                        width: 50
+                        width: 50,
+                        cellClick: function (e, cell) {
+                            e.stopPropagation();
+                            cell.getRow().toggleSelect();
+                        }
                     },
                     {
                         title: "Sr. No",
@@ -379,6 +408,32 @@
                 }
             }
 
+            function getUpcomingActiveSelectedRows() {
+                const activeSet = new Set(table.getRows("active"));
+                return (table.getSelectedRows() || []).filter(function (row) {
+                    return activeSet.has(row);
+                });
+            }
+
+            function updateUpcomingDeleteButton() {
+                const n = getUpcomingActiveSelectedRows().length;
+                if (n > 0) {
+                    $('#delete-selected-btn').removeClass('d-none');
+                } else {
+                    $('#delete-selected-btn').addClass('d-none');
+                }
+            }
+
+            function pruneUpcomingSelectionToActive() {
+                const activeSet = new Set(table.getRows("active"));
+                (table.getSelectedRows() || []).forEach(function (row) {
+                    if (!activeSet.has(row)) {
+                        row.deselect();
+                    }
+                });
+                updateUpcomingDeleteButton();
+            }
+
             function applyFilters() {
                 const container = document.getElementById("filter-container").value;
                 const paymentTerm = document.getElementById("filter-payment-term").value;
@@ -414,20 +469,19 @@
 
             // Run on table load
             table.on("dataLoaded", updateBalances);
-            table.on("dataFiltered", updateBalances);
+            table.on("dataFiltered", function () {
+                pruneUpcomingSelectionToActive();
+                updateBalances();
+            });
 
-
-
-            table.on("rowSelectionChanged", function(data, rows) {
-                if (data.length > 0) {
-                    $('#delete-selected-btn').removeClass('d-none');
-                } else {
-                    $('#delete-selected-btn').addClass('d-none');
-                }
+            table.on("rowSelectionChanged", function () {
+                updateUpcomingDeleteButton();
             });
 
             $('#delete-selected-btn').on('click', function() {
-                const selectedData = table.getSelectedData();
+                const selectedData = getUpcomingActiveSelectedRows().map(function (row) {
+                    return row.getData();
+                });
 
                 if (selectedData.length === 0) {
                     alert('Please select at least one record to delete.');
@@ -449,6 +503,7 @@
                     },
                     success: function(response) {
                         table.deleteRow(ids);
+                        updateUpcomingDeleteButton();
                     },
                     error: function(xhr) {
                         console.error(xhr.responseText);

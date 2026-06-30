@@ -153,8 +153,21 @@
             border-top: 1px solid #262626;
             font-size: 1rem;
             color: #4b5563;
-            padding: 5px;
-            height: 100px;
+            padding: 5px 12px;
+            min-height: 100px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .tabulator .tabulator-footer .tabulator-page-counter {
+            display: block !important;
+            font-weight: 500;
+            color: #374151;
+            padding: 8px 4px;
+            white-space: nowrap;
         }
 
         .tabulator .tabulator-footer:hover {
@@ -2351,9 +2364,16 @@
                     {
                         formatter: "rowSelection",
                         titleFormatter: "rowSelection",
+                        titleFormatterParams: { rowRange: "active" },
                         hozAlign: "center",
                         width: 50,
-                        headerSort: false
+                        headerSort: false,
+                        cellClick: function (e, cell) {
+                            e.stopPropagation();
+                            const row = cell.getRow();
+                            if (!isToaSelectableRow(row)) return;
+                            row.toggleSelect();
+                        }
                     },
                     {
                         title: "#",
@@ -3136,6 +3156,26 @@
                 return sku && !sku.startsWith('PARENT');
             }
 
+            function getToaActiveSelectedRows() {
+                if (!table) return [];
+                const activeSet = new Set(table.getRows('active'));
+                return dedupeToaRows((table.getSelectedRows() || []).filter(function (row) {
+                    return activeSet.has(row);
+                }));
+            }
+
+            function pruneToaSelectionToActive() {
+                if (!table) return;
+                const activeSet = new Set(table.getRows('active'));
+                (table.getSelectedRows() || []).forEach(function (row) {
+                    if (!activeSet.has(row)) {
+                        row.deselect();
+                    }
+                });
+                toaBulkSelectionCache = getToaActiveSelectedRows();
+                updateToaBulkEditBadge();
+            }
+
             let toaBulkSelectionCache = [];
             let toaActionPendingTargets = null;
             const toaActionModalState = { currentRows: [], bsModal: null, initialized: false };
@@ -3171,7 +3211,7 @@
                 const badge = document.getElementById('toa-bulk-edit-badge');
                 const countEl = document.getElementById('toa-bulk-edit-count');
                 if (!badge || !countEl) return;
-                const n = dedupeToaRows(table ? table.getSelectedRows() : []).length;
+                const n = getToaActiveSelectedRows().length;
                 if (n > 0) {
                     badge.classList.remove('d-none');
                     badge.classList.add('d-flex');
@@ -3197,7 +3237,7 @@
             function getToaBulkTargetRows(primarySku, extraRows) {
                 const merged = dedupeToaRows([
                     ...(toaBulkSelectionCache || []),
-                    ...(table.getSelectedRows() || []),
+                    ...getToaActiveSelectedRows(),
                     ...(extraRows || [])
                 ]);
                 if (merged.length > 0) return merged;
@@ -3554,7 +3594,7 @@
             });
 
             table.on("rowSelectionChanged", function(data, rows) {
-                toaBulkSelectionCache = dedupeToaRows(rows || table.getSelectedRows());
+                toaBulkSelectionCache = getToaActiveSelectedRows();
                 updateToaBulkEditBadge();
             });
 
@@ -3567,7 +3607,7 @@
                 const clickedRow = table.getRow(rowEl);
                 toaActionPendingTargets = dedupeToaRows([
                     ...(toaBulkSelectionCache || []),
-                    ...(table.getSelectedRows() || []),
+                    ...getToaActiveSelectedRows(),
                     ...(clickedRow ? [clickedRow] : [])
                 ]);
                 e.stopPropagation();
@@ -4227,7 +4267,10 @@
             document.getElementById("stage-filter").value = "";
 
             // Table events
-            table.on("dataFiltered", updateCounts);
+            table.on("dataFiltered", function () {
+                pruneToaSelectionToActive();
+                updateCounts();
+            });
             table.on("dataSorted", updateCounts);
             table.on("dataChanged", updateCounts);
             table.on("cellEdited", updateCounts);
@@ -4703,7 +4746,7 @@
             document.getElementById('toa-cl-clear-btn').addEventListener('click', function () { saveToaClChecklist('clear_to_load'); });
             document.getElementById('toa-cl-escalate-btn').addEventListener('click', function () { saveToaClChecklist('escalate'); });
             document.getElementById('toa-bulk-cl-btn').addEventListener('click', function () {
-                const selected = dedupeToaRows(table.getSelectedRows() || []);
+                const selected = getToaActiveSelectedRows();
                 if (!selected.length) {
                     alert('Select one or more rows with checkboxes first.');
                     return;

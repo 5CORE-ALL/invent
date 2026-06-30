@@ -248,6 +248,14 @@
     .r2s-page-tight .mb-4 {
         margin-bottom: 0.65rem !important;
     }
+    #r2s-table-footer {
+        border-top: 1px solid #e5e7eb;
+        padding-top: 0.5rem;
+    }
+    #r2s-row-count {
+        font-size: 0.95rem;
+        color: #374151;
+    }
     /* Stage column — same pattern as purchase-master/forecastAnalysis (dot / truck + invisible select) */
     #readyToShipTable.wide-table th[data-column="21"],
     #readyToShipTable.wide-table td[data-column="21"] {
@@ -512,7 +520,11 @@
                             function r2sCheckedRows() {
                                 var t = document.getElementById('readyToShipTable');
                                 if (!t) return [];
-                                return Array.prototype.slice.call(t.querySelectorAll('tbody .r2s-row-checkbox')).filter(function (cb) { return cb.checked; });
+                                return Array.prototype.slice.call(t.querySelectorAll('tbody .r2s-row-checkbox')).filter(function (cb) {
+                                    if (!cb.checked) return false;
+                                    var tr = cb.closest('tr');
+                                    return tr && tr.style.display !== 'none';
+                                });
                             }
                             /** Rec. QTY column (20); falls back to Or. QTY (4) if empty/invalid */
                             function r2sRecQtyFromRow(tr) {
@@ -1361,6 +1373,9 @@
                         </tbody>
                     </table>
                 </div>
+                <div class="d-flex flex-wrap justify-content-between align-items-center mt-2 px-1 gap-2" id="r2s-table-footer">
+                    <div class="text-muted fw-medium" id="r2s-row-count">Showing 0 rows</div>
+                </div>
             </div>
         </div>
     </div>
@@ -1856,6 +1871,39 @@
         }
 
         // R2S + zone toolbar + supplier nav lock (dropdown / play)
+        function r2sIsVisibleRow(row) {
+            return !!(row && row.style.display !== 'none');
+        }
+
+        function r2sTableRowCheckboxEls() {
+            const t = document.getElementById('readyToShipTable');
+            return t ? Array.from(t.querySelectorAll('tbody .r2s-row-checkbox')) : [];
+        }
+
+        function r2sVisibleRowCheckboxEls() {
+            return r2sTableRowCheckboxEls().filter(function (cb) {
+                return r2sIsVisibleRow(cb.closest('tr'));
+            });
+        }
+
+        function updateR2sRowCount(count) {
+            const el = document.getElementById('r2s-row-count');
+            if (!el) return;
+            const n = typeof count === 'number' ? count : r2sVisibleRowCheckboxEls().length;
+            el.textContent = n === 1 ? 'Showing 1 row' : 'Showing ' + n + ' rows';
+        }
+
+        function pruneR2sSelectionToVisible() {
+            r2sTableRowCheckboxEls().forEach(function (cb) {
+                const row = cb.closest('tr');
+                if (row && !r2sIsVisibleRow(row) && cb.checked) {
+                    cb.checked = false;
+                }
+            });
+            if (typeof updateButtonVisibility === 'function') updateButtonVisibility();
+            if (typeof updateSelectAllState === 'function') updateSelectAllState();
+        }
+
         function filterByR2SStage() {
             const table = document.getElementById('readyToShipTable');
             const zoneFilter = document.getElementById('zoneFilter');
@@ -1944,6 +1992,8 @@
             if (typeof updateFollowSupplierCount === 'function') {
                 updateFollowSupplierCount();
             }
+            pruneR2sSelectionToVisible();
+            updateR2sRowCount(visibleRows.length);
         }
 
         window.filterByR2SStage = filterByR2SStage;
@@ -2367,11 +2417,10 @@
         // Row checkboxes: unique class + #readyToShipTable only (avoids clash with other pages using .row-checkbox)
         const readyToShipTableEl = document.getElementById('readyToShipTable');
         function r2sRowCheckboxEls() {
-            const t = document.getElementById('readyToShipTable');
-            return t ? Array.from(t.querySelectorAll('tbody .r2s-row-checkbox')) : [];
+            return r2sTableRowCheckboxEls();
         }
         function r2sCheckedCount() {
-            return r2sRowCheckboxEls().filter(function(cb) { return cb.checked; }).length;
+            return r2sVisibleRowCheckboxEls().filter(function(cb) { return cb.checked; }).length;
         }
 
         const selectAllCheckbox = document.getElementById('selectAllCheckbox');
@@ -2396,7 +2445,7 @@
         // Select All checkbox handler
         if (selectAllCheckbox) {
             selectAllCheckbox.addEventListener('change', function() {
-                const rows = r2sRowCheckboxEls();
+                const rows = r2sVisibleRowCheckboxEls();
                 r2sLog('SELECT ALL checkbox clicked', { checked: this.checked, rowCount: rows.length });
                 if (R2S_DEBUG_UI) {
                     alert('[ReadyToShip] Select-all checkbox: ' + (this.checked ? 'CHECKED (all rows)' : 'UNCHECKED'));
@@ -2434,7 +2483,7 @@
         }
 
         function updateSelectAllState() {
-            const rows = r2sRowCheckboxEls();
+            const rows = r2sVisibleRowCheckboxEls();
             if (selectAllCheckbox && rows.length > 0) {
                 const allChecked = rows.every(function(cb) { return cb.checked; });
                 const someChecked = rows.some(function(cb) { return cb.checked; });
@@ -2477,7 +2526,7 @@
 
             function getCheckedSkusAndRows() {
                 const out = [];
-                r2sRowCheckboxEls().forEach(function (cb) {
+                r2sVisibleRowCheckboxEls().forEach(function (cb) {
                     if (!cb.checked) return;
                     const sku = (cb.getAttribute('data-sku') || '').trim();
                     if (!sku) return;
@@ -2820,7 +2869,7 @@
 
                 function getCheckedRows() {
                     const out = [];
-                    r2sRowCheckboxEls().forEach(function (cb) {
+                    r2sVisibleRowCheckboxEls().forEach(function (cb) {
                         if (!cb.checked) return;
                         const tr = cb.closest('tr.stage-row');
                         if (tr) out.push(tr);
@@ -3098,7 +3147,7 @@
         // Delete selected rows
         if (deleteBtn) {
             deleteBtn.addEventListener('click', function() {
-                const selectedSkus = r2sRowCheckboxEls().filter(function(cb) { return cb.checked; })
+                const selectedSkus = r2sVisibleRowCheckboxEls().filter(function(cb) { return cb.checked; })
                     .map(function(cb) { return cb.getAttribute('data-sku'); }).filter(Boolean);
 
                 if (!selectedSkus.length) return alert("No rows selected.");
@@ -3132,7 +3181,7 @@
 
         if (deleteSelectedItemBtn) {
             deleteSelectedItemBtn.addEventListener('click', function() {
-                const selectedSkus = r2sRowCheckboxEls().filter(function(cb) { return cb.checked; })
+                const selectedSkus = r2sVisibleRowCheckboxEls().filter(function(cb) { return cb.checked; })
                     .map(function(cb) { return cb.getAttribute('data-sku'); }).filter(Boolean);
 
                 if (!selectedSkus.length) return alert("No rows selected.");
