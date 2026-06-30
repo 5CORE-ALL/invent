@@ -167,6 +167,7 @@ class ToOrderAnalysisController extends Controller
                         $lp = (float)($valuesArray['lp'] ?? 0);
                     }
                 }
+                $pmSpecsBarcode = $this->productMasterSpecsAndBarcode($product);
 
                 // ✅ Image resolution
                 $shopifyImage = $shopifySkus[$sheetSku]->image_src ?? null;
@@ -182,6 +183,9 @@ class ToOrderAnalysisController extends Controller
                     'id'              => $toOrder->id,
                     'Parent'          => $parent,
                     'SKU'             => $sheetSku,
+                    'specs'           => $pmSpecsBarcode['specs'],
+                    'barcode'         => $pmSpecsBarcode['barcode'],
+                    'barcode_image'   => $pmSpecsBarcode['barcode_image'],
                     'Approved QTY'    => $approvedQty,
                     'Date of Appr'    => $toOrder->date_apprvl ?? '',
                     'Clink'           => ($forecast ? ($forecast->clink ?? '') : ''),
@@ -366,6 +370,32 @@ class ToOrderAnalysisController extends Controller
         unset($row);
     }
 
+    /**
+     * @return array{specs: string, barcode: string, barcode_image: string}
+     */
+    private function productMasterSpecsAndBarcode($product): array
+    {
+        $specs = '';
+        $barcode = '';
+        $barcodeImage = '';
+
+        if (! $product) {
+            return ['specs' => $specs, 'barcode' => $barcode, 'barcode_image' => $barcodeImage];
+        }
+
+        $barcode = trim((string) ($product->barcode ?? ''));
+
+        if (! empty($product->Values)) {
+            $valuesArray = is_array($product->Values) ? $product->Values : json_decode($product->Values, true);
+            if (is_array($valuesArray)) {
+                $specs = isset($valuesArray['specs']) ? trim((string) $valuesArray['specs']) : '';
+                $barcodeImage = trim((string) ($valuesArray['barcode_image'] ?? $valuesArray['barcode_sku'] ?? ''));
+            }
+        }
+
+        return ['specs' => $specs, 'barcode' => $barcode, 'barcode_image' => $barcodeImage];
+    }
+
     public function getToOrderAnalysis()
     {
         try {
@@ -514,6 +544,7 @@ class ToOrderAnalysisController extends Controller
                 if ($cp <= 0 && $faItem) {
                     $cp = (float) ($faItem->CP ?? 0);
                 }
+                $pmSpecsBarcode = $this->productMasterSpecsAndBarcode($product);
 
                 $shopifyImage = $shopifySkus->get($sheetSku)?->image_src ?? null;
                 $finalImage = $shopifyImage ?: $imagePath;
@@ -557,6 +588,9 @@ class ToOrderAnalysisController extends Controller
                     'product_master_id' => $product->id ?? null,
                     'Parent'          => $parent,
                     'SKU'             => $sheetSku,
+                    'specs'           => $pmSpecsBarcode['specs'],
+                    'barcode'         => $pmSpecsBarcode['barcode'],
+                    'barcode_image'   => $pmSpecsBarcode['barcode_image'],
                     'approved_qty'    => $approvedQty,
                     'CP'              => $cp,
                     'ctn_instructions' => mb_substr($ctnInstructions, 0, 100),
