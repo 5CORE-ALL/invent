@@ -77,6 +77,8 @@ class AttendanceMonitorController extends Controller
 
         $period = $this->timelineService->employeePeriodStats($user, $from, $to, $timezone);
         $day = $this->timelineService->employeeDayDetail($user, $date, $timezone, $dayReset);
+        $desktopApps = $this->timelineService->employeePeriodDesktopApps($user, $from, $to, $timezone);
+        $suspiciousSignals = $this->timelineService->employeePeriodSuspiciousSignals($user, $from, $to, $timezone);
 
         $flags = AttendanceAiFlag::query()
             ->where('user_id', $user->id)
@@ -94,6 +96,8 @@ class AttendanceMonitorController extends Controller
             'employee' => $user,
             'day' => $day,
             'period' => $period,
+            'desktop_apps' => $desktopApps,
+            'suspicious_signals' => $suspiciousSignals,
             'date' => $date,
             'from' => $from,
             'to' => $to,

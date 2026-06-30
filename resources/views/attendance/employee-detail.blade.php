@@ -3,7 +3,6 @@
 @section('css')
 <style>
     .act-card { border: 1px solid rgba(0,0,0,.08); border-radius: 12px; background: #fff; }
-    .act-range { background: #e8f4fd; border: 1px solid #b6d4fe; border-radius: 8px; padding: .5rem .85rem; font-size: .82rem; color: #1e40af; }
     .period-stat {
         border-radius: 10px; padding: .85rem 1rem; background: #f8fafc;
         border: 1px solid #e2e8f0; height: 100%;
@@ -37,6 +36,9 @@
     .act-apps { display: flex; flex-wrap: wrap; gap: .4rem; }
     .act-app-chip { font-size: .72rem; padding: .2rem .55rem; border-radius: 999px; background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
     .act-app-chip strong { color: #0f172a; }
+    .act-app-chip.warn { background: #fff7ed; border-color: #fdba74; color: #9a3412; }
+    .act-app-chip.warn strong { color: #c2410c; }
+    .act-app-meta { font-size: .68rem; color: #94a3b8; margin-top: .15rem; }
     .shot-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: .75rem; }
     .shot-card {
         border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;
@@ -64,6 +66,8 @@
     .shot-end { padding: .75rem; text-align: center; font-size: .78rem; color: #94a3b8; }
     .flag-card { border-left: 3px solid #fd7e14; padding: .65rem .75rem; background: #fffbf5; border-radius: 6px; margin-bottom: .5rem; font-size: .82rem; }
     .flag-card.severity-high { border-left-color: #dc3545; background: #fff5f5; }
+    .flag-card.severity-medium { border-left-color: #fd7e14; }
+    .flag-card.severity-low { border-left-color: #94a3b8; }
     .act-live-dot { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; display: inline-block; margin-right: .2rem; animation: actPulse 2s infinite; vertical-align: middle; }
     @keyframes actPulse { 0%,100%{opacity:1} 50%{opacity:.35} }
 </style>
@@ -141,12 +145,6 @@
         </div>
     </div>
 
-    <div class="row mb-3">
-        <div class="col-12">
-            <div class="act-range">{{ $periodStats['range_label'] }} · {{ $periodStats['days_worked'] }} day(s) with activity</div>
-        </div>
-    </div>
-
     <div class="row g-2 mb-3">
         <div class="col-6 col-md-3">
             <div class="period-stat active">
@@ -186,6 +184,64 @@
             </div>
         </div>
         @endif
+    </div>
+
+    <div class="row g-2 mb-3">
+        <div class="col-lg-6">
+            <div class="act-card p-3 h-100">
+                <h6 class="mb-2"><i class="ri-apps-line me-1"></i> Desktop apps</h6>
+                @if(count($desktop_apps) > 0)
+                <div class="act-apps">
+                    @foreach($desktop_apps as $app)
+                    <span class="act-app-chip {{ $app['is_unproductive'] ? 'warn' : '' }}" title="{{ $app['top_window'] ? 'Top window: '.$app['top_window'] : '' }}">
+                        <strong>{{ $app['app'] }}</strong>
+                        · {{ $app['est_minutes'] }}m
+                        · {{ $app['hits'] }} samples
+                    </span>
+                    @endforeach
+                </div>
+                @else
+                <p class="text-muted small mb-0">No desktop app activity in this period. Data is collected by the desktop agent while clocked in.</p>
+                @endif
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="act-card p-3 h-100">
+                <h6 class="mb-2"><i class="ri-alarm-warning-line me-1"></i> Suspicious activity</h6>
+                @if($flags->isNotEmpty() || count($suspicious_signals) > 0)
+                    @foreach($flags as $flag)
+                    <div class="flag-card severity-{{ $flag->severity }}">
+                        <div class="d-flex justify-content-between gap-2">
+                            <strong>{{ $flag->title }}</strong>
+                            <span class="badge bg-{{ $flag->status === 'open' ? 'warning' : 'secondary' }}">{{ $flag->status }}</span>
+                        </div>
+                        <div class="text-muted small">{{ $flag->typeLabel() }} · {{ $flag->flag_date?->format('M j, Y') }} · {{ $flag->source }}</div>
+                        @if($flag->description)
+                        <p class="mb-1 mt-1">{{ $flag->description }}</p>
+                        @endif
+                        @if($can_admin && $flag->status === 'open')
+                        <div class="btn-group btn-group-sm">
+                            <button class="btn btn-outline-success btn-review" data-id="{{ $flag->id }}" data-status="reviewed">Reviewed</button>
+                            <button class="btn btn-outline-secondary btn-review" data-id="{{ $flag->id }}" data-status="dismissed">Dismiss</button>
+                        </div>
+                        @endif
+                    </div>
+                    @endforeach
+                    @foreach($suspicious_signals as $signal)
+                    <div class="flag-card severity-{{ $signal['severity'] }}">
+                        <div class="d-flex justify-content-between gap-2">
+                            <strong>{{ $signal['title'] }}</strong>
+                            <span class="badge bg-light text-dark border">detected</span>
+                        </div>
+                        <div class="text-muted small">{{ $signal['source'] }}</div>
+                        <p class="mb-0 mt-1">{{ $signal['description'] }}</p>
+                    </div>
+                    @endforeach
+                @else
+                <p class="text-muted small mb-0">No suspicious activity detected for this period.</p>
+                @endif
+            </div>
+        </div>
     </div>
 
     <div class="row mb-3">
@@ -233,17 +289,6 @@
                          title="{{ ucfirst($seg['state']) }} · {{ $seg['start_label'] }} – {{ $seg['end_label'] }}"></div>
                     @endforeach
                 </div>
-
-                @if(count($day['app_usage']) > 0)
-                <div class="mt-3">
-                    <div class="small text-muted mb-1">Apps on this day</div>
-                    <div class="act-apps">
-                        @foreach($day['app_usage'] as $app)
-                        <span class="act-app-chip"><strong>{{ $app['app'] }}</strong> · {{ $app['hits'] }}</span>
-                        @endforeach
-                    </div>
-                </div>
-                @endif
             </div>
         </div>
     </div>
@@ -294,34 +339,6 @@
             </div>
         </div>
     </div>
-
-    @if($flags->isNotEmpty())
-    <div class="row">
-        <div class="col-12">
-            <div class="act-card p-3">
-                <h6 class="mb-3">Flags in this period</h6>
-                @foreach($flags as $flag)
-                <div class="flag-card severity-{{ $flag->severity }}">
-                    <div class="d-flex justify-content-between">
-                        <strong>{{ $flag->title }}</strong>
-                        <span class="badge bg-{{ $flag->status === 'open' ? 'warning' : 'secondary' }}">{{ $flag->status }}</span>
-                    </div>
-                    <div class="text-muted small">{{ $flag->typeLabel() }} · {{ $flag->source }}</div>
-                    @if($flag->description)
-                    <p class="mb-1 mt-1">{{ $flag->description }}</p>
-                    @endif
-                    @if($can_admin && $flag->status === 'open')
-                    <div class="btn-group btn-group-sm">
-                        <button class="btn btn-outline-success btn-review" data-id="{{ $flag->id }}" data-status="reviewed">Reviewed</button>
-                        <button class="btn btn-outline-secondary btn-review" data-id="{{ $flag->id }}" data-status="dismissed">Dismiss</button>
-                    </div>
-                    @endif
-                </div>
-                @endforeach
-            </div>
-        </div>
-    </div>
-    @endif
 </div>
 @endsection
 

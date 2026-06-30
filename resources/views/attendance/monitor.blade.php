@@ -99,12 +99,11 @@
                     <div>
                         <h4 class="mb-1"><i class="ri-time-line me-2 text-primary"></i>Team Timeline</h4>
                     </div>
+                    @if($can_admin)
                     <div class="d-flex flex-wrap gap-2">
-                        <a href="{{ route('attendance.index') }}" class="btn btn-sm btn-outline-secondary">My Attendance</a>
-                        @if($can_admin)
                         <a href="{{ route('attendance.policies') }}" class="btn btn-sm btn-outline-secondary">Policies</a>
-                        @endif
                     </div>
+                    @endif
                 </div>
 
                 <form method="get" class="tl-toolbar d-flex flex-wrap align-items-end gap-2 mb-3" id="tlFilters">

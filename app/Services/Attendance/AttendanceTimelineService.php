@@ -505,18 +505,7 @@ class AttendanceTimelineService
 
     [$segStart, $segEnd] = $this->calendarWindow($date, $timezone);
 
-    $appUsage = AttendanceActivityLog::query()
-      ->where('user_id', $employee->id)
-      ->whereBetween('recorded_at', [$segStart, $segEnd])
-      ->whereNotNull('app_name')
-      ->selectRaw('app_name, COUNT(*) as hits')
-      ->groupBy('app_name')
-      ->orderByDesc('hits')
-      ->limit(10)
-      ->get()
-      ->map(fn ($row) => ['app' => $row->app_name, 'hits' => (int) $row->hits])
-      ->values()
-      ->all();
+    $appUsage = $this->aggregateDesktopApps($employee->id, $segStart, $segEnd, 10);
 
     return [
       'date' => $date,
@@ -540,6 +529,160 @@ class AttendanceTimelineService
       'screenshot_per_page' => $screenshotPage['per_page'],
       'app_usage' => $appUsage,
     ];
+  }
+
+  /**
+   * @return array<int, array{app: string, hits: int, est_minutes: int, is_unproductive: bool, top_window: string|null}>
+   */
+  public function employeePeriodDesktopApps(User $employee, string $from, string $to, ?string $timezone = null): array
+  {
+    $timezone = $timezone ?: (string) config('attendance.timeline_timezone', 'Asia/Kolkata');
+    $fromAt = Carbon::parse($from, $timezone)->startOfDay();
+    $toAt = Carbon::parse($to, $timezone)->endOfDay();
+
+    return $this->aggregateDesktopApps($employee->id, $fromAt, $toAt, 20);
+  }
+
+  /**
+   * @return array<int, array{severity: string, title: string, description: string, source: string}>
+   */
+  public function employeePeriodSuspiciousSignals(User $employee, string $from, string $to, ?string $timezone = null): array
+  {
+    $timezone = $timezone ?: (string) config('attendance.timeline_timezone', 'Asia/Kolkata');
+    $fromAt = Carbon::parse($from, $timezone)->startOfDay();
+    $toAt = Carbon::parse($to, $timezone)->endOfDay();
+    $interval = max(1, (int) config('attendance.heartbeat_interval_seconds', 15));
+    $unproductive = array_map('strtolower', config('attendance.unproductive_apps', []));
+    $entertainmentKeywords = ['youtube', 'netflix', 'facebook', 'instagram', 'twitter', 'tiktok', 'reddit', 'twitch', 'gaming', 'prime video'];
+
+    $signals = [];
+
+    $apps = $this->aggregateDesktopApps($employee->id, $fromAt, $toAt, 50);
+    foreach ($apps as $app) {
+      if ($app['is_unproductive'] && $app['hits'] >= 3) {
+        $signals[] = [
+          'severity' => 'medium',
+          'title' => 'Unproductive desktop app',
+          'description' => $app['app'].' detected '.$app['hits'].' times (~'.$app['est_minutes'].' min) during this period.',
+          'source' => 'desktop',
+        ];
+      }
+    }
+
+    $titleHits = AttendanceActivityLog::query()
+      ->where('user_id', $employee->id)
+      ->where('source', 'desktop')
+      ->whereBetween('recorded_at', [$fromAt, $toAt])
+      ->whereNotNull('window_title')
+      ->where('window_title', '!=', '')
+      ->pluck('window_title');
+
+    $entertainmentCounts = [];
+    foreach ($titleHits as $title) {
+      $lower = strtolower((string) $title);
+      foreach ($entertainmentKeywords as $keyword) {
+        if (str_contains($lower, $keyword)) {
+          $entertainmentCounts[$keyword] = ($entertainmentCounts[$keyword] ?? 0) + 1;
+        }
+      }
+    }
+
+    arsort($entertainmentCounts);
+    foreach (array_slice($entertainmentCounts, 0, 3, true) as $keyword => $hits) {
+      if ($hits < 5) {
+        continue;
+      }
+
+      $minutes = (int) round(($hits * $interval) / 60);
+      $signals[] = [
+        'severity' => $hits >= 20 ? 'high' : 'medium',
+        'title' => 'Entertainment / social browsing',
+        'description' => 'Window titles matching "'.$keyword.'" appeared '.$hits.' times (~'.$minutes.' min).',
+        'source' => 'desktop',
+      ];
+    }
+
+    $summaries = AttendanceDailySummary::query()
+      ->where('user_id', $employee->id)
+      ->whereBetween('work_date', [$fromAt->toDateString(), $toAt->toDateString()])
+      ->get();
+
+    foreach ($summaries as $summary) {
+      $activePct = $summary->activePercent();
+      $worked = (int) $summary->work_seconds;
+      if ($worked >= 3600 && $activePct < 45) {
+        $signals[] = [
+          'severity' => $activePct < 30 ? 'high' : 'medium',
+          'title' => 'Low active time on '.$summary->work_date->format('M j'),
+          'description' => 'Only '.$activePct.'% active while clocked in ('.$summary->workHours().'h total).',
+          'source' => 'rules',
+        ];
+      }
+    }
+
+    return $signals;
+  }
+
+  /**
+   * @return array<int, array{app: string, hits: int, est_minutes: int, is_unproductive: bool, top_window: string|null}>
+   */
+  private function aggregateDesktopApps(int $userId, Carbon $fromAt, Carbon $toAt, int $limit = 15): array
+  {
+    $interval = max(1, (int) config('attendance.heartbeat_interval_seconds', 15));
+    $unproductive = array_map('strtolower', config('attendance.unproductive_apps', []));
+
+    $logs = AttendanceActivityLog::query()
+      ->where('user_id', $userId)
+      ->where('source', 'desktop')
+      ->whereBetween('recorded_at', [$fromAt, $toAt])
+      ->where(function ($q) {
+        $q->where(function ($inner) {
+          $inner->whereNotNull('app_name')->where('app_name', '!=', '');
+        })->orWhere(function ($inner) {
+          $inner->whereNotNull('process_name')->where('process_name', '!=', '');
+        });
+      })
+      ->get(['app_name', 'process_name', 'window_title']);
+
+    $counts = [];
+    $displayNames = [];
+    $titleCounts = [];
+
+    foreach ($logs as $log) {
+      $app = trim((string) ($log->app_name ?: $log->process_name));
+      if ($app === '') {
+        continue;
+      }
+
+      $key = strtolower($app);
+      $counts[$key] = ($counts[$key] ?? 0) + 1;
+      $displayNames[$key] = $displayNames[$key] ?? $app;
+
+      if ($log->window_title) {
+        $titleCounts[$key][$log->window_title] = ($titleCounts[$key][$log->window_title] ?? 0) + 1;
+      }
+    }
+
+    arsort($counts);
+
+    $apps = [];
+    foreach (array_slice($counts, 0, $limit, true) as $key => $hits) {
+      $topWindow = null;
+      if (! empty($titleCounts[$key])) {
+        arsort($titleCounts[$key]);
+        $topWindow = (string) array_key_first($titleCounts[$key]);
+      }
+
+      $apps[] = [
+        'app' => $displayNames[$key],
+        'hits' => $hits,
+        'est_minutes' => max(1, (int) round(($hits * $interval) / 60)),
+        'is_unproductive' => in_array($key, $unproductive, true),
+        'top_window' => $topWindow,
+      ];
+    }
+
+    return $apps;
   }
 
   /**

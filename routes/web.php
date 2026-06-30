@@ -283,6 +283,7 @@ use App\Http\Controllers\Payroll\PayrollController;
 use App\Http\Controllers\Attendance\AttendanceAgentController;
 use App\Http\Controllers\Attendance\AttendanceController;
 use App\Http\Controllers\Attendance\AttendanceMonitorController;
+use App\Http\Controllers\Attendance\AttendancePayrollController;
 use App\Http\Controllers\ResourcesMasterController;
 use App\Http\Controllers\RoutingController;
 use App\Http\Controllers\Sales\AmazonSalesController;
@@ -6123,6 +6124,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
         Route::get('/monitor', [AttendanceMonitorController::class, 'index'])->name('monitor');
         Route::get('/monitor/team-data', [AttendanceMonitorController::class, 'teamData'])->name('monitor.team-data');
+        Route::get('/payroll', [AttendancePayrollController::class, 'index'])->name('payroll.index');
+        Route::get('/payroll/export', [AttendancePayrollController::class, 'export'])->name('payroll.export');
+        Route::post('/payroll/lines/{user}', [AttendancePayrollController::class, 'saveLine'])->name('payroll.lines');
         Route::get('/employee/{user}/screenshots', [AttendanceMonitorController::class, 'employeeScreenshots'])->name('employee.screenshots');
         Route::get('/employee/{user}', [AttendanceMonitorController::class, 'employeeDetail'])->name('employee');
         Route::post('/employee/{user}/analyze', [AttendanceMonitorController::class, 'analyzeDay'])->name('analyze');
