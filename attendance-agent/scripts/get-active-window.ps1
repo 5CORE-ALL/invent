@@ -11,11 +11,11 @@ public class WinForeground {
 $h = [WinForeground]::GetForegroundWindow()
 $sb = New-Object System.Text.StringBuilder 512
 [void][WinForeground]::GetWindowText($h, $sb, 512)
-$pid = 0
-[void][WinForeground]::GetWindowThreadProcessId($h, [ref]$pid)
+$processId = 0
+[void][WinForeground]::GetWindowThreadProcessId($h, [ref]$processId)
 $proc = ''
-if ($pid -gt 0) {
-    $p = Get-Process -Id $pid -ErrorAction SilentlyContinue
+if ($processId -gt 0) {
+    $p = Get-Process -Id $processId -ErrorAction SilentlyContinue
     if ($p) { $proc = $p.ProcessName }
 }
 Write-Output ($sb.ToString() + '|||' + $proc)

@@ -25,11 +25,17 @@
     .tl-name {
         font-size: .95rem;
         line-height: 1.25;
-        color: #0f172a;
-        text-decoration: none;
+        color: var(--bs-primary, #2563eb);
+        text-decoration: underline;
+        text-decoration-color: rgba(37, 99, 235, .35);
+        text-underline-offset: 2px;
         flex-shrink: 0;
+        cursor: pointer;
     }
-    .tl-name:hover { color: var(--bs-primary); }
+    .tl-name:hover {
+        color: #1d4ed8;
+        text-decoration-color: currentColor;
+    }
     .tl-summary {
         display: flex;
         flex-wrap: nowrap;

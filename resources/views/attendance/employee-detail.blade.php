@@ -3,9 +3,26 @@
 @section('css')
 <style>
     .act-card { border: 1px solid rgba(0,0,0,.08); border-radius: 12px; background: #fff; }
+    .period-stats {
+        display: grid;
+        gap: .5rem;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        margin-bottom: 1rem;
+    }
+    @media (min-width: 576px) {
+        .period-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    }
+    @media (min-width: 992px) {
+        .period-stats { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+    }
+    @media (max-width: 575.98px) {
+        .period-stat { padding: .65rem .75rem; }
+        .period-stat .value { font-size: 1.1rem; }
+        .period-stat .label { font-size: .65rem; }
+    }
     .period-stat {
         border-radius: 10px; padding: .85rem 1rem; background: #f8fafc;
-        border: 1px solid #e2e8f0; height: 100%;
+        border: 1px solid #e2e8f0; height: 100%; min-width: 0;
     }
     .period-stat .label { font-size: .72rem; text-transform: uppercase; letter-spacing: .03em; color: #64748b; margin-bottom: .15rem; }
     .period-stat .value { font-size: 1.35rem; font-weight: 700; font-variant-numeric: tabular-nums; }
@@ -87,7 +104,7 @@
             <div class="act-card p-3">
                 <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
                     <div>
-                        <a href="{{ route('attendance.monitor') }}?date={{ $date }}" class="small text-muted">← Team Timeline</a>
+                        <a href="{{ route('attendance.summary', array_filter(['team' => request('team'), 'range' => $period_key ?? 'custom', 'from' => $from, 'to' => $to, 'timezone' => $timezone, 'day_reset' => $day_reset])) }}" class="small text-muted">← Team Monitoring</a>
                         <h4 class="mb-0 mt-1">
                             @if($day['is_live'])
                                 <span class="act-live-dot"></span>
@@ -145,45 +162,27 @@
         </div>
     </div>
 
-    <div class="row g-2 mb-3">
-        <div class="col-6 col-md-3">
-            <div class="period-stat active">
-                <div class="label">Total Active</div>
-                <div class="value">{{ $periodStats['active_label'] }}</div>
-            </div>
+    <div class="period-stats">
+        <div class="period-stat active">
+            <div class="label">Total Active</div>
+            <div class="value">{{ $periodStats['active_label'] }}</div>
         </div>
-        <div class="col-6 col-md-3">
-            <div class="period-stat idle">
-                <div class="label">Total Idle</div>
-                <div class="value">{{ $periodStats['idle_label'] }}</div>
-            </div>
+        <div class="period-stat idle">
+            <div class="label">Total Idle</div>
+            <div class="value">{{ $periodStats['idle_label'] }}</div>
         </div>
-        <div class="col-6 col-md-3">
-            <div class="period-stat break">
-                <div class="label">Total Break</div>
-                <div class="value">{{ $periodStats['break_label'] }}</div>
-            </div>
+        <div class="period-stat break">
+            <div class="label">Total Break</div>
+            <div class="value">{{ $periodStats['break_label'] }}</div>
         </div>
-        <div class="col-6 col-md-3">
-            <div class="period-stat total">
-                <div class="label">Total Time</div>
-                <div class="value">{{ $periodStats['total_label'] }}</div>
-            </div>
+        <div class="period-stat total">
+            <div class="label">Total Time</div>
+            <div class="value">{{ $periodStats['total_label'] }}</div>
         </div>
-        <div class="col-6 col-md-3">
-            <div class="period-stat pct">
-                <div class="label">Active %</div>
-                <div class="value">{{ $periodStats['active_percent'] }}%</div>
-            </div>
+        <div class="period-stat pct">
+            <div class="label">Active %</div>
+            <div class="value">{{ $periodStats['active_percent'] }}%</div>
         </div>
-        @if($periodStats['avg_productivity'] !== null)
-        <div class="col-6 col-md-3">
-            <div class="period-stat">
-                <div class="label">Avg Productivity</div>
-                <div class="value">{{ $periodStats['avg_productivity'] }}</div>
-            </div>
-        </div>
-        @endif
     </div>
 
     <div class="row g-2 mb-3">

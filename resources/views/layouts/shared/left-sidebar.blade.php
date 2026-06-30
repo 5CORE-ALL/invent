@@ -3285,6 +3285,7 @@
                     || request()->routeIs('permissions.view')
                     || request()->routeIs('attendance.monitor*')
                     || request()->routeIs('attendance.employee')
+                    || request()->routeIs('attendance.summary*')
                     || request()->routeIs('attendance.payroll*')
                     || request()->routeIs('attendance.agent');
             @endphp
@@ -3312,8 +3313,8 @@
                         </li>
                         @if(\App\Support\AttendanceAccess::canMonitor())
                         <li>
-                            <a href="{{ route('attendance.monitor') }}" class="{{ request()->routeIs('attendance.monitor*') || request()->routeIs('attendance.employee') ? 'active' : '' }}">
-                                <i class="ri-dashboard-line me-2"></i>Monitor
+                            <a href="{{ route('attendance.summary') }}" class="{{ request()->routeIs('attendance.summary*') || request()->routeIs('attendance.monitor*') || request()->routeIs('attendance.employee') ? 'active' : '' }}">
+                                <i class="ri-group-line me-2"></i>Team Monitoring
                             </a>
                         </li>
                         <li>

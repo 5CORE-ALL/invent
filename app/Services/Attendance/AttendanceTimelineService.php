@@ -640,6 +640,8 @@ class AttendanceTimelineService
           $inner->whereNotNull('app_name')->where('app_name', '!=', '');
         })->orWhere(function ($inner) {
           $inner->whereNotNull('process_name')->where('process_name', '!=', '');
+        })->orWhere(function ($inner) {
+          $inner->whereNotNull('window_title')->where('window_title', '!=', '');
         });
       })
       ->get(['app_name', 'process_name', 'window_title']);
@@ -649,7 +651,7 @@ class AttendanceTimelineService
     $titleCounts = [];
 
     foreach ($logs as $log) {
-      $app = trim((string) ($log->app_name ?: $log->process_name));
+      $app = trim((string) ($log->app_name ?: $log->process_name ?: $this->appFromWindowTitle((string) $log->window_title)));
       if ($app === '') {
         continue;
       }
@@ -683,6 +685,20 @@ class AttendanceTimelineService
     }
 
     return $apps;
+  }
+
+  private function appFromWindowTitle(string $title): string
+  {
+    $title = trim($title);
+    if ($title === '') {
+      return '';
+    }
+
+    if (preg_match('/\s[-–—|]\s([^|]+)$/u', $title, $matches)) {
+      return trim($matches[1]);
+    }
+
+    return mb_strlen($title) > 48 ? mb_substr($title, 0, 48).'…' : $title;
   }
 
   /**

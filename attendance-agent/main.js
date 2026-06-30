@@ -120,12 +120,26 @@ function isIgnoredProcess(name) {
 }
 
 function applyWindowResult(result) {
-    if (!result?.process || isIgnoredProcess(result.process)) {
+    const title = String(result?.title || '').trim();
+    const process = String(result?.process || '').trim();
+    if (!title && !process) {
         return false;
     }
-    lastKnownWindow = { title: result.title || '', process: result.process };
-    lastLive = { title: result.title || '', process: result.process, app: result.process };
-    return true;
+    if (process && !isIgnoredProcess(process)) {
+        lastKnownWindow = { title, process };
+        lastLive = { title, process, app: process };
+        return true;
+    }
+    if (title) {
+        lastKnownWindow = { title, process: lastKnownWindow.process || process };
+        lastLive = {
+            title,
+            process: lastKnownWindow.process || process,
+            app: lastKnownWindow.process || process || title,
+        };
+        return Boolean(lastKnownWindow.process || process);
+    }
+    return false;
 }
 
 async function getActiveWindow() {
@@ -552,6 +566,7 @@ async function sendHeartbeat(force = false) {
 
     return enqueueApi(async () => {
         try {
+            await pollActiveWindow();
             const systemIdle = powerMonitor.getSystemIdleTime();
             const isWorking = activityState === 'working' && systemIdle < (config.idle_prompt_seconds || 30);
 
@@ -580,6 +595,7 @@ async function sendScreenshot() {
 
     return enqueueApi(async () => {
         try {
+            await pollActiveWindow();
             const buf = await captureScreenshot();
             if (!buf) return;
             const idle = powerMonitor.getSystemIdleTime();
