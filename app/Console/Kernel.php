@@ -1536,6 +1536,21 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(170)
             ->runInBackground()
             ->appendOutputTo($log);
+
+        /*
+        |--------------------------------------------------------------------------
+        | DEDICATED QUEUE WORKERS (permanent watchdog)
+        |--------------------------------------------------------------------------
+        | Keeps queue:watchdog running. The daemon ensures each configured
+        | dedicated worker (google-maps-extractor, shopify-*-pull, *-master-push)
+        | stays alive with an explicit --queue flag — never the default queue.
+        */
+        $schedule->command('queue:ensure-watchdog-daemon')
+            ->everyMinute()
+            ->name('queue-ensure-watchdog-daemon')
+            ->withoutOverlapping(55)
+            ->runInBackground()
+            ->appendOutputTo($log);
     }
 
     /**

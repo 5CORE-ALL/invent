@@ -150,7 +150,7 @@
                     <h5 class="modal-title" id="changePasswordModalLabel">Change Password</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
-                <form method="POST" action="{{ route('password.update') }}">
+                <form method="POST" action="{{ route('profile.password.update') }}">
                     @csrf
                     @method('PUT')
                     <input type="hidden" name="user_id" value="{{ Auth::id() }}">

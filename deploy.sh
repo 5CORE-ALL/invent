@@ -79,6 +79,33 @@ echo "[6/8] Restarting queue workers..."
 ${PHP_BIN} ${ARTISAN} queue:restart
 echo "  ✓ Queue restart signal sent"
 
+# Permanent watchdog: keeps all dedicated queue workers alive (explicit --queue only).
+if [ -x "${PROJECT_DIR}/scripts/cron-queue-watchdog-daemon.sh" ]; then
+    bash "${PROJECT_DIR}/scripts/cron-queue-watchdog-daemon.sh"
+    echo "  ✓ Dedicated queue watchdog daemon ensured"
+elif [ -x "${PROJECT_DIR}/scripts/cron-google-maps-extractor-watchdog.sh" ]; then
+    bash "${PROJECT_DIR}/scripts/cron-google-maps-extractor-watchdog.sh"
+    echo "  ✓ Dedicated queue watchdog daemon ensured (legacy script)"
+else
+    ${PHP_BIN} ${ARTISAN} queue:ensure-watchdog-daemon >/dev/null 2>&1 || true
+    echo "  ✓ Dedicated queue watchdog daemon invoked (artisan)"
+fi
+
+# Per-queue worker scripts (fallback if watchdog is not running yet).
+for worker_script in \
+    "${PROJECT_DIR}/scripts/cron-google-maps-extractor-worker.sh" \
+    "${PROJECT_DIR}/scripts/cron-shopify-image-pull-worker.sh" \
+    "${PROJECT_DIR}/scripts/cron-shopify-bullet-pull-worker.sh" \
+    "${PROJECT_DIR}/scripts/cron-shopify-video-pull-worker.sh" \
+    "${PROJECT_DIR}/scripts/cron-image-master-push-worker.sh" \
+    "${PROJECT_DIR}/scripts/cron-video-master-push-worker.sh"
+do
+    if [ -x "${worker_script}" ]; then
+        bash "${worker_script}"
+        echo "  ✓ Invoked $(basename "${worker_script}")"
+    fi
+done
+
 # ─── Step 7: Permissions ────────────────────────────────────────────────────
 echo ""
 echo "[7/8] Fixing permissions..."
@@ -120,6 +147,8 @@ echo ""
 echo " Next steps:"
 echo "   1. Verify cron: crontab -l"
 echo "   2. Verify supervisor: supervisorctl status"
-echo "   3. Test site: curl -s -o /dev/null -w '%{http_code}' http://localhost"
-echo "   4. Check logs: tail -f ${PROJECT_DIR}/storage/logs/scheduler.log"
+echo "   3. Google Maps extractor worker log:"
+echo "      tail -f ${PROJECT_DIR}/storage/logs/google-maps-extractor-worker.log"
+echo "   4. Test site: curl -s -o /dev/null -w '%{http_code}' http://localhost"
+echo "   5. Check logs: tail -f ${PROJECT_DIR}/storage/logs/scheduler.log"
 echo ""
