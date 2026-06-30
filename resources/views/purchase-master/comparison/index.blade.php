@@ -671,7 +671,7 @@
 <div class="container-fluid mt-4">
     <div class="row">
         <div class="col-12">
-            <div class="card shadow-sm">
+            <div class="card shadow-sm" id="comparison-main-card">
                 <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
                     <div class="d-flex align-items-center gap-2">
                         @include('purchase-master.partials.page-info-toolbar', ['pageKey' => 'comparison'])
@@ -5114,6 +5114,45 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     loadProductCategories().then(function () {
+        const comparisonPageParams = new URLSearchParams(window.location.search);
+        const comparisonCdOnlySku = (comparisonPageParams.get('cd_only') || comparisonPageParams.get('sku') || '').trim();
+
+        if (comparisonPageParams.has('cd_only') && comparisonCdOnlySku) {
+            document.getElementById('comparison-main-card')?.classList.add('d-none');
+
+            const params = new URLSearchParams({ skus: comparisonCdOnlySku });
+            fetch(`${dataUrl}?${params.toString()}`, {
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+            })
+            .then(function (res) { return res.json(); })
+            .then(function (res) {
+                const row = (res.success && Array.isArray(res.data) && res.data[0])
+                    ? res.data[0]
+                    : {
+                        sku: comparisonCdOnlySku,
+                        parent: comparisonPageParams.get('parent') || '',
+                        clink: '',
+                        has_sheet_data: false,
+                    };
+                comparisonBulkEditSkus = null;
+                openComparisonModal(row);
+            })
+            .catch(function () {
+                comparisonBulkEditSkus = null;
+                openComparisonModal({
+                    sku: comparisonCdOnlySku,
+                    parent: comparisonPageParams.get('parent') || '',
+                    clink: '',
+                    has_sheet_data: false,
+                });
+            });
+
+            return;
+        }
+
         initComparisonTable();
     });
 

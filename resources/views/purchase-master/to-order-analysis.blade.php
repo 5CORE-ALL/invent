@@ -6,6 +6,48 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" />
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <style>
+        /* CD column (comparison data) */
+        .toa-cd-cell {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            min-height: 28px;
+            cursor: pointer;
+        }
+        .toa-cd-cell i {
+            transition: transform 0.15s ease, color 0.15s ease;
+        }
+        .toa-cd-cell:hover i {
+            transform: scale(1.12);
+        }
+        #toa-cd-hover-preview {
+            position: fixed;
+            z-index: 1080;
+            max-width: 320px;
+            padding: 10px 12px;
+            background: #1a2942;
+            color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+            font-size: 12px;
+            line-height: 1.5;
+            pointer-events: none;
+            display: none;
+        }
+        #toa-cd-hover-preview .cd-hover-label {
+            color: #93c5fd;
+            font-weight: 600;
+        }
+        #toaCdModal .modal-body {
+            min-height: calc(100vh - 120px);
+        }
+        #toaCdIframe {
+            width: 100%;
+            height: calc(100vh - 120px);
+            border: 0;
+        }
+
         /* Column show/hide menu */
         .toa-columns-wrap { position: relative; }
         .toa-cl-cell { display: flex; align-items: center; justify-content: center; gap: 4px; }
@@ -612,6 +654,25 @@
                         style="overflow-x: auto;">
                         <!-- Month cards inserted here -->
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="toa-cd-hover-preview"></div>
+
+    {{-- Comparison CD modal (loads /purchase-master/comparison sheet editor) --}}
+    <div class="modal fade" id="toaCdModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-fullscreen">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white py-2">
+                    <h5 class="modal-title mb-0">
+                        <i class="mdi mdi-magnify"></i> Comparison Data — <span id="toaCdModalSku"></span>
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-0">
+                    <iframe id="toaCdIframe" title="Comparison data"></iframe>
                 </div>
             </div>
         </div>
@@ -1233,6 +1294,13 @@
                     .replace(/&/g, '&amp;')
                     .replace(/"/g, '&quot;')
                     .replace(/</g, '&lt;');
+            }
+
+            function escapeHtml(s) {
+                return String(s ?? '')
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;');
             }
 
             const TOA_DATA_FIELD_META = {
@@ -1910,6 +1978,96 @@
                 }
             }
 
+            const comparisonCdBaseUrl = @json(url('/purchase-master/comparison'));
+            const toaCdHoverPreview = document.getElementById('toa-cd-hover-preview');
+            const toaCdModalEl = document.getElementById('toaCdModal');
+            const toaCdIframe = document.getElementById('toaCdIframe');
+
+            function isToaGoogleSheetUrl(url) {
+                return /^https?:\/\/(docs|sheets)\.google\.com\/spreadsheets/i.test(String(url || '').trim());
+            }
+
+            function buildToaCdHoverHtml(row) {
+                const clink = String(row.clink || row.Clink || '').trim();
+                const clinkIsSheet = !!row.clink_is_sheet || isToaGoogleSheetUrl(clink);
+                const lmpPrice = row.lmp_price;
+                const count = parseInt(row.lmp_entries_total, 10) || 0;
+                const hasSheet = !!row.has_sheet_data;
+                const supplierCount = parseInt(row.sheet_supplier_count, 10) || 0;
+                const sheetSku = row.sheet_sku || row.SKU;
+
+                let sheetLabel = 'No sheet saved';
+                if (hasSheet) {
+                    sheetLabel = supplierCount + ' supplier column(s) saved';
+                    if (sheetSku && sheetSku !== row.SKU) {
+                        sheetLabel += ` (shared from ${sheetSku})`;
+                    }
+                } else if (clinkIsSheet) {
+                    sheetLabel = 'C link sheet ready — click to load';
+                }
+
+                let html = '';
+                html += `<div><span class="cd-hover-label">Sheet:</span> ${sheetLabel}</div>`;
+                html += `<div><span class="cd-hover-label">C link:</span> ${clink ? escapeHtml(clink) : '—'}</div>`;
+                html += `<div><span class="cd-hover-label">LMP:</span> ${lmpPrice ? '$' + parseFloat(lmpPrice).toFixed(2) : 'N/A'}</div>`;
+                html += `<div><span class="cd-hover-label">Competitors:</span> ${count}</div>`;
+                html += `<div class="mt-1 text-white-50">Click to view and edit</div>`;
+                return html;
+            }
+
+            function showToaCdHover(event, row) {
+                if (!toaCdHoverPreview) return;
+                toaCdHoverPreview.innerHTML = buildToaCdHoverHtml(row);
+                toaCdHoverPreview.style.display = 'block';
+                positionToaCdHover(event);
+            }
+
+            function positionToaCdHover(event) {
+                if (!toaCdHoverPreview) return;
+                const offset = 12;
+                let left = event.clientX + offset;
+                let top = event.clientY + offset;
+                const rect = toaCdHoverPreview.getBoundingClientRect();
+                if (left + rect.width > window.innerWidth - 8) {
+                    left = event.clientX - rect.width - offset;
+                }
+                if (top + rect.height > window.innerHeight - 8) {
+                    top = event.clientY - rect.height - offset;
+                }
+                toaCdHoverPreview.style.left = `${Math.max(8, left)}px`;
+                toaCdHoverPreview.style.top = `${Math.max(8, top)}px`;
+            }
+
+            function hideToaCdHover() {
+                if (toaCdHoverPreview) {
+                    toaCdHoverPreview.style.display = 'none';
+                }
+            }
+
+            function openToaComparisonCd(rowData) {
+                const sku = String(rowData?.SKU || '').trim();
+                if (!sku || !toaCdIframe) return;
+
+                hideToaCdHover();
+                const parent = String(rowData?.Parent || '').trim();
+                const params = new URLSearchParams({ cd_only: '1', sku: sku });
+                if (parent) {
+                    params.set('parent', parent);
+                }
+
+                document.getElementById('toaCdModalSku').textContent = sku;
+                toaCdIframe.src = `${comparisonCdBaseUrl}?${params.toString()}`;
+                bootstrap.Modal.getOrCreateInstance(toaCdModalEl).show();
+            }
+
+            if (toaCdModalEl) {
+                toaCdModalEl.addEventListener('hidden.bs.modal', function () {
+                    if (toaCdIframe) {
+                        toaCdIframe.src = 'about:blank';
+                    }
+                });
+            }
+
             const table = new Tabulator("#toOrderAnalysis-table", {
                 ajaxURL: "/to-order-analysis/data",
                 ajaxConfig: {
@@ -2436,6 +2594,49 @@
                             html += "</div>";
                             return html;
                         }
+                    },
+                    {
+                        title: "CD",
+                        field: "cd_view",
+                        hozAlign: "center",
+                        headerSort: false,
+                        headerTooltip: "Comparison Data",
+                        width: 60,
+                        formatter: function (cell) {
+                            const row = cell.getRow().getData();
+                            if (row.is_parent) {
+                                return '<span class="text-muted">—</span>';
+                            }
+
+                            const hasSheet = !!row.has_sheet_data;
+                            const clink = String(row.clink || row.Clink || '').trim();
+                            const clinkIsSheet = !!row.clink_is_sheet || /^https?:\/\/(docs|sheets)\.google\.com\/spreadsheets/i.test(clink);
+                            const sharedFrom = row.sheet_sku && row.sheet_sku !== row.SKU ? row.sheet_sku : '';
+                            const title = hasSheet
+                                ? (sharedFrom
+                                    ? `View/edit shared comparison sheet (latest from ${sharedFrom})`
+                                    : 'View/edit comparison sheet')
+                                : (clinkIsSheet ? 'Load comparison sheet from C link' : 'View comparison data');
+                            const color = hasSheet ? '#16a34a' : (clinkIsSheet ? '#d97706' : '#2563eb');
+
+                            return `<div class="toa-cd-cell" role="button" tabindex="0" title="${escapeHtmlAttr(title)}" aria-label="${escapeHtmlAttr(title)}">
+                                <i class="mdi mdi-magnify" style="font-size:18px;color:${color};line-height:1;"></i>
+                            </div>`;
+                        },
+                        cellMouseEnter: function (e, cell) {
+                            showToaCdHover(e, cell.getRow().getData());
+                        },
+                        cellMouseMove: function (e) {
+                            positionToaCdHover(e);
+                        },
+                        cellMouseLeave: function () {
+                            hideToaCdHover();
+                        },
+                        cellClick: function (e, cell) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            openToaComparisonCd(cell.getRow().getData());
+                        },
                     },
                     {
                         title: "Review",

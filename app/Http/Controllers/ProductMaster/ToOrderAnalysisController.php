@@ -14,6 +14,7 @@ use App\Models\ToOrderAnalysis;
 use App\Models\ToOrderPreChecklist;
 use App\Models\ToOrderReview;
 use App\Models\AmazonSkuCompetitor;
+use App\Models\ComparisonData;
 use App\Services\LinkedSkuGroupService;
 use App\Services\PurchasePageExecService;
 use Illuminate\Http\Request;
@@ -627,6 +628,7 @@ class ToOrderAnalysisController extends Controller
 
             $this->attachToOrderPreChecklists($processedData);
             $this->attachCategorySupplierCounts($processedData, $categorySupplierCountMap);
+            $this->attachComparisonCdFields($processedData);
 
             return response()->json([
                 'data' => $processedData,
@@ -700,6 +702,97 @@ class ToOrderAnalysisController extends Controller
             'lmp_link' => $lowestLmp->product_link ?? null,
             'lmp_entries_total' => $lmpEntries->count(),
         ];
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $rows
+     */
+    private function attachComparisonCdFields(array &$rows): void
+    {
+        $skuList = collect($rows)
+            ->pluck('SKU')
+            ->map(fn ($sku) => trim((string) $sku))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($skuList === []) {
+            return;
+        }
+
+        $sheetBySku = ComparisonData::query()
+            ->whereIn('sku', $skuList)
+            ->get(['sku', 'sheet_data'])
+            ->keyBy(fn ($row) => strtoupper(trim((string) $row->sku)));
+
+        foreach ($rows as &$row) {
+            $sku = trim((string) ($row['SKU'] ?? ''));
+            $skuKey = strtoupper($sku);
+            $clink = trim((string) ($row['Clink'] ?? ''));
+            $record = $sheetBySku->get($skuKey);
+            $cells = is_array($record?->sheet_data['cells'] ?? null) ? $record->sheet_data['cells'] : [];
+            $hasSheet = $this->comparisonSheetHasContent($cells);
+
+            $row['has_sheet_data'] = $hasSheet;
+            $row['sheet_sku'] = $sku;
+            $row['clink'] = $clink;
+            $row['clink_is_sheet'] = $this->isComparisonGoogleSheetUrl($clink);
+            $row['sheet_supplier_count'] = $hasSheet ? $this->countComparisonSupplierColumns($cells) : 0;
+        }
+        unset($row);
+    }
+
+    private function isComparisonGoogleSheetUrl(string $url): bool
+    {
+        return (bool) preg_match('/^https?:\/\/(docs|sheets)\.google\.com\/spreadsheets/i', trim($url));
+    }
+
+    /**
+     * @param  array<int, array<int, string>>  $cells
+     */
+    private function comparisonSheetHasContent(array $cells): bool
+    {
+        foreach ($cells as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            foreach ($row as $value) {
+                if (trim((string) $value) !== '') {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  array<int, array<int, string>>  $cells
+     */
+    private function countComparisonSupplierColumns(array $cells): int
+    {
+        if ($cells === []) {
+            return 0;
+        }
+
+        $headerRow = null;
+        foreach ($cells as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $joined = strtolower(implode(' ', $row));
+            if (str_contains($joined, 'person name review') || str_contains($joined, 'product photo')) {
+                $headerRow = $row;
+                break;
+            }
+        }
+
+        if ($headerRow === null) {
+            $headerRow = $cells[0] ?? [];
+        }
+
+        return count(array_filter($headerRow, fn ($value) => trim((string) $value) !== ''));
     }
 
     /**
