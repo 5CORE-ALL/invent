@@ -1208,10 +1208,18 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function comparisonBulkEditPayload() {
-        if (!Array.isArray(comparisonBulkEditSkus) || comparisonBulkEditSkus.length <= 1) {
+        if (!Array.isArray(comparisonBulkEditSkus) || comparisonBulkEditSkus.length === 0) {
             return [];
         }
         return comparisonBulkEditSkus.filter(Boolean);
+    }
+
+    function sheetSaveTargetSkus(row) {
+        const bulk = comparisonBulkEditPayload();
+        if (bulk.length) {
+            return bulk;
+        }
+        return linkedSkusForRow(row);
     }
 
     function getSelectedComparisonRows() {
@@ -1225,9 +1233,10 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function resolveComparisonBulkEditSkus(rowData, tabulatorRow) {
-        const selected = getSelectedComparisonRows();
-        const selectedSkus = selected.map(r => r.getData().sku).filter(Boolean);
-        if (selectedSkus.length > 1 && tabulatorRow?.isSelected?.()) {
+        const selectedSkus = getSelectedComparisonRows()
+            .map(r => r.getData().sku)
+            .filter(Boolean);
+        if (selectedSkus.length >= 1 && tabulatorRow?.isSelected?.()) {
             return selectedSkus;
         }
         return null;
@@ -3012,7 +3021,7 @@ document.addEventListener('DOMContentLoaded', function () {
             body: JSON.stringify({
                 sku: currentCdRow.sku,
                 parent: currentCdRow.parent || '',
-                linked_skus: linkedSkusForRow(currentCdRow),
+                linked_skus: sheetSaveTargetSkus(currentCdRow),
                 bulk_edit_skus: comparisonBulkEditPayload(),
                 cells: cells,
                 formats: currentSheetFormats,
@@ -3679,7 +3688,7 @@ document.addEventListener('DOMContentLoaded', function () {
             body: JSON.stringify({
                 sku: currentCdRow.sku,
                 parent: currentCdRow.parent || '',
-                linked_skus: linkedSkusForRow(currentCdRow),
+                linked_skus: sheetSaveTargetSkus(currentCdRow),
                 bulk_edit_skus: comparisonBulkEditPayload(),
                 channel: row.channel,
                 field,
@@ -4303,13 +4312,15 @@ document.addEventListener('DOMContentLoaded', function () {
         let badgeText = row.sheet_sku && row.sheet_sku !== row.sku
             ? `${row.sku} (sheet: ${row.sheet_sku})`
             : (row.sku || '');
-        if (Array.isArray(comparisonBulkEditSkus) && comparisonBulkEditSkus.length > 1) {
-            badgeText = `Bulk edit: ${comparisonBulkEditSkus.length} SKUs (${comparisonBulkEditSkus.slice(0, 3).join(', ')}${comparisonBulkEditSkus.length > 3 ? '…' : ''})`;
+        if (Array.isArray(comparisonBulkEditSkus) && comparisonBulkEditSkus.length >= 1) {
+            badgeText = comparisonBulkEditSkus.length === 1
+                ? `Edit selected: ${comparisonBulkEditSkus[0]}`
+                : `Bulk edit: ${comparisonBulkEditSkus.length} selected SKUs (${comparisonBulkEditSkus.slice(0, 3).join(', ')}${comparisonBulkEditSkus.length > 3 ? '…' : ''})`;
         }
         if (skuBadge) {
             skuBadge.textContent = badgeText;
-            skuBadge.title = Array.isArray(comparisonBulkEditSkus) && comparisonBulkEditSkus.length > 1
-                ? `Changes save to: ${comparisonBulkEditSkus.join(', ')}`
+            skuBadge.title = Array.isArray(comparisonBulkEditSkus) && comparisonBulkEditSkus.length >= 1
+                ? `Changes save to selected only: ${comparisonBulkEditSkus.join(', ')}`
                 : (row.sheet_sku && row.sheet_sku !== row.sku
                     ? `Shared comparison sheet from linked SKU ${row.sheet_sku}`
                     : '');
@@ -4565,7 +4576,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 throw new Error(res.message || 'Could not link selected SKUs.');
             }
             applyAffectedLinkedSkuRows(res.affected);
-            showComparisonToast('success', selectedSkus.length + ' SKUs linked as related.');
+            showComparisonToast('success', selectedSkus.length + ' selected SKUs linked as related.');
         })
         .catch(function (err) {
             alert(err.message || 'Could not link selected SKUs.');
@@ -5151,7 +5162,9 @@ document.addEventListener('DOMContentLoaded', function () {
         columns: [
             {
                 formatter: 'rowSelection',
-                titleFormatter: 'rowSelection',
+                titleFormatter: function () {
+                    return '';
+                },
                 hozAlign: 'center',
                 headerHozAlign: 'center',
                 headerSort: false,

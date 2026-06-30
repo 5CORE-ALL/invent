@@ -1754,17 +1754,16 @@ class ComparisonController extends Controller
      */
     private function persistSkuTargets(string $primarySku, array $linkedSkus, array $bulkEditSkus = []): array
     {
-        $targets = $this->normalizeSkuGroup($primarySku, $linkedSkus);
+        $bulkEditSkus = array_values(array_unique(array_filter(array_map(
+            fn ($sku) => trim((string) $sku),
+            $bulkEditSkus
+        ))));
 
-        foreach ($bulkEditSkus as $sku) {
-            $sku = trim((string) $sku);
-            if ($sku === '') {
-                continue;
-            }
-            $targets = array_merge($targets, $this->normalizeSkuGroup($sku, []));
+        if ($bulkEditSkus !== []) {
+            return $bulkEditSkus;
         }
 
-        return array_values(array_unique(array_filter(array_map('trim', $targets))));
+        return $this->normalizeSkuGroup($primarySku, $linkedSkus);
     }
 
     /**
