@@ -10,6 +10,7 @@ use App\Models\ReadyToShip;
 use App\Models\Supplier;
 use App\Models\SupplierRemark;
 use App\Services\PurchasePageExecService;
+use App\Services\ToOrderSupplierSync;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
@@ -804,6 +805,15 @@ class MFRGInProgressController extends Controller
                 'success' => false,
                 'message' => 'Save failed: '.$e->getMessage(),
             ], 500);
+        }
+
+        // /forecast.analysis displays supplier from to_order_analysis.supplier_name
+        // when set, so keep that table in sync whenever MIP supplier is edited here.
+        if ($column === 'supplier') {
+            ToOrderSupplierSync::syncFromMfrg(
+                (string) ($progress->sku ?? $skuKey ?? ''),
+                $value
+            );
         }
 
         return response()->json(['success' => true]);
