@@ -32,12 +32,12 @@ foreach ($size in @(16, 32, 48, 256)) {
 Copy-Item (Join-Path $assets 'icon-32.png') (Join-Path $assets 'tray-icon.png') -Force
 Copy-Item (Join-Path $assets 'icon-256.png') (Join-Path $assets 'icon.png') -Force
 
-$icon32 = [System.Drawing.Bitmap]::FromFile((Join-Path $assets 'icon-32.png'))
-$hIcon = $icon32.GetHicon()
+$icon256 = [System.Drawing.Bitmap]::FromFile((Join-Path $assets 'icon-256.png'))
+$hIcon = $icon256.GetHicon()
 $icon = [System.Drawing.Icon]::FromHandle($hIcon)
 $fs = [System.IO.File]::Create((Join-Path $assets 'icon.ico'))
 $icon.Save($fs)
 $fs.Close()
-$icon32.Dispose()
+$icon256.Dispose()
 
 Write-Host 'Generated icons in' $assets
