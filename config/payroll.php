@@ -18,6 +18,7 @@ return [
     'sheet_admin_emails' => [
         'president@5core.com',
         'hr@5core.com',
+        'software5@5core.com',
     ],
 
     /*
