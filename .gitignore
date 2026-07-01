@@ -11,6 +11,10 @@
 /vendor
 /node_modules
 
+# Attendance desktop agent (Electron build output + dependencies)
+/attendance-agent/node_modules/
+/attendance-agent/dist/
+
 # Ignore compiled files
 /public/hot
 /public/storage

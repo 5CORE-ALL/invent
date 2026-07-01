@@ -247,6 +247,14 @@ class LinkedSkuGroupService
     }
 
     /**
+     * Set C link on a single SKU only (no linked-group propagation).
+     */
+    public function setClinkForSku(string $sku, string $clink): void
+    {
+        $this->upsertClinkForSku($sku, $clink);
+    }
+
+    /**
      * @param  list<string>  $linkedSkus
      * @return list<array{sku: string, clink: string}>
      */

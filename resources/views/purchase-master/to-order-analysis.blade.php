@@ -79,6 +79,15 @@
         .toa-columns-menu .form-check { margin-bottom: 3px; }
         .toa-columns-menu .form-check-label { cursor: pointer; }
 
+        /* Bulk Edit modal — searchable Select2 dropdowns */
+        #toaActionModal .select2-container--bootstrap-5 .select2-selection {
+            min-height: 31px;
+            font-size: 0.875rem;
+        }
+        #toaActionModal .select2-container--bootstrap-5 .select2-search--dropdown .select2-search__field {
+            font-size: 0.875rem;
+        }
+
         .tabulator .tabulator-header {
             background: linear-gradient(90deg, #D8F3F3 0%, #D8F3F3 100%);
             border-bottom: 1px solid #403f3f;
@@ -1124,7 +1133,7 @@
                         </div>
                         <div class="col-md-6">
                             <label class="form-label fw-semibold">Supplier</label>
-                            <select id="toa-action-supplier" class="form-select form-select-sm">
+                            <select id="toa-action-supplier" class="form-select form-select-sm toa-action-select2" data-placeholder="— Keep current —">
                                 <option value="">— Keep current —</option>
                                 @foreach($allSuppliers ?? [] as $s)
                                     <option value="{{ $s }}">{{ $s }}</option>
@@ -1133,13 +1142,13 @@
                         </div>
                         <div class="col-md-6">
                             <label class="form-label fw-semibold">Category</label>
-                            <select id="toa-action-category" class="form-select form-select-sm">
+                            <select id="toa-action-category" class="form-select form-select-sm toa-action-select2" data-placeholder="— Keep current —">
                                 <option value="">— Keep current —</option>
                                 @foreach($allCategories ?? [] as $catName)
                                     <option value="{{ $catName }}">{{ $catName }}</option>
                                 @endforeach
                             </select>
-                            <div class="form-text small">Updates the supplier&rsquo;s category (row must have a supplier set).</div>
+                            <div class="form-text small">Type to search categories. Applies only to the selected row(s).</div>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label fw-semibold">Executive</label>
@@ -1909,7 +1918,13 @@
                         "Accept": "application/json",
                         "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content,
                     },
-                    body: JSON.stringify({ sku: sku, column: "approved_qty", value: newValue }),
+                    body: JSON.stringify({
+                        sku: sku,
+                        parent: rowData.Parent || "",
+                        column: "approved_qty",
+                        value: newValue,
+                        sku_only: true,
+                    }),
                 });
                 const data = await res.json();
                 if (!data.success) {
@@ -2717,7 +2732,7 @@
                         field: "Category",
                         width: 120,
                         minWidth: 90,
-                        headerTooltip: "Category (from the supplier)",
+                        headerTooltip: "Category (per SKU, or from supplier when not set)",
                         formatter: function (cell) {
                             const v = (cell.getValue() || "").trim();
                             return v ? v : '<span class="text-muted">—</span>';
@@ -3244,6 +3259,10 @@
                             e.stopPropagation();
                             e.preventDefault();
                             openToaActionModal(cell.getRow());
+                        },
+                        cellMouseDown: function (e, cell) {
+                            if (!e.target.closest('.toa-row-action-btn')) return;
+                            e.stopPropagation();
                         }
                     },
                 ],
@@ -3290,7 +3309,23 @@
 
             let toaBulkSelectionCache = [];
             let toaActionPendingTargets = null;
-            const toaActionModalState = { currentRows: [], bsModal: null, initialized: false };
+            const toaActionModalState = { currentRows: [], bsModal: null, initialized: false, applyCompleted: false };
+
+            function restoreToaRowSelection(rows) {
+                if (!table || !rows || !rows.length) return;
+                rows.forEach(function (row) {
+                    if (row && isToaSelectableRow(row)) {
+                        row.select();
+                    }
+                });
+            }
+
+            function syncToaBulkEditUiFromModalTargets() {
+                if (!toaActionModalState.currentRows.length) return;
+                restoreToaRowSelection(toaActionModalState.currentRows);
+                toaBulkSelectionCache = dedupeToaRows(toaActionModalState.currentRows);
+                updateToaBulkEditBadge();
+            }
 
             function openToaActionModal(clickedRow) {
                 if (!clickedRow || !toaActionModalState.initialized || !toaActionModalState.bsModal) return;
@@ -3300,6 +3335,8 @@
                     ? toaActionPendingTargets
                     : getToaBulkTargetRows(sku, [clickedRow]);
                 toaActionPendingTargets = null;
+                toaActionModalState.applyCompleted = false;
+                toaBulkSelectionCache = dedupeToaRows(toaActionModalState.currentRows);
 
                 const $supplierSel = $('#toa-action-supplier');
                 const $execSel = $('#toa-action-executive');
@@ -3321,14 +3358,22 @@
                     $('#toa-action-doa').val(toaDateInputValue(d['Date of Appr']));
                 }
 
+                syncToaBulkEditUiFromModalTargets();
                 toaActionModalState.bsModal.show();
+                setTimeout(syncToaBulkEditUiFromModalTargets, 0);
+                requestAnimationFrame(syncToaBulkEditUiFromModalTargets);
             }
 
             function updateToaBulkEditBadge() {
                 const badge = document.getElementById('toa-bulk-edit-badge');
                 const countEl = document.getElementById('toa-bulk-edit-count');
                 if (!badge || !countEl) return;
-                const n = getToaActiveSelectedRows().length;
+                const modalEl = document.getElementById('toaActionModal');
+                const modalOpen = modalEl && modalEl.classList.contains('show');
+                let n = getToaActiveSelectedRows().length;
+                if (modalOpen && toaActionModalState.currentRows.length) {
+                    n = toaActionModalState.currentRows.length;
+                }
                 if (n > 0) {
                     badge.classList.remove('d-none');
                     badge.classList.add('d-flex');
@@ -3521,7 +3566,13 @@
                     const d = row.getData();
                     const sku = String(d.SKU || '').trim();
                     if (!sku || sku.startsWith('PARENT')) continue;
-                    const payload = { sku: sku, column: column, value: value };
+                    const payload = {
+                        sku: sku,
+                        parent: d.Parent || '',
+                        column: column,
+                        value: value,
+                        sku_only: true,
+                    };
                     if (column === 'Reviews') payload.parent = d.Parent || '';
                     try {
                         const res = await fetch('/update-link', {
@@ -3572,9 +3623,43 @@
             }
 
             function resetToaActionModalFields() {
-                $('#toa-action-supplier, #toa-action-executive, #toa-action-stage, #toa-action-nrp, #toa-action-category').val('');
+                const selectIds = ['#toa-action-supplier', '#toa-action-executive', '#toa-action-stage', '#toa-action-nrp', '#toa-action-category'];
+                selectIds.forEach(function (sel) {
+                    const $el = $(sel);
+                    $el.val('');
+                    if ($el.hasClass('select2-hidden-accessible')) {
+                        $el.trigger('change');
+                    }
+                });
                 $('#toa-action-moq, #toa-action-doa, #toa-action-adv-date, #toa-action-clink').val('');
                 $('#toa-action-reviews, #toa-action-item-pkg, #toa-action-ctn-instr, #toa-action-carton-design').val('');
+            }
+
+            function initToaActionSelect2Search() {
+                const $modal = $('#toaActionModal');
+                $modal.find('select.toa-action-select2').each(function () {
+                    const $sel = $(this);
+                    if ($sel.hasClass('select2-hidden-accessible')) {
+                        return;
+                    }
+                    $sel.select2({
+                        theme: 'bootstrap-5',
+                        width: '100%',
+                        dropdownParent: $modal,
+                        placeholder: $sel.data('placeholder') || '— Keep current —',
+                        allowClear: true,
+                        minimumResultsForSearch: 0,
+                    });
+                });
+            }
+
+            function destroyToaActionSelect2Search() {
+                $('#toaActionModal select.toa-action-select2').each(function () {
+                    const $sel = $(this);
+                    if ($sel.hasClass('select2-hidden-accessible')) {
+                        $sel.select2('destroy');
+                    }
+                });
             }
 
             function toaActionHasAnyField() {
@@ -3632,18 +3717,21 @@
                     if (!res || !res.success) {
                         throw new Error((res && res.message) ? res.message : 'Category update failed');
                     }
+                    const appliedSkus = new Set((res.applied_skus || []).map(function (s) {
+                        return String(s || '').trim().toUpperCase();
+                    }));
                     rows.forEach(function (row) {
                         const sku = (row.getData().SKU || '').trim().toUpperCase();
-                        if (skus.includes(sku)) {
+                        if (appliedSkus.has(sku)) {
                             row.update({ Category: categoryName }, true);
                         }
                     });
                     return {
-                        ok: res.updated || 0,
+                        ok: res.rows_succeeded || 0,
                         skipped: rows.length - skus.length,
                         noSupplier: res.skipped_no_supplier || 0,
                         notFound: res.skipped_supplier_not_found || 0,
-                        message: res.message
+                        message: res.message || ''
                     };
                 });
             }
@@ -3711,6 +3799,11 @@
             });
 
             table.on("rowSelectionChanged", function(data, rows) {
+                const modalEl = document.getElementById('toaActionModal');
+                if (modalEl && modalEl.classList.contains('show') && toaActionModalState.currentRows.length) {
+                    setTimeout(syncToaBulkEditUiFromModalTargets, 0);
+                    return;
+                }
                 toaBulkSelectionCache = getToaActiveSelectedRows();
                 updateToaBulkEditBadge();
             });
@@ -3761,6 +3854,20 @@
                 const $execSel     = $('#toa-action-executive');
                 const $stageSel    = $('#toa-action-stage');
                 const applyBtn     = document.getElementById('toa-action-apply-btn');
+
+                $(modalEl).off('shown.bs.modal.toaActionSelect2 hidden.bs.modal.toaActionSelect2')
+                    .on('shown.bs.modal.toaActionSelect2', function () {
+                        setTimeout(initToaActionSelect2Search, 50);
+                        syncToaBulkEditUiFromModalTargets();
+                    })
+                    .on('hidden.bs.modal.toaActionSelect2', function () {
+                        destroyToaActionSelect2Search();
+                        resetToaActionModalFields();
+                        if (!toaActionModalState.applyCompleted && toaActionModalState.currentRows.length) {
+                            syncToaBulkEditUiFromModalTargets();
+                        }
+                        toaActionModalState.applyCompleted = false;
+                    });
 
                 $(applyBtn).off('click.toaActionApply').on('click.toaActionApply', async function () {
                     const currentRows = toaActionModalState.currentRows;
@@ -3814,10 +3921,7 @@
                         }
                         if (categoryVal) {
                             const res = await applyCategoryToRows(currentRows, categoryVal);
-                            let line = 'Category → ' + categoryVal + ': ' + res.ok + ' supplier(s) updated';
-                            if (res.noSupplier) line += ' • ' + res.noSupplier + ' row(s) with no supplier skipped';
-                            if (res.notFound) line += ' • ' + res.notFound + ' supplier(s) not found';
-                            summary.push(line);
+                            summary.push(res.message || ('Category → ' + categoryVal + ': ' + res.ok + ' row(s)'));
                         }
                         if (execVal) {
                             const res = await applyExecutiveToRows(currentRows, execVal);
@@ -3878,9 +3982,11 @@
                             summary.push(line);
                         }
 
+                        toaActionModalState.applyCompleted = true;
                         toaActionModalState.bsModal.hide();
                         table.deselectRow();
                         toaBulkSelectionCache = [];
+                        toaActionModalState.currentRows = [];
                         updateToaBulkEditBadge();
                         alert('Done.\n\n' + summary.join('\n'));
                     } catch (err) {

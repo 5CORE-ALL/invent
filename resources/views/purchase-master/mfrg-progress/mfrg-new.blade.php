@@ -1069,6 +1069,12 @@
                               .then(r => { if (!r || !r.success) alert((r && r.message) || 'Could not save supplier.'); })
                               .catch(err => { alert('Could not save supplier: ' + (err && err.message ? err.message : err)); });
                       } },
+                    { title: "Category", field: "Category", width: 120, hozAlign: "center",
+                      headerTooltip: "Category (per SKU, or from supplier when not set)",
+                      formatter: function (cell) {
+                          const v = (cell.getValue() || "").trim();
+                          return v ? v : '<span class="text-muted">—</span>';
+                      } },
                     { title: "SKU", field: "sku", width: 190,
                       formatter: function (cell) {
                           const v = cell.getValue() || '';

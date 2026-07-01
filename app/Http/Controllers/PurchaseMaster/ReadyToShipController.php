@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\MfrgProgress;
 use App\Models\ReadyToShip;
 use App\Services\ReadyToShipPackingListSheetService;
+use App\Services\SupplierCategorySync;
+use App\Services\ToOrderSupplierSync;
 use App\Models\Supplier;
 use App\Models\TransitContainerDetail;
 use Illuminate\Http\Request;
@@ -207,11 +209,31 @@ class ReadyToShipController extends Controller
             }
         }
 
-        // Same source as Forecast Analysis "Supplier" column (mfrg_supplier): mfrg_progress.supplier
+        // Canonical supplier per SKU: to_order_analysis first, then mfrg_progress (matches forecast.analysis).
+        $canonicalSupplierBySku = [];
+        foreach (DB::table('to_order_analysis')
+            ->whereNull('deleted_at')
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id')
+            ->get(['sku', 'supplier_name']) as $toRow) {
+            $ns = $normalizeSku($toRow->sku ?? '');
+            if ($ns === '' || isset($canonicalSupplierBySku[$ns])) {
+                continue;
+            }
+            if ($toRow->supplier_name !== null) {
+                $canonicalSupplierBySku[$ns] = trim((string) $toRow->supplier_name);
+            }
+        }
+
         $mfrgSuppliersBySku = [];
-        foreach (MfrgProgress::query()->select('sku', 'supplier')->cursor() as $mfrgRow) {
+        foreach (MfrgProgress::query()
+            ->select('sku', 'supplier')
+            ->whereNull('deleted_at')
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id')
+            ->cursor() as $mfrgRow) {
             $ns = $normalizeSku($mfrgRow->sku ?? '');
-            if ($ns !== '') {
+            if ($ns !== '' && ! isset($mfrgSuppliersBySku[$ns])) {
                 $mfrgSuppliersBySku[$ns] = trim((string) ($mfrgRow->supplier ?? ''));
             }
         }
@@ -241,7 +263,11 @@ class ReadyToShipController extends Controller
             return self::readyToShipRowBelongsOnPage($item, $forecast);
         });
 
-        $readyToShipData->transform(function ($item) use ($supplierMapByParent, $productMaster, $forecastData, $normalizeSku, $mfrgSuppliersBySku, $shopifyImageByKey) {
+        $categoryBySku = SupplierCategorySync::resolveCategoryMapForSkus(
+            $readyToShipData->map(fn ($item) => $normalizeSku($item->sku ?? ''))->filter()->unique()->values()->all()
+        );
+
+        $readyToShipData->transform(function ($item) use ($supplierMapByParent, $productMaster, $forecastData, $normalizeSku, $mfrgSuppliersBySku, $canonicalSupplierBySku, $shopifyImageByKey, $categoryBySku) {
             $sku = $normalizeSku($item->sku);
             $parent = strtoupper(trim($item->parent ?? ''));
             $item->supplier_names = $supplierMapByParent[$parent] ?? [];
@@ -304,7 +330,10 @@ class ReadyToShipController extends Controller
             $item->nr = $nr;
             $item->order_qty = $item->qty; // Add order_qty field for validation
 
-            $item->mfrg_supplier = $mfrgSuppliersBySku[$sku] ?? '';
+            $item->mfrg_supplier = array_key_exists($sku, $canonicalSupplierBySku)
+                ? $canonicalSupplierBySku[$sku]
+                : ($mfrgSuppliersBySku[$sku] ?? trim((string) ($item->supplier ?? '')));
+            $item->Category = $categoryBySku[$sku] ?? '';
             $item->CBM = $cbm;
             $item->CP = $cp;
             $item->Image = ! empty($image) ? $image : null;
@@ -590,6 +619,25 @@ class ReadyToShipController extends Controller
             'supplier_sku',
         ])) {
             return response()->json(['success' => false, 'message' => 'Invalid column.']);
+        }
+
+        if ($column === 'supplier') {
+            try {
+                ToOrderSupplierSync::setSupplierForSku(
+                    $normalizedSku,
+                    $value,
+                    (string) ($item->parent ?? '')
+                );
+            } catch (\Throwable $e) {
+                Log::warning('r2s.inlineUpdateBySku.supplier_sync_failed', [
+                    'sku' => $normalizedSku,
+                    'message' => $e->getMessage(),
+                ]);
+
+                return response()->json(['success' => false, 'message' => 'Save failed: '.$e->getMessage()], 500);
+            }
+
+            return response()->json(['success' => true]);
         }
 
         if ($column === 'pay_term') {
