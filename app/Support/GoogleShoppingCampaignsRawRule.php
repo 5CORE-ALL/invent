@@ -25,7 +25,6 @@ final class GoogleShoppingCampaignsRawRule
             ['acos_from' => 30, 'acos_to' => 40, 'sbgt' => 5, 'label' => 'Fair', 'color' => '#ca8a04'],
             ['acos_from' => 20, 'acos_to' => 30, 'sbgt' => 10, 'label' => 'Good', 'color' => '#22c55e'],
             ['acos_from' => 0.01, 'acos_to' => 20, 'sbgt' => 20, 'label' => 'Excellent', 'color' => '#16a34a'],
-            ['acos_from' => 0.001, 'acos_to' => 0.009, 'sbgt' => 20, 'label' => 'Below min', 'color' => '#6c757d'],
             ['acos_from' => 0, 'acos_to' => 0, 'sbgt' => 3, 'label' => 'Zero ACOS', 'color' => '#6c757d'],
         ];
     }
@@ -267,7 +266,9 @@ final class GoogleShoppingCampaignsRawRule
 
         usort($out, fn ($a, $b) => $b['acos_from'] <=> $a['acos_from']);
 
-        return $out;
+        return array_values(array_filter($out, static function (array $band): bool {
+            return stripos((string) ($band['label'] ?? ''), 'below min') === false;
+        }));
     }
 
     /**
@@ -355,7 +356,6 @@ final class GoogleShoppingCampaignsRawRule
         $gt = (float) $sbgt['gt'];
         $geLow = (float) $sbgt['ge_low'];
         $leZero = (float) $sbgt['le_zero'];
-        $belowMinTo = max($leZero + 0.001, $geLow - 0.001);
 
         return [
             [
@@ -399,13 +399,6 @@ final class GoogleShoppingCampaignsRawRule
                 'sbgt' => (int) $sbgt['val_low'],
                 'label' => 'Excellent',
                 'color' => '#16a34a',
-            ],
-            [
-                'acos_from' => round($leZero + 0.001, 3),
-                'acos_to' => $belowMinTo,
-                'sbgt' => (int) $sbgt['val_else'],
-                'label' => 'Below min',
-                'color' => '#6c757d',
             ],
             [
                 'acos_from' => $leZero,
@@ -452,10 +445,20 @@ final class GoogleShoppingCampaignsRawRule
             return null;
         }
 
+        $bestLowBand = null;
         foreach ($bands as $band) {
-            if (stripos((string) ($band['label'] ?? ''), 'below') !== false) {
-                return (int) ($band['sbgt'] ?? 0);
+            $from = (float) ($band['acos_from'] ?? 0);
+            $to = (float) ($band['acos_to'] ?? 0);
+            if ($from === $to && $from === 0.0) {
+                continue;
             }
+            if ($bestLowBand === null || $from < (float) ($bestLowBand['acos_from'] ?? 0)) {
+                $bestLowBand = $band;
+            }
+        }
+
+        if ($bestLowBand !== null) {
+            return (int) ($bestLowBand['sbgt'] ?? 0);
         }
 
         $last = end($bands);
