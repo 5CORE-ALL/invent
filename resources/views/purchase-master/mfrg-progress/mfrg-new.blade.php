@@ -1070,7 +1070,7 @@
                               .catch(err => { alert('Could not save supplier: ' + (err && err.message ? err.message : err)); });
                       } },
                     { title: "Category", field: "Category", width: 120, hozAlign: "center",
-                      headerTooltip: "Category (from the supplier)",
+                      headerTooltip: "Category (per SKU, or from supplier when not set)",
                       formatter: function (cell) {
                           const v = (cell.getValue() || "").trim();
                           return v ? v : '<span class="text-muted">—</span>';

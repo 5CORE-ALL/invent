@@ -916,7 +916,7 @@
                     title: "Category",
                     field: "Category",
                     hozAlign: "center",
-                    headerTooltip: "Category (from the supplier)",
+                    headerTooltip: "Category (per SKU, or from supplier when not set)",
                     formatter: function(cell) {
                         const v = String(cell.getValue() || "").trim();
                         return v ? v : '<span class="text-muted">—</span>';

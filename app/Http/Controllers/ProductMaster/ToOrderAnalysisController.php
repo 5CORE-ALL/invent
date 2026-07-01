@@ -1136,7 +1136,7 @@ class ToOrderAnalysisController extends Controller
     }
 
     /**
-     * Bulk update supplier category for selected SKUs (updates suppliers.category_id).
+     * Bulk update category for selected SKUs (writes to_order_analysis.category_name per SKU).
      */
     public function bulkUpdateCategory(Request $request)
     {
@@ -1151,11 +1151,7 @@ class ToOrderAnalysisController extends Controller
             return response()->json(['success' => false, 'message' => 'Please select a category'], 400);
         }
 
-        $categoryId = DB::table('categories')
-            ->whereRaw('TRIM(LOWER(name)) = ?', [strtolower($categoryName)])
-            ->value('id');
-
-        if (! $categoryId) {
+        if (! DB::table('categories')->whereRaw('TRIM(LOWER(name)) = ?', [strtolower($categoryName)])->exists()) {
             return response()->json(['success' => false, 'message' => 'Unknown category: ' . $categoryName], 422);
         }
 
@@ -1168,10 +1164,9 @@ class ToOrderAnalysisController extends Controller
             return response()->json(['success' => false, 'message' => 'No valid SKUs'], 400);
         }
 
-        $updatedSuppliers = 0;
-        $skippedNoSupplier = 0;
-        $skippedSupplierNotFound = 0;
-        $updatedSupplierNames = [];
+        $rowsUpdated = 0;
+        $rowsUnchanged = 0;
+        $appliedSkus = [];
 
         try {
             foreach ($skus as $sku) {
@@ -1179,38 +1174,39 @@ class ToOrderAnalysisController extends Controller
                     $result = SupplierCategorySync::setCategoryForSku($sku, $categoryName);
                 } catch (\InvalidArgumentException $e) {
                     return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+                } catch (\RuntimeException $e) {
+                    return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
                 }
 
-                if ($result['skipped_no_supplier']) {
-                    $skippedNoSupplier++;
-                    continue;
-                }
-
-                if ($result['updated'] > 0) {
-                    $updatedSuppliers += $result['updated'];
-                    $supplierName = ToOrderSupplierSync::resolveSupplierForSku($sku);
-                    if ($supplierName !== '') {
-                        $updatedSupplierNames[strtoupper($supplierName)] = true;
+                if ($result['applied'] ?? false) {
+                    $appliedSkus[] = $sku;
+                    if ($result['unchanged'] ?? false) {
+                        $rowsUnchanged++;
+                    } else {
+                        $rowsUpdated++;
                     }
-                } elseif ($result['skipped_supplier_not_found']) {
-                    $skippedSupplierNotFound++;
                 }
             }
 
-            $msg = $updatedSuppliers . ' supplier category link(s) updated';
-            if ($skippedNoSupplier > 0) {
-                $msg .= ', ' . $skippedNoSupplier . ' row(s) skipped (no supplier)';
-            }
-            if ($skippedSupplierNotFound > 0) {
-                $msg .= ', ' . $skippedSupplierNotFound . ' row(s) skipped (supplier not found)';
+            $rowsSucceeded = $rowsUpdated + $rowsUnchanged;
+            if ($rowsSucceeded > 0) {
+                $msg = 'Category set to "'.$categoryName.'" on '.$rowsSucceeded.' row(s)';
+                if ($rowsUpdated > 0 && $rowsUnchanged > 0) {
+                    $msg .= ' ('.$rowsUpdated.' changed, '.$rowsUnchanged.' already had this category)';
+                } elseif ($rowsUnchanged > 0 && $rowsUpdated === 0) {
+                    $msg = 'Category "'.$categoryName.'" was already set on '.$rowsUnchanged.' row(s)';
+                }
+            } else {
+                $msg = 'Category could not be set on any selected row(s)';
             }
 
             return response()->json([
                 'success' => true,
-                'message' => $msg . '.',
-                'updated' => $updatedSuppliers,
-                'skipped_no_supplier' => $skippedNoSupplier,
-                'skipped_supplier_not_found' => $skippedSupplierNotFound,
+                'message' => $msg.'.',
+                'updated' => $rowsUpdated,
+                'rows_unchanged' => $rowsUnchanged,
+                'rows_succeeded' => $rowsSucceeded,
+                'applied_skus' => $appliedSkus,
             ]);
         } catch (\Throwable $e) {
             Log::error('ToOrderAnalysis bulkUpdateCategory failed', ['skus' => $skus, 'error' => $e->getMessage()]);
@@ -1299,15 +1295,6 @@ class ToOrderAnalysisController extends Controller
             ], 422);
         }
 
-        // Existing categories keyed by lowercase name for fast lookup (category is optional).
-        $categoryIdByName = [];
-        foreach (DB::table('categories')->select('id', 'name')->get() as $cat) {
-            $key = strtolower(trim((string) ($cat->name ?? '')));
-            if ($key !== '' && !isset($categoryIdByName[$key])) {
-                $categoryIdByName[$key] = $cat->id;
-            }
-        }
-
         $updated = 0;
         $created = 0;
         $skipped = 0;
@@ -1329,18 +1316,14 @@ class ToOrderAnalysisController extends Controller
 
                 $updated++;
 
-                // Apply category to the supplier record so the derived Category column updates.
-                if ($category !== '' && $supplier !== '') {
-                    $catId = $categoryIdByName[strtolower($category)] ?? null;
-                    if ($catId !== null) {
-                        $cn = (int) DB::table('suppliers')
-                            ->whereRaw('TRIM(UPPER(name)) = ?', [strtoupper($supplier)])
-                            ->update(['category_id' => $catId]);
-                        if ($cn > 0) {
-                            $categoryUpdated += $cn;
+                if ($category !== '') {
+                    try {
+                        SupplierCategorySync::setCategoryForSku($sku, $category);
+                        $categoryUpdated++;
+                    } catch (\InvalidArgumentException $e) {
+                        if (! in_array($category, $categoryUnmatched, true)) {
+                            $categoryUnmatched[] = $category;
                         }
-                    } elseif (!in_array($category, $categoryUnmatched, true)) {
-                        $categoryUnmatched[] = $category;
                     }
                 }
             }

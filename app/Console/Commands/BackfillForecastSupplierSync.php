@@ -19,7 +19,7 @@ class BackfillForecastSupplierSync extends Command
         $dryRun = (bool) $this->option('dry-run');
         $force = (bool) $this->option('force');
         $skuFilter = $this->option('sku');
-        $skuFilter = is_string($skuFilter) ? trim($skuFilter) : null;
+        $skuFilter = is_string($skuFilter) ? trim($skuFilter) : nusll;
         if ($skuFilter === '') {
             $skuFilter = null;
         }

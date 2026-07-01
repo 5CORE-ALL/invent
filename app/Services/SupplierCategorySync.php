@@ -3,10 +3,12 @@
 namespace App\Services;
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 /**
- * Category is derived from the SKU's resolved supplier (suppliers.category_id → categories.name).
- * Same read path everywhere: ToOrderSupplierSync::resolveSupplierForSku() then supplier → category map.
+ * Category for pipeline SKUs:
+ * - Write: to_order_analysis.category_name (per SKU — bulk edit affects only chosen rows)
+ * - Read: SKU override on to_order_analysis → fallback to supplier's category (suppliers.category_id)
  */
 class SupplierCategorySync
 {
@@ -47,6 +49,16 @@ class SupplierCategorySync
 
     public static function resolveCategoryForSku(string $sku, ?array $map = null): string
     {
+        $skuUpper = strtoupper(trim($sku));
+        if ($skuUpper === '') {
+            return '';
+        }
+
+        $override = self::skuCategoryOverride($skuUpper);
+        if ($override !== null) {
+            return $override;
+        }
+
         $supplier = ToOrderSupplierSync::resolveSupplierForSku($sku);
 
         return self::categoryForSupplierName($supplier, $map);
@@ -71,10 +83,139 @@ class SupplierCategorySync
             return [];
         }
 
-        $supplierBySku = self::batchResolveSupplierForSkus(array_keys($normalized));
+        $skuKeys = array_keys($normalized);
+        $overrides = self::batchSkuCategoryOverrides($skuKeys);
+        $supplierBySku = self::batchResolveSupplierForSkus(
+            array_values(array_filter($skuKeys, fn ($k) => ! isset($overrides[$k])))
+        );
+
         $out = [];
-        foreach (array_keys($normalized) as $skuKey) {
+        foreach ($skuKeys as $skuKey) {
+            if (isset($overrides[$skuKey])) {
+                $out[$skuKey] = $overrides[$skuKey];
+                continue;
+            }
             $out[$skuKey] = self::categoryForSupplierName($supplierBySku[$skuKey] ?? '', $categoryMap);
+        }
+
+        return $out;
+    }
+
+    /**
+     * Persist category on the SKU row only (does not change suppliers.category_id).
+     *
+     * @return array{updated: int, applied: bool, unchanged: bool}
+     */
+    public static function setCategoryForSku(string $sku, string $categoryName, ?string $parent = null): array
+    {
+        $skuUpper = strtoupper(trim($sku));
+        $categoryName = trim($categoryName);
+
+        if ($skuUpper === '' || $categoryName === '') {
+            return ['updated' => 0, 'applied' => false, 'unchanged' => false];
+        }
+
+        $categoryExists = DB::table('categories')
+            ->whereRaw('TRIM(LOWER(name)) = ?', [strtolower($categoryName)])
+            ->exists();
+
+        if (! $categoryExists) {
+            throw new \InvalidArgumentException('Unknown category: '.$categoryName);
+        }
+
+        if (! Schema::hasColumn('to_order_analysis', 'category_name')) {
+            throw new \RuntimeException('Missing to_order_analysis.category_name — run migrations.');
+        }
+
+        $existing = DB::table('to_order_analysis')
+            ->whereNull('deleted_at')
+            ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper])
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id')
+            ->value('category_name');
+
+        if ($existing !== null && strcasecmp(trim((string) $existing), $categoryName) === 0) {
+            return ['updated' => 0, 'applied' => true, 'unchanged' => true];
+        }
+
+        $now = now();
+        $parentTrim = $parent !== null ? trim($parent) : '';
+
+        $rowUpdated = (int) DB::table('to_order_analysis')
+            ->whereNull('deleted_at')
+            ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper])
+            ->update([
+                'category_name' => $categoryName,
+                'updated_at' => $now,
+            ]);
+
+        if ($rowUpdated === 0) {
+            DB::table('to_order_analysis')->insert([
+                'sku' => $sku,
+                'parent' => $parentTrim !== '' ? $parentTrim : null,
+                'category_name' => $categoryName,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+        }
+
+        return [
+            'updated' => $rowUpdated > 0 ? $rowUpdated : 1,
+            'applied' => true,
+            'unchanged' => false,
+        ];
+    }
+
+    private static function skuCategoryOverride(string $skuUpper): ?string
+    {
+        if (! Schema::hasColumn('to_order_analysis', 'category_name')) {
+            return null;
+        }
+
+        $rows = DB::table('to_order_analysis')
+            ->whereNull('deleted_at')
+            ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper])
+            ->whereNotNull('category_name')
+            ->whereRaw("TRIM(category_name) != ''")
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id')
+            ->get(['category_name']);
+
+        foreach ($rows as $row) {
+            $name = trim((string) ($row->category_name ?? ''));
+            if ($name !== '') {
+                return $name;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  list<string>  $skuKeys  uppercased trimmed keys
+     * @return array<string, string>
+     */
+    private static function batchSkuCategoryOverrides(array $skuKeys): array
+    {
+        if ($skuKeys === [] || ! Schema::hasColumn('to_order_analysis', 'category_name')) {
+            return [];
+        }
+
+        $wanted = array_fill_keys($skuKeys, true);
+        $out = [];
+
+        foreach (DB::table('to_order_analysis')
+            ->whereNull('deleted_at')
+            ->whereNotNull('category_name')
+            ->whereRaw("TRIM(category_name) != ''")
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id')
+            ->get(['sku', 'category_name']) as $row) {
+            $key = strtoupper(trim((string) $row->sku));
+            if ($key === '' || ! isset($wanted[$key]) || isset($out[$key])) {
+                continue;
+            }
+            $out[$key] = trim((string) $row->category_name);
         }
 
         return $out;
@@ -86,6 +227,10 @@ class SupplierCategorySync
      */
     private static function batchResolveSupplierForSkus(array $skuKeys): array
     {
+        if ($skuKeys === []) {
+            return [];
+        }
+
         $out = array_fill_keys($skuKeys, '');
 
         foreach (DB::table('to_order_analysis')
@@ -118,7 +263,7 @@ class SupplierCategorySync
         }
 
         $remaining = array_keys(array_filter($out, fn ($v) => $v === ''));
-        if ($remaining !== [] && \Illuminate\Support\Facades\Schema::hasTable('ready_to_ship')) {
+        if ($remaining !== [] && Schema::hasTable('ready_to_ship')) {
             foreach (DB::table('ready_to_ship')
                 ->whereNull('deleted_at')
                 ->whereNotNull('supplier')
@@ -134,7 +279,7 @@ class SupplierCategorySync
         }
 
         $remaining = array_keys(array_filter($out, fn ($v) => $v === ''));
-        if ($remaining !== [] && \Illuminate\Support\Facades\Schema::hasTable('transit_container_details')) {
+        if ($remaining !== [] && Schema::hasTable('transit_container_details')) {
             foreach (DB::table('transit_container_details')
                 ->whereNull('deleted_at')
                 ->whereNotNull('supplier_name')
@@ -150,43 +295,5 @@ class SupplierCategorySync
         }
 
         return $out;
-    }
-
-    /**
-     * Update suppliers.category_id for the SKU's resolved supplier.
-     *
-     * @return array{updated: int, skipped_no_supplier: bool, skipped_supplier_not_found: bool}
-     */
-    public static function setCategoryForSku(string $sku, string $categoryName): array
-    {
-        $skuUpper = strtoupper(trim($sku));
-        $categoryName = trim($categoryName);
-
-        if ($skuUpper === '' || $categoryName === '') {
-            return ['updated' => 0, 'skipped_no_supplier' => true, 'skipped_supplier_not_found' => false];
-        }
-
-        $categoryId = DB::table('categories')
-            ->whereRaw('TRIM(LOWER(name)) = ?', [strtolower($categoryName)])
-            ->value('id');
-
-        if (! $categoryId) {
-            throw new \InvalidArgumentException('Unknown category: '.$categoryName);
-        }
-
-        $supplierName = ToOrderSupplierSync::resolveSupplierForSku($sku);
-        if ($supplierName === '') {
-            return ['updated' => 0, 'skipped_no_supplier' => true, 'skipped_supplier_not_found' => false];
-        }
-
-        $count = (int) DB::table('suppliers')
-            ->whereRaw('TRIM(UPPER(name)) = ?', [strtoupper($supplierName)])
-            ->update(['category_id' => $categoryId]);
-
-        return [
-            'updated' => $count,
-            'skipped_no_supplier' => false,
-            'skipped_supplier_not_found' => $count === 0,
-        ];
     }
 }

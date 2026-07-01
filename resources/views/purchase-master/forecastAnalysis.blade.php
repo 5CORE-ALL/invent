@@ -2837,7 +2837,7 @@
                     hozAlign: "center",
                     vertAlign: "middle",
                     headerSort: true,
-                    headerTooltip: "Category (from the supplier)",
+                    headerTooltip: "Category (per SKU, or from supplier when not set)",
                     formatter: function(cell) {
                         const v = String(cell.getValue() || "").trim();
                         if (!v) {
