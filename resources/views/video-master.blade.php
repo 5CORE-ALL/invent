@@ -4,6 +4,7 @@
     @vite(['node_modules/admin-resources/rwd-table/rwd-table.min.css'])
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+    @include('partials.marketplace-master-button-colors')
     <style>
         .card.vm-master-card { border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 2px 12px rgba(44,110,213,.06); }
         .table-responsive { position:relative; border:1px solid #e2e8f0; border-radius:10px; max-height:640px; overflow:auto; background:#fff; }
@@ -22,17 +23,6 @@
         .bp-mp-dot.pushed { background:#22c55e; border-color:#22c55e; }
         .bp-mp-dot.failed { background:#ef4444; border-color:#ef4444; }
         .marketplace-btn { width:28px; height:28px; border:none; border-radius:4px; color:#fff; font-weight:600; font-size:11px; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; transition:all .2s; padding:0; }
-        .btn-ebay1 { background-color:#0d6efd; } .btn-ebay2 { background-color:#198754; } .btn-ebay3 { background-color:#fd7e14; }
-        .btn-macy { background-color:#0d6efd; } .btn-amazon { background-color:#ff9900; color:#232f3e!important; }
-        .btn-temu { background-color:#ff6b00; } .btn-reverb { background-color:#333333; }
-        .btn-shopify { background-color:#7cb342; } .btn-shopify-pls { background-color:#5c6bc0; }
-        .btn-wayfair { background-color:#7a3ff2; } .btn-bestbuy { background-color:#0046be; }
-        .btn-walmart { background-color:#0071ce; } .btn-doba { background-color:#fd7e14; } .btn-faire { background-color:#6f42c1; }
-        .btn-shein { background-color:#000; } .btn-aliexpress { background-color:#e62e04; }
-        .btn-amazon-fba { background-color:#e47911; } .btn-tiendamia { background-color:#6c757d; } .btn-newegg { background-color:#cc4100; }
-        .btn-tiktok { background-color:#010101; } .btn-depop { background-color:#ff2300; } .btn-instagram { background-color:#c13584; }
-        .btn-mercari { background-color:#4dc9f6; } .btn-fb { background-color:#1877f2; } .btn-shopify-b5c { background-color:#455a64; }
-        .btn-shopify-b2b { background-color:#37474f; } .btn-topdawg { background-color:#2e7d32; } .btn-purchasing-power { background-color:#795548; }
         .bp-mp-inline { display:flex; flex-wrap:wrap; gap:4px; max-width:520px; }
         .modal-header-gradient { background:linear-gradient(135deg,#6B73FF 0%,#000DFF 100%); color:#fff; }
         /* ── Video card grid ─────────────────────────────────────── */
@@ -328,7 +318,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const SHOPIFY_MARKETPLACES = ['shopify_main', 'shopify_pls'];
     const PM_MAX_VIDEOS = 10;
     const MP_VIDEO_LIMITS = {
-        ebay: 5, ebay2: 5, ebay3: 5, amazon: 3, temu: 5, wayfair: 5, bestbuy: 5, macy: 5, reverb: 5,
+        ebay: 5, ebay2: 5, ebay3: 5, amazon: 3, temu: 5, temu2: 5, wayfair: 5, bestbuy: 5, macy: 5, reverb: 5,
+        doba: 1, walmart: 1, faire: 5, shein: 5, aliexpress: 5, newegg: 5, topdawg: 1, tiktok: 5, tiktok2: 5,
         shopify_main: 10, shopify_pls: 10,
     };
     const EBAY3_WARN = 'eBay3 has different listing structure. Please verify videos before pushing.';
@@ -537,13 +528,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const pushed = hasPushedVideos(val);
         const tile = MP_TILE[mp] || 'btn-secondary';
         const short = MP_SHORT[mp] || mp;
-        const implemented = ENABLED_MARKETPLACES.includes(mp);
-        const configured = isMarketplaceApiConfigured(mp);
-        let title = LABELS[mp];
-        if (!implemented) title = `${LABELS[mp]} video push is not implemented yet`;
-        else if (!configured) title = `${LABELS[mp]}. API not configured.`;
-        const noApiClass = (implemented && configured) ? '' : ' bp-mp-stack--no-api';
-        return `<button type="button" class="bp-mp-stack${noApiClass}" data-push-mp="${esc(mp)}" data-sku="${esc(sku)}" data-api-configured="${configured ? '1' : '0'}" data-implemented="${implemented ? '1' : '0'}" title="${esc(title)}" ${implemented ? '' : 'disabled'}>
+        const st = mpPushTileState(mp, { label: LABELS[mp], implemented: ENABLED_MARKETPLACES.includes(mp) });
+        return `<button type="button" class="bp-mp-stack${st.noApiClass}" data-push-mp="${esc(mp)}" data-sku="${esc(sku)}" data-api-configured="${st.configured ? '1' : '0'}" data-implemented="${st.implemented ? '1' : '0'}" title="${esc(st.title)}" ${st.disabled ? 'disabled' : ''}>
             <span class="bp-mp-dot ${pushed?'pushed':''}"></span>
             <span class="marketplace-btn ${tile}">${esc(short)}</span>
         </button>`;
@@ -586,10 +572,6 @@ document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('.edit-btn[data-edit]').forEach(b => b.addEventListener('click', () => openEditModal(b.dataset.edit)));
         document.querySelectorAll('.shopify-row-pull-btn[data-shopify-pull-sku]').forEach(b => b.addEventListener('click', () => startSingleShopifyPull(b.dataset.shopifyPullSku, b)));
         document.querySelectorAll('.bp-mp-stack[data-push-mp]:not(:disabled)').forEach(b => b.addEventListener('click', () => {
-            if (b.dataset.apiConfigured === '0') {
-                alertMarketplaceApiNotConfigured(b.dataset.pushMp, LABELS[b.dataset.pushMp]);
-                return;
-            }
             quickPush(b.dataset.sku, b.dataset.pushMp);
         }));
     }
@@ -1205,14 +1187,21 @@ document.addEventListener('DOMContentLoaded', () => {
             toast('No products with videos in the current view.', false);
             return;
         }
-        const mpCount = ENABLED_MARKETPLACES.length;
+        const configuredMps = typeof filterConfiguredMarketplaces === 'function'
+            ? filterConfiguredMarketplaces(ENABLED_MARKETPLACES)
+            : ENABLED_MARKETPLACES.filter(mp => isMarketplaceApiConfigured(mp));
+        if (!configuredMps.length) {
+            toast('No marketplaces have API credentials configured.', false);
+            return;
+        }
+        const mpCount = configuredMps.length;
         const skuLabel = rows.length === 1 ? '1 product' : `${rows.length} products`;
         if (!window.confirm(
-            `Push videos to ALL ${mpCount} marketplaces for ${skuLabel}?\n\n`
+            `Push videos to ${mpCount} configured marketplace(s) for ${skuLabel}?\n\n`
             + 'Per-platform main video settings (Video 1 by default) will be applied.\n'
             + 'Each product is sent in one batch; this may take a long time.'
         )) return;
-        if (!confirmEbay3Push(ENABLED_MARKETPLACES)) return;
+        if (!confirmEbay3Push(configuredMps)) return;
 
         bulkPushAllRunning = true;
         const pushAllBtn = document.getElementById('pushAllBtn');
@@ -1230,7 +1219,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const urls = pmVideoUrls(row);
             if (!urls.length) continue;
 
-            const updates = ENABLED_MARKETPLACES.map(mp => ({ marketplace: mp, videos: urls }));
+            const updates = configuredMps.map(mp => ({ marketplace: mp, videos: urls }));
             setPushProgress(
                 true,
                 `Bulk push ${i + 1}/${rows.length}: queuing ${sku}… (${mpCount} marketplaces)`,

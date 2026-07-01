@@ -9,9 +9,11 @@ use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use App\Services\Support\SavesMarketplaceImageMetrics;
 
 class WalmartService
 {
+    use SavesMarketplaceImageMetrics;
     protected $clientId;
     protected $clientSecret;
     protected $baseUrl;
@@ -404,6 +406,120 @@ class WalmartService
         }
         Log::info('Walmart Price Update Response: ', $response->json());
         return $response->json();
+    }
+
+    /**
+     * @param  list<string>  $videos
+     * @return array{success: bool, message: string, normalized_urls?: list<string>, feed_id?: string, feed_status?: string}
+     */
+    public function updateVideos(string $identifier, array $videos, string $mode = 'replace'): array
+    {
+        $videos = array_slice(array_values(array_unique(array_filter(array_map('trim', $videos), fn ($v) => $v !== ''))), 0, 1);
+        if (trim($identifier) === '' || $videos === []) {
+            return ['success' => false, 'message' => 'SKU and at least one video URL are required.'];
+        }
+
+        foreach ($videos as $url) {
+            if (! preg_match('#^https?://#i', $url)) {
+                return ['success' => false, 'message' => 'Invalid video URL (must be http/https).'];
+            }
+        }
+
+        $sku = trim($identifier);
+        $escapedSku = htmlspecialchars($sku, ENT_XML1);
+        $videoUrl = htmlspecialchars($videos[0], ENT_XML1);
+
+        $feedXml = '<?xml version="1.0" encoding="UTF-8"?>
+<MPItemFeed xmlns="http://walmart.com/" xmlns:ns2="http://walmart.com/mp/orders" xmlns:ns3="http://walmart.com/">
+  <MPItemFeedHeader>
+    <mart>US</mart>
+    <sellingChannel>marketplace</sellingChannel>
+    <processMode>REPLACE</processMode>
+    <subset>EXTERNAL</subset>
+    <locale>en</locale>
+    <version>4.8</version>
+  </MPItemFeedHeader>
+  <MPItem>
+    <Orderable>
+      <sku>'.$escapedSku.'</sku>
+      <productType>Item</productType>
+    </Orderable>
+    <Visible>
+      <videoUrl>'.$videoUrl.'</videoUrl>
+      <productVideoUrl>'.$videoUrl.'</productVideoUrl>
+    </Visible>
+  </MPItem>
+</MPItemFeed>';
+
+        $result = $this->submitMpItemFeed($feedXml, $sku, 'Walmart product video');
+        if ($result['success'] ?? false) {
+            $result['message'] = 'Walmart product video submitted via MP_ITEM feed.';
+            $result['normalized_urls'] = $videos;
+        }
+
+        return $result;
+    }
+
+    /**
+     * @param  list<string>  $images
+     * @return array{success: bool, message: string, normalized_urls?: list<string>}
+     */
+    public function updateImages(string $identifier, array $images, string $mode = 'replace'): array
+    {
+        $images = array_slice(array_values(array_unique(array_filter(array_map('trim', $images), fn ($v) => $v !== ''))), 0, 12);
+        if (trim($identifier) === '' || $images === []) {
+            return ['success' => false, 'message' => 'SKU and at least one image URL are required.'];
+        }
+
+        foreach ($images as $url) {
+            if (! preg_match('#^https?://#i', $url)) {
+                return ['success' => false, 'message' => 'Invalid image URL (must be http/https).'];
+            }
+        }
+
+        $sku = trim($identifier);
+        $feedXml = $this->buildImageFeedXml($sku, $images);
+        $result = $this->submitMpItemFeed($feedXml, $sku, 'Walmart product images');
+        if ($result['success'] ?? false) {
+            $this->saveImageUrlsToMetricsRow('walmart_metrics', $sku, $images);
+            $result['message'] = 'Walmart product images submitted via MP_ITEM feed.';
+            $result['normalized_urls'] = $images;
+        }
+
+        return $result;
+    }
+
+    private function buildImageFeedXml(string $sku, array $images): string
+    {
+        $escapedSku = htmlspecialchars($sku, ENT_XML1);
+        $visible = '';
+        foreach ($images as $i => $url) {
+            $escaped = htmlspecialchars($url, ENT_XML1);
+            if ($i === 0) {
+                $visible .= "\n      <mainImageUrl>{$escaped}</mainImageUrl>";
+            }
+            $visible .= "\n      <productSecondaryImageURL>{$escaped}</productSecondaryImageURL>";
+        }
+
+        return '<?xml version="1.0" encoding="UTF-8"?>
+<MPItemFeed xmlns="http://walmart.com/" xmlns:ns2="http://walmart.com/mp/orders" xmlns:ns3="http://walmart.com/">
+  <MPItemFeedHeader>
+    <mart>US</mart>
+    <sellingChannel>marketplace</sellingChannel>
+    <processMode>REPLACE</processMode>
+    <subset>EXTERNAL</subset>
+    <locale>en</locale>
+    <version>4.8</version>
+  </MPItemFeedHeader>
+  <MPItem>
+    <Orderable>
+      <sku>'.$escapedSku.'</sku>
+      <productType>Item</productType>
+    </Orderable>
+    <Visible>'.$visible.'
+    </Visible>
+  </MPItem>
+</MPItemFeed>';
     }
 
 

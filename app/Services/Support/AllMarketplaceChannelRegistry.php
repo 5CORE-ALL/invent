@@ -21,28 +21,28 @@ class AllMarketplaceChannelRegistry
             ['key' => 'macy', 'label' => "Macy's", 'short' => 'M', 'cls' => 'btn-macy', 'group' => 'marketplaces', 'bullet' => true, 'description' => true, 'image' => true, 'video' => true],
             ['key' => 'tiendamia', 'label' => 'Tiendamia', 'short' => 'TM', 'cls' => 'btn-tiendamia', 'group' => 'marketplaces', 'bullet' => false, 'description' => false, 'image' => false, 'video' => false],
             ['key' => 'bestbuy', 'label' => 'Best Buy', 'short' => 'B', 'cls' => 'btn-bestbuy', 'group' => 'marketplaces', 'bullet' => true, 'description' => true, 'image' => true, 'video' => true],
-            ['key' => 'newegg', 'label' => 'Newegg', 'short' => 'NE', 'cls' => 'btn-newegg', 'group' => 'marketplaces', 'bullet' => false, 'description' => false, 'image' => false, 'video' => false],
+            ['key' => 'newegg', 'label' => 'Newegg', 'short' => 'NE', 'cls' => 'btn-newegg', 'group' => 'marketplaces', 'bullet' => false, 'description' => false, 'image' => false, 'video' => true],
             ['key' => 'reverb', 'label' => 'Reverb', 'short' => 'R', 'cls' => 'btn-reverb', 'group' => 'marketplaces', 'bullet' => true, 'description' => true, 'image' => true, 'video' => true],
-            ['key' => 'doba', 'label' => 'Doba', 'short' => 'D', 'cls' => 'btn-doba', 'group' => 'marketplaces', 'bullet' => true, 'description' => true, 'image' => false, 'video' => false],
+            ['key' => 'doba', 'label' => 'Doba', 'short' => 'D', 'cls' => 'btn-doba', 'group' => 'marketplaces', 'bullet' => true, 'description' => true, 'image' => true, 'video' => true],
             ['key' => 'temu', 'label' => 'Temu 1', 'short' => 'T1', 'cls' => 'btn-temu', 'group' => 'marketplaces', 'bullet' => true, 'description' => true, 'image' => true, 'video' => true],
-            ['key' => 'temu2', 'label' => 'Temu 2', 'short' => 'T2', 'cls' => 'btn-temu', 'group' => 'marketplaces', 'bullet' => true, 'description' => false, 'image' => false, 'video' => false],
-            ['key' => 'walmart', 'label' => 'Walmart', 'short' => 'Wal', 'cls' => 'btn-walmart', 'group' => 'marketplaces', 'bullet' => true, 'description' => true, 'image' => false, 'video' => false],
+            ['key' => 'temu2', 'label' => 'Temu 2', 'short' => 'T2', 'cls' => 'btn-temu', 'group' => 'marketplaces', 'bullet' => true, 'description' => true, 'image' => true, 'video' => true],
+            ['key' => 'walmart', 'label' => 'Walmart', 'short' => 'Wal', 'cls' => 'btn-walmart', 'group' => 'marketplaces', 'bullet' => true, 'description' => true, 'image' => true, 'video' => true],
             ['key' => 'shopify_pls', 'label' => 'Shopify PLS', 'short' => 'PLS', 'cls' => 'btn-shopify-pls', 'group' => 'shopify', 'bullet' => true, 'description' => true, 'image' => true, 'video' => true],
             ['key' => 'wayfair', 'label' => 'Wayfair', 'short' => 'W', 'cls' => 'btn-wayfair', 'group' => 'marketplaces', 'bullet' => true, 'description' => true, 'image' => true, 'video' => true],
-            ['key' => 'faire', 'label' => 'Faire', 'short' => 'F', 'cls' => 'btn-faire', 'group' => 'marketplaces', 'bullet' => true, 'description' => true, 'image' => false, 'video' => false],
+            ['key' => 'faire', 'label' => 'Faire', 'short' => 'F', 'cls' => 'btn-faire', 'group' => 'marketplaces', 'bullet' => true, 'description' => true, 'image' => true, 'video' => true],
             ['key' => 'purchasing_power', 'label' => 'Purchasing Power', 'short' => 'PP', 'cls' => 'btn-purchasing-power', 'group' => 'marketplaces', 'bullet' => false, 'description' => false, 'image' => false, 'video' => false],
-            ['key' => 'shein', 'label' => 'Shein', 'short' => 'S', 'cls' => 'btn-shein', 'group' => 'marketplaces', 'bullet' => true, 'description' => true, 'image' => false, 'video' => false],
-            ['key' => 'tiktok', 'label' => 'TikTok Shop', 'short' => 'TT', 'cls' => 'btn-tiktok', 'group' => 'marketplaces', 'bullet' => false, 'description' => false, 'image' => false, 'video' => false],
-            ['key' => 'tiktok2', 'label' => 'TikTok Shop 2', 'short' => 'TT2', 'cls' => 'btn-tiktok', 'group' => 'marketplaces', 'bullet' => false, 'description' => false, 'image' => false, 'video' => false],
+            ['key' => 'shein', 'label' => 'Shein', 'short' => 'S', 'cls' => 'btn-shein', 'group' => 'marketplaces', 'bullet' => true, 'description' => true, 'image' => true, 'video' => true],
+            ['key' => 'tiktok', 'label' => 'TikTok Shop', 'short' => 'TT', 'cls' => 'btn-tiktok', 'group' => 'marketplaces', 'bullet' => false, 'description' => false, 'image' => false, 'video' => true],
+            ['key' => 'tiktok2', 'label' => 'TikTok Shop 2', 'short' => 'TT2', 'cls' => 'btn-tiktok', 'group' => 'marketplaces', 'bullet' => false, 'description' => false, 'image' => false, 'video' => true],
             ['key' => 'depop', 'label' => 'Depop', 'short' => 'Dp', 'cls' => 'btn-depop', 'group' => 'marketplaces', 'bullet' => false, 'description' => false, 'image' => false, 'video' => false],
             ['key' => 'instagram_shop', 'label' => 'Instagram Shop', 'short' => 'IG', 'cls' => 'btn-instagram', 'group' => 'marketplaces', 'bullet' => false, 'description' => false, 'image' => false, 'video' => false],
-            ['key' => 'aliexpress', 'label' => 'AliExpress', 'short' => 'AE', 'cls' => 'btn-aliexpress', 'group' => 'marketplaces', 'bullet' => true, 'description' => true, 'image' => false, 'video' => false],
+            ['key' => 'aliexpress', 'label' => 'AliExpress', 'short' => 'AE', 'cls' => 'btn-aliexpress', 'group' => 'marketplaces', 'bullet' => true, 'description' => true, 'image' => true, 'video' => true],
             ['key' => 'mercari_wship', 'label' => 'Mercari w/ Ship', 'short' => 'Mw', 'cls' => 'btn-mercari', 'group' => 'marketplaces', 'bullet' => false, 'description' => false, 'image' => false, 'video' => false],
             ['key' => 'mercari_woship', 'label' => 'Mercari w/o Ship', 'short' => 'Mo', 'cls' => 'btn-mercari', 'group' => 'marketplaces', 'bullet' => false, 'description' => false, 'image' => false, 'video' => false],
             ['key' => 'fb_marketplace', 'label' => 'FB Marketplace', 'short' => 'FB', 'cls' => 'btn-fb', 'group' => 'marketplaces', 'bullet' => false, 'description' => false, 'image' => false, 'video' => false],
             ['key' => 'fb_shop', 'label' => 'FB Shop', 'short' => 'FS', 'cls' => 'btn-fb', 'group' => 'marketplaces', 'bullet' => false, 'description' => false, 'image' => false, 'video' => false],
             ['key' => 'shopify_b5c', 'label' => 'Business 5Core', 'short' => 'B5C', 'cls' => 'btn-shopify-b5c', 'group' => 'shopify', 'bullet' => false, 'description' => false, 'image' => false, 'video' => false],
-            ['key' => 'topdawg', 'label' => 'TopDawg', 'short' => 'TD', 'cls' => 'btn-topdawg', 'group' => 'marketplaces', 'bullet' => false, 'description' => false, 'image' => false, 'video' => false],
+            ['key' => 'topdawg', 'label' => 'TopDawg', 'short' => 'TD', 'cls' => 'btn-topdawg', 'group' => 'marketplaces', 'bullet' => false, 'description' => false, 'image' => false, 'video' => true],
             ['key' => 'shopify_main', 'label' => 'Shopify B2C', 'short' => 'SM', 'cls' => 'btn-shopify', 'group' => 'shopify', 'bullet' => true, 'description' => true, 'image' => true, 'video' => true],
             ['key' => 'shopify_b2b', 'label' => 'Shopify B2B', 'short' => 'B2B', 'cls' => 'btn-shopify-b2b', 'group' => 'shopify', 'bullet' => false, 'description' => false, 'image' => false, 'video' => false],
         ];
@@ -57,10 +57,39 @@ class AllMarketplaceChannelRegistry
     }
 
     /**
-     * @return list<string>
+     * Title Master: registry key → API push key + title tier (150/100/80/60).
+     *
+     * @return array<string, array{push: string, type: string}>
      */
+    public function titleMeta(): array
+    {
+        return [
+            'amazon' => ['push' => 'amazon', 'type' => '150'],
+            'ebay' => ['push' => 'ebay1', 'type' => '80'],
+            'ebay2' => ['push' => 'ebay2', 'type' => '80'],
+            'ebay3' => ['push' => 'ebay3', 'type' => '80'],
+            'macy' => ['push' => 'macy', 'type' => '60'],
+            'reverb' => ['push' => 'reverb', 'type' => '150'],
+            'doba' => ['push' => 'doba', 'type' => '100'],
+            'temu' => ['push' => 'temu', 'type' => '150'],
+            'temu2' => ['push' => 'temu2', 'type' => '150'],
+            'walmart' => ['push' => 'walmart', 'type' => '150'],
+            'shopify_pls' => ['push' => 'shopify_pls', 'type' => '100'],
+            'shopify_main' => ['push' => 'shopify_main', 'type' => '100'],
+            'wayfair' => ['push' => 'wayfair', 'type' => '150'],
+            'faire' => ['push' => 'faire', 'type' => '60'],
+            'shein' => ['push' => 'shein', 'type' => '150'],
+            'aliexpress' => ['push' => 'aliexpress', 'type' => '150'],
+            'tiktok' => ['push' => 'tiktok', 'type' => '150'],
+        ];
+    }
+
     public function enabledFor(string $master): array
     {
+        if ($master === 'title') {
+            return array_keys($this->titleMeta());
+        }
+
         $flag = match ($master) {
             'bullet' => 'bullet',
             'description' => 'description',
@@ -90,6 +119,7 @@ class AllMarketplaceChannelRegistry
             'description' => 'description',
             'image' => 'image',
             'video' => 'video',
+            'title' => 'title',
             default => 'bullet',
         };
 
@@ -107,14 +137,14 @@ class AllMarketplaceChannelRegistry
             $groups[$groupKey][] = $key;
         }
 
-        $enabled = [];
-        foreach ($channels as $ch) {
-            if ($ch[$flag] ?? false) {
-                $enabled[] = $ch['key'];
-            }
-        }
+        $enabled = $master === 'title'
+            ? array_keys($this->titleMeta())
+            : array_values(array_filter(array_map(
+                fn (array $ch) => ($ch[$flag] ?? false) ? $ch['key'] : null,
+                $channels
+            )));
 
-        return [
+        $config = [
             'marketplaces' => $marketplaces,
             'groups' => $groups,
             'labels' => $labels,
@@ -122,5 +152,11 @@ class AllMarketplaceChannelRegistry
             'enabled' => $enabled,
             'master' => $master,
         ];
+
+        if ($master === 'title') {
+            $config['titleMeta'] = $this->titleMeta();
+        }
+
+        return $config;
     }
 }

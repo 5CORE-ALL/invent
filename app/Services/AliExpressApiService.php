@@ -6,6 +6,9 @@ use Carbon\Carbon;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use App\Models\AliexpressMetric;
+use App\Services\Support\SavesMarketplaceVideoMetrics;
+use App\Services\Support\SavesMarketplaceImageMetrics;
+use App\Services\Support\VideoMasterMarketplaceMethods;
 
 /**
  * AliExpress dropshipping / Solution API — POST https://api-sg.aliexpress.com/sync
@@ -23,6 +26,10 @@ use App\Models\AliexpressMetric;
  */
 class AliExpressApiService
 {
+    use SavesMarketplaceVideoMetrics;
+    use SavesMarketplaceImageMetrics;
+    use VideoMasterMarketplaceMethods;
+
     protected string $appKey;
 
     protected string $appSecret;
@@ -975,5 +982,117 @@ class AliExpressApiService
         }
 
         return array_values($list);
+    }
+
+    /**
+     * @param  list<string>  $videos
+     * @return array{success: bool, message?: string, normalized_urls?: list<string>}
+     */
+    public function updateVideos(string $identifier, array $videos, string $mode = 'replace'): array
+    {
+        $videos = array_slice(array_values(array_unique(array_filter(array_map('trim', $videos), fn ($v) => $v !== ''))), 0, 5);
+        if (trim($identifier) === '' || $videos === []) {
+            return ['success' => false, 'message' => 'SKU (or AliExpress product_id) and at least one video URL are required.'];
+        }
+
+        foreach ($videos as $url) {
+            if (! preg_match('#^https?://#i', $url)) {
+                return ['success' => false, 'message' => 'Invalid video URL (must be http/https).'];
+            }
+        }
+
+        $trim = trim($identifier);
+        $row = AliexpressMetric::query()
+            ->where('sku', $trim)
+            ->orWhere('sku', strtoupper($trim))
+            ->orWhere('sku', strtolower($trim))
+            ->first();
+        if (! $row) {
+            $row = AliexpressMetric::query()->where('product_id', $trim)->first();
+        }
+        $productId = $row && $row->product_id ? (string) $row->product_id : $trim;
+        $primary = $videos[0];
+
+        $attempts = [
+            ['product_id' => $productId, 'video_url' => $primary, 'product_video_url' => $primary],
+            ['product_id' => $productId, 'multimedia' => ['video_url' => $primary]],
+            ['product_id' => $productId, 'aeop_a_e_multimedia' => ['aeop_a_e_videos' => [['video_url' => $primary]]]],
+        ];
+
+        $lastMessage = 'AliExpress video update failed.';
+        foreach ($attempts as $editRequest) {
+            $res = $this->callSync('aliexpress.solution.product.edit', [
+                'edit_product_request' => $this->encodeRequestPayload($editRequest),
+            ]);
+            if (! empty($res['success'])) {
+                $sku = $row && $row->sku ? (string) $row->sku : $trim;
+                $this->saveVideoUrlsToMetricsRow('aliexpress_metrics', $sku, $videos);
+
+                return [
+                    'success' => true,
+                    'message' => 'AliExpress product video updated.',
+                    'normalized_urls' => $videos,
+                ];
+            }
+            $lastMessage = (string) ($res['message'] ?? $lastMessage);
+        }
+
+        return ['success' => false, 'message' => $lastMessage];
+    }
+
+    /**
+     * @param  list<string>  $images
+     * @return array{success: bool, message?: string, normalized_urls?: list<string>}
+     */
+    public function updateImages(string $identifier, array $images, string $mode = 'replace'): array
+    {
+        $images = array_slice(array_values(array_unique(array_filter(array_map('trim', $images), fn ($v) => $v !== ''))), 0, 12);
+        if (trim($identifier) === '' || $images === []) {
+            return ['success' => false, 'message' => 'SKU (or AliExpress product_id) and at least one image URL are required.'];
+        }
+
+        foreach ($images as $url) {
+            if (! preg_match('#^https?://#i', $url)) {
+                return ['success' => false, 'message' => 'Invalid image URL (must be http/https).'];
+            }
+        }
+
+        $trim = trim($identifier);
+        $row = AliexpressMetric::query()
+            ->where('sku', $trim)
+            ->orWhere('sku', strtoupper($trim))
+            ->orWhere('sku', strtolower($trim))
+            ->first();
+        if (! $row) {
+            $row = AliexpressMetric::query()->where('product_id', $trim)->first();
+        }
+        $productId = $row && $row->product_id ? (string) $row->product_id : $trim;
+        $primary = $images[0];
+
+        $attempts = [
+            ['product_id' => $productId, 'image_u_r_ls' => implode(';', $images), 'main_image_url' => $primary],
+            ['product_id' => $productId, 'image_urls' => $images, 'main_image_url' => $primary],
+            ['product_id' => $productId, 'aeop_a_e_product_s_k_us' => ['sku_code' => $trim, 'sku_image' => $primary]],
+        ];
+
+        $lastMessage = 'AliExpress image update failed.';
+        foreach ($attempts as $editRequest) {
+            $res = $this->callSync('aliexpress.solution.product.edit', [
+                'edit_product_request' => $this->encodeRequestPayload($editRequest),
+            ]);
+            if (! empty($res['success'])) {
+                $sku = $row && $row->sku ? (string) $row->sku : $trim;
+                $this->saveImageUrlsToMetricsRow('aliexpress_metrics', $sku, $images);
+
+                return [
+                    'success' => true,
+                    'message' => 'AliExpress product images updated.',
+                    'normalized_urls' => $images,
+                ];
+            }
+            $lastMessage = (string) ($res['message'] ?? $lastMessage);
+        }
+
+        return ['success' => false, 'message' => $lastMessage];
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\ProductMaster;
 
+use App\Http\Controllers\ProductMaster\Concerns\GuardsMarketplaceApiConfiguration;
 use App\Http\Controllers\ApiController;
 use App\Http\Controllers\Controller;
 use App\Models\AmazonListingRaw;
@@ -37,6 +38,8 @@ use PhpOffice\PhpSpreadsheet\IOFactory;
 
 class ProductMasterController extends Controller
 {
+    use GuardsMarketplaceApiConfiguration;
+
     protected $apiController;
 
     public function __construct(ApiController $apiController)
@@ -3228,7 +3231,7 @@ PROMPT;
     {
         $request->validate([
             'sku' => 'required|string|max:255',
-            'marketplace' => 'required|string|in:amazon,temu,reverb,wayfair,walmart,shopify,shopify_main,shopify_pls,doba,ebay1,ebay2,ebay3,macy,faire',
+            'marketplace' => 'required|string|in:amazon,temu,temu2,reverb,wayfair,walmart,shopify,shopify_main,shopify_pls,doba,ebay1,ebay2,ebay3,macy,faire,shein,aliexpress,tiktok',
             'title_type' => 'required|string|in:150,100,80,60',
             'title' => 'nullable|string|max:2000',
         ]);
@@ -3240,10 +3243,10 @@ PROMPT;
         $userId = auth()->id();
 
         // Guard against invalid marketplace / title_type combos
-        if ($titleType === '150' && ! in_array($marketplace, ['amazon', 'temu', 'reverb', 'wayfair', 'walmart'], true)) {
+        if ($titleType === '150' && ! in_array($marketplace, ['amazon', 'temu', 'temu2', 'reverb', 'wayfair', 'walmart', 'shein', 'aliexpress', 'tiktok'], true)) {
             return response()->json([
                 'success' => false,
-                'message' => 'Amazon title (type 150) is only valid for Amazon, Temu, Reverb, Wayfair, Walmart.',
+                'message' => 'Amazon title (type 150) is only valid for Amazon, Temu, Reverb, Wayfair, Walmart, Shein, AliExpress, and TikTok.',
             ], 422);
         }
         if ($titleType === '100' && ! in_array($marketplace, ['shopify', 'shopify_main', 'shopify_pls', 'doba'], true)) {
@@ -3291,6 +3294,10 @@ PROMPT;
             ], 422);
         }
 
+        if ($blocked = $this->marketplaceApiNotConfiguredResult($marketplace)) {
+            return response()->json(array_merge($blocked, ['success' => false]), 422);
+        }
+
         Log::info('🖱️ Individual push button clicked', [
             'sku' => $sku,
             'marketplace' => $marketplace,
@@ -3323,6 +3330,14 @@ PROMPT;
                 case 'temu':
                     $endpoint = 'TemuApiService::updateTitle';
                     $service = new TemuApiService;
+                    $res = $service->updateTitle($sku, $title);
+                    $success = $res['success'] ?? false;
+                    $message = $res['message'] ?? ($success ? 'OK' : 'Unknown error');
+                    break;
+
+                case 'temu2':
+                    $endpoint = 'Temu2ApiService::updateTitle';
+                    $service = app(\App\Services\Temu2ApiService::class);
                     $res = $service->updateTitle($sku, $title);
                     $success = $res['success'] ?? false;
                     $message = $res['message'] ?? ($success ? 'OK' : 'Unknown error');
@@ -3450,6 +3465,24 @@ PROMPT;
                     $res = $service->updateTitle($sku, $title);
                     $success = $res['success'] ?? false;
                     $message = $res['message'] ?? ($success ? 'OK' : 'Unknown error');
+                    break;
+
+                case 'shein':
+                    $endpoint = 'ProductMasterController::updateSheinTitle';
+                    $success = (bool) $this->updateSheinTitle($sku, $title);
+                    $message = $success ? 'OK' : 'Update failed, see logs.';
+                    break;
+
+                case 'aliexpress':
+                    $endpoint = 'ProductMasterController::updateAliexpressTitle';
+                    $success = (bool) $this->updateAliexpressTitle($sku, $title);
+                    $message = $success ? 'OK' : 'Update failed, see logs.';
+                    break;
+
+                case 'tiktok':
+                    $endpoint = 'ProductMasterController::updateTiktokTitle';
+                    $success = (bool) $this->updateTiktokTitle($sku, $title);
+                    $message = $success ? 'OK' : 'Update failed, see logs.';
                     break;
             }
         } catch (\Throwable $e) {

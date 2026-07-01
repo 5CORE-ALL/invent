@@ -3,6 +3,7 @@
 @section('css')
     @vite(['node_modules/admin-resources/rwd-table/rwd-table.min.css'])
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+    @include('partials.marketplace-master-button-colors')
     <style>
         .card.dm-master-card { border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 2px 12px rgba(44,110,213,.06); }
         .card.dm-master-card .card-body { padding: 1.25rem 1.5rem; }
@@ -29,17 +30,6 @@
         .bp-mp-dot.failed { background:#ef4444; border-color:#ef4444; }
         .marketplace-btn { width:28px; height:28px; border:none; border-radius:4px; color:#fff; font-weight:600; font-size:11px; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; transition:all .2s; padding:0; pointer-events:none; }
         .bp-mp-stack { pointer-events:auto; }
-        .btn-ebay1 { background-color:#0d6efd; }
-        .btn-ebay2 { background-color:#198754; }
-        .btn-ebay3 { background-color:#fd7e14; }
-        .btn-macy { background-color:#0d6efd; }
-        .btn-amazon { background-color:#ff9900; }
-        .btn-temu { background-color:#ff6b00; }
-        .btn-reverb { background-color:#333333; }
-        .btn-wayfair { background-color:#7a3ff2; }
-        .btn-bestbuy { background-color:#0046be; }
-        .btn-shopify { background-color:#7cb342; }
-        .btn-shopify-pls { background-color:#5c6bc0; }
         .btn-push-all { background:#ff9900!important; color:#232f3e!important; font-weight:600; }
         .action-buttons-cell { white-space:nowrap; vertical-align:middle!important; }
         .action-buttons-group { display:flex; align-items:center; gap:6px; flex-wrap:nowrap; }
@@ -226,24 +216,27 @@
 @endsection
 
 @section('script')
+    @include('partials.marketplace-api-config')
+    @include('partials.all-marketplace-master-channels', ['allMpMaster' => 'description'])
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/tinymce@7/tinymce.min.js" referrerpolicy="origin"></script>
     <script>
 document.addEventListener('DOMContentLoaded', () => {
         const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-    // Per-platform plain-text push limits (see marketplace listing rules).
+    const __mp = window.__ALL_MP__ || {};
     const LIMITS = {
-        amazon: 2000, temu: 2000,
-        reverb: 1500, bestbuy: 1500,
+        amazon: 2000, temu: 2000, temu2: 2000, walmart: 2000, shein: 2000, aliexpress: 2000,
+        reverb: 1500, bestbuy: 1500, doba: 1500,
         wayfair: 2000,
         shopify_main: 500000, shopify_pls: 500000,
         ebay: 500000, ebay2: 500000, ebay3: 500000,
-        macy: 600,
+        macy: 600, faire: 600,
     };
     const LIMIT_LABELS = {
         amazon: '2000 (plain text, no HTML)',
-        temu: '2000 (plain text)',
+        temu: '2000 (plain text)', temu2: '2000 (plain text)', walmart: '2000', shein: '2000', aliexpress: '2000',
+        doba: '1500',
         shopify_main: 'no hard limit',
         shopify_pls: 'no hard limit',
         ebay: '500000 (~800 on mobile)',
@@ -252,33 +245,20 @@ document.addEventListener('DOMContentLoaded', () => {
         reverb: '1500',
         wayfair: '2000 (100–200 words marketing copy)',
         bestbuy: '1500',
-        macy: '600',
+        macy: '600', faire: '600',
     };
-    const LABELS = {
-        amazon: 'Amazon', temu: 'Temu', reverb: 'Reverb', wayfair: 'Wayfair', bestbuy: 'Best Buy',
-        shopify_main: 'Shopify Main', shopify_pls: 'Shopify PLS',
-        ebay: 'eBay1', ebay2: 'eBay2', ebay3: 'eBay3',
-        macy: "Macy's",
-    };
+    const LABELS = __mp.labels || {};
     const GROUPS = {
-        g1500: ['amazon', 'temu', 'reverb', 'wayfair', 'bestbuy'],
-        g1000: ['shopify_main', 'shopify_pls'],
+        g1500: ['amazon', 'temu', 'temu2', 'reverb', 'wayfair', 'bestbuy', 'walmart', 'shein', 'aliexpress'],
+        g1000: ['shopify_main', 'shopify_pls', 'doba'],
         g800: ['ebay', 'ebay2', 'ebay3'],
-        g600: ['macy'],
+        g600: ['macy', 'faire'],
     };
-    const MP_TILE = {
-        amazon: 'btn-amazon', temu: 'btn-temu', reverb: 'btn-reverb',
-        shopify_main: 'btn-shopify', shopify_pls: 'btn-shopify-pls',
-        ebay: 'btn-ebay1', ebay2: 'btn-ebay2', ebay3: 'btn-ebay3',
-        macy: 'btn-macy', wayfair: 'btn-wayfair', bestbuy: 'btn-bestbuy',
-    };
-    const MP_SHORT = {
-        amazon: 'A', temu: 'T', reverb: 'R', wayfair: 'W', bestbuy: 'B',
-        shopify_main: 'SM', shopify_pls: 'SP',
-        ebay: 'E1', ebay2: 'E2', ebay3: 'E3',
-        macy: 'M',
-    };
-    const ALL_MP = Object.keys(LIMITS);
+    const MP_TILE = {};
+    Object.entries(__mp.tiles || {}).forEach(([k, v]) => { MP_TILE[k] = v.cls; });
+    const MP_SHORT = {};
+    Object.entries(__mp.tiles || {}).forEach(([k, v]) => { MP_SHORT[k] = v.short; });
+    const ALL_MP = __mp.enabled || Object.keys(LIMITS);
     const TIER_MIN_AI = { 1500: 1400, 1000: 900, 800: 700, 600: 500 };
     const EBAY3_WARNING = 'eBay3 has different listing structure. Please verify bullet points format before pushing.';
 
@@ -459,11 +439,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const short = MP_SHORT[mp] || mp;
         const stateText = pushed ? 'Pushed' : (failed ? 'Push failed' : 'Not pushed');
         const dotClass = pushed ? 'pushed' : (failed ? 'failed' : '');
-        const tip = `${LABELS[mp]}. ${stateText}. Click to push.`;
+        const st = mpPushTileState(mp, { label: LABELS[mp], implemented: ALL_MP.includes(mp), statusHint: stateText });
         return `
             <div class="dm-mp-item">
-                <input type="checkbox" class="form-check-input dm-sel-mp" data-sku="${esc(sku)}" data-mp="${esc(mp)}" title="Include in Push Selected">
-                <button type="button" class="bp-mp-stack" data-push-mp="${esc(mp)}" data-sku="${esc(sku)}" title="${esc(tip)}">
+                <input type="checkbox" class="form-check-input dm-sel-mp" data-sku="${esc(sku)}" data-mp="${esc(mp)}" title="Include in Push Selected" ${st.configured && st.implemented ? '' : 'disabled'}>
+                <button type="button" class="bp-mp-stack${st.noApiClass}" data-push-mp="${esc(mp)}" data-sku="${esc(sku)}" data-api-configured="${st.configured ? '1' : '0'}" title="${esc(st.title)}" ${st.disabled ? 'disabled' : ''}>
                     <span class="bp-mp-dot ${dotClass}" aria-hidden="true"></span>
                     <span class="marketplace-btn ${cls}">${esc(short)}</span>
                 </button>
@@ -528,7 +508,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 openEditModal(editPmBtn.getAttribute('data-edit-pm'));
                 return;
             }
-            const pushBtn = e.target.closest('.bp-mp-stack[data-push-mp]');
+            const pushBtn = e.target.closest('.bp-mp-stack[data-push-mp]:not(:disabled)');
             if (pushBtn) {
                 e.preventDefault();
                 pushSingleMarketplace(pushBtn.getAttribute('data-sku'), pushBtn.getAttribute('data-push-mp'), pushBtn);
@@ -576,6 +556,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     async function pushSingleMarketplace(sku, mp, stackEl) {
+        if (!marketplaceApiGuard(mp, LABELS[mp])) return;
         const row = bySku.get(String(sku));
         if (!row) return;
         const confirmed = await confirmMarketplacePush({ sku, marketplaces: [mp], mode: 'single' });
@@ -1199,6 +1180,7 @@ document.addEventListener('DOMContentLoaded', () => {
         tableData.forEach((row) => {
             const sku = String(row.SKU || '');
             ALL_MP.forEach((mp) => {
+                if (typeof isMarketplaceApiConfigured === 'function' && !isMarketplaceApiConfigured(mp)) return;
                 const update = buildPushUpdate(sku, row, mp);
                 if (!update.description) return;
                 tasks.push({ sku, mp, update });
