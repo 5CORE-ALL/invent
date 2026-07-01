@@ -1206,6 +1206,19 @@
             box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25);
         }
 
+        .va-icon-btn {
+            width: 32px;
+            height: 32px;
+            padding: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .va-icon-btn.filter-show-all-btn.active {
+            box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.85);
+        }
+
         /* Responsive adjustments */
         @media (max-width: 768px) {
             .time-navigation-group button {
@@ -1574,6 +1587,12 @@
                                     <i class="fas fa-step-forward"></i>
                                 </button>
                             </div>
+                            <button id="filter-show-all" class="btn btn-secondary btn-sm va-icon-btn filter-show-all-btn active" data-status="all" title="Show All">
+                                <i class="fas fa-list"></i>
+                            </button>
+                            <button id="viewHiddenRows" class="btn btn-outline-primary btn-sm va-icon-btn" data-toggle="modal" title="History">
+                                <i class="fas fa-history"></i>
+                            </button>
                             <button id="exportToGoogleSheets" class="btn btn-success btn-sm">
                                 <i class="fab fa-google"></i> Export to Google Sheets
                             </button>
@@ -1586,34 +1605,50 @@
                     <!-- Filters bar: single line, compact -->
                     <div class="va-controls-filters d-flex flex-nowrap align-items-center mb-3 py-2 px-2 rounded border bg-light">
                         <div class="d-flex align-items-center va-controls-inner flex-shrink-0">
-                            <label for="row-data-type" class="mb-0 mr-1 small va-label">Data Type</label>
-                            <select id="row-data-type" class="form-control form-control-sm va-input-sm">
-                                <option value="all">All</option>
+                            <select id="row-data-type" class="form-control form-control-sm va-input-sm" title="Data Type">
+                                <option value="all">Data Type</option>
                                 <option value="sku">SKU (Child)</option>
                                 <option value="parent">Parent</option>
                             </select>
                         </div>
                         <div class="d-flex align-items-center va-controls-inner flex-shrink-0">
-                            <label for="parentSearch" class="mb-0 mr-1 small va-label">Parent</label>
                             <div class="dropdown-search-container">
-                                <input type="text" class="form-control form-control-sm parent-search va-input-sm" placeholder="Search parent..." id="parentSearch" title="Search parent" autocomplete="off">
+                                <input type="text" class="form-control form-control-sm parent-search va-input-sm" placeholder="Parent..." id="parentSearch" title="Search parent" autocomplete="off">
                                 <div class="dropdown-search-results" id="parentSearchResults"></div>
                             </div>
                         </div>
                         <div class="d-flex align-items-center va-controls-inner flex-shrink-0">
-                            <label for="skuSearch" class="mb-0 mr-1 small va-label">SKU</label>
                             <div class="dropdown-search-container">
-                                <input type="text" class="form-control form-control-sm sku-search va-input-sm" placeholder="Search SKU..." id="skuSearch" title="Search SKU" autocomplete="off">
+                                <input type="text" class="form-control form-control-sm sku-search va-input-sm" placeholder="SKU..." id="skuSearch" title="Search SKU" autocomplete="off">
                                 <div class="dropdown-search-results" id="skuSearchResults"></div>
                             </div>
                         </div>
                         <div class="d-flex align-items-center va-controls-inner flex-shrink-0">
-                            <label for="search-input" class="mb-0 mr-1 small va-label">Search</label>
-                            <input type="text" id="search-input" class="form-control form-control-sm va-input-sm" placeholder="Search all columns" title="Search all columns" autocomplete="off">
+                            <select id="invFilter" class="form-control form-control-sm va-input-sm" title="Filter by Main-INV">
+                                <option value="">INV</option>
+                                <option value="0">0</option>
+                                <option value="0-30">0-30</option>
+                                <option value="gt30">&gt;30</option>
+                            </select>
+                        </div>
+                        <div class="d-flex align-items-center va-controls-inner flex-shrink-0">
+                            <select id="l30Filter" class="form-control form-control-sm va-input-sm" title="Filter by L30">
+                                <option value="">L30</option>
+                                <option value="0">0</option>
+                                <option value="0-30">0-30</option>
+                                <option value="gt30">&gt;30</option>
+                            </select>
+                        </div>
+                        <div class="d-flex align-items-center va-controls-inner flex-shrink-0">
+                            <select id="dilFilter" class="form-control form-control-sm va-input-sm" title="Filter by DIL color">
+                                <option value="">DIL</option>
+                                <option value="red">Red</option>
+                                <option value="green">Green</option>
+                                <option value="magenta">Magenta</option>
+                            </select>
                         </div>
                         <div class="d-flex align-items-center va-controls-actions flex-shrink-0">
-                            <label for="bulk-action-select" class="mb-0 mr-1 small va-label">Action</label>
-                            <select id="bulk-action-select" class="form-control form-control-sm va-input-sm">
+                            <select id="bulk-action-select" class="form-control form-control-sm va-input-sm" title="Bulk action">
                                 <option value="">Select action...</option>
                                 <option value="mark-verified">Mark as Verified</option>
                                 <option value="mark-unverified">Mark as Unverified</option>
@@ -1651,12 +1686,6 @@
                             </button>
                             <button id="filter-verified-yellow" class="btn btn-danger btn-sm verified-filter-btn py-1 px-2" data-status="yellow">
                                 <i class="fas fa-circle"></i> <span class="va-btn-text">Unverified</span> <span class="badge badge-light ml-1" id="yellow-count">0</span>
-                            </button>
-                            <button id="filter-show-all" class="btn btn-secondary btn-sm filter-show-all-btn active py-1 px-2" data-status="all">
-                                <i class="fas fa-list"></i> <span class="va-btn-text">Show All</span>
-                            </button>
-                            <button id="viewHiddenRows" class="btn btn-outline-primary btn-sm py-1 px-2" data-toggle="modal">
-                                <i class="fas fa-history"></i> <span class="va-btn-text">History</span>
                             </button>
                         </div>
                     </div>
@@ -2547,7 +2576,6 @@
                     initResizableColumns();
                     initSorting();
                     initPagination();
-                    initSearch();
                     initColumnToggle();
                     initFilters();
                     calculateTotals();
@@ -2991,9 +3019,8 @@
 
                     const getDilColor = (value) => {
                         const percent = parseFloat(value) * 100;
-                        if (percent < 16.66) return 'red';
-                        if (percent >= 16.66 && percent < 25) return 'yellow';
-                        if (percent >= 25 && percent < 50) return 'green';
+                        if (percent < 25) return 'red';
+                        if (percent <= 50) return 'green';
                         return 'pink';
                     };
 
@@ -3287,6 +3314,44 @@
                 return true;
             }
 
+            function itemMatchesInvFilter(item) {
+                const choice = $('#invFilter').val();
+                if (!choice) return true;
+                const inv = parseFloat(item.INV);
+                const invVal = isNaN(inv) ? 0 : inv;
+                if (choice === '0') return invVal === 0;
+                if (choice === '0-30') return invVal > 0 && invVal <= 30;
+                if (choice === 'gt30') return invVal > 30;
+                return true;
+            }
+
+            function itemMatchesL30Filter(item) {
+                const choice = $('#l30Filter').val();
+                if (!choice) return true;
+                const l30 = parseFloat(item.L30);
+                const l30Val = isNaN(l30) ? 0 : l30;
+                if (choice === '0') return l30Val === 0;
+                if (choice === '0-30') return l30Val > 0 && l30Val <= 30;
+                if (choice === 'gt30') return l30Val > 30;
+                return true;
+            }
+
+            function getDilColorBand(item) {
+                const dil = parseFloat(item.DIL);
+                if (isNaN(dil) || dil <= 0) {
+                    return 'red';
+                }
+                return getDilColorClass(dil);
+            }
+
+            function itemMatchesDilFilter(item) {
+                const choice = $('#dilFilter').val();
+                if (!choice) return true;
+                const band = getDilColorBand(item);
+                if (choice === 'magenta') return band === 'pink';
+                return band === choice;
+            }
+
             function updateVerifiedDateFilterButtonState() {
                 const $btn = $('#verifiedDateFilterBtn');
                 if (verifiedDateFilter.active) {
@@ -3538,9 +3603,8 @@
 
             function getDilColorClass(value) {
                 const percent = parseFloat(value) * 100;
-                if (percent < 16.66) return 'red';
-                if (percent >= 16.66 && percent < 25) return 'yellow';
-                if (percent >= 25 && percent < 50) return 'green';
+                if (percent < 25) return 'red';
+                if (percent <= 50) return 'green';
                 return 'pink';
             }
 
@@ -3746,8 +3810,17 @@
                         return sku.includes(selectedSku.toUpperCase());
                     });
                 }
+
+                // 4. Main-INV filter (0, 0-30, >30)
+                tempData = tempData.filter(item => itemMatchesInvFilter(item));
+
+                // 5. L30 filter (0, 0-30, >30)
+                tempData = tempData.filter(item => itemMatchesL30Filter(item));
+
+                // 6. DIL color filter (red, green, magenta)
+                tempData = tempData.filter(item => itemMatchesDilFilter(item));
                 
-                // 4. Verified filter (exclude parent rows from Verified/Unverified so count matches list)
+                // 7. Verified filter (exclude parent rows from Verified/Unverified so count matches list)
                 const verifiedFilter = $('.verified-filter-btn.active').data('status');
                 if (verifiedFilter && verifiedFilter !== 'all') {
                     if (verifiedFilter === 'green') {
@@ -3769,22 +3842,9 @@
                     }
                 }
                 
-                // 5. Verified date range filter (last verified date in LOG column)
+                // 8. Verified date range filter (last verified date in LOG column)
                 if (verifiedDateFilter.active) {
                     tempData = tempData.filter(item => itemMatchesVerifiedDateFilter(item));
-                }
-
-                // 6. Search all columns filter
-                const searchTerm = $('#search-input').val()?.trim();
-                if (searchTerm) {
-                    const normalizedSearch = searchTerm.replace(/\s+/g, '').toLowerCase();
-                    tempData = tempData.filter(item => {
-                        return Object.values(item).some(val => {
-                            if (typeof val === 'boolean' || val === null) return false;
-                            const normalizedVal = val.toString().replace(/\s+/g, '').toLowerCase();
-                            return normalizedVal.includes(normalizedSearch);
-                        });
-                    });
                 }
                 
                 // Note: All filters above are applied with AND logic - items must match ALL active filters
@@ -3821,6 +3881,9 @@
                 $('.filter-show-all-btn').removeClass('active');
                 $(this).addClass('active');
                 clearVerifiedDateFilter(true);
+                $('#invFilter').val('');
+                $('#l30Filter').val('');
+                $('#dilFilter').val('');
                 applyAllFilters();
             });
 
@@ -5675,14 +5738,6 @@
                 };
             }
 
-            // Initialize search functionality (debounced for performance)
-            function initSearch() {
-                $('#search-input').on('keyup', debounce(function() {
-                    currentPage = 1;
-                    applyAllFilters();
-                }, 280));
-            }
-
             // Initialize column toggle functionality
             function initColumnToggle() {
                 const $table = $('#ebay-table');
@@ -5827,8 +5882,8 @@
 
                 const colorRules = {
                     'Dil%': {
-                        ranges: [16.66, 25, 50],
-                        colors: ['red', 'yellow', 'green', 'pink']
+                        ranges: [25, 50],
+                        colors: ['red', 'green', 'pink']
                     },
                     'E Dil%': {
                         ranges: [12.5, 16.66, 25, 50],
@@ -6089,6 +6144,18 @@
                 $(document).on('change', '#row-data-type', function () {
                     const filterType = $(this).val();
                     applyRowTypeFilter(filterType);
+                });
+
+                $('#invFilter').on('change', function() {
+                    applyAllFilters();
+                });
+
+                $('#l30Filter').on('change', function() {
+                    applyAllFilters();
+                });
+
+                $('#dilFilter').on('change', function() {
+                    applyAllFilters();
                 });
                 
                 // Add direct event handlers for search inputs to trigger unified filter
