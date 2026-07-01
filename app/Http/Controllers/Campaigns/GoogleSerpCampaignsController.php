@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Campaigns;
 
+use App\Services\GoogleAdsSbidService;
 use App\Support\GoogleShoppingCampaignsRawRule;
 
 /**
@@ -30,6 +31,33 @@ class GoogleSerpCampaignsController extends GoogleShoppingCampaignsController
     protected function applyCampaignNameScope($query, string $columnExpression = 'campaign_name'): void
     {
         $query->whereRaw("UPPER({$columnExpression}) LIKE ?", ['% SEARCH%']);
+    }
+
+    /**
+     * SERP (SEARCH) campaigns use strategy-aware bid updates — not Shopping listing groups.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    protected function pushSbidToGoogleAds(GoogleAdsSbidService $sbidService, string $customerId, string $campaignId, float $sbid, array $row = []): string
+    {
+        $strategy = strtoupper(trim((string) ($row['bidding_strategy_type'] ?? '')));
+
+        return $sbidService->updateSearchCampaignSbid(
+            $customerId,
+            $campaignId,
+            $sbid,
+            $strategy !== '' ? $strategy : null
+        );
+    }
+
+    protected function pushSbgtCommandLabel(): string
+    {
+        return 'push-sbgt-serp';
+    }
+
+    protected function pushSbidCommandLabel(): string
+    {
+        return 'push-sbid-serp';
     }
 
     // Note: L30 Sales semantics (GA4 actual revenue only — no fallback to Google Ads

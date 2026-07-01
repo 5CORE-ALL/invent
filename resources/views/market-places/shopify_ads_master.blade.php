@@ -293,6 +293,7 @@
             const channelLinks = {
                 'Google Shopping': "{{ route('google.shopping.campaigns') }}",
                 'Google SERP':     "{{ route('google.serp.campaigns') }}",
+                'Youtube ads':     "{{ route('google.youtube.ads.campaigns') }}",
                 'Facebook':        "{{ route('facebook.ads.channel') }}",
                 'Facebook · G Video':    "{{ route('facebook.ads.channel.group.video') }}",
                 'Facebook · G Carousal': "{{ route('facebook.ads.channel.group.carousal') }}",

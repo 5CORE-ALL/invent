@@ -1,5 +1,5 @@
 @php
-    $pageTitle = 'Google SERP';
+    $pageTitle = 'Youtube ads';
     $pageSubtitle = 'Google Ads';
 @endphp
 
@@ -325,16 +325,20 @@
                         <button type="button" id="gac-raw-refresh" class="btn btn-sm btn-outline-primary gac-raw-icon-btn" title="Refresh grid" aria-label="Refresh grid">
                             <i class="fa fa-refresh"></i>
                         </button>
+                        <button type="button" id="gac-raw-pull-data" class="btn btn-sm btn-primary" title="Runs app:fetch-google-ads-campaigns — pulls fresh campaign metrics from Google Ads + GA4. Waits until complete; shows success or error.">
+                            <i class="fa fa-cloud-download-alt"></i> Pull Data
+                            <input type="number" id="gac-raw-pull-days" min="1" max="30" value="1" class="form-control form-control-sm d-inline-block ms-1" style="width: 56px; padding: 1px 4px; height: 22px; font-size: 11px;" title="Days to fetch (1-30)" onclick="event.stopPropagation();">
+                        </button>
                         <button type="button" id="gac-raw-export" class="btn btn-sm btn-success gac-raw-icon-btn" title="Export current page as CSV" aria-label="Export current page as CSV">
                             <i class="fas fa-file-csv"></i>
                         </button>
                         <button type="button" class="btn btn-sm btn-outline-primary" id="gac-raw-sbgt-rule-btn" data-bs-toggle="modal" data-bs-target="#gacRawSbgtRuleModal" title="Edit ACOS band thresholds and SBGT tier values">SBGT RULE</button>
                         <button type="button" class="btn btn-sm btn-outline-primary" id="gac-raw-sbid-rule-btn" data-bs-toggle="modal" data-bs-target="#gacRawSbidRuleModal" title="Edit 7UB/1UB% thresholds and CPC multipliers for suggested SBID">SBID RULE</button>
                         <span class="vr align-self-center d-none d-md-inline-block mx-1"></span>
-                        <button type="button" class="btn btn-sm btn-warning text-dark" id="gac-raw-push-sbgt" title="Push SBGT to Google SERP (SEARCH) campaigns using the grid values for each selected row.">
+                        <button type="button" class="btn btn-sm btn-warning text-dark" id="gac-raw-push-sbgt" title="Push SBGT to Youtube ads campaigns using the grid values for each selected row.">
                             <i class="fa fa-cloud-upload-alt"></i> Push SBGT
                         </button>
-                        <button type="button" class="btn btn-sm btn-warning text-dark" id="gac-raw-push-sbid" title="Push SBID to Google SERP (SEARCH) ad groups using the grid values for each selected row. Rows with SBID — are skipped.">
+                        <button type="button" class="btn btn-sm btn-warning text-dark" id="gac-raw-push-sbid" title="Push SBID to Youtube ads ad groups using the grid values for each selected row. Rows with SBID — are skipped.">
                             <i class="fa fa-cloud-upload-alt"></i> Push SBID
                         </button>
                     </div>
@@ -607,14 +611,15 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            const dataUrl = @json(route('google.serp.campaigns.data'));
-            const gacRawRuleGetUrl = @json(route('google.serp.campaigns.rule'));
-            const gacRawRuleSaveUrl = @json(route('google.serp.campaigns.rule.save'));
-            const gacRawPushSbgtUrl = @json(route('google.serp.campaigns.push.sbgt'));
-            const gacRawPushSbidUrl = @json(route('google.serp.campaigns.push.sbid'));
-            const gacRawBadgeHistoryUrl = @json(route('google.serp.campaigns.badge.history'));
-            const gacRawU7PieDistribUrl = @json(route('google.serp.campaigns.u7.distribution'));
-            const gacRawU7PieHistoryUrl = @json(route('google.serp.campaigns.u7.history'));
+            const dataUrl = @json(route('google.youtube.ads.campaigns.data'));
+            const gacRawRuleGetUrl = @json(route('google.youtube.ads.campaigns.rule'));
+            const gacRawRuleSaveUrl = @json(route('google.youtube.ads.campaigns.rule.save'));
+            const gacRawPushSbgtUrl = @json(route('google.youtube.ads.campaigns.push.sbgt'));
+            const gacRawPushSbidUrl = @json(route('google.youtube.ads.campaigns.push.sbid'));
+            const gacRawPullDataUrl = @json(route('google.shopping.campaigns.pull.data'));
+            const gacRawBadgeHistoryUrl = @json(route('google.youtube.ads.campaigns.badge.history'));
+            const gacRawU7PieDistribUrl = @json(route('google.youtube.ads.campaigns.u7.distribution'));
+            const gacRawU7PieHistoryUrl = @json(route('google.youtube.ads.campaigns.u7.history'));
             window.gacRawRule = @json($googleShoppingRule);
             let table;
             let gacRawU7PieChart = null;
@@ -1389,7 +1394,7 @@
             });
 
             document.getElementById('gac-raw-export').addEventListener('click', function() {
-                table.download('csv', 'google_ads_serp_campaigns_page.csv');
+                table.download('csv', 'google_ads_campaigns_page.csv');
             });
 
             function gacShowPushResult(title, body, variant) {
@@ -1499,6 +1504,69 @@
                     });
             }
 
+            var pullDataBtn = document.getElementById('gac-raw-pull-data');
+            if (pullDataBtn) {
+                pullDataBtn.addEventListener('click', function(ev) {
+                    if (ev && ev.target && ev.target.id === 'gac-raw-pull-days') {
+                        return;
+                    }
+                    var daysEl = document.getElementById('gac-raw-pull-days');
+                    var days = daysEl ? parseInt(daysEl.value, 10) : 1;
+                    if (!Number.isFinite(days) || days < 1) days = 1;
+                    if (days > 30) days = 30;
+                    if (daysEl) daysEl.value = String(days);
+
+                    if (!window.confirm('Run app:fetch-google-ads-campaigns for the last ' + days + ' day(s)? This pulls campaigns + metrics from Google Ads / GA4 and waits until complete (may take several minutes).')) {
+                        return;
+                    }
+
+                    var origHtml = pullDataBtn.innerHTML;
+                    pullDataBtn.disabled = true;
+                    pullDataBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Pulling…';
+                    gacShowPushLoading('Pulling data (app:fetch-google-ads-campaigns)…',
+                        'Fetching the last ' + days + ' day(s) from Google Ads + GA4. This runs synchronously — do not close this tab.');
+
+                    var token = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+                    fetch(gacRawPullDataUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            Accept: 'application/json',
+                            'X-CSRF-TOKEN': token,
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({ days: days }),
+                    })
+                        .then(function(res) {
+                            return res.json().then(function(body) {
+                                return { ok: res.ok, status: res.status, body: body };
+                            });
+                        })
+                        .then(function(out) {
+                            var b = out.body || {};
+                            var cmd = b.command || 'app:fetch-google-ads-campaigns';
+                            var success = out.ok && b.ok !== false;
+                            var title = cmd + ' — ' + (success ? 'finished' : 'failed');
+                            if (b.exit_code != null) {
+                                title += ' (exit ' + b.exit_code + ')';
+                            }
+                            var text = (b.message ? b.message + '\n\n' : '') + (b.output || '');
+                            gacShowPushResult(title, text, success ? 'success' : 'error');
+                            if (success && table) {
+                                Promise.resolve(table.setData(dataUrl)).finally(gacRawRefreshTableUiSoon);
+                            }
+                        })
+                        .catch(function(err) {
+                            gacShowPushResult('Request failed', String(err && err.message ? err.message : err), 'error');
+                        })
+                        .finally(function() {
+                            pullDataBtn.innerHTML = origHtml;
+                            pullDataBtn.disabled = false;
+                        });
+                });
+            }
+
             var pushSbgtBtn = document.getElementById('gac-raw-push-sbgt');
             if (pushSbgtBtn) {
                 pushSbgtBtn.addEventListener('click', function() {
@@ -1512,7 +1580,7 @@
                         btn: pushSbgtBtn,
                         campaign_ids: ids,
                         confirmMsg: 'Push SBGT to ' + scope + '? Each row is sent to Google Ads using the SBGT value shown in the grid (direct by campaign_id).',
-                        loadingTitle: 'Pushing SBGT (Google SERP)…',
+                        loadingTitle: 'Pushing SBGT (Youtube ads)…',
                         loadingDetail: 'Updating budgets for ' + ids.length + ' campaign id(s). Waiting for Google Ads API — do not close this tab.',
                     });
                 });
@@ -1530,7 +1598,7 @@
                         btn: pushSbidBtn,
                         campaign_ids: ids,
                         confirmMsg: 'Push SBID to ' + scope + '? Each row is sent to Google Ads using the SBID value shown in the grid (direct by campaign_id). Rows with SBID — are skipped.',
-                        loadingTitle: 'Pushing SBID (Google SERP)…',
+                        loadingTitle: 'Pushing SBID (Youtube ads)…',
                         loadingDetail: 'Updating SBIDs for ' + ids.length + ' campaign id(s). Waiting for Google Ads API — do not close this tab.',
                     });
                 });

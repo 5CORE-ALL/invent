@@ -23,6 +23,8 @@ use Google\Ads\GoogleAds\V22\Enums\AdGroupAdStatusEnum\AdGroupAdStatus;
 use Google\Ads\GoogleAds\V22\Services\CampaignOperation;
 use Google\Ads\GoogleAds\V22\Services\MutateCampaignsRequest;
 use Google\Ads\GoogleAds\V22\Resources\Campaign;
+use Google\Ads\GoogleAds\V22\Common\MaximizeConversions;
+use Google\Ads\GoogleAds\V22\Common\TargetSpend;
 use Google\Ads\GoogleAds\V22\Enums\CampaignStatusEnum\CampaignStatus;
 
 class GoogleAdsSbidService
@@ -242,7 +244,7 @@ class GoogleAdsSbidService
             throw $e;
         }
     }
-    public function updateCampaignSbids($customerId, $campaignId, $sbidFactor)
+    public function updateCampaignSbids($customerId, $campaignId, $sbidFactor, bool $includeProductGroups = true)
     {
         try {
 
@@ -280,7 +282,8 @@ class GoogleAdsSbidService
                         // Continue with other ad groups
                     }
 
-                    // Query product groups for this ad group
+                    // Shopping campaigns only — SERP/Search/Video pages pass $includeProductGroups = false.
+                    if ($includeProductGroups) {
                     $productGroupQuery = "
                         SELECT ad_group_criterion.resource_name, 
                                ad_group_criterion.listing_group.type,
@@ -314,6 +317,7 @@ class GoogleAdsSbidService
                             'ad_group_resource' => $adGroupResource,
                             'error' => $e->getMessage()
                         ]);
+                    }
                     }
                 } else {
                     Log::warning("No resource name found for ad group", ['row' => $row]);
@@ -559,6 +563,153 @@ class GoogleAdsSbidService
                 'error_trace' => $e->getTraceAsString()
             ]);
             throw $e;
+        }
+    }
+
+    /**
+     * Push SBID for Google Search (SERP) campaigns using the bidding strategy that
+     * campaign actually uses. Manual CPC updates ad-group + keyword bids; automated
+     * strategies update the max CPC bid ceiling visible in Google Ads settings.
+     *
+     * @return string Human-readable note for push logs
+     */
+    public function updateSearchCampaignSbid($customerId, $campaignId, float $sbidDollars, ?string $biddingStrategyType = null): string
+    {
+        $strategy = strtoupper(trim((string) ($biddingStrategyType ?? '')));
+        if ($strategy === '') {
+            $strategy = $this->resolveCampaignBiddingStrategyType($customerId, (string) $campaignId);
+        }
+
+        $bidMicros = $this->sbidDollarsToMicros($sbidDollars);
+        $resourceName = "customers/{$customerId}/campaigns/{$campaignId}";
+
+        if (in_array($strategy, ['MANUAL_CPC', 'MANUAL_CPM', 'ENHANCED_CPC'], true)) {
+            $this->updateCampaignSbids($customerId, $campaignId, $sbidDollars, false);
+            $keywordCount = $this->updateSearchKeywordSbids($customerId, $campaignId, $sbidDollars);
+
+            return "manual CPC — ad groups + {$keywordCount} keyword(s) set to \$".number_format($sbidDollars, 2);
+        }
+
+        if ($strategy === 'MAXIMIZE_CONVERSIONS') {
+            $this->mutateCampaignNestedBidSetting(
+                $customerId,
+                $resourceName,
+                static function (Campaign $campaign) use ($bidMicros) {
+                    $campaign->setMaximizeConversions(new MaximizeConversions([
+                        'target_cpa_micros' => $bidMicros,
+                    ]));
+                },
+                'maximize_conversions.target_cpa_micros'
+            );
+
+            return 'Maximize Conversions — target CPA set to $'.number_format($sbidDollars, 2);
+        }
+
+        if (in_array($strategy, ['TARGET_SPEND', 'MAXIMIZE_CLICKS'], true)) {
+            $this->mutateCampaignNestedBidSetting(
+                $customerId,
+                $resourceName,
+                static function (Campaign $campaign) use ($bidMicros) {
+                    $campaign->setTargetSpend(new TargetSpend([
+                        'cpc_bid_ceiling_micros' => $bidMicros,
+                    ]));
+                },
+                'target_spend.cpc_bid_ceiling_micros'
+            );
+
+            return 'Maximize clicks — max CPC bid limit set to $'.number_format($sbidDollars, 2);
+        }
+
+        throw new \InvalidArgumentException(
+            "Unsupported Search bidding strategy {$strategy} for campaign {$campaignId}. "
+            .'SBID push supports MANUAL_CPC, MAXIMIZE_CONVERSIONS, and TARGET_SPEND.'
+        );
+    }
+
+    /**
+     * @return int Number of keyword bids updated
+     */
+    public function updateSearchKeywordSbids($customerId, $campaignId, float $sbidDollars): int
+    {
+        $query = "
+            SELECT ad_group_criterion.resource_name
+            FROM ad_group_criterion
+            WHERE campaign.id = {$campaignId}
+              AND ad_group_criterion.type = 'KEYWORD'
+              AND ad_group_criterion.negative = FALSE
+              AND ad_group_criterion.status != 'REMOVED'
+        ";
+
+        $rows = $this->runQuery($customerId, $query);
+        $updated = 0;
+
+        foreach ($rows as $row) {
+            $resource = $row['adGroupCriterion']['resourceName'] ?? null;
+            if ($resource === null || $resource === '') {
+                continue;
+            }
+
+            try {
+                $this->updateProductGroupSbid($customerId, $resource, $sbidDollars);
+                $updated++;
+            } catch (\Exception $e) {
+                Log::error('Failed to update Search keyword SBID', [
+                    'campaign_id' => $campaignId,
+                    'criterion_resource' => $resource,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return $updated;
+    }
+
+    private function resolveCampaignBiddingStrategyType($customerId, string $campaignId): string
+    {
+        $query = "
+            SELECT campaign.bidding_strategy_type
+            FROM campaign
+            WHERE campaign.id = {$campaignId}
+        ";
+        $rows = $this->runQuery($customerId, $query);
+        $type = $rows[0]['campaign']['biddingStrategyType'] ?? '';
+
+        return strtoupper(trim((string) $type));
+    }
+
+    private function sbidDollarsToMicros(float $sbidDollars): int
+    {
+        $bidMicros = round($sbidDollars * 1_000_000);
+        $billableUnit = 10000;
+        $bidMicros = (int) (round($bidMicros / $billableUnit) * $billableUnit);
+
+        return max($billableUnit, $bidMicros);
+    }
+
+    /**
+     * @param  callable(Campaign): void  $configure
+     */
+    private function mutateCampaignNestedBidSetting($customerId, string $campaignResourceName, callable $configure, string $updateMaskPath): void
+    {
+        $campaign = new Campaign([
+            'resource_name' => $campaignResourceName,
+        ]);
+        $configure($campaign);
+
+        $campaignService = $this->getClient()->getCampaignServiceClient();
+        $operation = new CampaignOperation();
+        $operation->setUpdate($campaign);
+        $operation->setUpdateMask(new FieldMask(['paths' => [$updateMaskPath]]));
+
+        $request = new MutateCampaignsRequest([
+            'customer_id' => $customerId,
+            'operations' => [$operation],
+        ]);
+
+        $response = $campaignService->mutateCampaigns($request);
+
+        if (! $response || ! $response->getResults() || count($response->getResults()) === 0) {
+            throw new \Exception('No results returned from campaign bid update operation');
         }
     }
 
