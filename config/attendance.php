@@ -3,6 +3,12 @@
 return [
 
     /*
+    | When false, any logged-in user can access attendance menu and pages.
+    | Set ATTENDANCE_RESTRICTIONS_ENABLED=true to enforce role/email rules below.
+    */
+    'restrictions_enabled' => env('ATTENDANCE_RESTRICTIONS_ENABLED', false),
+
+    /*
     | Emails with full monitor access (all employees).
     */
     'monitor_emails' => [

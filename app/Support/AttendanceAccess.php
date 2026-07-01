@@ -7,6 +7,11 @@ use App\Models\User;
 
 class AttendanceAccess
 {
+    public static function restrictionsEnabled(): bool
+    {
+        return (bool) config('attendance.restrictions_enabled', false);
+    }
+
     public static function emailMatches(string $email, array $list): bool
     {
         $normalized = strtolower(trim($email));
@@ -19,6 +24,10 @@ class AttendanceAccess
         $user ??= auth()->user();
         if (! $user || ! ($user->is_active ?? true)) {
             return false;
+        }
+
+        if (! self::restrictionsEnabled()) {
+            return true;
         }
 
         $domain = (string) config('attendance.internal_email_domain', '@5core.com');
@@ -38,6 +47,10 @@ class AttendanceAccess
             return false;
         }
 
+        if (! self::restrictionsEnabled()) {
+            return true;
+        }
+
         if (self::emailMatches((string) $user->email, config('attendance.menu_emails', []))) {
             return true;
         }
@@ -54,6 +67,10 @@ class AttendanceAccess
             return false;
         }
 
+        if (! self::restrictionsEnabled()) {
+            return true;
+        }
+
         if (self::emailMatches((string) $user->email, config('attendance.monitor_emails', []))) {
             return true;
         }
@@ -66,6 +83,10 @@ class AttendanceAccess
         $user ??= auth()->user();
         if (! $user) {
             return false;
+        }
+
+        if (! self::restrictionsEnabled()) {
+            return true;
         }
 
         return self::emailMatches((string) $user->email, config('attendance.admin_emails', []));
@@ -81,6 +102,10 @@ class AttendanceAccess
         $user ??= auth()->user();
         if (! $user) {
             return [];
+        }
+
+        if (! self::restrictionsEnabled()) {
+            return null;
         }
 
         if (self::canMonitor($user) && (
@@ -107,6 +132,10 @@ class AttendanceAccess
         $viewer ??= auth()->user();
         if (! $viewer) {
             return false;
+        }
+
+        if (! self::restrictionsEnabled()) {
+            return true;
         }
 
         if ($viewer->id === $targetUserId) {
