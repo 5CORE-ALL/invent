@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'">
+    <title>5Core Attendance</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app">
+    <header class="titlebar">
+        <div class="brand">
+            <div class="logo"><img src="../assets/icon-48.png" width="32" height="32" alt=""></div>
+            <div>
+                <div class="brand-title">5Core Attendance</div>
+                <div class="brand-sub">Employee time tracking</div>
+            </div>
+        </div>
+        <div class="titlebar-actions no-drag">
+            <button class="icon-btn" id="btnMinimize" title="Minimize to tray">—</button>
+        </div>
+    </header>
+
+    <main class="content">
+        <div id="setupView" class="view">
+            <h2>Welcome</h2>
+            <p class="sub">Connect this app to your 5Core server.</p>
+            <div class="alert alert-info show">Base URL only — e.g. <code>http://127.0.0.1:8000</code></div>
+            <div class="field">
+                <label>Server URL</label>
+                <input type="url" id="apiUrl" placeholder="https://your-5core-site.com">
+            </div>
+            <div class="alert alert-error" id="setupError"></div>
+            <button class="btn btn-primary" id="btnSaveSetup">Continue</button>
+        </div>
+
+        <div id="loginView" class="view">
+            <h2>Sign in</h2>
+            <p class="sub">Use your 5Core portal email and password.</p>
+            <div class="field">
+                <label>Email</label>
+                <input type="email" id="email" autocomplete="username" placeholder="you@5core.com">
+            </div>
+            <div class="field">
+                <label>Password</label>
+                <input type="password" id="password" autocomplete="current-password" placeholder="••••••••">
+            </div>
+            <div class="alert alert-error" id="loginError"></div>
+            <button class="btn btn-primary" id="btnLogin">Sign In</button>
+            <p class="hint"><button type="button" class="link-btn" id="btnChangeServer">Change server URL</button></p>
+        </div>
+
+        <div id="dashView" class="view">
+            <div class="dash-header no-drag">
+                <div class="user-block">
+                    <div class="name" id="userName">—</div>
+                    <div class="email" id="userEmail">—</div>
+                </div>
+                <div class="header-right">
+                    <div class="date-block">
+                        <div class="date-label">Today</div>
+                        <div class="date-val" id="todayDate">—</div>
+                    </div>
+                    <button type="button" class="btn-signout" id="btnSignOut">Sign out</button>
+                </div>
+            </div>
+
+            <div class="hero-card">
+                <div id="statusBadge" class="status-badge status-off">
+                    <span class="dot"></span>
+                    <span id="statusText">Off duty</span>
+                </div>
+                <div class="session-row" id="sessionRow">
+                    <span class="session-label" id="sessionLabel">Current session</span>
+                    <span class="session-timer" id="sessionTimer">00:00:00</span>
+                </div>
+            </div>
+
+            <div class="panel">
+                <div class="panel-head">
+                    <h3>Today's time</h3>
+                    <span class="panel-hint">Resets at midnight · up to 24h</span>
+                </div>
+                <div class="stats-grid">
+                    <div class="stat-card stat-active" id="activeStatBox">
+                        <div class="stat-icon">●</div>
+                        <div class="stat-val" id="dailyActive">00:00:00</div>
+                        <div class="stat-lbl">Active</div>
+                    </div>
+                    <div class="stat-card stat-idle" id="idleStatBox">
+                        <div class="stat-icon">◐</div>
+                        <div class="stat-val" id="dailyIdle">00:00:00</div>
+                        <div class="stat-lbl">Idle</div>
+                    </div>
+                    <div class="stat-card stat-break" id="breakStatBox">
+                        <div class="stat-icon">☕</div>
+                        <div class="stat-val" id="dailyBreak">00:00:00</div>
+                        <div class="stat-lbl">Break</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="actions-zone no-drag" id="actionsZone">
+                <div class="clock-in-center" id="clockInWrap">
+                    <button class="btn btn-clock-in" id="btnClockIn">Clock In</button>
+                </div>
+                <div class="actions-bar" id="activeActions" style="display:none">
+                    <button class="btn btn-danger" id="btnClockOut">Clock Out</button>
+                    <button class="btn btn-ghost" id="btnPause" style="display:none">Break</button>
+                    <button class="btn btn-primary-outline" id="btnResume" style="display:none">Resume</button>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <footer class="footer-note no-drag">
+        Runs in background · all monitors captured · tray <strong>—</strong> · v1.2
+    </footer>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
