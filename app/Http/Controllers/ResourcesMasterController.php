@@ -7,6 +7,7 @@ use App\Models\ResourceAuditLog;
 use App\Models\ResourceDepartment;
 use App\Models\ResourceMaster;
 use App\Models\ResourceTag;
+use App\Support\SuperAdminAccess;
 use App\Services\ResourcesMaster\ResourceMasterStorageService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -70,7 +71,8 @@ class ResourcesMasterController extends Controller
 
         $user = $request->user();
         $managers = array_map('strtolower', config('resources_master.manager_emails', []));
-        $isManager = in_array(strtolower((string) $user->email), $managers, true);
+        $isManager = SuperAdminAccess::is($user)
+            || in_array(strtolower((string) $user->email), $managers, true);
 
         $q = ResourceMaster::query()
             ->with(['departments', 'tags', 'uploader:id,name'])

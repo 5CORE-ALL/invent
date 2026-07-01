@@ -18,6 +18,7 @@ use App\Models\CcShippingChecklist;
 use App\Models\CcShippingReturnsChannelNext;
 use App\Models\CcShippingReturnsChecklist;
 use App\Models\ChannelMaster;
+use App\Support\SuperAdminAccess;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -116,10 +117,7 @@ class AuditMasterController extends Controller
      */
     public function isAuditAdmin(): bool
     {
-        $user = Auth::user();
-        if (! $user) return false;
-        $email = strtolower(trim((string) ($user->email ?? '')));
-        return $email !== '' && in_array($email, self::ADMIN_EMAILS, true);
+        return SuperAdminAccess::allows(Auth::user(), self::ADMIN_EMAILS);
     }
 
     /**
@@ -128,10 +126,7 @@ class AuditMasterController extends Controller
      */
     public function isSopAdmin(): bool
     {
-        $user = Auth::user();
-        if (! $user) return false;
-        $email = strtolower(trim((string) ($user->email ?? '')));
-        return $email !== '' && in_array($email, self::SOP_ADMIN_EMAILS, true);
+        return SuperAdminAccess::allows(Auth::user(), self::SOP_ADMIN_EMAILS);
     }
 
     /**
@@ -141,10 +136,7 @@ class AuditMasterController extends Controller
      */
     public function canEditNextValue(): bool
     {
-        $user = Auth::user();
-        if (! $user) return false;
-        $email = strtolower(trim((string) ($user->email ?? '')));
-        return $email !== '' && in_array($email, self::NEXT_EDITOR_EMAILS, true);
+        return SuperAdminAccess::allows(Auth::user(), self::NEXT_EDITOR_EMAILS);
     }
 
     /**

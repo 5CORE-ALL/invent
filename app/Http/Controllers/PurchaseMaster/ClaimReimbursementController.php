@@ -4,6 +4,7 @@ namespace App\Http\Controllers\PurchaseMaster;
 
 use App\Http\Controllers\Controller;
 use App\Models\Supplier;
+use App\Support\SuperAdminAccess;
 use Illuminate\Http\Request;
 use App\Models\ClaimReimbursement;
 use Illuminate\Support\Facades\Auth;
@@ -28,7 +29,7 @@ class ClaimReimbursementController extends Controller
         $nextNumber = $lastClaim ? ((int) str_replace('CLM-', '', $lastClaim->claim_number)) + 1 : 1;
         $claimNumber = 'CLM-' . str_pad($nextNumber, 4, '0', STR_PAD_LEFT);
 
-        $canArchive = in_array(strtolower((string) (Auth::user()->email ?? '')), self::ARCHIVE_ALLOWED_EMAILS, true);
+        $canArchive = SuperAdminAccess::allows(Auth::user(), self::ARCHIVE_ALLOWED_EMAILS);
 
         return view('purchase-master.claim-reimbursement', compact('suppliers', 'claimNumber', 'canArchive'));
     }
@@ -286,9 +287,7 @@ class ClaimReimbursementController extends Controller
 
     public function toggleArchive(Request $request, $id)
     {
-        $userEmail = strtolower((string) (Auth::user()->email ?? ''));
-
-        if (!in_array($userEmail, self::ARCHIVE_ALLOWED_EMAILS, true)) {
+        if (! SuperAdminAccess::allows(Auth::user(), self::ARCHIVE_ALLOWED_EMAILS)) {
             return response()->json([
                 'success' => false,
                 'message' => 'You are not authorized to archive / resolve claims.',

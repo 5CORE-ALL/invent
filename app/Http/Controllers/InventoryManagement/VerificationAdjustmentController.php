@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\InventoryManagement;
 
 use App\Http\Controllers\Controller;
+use App\Support\SuperAdminAccess;
 use Illuminate\Http\Request;
 use App\Http\Controllers\ApiController;
 use App\Http\Controllers\ShopifyApiInventoryController;
@@ -1664,7 +1665,7 @@ class VerificationAdjustmentController extends Controller
     {
         $user = Auth::user();
         
-        if (!$user || !in_array($user->email, ['inventory@5core.com', 'president@5core.com', 'software2@5core.com'])) {
+        if (!$user || !SuperAdminAccess::allows($user, ['inventory@5core.com', 'president@5core.com', 'software2@5core.com'])) {
             abort(404, 'Page not available');
         }
         
@@ -1706,7 +1707,7 @@ class VerificationAdjustmentController extends Controller
     {
         $user = Auth::user();
         
-        if (!$user || !in_array($user->email, ['inventory@5core.com', 'president@5core.com', 'software2@5core.com'])) {
+        if (!$user || !SuperAdminAccess::allows($user, ['inventory@5core.com', 'president@5core.com', 'software2@5core.com'])) {
             abort(404, 'Page not available');
         }
 
@@ -2263,7 +2264,7 @@ GQL;
     public function adjustLostGainQuantities(Request $request)
     {
         $user = Auth::user();
-        if (!$user || !in_array($user->email, ['inventory@5core.com', 'president@5core.com', 'software2@5core.com'])) {
+        if (!$user || !SuperAdminAccess::allows($user, ['inventory@5core.com', 'president@5core.com', 'software2@5core.com'])) {
             abort(404, 'Page not available');
         }
 
@@ -2351,7 +2352,7 @@ GQL;
     public function getLostGainAqHistory(Request $request)
     {
         $user = Auth::user();
-        if (!$user || !in_array($user->email, ['inventory@5core.com', 'president@5core.com', 'software2@5core.com'])) {
+        if (!$user || !SuperAdminAccess::allows($user, ['inventory@5core.com', 'president@5core.com', 'software2@5core.com'])) {
             abort(404, 'Page not available');
         }
 

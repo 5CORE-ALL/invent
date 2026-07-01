@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\SuperAdminAccess;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -61,6 +62,10 @@ class ResourceMaster extends Model
     {
         if (! $user) {
             return false;
+        }
+
+        if (SuperAdminAccess::is($user)) {
+            return true;
         }
 
         $managers = array_map('strtolower', config('resources_master.manager_emails', []));
