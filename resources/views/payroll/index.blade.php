@@ -121,10 +121,10 @@
     <div class="payroll-card p-3">
         <div class="d-flex justify-content-end align-items-center mb-2">
             <div class="d-flex align-items-center gap-2">
-               
+                @if($canManage)
                 <a href="#" id="btnDownloadPayoutSheet" class="btn btn-sm btn-success py-0"><i class="ri-file-excel-2-line me-1"></i>Download Month Sheet</a>
                 <button type="button" class="btn btn-sm btn-outline-primary" id="btnSyncEmployees"><i class="ri-refresh-line"></i> Sync Hours from Team</button>
-               
+                @endif
             </div>
         </div>
         <div id="employeesTable"></div>

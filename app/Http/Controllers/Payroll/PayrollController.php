@@ -13,6 +13,7 @@ use App\Models\PayrollSalaryComponent;
 use App\Models\PayrollSettlement;
 use App\Models\User;
 use App\Services\PayrollService;
+use App\Support\SuperAdminAccess;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -32,7 +33,13 @@ class PayrollController extends Controller
 
     protected function authorizeSheetAdmin(): void
     {
-        abort_unless(Gate::allows('payroll.sheet-admin'), 403, 'Only HR and the President can use this function.');
+        $user = auth()->user();
+
+        $allowed = SuperAdminAccess::is($user)
+            || Gate::allows('payroll.sheet-admin')
+            || Gate::allows('payroll.manage');
+
+        abort_unless($allowed, 403, 'You do not have permission to use this function.');
     }
 
     protected function ensureUnlocked(?PayrollMonth $month): void
