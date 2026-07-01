@@ -6148,6 +6148,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/policies', [AttendanceMonitorController::class, 'policies'])->name('policies');
         Route::post('/policies', [AttendanceMonitorController::class, 'storePolicy'])->name('policies.store');
         Route::get('/agent', [AttendanceMonitorController::class, 'agentDownload'])->name('agent');
+        Route::get('/agent/download', [AttendanceMonitorController::class, 'agentInstallerDownload'])->name('agent.download');
         Route::get('/screenshots/{screenshot}', [AttendanceAgentController::class, 'showScreenshot'])->name('screenshots.show');
     });
 

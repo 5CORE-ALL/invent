@@ -15,6 +15,7 @@ use App\Support\AttendanceAccess;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class AttendanceMonitorController extends Controller
 {
@@ -228,11 +229,61 @@ class AttendanceMonitorController extends Controller
     {
         abort_unless(AttendanceAccess::canSeeMenu(), 403);
 
+        $installer = $this->resolveAgentInstaller();
+
         return view('attendance.agent-download', [
             'title' => 'Desktop Agent',
-            'api_url' => url('/attendance/desktop-api'),
             'agent_version' => config('attendance.agent_version', '1.0.0'),
+            'server_url' => rtrim((string) config('app.url'), '/'),
+            'download_available' => $installer !== null,
+            'download_url' => $installer ? route('attendance.agent.download') : null,
+            'download_filename' => config('attendance.agent_download_filename', '5Core-Attendance-Setup.exe'),
+            'screenshots_enabled' => (bool) config('attendance.screenshots_enabled', true),
         ]);
+    }
+
+    public function agentInstallerDownload(): BinaryFileResponse
+    {
+        abort_unless(AttendanceAccess::canSeeMenu(), 403);
+
+        $installer = $this->resolveAgentInstaller();
+        abort_unless($installer, 404, 'The desktop agent installer is not available yet. Please contact IT.');
+
+        return response()->download(
+            $installer,
+            (string) config('attendance.agent_download_filename', '5Core-Attendance-Setup.exe'),
+        );
+    }
+
+    private function resolveAgentInstaller(): ?string
+    {
+        $configured = config('attendance.agent_installer_path');
+        if (is_string($configured) && $configured !== '' && is_file($configured)) {
+            return $configured;
+        }
+
+        $public = public_path('downloads/5core-attendance-setup.exe');
+        if (is_file($public)) {
+            return $public;
+        }
+
+        $distDir = base_path('attendance-agent/dist');
+        if (! is_dir($distDir)) {
+            return null;
+        }
+
+        $matches = glob($distDir.DIRECTORY_SEPARATOR.'*Setup*.exe') ?: [];
+        if ($matches === []) {
+            $matches = glob($distDir.DIRECTORY_SEPARATOR.'*.exe') ?: [];
+        }
+
+        if ($matches === []) {
+            return null;
+        }
+
+        usort($matches, fn (string $a, string $b) => filemtime($b) <=> filemtime($a));
+
+        return $matches[0];
     }
 
     public function teamData(Request $request): JsonResponse
