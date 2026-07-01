@@ -3,49 +3,172 @@
 namespace App\Services;
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
+/**
+ * Single write path for SKU supplier across the purchase pipeline:
+ * to_order_analysis, mfrg_progress (MIP), ready_to_ship (R2S), transit_container_details (Transit).
+ * Forecast / approval.required read to_order_analysis first, then mfrg.
+ */
 class ToOrderSupplierSync
 {
     /**
-     * Mirror mfrg_progress.supplier into to_order_analysis.supplier_name so
-     * /forecast.analysis and /approval.required show the same supplier after refresh.
-     *
-     * @return int Rows updated or created (0 if skipped)
+     * Propagate supplier to every pipeline table for this SKU (any page save path).
      */
-    public static function syncFromMfrg(string $sku, $supplierValue): int
+    public static function setSupplierForSku(string $sku, $supplierValue, ?string $parent = null): void
     {
         $skuUpper = strtoupper(trim($sku));
         if ($skuUpper === '') {
-            return 0;
+            return;
         }
 
         $supplierName = $supplierValue === null ? '' : trim((string) $supplierValue);
+        $parentTrim = $parent !== null ? trim($parent) : '';
+        $now = now();
 
-        $updated = (int) DB::table('to_order_analysis')
+        // Canonical: to_order_analysis.supplier_name
+        $toUpdated = (int) DB::table('to_order_analysis')
             ->whereNull('deleted_at')
             ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper])
             ->update([
                 'supplier_name' => $supplierName,
-                'updated_at' => now(),
+                'updated_at' => $now,
             ]);
 
-        if ($updated === 0) {
+        if ($toUpdated === 0) {
             DB::table('to_order_analysis')->insert([
                 'sku' => $sku,
+                'parent' => $parentTrim !== '' ? $parentTrim : null,
                 'supplier_name' => $supplierName,
-                'created_at' => now(),
-                'updated_at' => now(),
+                'created_at' => $now,
+                'updated_at' => $now,
             ]);
-
-            return 1;
         }
 
-        return $updated;
+        // MIP
+        $mfrgUpdated = (int) DB::table('mfrg_progress')
+            ->whereNull('deleted_at')
+            ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper])
+            ->update([
+                'supplier' => $supplierName,
+                'updated_at' => $now,
+            ]);
+
+        if ($mfrgUpdated === 0) {
+            DB::table('mfrg_progress')->insert([
+                'sku' => $sku,
+                'parent' => $parentTrim !== '' ? $parentTrim : null,
+                'supplier' => $supplierName,
+                'ready_to_ship' => 'No',
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+        }
+
+        // R2S
+        if (Schema::hasTable('ready_to_ship') && Schema::hasColumn('ready_to_ship', 'supplier')) {
+            DB::table('ready_to_ship')
+                ->whereNull('deleted_at')
+                ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper])
+                ->update([
+                    'supplier' => $supplierName,
+                    'updated_at' => $now,
+                ]);
+        }
+
+        // Transit
+        if (Schema::hasTable('transit_container_details') && Schema::hasColumn('transit_container_details', 'supplier_name')) {
+            DB::table('transit_container_details')
+                ->whereNull('deleted_at')
+                ->whereRaw('TRIM(UPPER(our_sku)) = ?', [$skuUpper])
+                ->update([
+                    'supplier_name' => $supplierName,
+                    'updated_at' => $now,
+                ]);
+        }
     }
 
     /**
-     * SKUs where mfrg_progress.supplier differs from the latest to_order_analysis row
-     * (same rule /forecast.analysis uses when loading the Supplier column).
+     * @deprecated Use setSupplierForSku() — kept for backfill command compatibility.
+     */
+    public static function syncFromMfrg(string $sku, $supplierValue, ?string $parent = null): int
+    {
+        self::setSupplierForSku($sku, $supplierValue, $parent);
+
+        return 1;
+    }
+
+    /**
+     * Resolve supplier for display: to_order_analysis (latest explicit) → mfrg → r2s → transit.
+     */
+    public static function resolveSupplierForSku(string $sku): string
+    {
+        $skuUpper = strtoupper(trim($sku));
+        if ($skuUpper === '') {
+            return '';
+        }
+
+        $toRows = DB::table('to_order_analysis')
+            ->whereNull('deleted_at')
+            ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper])
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id')
+            ->get(['supplier_name']);
+
+        foreach ($toRows as $row) {
+            if ($row->supplier_name !== null) {
+                return trim((string) $row->supplier_name);
+            }
+        }
+
+        $mfrg = DB::table('mfrg_progress')
+            ->whereNull('deleted_at')
+            ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper])
+            ->whereNotNull('supplier')
+            ->whereRaw("TRIM(supplier) != ''")
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id')
+            ->value('supplier');
+
+        if ($mfrg !== null && trim((string) $mfrg) !== '') {
+            return trim((string) $mfrg);
+        }
+
+        if (Schema::hasTable('ready_to_ship') && Schema::hasColumn('ready_to_ship', 'supplier')) {
+            $rts = DB::table('ready_to_ship')
+                ->whereNull('deleted_at')
+                ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper])
+                ->whereNotNull('supplier')
+                ->whereRaw("TRIM(supplier) != ''")
+                ->orderByDesc('updated_at')
+                ->orderByDesc('id')
+                ->value('supplier');
+
+            if ($rts !== null && trim((string) $rts) !== '') {
+                return trim((string) $rts);
+            }
+        }
+
+        if (Schema::hasTable('transit_container_details')) {
+            $trn = DB::table('transit_container_details')
+                ->whereNull('deleted_at')
+                ->whereRaw('TRIM(UPPER(our_sku)) = ?', [$skuUpper])
+                ->whereNotNull('supplier_name')
+                ->whereRaw("TRIM(supplier_name) != ''")
+                ->orderByDesc('updated_at')
+                ->orderByDesc('id')
+                ->value('supplier_name');
+
+            if ($trn !== null && trim((string) $trn) !== '') {
+                return trim((string) $trn);
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * SKUs where mfrg_progress.supplier differs from the latest to_order_analysis row.
      *
      * @return list<array{sku: string, mfrg_supplier: string, to_order_supplier: string|null, mfrg_updated_at: string|null, to_order_updated_at: string|null}>
      */
@@ -94,8 +217,6 @@ class ToOrderSupplierSync
             $mfrgSupplier = trim((string) $mfrg->supplier);
             $toOrder = $latestToOrderBySku[$skuKey] ?? null;
 
-            // /forecast.analysis only prefers to_order when supplier_name is NOT null.
-            // Rows with null to_order supplier already display mfrg — skip those.
             if ($toOrder === null || $toOrder->supplier_name === null) {
                 continue;
             }
@@ -106,8 +227,6 @@ class ToOrderSupplierSync
                 continue;
             }
 
-            // Only backfill when MIP was updated at or after To Order — the forecast-edit
-            // bug wrote to mfrg_progress only, so the newer timestamp is usually correct.
             $mfrgAt = $mfrg->updated_at ? strtotime((string) $mfrg->updated_at) : 0;
             $toAt = $toOrder->updated_at ? strtotime((string) $toOrder->updated_at) : 0;
             if ($mfrgAt > 0 && $toAt > 0 && $mfrgAt < $toAt && ! $ignoreTimestamp) {

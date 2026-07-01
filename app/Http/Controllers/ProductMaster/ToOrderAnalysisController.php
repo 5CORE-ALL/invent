@@ -17,6 +17,8 @@ use App\Models\AmazonSkuCompetitor;
 use App\Models\ComparisonData;
 use App\Services\LinkedSkuGroupService;
 use App\Services\PurchasePageExecService;
+use App\Services\SupplierCategorySync;
+use App\Services\ToOrderSupplierSync;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Cache;
@@ -319,30 +321,6 @@ class ToOrderAnalysisController extends Controller
     }
 
     /**
-     * Map of normalized supplier name => category name, derived from the suppliers
-     * table joined to the categories table. Used to attach a Category to each
-     * To Order Analysis row based on its supplier.
-     *
-     * @return array<string, string>
-     */
-    private function supplierCategoryMap(): array
-    {
-        $categoryById = DB::table('categories')->pluck('name', 'id');
-        $map = [];
-        foreach (DB::table('suppliers')->select('name', 'category_id')->get() as $sup) {
-            $name = strtoupper(trim((string) ($sup->name ?? '')));
-            if ($name === '' || empty($sup->category_id)) {
-                continue;
-            }
-            $catName = $categoryById[$sup->category_id] ?? null;
-            if ($catName && !isset($map[$name])) {
-                $map[$name] = (string) $catName;
-            }
-        }
-        return $map;
-    }
-
-    /**
      * @return array<string, int> normalized category name => supplier count
      */
     private function categorySupplierCountMap(): array
@@ -466,8 +444,8 @@ class ToOrderAnalysisController extends Controller
             $processedData = [];
             $execService = app(PurchasePageExecService::class);
             $pageExec = $execService->getAssignment('to_order') ?? '';
-            $supplierCategoryMap = $this->supplierCategoryMap();
             $categorySupplierCountMap = $this->categorySupplierCountMap();
+            $categoryBySku = SupplierCategorySync::resolveCategoryMapForSkus(array_values($allSkus));
 
             foreach ($allSkus as $sheetSku) {
                 if ($sheetSku === '') {
@@ -602,7 +580,7 @@ class ToOrderAnalysisController extends Controller
                     'Clink'           => ($forecast ? ($forecast->clink ?? '') : ''),
                     // Use stored supplier; only fallback to parent lookup when never set (null). Empty = user chose "Select" so keep blank.
                     'Supplier'        => $toOrder->supplier_name !== null ? (string) $toOrder->supplier_name : ($supplierName ?? ''),
-                    'Category'        => $supplierCategoryMap[strtoupper(trim((string) ($toOrder->supplier_name !== null ? $toOrder->supplier_name : ($supplierName ?? ''))))] ?? '',
+                    'Category'        => $categoryBySku[$sheetSku] ?? '',
                     'Exec'            => isset($toOrder->exec) && $toOrder->exec !== null ? (string) $toOrder->exec : '',
                     'msl'             => $mslValue,
                     'lp_msl'          => $lpMsl,
@@ -1070,41 +1048,34 @@ class ToOrderAnalysisController extends Controller
             };
             $toOrderQuery = $buildQuery();
 
-            // Supplier: allow empty string; scope by row_id when sent so duplicate SKUs update the correct row only
+            // Supplier: unified pipeline sync (to-order, MIP, R2S, transit, forecast)
             if ($column === 'Supplier') {
-                $updated = $toOrderQuery->update(['supplier_name' => $value]);
-                if ($updated === 0) {
-                    // Try slow fallback (non-normalized SKU casing in DB)
-                    $updated = $buildQuerySlow()->update(['supplier_name' => $value]);
+                try {
+                    $parent = trim((string) $request->input('parent', ''));
+                    ToOrderSupplierSync::setSupplierForSku($sku, $value, $parent !== '' ? $parent : null);
+                } catch (\Throwable $e) {
+                    Log::error('ToOrderAnalysis updateLink supplier sync failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+                    return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
                 }
-                if ($updated === 0 && $rowId > 0) {
+
+                return response()->json(['success' => true]);
+            }
+
+            $updated = $toOrderQuery->update([$updateColumn => $value]);
+
+            if ($updated === 0) {
+                $updated = $buildQuerySlow()->update([$updateColumn => $value]);
+            }
+
+            if ($updated === 0) {
+                if ($rowId > 0) {
                     return response()->json(['success' => false, 'message' => 'Row not found for this SKU'], 422);
                 }
-                if ($updated === 0 && $rowId === 0) {
-                    $parent = trim((string) $request->input('parent', ''));
-                    ToOrderAnalysis::create([
-                        'sku' => $sku,
-                        'parent' => $parent !== '' ? $parent : null,
-                        'supplier_name' => $value,
-                    ]);
-                }
-            } else {
-                $updated = $toOrderQuery->update([$updateColumn => $value]);
-
-                if ($updated === 0) {
-                    // Try slow fallback before deciding to create
-                    $updated = $buildQuerySlow()->update([$updateColumn => $value]);
-                }
-
-                if ($updated === 0) {
-                    if ($rowId > 0) {
-                        return response()->json(['success' => false, 'message' => 'Row not found for this SKU'], 422);
-                    }
-                    ToOrderAnalysis::create([
-                        'sku' => $sku,
-                        $updateColumn => $value,
-                    ]);
-                }
+                ToOrderAnalysis::create([
+                    'sku' => $sku,
+                    $updateColumn => $value,
+                ]);
             }
 
             // When MOQ (approved_qty) is updated on to-order page, sync to forecast_analysis so forecast page shows same value
@@ -1147,31 +1118,16 @@ class ToOrderAnalysisController extends Controller
 
         try {
             $updatedRows = 0;
-            $createdRows = 0;
             foreach ($skus as $skuOne) {
-                $n = (int) ToOrderAnalysis::query()
-                    ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuOne])
-                    ->update(['supplier_name' => $supplierName]);
-                $updatedRows += $n;
-                if ($n === 0) {
-                    ToOrderAnalysis::create([
-                        'sku' => $skuOne,
-                        'supplier_name' => $supplierName,
-                    ]);
-                    $createdRows++;
-                }
-            }
-
-            $msg = $updatedRows . ' row(s) updated';
-            if ($createdRows > 0) {
-                $msg .= ', ' . $createdRows . ' row(s) created';
+                ToOrderSupplierSync::setSupplierForSku($skuOne, $supplierName);
+                $updatedRows++;
             }
 
             return response()->json([
                 'success' => true,
-                'message' => $msg . '.',
+                'message' => $updatedRows . ' SKU(s) updated across all pipeline tables.',
                 'updated' => $updatedRows,
-                'created' => $createdRows,
+                'created' => 0,
             ]);
         } catch (\Throwable $e) {
             Log::error('ToOrderAnalysis bulkUpdateSupplier failed', ['skus' => $skus, 'error' => $e->getMessage()]);
@@ -1219,29 +1175,24 @@ class ToOrderAnalysisController extends Controller
 
         try {
             foreach ($skus as $sku) {
-                $toOrder = ToOrderAnalysis::query()
-                    ->whereRaw('TRIM(UPPER(sku)) = ?', [$sku])
-                    ->first(['supplier_name']);
+                try {
+                    $result = SupplierCategorySync::setCategoryForSku($sku, $categoryName);
+                } catch (\InvalidArgumentException $e) {
+                    return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+                }
 
-                $supplierName = trim((string) ($toOrder->supplier_name ?? ''));
-                if ($supplierName === '') {
+                if ($result['skipped_no_supplier']) {
                     $skippedNoSupplier++;
                     continue;
                 }
 
-                $supplierNorm = strtoupper($supplierName);
-                if (isset($updatedSupplierNames[$supplierNorm])) {
-                    continue;
-                }
-
-                $count = (int) DB::table('suppliers')
-                    ->whereRaw('TRIM(UPPER(name)) = ?', [$supplierNorm])
-                    ->update(['category_id' => $categoryId]);
-
-                if ($count > 0) {
-                    $updatedSuppliers += $count;
-                    $updatedSupplierNames[$supplierNorm] = true;
-                } else {
+                if ($result['updated'] > 0) {
+                    $updatedSuppliers += $result['updated'];
+                    $supplierName = ToOrderSupplierSync::resolveSupplierForSku($sku);
+                    if ($supplierName !== '') {
+                        $updatedSupplierNames[strtoupper($supplierName)] = true;
+                    }
+                } elseif ($result['skipped_supplier_not_found']) {
                     $skippedSupplierNotFound++;
                 }
             }
@@ -1374,19 +1325,9 @@ class ToOrderAnalysisController extends Controller
                     continue;
                 }
 
-                $n = (int) ToOrderAnalysis::query()
-                    ->whereRaw('TRIM(UPPER(sku)) = ?', [$sku])
-                    ->update(['supplier_name' => $supplier]);
+                ToOrderSupplierSync::setSupplierForSku($sku, $supplier);
 
-                if ($n > 0) {
-                    $updated += $n;
-                } else {
-                    ToOrderAnalysis::create([
-                        'sku' => $sku,
-                        'supplier_name' => $supplier,
-                    ]);
-                    $created++;
-                }
+                $updated++;
 
                 // Apply category to the supplier record so the derived Category column updates.
                 if ($category !== '' && $supplier !== '') {
@@ -1563,6 +1504,10 @@ class ToOrderAnalysisController extends Controller
                     'created_at'    => $now,
                     'updated_at'    => $now,
                 ]);
+            }
+
+            if ($supplier !== '') {
+                ToOrderSupplierSync::setSupplierForSku($sku, $supplier, $parent !== '' ? $parent : null);
             }
 
             return response()->json(['success' => true]);

@@ -1109,6 +1109,7 @@
                                 <th data-column="26" data-column-name="zone_x">Zone<div class="resizer"></div>
                                 </th>
                                 <th data-column="1">Supplier<div class="resizer"></div></th>
+                                <th data-column="29">Category<div class="resizer"></div></th>
                                 <th data-column="2" hidden>
                                     Parent
                                     <div class="resizer"></div>
@@ -1176,6 +1177,8 @@
                                     $r2sPackingLink = ($packingListLinks ?? [])[$r2sPackingNorm] ?? null;
                                     $mfrgSup = trim((string) ($item->mfrg_supplier ?? ''));
                                     $mfrgDisplay = $mfrgSup !== '' ? $mfrgSup : '—';
+                                    $categoryDisplay = trim((string) ($item->Category ?? ''));
+                                    $categoryDisplay = $categoryDisplay !== '' ? $categoryDisplay : '—';
                                     $supplierZoneMapLocal = $supplierZoneMap ?? [];
                                     $mappedZone = '';
                                     if ($mfrgSup !== '') {
@@ -1225,6 +1228,9 @@
                                 </td>
                                 <td data-column="1" class="forecast-current-supplier-cell-r2s">
                                     <span class="forecast-supplier-name" title="{{ e($mfrgSup) }}">{{ e($mfrgDisplay) }}</span>
+                                </td>
+                                <td data-column="29" class="text-center align-middle">
+                                    <span style="font-weight:700;">{{ e($categoryDisplay) }}</span>
                                 </td>
                                 
                                 @php

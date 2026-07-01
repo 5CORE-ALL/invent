@@ -10,6 +10,8 @@ use App\Models\Supplier;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\ReadyToShip;
+use App\Services\SupplierCategorySync;
+use App\Services\ToOrderSupplierSync;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -110,8 +112,12 @@ class TransitContainerDetailsController extends Controller
                 ]];
             })->toArray();
 
+        $categoryBySku = SupplierCategorySync::resolveCategoryMapForSkus(
+            $allRecords->map(fn ($r) => strtoupper(trim(preg_replace('/\s+/', ' ', $r->our_sku ?? ''))))->filter()->unique()->values()->all()
+        );
+
         // Transform TransitContainerDetail Records
-        $allRecords->transform(function ($record) use ($skuParentMap, $parentSupplierMap, $shopifyImages, $productValuesMap, $pushedMap, $clinkBySku, $lastSavedMap) {
+        $allRecords->transform(function ($record) use ($skuParentMap, $parentSupplierMap, $shopifyImages, $productValuesMap, $pushedMap, $clinkBySku, $lastSavedMap, $categoryBySku) {
             $sku = strtoupper(trim(preg_replace('/\s+/', ' ', $record->our_sku ?? '')));
             $tabKey = strtoupper(trim(preg_replace('/\s+/', ' ', $record->tab_name ?? '')));
             // $rowId = $record->id; 
@@ -143,6 +149,7 @@ class TransitContainerDetailsController extends Controller
             $record->last_saved_by = $lastSaved['user_name'] ?? ($record->user->name ?? '—');
             $record->last_saved_at = $lastSaved['saved_at']  ?? ($record->created_at ? $record->created_at->format('d M H:i') : '—');
             $record->setAttribute('Clink', $clinkBySku[$sku] ?? '');
+            $record->Category = $categoryBySku[$sku] ?? '';
 
             return $record;
         });
@@ -229,6 +236,17 @@ class TransitContainerDetailsController extends Controller
 
         // Auto-sync total amount to On Sea Transit
         $this->autoSyncToOnSea($data['tab_name'] ?? $row->tab_name);
+
+        if (array_key_exists('supplier_name', $data)) {
+            $syncSku = trim((string) ($data['our_sku'] ?? $row->our_sku ?? ''));
+            if ($syncSku !== '') {
+                ToOrderSupplierSync::setSupplierForSku(
+                    $syncSku,
+                    $data['supplier_name'] ?? '',
+                    trim((string) ($data['parent'] ?? $row->parent ?? ''))
+                );
+            }
+        }
 
         return response()->json(['success' => true, 'id' => $row->id]);
     }

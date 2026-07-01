@@ -829,10 +829,9 @@
                         if (!v) {
                             return '<div style="text-align:center;" class="text-muted">—</div>';
                         }
-                        // MOQ fallback (when explicit appr_req_qty is 0) gets the yellow badge look,
-                        // matching the Forecast Analysis "Appr Req" column.
+                        // Yellow badge when value comes from 2 Ord or MOQ fallback (not explicit appr_req_qty).
                         const explicit = parseFloat(rowData.appr_req_qty);
-                        const isFallback = !(Number.isFinite(explicit) && explicit > 0);
+                        const isFallback = !(Number.isFinite(explicit) && explicit > 0 && v === explicit);
                         const bg = isFallback ? 'background:#fff3a0;border-radius:4px;padding:2px 6px;' : '';
                         const disp = Number.isInteger(v) ? v : v.toFixed(2).replace(/\.?0+$/, '');
                         return `<div style="text-align:center;font-weight:bold;${bg}">${disp}</div>`;
@@ -912,6 +911,16 @@
                     title: "Supplier",
                     field: "Supplier Tag",
                     accessor: row => row["Supplier Tag"]
+                },
+                {
+                    title: "Category",
+                    field: "Category",
+                    hozAlign: "center",
+                    headerTooltip: "Category (from the supplier)",
+                    formatter: function(cell) {
+                        const v = String(cell.getValue() || "").trim();
+                        return v ? v : '<span class="text-muted">—</span>';
+                    }
                 },
                 {
                     title: "NRP",
@@ -1382,12 +1391,20 @@
             return Number.isFinite(twoOrd) && twoOrd >= 0;
         }
 
-        // Same Appr Req column value used by /forecast.analysis — returns explicit appr_req_qty
-        // when stage='appr_req', otherwise falls back to MOQ for any non-parent row with to_order >= 0.
-        // Rows already moved into a downstream pipeline stage (mip/r2s/transit/all_good) are excluded.
+        // Appr Req column: when 2 Ord > 0 show MOQ (qty to order); else explicit appr_req_qty;
+        // else MOQ fallback when 2 Ord >= 0 and not in a downstream pipeline-only bucket.
         function getEffectiveApprReqValue(rowData) {
             if (!rowData || rowData.is_parent || rowData.isParent) return 0;
             const raw = rowData.raw_data || {};
+            const twoOrd = parseFloat(rowData.to_order ?? raw.to_order ?? 0);
+
+            if (Number.isFinite(twoOrd) && twoOrd > 0) {
+                const moqVal = parseFloat(rowData.MOQ ?? raw.MOQ ?? raw['Approved QTY']);
+                if (Number.isFinite(moqVal) && moqVal > 0) {
+                    return moqVal;
+                }
+            }
+
             const stageNorm = String(rowData.stage ?? raw.stage ?? '').trim().toLowerCase();
             // Exclude downstream pipeline stages AND 2Order — 2Order rows are tracked in their own
             // dropdown option, so the loose Appr Req rule must not count them (keeps the yellow
@@ -1399,7 +1416,6 @@
             if (Number.isFinite(explicitApprReq) && explicitApprReq > 0) {
                 return explicitApprReq;
             }
-            const twoOrd = parseFloat(rowData.to_order ?? raw.to_order ?? 0);
             if (Number.isFinite(twoOrd) && twoOrd >= 0) {
                 const moqVal = parseFloat(rowData.MOQ ?? raw.MOQ ?? raw['Approved QTY']);
                 if (Number.isFinite(moqVal) && moqVal > 0) {

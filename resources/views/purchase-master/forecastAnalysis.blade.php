@@ -1368,34 +1368,13 @@
             });
         }
 
-        /** Promise wrapper for supplier updates (mfrg_progress.supplier). */
-        function updateForecastSupplierPromise(sku, value, mipId) {
-            return new Promise(function(resolve) {
-                const fd = new FormData();
-                fd.append('sku', sku);
-                fd.append('column', 'supplier');
-                fd.append('value', value);
-                if (mipId) fd.append('mip_id', mipId);
-                fd.append('_token', $('meta[name="csrf-token"]').attr('content') || '');
-                fetch('/mfrg-progresses/inline-update-by-sku', {
-                    method: 'POST',
-                    body: fd,
-                    headers: {
-                        'X-Requested-With': 'XMLHttpRequest',
-                        'Accept': 'application/json'
-                    }
-                })
-                .then(function(r) { return r.json().catch(function() { return { success: false }; }); })
-                .then(function(res) {
-                    if (res && res.success === true) {
-                        resolve({ ok: true, message: res.message || '' });
-                    } else {
-                        resolve({ ok: false, message: (res && res.message) || 'Not saved' });
-                    }
-                })
-                .catch(function(err) {
-                    resolve({ ok: false, message: (err && err.message) || 'AJAX failed' });
-                });
+        /** Promise wrapper for supplier updates — writes to both to_order + mfrg via /update-forecast-data. */
+        function updateForecastSupplierPromise(sku, value, parent) {
+            return updateForecastFieldPromise({
+                sku: sku,
+                parent: parent || '',
+                column: 'Supplier',
+                value: value
             });
         }
 
@@ -1789,8 +1768,8 @@
                         try {
                             let res;
                             if (fc.column === 'supplier') {
-                                const mipId = String(d.mip_id || d.mipId || '').trim();
-                                res = await updateForecastSupplierPromise(tSku, saveVal, mipId);
+                                const tParent = String(d.Parent || d.parent || '').trim();
+                                res = await updateForecastSupplierPromise(tSku, saveVal, tParent);
                             } else if (fc.column === 'area') {
                                 res = await updateForecastR2sInlinePromise(tSku, 'area', saveVal);
                             } else {
@@ -2846,6 +2825,25 @@
                             ? escHtml(formatSupplierShortName(value))
                             : '-';
                         return '<span class="forecast-supplier-name" title="' + escHtml(value) + '">' + display + '</span>';
+                    }
+                },
+                {
+                    title: "Category",
+                    field: "Category",
+                    minWidth: 90,
+                    width: 100,
+                    maxWidth: 130,
+                    widthGrow: 0,
+                    hozAlign: "center",
+                    vertAlign: "middle",
+                    headerSort: true,
+                    headerTooltip: "Category (from the supplier)",
+                    formatter: function(cell) {
+                        const v = String(cell.getValue() || "").trim();
+                        if (!v) {
+                            return '<span class="text-muted">—</span>';
+                        }
+                        return '<span style="font-weight:700;">' + v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</span>';
                     }
                 },
                 {
@@ -3928,13 +3926,16 @@
             btn.disabled = true;
             const token = document.querySelector('input[name="_token"]')?.value || document.querySelector('meta[name="csrf-token"]')?.content || '';
             const promises = validRows.map(function(item) {
-                const fd = new FormData();
-                fd.append('sku', item.sku);
-                fd.append('column', 'supplier');
-                fd.append('value', supplierName);
-                fd.append('_token', token);
-                return fetch('/mfrg-progresses/inline-update-by-sku', { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' } })
-                    .then(function(r) { return r.json(); });
+                const d = item.row.getData() || {};
+                const parent = String(d.Parent || d.parent || '').trim();
+                return updateForecastFieldPromise({
+                    sku: item.sku,
+                    parent: parent,
+                    column: 'Supplier',
+                    value: supplierName
+                }).then(function(res) {
+                    return res && res.ok ? res : Promise.reject(new Error((res && res.message) || 'Not saved'));
+                });
             });
             Promise.all(promises).then(function() {
                 validRows.forEach(function(item) {
@@ -4728,11 +4729,21 @@
         function getEffectiveApprReqValue(rowData) {
             if (!rowData || rowData.is_parent || rowData.isParent) return 0;
             if (apprReqHideRowForNrp2BdcOrLater(rowData)) return 0;
+            const raw = rowData.raw_data || {};
+            const twoOrdVal = parseFloat(rowData.to_order ?? raw.to_order ?? 0);
+
+            // When 2 Ord > 0, show MOQ — order still needed even if row is in transit/MIP/R2S.
+            if (Number.isFinite(twoOrdVal) && twoOrdVal > 0) {
+                const moqForOrder = displayMoqForRow(rowData);
+                if (moqForOrder > 0) {
+                    return moqForOrder;
+                }
+            }
+
             // Rows already moved into a downstream pipeline stage no longer need approval —
             // hide the Appr Req value for them so they drop off /approval.required and /to-order-analysis.
             // 'to_order_analysis' is also excluded so the Appr Req filter/count matches /approval.required
             // (which separates 2Order rows into their own dropdown option).
-            const raw = rowData.raw_data || {};
             const stageNorm = String(rowData.stage ?? raw.stage ?? '').trim().toLowerCase();
             if (stageNorm === 'mip' || stageNorm === 'r2s' || stageNorm === 'transit' || stageNorm === 'all_good' || stageNorm === 'to_order_analysis') {
                 return 0;
@@ -4745,7 +4756,6 @@
             if (apprReqHideRowForPipelineQty(rowData)) {
                 return 0;
             }
-            const twoOrdVal = parseFloat(rowData.to_order ?? raw.to_order ?? 0);
             if (Number.isFinite(twoOrdVal) && twoOrdVal >= 0) {
                 const moqVal = displayMoqForRow(rowData);
                 if (moqVal > 0) {

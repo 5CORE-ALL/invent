@@ -20,6 +20,8 @@ use App\Models\Supplier;
 use App\Models\TransitContainerDetail;
 use App\Models\MfrgProgress;
 use App\Models\ReadyToShip;
+use App\Services\SupplierCategorySync;
+use App\Services\ToOrderSupplierSync;
 
 class ForecastAnalysisController extends Controller
 {
@@ -340,9 +342,14 @@ class ForecastAnalysisController extends Controller
                     }
                     return '';
                 };
-                // Latest row (rows are newest-first): same rule as To Order / to_order_analysis index
-                $latest = $rows->first();
-                $supplierName = $latest->supplier_name ?? null;
+                // Latest row with an explicit supplier_name (newest first); matches exec pick logic.
+                $supplierName = null;
+                foreach ($rows as $r) {
+                    if ($r->supplier_name !== null) {
+                        $supplierName = $r->supplier_name;
+                        break;
+                    }
+                }
                 // Exec: prefer the first non-empty value across all rows for this SKU
                 // so a freshly-written exec on one variant doesn't get hidden by an
                 // older row that happens to come back first from the DB.
@@ -358,11 +365,14 @@ class ForecastAnalysisController extends Controller
             });
         $mfrg = DB::table('mfrg_progress')
             ->whereNull('deleted_at')
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id')
             ->get([
                 'sku', 'supplier', 'ready_to_ship', 'qty', 'rate',
                 'pkg_inst', 'u_manual', 'compliance', 'created_at',
             ])
-            ->keyBy(fn($item) => $normalizeSku($item->sku));
+            ->groupBy(fn ($item) => $normalizeSku($item->sku))
+            ->map(fn ($rows) => $rows->first());
 
         // LMP (Lowest Market Price) lookups — same source the /amazon-tabulator-view page
         // uses, so the LMP column on /forecast.analysis stays in lock-step with Amazon
@@ -591,6 +601,10 @@ class ForecastAnalysisController extends Controller
             'May' => 'MAY', 'Jun' => 'JUN', 'Jul' => 'JUL', 'Aug' => 'AUG',
             'Sep' => 'SEP', 'Oct' => 'OCT', 'Nov' => 'NOV', 'Dec' => 'DEC',
         ];
+
+        $categoryBySku = SupplierCategorySync::resolveCategoryMapForSkus(
+            collect($productListData)->map(fn ($p) => $normalizeSku($p->sku ?? ''))->filter()->unique()->values()->all()
+        );
 
         foreach ($productListData as $prodData) {
             $sheetSku = $normalizeSku($prodData->sku);
@@ -838,6 +852,7 @@ class ForecastAnalysisController extends Controller
             $item->mfrg_supplier = ($toOrderMeta !== null && $toOrderMeta->supplier_name !== null)
                 ? (string) $toOrderMeta->supplier_name
                 : $mfrgSupplier;
+            $item->Category = $categoryBySku[$sheetSku] ?? '';
             $item->mfrg_qty = $mfrgQtyRaw;
             $item->pkg_inst = $mfrgPkgInst;
             $item->u_manual = $mfrgUManual;
@@ -1256,6 +1271,23 @@ class ForecastAnalysisController extends Controller
         $parent = trim((string) $request->input('parent'));
         $column = trim((string) $request->input('column'));
         $value = trim((string) $request->input('value', '')); // Avoid trim(null) on numeric-only posts
+
+        // Supplier: single source of truth across to_order_analysis + mfrg_progress
+        if (strtoupper($column) === 'SUPPLIER') {
+            if ($sku === '') {
+                return response()->json(['success' => false, 'message' => 'SKU is required']);
+            }
+
+            try {
+                ToOrderSupplierSync::setSupplierForSku($sku, $value, $parent);
+            } catch (\Throwable $e) {
+                Log::error('Forecast supplier save failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+                return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            }
+
+            return response()->json(['success' => true, 'message' => 'Supplier updated successfully']);
+        }
 
         // Handle MOQ updates: save to forecast_analysis.approved_qty and to_order_analysis so forecast and to-order show same value
         if (strtoupper($column) === 'MOQ') {

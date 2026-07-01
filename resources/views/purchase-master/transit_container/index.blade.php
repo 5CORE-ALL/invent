@@ -891,6 +891,18 @@ TAB_NAMES.forEach((tabName, index) => {
                     return String(cell.getValue() || "").trim();
                 },
             },
+            {
+                title: "Category",
+                field: "Category",
+                headerSort: false,
+                hozAlign: "center",
+                width: 110,
+                formatter: function (cell) {
+                    const v = String(cell.getValue() || "").trim();
+                    if (!v) return '<span class="text-muted">—</span>';
+                    return `<div style="font-weight:700;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:100px;">${escapeHtmlTransit(v)}</div>`;
+                },
+            },
             // {
             //   title: "Amt($)", 
             //   field: "amount", 
