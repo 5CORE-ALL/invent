@@ -72,17 +72,43 @@ class ShopifyRawDataController extends Controller
         return $q;
     }
 
+    /**
+     * Default L30 window for the /shopify page and cross-page badges (PST).
+     * 30 inclusive calendar days ending today — subDays(29), not subDays(30).
+     *
+     * @return array{0: Carbon, 1: Carbon}
+     */
+    public static function shopifyDirectL30Range(): array
+    {
+        $tz = 'America/Los_Angeles';
+        $end = Carbon::now($tz)->endOfDay();
+        $start = Carbon::now($tz)->subDays(29)->startOfDay();
+
+        return [$start, $end];
+    }
+
+    /**
+     * Net Sales (Σ net_sales) for the /shopify page default window — same
+     * exclusions as {@see getData()} on /shopify (marketplace + XYZ SKU).
+     */
+    public function sumDirectNetSales(Carbon $dateFrom, Carbon $dateTo): float
+    {
+        return round((float) $this->baseQuery($dateFrom, $dateTo, true)->sum('net_sales'), 2);
+    }
+
     public function getData(Request $request)
     {
         $pstTimezone = 'America/Los_Angeles';
 
+        [$defaultFrom, $defaultTo] = self::shopifyDirectL30Range();
+
         $dateFrom = $request->input('date_from')
             ? Carbon::parse($request->input('date_from'), $pstTimezone)->startOfDay()
-            : Carbon::now($pstTimezone)->subDays(30)->startOfDay();
+            : $defaultFrom;
 
         $dateTo = $request->input('date_to')
             ? Carbon::parse($request->input('date_to'), $pstTimezone)->endOfDay()
-            : Carbon::now($pstTimezone)->endOfDay();
+            : $defaultTo;
 
         $sourceFilter  = $request->input('source', 'all');
         $rawPage       = $request->input('page') === 'raw';  // raw-data page — no exclusions
@@ -261,13 +287,15 @@ class ShopifyRawDataController extends Controller
     {
         $pstTimezone = 'America/Los_Angeles';
 
+        [$defaultFrom, $defaultTo] = self::shopifyDirectL30Range();
+
         $dateFrom = $request->input('date_from')
             ? Carbon::parse($request->input('date_from'), $pstTimezone)->startOfDay()
-            : Carbon::now($pstTimezone)->subDays(30)->startOfDay();
+            : $defaultFrom;
 
         $dateTo = $request->input('date_to')
             ? Carbon::parse($request->input('date_to'), $pstTimezone)->endOfDay()
-            : Carbon::now($pstTimezone)->endOfDay();
+            : $defaultTo;
 
         $rawPage = $request->input('page') === 'raw';
 

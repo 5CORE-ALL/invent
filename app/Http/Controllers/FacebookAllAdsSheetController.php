@@ -683,14 +683,13 @@ class FacebookAllAdsSheetController extends Controller
      * users can edit them at runtime via the "Sbgt Rule" modal — same
      * pattern as /ebay/campaign-ads → ebay_sbid_rules.
      *
-     * Bands are evaluated in ascending `acos_max` order, first match
-     * wins. Set `acos_max = 9999` for the catch-all final band.
+     * Each band is an inclusive From–To ACOS % range. Bands are evaluated
+     * top to bottom; the first range that contains the row's ACOS wins.
      *
      * Edge cases:
      *   • Both spend and sales blank/zero → null (no row data, leave empty).
-     *   • Spend > 0 but sales == 0       → ACOS effectively infinite, so
-     *                                       fall through to the catch-all
-     *                                       band (the user's "> 50 %" row).
+     *   • Spend > 0 but sales == 0       → ACOS treated as 99999 so the
+     *                                       highest catch-all band wins.
      */
     private function acosBudgetRule($spend, $sales): ?int
     {
@@ -711,16 +710,15 @@ class FacebookAllAdsSheetController extends Controller
         if (($s === null || $s == 0.0) && ($r === null || $r == 0.0)) {
             return ['sbgt' => null, 'color' => null];
         }
-        // Effective infinity — keep arithmetic finite so the catch-all
-        // band still wins via the normal "<=" comparison.
         $acos = ($r === null || $r == 0.0)
             ? 99999.0
             : ($s / $r) * 100;
 
         $bands = $this->loadSbgtBands();
         foreach ($bands as $band) {
-            $max = (float) ($band['acos_max'] ?? 9999);
-            if ($acos <= $max) {
+            $from = (float) ($band['acos_from'] ?? 0);
+            $to   = (float) ($band['acos_to'] ?? 9999);
+            if ($acos >= $from && $acos <= $to) {
                 return [
                     'sbgt'  => (int) ($band['sbgt'] ?? 0),
                     'color' => $band['color'] ?? null,
@@ -735,11 +733,10 @@ class FacebookAllAdsSheetController extends Controller
     }
 
     /**
-     * Load the stored Sbgt bands, sorted ascending by `acos_max`.
-     * Falls back to {@see defaultSbgtRule()} when the table row is
-     * missing — keeps the page usable even if the migration hasn't run.
+     * Load the stored Sbgt bands, normalised to From–To ranges and
+     * sorted ascending by `acos_from`.
      *
-     * @return array<int, array{acos_max:float, sbgt:int, label?:string, color?:string}>
+     * @return array<int, array{acos_from:float, acos_to:float, sbgt:int, label?:string, color?:string}>
      */
     private function loadSbgtBands(): array
     {
@@ -748,8 +745,63 @@ class FacebookAllAdsSheetController extends Controller
             ? (json_decode($row->rule, true) ?: [])
             : $this->defaultSbgtRule();
         $bands = $rule['bands'] ?? $this->defaultSbgtRule()['bands'];
-        usort($bands, fn($a, $b) => ((float) ($a['acos_max'] ?? 0)) <=> ((float) ($b['acos_max'] ?? 0)));
-        return $bands;
+
+        return $this->normalizeSbgtBands($bands);
+    }
+
+    /**
+     * Convert stored bands to inclusive From–To ranges. Legacy rows that
+     * only have `acos_max` (cumulative upper bound) are upgraded on read.
+     *
+     * @param  array<int, array<string, mixed>>  $bands
+     * @return array<int, array{acos_from:float, acos_to:float, sbgt:int, label:string, color:string}>
+     */
+    private function normalizeSbgtBands(array $bands): array
+    {
+        if ($bands === []) {
+            return [];
+        }
+
+        $hasFromTo = false;
+        foreach ($bands as $band) {
+            if (array_key_exists('acos_from', $band) || array_key_exists('acos_to', $band)) {
+                $hasFromTo = true;
+                break;
+            }
+        }
+
+        if (! $hasFromTo) {
+            usort($bands, fn ($a, $b) => ((float) ($a['acos_max'] ?? 0)) <=> ((float) ($b['acos_max'] ?? 0)));
+            $prevTo = 0.0;
+            $converted = [];
+            foreach ($bands as $band) {
+                $to = (float) ($band['acos_max'] ?? 9999);
+                $converted[] = [
+                    'acos_from' => $prevTo,
+                    'acos_to'   => $to,
+                    'sbgt'      => (int) ($band['sbgt'] ?? 0),
+                    'label'     => (string) ($band['label'] ?? ''),
+                    'color'     => (string) ($band['color'] ?? '#6c757d'),
+                ];
+                $prevTo = $to;
+            }
+            $bands = $converted;
+        }
+
+        $out = [];
+        foreach ($bands as $band) {
+            $out[] = [
+                'acos_from' => (float) ($band['acos_from'] ?? 0),
+                'acos_to'   => (float) ($band['acos_to'] ?? 9999),
+                'sbgt'      => (int) ($band['sbgt'] ?? 0),
+                'label'     => (string) ($band['label'] ?? ''),
+                'color'     => (string) ($band['color'] ?? '#6c757d'),
+            ];
+        }
+
+        usort($out, fn ($a, $b) => $a['acos_from'] <=> $b['acos_from']);
+
+        return $out;
     }
 
     /**
@@ -760,12 +812,12 @@ class FacebookAllAdsSheetController extends Controller
     {
         return [
             'bands' => [
-                ['acos_max' => 10,   'sbgt' => 20, 'label' => 'Excellent', 'color' => '#ec4899'], // Magenta
-                ['acos_max' => 20,   'sbgt' => 15, 'label' => 'Good',      'color' => '#22c55e'], // Green
-                ['acos_max' => 30,   'sbgt' => 10, 'label' => 'Fair',      'color' => '#3b82f6'], // Blue
-                ['acos_max' => 40,   'sbgt' => 5,  'label' => 'Poor',      'color' => '#ca8a04'], // Mustard
-                ['acos_max' => 50,   'sbgt' => 2,  'label' => 'Bad',       'color' => '#f97316'], // Orange
-                ['acos_max' => 9999, 'sbgt' => 1,  'label' => 'Critical',  'color' => '#dc2626'], // Red
+                ['acos_from' => 0,  'acos_to' => 10,   'sbgt' => 20, 'label' => 'Excellent', 'color' => '#ec4899'],
+                ['acos_from' => 10, 'acos_to' => 20,   'sbgt' => 15, 'label' => 'Good',      'color' => '#22c55e'],
+                ['acos_from' => 20, 'acos_to' => 30,   'sbgt' => 10, 'label' => 'Fair',      'color' => '#3b82f6'],
+                ['acos_from' => 30, 'acos_to' => 40,   'sbgt' => 5,  'label' => 'Poor',      'color' => '#ca8a04'],
+                ['acos_from' => 40, 'acos_to' => 50,   'sbgt' => 2,  'label' => 'Bad',       'color' => '#f97316'],
+                ['acos_from' => 50, 'acos_to' => 9999, 'sbgt' => 1,  'label' => 'Critical',  'color' => '#dc2626'],
             ],
         ];
     }
@@ -995,9 +1047,12 @@ class FacebookAllAdsSheetController extends Controller
     public function getRule()
     {
         $row = DB::table('facebook_sbgt_rules')->where('key', 'facebook_all')->first();
-        return response()->json($row
+        $rule = $row
             ? (json_decode($row->rule, true) ?: $this->defaultSbgtRule())
-            : $this->defaultSbgtRule());
+            : $this->defaultSbgtRule();
+        $bands = $this->normalizeSbgtBands($rule['bands'] ?? []);
+
+        return response()->json(['bands' => $bands]);
     }
 
     /**
@@ -1014,14 +1069,23 @@ class FacebookAllAdsSheetController extends Controller
 
         $clean = [];
         foreach ($bands as $b) {
+            $from = (float) ($b['acos_from'] ?? 0);
+            $to   = (float) ($b['acos_to'] ?? 9999);
+            if ($from > $to) {
+                return response()->json([
+                    'success' => false,
+                    'error'   => 'Each band needs ACOS From ≤ To.',
+                ], 422);
+            }
             $clean[] = [
-                'acos_max' => (float) ($b['acos_max'] ?? 9999),
-                'sbgt'     => (int)   ($b['sbgt']     ?? 0),
-                'label'    => (string)($b['label']    ?? ''),
-                'color'    => (string)($b['color']    ?? '#6c757d'),
+                'acos_from' => $from,
+                'acos_to'   => $to,
+                'sbgt'      => (int) ($b['sbgt'] ?? 0),
+                'label'     => (string) ($b['label'] ?? ''),
+                'color'     => (string) ($b['color'] ?? '#6c757d'),
             ];
         }
-        usort($clean, fn($a, $b) => $a['acos_max'] <=> $b['acos_max']);
+        usort($clean, fn ($a, $b) => $a['acos_from'] <=> $b['acos_from']);
 
         DB::table('facebook_sbgt_rules')->updateOrInsert(
             ['key' => 'facebook_all'],

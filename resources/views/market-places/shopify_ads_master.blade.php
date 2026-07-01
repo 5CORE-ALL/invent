@@ -331,7 +331,12 @@
                     // the TCOS badge (Spend / S Sales) can use it.
                     samSSales = Number(response.shopify_net_sales || 0);
                     const ssEl = document.getElementById('sam-badge-ssales');
-                    if (ssEl) ssEl.textContent = '$' + Math.round(samSSales).toLocaleString();
+                    if (ssEl) {
+                        ssEl.textContent = '$' + Number(samSSales).toLocaleString('en-US', {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                        });
+                    }
                     updateBadges(rows);
                     return rows;
                 },

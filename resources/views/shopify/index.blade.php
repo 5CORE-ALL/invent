@@ -239,7 +239,7 @@
     }
 
     // ── Date pickers ───────────────────────────────────────────────────────
-    const fpFrom = flatpickr('#date-from', { dateFormat: 'Y-m-d', defaultDate: new Date(Date.now() - 30*86400*1000) });
+    const fpFrom = flatpickr('#date-from', { dateFormat: 'Y-m-d', defaultDate: new Date(Date.now() - 29*86400*1000) });
     const fpTo   = flatpickr('#date-to',   { dateFormat: 'Y-m-d', defaultDate: new Date() });
 
     function buildParams() {
@@ -556,7 +556,7 @@
 
         $('#apply-date-btn').on('click', loadData);
         $('#reset-date-btn').on('click', function () {
-            fpFrom.setDate(new Date(Date.now() - 30*86400*1000));
+            fpFrom.setDate(new Date(Date.now() - 29*86400*1000));
             fpTo.setDate(new Date());
             loadData();
         });

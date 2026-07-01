@@ -472,35 +472,33 @@
         <div class="modal-dialog modal-lg modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header py-2">
-                    <h5 class="modal-title" id="gacRawSbgtRuleModalLabel">SBGT rule — ACOS % → tier</h5>
+                    <h5 class="modal-title" id="gacRawSbgtRuleModalLabel">SBGT rule — ACOS % → Suggested Budget</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <p class="small text-muted mb-2">Bands are evaluated <strong>top to bottom</strong>: first match wins (same logic as the grid). Require <code>le_zero &lt; ge_low &lt; ge_20 &lt; ge_30 &lt; ge_40 &lt; ge_50 &lt; gt</code>.</p>
-                    <div class="row g-2 small">
-                        <div class="col-md-4"><label class="form-label mb-0" for="gacSbgtGt">ACOS &gt; (%, exclusive)</label><input type="number" step="0.01" class="form-control form-control-sm" id="gacSbgtGt"></div>
-                        <div class="col-md-4"><label class="form-label mb-0" for="gacSbgtValGt">SBGT value</label><input type="number" step="1" min="1" class="form-control form-control-sm" id="gacSbgtValGt"></div>
-                        <div class="col-md-4"><label class="form-label mb-0 text-muted">Band</label><p class="mb-0 form-control-plaintext small">Above threshold</p></div>
-                        <div class="col-md-4"><label class="form-label mb-0" for="gacSbgtGe50">ACOS ≥ (%)</label><input type="number" step="0.01" class="form-control form-control-sm" id="gacSbgtGe50"></div>
-                        <div class="col-md-4"><label class="form-label mb-0" for="gacSbgtVal5099">SBGT value</label><input type="number" step="1" min="1" class="form-control form-control-sm" id="gacSbgtVal5099"></div>
-                        <div class="col-md-4"><label class="form-label mb-0 text-muted">Band</label><p class="mb-0 form-control-plaintext small">Up to next threshold</p></div>
-                        <div class="col-md-4"><label class="form-label mb-0" for="gacSbgtGe40">ACOS ≥ (%)</label><input type="number" step="0.01" class="form-control form-control-sm" id="gacSbgtGe40"></div>
-                        <div class="col-md-4"><label class="form-label mb-0" for="gacSbgtVal4050">SBGT value</label><input type="number" step="1" min="1" class="form-control form-control-sm" id="gacSbgtVal4050"></div>
-                        <div class="col-md-4"></div>
-                        <div class="col-md-4"><label class="form-label mb-0" for="gacSbgtGe30">ACOS ≥ (%)</label><input type="number" step="0.01" class="form-control form-control-sm" id="gacSbgtGe30"></div>
-                        <div class="col-md-4"><label class="form-label mb-0" for="gacSbgtVal3040">SBGT value</label><input type="number" step="1" min="1" class="form-control form-control-sm" id="gacSbgtVal3040"></div>
-                        <div class="col-md-4"></div>
-                        <div class="col-md-4"><label class="form-label mb-0" for="gacSbgtGe20">ACOS ≥ (%)</label><input type="number" step="0.01" class="form-control form-control-sm" id="gacSbgtGe20"></div>
-                        <div class="col-md-4"><label class="form-label mb-0" for="gacSbgtVal2030">SBGT value</label><input type="number" step="1" min="1" class="form-control form-control-sm" id="gacSbgtVal2030"></div>
-                        <div class="col-md-4"></div>
-                        <div class="col-md-4"><label class="form-label mb-0" for="gacSbgtGeLow">ACOS ≥ (%)</label><input type="number" step="0.001" class="form-control form-control-sm" id="gacSbgtGeLow"></div>
-                        <div class="col-md-4"><label class="form-label mb-0" for="gacSbgtValLow">SBGT value</label><input type="number" step="1" min="1" class="form-control form-control-sm" id="gacSbgtValLow"></div>
-                        <div class="col-md-4"></div>
-                        <div class="col-md-4"><label class="form-label mb-0" for="gacSbgtLeZero">ACOS ≤ (%)</label><input type="number" step="0.001" min="0" class="form-control form-control-sm" id="gacSbgtLeZero"></div>
-                        <div class="col-md-4"><label class="form-label mb-0" for="gacSbgtValEqZero">SBGT value</label><input type="number" step="1" min="1" class="form-control form-control-sm" id="gacSbgtValEqZero"></div>
-                        <div class="col-md-4"><label class="form-label mb-0 text-muted">Band</label><p class="mb-0 form-control-plaintext small">No spend / no sales</p></div>
-                        <div class="col-md-4"><label class="form-label mb-0" for="gacSbgtValElse">SBGT if below min ACOS</label><input type="number" step="1" min="1" class="form-control form-control-sm" id="gacSbgtValElse"></div>
-                    </div>
+                    <p class="small text-muted mb-3">
+                        Each row is an inclusive <strong>ACOS % range</strong> (From → To).
+                        Rows are checked <strong>top to bottom</strong>; the first range that
+                        contains the campaign's ACOS gets its SBGT. Use <code>9999</code> on
+                        <em>To</em> for the catch-all highest band.
+                    </p>
+                    <table class="table table-sm table-bordered align-middle mb-0" id="gac-sbgt-rule-table">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width:40px;">#</th>
+                                <th>Label</th>
+                                <th style="width:140px;">Color</th>
+                                <th style="width:110px;">From (%)</th>
+                                <th style="width:110px;">To (%)</th>
+                                <th style="width:120px;">SBGT</th>
+                                <th style="width:50px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="gac-sbgt-bands-body"></tbody>
+                    </table>
+                    <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="gac-sbgt-add-band-btn">
+                        <i class="fas fa-plus me-1"></i>Add band
+                    </button>
                     <p class="small text-danger mb-0 mt-2 d-none" id="gacRawSbgtRuleErr" role="alert"></p>
                 </div>
                 <div class="modal-footer py-2">
@@ -1618,42 +1616,124 @@
                 var el = document.getElementById(id);
                 if (el && v != null && v !== '') el.value = String(v);
             }
-            function gacFillSbgtForm(sbgt) {
-                if (!sbgt) return;
-                gacSetVal('gacSbgtGt', sbgt.gt);
-                gacSetVal('gacSbgtValGt', sbgt.val_gt);
-                gacSetVal('gacSbgtGe50', sbgt.ge_50);
-                gacSetVal('gacSbgtVal5099', sbgt.val_50_99);
-                gacSetVal('gacSbgtGe40', sbgt.ge_40);
-                gacSetVal('gacSbgtVal4050', sbgt.val_40_50);
-                gacSetVal('gacSbgtGe30', sbgt.ge_30);
-                gacSetVal('gacSbgtVal3040', sbgt.val_30_40);
-                gacSetVal('gacSbgtGe20', sbgt.ge_20);
-                gacSetVal('gacSbgtVal2030', sbgt.val_20_30);
-                gacSetVal('gacSbgtGeLow', sbgt.ge_low);
-                gacSetVal('gacSbgtValLow', sbgt.val_low);
-                gacSetVal('gacSbgtLeZero', sbgt.le_zero);
-                gacSetVal('gacSbgtValEqZero', sbgt.val_eq_zero);
-                gacSetVal('gacSbgtValElse', sbgt.val_else);
+            var gacCurrentSbgtBands = [];
+
+            function gacNormalizeSbgtBandsForUi(bands) {
+                if (!Array.isArray(bands) || !bands.length) return [];
+                var hasFromTo = bands.some(function(b) {
+                    return b && (b.acos_from !== undefined && b.acos_from !== null
+                        || b.acos_to !== undefined && b.acos_to !== null);
+                });
+                if (hasFromTo) {
+                    return bands.map(function(b) {
+                        return {
+                            acos_from: Number(b.acos_from ?? 0),
+                            acos_to: Number(b.acos_to ?? 9999),
+                            sbgt: b.sbgt,
+                            label: b.label ?? '',
+                            color: b.color ?? '#6c757d',
+                        };
+                    });
+                }
+                var sorted = bands.slice().sort(function(a, b) {
+                    return (Number(a.acos_max) || 0) - (Number(b.acos_max) || 0);
+                });
+                var prevTo = 0;
+                return sorted.map(function(b) {
+                    var to = Number(b.acos_max ?? 9999);
+                    var row = {
+                        acos_from: prevTo,
+                        acos_to: to,
+                        sbgt: b.sbgt,
+                        label: b.label ?? '',
+                        color: b.color ?? '#6c757d',
+                    };
+                    prevTo = to;
+                    return row;
+                });
             }
-            function gacCollectSbgt() {
-                return {
-                    gt: gacNum('gacSbgtGt'),
-                    val_gt: gacInt('gacSbgtValGt'),
-                    ge_50: gacNum('gacSbgtGe50'),
-                    val_50_99: gacInt('gacSbgtVal5099'),
-                    ge_40: gacNum('gacSbgtGe40'),
-                    val_40_50: gacInt('gacSbgtVal4050'),
-                    ge_30: gacNum('gacSbgtGe30'),
-                    val_30_40: gacInt('gacSbgtVal3040'),
-                    ge_20: gacNum('gacSbgtGe20'),
-                    val_20_30: gacInt('gacSbgtVal2030'),
-                    ge_low: gacNum('gacSbgtGeLow'),
-                    val_low: gacInt('gacSbgtValLow'),
-                    le_zero: gacNum('gacSbgtLeZero'),
-                    val_eq_zero: gacInt('gacSbgtValEqZero'),
-                    val_else: gacInt('gacSbgtValElse'),
-                };
+
+            function gacRenderSbgtBands(bands) {
+                var tbody = document.getElementById('gac-sbgt-bands-body');
+                if (!tbody) return;
+                tbody.innerHTML = '';
+                bands.forEach(function(band, i) {
+                    var tr = document.createElement('tr');
+                    tr.innerHTML = ''
+                        + '<td class="text-muted small">' + (i + 1) + '</td>'
+                        + '<td><input type="text" class="form-control form-control-sm"'
+                        + ' value="' + String(band.label ?? '').replace(/"/g, '&quot;') + '"'
+                        + ' data-idx="' + i + '" data-field="label"></td>'
+                        + '<td><div class="d-flex align-items-center gap-2">'
+                        + '<input type="color" class="form-control form-control-color form-control-sm"'
+                        + ' value="' + (band.color || '#6c757d') + '" data-idx="' + i + '" data-field="color">'
+                        + '<span class="badge" style="background:' + (band.color || '#6c757d') + ';color:#fff;">'
+                        + (band.label || '—') + '</span></div></td>'
+                        + '<td><input type="number" step="0.1" min="0" class="form-control form-control-sm"'
+                        + ' value="' + (band.acos_from ?? '') + '" data-idx="' + i + '" data-field="acos_from"'
+                        + ' placeholder="0"></td>'
+                        + '<td><input type="number" step="0.1" min="0" class="form-control form-control-sm"'
+                        + ' value="' + (band.acos_to ?? '') + '" data-idx="' + i + '" data-field="acos_to"'
+                        + ' placeholder="9999"></td>'
+                        + '<td><input type="number" step="1" min="1" class="form-control form-control-sm"'
+                        + ' value="' + (band.sbgt ?? '') + '" data-idx="' + i + '" data-field="sbgt"></td>'
+                        + '<td class="text-center">'
+                        + '<button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Remove band">'
+                        + '<i class="fas fa-trash"></i></button></td>';
+                    tbody.appendChild(tr);
+                });
+
+                tbody.querySelectorAll('input[data-idx]').forEach(function(inp) {
+                    inp.addEventListener('input', function() {
+                        var idx = +this.dataset.idx;
+                        var fld = this.dataset.field;
+                        if (!gacCurrentSbgtBands[idx]) return;
+                        gacCurrentSbgtBands[idx][fld] = (fld === 'sbgt')
+                            ? (this.value === '' ? '' : parseInt(this.value, 10))
+                            : (fld === 'acos_from' || fld === 'acos_to')
+                                ? (this.value === '' ? '' : parseFloat(this.value))
+                                : this.value;
+                        if (fld === 'label' || fld === 'color') {
+                            var row = this.closest('tr');
+                            var chip = row ? row.querySelector('.badge') : null;
+                            var band = gacCurrentSbgtBands[idx];
+                            if (chip) {
+                                chip.style.background = band.color || '#6c757d';
+                                chip.textContent = band.label || '—';
+                            }
+                        }
+                    });
+                });
+
+                tbody.querySelectorAll('[data-remove-idx]').forEach(function(btn) {
+                    btn.addEventListener('click', function() {
+                        gacCurrentSbgtBands.splice(+this.dataset.removeIdx, 1);
+                        gacRenderSbgtBands(gacCurrentSbgtBands);
+                    });
+                });
+            }
+
+            function gacLoadSbgtBandsFromRule(sbgt) {
+                var bands = gacNormalizeSbgtBandsForUi(
+                    (sbgt && Array.isArray(sbgt.bands)) ? sbgt.bands : []
+                );
+                gacCurrentSbgtBands = bands;
+                gacRenderSbgtBands(gacCurrentSbgtBands);
+            }
+
+            function gacCollectSbgtBandsPayload() {
+                return (gacCurrentSbgtBands || []).map(function(b) {
+                    return {
+                        acos_from: (b.acos_from === '' || b.acos_from === null || b.acos_from === undefined)
+                            ? NaN : parseFloat(b.acos_from),
+                        acos_to: (b.acos_to === '' || b.acos_to === null || b.acos_to === undefined)
+                            ? NaN : parseFloat(b.acos_to),
+                        sbgt: (b.sbgt === '' || b.sbgt === null || b.sbgt === undefined)
+                            ? NaN : parseInt(b.sbgt, 10),
+                        label: (b.label || '').toString(),
+                        color: (b.color || '#6c757d').toString(),
+                    };
+                });
             }
             function gacFillSbidForm(sbid) {
                 if (!sbid) return;
@@ -1975,13 +2055,31 @@
                     .catch(function() { if (typeof cb === 'function') cb(); });
             }
 
+            var sbgtAddBandBtn = document.getElementById('gac-sbgt-add-band-btn');
+            if (sbgtAddBandBtn) {
+                sbgtAddBandBtn.addEventListener('click', function() {
+                    var bands = gacCurrentSbgtBands || [];
+                    var lastTo = bands.length
+                        ? Number(bands[bands.length - 1].acos_to ?? 0)
+                        : 0;
+                    gacCurrentSbgtBands.push({
+                        acos_from: lastTo,
+                        acos_to: 9999,
+                        sbgt: 1,
+                        label: 'New band',
+                        color: '#6c757d',
+                    });
+                    gacRenderSbgtBands(gacCurrentSbgtBands);
+                });
+            }
+
             var sbgtModalEl = document.getElementById('gacRawSbgtRuleModal');
             if (sbgtModalEl) {
                 sbgtModalEl.addEventListener('show.bs.modal', function() {
                     var errEl = document.getElementById('gacRawSbgtRuleErr');
                     if (errEl) { errEl.classList.add('d-none'); errEl.textContent = ''; }
                     gacRefreshRuleFromServer(function() {
-                        gacFillSbgtForm((window.gacRawRule && window.gacRawRule.sbgt) || {});
+                        gacLoadSbgtBandsFromRule((window.gacRawRule && window.gacRawRule.sbgt) || {});
                     });
                 });
             }
@@ -1990,8 +2088,33 @@
                 sbgtSaveBtn.addEventListener('click', function() {
                     var errEl = document.getElementById('gacRawSbgtRuleErr');
                     if (errEl) { errEl.classList.add('d-none'); errEl.textContent = ''; }
+                    var cleaned = gacCollectSbgtBandsPayload();
+                    if (!cleaned.length) {
+                        if (errEl) {
+                            errEl.textContent = 'Add at least one band before saving.';
+                            errEl.classList.remove('d-none');
+                        }
+                        return;
+                    }
+                    for (var i = 0; i < cleaned.length; i++) {
+                        var b = cleaned[i];
+                        if (!isFinite(b.acos_from) || !isFinite(b.acos_to) || !isFinite(b.sbgt)) {
+                            if (errEl) {
+                                errEl.textContent = 'Every band needs numeric From, To, and SBGT values.';
+                                errEl.classList.remove('d-none');
+                            }
+                            return;
+                        }
+                        if (b.acos_from > b.acos_to) {
+                            if (errEl) {
+                                errEl.textContent = 'Each band needs From ≤ To.';
+                                errEl.classList.remove('d-none');
+                            }
+                            return;
+                        }
+                    }
                     var sbidKeep = (window.gacRawRule && window.gacRawRule.sbid) ? window.gacRawRule.sbid : {};
-                    var payload = { sbgt: gacCollectSbgt(), sbid: sbidKeep };
+                    var payload = { sbgt: { bands: cleaned }, sbid: sbidKeep };
                     var token = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
                     sbgtSaveBtn.disabled = true;
                     fetch(gacRawRuleSaveUrl, {

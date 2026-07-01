@@ -49,6 +49,23 @@
            awkwardly off-centre. */
         #facebook-all-ads-table .tabulator-col-content { padding-right: 8px; }
 
+        /* ACOS cell backgrounds — /facebook-ads: <60% pink, 60–90% green, >90% red */
+        #facebook-all-ads-table .tabulator-cell.acos-bg-pink {
+            background: #fce7f3 !important;
+            color: #9d174d !important;
+            font-weight: 700;
+        }
+        #facebook-all-ads-table .tabulator-cell.acos-bg-green {
+            background: #dcfce7 !important;
+            color: #166534 !important;
+            font-weight: 700;
+        }
+        #facebook-all-ads-table .tabulator-cell.acos-bg-red {
+            background: #fee2e2 !important;
+            color: #991b1b !important;
+            font-weight: 700;
+        }
+
         /* ── Sum badges (Impressions / Clicks / …) ────────────────────
            Solid-pill style. Each metric gets its own colour so users
            can scan the strip at a glance. flex-shrink:0 keeps each
@@ -451,9 +468,10 @@
             </div>
             <div class="modal-body">
                 <p class="small text-muted mb-3">
-                    Bands evaluated <strong>top to bottom</strong>; the first band whose
-                    <em>ACOS&nbsp;≤ max</em> wins. Set <code>ACOS&nbsp;≤</code> to <code>9999</code>
-                    on the last band so it catches everything above the previous threshold.
+                    Each row is an inclusive <strong>ACOS % range</strong> (From → To).
+                    Rows are checked <strong>top to bottom</strong>; the first range that
+                    contains the campaign's ACOS gets its Sbgt. Use <code>9999</code> on
+                    <em>To</em> for the catch-all highest band.
                 </p>
 
                 <table class="table table-sm table-bordered align-middle mb-0" id="sbgt-rule-table">
@@ -462,7 +480,8 @@
                             <th style="width:40px;">#</th>
                             <th>Label</th>
                             <th style="width:140px;">Color</th>
-                            <th style="width:140px;">ACOS&nbsp;≤ (%)</th>
+                            <th style="width:110px;">From (%)</th>
+                            <th style="width:110px;">To (%)</th>
                             <th style="width:120px;">Sbgt</th>
                             <th style="width:50px;"></th>
                         </tr>
@@ -825,11 +844,10 @@
                  + `background:${color};box-shadow:0 0 0 1px rgba(0,0,0,0.05);"></span>`;
         }
 
-        // Cells in the Acos / Sbgt columns get coloured text to match
-        // the ACOS-band the row falls into. The colour comes from the
-        // hidden `_sbgt_color` field set by the controller, so editing
-        // the rule (Sbgt-Rule modal) re-paints the whole table after
-        // the next loadTable().
+        // Cells in the Sbgt column get coloured text to match the ACOS-band
+        // the row falls into. The colour comes from the hidden `_sbgt_color`
+        // field set by the controller, so editing the rule (Sbgt-Rule modal)
+        // re-paints the whole table after the next loadTable().
         function formatBandColoredCell(cell) {
             const value = cell.getValue();
             const color = cell.getRow().getData()._sbgt_color;
@@ -845,6 +863,34 @@
                 el.style.color      = '';
                 el.style.fontWeight = '';
             }
+            return (value === null || value === undefined || value === '') ? '' : String(value);
+        }
+
+        function parseAcosPct(value) {
+            if (value === null || value === undefined || String(value).trim() === '') {
+                return null;
+            }
+            const n = parseFloat(String(value).replace(/[^0-9.\-]/g, ''));
+            return Number.isFinite(n) ? n : null;
+        }
+
+        // ACOS column — fixed background bands (independent of Sbgt rule colours).
+        function formatAcosCell(cell) {
+            const value = cell.getValue();
+            const el    = cell.getElement();
+            el.classList.remove('acos-bg-pink', 'acos-bg-green', 'acos-bg-red');
+
+            const pct = parseAcosPct(value);
+            if (pct !== null) {
+                if (pct < 60) {
+                    el.classList.add('acos-bg-pink');
+                } else if (pct <= 90) {
+                    el.classList.add('acos-bg-green');
+                } else {
+                    el.classList.add('acos-bg-red');
+                }
+            }
+
             return (value === null || value === undefined || value === '') ? '' : String(value);
         }
 
@@ -975,9 +1021,9 @@
                         'SPEND', 'SALES', 'SOLD', 'CVR', 'CPS',
                     ]);
                     // Columns whose cell should be painted with the
-                    // matched ACOS-band colour (set by the controller as
-                    // a hidden `_sbgt_color` field on each row).
-                    const COLOR_BY_BAND = new Set(['Acos', 'Sbgt']);
+                    // matched ACOS-band colour (Sbgt only — Acos uses
+                    // fixed background bands via formatAcosCell).
+                    const COLOR_BY_BAND = new Set(['Sbgt']);
                     // Empty SALES → "$0" in red so missing-revenue rows
                     // jump out instead of looking like a blank cell.
                     function formatSalesCell(cell) {
@@ -1118,7 +1164,8 @@
                             };
                         }
                         let formatter = 'plaintext';
-                        if (COLOR_BY_BAND.has(c.field))      formatter = formatBandColoredCell;
+                        if (c.field === 'Acos')                formatter = formatAcosCell;
+                        else if (COLOR_BY_BAND.has(c.field))   formatter = formatBandColoredCell;
                         else if (c.field === 'SALES')        formatter = formatSalesCell;
                         else if (c.field === 'SOLD')         formatter = formatSoldCell;
                         else if (c.field === 'CVR')          formatter = formatCvrCell;
@@ -1177,14 +1224,10 @@
                         // a person+date string, Link is an icon).
                         const NO_SORT = new Set(['Audit', 'History', 'Link']);
                         return {
-                            // Tabulator renders `title` as innerHTML,
-                            // so the Link column can swap its label
-                            // for an icon by passing an <i> element.
+                          
                             title:        title,
                             field:        c.field,
-                            // All header search inputs are off — users
-                            // filter via the "Search across all columns"
-                            // input above the table instead.
+                            
                             headerFilter: false,
                             headerSort:   !NO_SORT.has(c.field),
                             widthGrow:    widthGrow,
@@ -1540,11 +1583,44 @@
         });
 
         // ── SBGT Rule editor ──────────────────────────────────────────
-        // Same shape as the eBay SBID rule: an array of { acos_max,
-        // sbgt, label, color } bands persisted server-side.
+        // Bands: { acos_from, acos_to, sbgt, label, color } persisted server-side.
         const SBGT_RULE_GET_URL  = '/facebook-all-ads-sheet/rule';
         const SBGT_RULE_SAVE_URL = '/facebook-all-ads-sheet/rule';
         let currentSbgtRule = { bands: [] };
+
+        /** Upgrade legacy acos_max-only bands to From–To for the editor. */
+        function normalizeSbgtBandsForUi(bands) {
+            if (!Array.isArray(bands) || !bands.length) return [];
+            const hasFromTo = bands.some(b =>
+                b && (b.acos_from !== undefined && b.acos_from !== null
+                    || b.acos_to !== undefined && b.acos_to !== null)
+            );
+            if (hasFromTo) {
+                return bands.map(b => ({
+                    acos_from: Number(b.acos_from ?? 0),
+                    acos_to:   Number(b.acos_to ?? 9999),
+                    sbgt:      b.sbgt,
+                    label:     b.label ?? '',
+                    color:     b.color ?? '#6c757d',
+                }));
+            }
+            const sorted = [...bands].sort(
+                (a, b) => (Number(a.acos_max) || 0) - (Number(b.acos_max) || 0)
+            );
+            let prevTo = 0;
+            return sorted.map(b => {
+                const to = Number(b.acos_max ?? 9999);
+                const row = {
+                    acos_from: prevTo,
+                    acos_to:   to,
+                    sbgt:      b.sbgt,
+                    label:     b.label ?? '',
+                    color:     b.color ?? '#6c757d',
+                };
+                prevTo = to;
+                return row;
+            });
+        }
 
         // Selected values for each multi-select filter. Empty set →
         // that filter is inactive.
@@ -1829,9 +1905,10 @@
             return fetch(SBGT_RULE_GET_URL, { credentials: 'same-origin' })
                 .then(r => r.json())
                 .then(rule => {
-                    currentSbgtRule = (rule && Array.isArray(rule.bands))
-                        ? rule
-                        : { bands: [] };
+                    const bands = normalizeSbgtBandsForUi(
+                        (rule && Array.isArray(rule.bands)) ? rule.bands : []
+                    );
+                    currentSbgtRule = { bands };
                     buildSbgtFilter();
                     return currentSbgtRule;
                 })
@@ -1863,8 +1940,14 @@
                     </td>
                     <td><input type="number" step="0.1" min="0"
                                class="form-control form-control-sm"
-                               value="${band.acos_max ?? ''}"
-                               data-idx="${i}" data-field="acos_max"></td>
+                               value="${band.acos_from ?? ''}"
+                               data-idx="${i}" data-field="acos_from"
+                               placeholder="0"></td>
+                    <td><input type="number" step="0.1" min="0"
+                               class="form-control form-control-sm"
+                               value="${band.acos_to ?? ''}"
+                               data-idx="${i}" data-field="acos_to"
+                               placeholder="9999"></td>
                     <td><input type="number" step="1" min="0"
                                class="form-control form-control-sm"
                                value="${band.sbgt ?? ''}"
@@ -1884,9 +1967,11 @@
                     const idx = +this.dataset.idx;
                     const fld = this.dataset.field;
                     if (!currentSbgtRule.bands[idx]) return;
-                    currentSbgtRule.bands[idx][fld] = (fld === 'acos_max' || fld === 'sbgt')
-                        ? (this.value === '' ? '' : parseFloat(this.value))
-                        : this.value;
+                    currentSbgtRule.bands[idx][fld] = (fld === 'sbgt')
+                        ? (this.value === '' ? '' : parseInt(this.value, 10))
+                        : (fld === 'acos_from' || fld === 'acos_to')
+                            ? (this.value === '' ? '' : parseFloat(this.value))
+                            : this.value;
                     // Refresh the colour preview chip when label/color change.
                     if (fld === 'label' || fld === 'color') {
                         const row = this.closest('tr');
@@ -1918,20 +2003,26 @@
             fetch(SBGT_RULE_GET_URL, { credentials: 'same-origin' })
                 .then(r => r.json())
                 .then(rule => {
-                    currentSbgtRule = (rule && Array.isArray(rule.bands))
-                        ? rule
-                        : { bands: [] };
+                    const bands = normalizeSbgtBandsForUi(
+                        (rule && Array.isArray(rule.bands)) ? rule.bands : []
+                    );
+                    currentSbgtRule = { bands };
                     renderSbgtBands(currentSbgtRule.bands);
                 });
         });
 
         // "Add band" — appends a sane new row and re-renders.
         document.getElementById('sbgt-add-band-btn')?.addEventListener('click', function () {
+            const bands = currentSbgtRule.bands || [];
+            const lastTo = bands.length
+                ? Number(bands[bands.length - 1].acos_to ?? 0)
+                : 0;
             currentSbgtRule.bands.push({
-                acos_max: 9999,
-                sbgt:     1,
-                label:    'New band',
-                color:    '#6c757d',
+                acos_from: lastTo,
+                acos_to:   9999,
+                sbgt:      1,
+                label:     'New band',
+                color:     '#6c757d',
             });
             renderSbgtBands(currentSbgtRule.bands);
         });
@@ -1941,12 +2032,11 @@
             const errEl = document.getElementById('sbgt-rule-err');
             errEl?.classList.add('d-none');
 
-            // Client-side guard: every band must have a numeric acos_max
-            // and sbgt. Empty strings would be coerced to 0 server-side
-            // and silently change behaviour.
             const cleaned = (currentSbgtRule.bands || []).map(b => ({
-                acos_max: (b.acos_max === '' || b.acos_max === null || b.acos_max === undefined)
-                    ? NaN : parseFloat(b.acos_max),
+                acos_from: (b.acos_from === '' || b.acos_from === null || b.acos_from === undefined)
+                    ? NaN : parseFloat(b.acos_from),
+                acos_to: (b.acos_to === '' || b.acos_to === null || b.acos_to === undefined)
+                    ? NaN : parseFloat(b.acos_to),
                 sbgt:     (b.sbgt === '' || b.sbgt === null || b.sbgt === undefined)
                     ? NaN : parseInt(b.sbgt, 10),
                 label:    (b.label || '').toString(),
@@ -1958,8 +2048,13 @@
                 return;
             }
             for (const b of cleaned) {
-                if (!isFinite(b.acos_max) || !isFinite(b.sbgt)) {
-                    errEl.textContent = 'Every band needs a numeric ACOS limit and Sbgt value.';
+                if (!isFinite(b.acos_from) || !isFinite(b.acos_to) || !isFinite(b.sbgt)) {
+                    errEl.textContent = 'Every band needs numeric From, To, and Sbgt values.';
+                    errEl.classList.remove('d-none');
+                    return;
+                }
+                if (b.acos_from > b.acos_to) {
+                    errEl.textContent = 'Each band needs From ≤ To.';
                     errEl.classList.remove('d-none');
                     return;
                 }
