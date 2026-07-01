@@ -495,8 +495,13 @@
     });
 
     document.getElementById('btnSyncEmployees')?.addEventListener('click', async () => {
-        const res = await api(`${base}/month/${currentMonthId()}/sync-employees`, 'POST', {});
-        alert(res.message); loadMonth();
+        try {
+            const res = await api(`${base}/month/${currentMonthId()}/sync-employees`, 'POST', {});
+            alert(res.message || 'Hours synced.');
+            loadMonth();
+        } catch (err) {
+            alert((err && err.message) ? err.message : 'Failed to sync hours.');
+        }
     });
 
     document.getElementById('btnApplyStatus')?.addEventListener('click', async () => {

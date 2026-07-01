@@ -223,12 +223,47 @@ class PayrollController extends Controller
 
         // Only refresh login hours from TeamLogger — leave salary and other fields as-is.
         $this->payroll->ensureSheetPopulated($payrollMonth);
-        $this->payroll->refreshLiveHours($payrollMonth);
+        $stats = $this->payroll->refreshLiveHours($payrollMonth, freshFromApi: true);
 
         return response()->json([
             'success' => true,
-            'message' => 'Login hours synced from Team.',
+            'message' => $this->syncHoursMessage($stats, $payrollMonth->month_label),
+            'stats' => $stats,
         ]);
+    }
+
+    /** @param  array<string, int|bool>  $stats */
+    protected function syncHoursMessage(array $stats, string $monthLabel): string
+    {
+        if (! empty($stats['locked'])) {
+            return 'Payroll month is locked. Unlock it to sync hours.';
+        }
+
+        if (($stats['teamlogger_users'] ?? 0) === 0) {
+            return "No TeamLogger data returned for {$monthLabel}. Check TEAM_LOGGER_API_TOKEN and try again.";
+        }
+
+        $updated = (int) ($stats['updated'] ?? 0);
+        $unchanged = (int) ($stats['unchanged'] ?? 0);
+        $skippedOverride = (int) ($stats['skipped_overridden'] ?? 0);
+        $skippedNoData = (int) ($stats['skipped_no_data'] ?? 0);
+
+        if ($updated === 0 && $unchanged === 0 && $skippedNoData > 0) {
+            return "TeamLogger has {$stats['teamlogger_users']} user(s) for {$monthLabel}, but none matched payroll employees. Check email mapping.";
+        }
+
+        $parts = ["{$updated} employee hour row(s) updated from TeamLogger."];
+        if ($unchanged > 0) {
+            $parts[] = "{$unchanged} already up to date.";
+        }
+        if ($skippedOverride > 0) {
+            $parts[] = "{$skippedOverride} skipped (manually edited — use Sync Hours to overwrite).";
+        }
+        if ($skippedNoData > 0) {
+            $parts[] = "{$skippedNoData} had no TeamLogger match.";
+        }
+
+        return implode(' ', $parts);
     }
 
     public function updateEmployeeSalary(Request $request, PayrollEmployeeSalary $payrollEmployeeSalary): JsonResponse
