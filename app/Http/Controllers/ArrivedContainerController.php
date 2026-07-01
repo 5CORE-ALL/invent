@@ -52,6 +52,13 @@ class ArrivedContainerController extends Controller
             $tabs = ['Container 1'];
         }
 
+        usort($tabs, function ($a, $b) {
+            preg_match('/(\d+)/', (string) $a, $mA);
+            preg_match('/(\d+)/', (string) $b, $mB);
+
+            return ((int) ($mB[1] ?? 0)) <=> ((int) ($mA[1] ?? 0));
+        });
+
         $skuParentMap = ProductMaster::pluck('parent', 'sku')
             ->mapWithKeys(function ($parent, $sku) {
                 $normSku = strtoupper(trim(preg_replace('/\s+/', ' ', $sku)));
@@ -103,6 +110,8 @@ class ArrivedContainerController extends Controller
                 $groupedData[$tab] = collect([]);
             }
         }
+
+        $groupedData = collect($tabs)->mapWithKeys(fn ($tab) => [$tab => $groupedData[$tab]]);
 
         return view('purchase-master.transit_container.arrived-conatiner', [
             'tabs' => $tabs,

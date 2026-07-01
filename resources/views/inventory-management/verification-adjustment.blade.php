@@ -314,23 +314,59 @@
             box-shadow: 0 0 0 2px rgba(220, 53, 69, 0.5) !important;
         }
 
-        /* ========== HISTORY COLUMN STYLING ========== */
-        .custom-resizable-table th.history-header,
-        .custom-resizable-table td.history-column {
+        /* ========== MERGED LOG COLUMN (USER + HISTORY + ACTIVITY) ========== */
+        .custom-resizable-table th.va-merged-log-header,
+        .custom-resizable-table td.va-merged-log-col {
             text-align: center;
             vertical-align: middle;
+            min-width: 88px;
+        }
+
+        .va-merged-log-cell {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            line-height: 1.25;
+        }
+
+        .va-merged-log-user {
+            font-weight: 600;
+            font-size: 12px;
+            color: #212529;
+        }
+
+        .va-merged-log-history {
+            font-size: 11px;
+            color: #495057;
+        }
+
+        .va-merged-log-action .view-activity-logs-btn {
+            color: #0dcaf0;
+            font-size: 15px;
+            line-height: 1;
+            text-decoration: none;
+            min-width: 24px;
+            min-height: 24px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .va-merged-log-action .view-activity-logs-btn:hover {
+            color: #0aa2c0;
         }
 
         /* ========== HISTORY DATE FILTER DROPDOWN ========== */
-        #historyDateFilterBtn.dropdown-toggle::after {
-            margin-left: 0.5em;
+        #verifiedDateFilterBtn.dropdown-toggle::after {
+            margin-left: 0.35em;
         }
-        
-        /* Prevent dropdown from closing when clicking inside */
-        #historyDateFilterBtn + .dropdown-menu {
+
+        #verifiedDateFilterBtn + .dropdown-menu {
             cursor: default;
         }
-        
+
         /* ========== SORTING ========== */
         .sortable {
             cursor: pointer;
@@ -413,6 +449,40 @@
         .view-parent-history-icon:hover {
             transform: scale(1.2);
             color: #17a2b8 !important;
+        }
+
+        #ebay-table td.va-refresh-col {
+            min-width: 2.75rem;
+            width: 44px;
+            text-align: center;
+            vertical-align: middle !important;
+        }
+
+        #ebay-table td.va-refresh-col .va-shopify-refresh-btn {
+            color: #0d6efd;
+            font-size: 15px;
+            line-height: 1;
+            text-decoration: none;
+            min-width: 28px;
+            min-height: 28px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #ebay-table td.va-refresh-col .va-shopify-refresh-btn:hover:not(:disabled) {
+            color: #0a58ca;
+            transform: scale(1.08);
+        }
+
+        #ebay-table td.va-refresh-col .va-shopify-refresh-btn:disabled {
+            opacity: 0.65;
+            cursor: wait;
+        }
+
+        #ebay-table th[data-field="refresh"] {
+            min-width: 44px !important;
+            max-width: 56px !important;
         }
 
         /* ========== VERTICAL TABLE HEADERS (narrow columns, label reads upward) ========== */
@@ -1304,8 +1374,24 @@
             text-align: left;
         }
 
-        #ebay-table tbody td.skuColumn {
+        #ebay-table td.skuColumn {
             text-align: left;
+        }
+
+        #ebay-table td.skuColumn .shopify-link-icon {
+            position: relative;
+            z-index: 5;
+            pointer-events: auto;
+            display: inline-flex;
+            align-items: center;
+            vertical-align: middle;
+            cursor: pointer;
+        }
+
+        #ebay-table td.skuColumn .copy-sku-icon {
+            position: relative;
+            z-index: 5;
+            pointer-events: auto;
         }
 
         /* Vertical headers: inner wrapper handles rotation (see .va-th-v-inner above) */
@@ -1494,31 +1580,6 @@
                             <button id="activity-log-btn" class="btn btn-dark btn-sm" data-toggle="modal" data-target="#activityLogModal" title="All history by work date">
                                 <i class="fas fa-history"></i> Activity Log
                             </button>
-                            <div class="dropdown">
-                                <button class="btn btn-info btn-sm dropdown-toggle" type="button" id="historyDateFilterBtn" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-                                    <i class="fas fa-calendar-alt"></i> Filter by History Date
-                                </button>
-                                <div class="dropdown-menu dropdown-menu-right p-3" aria-labelledby="historyDateFilterBtn" style="min-width: 320px;">
-                                    <h6 class="dropdown-header">Filter by History Date Range</h6>
-                                    <div class="form-group mb-2">
-                                        <label for="historyDateFrom" class="small">From Date:</label>
-                                        <input type="date" id="historyDateFrom" class="form-control form-control-sm">
-                                    </div>
-                                    <div class="form-group mb-2">
-                                        <label for="historyDateTo" class="small">To Date:</label>
-                                        <input type="date" id="historyDateTo" class="form-control form-control-sm">
-                                    </div>
-                                    <div class="d-flex justify-content-between">
-                                        <button id="applyHistoryDateFilter" class="btn btn-primary btn-sm">
-                                            <i class="fas fa-check"></i> Apply
-                                        </button>
-                                        <button id="clearHistoryDateFilter" class="btn btn-secondary btn-sm">
-                                            <i class="fas fa-times"></i> Clear
-                                        </button>
-                                    </div>
-                                    <div id="historyFilterStatus" class="mt-2 small text-muted"></div>
-                                </div>
-                            </div>
                         </div>
                     </div>
 
@@ -1560,6 +1621,31 @@
                             <button id="apply-bulk-action" class="btn btn-primary btn-sm ml-1">Apply</button>
                         </div>
                         <div class="d-flex align-items-center va-controls-status flex-shrink-0 ml-1">
+                            <div class="dropdown va-controls-inner flex-shrink-0 mr-1">
+                                <button class="btn btn-outline-info btn-sm dropdown-toggle py-1 px-2" type="button" id="verifiedDateFilterBtn" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false" title="Filter by last verified date">
+                                    <i class="fas fa-calendar-alt"></i> <span class="va-btn-text">Verified Date</span>
+                                </button>
+                                <div class="dropdown-menu p-3" aria-labelledby="verifiedDateFilterBtn" style="min-width: 300px;">
+                                    <h6 class="dropdown-header">Filter by last verified date</h6>
+                                    <div class="form-group mb-2">
+                                        <label for="verifiedDateFrom" class="small mb-1">From</label>
+                                        <input type="date" id="verifiedDateFrom" class="form-control form-control-sm">
+                                    </div>
+                                    <div class="form-group mb-2">
+                                        <label for="verifiedDateTo" class="small mb-1">To</label>
+                                        <input type="date" id="verifiedDateTo" class="form-control form-control-sm">
+                                    </div>
+                                    <div class="d-flex justify-content-between">
+                                        <button type="button" id="applyVerifiedDateFilter" class="btn btn-primary btn-sm">
+                                            <i class="fas fa-check"></i> Apply
+                                        </button>
+                                        <button type="button" id="clearVerifiedDateFilter" class="btn btn-secondary btn-sm">
+                                            <i class="fas fa-times"></i> Clear
+                                        </button>
+                                    </div>
+                                    <div id="verifiedDateFilterStatus" class="mt-2 small text-muted"></div>
+                                </div>
+                            </div>
                             <button id="filter-verified-green" class="btn btn-success btn-sm verified-filter-btn py-1 px-2" data-status="green">
                                 <i class="fas fa-check-circle"></i> <span class="va-btn-text">Verified</span> <span class="badge badge-light ml-1" id="green-count">0</span>
                             </button>
@@ -1778,6 +1864,9 @@
                                     <th data-field="INV" class="va-th-v">
                                         <div class="va-th-v-inner">Main-INV <span class="sort-arrow">↓</span></div>
                                     </th>
+                                    <th data-field="refresh" class="text-center va-th-v" style="min-width: 56px; white-space: nowrap;" title="Pull latest inventory from Shopify">
+                                        <div class="va-th-v-inner">Refresh <span class="sort-arrow"></span></div>
+                                    </th>
                                     <th data-field="L30" class="va-th-v">
                                         <div class="va-th-v-inner">L30 <span class="sort-arrow">↓</span></div>
                                     </th>
@@ -1838,19 +1927,13 @@
                                         <div class="va-th-v-inner"><span id="lossGainHeader">LOSS/GAIN</span> <span class="sort-arrow"></span></div>
                                     </th>
                                     <th data-field="ad cost/ pc" class="va-th-v">
-                                        <div class="va-th-v-inner">APPR-AT <span class="sort-arrow"></span></div>
-                                    </th>
-                                    <th data-field="ad cost/ pc" class="va-th-v">
                                         <div class="va-th-v-inner">VERIFIED <span class="sort-arrow"></span></div>
                                     </th>
-                                    <th data-field="user" class="va-th-v">
-                                        <div class="va-th-v-inner">USER <span class="sort-arrow"></span></div>
+                                    <th data-field="lastVerifiedQty" class="va-th-v" title="Last verified quantity from adjustment history">
+                                        <div class="va-th-v-inner">LAST QTY <span class="sort-arrow"></span></div>
                                     </th>
-                                    <th data-field="history" class="history-header va-th-v">
-                                        <div class="va-th-v-inner">HISTORY <span class="sort-arrow"></span></div>
-                                    </th>
-                                    <th data-field="activityLogs" class="activity-logs-header va-th-v">
-                                        <div class="va-th-v-inner">ACTIVITY LOGS <span class="sort-arrow"></span></div>
+                                    <th data-field="activityLog" class="va-merged-log-header va-th-v" style="min-width: 88px;" title="User, history date, and activity log">
+                                        <div class="va-th-v-inner">LOG <span class="sort-arrow"></span></div>
                                     </th>
                                 </tr>
                             </thead>
@@ -2598,6 +2681,28 @@
                 return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
             }
 
+            function normalizeShopifyStoreHost(domain) {
+                if (!domain) return '';
+                return String(domain).trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+            }
+
+            /** Exact SKU filter — matches transit container / Shopify Admin inventory search. */
+            function buildShopifyAdminInventoryUrl(sku) {
+                const host = normalizeShopifyStoreHost('{{ config("services.shopify.store_url") }}');
+                const skuText = String(sku || '').trim();
+                if (!host || !skuText) return '';
+                const query = 'sku:"' + skuText.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+                return 'https://' + host + '/admin/products/inventory?query=' + encodeURIComponent(query);
+            }
+
+            function shopifyLinkIconHtml(sku) {
+                const url = buildShopifyAdminInventoryUrl(sku);
+                if (!url) {
+                    return '';
+                }
+                return `<a href="${escAttr(url)}" target="_blank" rel="noopener noreferrer" class="shopify-link-icon" data-shopify-url="${escAttr(url)}" title="View in Shopify" style="margin-left: 8px; color: #28a745; text-decoration: none;"><i class="fas fa-external-link-alt"></i></a>`;
+            }
+
             function shopifyPushTimeLabel(isoOrStr) {
                 if (!isoOrStr) return '';
                 const t = new Date(isoOrStr);
@@ -2671,6 +2776,7 @@
                                     Parent: item.Parent || item.parent || item.parent_asin || item.Parent_ASIN || '(No Parent)',
                                     // SKU: item['SKU'] || '', // Normalize SKU field
                                     SKU: (item.sku || item.SKU || '').toString().trim(), // Normalize SKU field (support both keys)
+                                    SHOPIFY_SKU: (item.shopify_sku || item.SHOPIFY_SKU || '').toString().trim(),
                                     TITLE: item['TITLE'] || '', // Title field from the sheet
 
                                     INV: INV, // Inventory
@@ -2697,6 +2803,8 @@
                                     APPROVED_AT: item.approved_at ? formatOhioTime(item.approved_at) : '',
                                     approved_at: item.approved_at || null,
                                     LAST_APPROVED_AT: formatApprovedAt(item.APPROVED_AT),
+                                    LAST_VERIFIED_AT: item.last_verified_at || item.HISTORY || null,
+                                    LAST_VERIFIED_QTY: item.last_verified_qty ?? item.LAST_VERIFIED_QTY ?? null,
                                     HISTORY: item.HISTORY ? formatOhioTime(item.HISTORY) : '',
 
                                     is_parent: (() => {
@@ -2756,7 +2864,7 @@
                 $tbody.empty();
 
                 if (isLoading) {
-                    $tbody.append('<tr><td colspan="28" class="text-center va-empty-state py-4"><span class="va-empty-state-icon"><i class="fas fa-spinner fa-spin"></i></span><br>Loading data...</td></tr>');
+                    $tbody.append('<tr><td colspan="27" class="text-center va-empty-state py-4"><span class="va-empty-state-icon"><i class="fas fa-spinner fa-spin"></i></span><br>Loading data...</td></tr>');
                     return;
                 }
 
@@ -2766,7 +2874,7 @@
 
 
                 if (filteredData.length === 0) {
-                    $tbody.append('<tr><td colspan="28" class="text-center va-empty-state py-4"><span class="va-empty-state-icon"><i class="fas fa-inbox text-muted"></i></span><br>No matching records found</td></tr>');
+                    $tbody.append('<tr><td colspan="27" class="text-center va-empty-state py-4"><span class="va-empty-state-icon"><i class="fas fa-inbox text-muted"></i></span><br>No matching records found</td></tr>');
                     return;
                 }
 
@@ -2919,29 +3027,12 @@
                         onmouseover="this.style.opacity='1'" 
                         onmouseout="this.style.opacity='0.7'"></i>`;
                     
-                    // Eye icon button for viewing history
-                    let eyeButton = '';
-                    if (isParentRow) {
-                        // Parent row - show history for all SKUs in this parent
-                        eyeButton = `<i class="fas fa-eye text-info view-parent-history-icon" 
-                            data-parent="${item.Parent || ''}" 
-                            title="View All SKUs History for Parent: ${item.Parent || ''}" 
-                            style="cursor: pointer; margin-left: 8px; font-size: 14px;"></i>`;
-                    } else {
-                        // Regular SKU - show history for this SKU only
-                        eyeButton = `<i class="fas fa-eye text-primary view-sku-history-icon" 
-                            data-sku="${escAttr(item.SKU || '')}" 
-                            title="View SKU History" 
-                            style="cursor: pointer; margin-left: 8px; font-size: 14px;"></i>`;
-                    }
-                    
-                    // Shopify link icon for non-parent rows
-                    const shopifyDomain = '{{ config("services.shopify.store_url") }}';
-                    const shopifyInventoryUrl = shopifyDomain ? `https://${shopifyDomain}/admin/products/inventory?query=${encodeURIComponent(item.SKU || '')}` : '#';
-                    const shopifyLinkIcon = !isParentRow ? `<a href="${shopifyInventoryUrl}" target="_blank" class="shopify-link-icon" title="View in Shopify" style="margin-left: 8px; color: #28a745; text-decoration: none;"><i class="fas fa-external-link-alt"></i></a>` : '';
+                    // Shopify link icon for non-parent rows (prefer synced Shopify SKU for exact admin match)
+                    const shopifyLinkSku = (item.SHOPIFY_SKU || item.SKU || '').trim();
+                    const shopifyLinkIcon = !isParentRow ? shopifyLinkIconHtml(shopifyLinkSku) : '';
                     
                     if (isParentRow) {
-                        $skuCell.html(`<strong>${escAttr(sku)}</strong> ${copyButton} ${eyeButton}<input type="hidden" class="sku-hidden" value="${escAttr(item.SKU || '')}" />`);
+                        $skuCell.html(`<strong>${escAttr(sku)}</strong> ${copyButton}<input type="hidden" class="sku-hidden" value="${escAttr(item.SKU || '')}" />`);
                     } else {
                         const buyerLink = item.raw_data?.['B Link'] || '';
                         const sellerLink = item.raw_data?.['AMZ LINK SL'] || '';
@@ -2950,17 +3041,16 @@
                                 <div class="sku-tooltip-container d-inline-block">
                                     <span class="sku-text">${escAttr(sku)}</span>
                                     <div class="sku-tooltip">
-                                        ${buyerLink ? `<div class="sku-link"><a href="${buyerLink}" target="_blank" rel="noopener noreferrer">Buyer link</a></div>` : ''}
-                                        ${sellerLink ? `<div class="sku-link"><a href="${sellerLink}" target="_blank" rel="noopener noreferrer">Seller link</a></div>` : ''}
+                                        ${buyerLink ? `<div class="sku-link"><a href="${escAttr(buyerLink)}" target="_blank" rel="noopener noreferrer">Buyer link</a></div>` : ''}
+                                        ${sellerLink ? `<div class="sku-link"><a href="${escAttr(sellerLink)}" target="_blank" rel="noopener noreferrer">Seller link</a></div>` : ''}
                                     </div>
                                 </div>
                                 ${copyButton}
-                                ${eyeButton}
                                 ${shopifyLinkIcon}
                                 <input type="hidden" class="sku-hidden" value="${escAttr(item.SKU || '')}" />
                             `);
                         } else {
-                            $skuCell.html(`${escAttr(sku)} ${copyButton} ${eyeButton}${shopifyLinkIcon}<input type="hidden" class="sku-hidden" value="${escAttr(item.SKU || '')}" />`);
+                            $skuCell.html(`${escAttr(sku)} ${copyButton}${shopifyLinkIcon}<input type="hidden" class="sku-hidden" value="${escAttr(item.SKU || '')}" />`);
                         }
                     }
                     $row.append($skuCell);
@@ -2988,8 +3078,14 @@
                         $row.append($raCell);
                     }
 
-                    $row.append($('<td>').text(item.INV || 0));
-                    $row.append($('<td>').text(item.L30));
+                    $row.append($('<td>').addClass('va-inv-col').text(item.INV || 0));
+
+                    const refreshColumnHtml = isParentRow
+                        ? '<span class="text-muted" title="N/A for parent">—</span>'
+                        : `<button type="button" class="btn btn-sm btn-link va-shopify-refresh-btn p-0 border-0" data-sku="${escAttr(item.SKU || '')}" title="Pull latest inventory from Shopify"><i class="fas fa-sync-alt" aria-hidden="true"></i></button>`;
+                    $row.append($('<td>').addClass('text-center align-middle va-refresh-col').html(refreshColumnHtml));
+
+                    $row.append($('<td>').addClass('va-l30-col').text(item.L30));
 
                     const dilValue = parseFloat(item.DIL) || 0;
                     let dilContent;
@@ -3000,10 +3096,10 @@
                         const dilClass = getDilColor(dilValue);
                         dilContent = `<span class="dil-percent-value ${dilClass}">${dilPercent}%</span>`;
                     }
-                    $row.append($('<td>').html(dilContent));
+                    $row.append($('<td>').addClass('va-dil-col').html(dilContent));
 
-                    $row.append($('<td>').text(item.AVAILABLE_TO_SELL));
-                    $row.append($('<td>').text(item.COMMITTED));
+                    $row.append($('<td>').addClass('va-available-col').text(item.AVAILABLE_TO_SELL));
+                    $row.append($('<td>').addClass('va-committed-col').text(item.COMMITTED));
                     $row.append($('<td>').addClass('hide-column unavailable-col-cell').text(item.UNAVAILABLE ?? 0));
                     $row.append($('<td>').addClass('hide-column incoming-col-cell').text(item.INCOMING ?? 0));
                     $row.append($('<td>').addClass('hide-column on-hand on-hand-col-cell').text(item.ON_HAND));
@@ -3075,45 +3171,46 @@
                     const lossGain = item.LOSS_GAIN;
                     $row.append($('<td>').addClass('loss-gain').text(lossGain === '' ? '' : Math.trunc(lossGain)));
 
-                    let approvedAtHTML = '-';
-                    if (item.APPROVED_AT && item.APPROVED_AT.includes(', ')) {
-                        const [datePart, timePart] = item.APPROVED_AT.split(', ');
-                        approvedAtHTML = `<div style="line-height:1.3">${datePart}<br><small>${timePart}</small></div>`;
-                    }
-                    $row.append($('<td>').addClass('approved-at').html(approvedAtHTML));
-
-                    // Verified column - Green dot if verified, Red dot if unverified - read from DB
-                    const isVerified = item.IS_VERIFIED === 1 || item.IS_VERIFIED === true || item.is_verified === true || item.is_verified === 1 || item.is_verified === '1';
-                    const dotColor = isVerified ? '#28a745' : '#dc3545'; // Green for verified, Red for unverified
+                    // Verified column — green if last verified date is within 29 days, else red
+                    const verifiedDotGreen = isVerifiedDotGreen(item);
+                    const dotColor = getVerifiedDotColor(item);
                     const verifiedHTML = `<button type="button" class="btn btn-sm verified-status-btn" 
-                        data-sku="${escAttr(item.SKU || '')}" data-index="${rowIndex}" data-verified="${isVerified ? '1' : '0'}"
+                        data-sku="${escAttr(item.SKU || '')}" data-index="${rowIndex}" data-verified="${verifiedDotGreen ? '1' : '0'}"
+                        title="${escAttr(getVerifiedDotTitle(item))}"
                         style="background: none; border: none; padding: 0; cursor: pointer;">
                         <i class="fas fa-circle" style="color: ${dotColor}; font-size: 12px;"></i>
                     </button>`;
                     const $verifiedCell = $('<td>').addClass('verified-column').css('text-align', 'center').html(verifiedHTML);
                     $row.append($verifiedCell);
 
-                    // User column - Display first name of user who verified
-                    const verifiedByFirstName = item.VERIFIED_BY_FIRST_NAME || item.verified_by_first_name || '';
-                    const $userCell = $('<td>').addClass('user-column').css({
-                        'text-align': 'center',
-                        'vertical-align': 'middle'
-                    }).html(verifiedByFirstName || '—');
-                    $row.append($userCell);
+                    const lastQtyRaw = item.LAST_VERIFIED_QTY;
+                    const lastQtyDisplay = (lastQtyRaw !== null && lastQtyRaw !== '' && !isNaN(parseFloat(lastQtyRaw)))
+                        ? parseFloat(lastQtyRaw)
+                        : '—';
+                    $row.append($('<td>').addClass('va-last-qty-col text-center align-middle').text(lastQtyDisplay));
 
-                    // HISTORY column - Shows latest approved date from Adjustment History
-                    let historyHTML = '-';
+                    // Merged LOG column: user + history + activity eye icon
+                    const verifiedByFirstName = item.VERIFIED_BY_FIRST_NAME || item.verified_by_first_name || '';
+                    let historyHTML = '—';
                     if (item.HISTORY && item.HISTORY.includes(', ')) {
                         const [datePart, timePart] = item.HISTORY.split(', ');
                         historyHTML = `<div style="line-height:1.3">${datePart}<br><small>${timePart}</small></div>`;
+                    } else if (item.HISTORY) {
+                        historyHTML = escAttr(item.HISTORY);
                     }
-                    $row.append($('<td>').addClass('history-column').html(historyHTML));
 
-                    // Activity Logs column - View SKU-wise log history
-                    const activityLogsHTML = `<button type="button" class="btn btn-sm btn-outline-primary view-activity-logs-btn" data-sku="${escAttr(item.SKU || '')}" title="View activity log for this SKU">
-                        <i class="fas fa-list-alt"></i> View
-                    </button>`;
-                    $row.append($('<td>').addClass('activity-logs-column text-center').css('vertical-align', 'middle').html(activityLogsHTML));
+                    const activityEyeBtn = (!isParentRow && item.SKU)
+                        ? `<button type="button" class="btn btn-sm btn-link view-activity-logs-btn p-0 border-0" data-sku="${escAttr(item.SKU || '')}" title="View activity log for this SKU"><i class="fas fa-eye" aria-hidden="true"></i></button>`
+                        : '';
+
+                    const mergedLogHTML = `
+                        <div class="va-merged-log-cell">
+                            <div class="va-merged-log-user">${escAttr(verifiedByFirstName) || '—'}</div>
+                            <div class="va-merged-log-history">${historyHTML}</div>
+                            <div class="va-merged-log-action">${activityEyeBtn}</div>
+                        </div>
+                    `;
+                    $row.append($('<td>').addClass('va-merged-log-col text-center align-middle').html(mergedLogHTML));
 
                     $tbody.append($row);
                 });
@@ -3136,26 +3233,114 @@
                 return !!item.is_parent || (item.SKU && String(item.SKU).toUpperCase().startsWith('PARENT'));
             }
 
-            // Helper: set verified dot to green in a row (after any value/remark update)
-            function setRowVerifiedGreen($row) {
-                const $btn = $row.find('.verified-status-btn');
-                if ($btn.length) {
-                    $btn.attr('data-verified', '1');
-                    $btn.find('i.fa-circle').css('color', '#28a745');
+            const VERIFIED_MAX_AGE_DAYS = 29;
+
+            function getVerifiedAgeDays(rawDate) {
+                if (!rawDate) return null;
+                const last = new Date(rawDate);
+                if (isNaN(last.getTime())) return null;
+                return Math.floor((Date.now() - last.getTime()) / 86400000);
+            }
+
+            /** Green dot only when last verified date is within 29 days (inclusive). */
+            function isVerifiedDotGreen(item) {
+                const ageDays = getVerifiedAgeDays(item.LAST_VERIFIED_AT);
+                if (ageDays === null) return false;
+                return ageDays <= VERIFIED_MAX_AGE_DAYS;
+            }
+
+            function getVerifiedDotColor(item) {
+                return isVerifiedDotGreen(item) ? '#28a745' : '#dc3545';
+            }
+
+            function getVerifiedDotTitle(item) {
+                const ageDays = getVerifiedAgeDays(item.LAST_VERIFIED_AT);
+                if (ageDays === null) {
+                    return 'Not verified — no verification date on record';
+                }
+                if (ageDays > VERIFIED_MAX_AGE_DAYS) {
+                    return `Verification stale — last verified ${ageDays} days ago (>${VERIFIED_MAX_AGE_DAYS} days)`;
+                }
+                return `Verified — last verified ${ageDays} day${ageDays === 1 ? '' : 's'} ago`;
+            }
+
+            let verifiedDateFilter = {
+                fromDate: null,
+                toDate: null,
+                active: false
+            };
+
+            function parseItemVerifiedDate(item) {
+                const raw = item?.LAST_VERIFIED_AT;
+                if (!raw) return null;
+                const d = new Date(raw);
+                return isNaN(d.getTime()) ? null : d;
+            }
+
+            function itemMatchesVerifiedDateFilter(item) {
+                if (!verifiedDateFilter.active) return true;
+                if (isParentRow(item)) return false;
+                const verifiedDate = parseItemVerifiedDate(item);
+                if (!verifiedDate) return false;
+                if (verifiedDateFilter.fromDate && verifiedDate < verifiedDateFilter.fromDate) return false;
+                if (verifiedDateFilter.toDate && verifiedDate > verifiedDateFilter.toDate) return false;
+                return true;
+            }
+
+            function updateVerifiedDateFilterButtonState() {
+                const $btn = $('#verifiedDateFilterBtn');
+                if (verifiedDateFilter.active) {
+                    $btn.removeClass('btn-outline-info').addClass('btn-warning');
+                } else {
+                    $btn.removeClass('btn-warning').addClass('btn-outline-info');
                 }
             }
 
-            // Update Verified status counts (exclude parent rows)
+            function clearVerifiedDateFilter(silent) {
+                verifiedDateFilter.fromDate = null;
+                verifiedDateFilter.toDate = null;
+                verifiedDateFilter.active = false;
+                $('#verifiedDateFrom').val('');
+                $('#verifiedDateTo').val('');
+                $('#verifiedDateFilterStatus').text('').removeClass('text-success').addClass('text-muted');
+                updateVerifiedDateFilterButtonState();
+                if (!silent) {
+                    applyAllFilters();
+                }
+            }
+
+            // Helper: set verified dot to green in a row (after any value/remark update)
+            function setRowVerifiedGreen($row, skuOptional) {
+                const sku = skuOptional || $row.find('.sku-hidden').val();
+                const nowIso = new Date().toISOString();
+                [tableData, filteredData].forEach(function(arr) {
+                    arr.forEach(function(item) {
+                        if (String(item.SKU || '').trim() === String(sku || '').trim()) {
+                            item.IS_VERIFIED = 1;
+                            item.is_verified = true;
+                            item.LAST_VERIFIED_AT = nowIso;
+                        }
+                    });
+                });
+                const item = tableData.find(function(i) { return String(i.SKU || '').trim() === String(sku || '').trim(); });
+                syncVerifiedDotInRow($row, item);
+                updateVerifiedCounts();
+            }
+
+            function syncVerifiedDotInRow($row, item) {
+                const $btn = $row.find('.verified-status-btn');
+                if (!$btn.length || !item) return;
+                const isGreen = isVerifiedDotGreen(item);
+                $btn.attr('data-verified', isGreen ? '1' : '0');
+                $btn.attr('title', getVerifiedDotTitle(item));
+                $btn.find('i.fa-circle').css('color', getVerifiedDotColor(item));
+            }
+
+            // Update Verified status counts (exclude parent rows; uses 29-day rule)
             function updateVerifiedCounts() {
                 const nonParentItems = tableData.filter(item => !isParentRow(item));
-                const greenCount = nonParentItems.filter(item => {
-                    const verified = item.IS_VERIFIED === 1 || item.IS_VERIFIED === true || item.is_verified === true || item.is_verified === 1;
-                    return verified;
-                }).length;
-                const yellowCount = nonParentItems.filter(item => {
-                    const verified = item.IS_VERIFIED === 1 || item.IS_VERIFIED === true || item.is_verified === true || item.is_verified === 1;
-                    return !verified;
-                }).length;
+                const greenCount = nonParentItems.filter(item => isVerifiedDotGreen(item)).length;
+                const yellowCount = nonParentItems.length - greenCount;
                 $('#green-count').text(greenCount);
                 $('#yellow-count').text(yellowCount);
             }
@@ -3266,6 +3451,19 @@
                 
                 copyToClipboard(sku, e.target);
             });
+
+            // Open Shopify admin inventory — stopPropagation so table/sort handlers don't swallow the click
+            $(document).on('click', '.shopify-link-icon', function(e) {
+                e.stopPropagation();
+                const url = $(this).attr('data-shopify-url') || $(this).attr('href') || '';
+                if (!url || url === '#') {
+                    e.preventDefault();
+                    showNotification('danger', 'Shopify store URL is not configured.');
+                    return;
+                }
+                e.preventDefault();
+                window.open(url, '_blank', 'noopener,noreferrer');
+            });
             
             // Copy SKU to clipboard functionality (for activity log table)
             $(document).on('click', '.copy-sku-icon-activity', function(e) {
@@ -3338,6 +3536,113 @@
                 document.body.removeChild(textArea);
             }
 
+            function getDilColorClass(value) {
+                const percent = parseFloat(value) * 100;
+                if (percent < 16.66) return 'red';
+                if (percent >= 16.66 && percent < 25) return 'yellow';
+                if (percent >= 25 && percent < 50) return 'green';
+                return 'pink';
+            }
+
+            function buildDilCellHtml(dilValue) {
+                const dil = parseFloat(dilValue) || 0;
+                if (dil <= 0) {
+                    return '<span>-</span>';
+                }
+                const dilPercent = Math.round(dil * 100);
+                const dilClass = getDilColorClass(dil);
+                return `<span class="dil-percent-value ${dilClass}">${dilPercent}%</span>`;
+            }
+
+            function applyShopifyRefreshDataToArrays(sku, data) {
+                const normalizedSku = String(sku || '').trim();
+                [tableData, filteredData].forEach(arr => {
+                    arr.forEach(item => {
+                        if (String(item.SKU || '').trim() !== normalizedSku) {
+                            return;
+                        }
+                        Object.assign(item, data);
+                        const verifiedStock = item.VERIFIED_STOCK;
+                        if (verifiedStock !== '' && verifiedStock != null && !isNaN(parseInt(verifiedStock))) {
+                            item.TO_ADJUST = parseInt(verifiedStock) - parseInt(data.ON_HAND || 0);
+                        }
+                    });
+                });
+            }
+
+            function applyShopifyRefreshDataToRow($row, data) {
+                $row.find('.va-inv-col').text(data.INV ?? 0);
+                $row.find('.va-l30-col').text(data.L30 ?? 0);
+                $row.find('.va-dil-col').html(buildDilCellHtml(data.DIL));
+                $row.find('.va-available-col').text(data.AVAILABLE_TO_SELL ?? 0);
+                $row.find('.va-committed-col').text(data.COMMITTED ?? 0);
+                $row.find('.unavailable-col-cell').text(data.UNAVAILABLE ?? 0);
+                $row.find('.incoming-col-cell').text(data.INCOMING ?? 0);
+                $row.find('.on-hand').text(data.ON_HAND ?? 0);
+
+                const verifiedStockRaw = $row.find('.verified-stock-input').val();
+                let toAdjust = '';
+                if (verifiedStockRaw != null && String(verifiedStockRaw).trim() !== '') {
+                    const verifiedStock = parseInt(String(verifiedStockRaw).trim(), 10);
+                    if (!isNaN(verifiedStock)) {
+                        toAdjust = verifiedStock - parseInt(data.ON_HAND || 0, 10);
+                    }
+                }
+                $row.find('.to-adjust').text(toAdjust);
+                $row.find('.adjusted-qty').text(toAdjust);
+            }
+
+            $(document).on('click', '.va-shopify-refresh-btn', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+
+                const $btn = $(this);
+                const sku = String($btn.data('sku') || '').trim();
+                if (!sku || $btn.prop('disabled')) {
+                    return;
+                }
+
+                const $row = $btn.closest('tr');
+                const $icon = $btn.find('i');
+                const csrfToken = $('meta[name="csrf-token"]').attr('content');
+
+                $btn.prop('disabled', true);
+                $icon.removeClass('fa-sync-alt').addClass('fa-spinner fa-spin');
+
+                $.ajax({
+                    url: '/verification-adjustment-refresh-shopify',
+                    type: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': csrfToken
+                    },
+                    data: {
+                        sku: sku,
+                        _token: csrfToken
+                    },
+                    success: function(response) {
+                        if (!response.success || !response.data) {
+                            showNotification('danger', response.message || 'Failed to refresh inventory from Shopify.');
+                            return;
+                        }
+
+                        applyShopifyRefreshDataToArrays(sku, response.data);
+                        applyShopifyRefreshDataToRow($row, response.data);
+                        showNotification('success', response.message || 'Inventory refreshed from Shopify.');
+                    },
+                    error: function(xhr) {
+                        let errorMsg = 'Failed to refresh inventory from Shopify.';
+                        if (xhr.responseJSON && xhr.responseJSON.message) {
+                            errorMsg = xhr.responseJSON.message;
+                        }
+                        showNotification('danger', errorMsg);
+                    },
+                    complete: function() {
+                        $btn.prop('disabled', false);
+                        $icon.removeClass('fa-spinner fa-spin').addClass('fa-sync-alt');
+                    }
+                });
+            });
+
             $(document).on('click', '.verified-status-btn', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
@@ -3365,27 +3670,36 @@
                     },
                     success: function(response) {
                         if (response.success) {
-                            // Update only the button color - NOTHING ELSE
-                            const newColor = newVerified ? '#28a745' : '#dc3545'; // Green or Red
-                            const $icon = $btn.find('i.fa-circle');
-                            
-                            if ($icon.length > 0) {
-                                // Just change the icon color
-                                $icon.css('color', newColor);
-                            } else {
-                                // If icon not found, recreate it
-                                $btn.html(`<i class="fas fa-circle" style="color: ${newColor}; font-size: 12px;"></i>`);
-                            }
-                            
-                            // Update the data attribute for next toggle
-                            $btn.attr('data-verified', newVerified ? '1' : '0');
-                            
-                            // Update tableData silently (for export/other operations, but don't refresh UI)
                             const itemIndex = tableData.findIndex(item => item.SKU === sku);
+                            const nowIso = new Date().toISOString();
                             if (itemIndex !== -1) {
                                 tableData[itemIndex].IS_VERIFIED = newVerified ? 1 : 0;
                                 tableData[itemIndex].is_verified = newVerified;
+                                if (newVerified) {
+                                    tableData[itemIndex].LAST_VERIFIED_AT = nowIso;
+                                }
+                                filteredData.forEach(item => {
+                                    if (item.SKU === sku) {
+                                        item.IS_VERIFIED = tableData[itemIndex].IS_VERIFIED;
+                                        item.is_verified = tableData[itemIndex].is_verified;
+                                        item.LAST_VERIFIED_AT = tableData[itemIndex].LAST_VERIFIED_AT;
+                                    }
+                                });
                             }
+
+                            const itemRef = itemIndex !== -1 ? tableData[itemIndex] : { LAST_VERIFIED_AT: newVerified ? nowIso : null };
+                            const newColor = newVerified ? getVerifiedDotColor(itemRef) : '#dc3545';
+                            const $icon = $btn.find('i.fa-circle');
+                            
+                            if ($icon.length > 0) {
+                                $icon.css('color', newColor);
+                            } else {
+                                $btn.html(`<i class="fas fa-circle" style="color: ${newColor}; font-size: 12px;"></i>`);
+                            }
+                            
+                            $btn.attr('data-verified', newVerified && isVerifiedDotGreen(itemRef) ? '1' : '0');
+                            $btn.attr('title', newVerified ? getVerifiedDotTitle(itemRef) : 'Marked unverified');
+                            updateVerifiedCounts();
                         }
                     },
                     error: function(xhr, status, error) {
@@ -3439,14 +3753,12 @@
                     if (verifiedFilter === 'green') {
                         tempData = tempData.filter(item => {
                             if (isParentRow(item)) return false;
-                            const verified = item.IS_VERIFIED === 1 || item.IS_VERIFIED === true || item.is_verified === true || item.is_verified === 1;
-                            return verified;
+                            return isVerifiedDotGreen(item);
                         });
                     } else if (verifiedFilter === 'yellow') {
                         tempData = tempData.filter(item => {
                             if (isParentRow(item)) return false;
-                            const verified = item.IS_VERIFIED === 1 || item.IS_VERIFIED === true || item.is_verified === true || item.is_verified === 1;
-                            return !verified;
+                            return !isVerifiedDotGreen(item);
                         });
                         // Sort by INV (lowest to highest) when Unverified filter is active
                         tempData.sort((a, b) => {
@@ -3457,7 +3769,12 @@
                     }
                 }
                 
-                // 5. Search all columns filter
+                // 5. Verified date range filter (last verified date in LOG column)
+                if (verifiedDateFilter.active) {
+                    tempData = tempData.filter(item => itemMatchesVerifiedDateFilter(item));
+                }
+
+                // 6. Search all columns filter
                 const searchTerm = $('#search-input').val()?.trim();
                 if (searchTerm) {
                     const normalizedSearch = searchTerm.replace(/\s+/g, '').toLowerCase();
@@ -3503,6 +3820,7 @@
                 $('.doubtful-filter-btn').removeClass('active');
                 $('.filter-show-all-btn').removeClass('active');
                 $(this).addClass('active');
+                clearVerifiedDateFilter(true);
                 applyAllFilters();
             });
 
@@ -3645,6 +3963,13 @@
                                 if (j !== -1) {
                                     arr[j].IS_VERIFIED = 1;
                                     arr[j].is_verified = true;
+                                    arr[j].LAST_VERIFIED_AT = res.data?.approved_at || new Date().toISOString();
+                                    if (isApproved && res.data?.verified_stock != null && res.data?.verified_stock !== '') {
+                                        arr[j].LAST_VERIFIED_QTY = res.data.verified_stock;
+                                    }
+                                    if (res.data?.approved_at) {
+                                        arr[j].HISTORY = formatOhioTime(res.data.approved_at);
+                                    }
                                     if (res.data) {
                                         arr[j].SHOPIFY_PUSH_STATUS = res.data.shopify_adjustment_status;
                                         arr[j].SHOPIFY_PUSH_ERROR = res.data.shopify_adjustment_error || null;
@@ -3656,11 +3981,15 @@
                                 setRowShopifyPushUi($row, res.data.shopify_adjustment_status, res.data.shopify_adjustment_error, res.data.shopify_adjustment_succeeded_at);
                             }
 
-                            setRowVerifiedGreen($row);
+                            setRowVerifiedGreen($row, sku);
+
+                            $row.find('.va-last-qty-col').text(
+                                isApproved && res.data?.verified_stock != null && res.data?.verified_stock !== ''
+                                    ? parseFloat(res.data.verified_stock)
+                                    : '—'
+                            );
 
                             $row.find('.approved-by').text(isApproved ? approvedBy : '-');
-
-                            $row.find('.approved-at').html(isApproved ? approvedAtFormatted : '-');
 
                             $row.find('.adjusted-qty').text(isApproved ? toAdjust : '-');
                             $row.find('.loss-gain').text(isApproved ? Math.trunc(lossGain) : '0');
@@ -3760,7 +4089,7 @@
                                     arr[idx].is_verified = true;
                                 }
                             });
-                            setRowVerifiedGreen($row);
+                            setRowVerifiedGreen($row, sku);
                             showNotification('success', 'Remark saved successfully');
                         } else {
                             showNotification('danger', res.message || 'Failed to save remark');
@@ -3843,9 +4172,7 @@
                         $('#skuHistoryModalLabel').text(`Activity Log — SKU: ${sku}`);
                         
                         // Update Shopify link
-                        const shopifyDomain = '{{ config("services.shopify.store_url") }}';
-                        const shopifyInventoryUrl = `https://${shopifyDomain}/admin/products/inventory?query=${encodeURIComponent(sku)}`;
-                        $('#shopifyInventoryLink').attr('href', shopifyInventoryUrl).show();
+                        $('#shopifyInventoryLink').attr('href', buildShopifyAdminInventoryUrl(sku)).show();
                         
                         $('#skuHistoryModal').modal('show');
                     },
@@ -4069,117 +4396,45 @@
                 });
             });
 
-            // History Date Range Filter
-            let historyDateFilter = {
-                fromDate: null,
-                toDate: null,
-                active: false
-            };
-
-            // Prevent dropdown from closing when clicking inside
+            // Verified date range filter (last verified date)
             $('.dropdown-menu').on('click', function(e) {
                 e.stopPropagation();
             });
 
-            // Apply History Date Filter
-            $("#applyHistoryDateFilter").on("click", function (e) {
+            $('#applyVerifiedDateFilter').on('click', function(e) {
                 e.stopPropagation();
-                
-                const fromDate = $("#historyDateFrom").val();
-                const toDate = $("#historyDateTo").val();
-                
+
+                const fromDate = $('#verifiedDateFrom').val();
+                const toDate = $('#verifiedDateTo').val();
+
                 if (!fromDate && !toDate) {
-                    alert("Please select at least one date!");
+                    alert('Please select at least one date.');
                     return;
                 }
-                
-                historyDateFilter.fromDate = fromDate ? new Date(fromDate) : null;
-                historyDateFilter.toDate = toDate ? new Date(toDate) : null;
-                historyDateFilter.active = true;
-                
-                // Set time to end of day for toDate
-                if (historyDateFilter.toDate) {
-                    historyDateFilter.toDate.setHours(23, 59, 59, 999);
-                }
-                
-                // Apply filter
-                applyHistoryDateFilter();
-                
-                // Update status message
-                let statusMsg = "Filtered: ";
+
+                verifiedDateFilter.fromDate = fromDate ? new Date(fromDate + 'T00:00:00') : null;
+                verifiedDateFilter.toDate = toDate ? new Date(toDate + 'T23:59:59.999') : null;
+                verifiedDateFilter.active = true;
+
+                let statusMsg = 'Showing verified dates: ';
                 if (fromDate && toDate) {
                     statusMsg += `${fromDate} to ${toDate}`;
                 } else if (fromDate) {
-                    statusMsg += `From ${fromDate}`;
+                    statusMsg += `from ${fromDate}`;
                 } else {
-                    statusMsg += `Until ${toDate}`;
+                    statusMsg += `until ${toDate}`;
                 }
-                $("#historyFilterStatus").text(statusMsg).removeClass('text-muted').addClass('text-success');
-                
-                // Update button appearance
-                $("#historyDateFilterBtn").addClass('btn-warning').removeClass('btn-info');
+                $('#verifiedDateFilterStatus').text(statusMsg).removeClass('text-muted').addClass('text-success');
+                updateVerifiedDateFilterButtonState();
+
+                $('.filter-show-all-btn').removeClass('active');
+                applyAllFilters();
             });
 
-            // Clear History Date Filter
-            $("#clearHistoryDateFilter").on("click", function (e) {
+            $('#clearVerifiedDateFilter').on('click', function(e) {
                 e.stopPropagation();
-                
-                historyDateFilter.fromDate = null;
-                historyDateFilter.toDate = null;
-                historyDateFilter.active = false;
-                
-                $("#historyDateFrom").val('');
-                $("#historyDateTo").val('');
-                $("#historyFilterStatus").text('').removeClass('text-success').addClass('text-muted');
-                
-                // Reset filtered data to show all
-                filteredData = [...tableData];
-                currentPage = 1;
-                renderTable();
-                calculateTotals();
-                
-                // Update button appearance
-                $("#historyDateFilterBtn").removeClass('btn-warning').addClass('btn-info');
+                clearVerifiedDateFilter(false);
             });
-
-            // Function to apply history date filter
-            function applyHistoryDateFilter() {
-                if (!historyDateFilter.active) {
-                    filteredData = [...tableData];
-                } else {
-                    filteredData = tableData.filter(item => {
-                        // Skip parent rows
-                        if (item.is_parent) return true;
-                        
-                        // If no HISTORY date, exclude it
-                        if (!item.HISTORY || item.HISTORY === '-' || item.HISTORY === '') {
-                            return false;
-                        }
-                        
-                        // Parse the HISTORY date (format: "04 Nov 2025, 04:04 AM")
-                        const historyDate = new Date(item.HISTORY);
-                        
-                        // Check if date is valid
-                        if (isNaN(historyDate.getTime())) {
-                            return false;
-                        }
-                        
-                        // Apply date range filter
-                        if (historyDateFilter.fromDate && historyDate < historyDateFilter.fromDate) {
-                            return false;
-                        }
-                        if (historyDateFilter.toDate && historyDate > historyDateFilter.toDate) {
-                            return false;
-                        }
-                        
-                        return true;
-                    });
-                }
-                
-                currentPage = 1;
-                renderTable();
-                calculateTotals();
-            }
 
             // Export to Google Sheets
             $("#exportToGoogleSheets").on("click", function () {
@@ -4218,11 +4473,8 @@
                         historyDate = item.HISTORY;
                     }
                     
-                    // Determine if item is verified (green = ✓, red = ✗)
-                    const isVerified = item.IS_VERIFIED === 1 || item.IS_VERIFIED === true || 
-                                      item.is_verified === true || item.is_verified === 1 || 
-                                      item.is_verified === '1';
-                    const verifiedStatus = isVerified ? '✓' : '✗';
+                    // Verified status uses 29-day rule (green dot = ✓)
+                    const verifiedStatus = isVerifiedDotGreen(item) ? '✓' : '✗';
                     
                     // Get user who verified (first name)
                     const lastVerifiedBy = item.VERIFIED_BY_FIRST_NAME || item.verified_by_first_name || '';
@@ -4431,8 +4683,10 @@
                 filterActivityLogTable();
             });
 
-            // Activity Logs column: open SKU-wise history modal
-            $(document).on('click', '.view-activity-logs-btn', function () {
+            // Merged LOG column: open SKU-wise history modal (eye icon)
+            $(document).on('click', '.view-activity-logs-btn', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
                 const sku = $(this).data('sku');
                 if (sku) showSkuHistory(sku);
             });
@@ -5316,9 +5570,11 @@
                     const $th = $(this);
                     const dataField = $th.data('field');
 
-                    if (!dataField) return;
+                    if (!dataField || dataField === 'refresh' || dataField === 'shopify_push' || dataField === 'bulk-select') return;
 
-                    const sortField = dataField === 'parent' ? 'Parent' : dataField;
+                    const sortField = dataField === 'parent'
+                        ? 'Parent'
+                        : (dataField === 'activityLog' ? 'HISTORY' : (dataField === 'lastVerifiedQty' ? 'LAST_VERIFIED_QTY' : dataField));
 
                     // Toggle sort direction
                     if (currentSort.field === sortField) {
@@ -5338,7 +5594,7 @@
                         let valB = b[sortField] ?? '';
 
                         // Explicitly handle numeric fields (INV, L30, DIL, etc.)
-                        const numericFields = ['INV', 'L30', 'DIL', 'ON_HAND', 'COMMITTED', 'AVAILABLE_TO_SELL', 'UNAVAILABLE', 'INCOMING'];
+                        const numericFields = ['INV', 'L30', 'DIL', 'ON_HAND', 'COMMITTED', 'AVAILABLE_TO_SELL', 'UNAVAILABLE', 'INCOMING', 'LAST_VERIFIED_QTY'];
                         if (numericFields.includes(sortField)) {
                             valA = parseFloat(valA) || 0;
                             valB = parseFloat(valB) || 0;
@@ -5731,7 +5987,7 @@
                         filteredValues.sort().forEach(value => {
                             if (value) {
                                 $results.append(
-                                    `<div class="dropdown-search-item" tabindex="0" data-value="${value}">${value}</div>`
+                                    `<div class="dropdown-search-item" tabindex="0" data-value="${escAttr(value)}">${escAttr(value)}</div>`
                                 );
                             }
                         });
@@ -5783,7 +6039,7 @@
                         e.preventDefault();
                         e.stopPropagation();
 
-                        const value = $(this).data('value');
+                        const value = $(this).attr('data-value') || '';
                         $input.val(value);
                         applyAllFilters(); // Use unified filter
                         $results.hide();

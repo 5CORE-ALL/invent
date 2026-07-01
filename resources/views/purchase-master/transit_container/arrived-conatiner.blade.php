@@ -153,27 +153,22 @@
                     <div class="d-flex gap-4 align-items-center">
                         @include('purchase-master.partials.page-info-toolbar', ['pageKey' => 'arrived_container'])
                         <div class="fw-semibold text-dark" style="font-size: 1rem;">
-                            📦 To. Ctns: <span class="text-success" id="total-cartons-display">0</span>
+                            📦 Ctns: <span class="text-success" id="total-cartons-display">0</span>
                         </div>
                         <div class="fw-semibold text-dark" style="font-size: 1rem;">
-                            🧮 To. Qty: <span class="text-primary" id="total-qty-display">0</span>
+                            🧮 Qty: <span class="text-primary" id="total-qty-display">0</span>
                         </div>
                         <div class="fw-semibold text-dark" style="font-size: 1rem;">
-                            💲 To. Amt: <span class="text-primary" id="total-amount-display">0</span>
+                            💲 Amt: <span class="text-primary" id="total-amount-display">0</span>
                         </div>
                         <div class="fw-semibold text-dark" style="font-size: 1rem;">
-                            To. CBM: <span class="text-primary" id="total-cbm-display">0</span>
+                            CBM: <span class="text-primary" id="total-cbm-display">0</span>
+                        </div> 
+                        <div class="d-flex align-items-center gap-1">
+                            <label for="container-quick-search" class="fw-semibold mb-0" style="font-size: 0.95rem;">C #</label>
+                            <input type="text" id="container-quick-search" class="form-control form-control-sm" placeholder="No."
+                                style="width: 72px; border: 2px solid #2185ff; font-size: 0.95rem;" inputmode="numeric" autocomplete="off">
                         </div>
-                    </div>
-
-                    <!-- 🔽 Filter Type Dropdown -->
-                    <div class="d-flex align-items-center gap-2">
-                        <label for="filter-type" class="fw-semibold mb-0" style="font-size: 0.95rem;">Filter Type:</label>
-                        <select id="filter-type" class="form-select form-select-sm" style="width: 120px;">
-                            <option value="">All</option>
-                            <option value="new">New</option>
-                            <option value="changes">Changes</option>
-                        </select>
                     </div>
 
                     <!-- 🔍 Search Input -->
@@ -199,8 +194,8 @@
                     <ul class="nav nav-tabs flex-nowrap d-flex mb-0" id="tabList" role="tablist" style="min-width: max-content;">
                         @foreach($tabs as $index => $tab)
                             <li class="nav-item" style="flex-shrink: 0;">
-                                <button class="nav-link {{ $index == 0 ? 'active' : '' }}" id="tab-{{ $index }}-tab" data-bs-toggle="tab" data-bs-target="#tab-{{ $index }}" type="button" role="tab">
-                                    {{ $tab }}
+                                <button class="nav-link {{ $index == 0 ? 'active' : '' }}" id="tab-{{ $index }}-tab" data-bs-toggle="tab" data-bs-target="#tab-{{ $index }}" type="button" role="tab" data-tab-name="{{ $tab }}">
+                                    {{ preg_replace('/^Container\s+/i', 'C ', $tab) }}
                                 </button>
                             </li>
                         @endforeach
@@ -209,9 +204,9 @@
 
                 <!-- Tabs Content -->
                 <div class="tab-content mt-3" id="tabContent">
-                    @foreach($groupedData as $tabName => $items)
-                        <div class="tab-pane fade {{ $loop->first ? 'show active' : '' }}" id="tab-{{ $loop->index }}" role="tabpanel">
-                            <div id="tabulator-{{ $loop->index }}" class="tabulator-table"></div>
+                    @foreach($tabs as $index => $tab)
+                        <div class="tab-pane fade {{ $index === 0 ? 'show active' : '' }}" id="tab-{{ $index }}" role="tabpanel" data-tab-name="{{ $tab }}">
+                            <div id="tabulator-{{ $index }}" class="tabulator-table" data-tab-name="{{ $tab }}"></div>
                         </div>
                     @endforeach
                 </div>
@@ -279,9 +274,11 @@
 <script>
 document.body.style.zoom = "80%";
 let tabCounter = {{ count($tabs) }};
+const tabs = @json($tabs);
 const groupedData = @json($groupedData);
 
-Object.entries(groupedData).forEach(([tabName, data], index) => {
+tabs.forEach((tabName, index) => {
+    const data = groupedData[tabName] || [];
     let table = new Tabulator(`#tabulator-${index}`, {
         layout: "fitDataFill",
         data: data,
@@ -358,7 +355,7 @@ Object.entries(groupedData).forEach(([tabName, data], index) => {
                   let values = data.Values;
 
                   if (!values) {
-                      return "0.00";
+                      return "0.000";
                   }
 
                   if (typeof values === "string") {
@@ -371,7 +368,7 @@ Object.entries(groupedData).forEach(([tabName, data], index) => {
                   }
 
                   const cbm = parseFloat(values?.cbm) || 0;
-                  return cbm ? cbm.toFixed(2) : "0.00";
+                  return cbm.toFixed(3);
               }
             },
             {
@@ -627,8 +624,8 @@ function updateActiveTabSummary(index, table) {
         totalCBM += rowCBM;
     });
 
-  document.getElementById("total-cartons-display").textContent = totalCtn;
-  document.getElementById("total-qty-display").textContent = totalQty;
+  document.getElementById("total-cartons-display").textContent = Math.round(totalCtn);
+  document.getElementById("total-qty-display").textContent = Math.round(totalQty);
   document.getElementById("total-amount-display").textContent = Math.round(totalAmount);
   document.getElementById("total-cbm-display").textContent = totalCBM.toFixed(0);
 
@@ -641,6 +638,52 @@ document.querySelectorAll('[data-bs-toggle="tab"]').forEach((btn, index) => {
         }
     });
 });
+
+function getContainerNumberFromTabName(tabName) {
+    const match = String(tabName || '').match(/(\d+)/);
+    return match ? match[1] : '';
+}
+
+function applyContainerQuickSearch(query) {
+    const q = String(query || '').trim();
+    const tabButtons = Array.from(document.querySelectorAll('#tabList [data-bs-toggle="tab"]'));
+    let matchBtn = null;
+
+    tabButtons.forEach(function(btn) {
+        const num = getContainerNumberFromTabName(btn.dataset.tabName);
+        const navItem = btn.closest('.nav-item');
+        const visible = !q || num === q || num.startsWith(q);
+
+        if (navItem) {
+            navItem.style.display = visible ? '' : 'none';
+        }
+
+        if (visible && !matchBtn) {
+            matchBtn = btn;
+        }
+        if (q && num === q) {
+            matchBtn = btn;
+        }
+    });
+
+    if (matchBtn && q) {
+        bootstrap.Tab.getOrCreateInstance(matchBtn).show();
+        matchBtn.scrollIntoView({ inline: 'nearest', behavior: 'smooth', block: 'nearest' });
+    }
+}
+
+const containerQuickSearch = document.getElementById('container-quick-search');
+if (containerQuickSearch) {
+    containerQuickSearch.addEventListener('input', function() {
+        applyContainerQuickSearch(this.value);
+    });
+    containerQuickSearch.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            this.value = '';
+            applyContainerQuickSearch('');
+        }
+    });
+}
 
 document.getElementById('search-input').addEventListener('input', function () {
     const value = this.value.toLowerCase();
@@ -663,38 +706,6 @@ document.getElementById('search-input').addEventListener('input', function () {
 });
 
   document.addEventListener("DOMContentLoaded", function () {
-    document.getElementById("filter-type").addEventListener("change", function () {
-        const selected = this.value;
-
-        const activeTab = document.querySelector('.nav-link.active[data-bs-toggle="tab"]');
-        if (!activeTab) return;
-
-        const activeIndex = Array.from(document.querySelectorAll('[data-bs-toggle="tab"]')).indexOf(activeTab);
-        const activeTable = window.tabTables[activeIndex];
-
-        if (!activeTable) {
-            console.warn("No Tabulator instance found for index:", activeIndex);
-            return;
-        }
-
-        if (selected === "new") {
-            activeTable.setFilter((data) => {
-                const parent = (data.parent || "").toUpperCase().trim();
-                return parent === "SOURCING";
-            });
-        } else if (selected === "changes") {
-            activeTable.setFilter((data) => {
-                const parent = (data.parent || "").toUpperCase().trim();
-                return parent !== "SOURCING";
-            });
-        } else {
-            activeTable.clearFilter();
-        }
-
-        activeTable.redraw();
-        console.log("Filtered data count:", activeTable.getDataCount("active"));
-    });
-
     document.addEventListener("mouseover", function(e) {
       if (e.target && e.target.dataset.preview) {
         const previewBox = document.getElementById("cell-image-preview");

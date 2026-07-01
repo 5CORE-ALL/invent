@@ -21,6 +21,7 @@ use App\Models\TransitContainerDetail;
 use App\Models\MfrgProgress;
 use App\Models\ReadyToShip;
 use App\Services\SupplierCategorySync;
+use App\Services\ToOrderSkuFieldSync;
 use App\Services\ToOrderSupplierSync;
 
 class ForecastAnalysisController extends Controller
@@ -1212,9 +1213,20 @@ class ForecastAnalysisController extends Controller
         $mode = $request->query('mode');
         $demo = $request->query('demo');
 
+        $allCategories = DB::table('categories')
+            ->whereNull('deleted_at')
+            ->whereNotNull('name')
+            ->where('name', '!=', '')
+            ->orderBy('name')
+            ->pluck('name')
+            ->unique()
+            ->values()
+            ->all();
+
         return view('purchase-master.forecastAnalysis', [
             'mode' => $mode,
             'demo' => $demo,
+            'allCategories' => $allCategories,
         ]);
     }
 
@@ -1291,67 +1303,31 @@ class ForecastAnalysisController extends Controller
 
         // Handle MOQ updates: save to forecast_analysis.approved_qty and to_order_analysis so forecast and to-order show same value
         if (strtoupper($column) === 'MOQ') {
-            $skuUpper = strtoupper(trim($sku));
-            $parentNorm = strtoupper(trim($parent));
-            $valueNum = is_numeric($value) ? (int) $value : null;
+            try {
+                ToOrderSkuFieldSync::setMoqForSku($sku, $value, $parent !== '' ? $parent : null);
+            } catch (\Throwable $e) {
+                Log::error('Forecast MOQ save failed', ['sku' => $sku, 'error' => $e->getMessage()]);
 
-            $oldMoq = null;
-            $moqQuery = DB::table('forecast_analysis')->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper]);
-            if ($parentNorm !== '') {
-                $moqQuery->whereRaw('TRIM(UPPER(COALESCE(parent, \'\'))) = ?', [$parentNorm]);
-            }
-            $moqRow = $moqQuery->orderByDesc('updated_at')->first();
-            if ($moqRow) {
-                $oldMoq = $moqRow->approved_qty;
+                return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
             }
 
-            $faUpdated = 0;
-            if ($parentNorm !== '') {
-                $faUpdated = (int) DB::table('forecast_analysis')
-                    ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper])
-                    ->whereRaw('TRIM(UPPER(COALESCE(parent, \'\'))) = ?', [$parentNorm])
-                    ->update(['approved_qty' => $valueNum, 'updated_at' => now()]);
-            }
-            if ($faUpdated === 0) {
-                $faUpdated = (int) DB::table('forecast_analysis')
-                    ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper])
-                    ->update(['approved_qty' => $valueNum, 'updated_at' => now()]);
-            }
-            if ($faUpdated === 0 && $sku !== '') {
-                DB::table('forecast_analysis')->insert([
-                    'sku' => $sku,
-                    'parent' => $parent !== '' ? $parent : null,
-                    'approved_qty' => $valueNum,
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ]);
-            }
-
-            $toUpdated = 0;
-            if ($parentNorm !== '') {
-                $toUpdated = (int) DB::table('to_order_analysis')
-                    ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper])
-                    ->whereRaw('TRIM(UPPER(COALESCE(parent, \'\'))) = ?', [$parentNorm])
-                    ->update(['approved_qty' => $valueNum]);
-            }
-            if ($toUpdated === 0) {
-                $toUpdated = (int) DB::table('to_order_analysis')
-                    ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper])
-                    ->update(['approved_qty' => $valueNum]);
-            }
-
-            // Optionally keep product_master.Values['moq'] in sync
-            $product = ProductMaster::whereRaw('TRIM(LOWER(sku)) = ?', [strtolower($sku)])->first();
-            if ($product) {
-                $values = is_array($product->Values) ? $product->Values : (json_decode($product->Values, true) ?? []);
-                $values['moq'] = $value;
-                $product->Values = $values;
-                $product->save();
-            }
-
-            $this->logForecastAnalysisChange($sku, $parent, 'moq', $oldMoq, $valueNum);
+            $this->logForecastAnalysisChange($sku, $parent, 'moq', null, is_numeric($value) ? (int) $value : null);
 
             return response()->json(['success' => true, 'message' => 'MOQ updated successfully']);
+        }
+
+        if (strtoupper($column) === 'CATEGORY') {
+            try {
+                SupplierCategorySync::setCategoryForSku($sku, $value, $parent !== '' ? $parent : null);
+            } catch (\InvalidArgumentException $e) {
+                return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+            } catch (\Throwable $e) {
+                Log::error('Forecast category save failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+                return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            }
+
+            return response()->json(['success' => true, 'message' => 'Category updated successfully']);
         }
 
         // Handle CP updates: save to product_master Values->cp

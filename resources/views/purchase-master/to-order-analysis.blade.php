@@ -1918,7 +1918,13 @@
                         "Accept": "application/json",
                         "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content,
                     },
-                    body: JSON.stringify({ sku: sku, column: "approved_qty", value: newValue }),
+                    body: JSON.stringify({
+                        sku: sku,
+                        parent: rowData.Parent || "",
+                        column: "approved_qty",
+                        value: newValue,
+                        sku_only: true,
+                    }),
                 });
                 const data = await res.json();
                 if (!data.success) {
@@ -3560,7 +3566,13 @@
                     const d = row.getData();
                     const sku = String(d.SKU || '').trim();
                     if (!sku || sku.startsWith('PARENT')) continue;
-                    const payload = { sku: sku, column: column, value: value };
+                    const payload = {
+                        sku: sku,
+                        parent: d.Parent || '',
+                        column: column,
+                        value: value,
+                        sku_only: true,
+                    };
                     if (column === 'Reviews') payload.parent = d.Parent || '';
                     try {
                         const res = await fetch('/update-link', {

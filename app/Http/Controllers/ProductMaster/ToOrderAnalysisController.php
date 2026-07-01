@@ -18,6 +18,7 @@ use App\Models\ComparisonData;
 use App\Services\LinkedSkuGroupService;
 use App\Services\PurchasePageExecService;
 use App\Services\SupplierCategorySync;
+use App\Services\ToOrderSkuFieldSync;
 use App\Services\ToOrderSupplierSync;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -945,6 +946,7 @@ class ToOrderAnalysisController extends Controller
     public function updateLink(Request $request)
     {
         $sku = trim(strtoupper((string) $request->input('sku', '')));
+        $parent = trim((string) $request->input('parent', ''));
         $column = $request->input('column');
         $value = $request->input('value');
         $rowId = (int) $request->input('row_id', 0);
@@ -953,7 +955,7 @@ class ToOrderAnalysisController extends Controller
             return response()->json(['success' => false, 'message' => 'SKU is required']);
         }
 
-        if (!in_array($column, ['approved_qty','Date of Appr', 'RFQ Form Link', 'Rfq Report Link', 'sheet_link', 'Stage', 'nrl', 'Supplier', 'order_qty', 'Adv date', 'Clink', 'Reviews', 'Exec'])) {
+        if (!in_array($column, ['approved_qty','Date of Appr', 'RFQ Form Link', 'Rfq Report Link', 'sheet_link', 'Stage', 'nrl', 'Supplier', 'Category', 'order_qty', 'Adv date', 'Clink', 'Reviews', 'Exec'])) {
             return response()->json(['success' => false, 'message' => 'Invalid column']);
         }
 
@@ -996,6 +998,15 @@ class ToOrderAnalysisController extends Controller
             try {
                 /** @var LinkedSkuGroupService $linkedSkuGroupService */
                 $linkedSkuGroupService = app(LinkedSkuGroupService::class);
+                if ($request->boolean('sku_only')) {
+                    $linkedSkuGroupService->setClinkForSku($sku, $value);
+
+                    return response()->json([
+                        'success' => true,
+                        'affected' => [['sku' => $sku, 'clink' => $value]],
+                    ]);
+                }
+
                 $linkedSkus = is_array($request->input('linked_skus')) ? $request->input('linked_skus') : [];
                 $affected = $linkedSkuGroupService->propagateClink(
                     trim((string) $request->input('sku', $sku)),
@@ -1014,81 +1025,54 @@ class ToOrderAnalysisController extends Controller
             }
         }
 
-        $updateColumn = match ($column) {
-            'Date of Appr'    => 'date_apprvl',
-            'RFQ Form Link'   => 'rfq_form_link',
-            'Rfq Report Link' => 'rfq_report_link',
-            'Stage'           => 'stage',
-            'nrl'             => 'nrl',
-            'sheet_link'      => 'sheet_link',
-            'Supplier'        => 'supplier_name',
-            'Adv date'        => 'advance_date',
-            'order_qty'       => 'order_qty',
-            'approved_qty'    => 'approved_qty',
-            'Exec'            => 'exec',
-        };
-
-        try {
-            // Try indexed lookup first (sku column has an index; $sku is already UPPER+TRIM normalized).
-            // Fall back to the TRIM/UPPER whereRaw only when the indexed lookup finds nothing,
-            // which handles rows stored with non-normalized casing.
-            $buildQuery = function () use ($sku, $rowId) {
-                $q = ToOrderAnalysis::query()->where('sku', $sku);
-                if ($rowId > 0) {
-                    $q->where('id', $rowId);
-                }
-                return $q;
-            };
-            $buildQuerySlow = function () use ($sku, $rowId) {
-                $q = ToOrderAnalysis::query()->whereRaw('TRIM(UPPER(sku)) = ?', [$sku]);
-                if ($rowId > 0) {
-                    $q->where('id', $rowId);
-                }
-                return $q;
-            };
-            $toOrderQuery = $buildQuery();
-
-            // Supplier: unified pipeline sync (to-order, MIP, R2S, transit, forecast)
-            if ($column === 'Supplier') {
-                try {
-                    $parent = trim((string) $request->input('parent', ''));
-                    ToOrderSupplierSync::setSupplierForSku($sku, $value, $parent !== '' ? $parent : null);
-                } catch (\Throwable $e) {
-                    Log::error('ToOrderAnalysis updateLink supplier sync failed', ['sku' => $sku, 'error' => $e->getMessage()]);
-
-                    return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
-                }
+        if ($column === 'Category') {
+            try {
+                SupplierCategorySync::setCategoryForSku($sku, trim((string) $value), $parent !== '' ? $parent : null);
 
                 return response()->json(['success' => true]);
+            } catch (\InvalidArgumentException $e) {
+                return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+            } catch (\Throwable $e) {
+                Log::error('ToOrderAnalysis updateLink Category failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+                return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            }
+        }
+
+        // Supplier: unified pipeline sync (to-order, MIP, R2S, transit, forecast)
+        if ($column === 'Supplier') {
+            try {
+                ToOrderSupplierSync::setSupplierForSku($sku, $value, $parent !== '' ? $parent : null);
+            } catch (\Throwable $e) {
+                Log::error('ToOrderAnalysis updateLink supplier sync failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+                return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
             }
 
-            $updated = $toOrderQuery->update([$updateColumn => $value]);
+            return response()->json(['success' => true]);
+        }
 
-            if ($updated === 0) {
-                $updated = $buildQuerySlow()->update([$updateColumn => $value]);
-            }
+        try {
+            $parentArg = $parent !== '' ? $parent : null;
 
-            if ($updated === 0) {
-                if ($rowId > 0) {
-                    return response()->json(['success' => false, 'message' => 'Row not found for this SKU'], 422);
-                }
-                ToOrderAnalysis::create([
-                    'sku' => $sku,
-                    $updateColumn => $value,
-                ]);
-            }
-
-            // When MOQ (approved_qty) is updated on to-order page, sync to forecast_analysis so forecast page shows same value
-            if ($column === 'approved_qty') {
-                $valueNum = is_numeric($value) ? (int) $value : null;
-                DB::table('forecast_analysis')
-                    ->whereRaw('TRIM(UPPER(sku)) = ?', [$sku])
-                    ->update(['approved_qty' => $valueNum, 'updated_at' => now()]);
-            }
+            match ($column) {
+                'approved_qty' => ToOrderSkuFieldSync::setMoqForSku($sku, $value, $parentArg),
+                'Date of Appr' => ToOrderSkuFieldSync::setDateApprForSku($sku, $value, $parentArg),
+                'Adv date' => ToOrderSkuFieldSync::setAdvanceDateForSku($sku, $value, $parentArg),
+                'Exec' => ToOrderSkuFieldSync::setExecForSku($sku, $value, $parentArg),
+                'Stage' => ToOrderSkuFieldSync::setStageForSku($sku, $value, $parentArg),
+                'nrl' => ToOrderSkuFieldSync::setNrlForSku($sku, $value, $parentArg),
+                'order_qty' => ToOrderSkuFieldSync::setOrderQtyForSku($sku, $value, $parentArg),
+                'RFQ Form Link' => ToOrderSkuFieldSync::upsertToOrderField($sku, 'rfq_form_link', $value, $parentArg),
+                'Rfq Report Link' => ToOrderSkuFieldSync::upsertToOrderField($sku, 'rfq_report_link', $value, $parentArg),
+                'sheet_link' => ToOrderSkuFieldSync::upsertToOrderField($sku, 'sheet_link', $value, $parentArg),
+                default => null,
+            };
 
             return response()->json(['success' => true]);
         } catch (\Throwable $e) {
             Log::error('ToOrderAnalysis updateLink failed', ['sku' => $sku, 'column' => $column, 'error' => $e->getMessage()]);
+
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
     }
@@ -1402,25 +1386,13 @@ class ToOrderAnalysisController extends Controller
             $updated = 0;
             $created = 0;
             foreach ($skus as $skuOne) {
-                $n = (int) ToOrderAnalysis::query()
-                    ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuOne])
-                    ->update(['exec' => $execName !== '' ? $execName : null]);
-                $updated += $n;
-                if ($n === 0) {
-                    ToOrderAnalysis::create([
-                        'sku' => $skuOne,
-                        'exec' => $execName !== '' ? $execName : null,
-                    ]);
-                    $created++;
-                }
+                ToOrderSkuFieldSync::setExecForSku($skuOne, $execName);
+                $updated++;
             }
-
-            $msg = $updated . ' row(s) updated';
-            if ($created > 0) $msg .= ', ' . $created . ' row(s) created';
 
             return response()->json([
                 'success' => true,
-                'message' => $msg . '.',
+                'message' => $updated . ' SKU(s) updated.',
                 'updated' => $updated,
                 'created' => $created,
             ]);

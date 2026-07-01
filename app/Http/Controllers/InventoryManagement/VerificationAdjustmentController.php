@@ -357,7 +357,7 @@ class VerificationAdjustmentController extends Controller
         $latestApprovedHistory = Inventory::whereIn('sku', $originalSkus)
             ->where('is_approved', true)
             ->whereNotNull('approved_at')
-            ->select('sku', 'approved_at', 'approved_by')
+            ->select('sku', 'approved_at', 'approved_by', 'verified_stock')
             ->orderByDesc('approved_at')
             ->get()
             ->groupBy(fn($item) => $normalizeSku($item->sku))
@@ -388,6 +388,8 @@ class VerificationAdjustmentController extends Controller
                     $item->INV = $item->AVAILABLE_TO_SELL;
                     $item->L30 = $shopify->quantity ?? 0;
                     $item->IMAGE_URL = $shopify->image_src ?? null;
+                    $item->SHOPIFY_SKU = $shopify->sku ?? null;
+                    $item->SHOPIFY_VARIANT_ID = $shopify->variant_id ?? null;
                 } else {
                     $item->INV = 0;
                     $item->L30 = 0;
@@ -413,6 +415,15 @@ class VerificationAdjustmentController extends Controller
                 // HISTORY column - Latest approved date from Adjustment History
                 $latestHistory = $latestApprovedHistory[$sku] ?? null;
                 $item->HISTORY = $latestHistory ? $latestHistory->approved_at : null;
+                $item->LAST_VERIFIED_QTY = $latestHistory && $latestHistory->verified_stock !== null && $latestHistory->verified_stock !== ''
+                    ? $latestHistory->verified_stock
+                    : null;
+
+                $historyAt = $latestHistory?->approved_at;
+                $lastVerifiedAt = $historyAt;
+                if (! $lastVerifiedAt && ($inv?->is_verified ?? false)) {
+                    $lastVerifiedAt = $inv?->updated_at;
+                }
 
                 $item->is_verified = (bool) ($inv?->is_verified ?? false);
                 $item->is_doubtful = (bool) ($inv?->is_doubtful ?? false);
@@ -449,6 +460,12 @@ class VerificationAdjustmentController extends Controller
                 return array_merge($item->toArray(), [
                     'to_adjust' => $ta,
                     'approved_at_ymd' => $approvedAtYmd,
+                    'last_verified_at' => $lastVerifiedAt
+                        ? Carbon::parse($lastVerifiedAt)->timezone($tz)->toIso8601String()
+                        : null,
+                    'last_verified_qty' => $item->LAST_VERIFIED_QTY,
+                    'shopify_sku' => $shopify?->sku,
+                    'shopify_variant_id' => $shopify?->variant_id,
                     'shopify_adjustment_status' => $inv?->shopify_adjustment_status,
                     'shopify_adjustment_error' => $inv?->shopify_adjustment_error,
                     'shopify_adjustment_succeeded_at' => $inv?->shopify_adjustment_succeeded_at?->toIso8601String(),
@@ -476,6 +493,69 @@ class VerificationAdjustmentController extends Controller
             'message' => 'Data fetched successfully',
             'data' => $data->values(),
             'status' => 200
+        ]);
+    }
+
+    /**
+     * Pull live inventory from Shopify for one SKU and return updated Main-INV fields.
+     */
+    public function refreshShopifyInventoryForSku(Request $request)
+    {
+        $validated = $request->validate([
+            'sku' => 'required|string|max:255',
+        ]);
+
+        $sku = trim($validated['sku']);
+        $normalized = strtoupper(preg_replace('/\s+/u', ' ', $sku));
+
+        if (str_starts_with($normalized, 'PARENT')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cannot refresh inventory for a parent row.',
+            ], 422);
+        }
+
+        $shopifyController = app(ShopifyApiInventoryController::class);
+        if (! $shopifyController->syncLiveInventoryForSku($sku, 0)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Could not refresh from Shopify. Ensure this SKU exists in shopify_skus with a variant_id.',
+            ], 422);
+        }
+
+        $row = ShopifySku::whereRaw('UPPER(TRIM(sku)) = ?', [$normalized])->first();
+        if (! $row) {
+            return response()->json([
+                'success' => false,
+                'message' => 'SKU not found after Shopify sync.',
+            ], 422);
+        }
+
+        $availableToSell = (int) ($row->available_to_sell ?? 0);
+        $onHand = max(0, (int) ($row->on_hand ?? 0));
+        $l30 = (float) ($row->quantity ?? 0);
+        $inv = $availableToSell;
+
+        $dil = 0;
+        if ($inv > 0 && $l30 === 0.0) {
+            $dil = 0;
+        } elseif ($inv !== 0) {
+            $dil = round($l30 / $inv, 2);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Inventory refreshed from Shopify.',
+            'data' => [
+                'INV' => $inv,
+                'L30' => $l30,
+                'DIL' => $dil,
+                'ON_HAND' => $onHand,
+                'COMMITTED' => (int) ($row->committed ?? 0),
+                'AVAILABLE_TO_SELL' => $availableToSell,
+                'UNAVAILABLE' => (int) ($row->unavailable ?? 0),
+                'INCOMING' => (int) ($row->incoming ?? 0),
+            ],
         ]);
     }
 

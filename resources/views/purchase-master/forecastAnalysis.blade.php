@@ -1134,6 +1134,12 @@
                                 </select>
                             </div>
                             <div class="col-md-3">
+                                <label class="form-label small mb-1">Category</label>
+                                <select class="form-select select-searchable" id="fre_category">
+                                    <option value="">-- Select --</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
                                 <label class="form-label small mb-1">Zone</label>
                                 <input type="text" class="form-control" id="fre_zone" maxlength="80" placeholder="e.g. Ningbo">
                             </div>
@@ -1400,6 +1406,29 @@
             });
         }
 
+        function populateForecastRowEditCategorySelect(selectedValue) {
+            const sel = document.getElementById('fre_category');
+            if (!sel) return;
+            const value = String(selectedValue == null ? '' : selectedValue).trim();
+            const categories = (window.forecastCategoriesList || []);
+            const names = new Set();
+            categories.forEach(function(c) {
+                const n = String(c || '').trim();
+                if (n) names.add(n);
+            });
+            if (value) names.add(value);
+            const sorted = Array.from(names).sort(function(a, b) { return a.localeCompare(b); });
+            sel.innerHTML = '<option value="">-- Select --</option>';
+            sorted.forEach(function(name) {
+                const opt = document.createElement('option');
+                opt.value = name;
+                opt.textContent = name;
+                if (name === value) opt.selected = true;
+                sel.appendChild(opt);
+            });
+            if (window.SelectSearchable) window.SelectSearchable.refresh(sel);
+        }
+
         /** Promise wrapper around updateForecastField so the per-row Edit modal can
          *  fire many column updates in parallel and await them all before closing. */
         function updateForecastFieldPromise(payload) {
@@ -1523,6 +1552,7 @@
                 })(forecastRowGetField(d, 'hide', 'Hide')),
                 notes:      forecastRowGetField(d, 'notes', 'Notes'),
                 supplier:   forecastRowGetField(d, 'mfrg_supplier', 'Supplier'),
+                category:   forecastRowGetField(d, 'Category', 'category'),
                 zone:       forecastRowGetField(d, 'r2s_zone', 'zone'),
             };
             forecastRowEditState.original = original;
@@ -1553,6 +1583,7 @@
             $('#fre_hide').val(original.hide);
             $('#fre_notes').val(original.notes);
             populateForecastRowEditSupplierSelect(original.supplier);
+            populateForecastRowEditCategorySelect(original.category);
             $('#fre_zone').val(original.zone);
             $('#forecastRowEditStatus').empty();
 
@@ -1702,6 +1733,7 @@
                 { id: 'fre_cbm',         column: 'CBM',           key: 'cbm' },
                 { id: 'fre_stage',       column: 'Stage',         key: 'stage' },
                 { id: 'fre_supplier',    column: 'supplier',      key: 'supplier' },
+                { id: 'fre_category',    column: 'Category',      key: 'category' },
                 { id: 'fre_zone',        column: 'area',          key: 'zone' },
                 { id: 'fre_nr',          column: 'NR',            key: 'nr' },
                 { id: 'fre_dateappr',    column: 'Date of Appr',  key: 'date_appr' },
@@ -1964,6 +1996,7 @@
             else if (col === 'Hide') patch.hide = value;
             else if (col === 'Date of Appr') patch.date_apprvl = value;
             else if (col === 'supplier') patch.mfrg_supplier = value;
+            else if (col === 'Category') patch.Category = value;
             else if (col === 'area') patch.r2s_zone = value;
 
             if (!Object.keys(patch).length) return;
@@ -3810,6 +3843,7 @@
         })();
 
         window.forecastSuppliersList = [];
+        window.forecastCategoriesList = @json($allCategories ?? []);
         function loadForecastSuppliers(callback) {
             fetch('/supplier.list.json')
                 .then(r => r.json())

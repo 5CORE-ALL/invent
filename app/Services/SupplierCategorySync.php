@@ -127,27 +127,45 @@ class SupplierCategorySync
             throw new \RuntimeException('Missing to_order_analysis.category_name — run migrations.');
         }
 
-        $existing = DB::table('to_order_analysis')
+        $parentTrim = $parent !== null ? trim($parent) : '';
+        $parentNorm = strtoupper($parentTrim);
+        $now = now();
+
+        $existingQuery = DB::table('to_order_analysis')
             ->whereNull('deleted_at')
             ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper])
             ->orderByDesc('updated_at')
-            ->orderByDesc('id')
-            ->value('category_name');
+            ->orderByDesc('id');
+        if ($parentNorm !== '') {
+            $existingQuery->whereRaw('TRIM(UPPER(COALESCE(parent, \'\'))) = ?', [$parentNorm]);
+        }
+        $existing = $existingQuery->value('category_name');
 
         if ($existing !== null && strcasecmp(trim((string) $existing), $categoryName) === 0) {
             return ['updated' => 0, 'applied' => true, 'unchanged' => true];
         }
 
-        $now = now();
-        $parentTrim = $parent !== null ? trim($parent) : '';
+        $rowUpdated = 0;
+        if ($parentNorm !== '') {
+            $rowUpdated = (int) DB::table('to_order_analysis')
+                ->whereNull('deleted_at')
+                ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper])
+                ->whereRaw('TRIM(UPPER(COALESCE(parent, \'\'))) = ?', [$parentNorm])
+                ->update([
+                    'category_name' => $categoryName,
+                    'updated_at' => $now,
+                ]);
+        }
 
-        $rowUpdated = (int) DB::table('to_order_analysis')
-            ->whereNull('deleted_at')
-            ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper])
-            ->update([
-                'category_name' => $categoryName,
-                'updated_at' => $now,
-            ]);
+        if ($rowUpdated === 0) {
+            $rowUpdated = (int) DB::table('to_order_analysis')
+                ->whereNull('deleted_at')
+                ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper])
+                ->update([
+                    'category_name' => $categoryName,
+                    'updated_at' => $now,
+                ]);
+        }
 
         if ($rowUpdated === 0) {
             DB::table('to_order_analysis')->insert([
