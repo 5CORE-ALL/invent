@@ -133,8 +133,6 @@ class PayrollController extends Controller
 
         return response()->json([
             'month' => $payrollMonth,
-            'hours_override_locked' => $payrollMonth->isOverrideLocked(),
-            'hours_override_unlock_date' => $payrollMonth->overrideUnlockDate()?->toIso8601String(),
             'employees' => $employees,
             'components' => PayrollSalaryComponent::with('user')->where('payroll_month_id', $payrollMonth->id)->get(),
             'payments' => PayrollPaymentDeduction::with('user')->where('payroll_month_id', $payrollMonth->id)->get(),
@@ -216,19 +214,13 @@ class PayrollController extends Controller
         $this->authorizeSheetAdmin();
         $this->ensureUnlocked($payrollMonth);
 
-        $userIds = $request->input('user_ids', []);
-        $newOnly = (bool) $request->input('new_hires_only', false);
-
-        $count = $this->payroll->syncEmployeesFromUsers(
-            $payrollMonth,
-            is_array($userIds) ? $userIds : [],
-            $newOnly
-        );
-        $this->payroll->recalculateMonth($payrollMonth);
+        // Only refresh login hours from TeamLogger — leave salary and other fields as-is.
+        $this->payroll->ensureSheetPopulated($payrollMonth);
+        $this->payroll->refreshLiveHours($payrollMonth);
 
         return response()->json([
             'success' => true,
-            'message' => "{$count} employee salary record(s) synced.",
+            'message' => 'Login hours synced from Team.',
         ]);
     }
 
@@ -267,16 +259,11 @@ class PayrollController extends Controller
 
         // A manually edited Hours value is locked in too: flag it so the live
         // TeamLogger refresh stops overwriting it and the edited value persists.
-        // Overrides are blocked until the 2nd of the next month so last month's
-        // working hours can settle first; only an actual change counts as an edit.
+        // Only an actual change counts as an edit.
         if (array_key_exists('hours_worked', $validated)) {
             $hoursChanged = (float) $payrollEmployeeSalary->hours_worked !== (float) $validated['hours_worked'];
 
             if ($hoursChanged) {
-                if ($month && $month->isOverrideLocked()) {
-                    $unlock = $month->overrideUnlockDate()?->format('d M Y');
-                    abort(422, "Hours can be edited only from {$unlock} (the 2nd of next month). Last month's working hours are still being finalised.");
-                }
                 $validated['hours_overridden'] = true;
             } else {
                 // No real change — don't touch the value or flip the override flag.

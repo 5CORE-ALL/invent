@@ -10,6 +10,20 @@
     .payroll-stat { border-radius: 10px; padding: .75rem 1rem; background: #f8f9fa; }
     .payroll-stat .val { font-size: 1.25rem; font-weight: 700; }
     .payroll-locked { background: rgba(220,53,69,.08); border: 1px solid rgba(220,53,69,.2); }
+    .payroll-status-steps { display: flex; align-items: center; gap: .35rem; flex-wrap: wrap; }
+    .payroll-status-step {
+        display: inline-flex; align-items: center; gap: .35rem;
+        padding: .35rem .65rem; border-radius: 999px; font-size: .75rem; font-weight: 600;
+        background: #f1f3f5; color: #6c757d; border: 1px solid transparent;
+    }
+    .payroll-status-step.active { background: rgba(13,110,253,.12); color: #0d6efd; border-color: rgba(13,110,253,.25); }
+    .payroll-status-step.done { background: rgba(25,135,84,.12); color: #198754; border-color: rgba(25,135,84,.2); }
+    .payroll-status-arrow { color: #adb5bd; font-size: .85rem; }
+    .payroll-status-badge { font-size: .7rem; padding: .25rem .55rem; border-radius: 999px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
+    .payroll-status-badge.draft { background: #e9ecef; color: #495057; }
+    .payroll-status-badge.processing { background: rgba(255,193,7,.2); color: #997404; }
+    .payroll-status-badge.processed { background: rgba(13,110,253,.15); color: #0d6efd; }
+    .payroll-status-badge.released { background: rgba(25,135,84,.15); color: #198754; }
     .nav-tabs .nav-link { font-size: .875rem; }
     .table-payroll { font-size: .85rem; }
     /* Center-align all payroll table data and headers. */
@@ -25,7 +39,8 @@
      data-can-manage="{{ $canManage ? '1' : '0' }}"
      data-csrf="{{ csrf_token() }}"
      data-active-month-id="{{ $activeMonth?->id }}"
-     data-base-url="{{ url('/payroll') }}">
+     data-base-url="{{ url('/payroll') }}"
+     data-month-statuses='@json($monthStatuses)'>
 
     <div class="row mb-3">
         <div class="col-12">
@@ -70,12 +85,45 @@
         </div>
     </div>
 
+    @if($canManage)
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="payroll-card p-3" id="salaryStatusSection">
+                <div class="d-flex flex-wrap align-items-start justify-content-between gap-3">
+                    <div>
+                        <h6 class="mb-1"><i class="ri-flag-line me-1 text-primary"></i>Salary Status</h6>
+                        <p class="text-muted small mb-2" id="statusHelpText">Move payroll from draft to release when ready.</p>
+                        <div class="payroll-status-steps" id="statusSteps"></div>
+                    </div>
+                    <div class="d-flex flex-wrap align-items-center gap-2">
+                        <span class="payroll-status-badge draft" id="statusBadge">Draft</span>
+                        <span class="badge bg-danger d-none" id="lockBadge"><i class="ri-lock-line me-1"></i>Locked</span>
+                        <div class="input-group input-group-sm" style="width: auto;">
+                            <select class="form-select form-select-sm" id="statusSelect" style="min-width: 140px;">
+                                @foreach($monthStatuses as $k => $label)
+                                    <option value="{{ $k }}">{{ $label }}</option>
+                                @endforeach
+                            </select>
+                            <button type="button" class="btn btn-outline-secondary btn-sm" id="btnApplyStatus">Update</button>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-warning" id="btnToggleLock"><i class="ri-lock-line"></i> Lock</button>
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="btnRecalculate"><i class="ri-calculator-line"></i> Process</button>
+                        <button type="button" class="btn btn-sm btn-outline-info" id="btnGeneratePayslips"><i class="ri-file-list-3-line"></i> Generate Payslips</button>
+                        <button type="button" class="btn btn-sm btn-success" id="btnReleasePayslips"><i class="ri-send-plane-line"></i> Release</button>
+                    </div>
+                </div>
+                <div class="small text-muted mt-2 d-none" id="statusMeta"></div>
+            </div>
+        </div>
+    </div>
+    @endif
+
     <div class="payroll-card p-3">
         <div class="d-flex justify-content-end align-items-center mb-2">
             <div class="d-flex align-items-center gap-2">
                 @can('payroll.sheet-admin')
                 <a href="#" id="btnDownloadPayoutSheet" class="btn btn-sm btn-success py-0"><i class="ri-file-excel-2-line me-1"></i>Download Month Sheet</a>
-                <button type="button" class="btn btn-sm btn-outline-primary" id="btnSyncEmployees"><i class="ri-refresh-line"></i> Sync from Team</button>
+                <button type="button" class="btn btn-sm btn-outline-primary" id="btnSyncEmployees"><i class="ri-refresh-line"></i> Sync Hours from Team</button>
                 @endcan
             </div>
         </div>
@@ -153,6 +201,8 @@
     const canManage = app.dataset.canManage === '1';
     const csrf = app.dataset.csrf;
     const base = app.dataset.baseUrl;
+    const monthStatuses = JSON.parse(app.dataset.monthStatuses || '{}');
+    const statusOrder = ['draft', 'processing', 'processed', 'released'];
     let monthId = app.dataset.activeMonthId || document.getElementById('payrollMonthSelect')?.value;
     const employeeRowsById = {};
 
@@ -208,9 +258,6 @@
     let employeesTable = null;
     let employeesTableBuilt = false;
     let pendingEmployeesData = [];
-    // Hours overrides stay locked until the 2nd of the next month (set per month).
-    let hoursOverrideLocked = false;
-    let hoursOverrideUnlockDate = null;
     function renderEmployeesTable(emps, locked) {
         const data = (emps || []).map(e => Object.assign({}, e, { _locked: locked }));
         pendingEmployeesData = data;
@@ -222,7 +269,7 @@
             { title: 'Hours LM', field: 'hours_worked', hozAlign: 'center', width: 110,
                 editor: canManage ? 'number' : false,
                 editorParams: { min: 0, step: 1, selectContents: true },
-                editable: (cell) => canManage && !cell.getRow().getData()._locked && !hoursOverrideLocked,
+                editable: (cell) => canManage && !cell.getRow().getData()._locked,
                 cellEdited: onHoursEdited,
                 formatter: (c) => {
                     const d = c.getRow().getData();
@@ -233,11 +280,6 @@
                     if (d.hours_overridden) {
                         const who = d.edited_by ? ' title="Edited by ' + esc(d.edited_by) + '"' : '';
                         return '<strong>' + txt + ' <i class="ri-pencil-fill text-primary"' + who + '></i></strong>';
-                    }
-                    // Until the override unlock date, show a lock hint instead of a pen.
-                    if (hoursOverrideLocked) {
-                        const tip = hoursOverrideUnlockDate ? ' title="Editable from ' + esc(hoursOverrideUnlockDate) + '"' : '';
-                        return txt + ' <i class="ri-lock-line text-muted small"' + tip + '></i>';
                     }
                     return txt;
                 } },
@@ -324,6 +366,102 @@
         return document.getElementById('payrollMonthSelect')?.value || monthId;
     }
 
+    function formatDateTime(iso) {
+        if (!iso) return '';
+        const dt = new Date(iso);
+        if (isNaN(dt)) return '';
+        return dt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+            + ' ' + dt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function updateMonthSelectOption(month) {
+        const sel = document.getElementById('payrollMonthSelect');
+        if (!sel || !month) return;
+        const opt = sel.querySelector('option[value="' + month.id + '"]');
+        if (!opt) return;
+        const label = (month.month_label || opt.textContent.split(' (')[0]).trim();
+        opt.textContent = label + ' (' + (monthStatuses[month.status] || month.status || 'Draft') + ')';
+        opt.dataset.status = month.status || 'draft';
+        opt.dataset.locked = month.is_locked ? '1' : '0';
+    }
+
+    function renderStatusSection(m) {
+        const section = document.getElementById('salaryStatusSection');
+        if (!section || !m) return;
+
+        const status = m.status || 'draft';
+        const locked = !!m.is_locked;
+        const idx = statusOrder.indexOf(status);
+
+        section.classList.toggle('payroll-locked', locked);
+
+        const stepsEl = document.getElementById('statusSteps');
+        if (stepsEl) {
+            stepsEl.innerHTML = statusOrder.map((key, i) => {
+                const cls = i < idx ? 'done' : (i === idx ? 'active' : '');
+                const arrow = i < statusOrder.length - 1 ? '<span class="payroll-status-arrow">→</span>' : '';
+                return '<span class="payroll-status-step ' + cls + '">' + esc(monthStatuses[key] || key) + '</span>' + arrow;
+            }).join('');
+        }
+
+        const badge = document.getElementById('statusBadge');
+        if (badge) {
+            badge.className = 'payroll-status-badge ' + status;
+            badge.textContent = monthStatuses[status] || status;
+        }
+
+        const lockBadge = document.getElementById('lockBadge');
+        if (lockBadge) lockBadge.classList.toggle('d-none', !locked);
+
+        const statusSelect = document.getElementById('statusSelect');
+        if (statusSelect) {
+            statusSelect.value = status;
+            statusSelect.disabled = locked;
+        }
+
+        const btnApply = document.getElementById('btnApplyStatus');
+        if (btnApply) btnApply.disabled = locked;
+
+        const btnLock = document.getElementById('btnToggleLock');
+        if (btnLock) {
+            btnLock.innerHTML = locked
+                ? '<i class="ri-lock-unlock-line"></i> Unlock'
+                : '<i class="ri-lock-line"></i> Lock';
+            btnLock.className = 'btn btn-sm ' + (locked ? 'btn-warning' : 'btn-outline-warning');
+        }
+
+        const btnRecalc = document.getElementById('btnRecalculate');
+        const btnGen = document.getElementById('btnGeneratePayslips');
+        const btnRelease = document.getElementById('btnReleasePayslips');
+        if (btnRecalc) btnRecalc.disabled = locked || status === 'released';
+        if (btnGen) btnGen.disabled = locked || status === 'released';
+        if (btnRelease) btnRelease.disabled = status === 'released';
+
+        const help = document.getElementById('statusHelpText');
+        if (help) {
+            const hints = {
+                draft: 'Draft — edit salaries and hours. Lock when ready to finalize.',
+                processing: 'Processing — review and recalculate before marking processed.',
+                processed: 'Processed — generate payslips, then release to employees.',
+                released: 'Released — payslips are live for employees.',
+            };
+            help.textContent = hints[status] || hints.draft;
+        }
+
+        const meta = document.getElementById('statusMeta');
+        if (meta) {
+            const parts = [];
+            if (m.payslips_released_at) parts.push('Payslips released: ' + formatDateTime(m.payslips_released_at));
+            if (m.it_statements_released_at) parts.push('IT statements released: ' + formatDateTime(m.it_statements_released_at));
+            if (parts.length) {
+                meta.textContent = parts.join(' · ');
+                meta.classList.remove('d-none');
+            } else {
+                meta.classList.add('d-none');
+            }
+        }
+    }
+
     async function loadMonth() {
         const id = currentMonthId();
         if (!id) return;
@@ -338,12 +476,9 @@
         Object.keys(employeeRowsById).forEach(k => delete employeeRowsById[k]);
         emps.forEach(e => { employeeRowsById[e.id] = e; });
 
-        hoursOverrideLocked = !!data.hours_override_locked;
-        hoursOverrideUnlockDate = data.hours_override_unlock_date
-            ? new Date(data.hours_override_unlock_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-            : null;
-
         renderEmployeesTable(emps, !!m.is_locked);
+        renderStatusSection(m);
+        updateMonthSelectOption(m);
 
         document.getElementById('btnDownloadPayoutSheet')?.setAttribute('href', `${base}/month/${id}/payout-sheet`);
     }
@@ -364,6 +499,40 @@
         alert(res.message); loadMonth();
     });
 
+    document.getElementById('btnApplyStatus')?.addEventListener('click', async () => {
+        const status = document.getElementById('statusSelect')?.value;
+        if (!status) return;
+        const res = await api(`${base}/month/${currentMonthId()}`, 'PUT', { status });
+        alert('Status updated to ' + (monthStatuses[status] || status) + '.');
+        loadMonth();
+    });
+
+    document.getElementById('btnToggleLock')?.addEventListener('click', async () => {
+        const res = await api(`${base}/month/${currentMonthId()}/toggle-lock`, 'POST', {});
+        alert(res.message);
+        loadMonth();
+    });
+
+    document.getElementById('btnRecalculate')?.addEventListener('click', async () => {
+        if (!confirm('Recalculate all employee amounts and mark this month as Processed?')) return;
+        const res = await api(`${base}/month/${currentMonthId()}/recalculate`, 'POST', {});
+        alert(res.message);
+        loadMonth();
+    });
+
+    document.getElementById('btnGeneratePayslips')?.addEventListener('click', async () => {
+        const res = await api(`${base}/month/${currentMonthId()}/generate-payslips`, 'POST', {});
+        alert(res.message);
+        loadMonth();
+    });
+
+    document.getElementById('btnReleasePayslips')?.addEventListener('click', async () => {
+        if (!confirm('Release payslips to all employees? This marks the month as Released.')) return;
+        const res = await api(`${base}/month/${currentMonthId()}/release-payslips`, 'POST', {});
+        alert(res.message);
+        loadMonth();
+    });
+
     document.addEventListener('click', async (e) => {
         const editBtn = e.target.closest('.btn-edit-salary');
         if (editBtn) {
@@ -381,9 +550,7 @@
             // row's pen icon — that flow already toggles override correctly.
             if (f.hours_worked) {
                 f.hours_worked.disabled = true;
-                f.hours_worked.title = hoursOverrideLocked && hoursOverrideUnlockDate
-                    ? ('Locked until ' + hoursOverrideUnlockDate + ' — edit from table row after that.')
-                    : 'Edit hours from the table row (pen icon).';
+                f.hours_worked.title = 'Edit hours from the table row.';
             }
             bootstrap.Modal.getOrCreateInstance(document.getElementById('editSalaryModal')).show();
         }
