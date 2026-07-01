@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\ProductMaster;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\ProductMaster\Concerns\GuardsMarketplaceApiConfiguration;
 use App\Http\Controllers\ProductMaster\Concerns\RetriesMarketplacePush;
 use App\Jobs\RunShopifyBulletPullJob;
 use App\Http\Controllers\ProductMaster\ProductMasterController as PMController;
@@ -11,6 +12,7 @@ use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\ShopifyVariant;
 use App\Services\ShopifyPlsTokenService;
+use App\Services\Support\ProductMasterMarketplaceMaps;
 use App\Services\Support\ShopifyBulletPointsFormatter;
 use App\Services\Support\ShopifyBulletPullJobStore;
 use Illuminate\Http\Request;
@@ -21,6 +23,7 @@ use Illuminate\Support\Facades\Schema;
 
 class BulletPointMasterController extends Controller
 {
+    use GuardsMarketplaceApiConfiguration;
     use RetriesMarketplacePush;
 
     public function index(Request $request)
@@ -117,6 +120,11 @@ class BulletPointMasterController extends Controller
 
                 if (! in_array($marketplace, $allowedMarketplaces, true)) {
                     $results[$marketplace] = ['success' => false, 'message' => 'Unknown or unsupported marketplace'];
+                    continue;
+                }
+
+                if ($blocked = $this->marketplaceApiNotConfiguredResult($marketplace)) {
+                    $results[$marketplace] = $blocked;
                     continue;
                 }
 
@@ -851,20 +859,7 @@ class BulletPointMasterController extends Controller
 
     private function marketplaceTableMap(): array
     {
-        return [
-            'ebay' => 'ebay_metrics',
-            'ebay2' => 'ebay_2_metrics',
-            'ebay3' => 'ebay_3_metrics',
-            'macy' => 'macy_metrics',
-            'amazon' => 'amazon_metrics',
-            'temu' => 'temu_metrics',
-            'temu2' => 'temu2_metrics',
-            'reverb' => 'reverb_metrics',
-            'wayfair' => 'wayfair_metrics',
-            'bestbuy' => 'bestbuy_metrics',
-            'shopify_main' => 'shopify_metrics',
-            'shopify_pls' => 'shopify_pls_metrics',
-        ];
+        return ProductMasterMarketplaceMaps::bulletTableMap();
     }
 
     /**
@@ -1371,20 +1366,7 @@ class BulletPointMasterController extends Controller
 
     private function callMarketplaceService(string $marketplace, string $sku, string $text): array
     {
-        $serviceMap = [
-            'ebay' => \App\Services\EbayApiService::class,
-            'ebay2' => \App\Services\Ebay2ApiService::class,
-            'ebay3' => \App\Services\EbayThreeApiService::class,
-            'macy' => \App\Services\MacysApiService::class,
-            'amazon' => \App\Services\AmazonSpApiService::class,
-            'temu' => \App\Services\TemuApiService::class,
-            'temu2' => \App\Services\Temu2ApiService::class,
-            'reverb' => \App\Services\ReverbApiService::class,
-            'wayfair' => \App\Services\WayfairApiService::class,
-            'bestbuy' => \App\Services\BestBuyApiService::class,
-            'shopify_main' => \App\Services\ShopifyApiService::class,
-            'shopify_pls' => \App\Services\ShopifyPLSApiService::class,
-        ];
+        $serviceMap = ProductMasterMarketplaceMaps::bulletServiceMap();
 
         try {
             $serviceClass = $serviceMap[$marketplace] ?? null;

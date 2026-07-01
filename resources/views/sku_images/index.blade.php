@@ -2,6 +2,7 @@
 
 @section('css')
     <link rel="stylesheet" href="https://cdn.datatables.net/1.13.7/css/dataTables.bootstrap5.min.css">
+    @include('partials.marketplace-master-button-colors')
     <style>
         .sku-im-wrapper {
             min-height: 70vh;
@@ -109,18 +110,6 @@
             filter: grayscale(0.7);
             opacity: 0.35;
         }
-
-        .btn-ebay1 { background-color: #0d6efd; }
-        .btn-ebay2 { background-color: #198754; }
-        .btn-ebay3 { background-color: #fd7e14; }
-        .btn-macy { background-color: #0d6efd; }
-        .btn-amazon { background-color: #ff9900; color: #232f3e; }
-        .btn-temu { background-color: #ff6b00; }
-        .btn-reverb { background-color: #333333; }
-        .btn-wayfair { background-color: #7a3ff2; }
-        .btn-bestbuy { background-color: #0046be; }
-        .btn-shopify { background-color: #7cb342; }
-        .btn-shopify-pls { background-color: #5c6bc0; }
     </style>
 @endsection
 

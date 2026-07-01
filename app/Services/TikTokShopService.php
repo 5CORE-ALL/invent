@@ -7,9 +7,14 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Http;
 use Carbon\Carbon;
+use App\Services\Support\SavesMarketplaceVideoMetrics;
+use App\Services\Support\VideoMasterMarketplaceMethods;
 
 class TikTokShopService
 {
+    use SavesMarketplaceVideoMetrics;
+    use VideoMasterMarketplaceMethods;
+
     protected $client;
     protected $clientKey;
     protected $clientSecret;
@@ -1223,6 +1228,96 @@ class TikTokShopService
         } catch (\Exception $e) {
             Log::error('TikTok refreshAccessToken failed', ['error' => $e->getMessage()]);
         }
+
+        return null;
+    }
+
+    /**
+     * @param  list<string>  $videos
+     * @return array{success: bool, message: string, normalized_urls?: list<string>}
+     */
+    public function updateVideos(string $identifier, array $videos, string $mode = 'replace'): array
+    {
+        $videos = array_slice(array_values(array_unique(array_filter(array_map('trim', $videos), fn ($v) => $v !== ''))), 0, 5);
+        if (trim($identifier) === '' || $videos === []) {
+            return ['success' => false, 'message' => 'SKU / product id and at least one video URL are required.'];
+        }
+
+        foreach ($videos as $url) {
+            if (! preg_match('#^https?://#i', $url)) {
+                return ['success' => false, 'message' => 'Invalid video URL (must be http/https).'];
+            }
+        }
+
+        if (! $this->accessToken) {
+            return ['success' => false, 'message' => 'TikTok Shop access token not available.'];
+        }
+
+        $this->client->setAccessToken($this->accessToken);
+        if ($this->shopCipher) {
+            $this->client->setShopCipher($this->shopCipher);
+        }
+
+        $productId = $this->resolveTikTokProductIdForIdentifier(trim($identifier));
+        if (! $productId) {
+            return ['success' => false, 'message' => 'TikTok Shop product not found for SKU / id.'];
+        }
+
+        $body = [
+            'product_id' => $productId,
+            'video' => ['url' => $videos[0]],
+            'videos' => array_map(fn ($url) => ['url' => $url], $videos),
+        ];
+
+        try {
+            if (! method_exists($this->client->Product, 'editProduct')) {
+                return ['success' => false, 'message' => 'TikTok Shop product edit API is not available in this SDK version.'];
+            }
+
+            $response = $this->client->Product->editProduct([], $body);
+            $this->lastResponse = $response;
+            if (isset($response['code']) && (int) $response['code'] === 0) {
+                $this->saveVideoUrlsToMetricsRow('tiktok_metrics', trim($identifier), $videos);
+
+                return ['success' => true, 'message' => 'TikTok Shop product video updated.', 'normalized_urls' => $videos];
+            }
+
+            return [
+                'success' => false,
+                'message' => (string) ($response['message'] ?? 'TikTok Shop video update failed.'),
+            ];
+        } catch (\Throwable $e) {
+            Log::error('TikTok updateVideos failed', ['identifier' => $identifier, 'error' => $e->getMessage()]);
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    private function resolveTikTokProductIdForIdentifier(string $identifier): ?string
+    {
+        if (preg_match('/^\d+$/', $identifier)) {
+            return $identifier;
+        }
+
+        $cursor = '';
+        do {
+            $response = $this->getProducts(50, $cursor);
+            if (! $response || (isset($response['code']) && (int) $response['code'] !== 0)) {
+                break;
+            }
+
+            foreach (($response['data']['products'] ?? []) as $product) {
+                $productId = (string) ($product['id'] ?? $product['product_id'] ?? '');
+                foreach (($product['skus'] ?? []) as $skuRow) {
+                    $sellerSku = trim((string) ($skuRow['seller_sku'] ?? $skuRow['sku'] ?? ''));
+                    if ($sellerSku !== '' && strcasecmp($sellerSku, $identifier) === 0 && $productId !== '') {
+                        return $productId;
+                    }
+                }
+            }
+
+            $cursor = (string) ($response['data']['next_page_token'] ?? $response['data']['cursor'] ?? '');
+        } while ($cursor !== '');
 
         return null;
     }

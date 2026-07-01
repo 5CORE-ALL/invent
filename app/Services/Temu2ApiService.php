@@ -280,4 +280,37 @@ class Temu2ApiService extends TemuApiService
 
         return $response->json() ?? [];
     }
+
+    /**
+     * @param  list<string>  $videos
+     * @return array{success: bool, message: string, normalized_urls?: list<string>}
+     */
+    public function updateVideos(string $identifier, array $videos, string $mode = 'replace'): array
+    {
+        $videos = array_slice(array_values(array_unique(array_filter(array_map('trim', $videos), fn ($v) => $v !== ''))), 0, 5);
+        if ($videos === []) {
+            return ['success' => false, 'message' => 'At least one video URL is required.'];
+        }
+
+        $uploaded = $this->uploadTemuVideosFromSourceUrls($videos);
+        if (! ($uploaded['success'] ?? false)) {
+            return ['success' => false, 'message' => (string) ($uploaded['message'] ?? 'Temu 2 video upload failed.')];
+        }
+
+        $res = $this->updateListingVideos($identifier, $uploaded['urls']);
+        if (! ($res['success'] ?? false)) {
+            return $res;
+        }
+
+        $resolved = $this->resolveTemuGoodsAndSku($identifier);
+        $sku = trim((string) ($resolved['sku'] ?? $identifier));
+        $saved = $this->saveVideoUrlsToMetricsRow('temu2_metrics', $sku, $videos);
+        if (! $saved) {
+            $res['message'] = ($res['message'] ?? 'Temu 2 listing videos updated.').' Metrics save failed.';
+        }
+
+        $res['normalized_urls'] = $videos;
+
+        return $res;
+    }
 }

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\ProductMaster;
 
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\ProductMaster\ProductMasterController as PMController;
+use App\Http\Controllers\ProductMaster\Concerns\GuardsMarketplaceApiConfiguration;
 use App\Jobs\RunImageMasterPushJob;
 use App\Jobs\RunShopifyImagePullJob;
 use App\Models\ProductImage;
@@ -26,7 +27,14 @@ use App\Services\Support\EbaySellInventoryListingResolver;
 use App\Services\Support\EbayTradingReviseItem;
 use App\Services\WayfairApiService;
 use Illuminate\Support\Facades\Storage;
+use App\Services\Support\ProductMasterMarketplaceMaps;
+use App\Services\DobaApiService;
+use App\Services\WalmartService;
+use App\Services\FaireService;
+use App\Services\SheinApiService;
+use App\Services\AliExpressApiService;
 use App\Services\TemuApiService;
+use App\Services\Temu2ApiService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -35,6 +43,8 @@ use Illuminate\Support\Facades\Schema;
 
 class ImageMasterController extends Controller
 {
+    use GuardsMarketplaceApiConfiguration;
+
     private const PM_MAX_IMAGES = 20;
 
     public function index(Request $request)
@@ -326,6 +336,10 @@ class ImageMasterController extends Controller
 
         if (! in_array($mp, $allowed, true)) {
             return ['success' => false, 'message' => 'Unknown marketplace'];
+        }
+
+        if ($blocked = $this->marketplaceApiNotConfiguredResult($mp)) {
+            return $blocked;
         }
 
         if ($images === [] && $mode !== 'replace') {
@@ -845,6 +859,8 @@ class ImageMasterController extends Controller
                     return app(AmazonSpApiService::class)->updateImages($sku, $imageUrls);
                 case 'temu':
                     return app(TemuApiService::class)->updateImages($sku, $imageUrls);
+                case 'temu2':
+                    return app(Temu2ApiService::class)->updateImages($sku, $imageUrls);
                 case 'wayfair':
                     return app(WayfairApiService::class)->updateImages($sku, $imageUrls);
                 case 'bestbuy':
@@ -857,6 +873,16 @@ class ImageMasterController extends Controller
                     return app(MacysApiService::class)->updateImages($sku, $imageUrls);
                 case 'reverb':
                     return app(ReverbApiService::class)->updateImages($sku, $imageUrls, $mode);
+                case 'doba':
+                    return app(DobaApiService::class)->updateImages($sku, $imageUrls, $mode);
+                case 'walmart':
+                    return app(WalmartService::class)->updateImages($sku, $imageUrls, $mode);
+                case 'faire':
+                    return app(FaireService::class)->updateImages($sku, $imageUrls, $mode);
+                case 'shein':
+                    return app(SheinApiService::class)->updateImages($sku, $imageUrls, $mode);
+                case 'aliexpress':
+                    return app(AliExpressApiService::class)->updateImages($sku, $imageUrls, $mode);
                 default:
                     return [
                         'success' => false,
@@ -935,19 +961,10 @@ class ImageMasterController extends Controller
      */
     private function marketplaceTableMap(): array
     {
-        return [
-            'ebay' => 'ebay_metrics',
-            'ebay2' => 'ebay_2_metrics',
-            'ebay3' => 'ebay_3_metrics',
-            'amazon' => 'amazon_metrics',
-            'temu' => 'temu_metrics',
-            'wayfair' => 'wayfair_metrics',
-            'bestbuy' => 'bestbuy_metrics',
-            'macy' => 'macy_metrics',
-            'reverb' => 'reverb_products', // reverb_metrics may not exist; reverb_products has image_urls + unique sku
-            'shopify_main' => 'shopify_metrics',
-            'shopify_pls' => 'shopify_pls_metrics',
-        ];
+        $map = ProductMasterMarketplaceMaps::imageTableMap();
+        $map['reverb'] = 'reverb_products';
+
+        return $map;
     }
 
     /**

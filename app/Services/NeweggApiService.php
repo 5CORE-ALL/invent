@@ -5,6 +5,8 @@ namespace App\Services;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use App\Services\Support\SavesMarketplaceVideoMetrics;
+use App\Services\Support\VideoMasterMarketplaceMethods;
 
 /**
  * Thin client for the Newegg Marketplace API.
@@ -20,6 +22,9 @@ use Illuminate\Support\Facades\Log;
  */
 class NeweggApiService
 {
+    use SavesMarketplaceVideoMetrics;
+    use VideoMasterMarketplaceMethods;
+
     protected ?string $sellerId;
     protected ?string $apiKey;
     protected ?string $secretKey;
@@ -518,5 +523,54 @@ class NeweggApiService
             'raw'                   => $raw,
             'error'                 => null,
         ];
+    }
+
+    /**
+     * @param  list<string>  $videos
+     * @return array{success: bool, message: string, normalized_urls?: list<string>}
+     */
+    public function updateVideos(string $identifier, array $videos, string $mode = 'replace'): array
+    {
+        $videos = array_slice(array_values(array_unique(array_filter(array_map('trim', $videos), fn ($v) => $v !== ''))), 0, 1);
+        if (trim($identifier) === '' || $videos === []) {
+            return ['success' => false, 'message' => 'Seller part number and at least one video URL are required.'];
+        }
+
+        foreach ($videos as $url) {
+            if (! preg_match('#^https?://#i', $url)) {
+                return ['success' => false, 'message' => 'Invalid video URL (must be http/https).'];
+            }
+        }
+
+        if (! $this->sellerId || ! $this->apiKey || ! $this->secretKey) {
+            return ['success' => false, 'message' => 'Newegg API credentials are not configured.'];
+        }
+
+        $sku = trim($identifier);
+        $body = [
+            'Item' => [
+                'SellerPartNumber' => $sku,
+                'VideoUrl' => $videos[0],
+                'ProductVideoUrl' => $videos[0],
+            ],
+        ];
+
+        $paths = [
+            "/contentmgmt/item/basicinfo?sellerid={$this->sellerId}",
+            "/contentmgmt/item/update?sellerid={$this->sellerId}",
+        ];
+
+        $lastMessage = 'Newegg video update failed.';
+        foreach ($paths as $path) {
+            $res = $this->request('PUT', $path, [], $body);
+            if ($this->extractItemSuccess($res)) {
+                $this->saveVideoUrlsToMetricsRow('newegg_metrics', $sku, $videos);
+
+                return ['success' => true, 'message' => 'Newegg product video updated.', 'normalized_urls' => $videos];
+            }
+            $lastMessage = $this->extractItemError($res);
+        }
+
+        return ['success' => false, 'message' => $lastMessage];
     }
 }

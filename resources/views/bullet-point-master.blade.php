@@ -5,6 +5,7 @@
     <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.3.6/css/buttons.dataTables.min.css">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+    @include('partials.marketplace-master-button-colors')
 
     <style>
         .card.bp-master-card { border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 2px 12px rgba(44,110,213,.06); }
@@ -36,21 +37,11 @@
         .bp-mp-th-pill { width:22px; height:22px; border-radius:4px; font-size:8px; font-weight:700; color:#fff; display:inline-flex; align-items:center; justify-content:center; line-height:1; }
         .bp-mp-stack { display:flex; flex-direction:column; align-items:center; gap:3px; border:none; background:transparent; padding:0; cursor:pointer; }
         .bp-mp-stack:hover .marketplace-btn:not(:disabled) { transform:translateY(-1px); box-shadow:0 2px 6px rgba(0,0,0,.18); }
+        .bp-mp-stack:disabled { cursor:not-allowed; }
         .bp-mp-dot { width:10px; height:10px; border-radius:50%; border:2px solid #94a3b8; background:transparent; transition:background .15s,border-color .15s; flex-shrink:0; }
         .bp-mp-dot.pushed { background:#22c55e; border-color:#22c55e; }
         .bp-mp-dot.failed { background:#ef4444; border-color:#ef4444; }
         .marketplace-btn { width:28px; height:28px; border:none; border-radius:4px; color:#fff; font-weight:600; font-size:11px; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; transition:all .2s; padding:0; }
-        .btn-ebay1 { background-color:#0d6efd; }
-        .btn-ebay2 { background-color:#198754; }
-        .btn-ebay3 { background-color:#fd7e14; }
-        .btn-macy { background-color:#0d6efd; }
-        .btn-amazon { background-color:#ff9900; }
-        .btn-temu { background-color:#ff6b00; }
-        .btn-reverb { background-color:#333333; }
-        .btn-wayfair { background-color:#7a3ff2; }
-        .btn-bestbuy { background-color:#0046be; }
-        .btn-shopify { background-color:#7cb342; }
-        .btn-shopify-pls { background-color:#5c6bc0; }
         .mp-counter { font-size:10px; color:#6c757d; }
         .mp-counter.warning { color:#b8860b; font-weight:600; }
         .mp-counter.error { color:#dc3545; font-weight:700; }
@@ -351,6 +342,8 @@
 @endsection
 
 @section('script')
+@include('partials.marketplace-api-config')
+@include('partials.all-marketplace-master-channels', ['allMpMaster' => 'bullet'])
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
@@ -363,39 +356,19 @@ document.addEventListener('DOMContentLoaded', () => {
         'Accept': 'application/json',
     });
     const csrfToken = getCsrfToken();
-    const MARKETPLACES = ['ebay', 'ebay2', 'ebay3', 'macy', 'amazon', 'temu', 'temu2', 'reverb', 'wayfair', 'bestbuy', 'shopify_main', 'shopify_pls'];
+    const __mp = window.__ALL_MP__ || {};
+    const MARKETPLACES = __mp.enabled || [];
     const EBAY3_WARNING = 'eBay3 has different listing structure. Please verify bullet points format before pushing.';
-    const LABELS = {
-        ebay: 'eBay 1', ebay2: 'eBay 2', ebay3: 'eBay 3', macy: "Macy's", amazon: 'Amazon', temu: 'Temu 1', temu2: 'Temu 2', reverb: 'Reverb', wayfair: 'Wayfair', bestbuy: 'Best Buy',
-        shopify_main: 'Shopify Main', shopify_pls: 'Shopify PLS',
-    };
-    /** Labels in view modal (eBay1-style names) */
-    const VIEW_LABELS = {
-        ebay: 'eBay1', ebay2: 'eBay2', ebay3: 'eBay3', macy: "Macy's", amazon: 'Amazon', temu: 'Temu1', temu2: 'Temu2', reverb: 'Reverb', wayfair: 'Wayfair', bestbuy: 'Best Buy',
-        shopify_main: 'Shopify Main', shopify_pls: 'Shopify PLS',
-    };
+    const LABELS = __mp.labels || {};
+    const VIEW_LABELS = { ...LABELS };
     const VIEW_SECTIONS = [
         { banner: '========== Marketplaces ==========', keys: MARKETPLACES },
     ];
-    const GROUPS = {
-        gChannels: ['ebay', 'ebay2', 'ebay3', 'macy', 'amazon', 'temu', 'temu2', 'reverb', 'wayfair', 'bestbuy'],
-        gShopify: ['shopify_main', 'shopify_pls'],
-    };
-    /** Short labels on tiles (horizontal row, Title Master style) */
-    const MP_TILE = {
-        ebay: { cls: 'btn-ebay1', short: 'E1' },
-        ebay2: { cls: 'btn-ebay2', short: 'E2' },
-        ebay3: { cls: 'btn-ebay3', short: 'E3' },
-        macy: { cls: 'btn-macy', short: 'M' },
-        amazon: { cls: 'btn-amazon', short: 'A' },
-        temu: { cls: 'btn-temu', short: 'T1' },
-        temu2: { cls: 'btn-temu', short: 'T2' },
-        reverb: { cls: 'btn-reverb', short: 'R' },
-        wayfair: { cls: 'btn-wayfair', short: 'W' },
-        bestbuy: { cls: 'btn-bestbuy', short: 'B' },
-        shopify_main: { cls: 'btn-shopify', short: 'SM' },
-        shopify_pls: { cls: 'btn-shopify-pls', short: 'PLS' },
-    };
+    const GROUPS = __mp.groups || { gChannels: [], gShopify: [] };
+    const MP_TILE = {};
+    Object.entries(__mp.tiles || {}).forEach(([k, v]) => {
+        MP_TILE[k] = { cls: v.cls, short: v.short };
+    });
     let tableData = [];
     let editRowModal, aiPromptRulesModal, editBulletChangeModal, viewRowModal, shopifyPullModal, shopifyPullConfirmModal, marketplacePushConfirmModal;
     let lastViewModalPlainText = '';
@@ -574,9 +547,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const tile = MP_TILE[mp] || { cls: 'btn-secondary', short: '?' };
         const stateText = pushed ? 'Pushed' : (failed ? 'Push failed' : 'Not pushed');
         const dotClass = pushed ? 'pushed' : (failed ? 'failed' : '');
-        const tip = `${LABELS[mp]}. ${stateText}. Click to push.`;
+        const st = mpPushTileState(mp, { label: LABELS[mp], statusHint: stateText });
         return `
-            <button type="button" class="bp-mp-stack" data-push-mp="${esc(mp)}" data-sku="${esc(sku)}" title="${esc(tip)}">
+            <button type="button" class="bp-mp-stack${st.noApiClass}" data-push-mp="${esc(mp)}" data-sku="${esc(sku)}" data-api-configured="${st.configured ? '1' : '0'}" title="${esc(st.title)}" ${st.disabled ? 'disabled' : ''}>
                 <span class="bp-mp-dot ${dotClass}" aria-hidden="true"></span>
                 <span class="marketplace-btn ${tile.cls}">${esc(tile.short)}</span>
             </button>`;
@@ -633,7 +606,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('.view-btn[data-view]').forEach(b => b.addEventListener('click', () => openViewModal(b.dataset.view)));
         document.querySelectorAll('.edit-btn[data-edit]').forEach(b => b.addEventListener('click', () => openEditModal(b.dataset.edit)));
         document.querySelectorAll('.shopify-row-pull-btn[data-shopify-pull-sku]').forEach(b => b.addEventListener('click', () => startSingleShopifyPull(b.dataset.shopifyPullSku, b)));
-        document.querySelectorAll('.bp-mp-stack[data-push-mp]').forEach(b => b.addEventListener('click', () => {
+        document.querySelectorAll('.bp-mp-stack[data-push-mp]:not(:disabled)').forEach(b => b.addEventListener('click', () => {
             pushSingleMarketplace(b.dataset.sku, b.dataset.pushMp, b);
         }));
     }
@@ -924,6 +897,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function pushSingleMarketplace(sku, mp, stackEl) {
+        if (!marketplaceApiGuard(mp, LABELS[mp])) return;
         const row = bySku.get(String(sku));
         if (!row) return;
         const confirmed = await confirmMarketplacePush({ sku, marketplaces: [mp], mode: 'single' });

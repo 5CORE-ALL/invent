@@ -4,9 +4,14 @@ namespace App\Services;
 
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use App\Services\Support\SavesMarketplaceVideoMetrics;
+use App\Services\Support\VideoMasterMarketplaceMethods;
 
 class TopDawgApiService
 {
+    use SavesMarketplaceVideoMetrics;
+    use VideoMasterMarketplaceMethods;
+
     protected string $baseUrl;
 
     protected string $token;
@@ -268,5 +273,57 @@ class TopDawgApiService
         } while (true);
 
         return ['data' => $all, 'total' => count($all)];
+    }
+
+    /**
+     * @param  list<string>  $videos
+     * @return array{success: bool, message: string, normalized_urls?: list<string>}
+     */
+    public function updateVideos(string $identifier, array $videos, string $mode = 'replace'): array
+    {
+        $videos = array_slice(array_values(array_unique(array_filter(array_map('trim', $videos), fn ($v) => $v !== ''))), 0, 1);
+        if (trim($identifier) === '' || $videos === []) {
+            return ['success' => false, 'message' => 'Product code / SKU and at least one video URL are required.'];
+        }
+
+        foreach ($videos as $url) {
+            if (! preg_match('#^https?://#i', $url)) {
+                return ['success' => false, 'message' => 'Invalid video URL (must be http/https).'];
+            }
+        }
+
+        $sku = trim($identifier);
+        $primary = $videos[0];
+        $attempts = [
+            ['product_code' => $sku, 'video_url' => $primary, 'video' => $primary],
+            ['product_code' => $sku, 'product_video_url' => $primary],
+            ['sku' => $sku, 'video_url' => $primary],
+        ];
+
+        $lastMessage = 'TopDawg video update failed.';
+        foreach ($attempts as $body) {
+            try {
+                $this->assertConfigured();
+                $url = $this->baseUrl.'/SupplierProduct/update';
+                $response = Http::withHeaders($this->headers())->timeout(45)->post($url, $body);
+                if ($response->successful()) {
+                    $this->saveVideoUrlsToMetricsRow('topdawg_metrics', $sku, $videos);
+
+                    return [
+                        'success' => true,
+                        'message' => 'TopDawg product video submitted for review.',
+                        'normalized_urls' => $videos,
+                    ];
+                }
+                $payload = $response->json();
+                $lastMessage = is_array($payload)
+                    ? (string) ($payload['message'] ?? $response->body())
+                    : (string) $response->body();
+            } catch (\Throwable $e) {
+                $lastMessage = $e->getMessage();
+            }
+        }
+
+        return ['success' => false, 'message' => $lastMessage];
     }
 }
