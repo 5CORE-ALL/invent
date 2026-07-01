@@ -5684,24 +5684,16 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/google/shopping/overall-acos-chart-data', 'getGoogleShoppingOverallAcosChartData');
         Route::get('/google/shopping/overall-cvr-price-chart-data', 'getGoogleShoppingOverallCvrPriceChartData');
         Route::get('/google/shopping/report/chart/filter', 'filterGoogleShoppingReportChart')->name('google.shopping.report.chart.filter');
-        Route::get('/google/serp/chart/filter', 'filterGoogleSerpChart')->name('google.shopping.serp.chart.filter');
 
         // Toggle campaign status
         Route::post('/google/shopping/toggle-campaign-status', 'toggleGoogleShoppingCampaignStatus')->name('google.shopping.toggle.campaign.status');
         Route::post('/google/shopping/toggle-bulk-campaign-status', 'toggleBulkGoogleShoppingCampaignStatus')->name('google.shopping.toggle.bulk.campaign.status');
-        Route::get('/google/serp/report/chart/filter', 'filterGoogleSerpReportChart')->name('google.serp.report.chart.filter');
         Route::get('/google/pmax/chart/filter', 'filterGooglePmaxChart')->name('google.shopping.pmax.chart.filter');
-
-        Route::get('/google/serp/list', 'googleSerpView')->name('google.serp.list');
-        Route::get('/google/serp/report', 'googleSerpReportView')->name('google.serp.report');
 
         Route::get('/google/pmax/list', 'googlePmaxView')->name('google.pmax.list');
 
         Route::get('/google/shopping/data', 'getGoogleShoppingAdsData');
         Route::get('/google/shopping/ads-report/data', 'getGoogleShoppingAdsReportData');
-
-        Route::get('/google/search/data', 'getGoogleSearchAdsData');
-        Route::get('/google/search/report/data', 'getGoogleSearchAdsReportData');
 
         Route::post('/update-google-ads-bid-price', 'updateGoogleAdsCampaignSbid');
         Route::post('/update-google-nr-data', 'updateGoogleNrData');

@@ -2056,12 +2056,6 @@
                             <a href="{{ route('google.youtube.ads.campaigns') }}">Youtube ads</a>
                         </li>
                         <li>
-                            <a href="{{ route('google.serp.list') }}">Google SERP</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('google.serp.report') }}">Google SERP Report</a>
-                        </li>
-                        <li>
                             <a href="{{ route('google.pmax.list') }}">Google PMAX</a>
                         </li>
 
