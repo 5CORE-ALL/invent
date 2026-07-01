@@ -12,14 +12,14 @@ class BackfillForecastSupplierSync extends Command
                             {--sku= : Only process this SKU}
                             {--force : Backfill even when To Order was updated more recently than MIP}';
 
-    protected $description = 'One-time backfill: copy mfrg_progress.supplier → to_order_analysis.supplier_name where they differ (fixes /forecast.analysis refresh bug).';
+    protected $description = 'Backfill: propagate supplier from to_order/mfrg mismatches to all pipeline tables (to_order, MIP, R2S, transit).';
 
     public function handle(): int
     {
         $dryRun = (bool) $this->option('dry-run');
         $force = (bool) $this->option('force');
         $skuFilter = $this->option('sku');
-        $skuFilter = is_string($skuFilter) ? trim($skuFilter) : null;
+        $skuFilter = is_string($skuFilter) ? trim($skuFilter) : nusll;
         if ($skuFilter === '') {
             $skuFilter = null;
         }

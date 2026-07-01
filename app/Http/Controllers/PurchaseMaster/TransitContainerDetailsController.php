@@ -10,6 +10,9 @@ use App\Models\Supplier;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\ReadyToShip;
+use App\Services\SupplierCategorySync;
+use App\Services\ToOrderSupplierSync;
+use App\Support\SuperAdminAccess;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -17,6 +20,17 @@ use Illuminate\Support\Facades\Log;
 
 class TransitContainerDetailsController extends Controller
 {
+    /** @var list<string> */
+    private const EDIT_DELETE_ALLOWED_EMAILS = [
+        'president@5core.com',
+        'inventory@5core.com',
+    ];
+
+    protected function canEditDeleteTransit(): bool
+    {
+        return SuperAdminAccess::allows(Auth::user(), self::EDIT_DELETE_ALLOWED_EMAILS);
+    }
+
     protected function logHistory(string $actionType, ?int $detailId = null, ?string $fromTab = null, ?string $toTab = null, ?string $ourSku = null, $details = null): void
     {
         TransitContainerHistory::create([
@@ -28,6 +42,70 @@ class TransitContainerDetailsController extends Controller
             'details' => is_array($details) || is_object($details) ? json_encode($details) : $details,
             'user_id' => Auth::id(),
         ]);
+    }
+
+    /** @return list<string> */
+    protected function transitHistoryTrackableFields(): array
+    {
+        return [
+            'tab_name',
+            'our_sku',
+            'supplier_name',
+            'company_name',
+            'parent',
+            'photos',
+            'specification',
+            'package_size',
+            'product_size_link',
+            'status',
+            'changes',
+            'rec_qty',
+            'no_of_units',
+            'total_ctn',
+            'rate',
+            'unit',
+            'cbm',
+            'order_link',
+            'comparison_link',
+        ];
+    }
+
+    protected function buildTransitFieldDiff(TransitContainerDetail $row, array $data): array
+    {
+        $fieldDiff = [];
+
+        foreach ($this->transitHistoryTrackableFields() as $key) {
+            if (! array_key_exists($key, $data)) {
+                continue;
+            }
+
+            $newVal = $data[$key];
+            $oldVal = $row->getAttribute($key);
+            $oldNorm = $oldVal === null ? '' : (string) $oldVal;
+            $newNorm = $newVal === null ? '' : (string) $newVal;
+
+            if ($oldNorm !== $newNorm) {
+                $fieldDiff[$key] = ['from' => $oldVal, 'to' => $newVal];
+            }
+        }
+
+        return $fieldDiff;
+    }
+
+    protected function transitDeleteSnapshot(TransitContainerDetail $row): array
+    {
+        return [
+            'tab' => $row->tab_name,
+            'sku' => $row->our_sku,
+            'supplier_name' => $row->supplier_name,
+            'no_of_units' => $row->no_of_units,
+            'total_ctn' => $row->total_ctn,
+            'rate' => $row->rate,
+            'unit' => $row->unit,
+            'changes' => $row->changes,
+            'specification' => $row->specification,
+            'restored_ready_to_ship' => true,
+        ];
     }
 
     public function index()
@@ -110,8 +188,12 @@ class TransitContainerDetailsController extends Controller
                 ]];
             })->toArray();
 
+        $categoryBySku = SupplierCategorySync::resolveCategoryMapForSkus(
+            $allRecords->map(fn ($r) => strtoupper(trim(preg_replace('/\s+/', ' ', $r->our_sku ?? ''))))->filter()->unique()->values()->all()
+        );
+
         // Transform TransitContainerDetail Records
-        $allRecords->transform(function ($record) use ($skuParentMap, $parentSupplierMap, $shopifyImages, $productValuesMap, $pushedMap, $clinkBySku, $lastSavedMap) {
+        $allRecords->transform(function ($record) use ($skuParentMap, $parentSupplierMap, $shopifyImages, $productValuesMap, $pushedMap, $clinkBySku, $lastSavedMap, $categoryBySku) {
             $sku = strtoupper(trim(preg_replace('/\s+/', ' ', $record->our_sku ?? '')));
             $tabKey = strtoupper(trim(preg_replace('/\s+/', ' ', $record->tab_name ?? '')));
             // $rowId = $record->id; 
@@ -143,6 +225,7 @@ class TransitContainerDetailsController extends Controller
             $record->last_saved_by = $lastSaved['user_name'] ?? ($record->user->name ?? '—');
             $record->last_saved_at = $lastSaved['saved_at']  ?? ($record->created_at ? $record->created_at->format('d M H:i') : '—');
             $record->setAttribute('Clink', $clinkBySku[$sku] ?? '');
+            $record->Category = $categoryBySku[$sku] ?? '';
 
             return $record;
         });
@@ -163,7 +246,8 @@ class TransitContainerDetailsController extends Controller
             'groupedData' => $groupedData,
             'suppliers' => $suppliers,
             'skus'=> $skus,
-            'productValuesMap' => json_encode($productValuesMap)
+            'productValuesMap' => json_encode($productValuesMap),
+            'canEditDelete' => $this->canEditDeleteTransit(),
         ]);
     }
 
@@ -192,6 +276,13 @@ class TransitContainerDetailsController extends Controller
 
     public function saveRow(Request $request)
     {
+        if (! $this->canEditDeleteTransit()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Only inventory@5core.com and president@5core.com can edit transit container rows.',
+            ], 403);
+        }
+
         $data = $request->all();
 
         if (empty($data['tab_name'])) {
@@ -203,6 +294,7 @@ class TransitContainerDetailsController extends Controller
             if ($row) {
                 $fromTab = $row->tab_name;
                 $toTab = $data['tab_name'] ?? $fromTab;
+                $fieldDiff = $this->buildTransitFieldDiff($row, $data);
 
                 // If qty-related fields changed, reset push_status so it gets re-pushed to Shopify
                 $qtyFields = ['no_of_units', 'total_ctn', 'pcs_qty', 'our_sku'];
@@ -213,11 +305,21 @@ class TransitContainerDetailsController extends Controller
                         ->update(['push_status' => 'pending', 'pushed' => 0]);
                 }
 
-                $row->update($data);
+                $updateData = array_intersect_key(
+                    $data,
+                    array_flip((new TransitContainerDetail)->getFillable())
+                );
+                $row->update($updateData);
+
                 if ($fromTab !== $toTab) {
-                    $this->logHistory('row_moved', $row->id, $fromTab, $toTab, $row->our_sku, ['sku' => $row->our_sku, 'from' => $fromTab, 'to' => $toTab]);
-                } else {
-                    $this->logHistory('row_updated', $row->id, null, $toTab, $row->our_sku, null);
+                    $this->logHistory('row_moved', $row->id, $fromTab, $toTab, $row->our_sku, [
+                        'sku' => $row->our_sku,
+                        'from' => $fromTab,
+                        'to' => $toTab,
+                    ]);
+                }
+                if (! empty($fieldDiff)) {
+                    $this->logHistory('row_updated', $row->id, null, $toTab, $row->our_sku, $fieldDiff);
                 }
             } else {
                 return response()->json(['success' => false, 'message' => 'Row not found.']);
@@ -229,6 +331,17 @@ class TransitContainerDetailsController extends Controller
 
         // Auto-sync total amount to On Sea Transit
         $this->autoSyncToOnSea($data['tab_name'] ?? $row->tab_name);
+
+        if (array_key_exists('supplier_name', $data)) {
+            $syncSku = trim((string) ($data['our_sku'] ?? $row->our_sku ?? ''));
+            if ($syncSku !== '') {
+                ToOrderSupplierSync::setSupplierForSku(
+                    $syncSku,
+                    $data['supplier_name'] ?? '',
+                    trim((string) ($data['parent'] ?? $row->parent ?? ''))
+                );
+            }
+        }
 
         return response()->json(['success' => true, 'id' => $row->id]);
     }
@@ -452,6 +565,13 @@ class TransitContainerDetailsController extends Controller
 
     public function deleteTransitItem(Request $request)
     {
+        if (! $this->canEditDeleteTransit()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Only inventory@5core.com and president@5core.com can delete transit container rows.',
+            ], 403);
+        }
+
         try {
             $ids = $request->ids;
             if (! is_array($ids)) {
@@ -477,11 +597,7 @@ class TransitContainerDetailsController extends Controller
             try {
                 foreach ($rows as $row) {
                     $this->restoreReadyToShipAfterTransitLineDeleted($row);
-                    $this->logHistory('row_deleted', $row->id, $row->tab_name, null, $row->our_sku, [
-                        'tab' => $row->tab_name,
-                        'sku' => $row->our_sku,
-                        'restored_ready_to_ship' => true,
-                    ]);
+                    $this->logHistory('row_deleted', $row->id, $row->tab_name, null, $row->our_sku, $this->transitDeleteSnapshot($row));
                 }
 
                 TransitContainerDetail::whereIn('id', $ids)->update([

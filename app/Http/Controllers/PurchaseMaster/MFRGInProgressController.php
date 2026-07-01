@@ -10,6 +10,7 @@ use App\Models\ReadyToShip;
 use App\Models\Supplier;
 use App\Models\SupplierRemark;
 use App\Services\PurchasePageExecService;
+use App\Services\SupplierCategorySync;
 use App\Services\ToOrderSupplierSync;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -443,6 +444,14 @@ class MFRGInProgressController extends Controller
             );
         }
 
+        $categoryBySku = SupplierCategorySync::resolveCategoryMapForSkus(
+            $mfrgData->map(fn ($row) => $normalizeSku($row->sku ?? ''))->filter()->unique()->values()->all()
+        );
+        foreach ($mfrgData as $row) {
+            $skuKey = $normalizeSku($row->sku ?? '');
+            $row->Category = $categoryBySku[$skuKey] ?? '';
+        }
+
         // Attach exec from to_order_analysis (single source of truth shared with to-order-analysis page)
         self::attachExecBySku($mfrgData);
 
@@ -724,6 +733,29 @@ class MFRGInProgressController extends Controller
             return $this->inlineUpdateReadyToShip($request, $skuKey, $column);
         }
 
+        // Supplier: one write path for forecast / MIP / to-order / R2S / transit.
+        if ($column === 'supplier') {
+            if ($skuKey === null || trim($skuKey) === '') {
+                return response()->json(['success' => false, 'message' => 'SKU is required.']);
+            }
+            try {
+                ToOrderSupplierSync::setSupplierForSku(
+                    $skuKey,
+                    $request->input('value'),
+                    (string) $request->input('parent', '')
+                );
+            } catch (\Throwable $e) {
+                Log::warning('mip.inlineUpdateBySku.supplier_sync_failed', [
+                    'sku' => $skuKey,
+                    'message' => $e->getMessage(),
+                ]);
+
+                return response()->json(['success' => false, 'message' => 'Save failed: '.$e->getMessage()], 500);
+            }
+
+            return response()->json(['success' => true]);
+        }
+
         $columnsAllowCreate = ['supplier', 'supplier_sku'];
 
         $progress = null;
@@ -807,15 +839,6 @@ class MFRGInProgressController extends Controller
             ], 500);
         }
 
-        // /forecast.analysis displays supplier from to_order_analysis.supplier_name
-        // when set, so keep that table in sync whenever MIP supplier is edited here.
-        if ($column === 'supplier') {
-            ToOrderSupplierSync::syncFromMfrg(
-                (string) ($progress->sku ?? $skuKey ?? ''),
-                $value
-            );
-        }
-
         return response()->json(['success' => true]);
     }
 
@@ -836,6 +859,25 @@ class MFRGInProgressController extends Controller
         }
         if (! $rts) {
             return response()->json(['success' => false, 'message' => 'Ready-to-Ship row not found.']);
+        }
+
+        if ($column === 'supplier') {
+            try {
+                ToOrderSupplierSync::setSupplierForSku(
+                    (string) ($rts->sku ?? $skuKey ?? ''),
+                    $request->input('value'),
+                    (string) ($rts->parent ?? $request->input('parent', ''))
+                );
+            } catch (\Throwable $e) {
+                Log::warning('mip.inlineUpdateReadyToShip.supplier_sync_failed', [
+                    'sku' => $skuKey,
+                    'message' => $e->getMessage(),
+                ]);
+
+                return response()->json(['success' => false, 'message' => 'Save failed: '.$e->getMessage()], 500);
+            }
+
+            return response()->json(['success' => true]);
         }
 
         if (! Schema::hasColumn('ready_to_ship', $column)) {

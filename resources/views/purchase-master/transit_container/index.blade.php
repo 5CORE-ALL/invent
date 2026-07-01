@@ -164,16 +164,16 @@
                     <div class="d-flex gap-4 align-items-center">
                         @include('purchase-master.partials.page-info-toolbar', ['pageKey' => 'transit_container_inv'])
                         <div class="fw-semibold text-dark" style="font-size: 1rem;">
-                            📦 To. Ctns: <span class="text-success" id="total-cartons-display">0</span>
+                            📦 Ctns: <span class="text-success" id="total-cartons-display">0</span>
                         </div>
                         <div class="fw-semibold text-dark" style="font-size: 1rem;">
-                            🧮 To. Qty: <span class="text-primary" id="total-qty-display">0</span>
+                            🧮 Qty: <span class="text-primary" id="total-qty-display">0</span>
                         </div>
                         <div class="fw-semibold text-dark" style="font-size: 1rem;">
-                            💲 To. Amt: <span class="text-primary" id="total-amount-display">0</span>
+                            💲 Amt: <span class="text-primary" id="total-amount-display">0</span>
                         </div>
                         <div class="fw-semibold text-dark" style="font-size: 1rem;">
-                            To. CBM: <span class="text-primary" id="total-cbm-display">0</span>
+                            CBM: <span class="text-primary" id="total-cbm-display">0</span>
                         </div>
                         <button type="button" id="syncToOnSeaBtn" class="btn btn-success btn-sm" onclick="syncToOnSea()" title="Sync this container to On Sea Transit Value">
                             <i class="fas fa-sync-alt me-1"></i> Sync to On Sea
@@ -238,9 +238,11 @@
                     <a href="{{ url('product-master') }}" class="btn btn-warning btn-sm">
                         <i class="fas fa-plus-circle"></i> Add New Product
                     </a>
+                    @if($canEditDelete ?? false)
                     <button class="btn btn-danger btn-sm d-none" id="delete-selected-btn">
-                        <i class="fas fa-trash me-1"></i> Delete
+                        <i class="fas fa-trash me-1"></i> Delete Selected
                     </button>
+                    @endif
                     <button type="button" class="btn btn-secondary btn-sm" id="transit-history-btn" data-bs-toggle="modal" data-bs-target="#transitHistoryModal">
                         <i class="fas fa-history me-1"></i> History
                     </button>
@@ -515,6 +517,46 @@
 
 let tabCounter = {{ count($tabs) }};
 const groupedData = @json($groupedData);
+const CAN_EDIT_DELETE = @json($canEditDelete ?? false);
+
+function transitCellEditor(editor) {
+    return CAN_EDIT_DELETE ? editor : false;
+}
+
+function deleteTransitRows(table, ids) {
+    if (!CAN_EDIT_DELETE || !ids.length) {
+        return;
+    }
+
+    if (!confirm(`Are you sure you want to delete ${ids.length} selected record(s)?`)) {
+        return;
+    }
+
+    $.ajax({
+        url: '/transit-container/delete',
+        type: 'POST',
+        data: {
+            _token: $('meta[name="csrf-token"]').attr('content'),
+            ids: ids
+        },
+        success: function(response) {
+            if (response.success) {
+                ids.forEach(id => table.deleteRow(id));
+                $('#delete-selected-btn').addClass('d-none');
+                if (response.message) {
+                    alert(response.message);
+                }
+            } else {
+                alert(response.message || "Failed to delete rows.");
+            }
+        },
+        error: function(xhr) {
+            const msg = xhr.responseJSON?.message || "Failed to delete rows.";
+            alert(msg);
+            console.error(xhr.responseText);
+        }
+    });
+}
 
 function transitClinkLinkFormatter(cell) {
     let url = cell.getValue() || "";
@@ -555,7 +597,7 @@ TAB_NAMES.forEach((tabName, index) => {
         height: "700px",
         rowHeight: 55,
         index: "id",
-        selectable: true,
+        selectable: CAN_EDIT_DELETE,
         // Default sort: surface "Not pushed" rows first so users can act on them.
         initialSort: [
             { column: "push_status", dir: "asc" }
@@ -572,13 +614,14 @@ TAB_NAMES.forEach((tabName, index) => {
             }
         },
 
-        columns: [{
+        columns: [
+            ...(CAN_EDIT_DELETE ? [{
                 formatter: "rowSelection",
                 titleFormatter: "rowSelection",
                 hozAlign: "center",
                 headerSort: false,
                 width: 50
-            },
+            }] : []),
             {
                 title: "Id",
                 field: "id",
@@ -595,7 +638,7 @@ TAB_NAMES.forEach((tabName, index) => {
             {
               title: "Images",
               field: "photos",
-              editor: function(cell, onRendered, success, cancel) {
+              editor: transitCellEditor(function(cell, onRendered, success, cancel) {
                 const container = document.createElement("div");
                 container.style.display = "flex";
                 container.style.flexDirection = "column";
@@ -660,7 +703,7 @@ TAB_NAMES.forEach((tabName, index) => {
                 }
 
                 return container;
-              },
+              }),
 
               // ✅ Enhanced formatter with fallback to `TransitContainerDetail.photos` or default image
               formatter: function(cell) {
@@ -748,8 +791,8 @@ TAB_NAMES.forEach((tabName, index) => {
               }
             },
             // { title: "Rec Qty", field: "rec_qty"},
-            { title: "Qty /<br>Ctns", field: "no_of_units", editor: "input" },
-            { title: "Qty<br>Ctns", field: "total_ctn", editor: "input" },
+            { title: "Qty /<br>Ctns", field: "no_of_units", editor: transitCellEditor("input") },
+            { title: "Qty<br>Ctns", field: "total_ctn", editor: transitCellEditor("input") },
             { 
               title: "Qty", 
               field: "pcs_qty", 
@@ -763,11 +806,11 @@ TAB_NAMES.forEach((tabName, index) => {
                   return units * ctn;
               }
             },
-            { title: "Rate$", field: "rate", editor: "input" },
+            { title: "Rate$", field: "rate", editor: transitCellEditor("input") },
             {
               title: "CBM",
               field: "cbm",
-              editor: "input",
+              editor: transitCellEditor("input"),
               hozAlign: "center",
               width: 60,
               formatter: function(cell) {
@@ -805,7 +848,7 @@ TAB_NAMES.forEach((tabName, index) => {
               field: "unit",
               headerSort: false,
                 hozAlign: "center",
-                editor: function (cell, onRendered, success, cancel) {
+                editor: transitCellEditor(function (cell, onRendered, success, cancel) {
                 const value = cell.getValue();
                 const select = document.createElement("select");
                 select.className = "form-select form-select-sm";
@@ -847,7 +890,7 @@ TAB_NAMES.forEach((tabName, index) => {
                 });
 
                 return select;
-                },
+                }),
                 formatter: function (cell) {
                 const value = cell.getValue();
                 if (value === "pieces")
@@ -857,9 +900,11 @@ TAB_NAMES.forEach((tabName, index) => {
                 return `<span class="badge bg-secondary" style="font-size:0.98rem;padding:6px 14px;border-radius:6px;">${value || "—"}</span>`;
                 },
                 cellClick: function (e, cell) {
+                if (!CAN_EDIT_DELETE) return;
                 cell.edit(true);
                 },
                 cellDblClick: function (e, cell) {
+                if (!CAN_EDIT_DELETE) return;
                 cell.edit(true);
                 },
               },
@@ -869,7 +914,7 @@ TAB_NAMES.forEach((tabName, index) => {
                 headerSort: false,
                 hozAlign: "center",
                 formatter: transitClinkLinkFormatter,
-                editor: "input",
+                editor: transitCellEditor("input"),
             },
             {
                 title: "Supplier",
@@ -886,9 +931,21 @@ TAB_NAMES.forEach((tabName, index) => {
                                 ${escapeHtmlTransit(saved)}
                             </div>`;
                 },
-                editor: "input",
+                editor: transitCellEditor("input"),
                 tooltip: function (cell) {
                     return String(cell.getValue() || "").trim();
+                },
+            },
+            {
+                title: "Category",
+                field: "Category",
+                headerSort: false,
+                hozAlign: "center",
+                width: 110,
+                formatter: function (cell) {
+                    const v = String(cell.getValue() || "").trim();
+                    if (!v) return '<span class="text-muted">—</span>';
+                    return `<div style="font-weight:700;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:100px;">${escapeHtmlTransit(v)}</div>`;
                 },
             },
             // {
@@ -906,7 +963,7 @@ TAB_NAMES.forEach((tabName, index) => {
             {
                 title: "CHG",
                 field: "changes",
-                editor: "input",
+                editor: transitCellEditor("input"),
                 hozAlign: "center",
                 width: 60,
                 formatter: function(cell) {
@@ -927,7 +984,7 @@ TAB_NAMES.forEach((tabName, index) => {
             {
               title: "SPEC",
               field: "specification",
-              editor: "input",
+              editor: transitCellEditor("input"),
               hozAlign: "center",
               width: 65,
               formatter: function(cell) {
@@ -961,87 +1018,55 @@ TAB_NAMES.forEach((tabName, index) => {
                             </div>`;
                 }
             },
+            ...(CAN_EDIT_DELETE ? [{
+                title: "Actions",
+                headerSort: false,
+                hozAlign: "center",
+                width: 95,
+                formatter: function() {
+                    return `<div class="d-flex gap-1 justify-content-center">
+                        <button type="button" class="btn btn-sm btn-outline-primary transit-edit-btn" title="Edit row">
+                            <i class="fas fa-pen"></i>
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-danger transit-delete-btn" title="Delete row">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>`;
+                },
+                cellClick: function(e, cell) {
+                    const target = e.target.closest('.transit-edit-btn, .transit-delete-btn');
+                    if (!target) return;
+                    e.stopPropagation();
+                    const row = cell.getRow();
+                    const rowId = row.getData().id;
+                    if (target.classList.contains('transit-edit-btn')) {
+                        const editCell = row.getCell('no_of_units') || row.getCell('rate');
+                        if (editCell) {
+                            editCell.edit();
+                        }
+                    } else if (target.classList.contains('transit-delete-btn') && rowId) {
+                        deleteTransitRows(cell.getTable(), [rowId]);
+                    }
+                },
+            }] : []),
         ],
     });
 
-    table.on("rowSelectionChanged", function(data, rows){
-        if(data.length > 0){
-            $('#delete-selected-btn').removeClass('d-none');
-        } else {
-            $('#delete-selected-btn').addClass('d-none');
-        }
-    });
-
-    $('#delete-selected-btn').off('click').on('click', function() {
-        // Find active tab
-        const activeTabPane = document.querySelector(".tab-pane.active");
-        if (!activeTabPane) {
-            alert("No active tab found!");
-            return;
-        }
-
-        // Find tab index & table
-        const tabIndex = Array.from(activeTabPane.parentElement.children).indexOf(activeTabPane);
-        const table = window.tabTables[tabIndex];
-        if (!table) {
-            alert("No table found for the active tab!");
-            return;
-        }
-
-        // Get selected rows
-        const selectedData = table.getSelectedData();
-        if (selectedData.length === 0) {
-            alert('Please select at least one record to delete.');
-            return;
-        }
-
-        // Confirm delete
-        if (!confirm(`Are you sure you want to delete ${selectedData.length} selected records?`)) {
-            return;
-        }
-
-        const ids = selectedData.map(row => row.id);
-
-        $.ajax({
-            url: '/transit-container/delete',
-            type: 'POST',
-            data: {
-                _token: $('meta[name="csrf-token"]').attr('content'),
-                ids: ids
-            },
-            success: function(response) {
-                if (response.success) {
-                    ids.forEach(id => table.deleteRow(id));
-                    if (response.message) {
-                        alert(response.message);
-                    }
-                } else {
-                    alert(response.message || "Failed to delete rows.");
-                }
-            },
-            error: function(xhr) {
-                console.error(xhr.responseText);
+    if (CAN_EDIT_DELETE) {
+        table.on("rowSelectionChanged", function(data) {
+            if (data.length > 0) {
+                $('#delete-selected-btn').removeClass('d-none');
+            } else {
+                $('#delete-selected-btn').addClass('d-none');
             }
         });
-    });
+    }
 
-
-
-    window.addEventListener("DOMContentLoaded", () => {
-      document.documentElement.setAttribute("data-sidenav-size", "condensed");
-        const firstTabIndex = 0;
-        const table = window.tabTables[firstTabIndex];
-        if (table) {
-            setTimeout(() => {
-                updateActiveTabSummary(firstTabIndex, table);
-            }, 300);
-        }
-    });
-
-    if (data.length === 0) {
+    if (data.length === 0 && CAN_EDIT_DELETE) {
         table.addRow({ tab_name: tabName });
     }
 
+    if (CAN_EDIT_DELETE) {
     table.on("cellEdited", function(cell) {
         const row = cell.getRow();
         const data = row.getData();
@@ -1127,6 +1152,7 @@ TAB_NAMES.forEach((tabName, index) => {
 
         updateActiveTabSummary(index, table);
     });
+    }
 
     window.tabTables = window.tabTables || {};
     window.tabTables[index] = table;
@@ -1219,6 +1245,42 @@ TAB_NAMES.forEach((tabName, index) => {
         XLSX.writeFile(workbook, `${tabName}_data.xlsx`);
     });
 
+});
+
+if (CAN_EDIT_DELETE) {
+    $('#delete-selected-btn').on('click', function() {
+        const activeTabPane = document.querySelector(".tab-pane.active");
+        if (!activeTabPane) {
+            alert("No active tab found!");
+            return;
+        }
+
+        const tabIndex = Array.from(activeTabPane.parentElement.children).indexOf(activeTabPane);
+        const table = window.tabTables[tabIndex];
+        if (!table) {
+            alert("No table found for the active tab!");
+            return;
+        }
+
+        const selectedData = table.getSelectedData();
+        if (selectedData.length === 0) {
+            alert('Please select at least one record to delete.');
+            return;
+        }
+
+        deleteTransitRows(table, selectedData.map(row => row.id));
+    });
+}
+
+window.addEventListener("DOMContentLoaded", () => {
+    document.documentElement.setAttribute("data-sidenav-size", "condensed");
+    const firstTabIndex = 0;
+    const table = window.tabTables && window.tabTables[firstTabIndex];
+    if (table) {
+        setTimeout(() => {
+            updateActiveTabSummary(firstTabIndex, table);
+        }, 300);
+    }
 });
 
 //push inventory to inventory warehouse 
@@ -1686,8 +1748,8 @@ function updateActiveTabSummary(index, table) {
         totalCBM += rowCBM;
     });
 
-  document.getElementById("total-cartons-display").textContent = totalCtn;
-  document.getElementById("total-qty-display").textContent = totalQty;
+  document.getElementById("total-cartons-display").textContent = Math.round(totalCtn);
+  document.getElementById("total-qty-display").textContent = Math.round(totalQty);
   document.getElementById("total-amount-display").textContent = Math.round(totalAmount);
   document.getElementById("total-cbm-display").textContent = totalCBM.toFixed(3);
 
@@ -1838,6 +1900,72 @@ document.getElementById('search-input').addEventListener('input', function () {
     });
 
     // Transit Container History: load when modal is shown or when Load is clicked
+    function formatTransitHistoryDetails(actionType, details) {
+      if (!details) return "—";
+
+      try {
+        const parsed = typeof details === "string" && details.trim().startsWith("{")
+          ? JSON.parse(details)
+          : details;
+
+        if (!parsed || typeof parsed !== "object") {
+          return String(details);
+        }
+
+        if (actionType === "row_deleted") {
+          const parts = [];
+          if (parsed.tab) parts.push("Container: " + parsed.tab);
+          if (parsed.supplier_name) parts.push("Supplier: " + parsed.supplier_name);
+          if (parsed.no_of_units || parsed.total_ctn) {
+            parts.push("Qty/Ctns: " + (parsed.no_of_units ?? "—") + " × " + (parsed.total_ctn ?? "—"));
+          }
+          if (parsed.rate != null && parsed.rate !== "") parts.push("Rate: $" + parsed.rate);
+          if (parsed.unit) parts.push("Unit: " + parsed.unit);
+          if (parsed.changes) parts.push("Changes: " + parsed.changes);
+          if (parsed.specification) parts.push("Spec: " + parsed.specification);
+          if (parsed.restored_ready_to_ship) parts.push("Restored to Ready to Ship");
+          return parts.length ? parts.join("; ") : JSON.stringify(parsed);
+        }
+
+        if (parsed.from && parsed.to && parsed.sku && !parsed.supplier_name) {
+          return parsed.from + " → " + parsed.to;
+        }
+
+        if (parsed.tab_name && parsed.count) {
+          return parsed.count + " item(s) in " + parsed.tab_name;
+        }
+
+        const fieldLabels = {
+          tab_name: "Container",
+          our_sku: "SKU",
+          supplier_name: "Supplier",
+          no_of_units: "Qty/Ctns",
+          total_ctn: "Qty Ctns",
+          rate: "Rate",
+          unit: "Unit",
+          cbm: "CBM",
+          changes: "Changes",
+          specification: "Spec",
+          photos: "Photo",
+          parent: "Parent",
+          company_name: "Company",
+        };
+
+        const parts = [];
+        for (const k of Object.keys(parsed)) {
+          const v = parsed[k];
+          if (v && typeof v === "object" && "from" in v && "to" in v) {
+            const label = fieldLabels[k] || k;
+            parts.push(label + ": " + String(v.from ?? "—") + " → " + String(v.to ?? "—"));
+          }
+        }
+
+        return parts.length ? parts.join("; ") : JSON.stringify(parsed);
+      } catch (_) {
+        return String(details);
+      }
+    }
+
     function loadTransitHistory() {
       const params = new URLSearchParams();
       const action = document.getElementById("history-action-filter").value;
@@ -1869,17 +1997,7 @@ document.getElementById('search-input').addEventListener('input', function () {
           }
           tbody.innerHTML = data.map(h => {
             const label = actionLabels[h.action_type] || h.action_type;
-            let detailsStr = "—";
-            if (h.details) {
-              try {
-                const parsed = typeof h.details === "string" && h.details.trim().startsWith("{") ? JSON.parse(h.details) : h.details;
-                if (parsed && typeof parsed === "object") {
-                  if (parsed.from && parsed.to) detailsStr = parsed.from + " → " + parsed.to;
-                  else if (parsed.tab_name && parsed.count) detailsStr = parsed.count + " item(s) in " + parsed.tab_name;
-                  else detailsStr = JSON.stringify(parsed);
-                } else detailsStr = h.details;
-              } catch (_) { detailsStr = h.details; }
-            }
+            const detailsStr = formatTransitHistoryDetails(h.action_type, h.details);
             return "<tr><td>" + h.created_at + "</td><td>" + label + "</td><td>" + (h.from_tab || "—") + "</td><td>" + (h.to_tab || "—") + "</td><td>" + (h.our_sku || "—") + "</td><td class=\"small\">" + detailsStr + "</td><td>" + (h.user_name || "—") + "</td></tr>";
           }).join("");
         })
