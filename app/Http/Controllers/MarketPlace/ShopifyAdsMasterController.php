@@ -190,22 +190,10 @@ class ShopifyAdsMasterController extends Controller
     private function shopifyNetSales(): float
     {
         try {
-            $tz       = 'America/Los_Angeles';
-            $dateFrom = Carbon::now($tz)->subDays(30)->startOfDay()->toDateString();
-            $dateTo   = Carbon::now($tz)->endOfDay()->toDateString();
+            [$dateFrom, $dateTo] = \App\Http\Controllers\ShopifyRawDataController::shopifyDirectL30Range();
 
-            $q = DB::table('shopify_raw_orders')
-                ->where('order_date', '>=', $dateFrom)
-                ->where('order_date', '<=', $dateTo);
-
-            foreach ($this->shopifyExcludeSources() as $term) {
-                $t = strtolower($term);
-                $q->whereRaw('LOWER(COALESCE(source_name,"")) NOT LIKE ?', ['%' . $t . '%'])
-                  ->whereRaw('LOWER(COALESCE(tags,"")) NOT LIKE ?',        ['%' . $t . '%']);
-            }
-            $q->where('sku', 'NOT LIKE', '%XYZ%');
-
-            return round((float) $q->sum('net_sales'), 2);
+            return app(\App\Http\Controllers\ShopifyRawDataController::class)
+                ->sumDirectNetSales($dateFrom, $dateTo);
         } catch (\Throwable $e) {
             \Log::warning('Shopify net sales lookup failed: ' . $e->getMessage());
             return 0.0;
@@ -414,7 +402,10 @@ class ShopifyAdsMasterController extends Controller
                 ->selectRaw('SUM(metrics_cost_micros) / 1000000 as spend')
                 ->selectRaw('SUM(metrics_clicks) as clicks')
                 ->selectRaw('SUM(ga4_actual_sold_units) as sold')
-                ->selectRaw('CASE WHEN COALESCE(SUM(ga4_actual_revenue), 0) > 0 THEN COALESCE(SUM(ga4_actual_revenue), 0) ELSE COALESCE(SUM(ga4_ad_sales), 0) END as sales')
+                // GA4 actual revenue only — same as /google/shopping/google-shopping and
+                // /google/shopping/google-serp (no fallback to ga4_ad_sales / Google Ads
+                // conversionsValue, which can show e.g. $102 when GA4 reports $0).
+                ->selectRaw('COALESCE(SUM(ga4_actual_revenue), 0) as sales')
                 ->groupBy('campaign_id');
 
             if ($bounds !== null) {
