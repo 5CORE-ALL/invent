@@ -13,43 +13,33 @@ class TeamManagementAccess
         return in_array($normalized, array_map('strtolower', $list), true);
     }
 
-    public static function canView(?User $user = null): bool
+    protected static function granted(?User $user, array $list): bool
     {
+        if (SuperAdminAccess::is($user)) {
+            return true;
+        }
+
         $user ??= auth()->user();
         if (! $user) {
             return false;
         }
 
-        return self::emailMatches(
-            (string) $user->email,
-            config('team_management.viewer_emails', [])
-        );
+        return self::emailMatches((string) $user->email, $list);
+    }
+
+    public static function canView(?User $user = null): bool
+    {
+        return self::granted($user, config('team_management.viewer_emails', []));
     }
 
     public static function canViewSalary(?User $user = null): bool
     {
-        $user ??= auth()->user();
-        if (! $user) {
-            return false;
-        }
-
-        return self::emailMatches(
-            (string) $user->email,
-            config('team_management.salary_viewer_emails', [])
-        );
+        return self::granted($user, config('team_management.salary_viewer_emails', []));
     }
 
     public static function canEdit(?User $user = null): bool
     {
-        $user ??= auth()->user();
-        if (! $user) {
-            return false;
-        }
-
-        return self::emailMatches(
-            (string) $user->email,
-            config('team_management.editor_emails', [])
-        );
+        return self::granted($user, config('team_management.editor_emails', []));
     }
 
     /** Edit users plus salary tab, import/export, and salary tools. */
@@ -61,28 +51,12 @@ class TeamManagementAccess
     /** See the Resume column on the Users table. */
     public static function canViewResume(?User $user = null): bool
     {
-        $user ??= auth()->user();
-        if (! $user) {
-            return false;
-        }
-
-        return self::emailMatches(
-            (string) $user->email,
-            config('team_management.resume_viewer_emails', [])
-        );
+        return self::granted($user, config('team_management.resume_viewer_emails', []));
     }
 
     /** Add / edit / delete a user's resume file. */
     public static function canEditResume(?User $user = null): bool
     {
-        $user ??= auth()->user();
-        if (! $user) {
-            return false;
-        }
-
-        return self::emailMatches(
-            (string) $user->email,
-            config('team_management.resume_editor_emails', [])
-        );
+        return self::granted($user, config('team_management.resume_editor_emails', []));
     }
 }

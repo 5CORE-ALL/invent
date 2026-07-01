@@ -30,9 +30,10 @@ class GoogleShoppingCampaignsController extends Controller
 
     /**
      * Scope the raw grid to non-SERP Shopping campaigns: exclude names containing
-     * the word "SEARCH" (e.g. "DRUM THRONES SEARCH" or "PARENT GS REST SEARCH.").
-     * Those rows live on the dedicated /google/shopping/google-serp page via
-     * {@see GoogleSerpCampaignsController::applyCampaignNameScope()}.
+     * the word "SEARCH" (e.g. "DRUM THRONES SEARCH" or "PARENT GS REST SEARCH.")
+     * and names ending with " YT" (YouTube ads on /google/shopping/youtube-ads).
+     * Those rows live on dedicated pages via {@see GoogleSerpCampaignsController}
+     * and {@see GoogleYoutubeAdsCampaignsController}.
      *
      * Leading space gives word-boundary matching so substrings like "RESEARCH" are
      * not affected. Subclasses (SERP) override this to flip the condition.
@@ -41,7 +42,8 @@ class GoogleShoppingCampaignsController extends Controller
      */
     protected function applyCampaignNameScope($query, string $columnExpression = 'campaign_name'): void
     {
-        $query->whereRaw("UPPER({$columnExpression}) NOT LIKE ?", ['% SEARCH%']);
+        $query->whereRaw("UPPER({$columnExpression}) NOT LIKE ?", ['% SEARCH%'])
+            ->whereRaw("UPPER({$columnExpression}) NOT LIKE ?", ['% YT']);
     }
 
     /**
@@ -257,7 +259,7 @@ class GoogleShoppingCampaignsController extends Controller
             return response()->json([
                 'ok' => false,
                 'exit_code' => 1,
-                'command' => 'push-sbgt',
+                'command' => $this->pushSbgtCommandLabel(),
                 'message' => 'Google Ads customer ID is not configured.',
                 'output' => '',
             ], 500);
@@ -306,7 +308,9 @@ class GoogleShoppingCampaignsController extends Controller
             try {
                 $budgetResourceName = "customers/{$customerId}/campaignBudgets/{$budgetId}";
                 $sbidService->updateCampaignBudget($customerId, $budgetResourceName, $newBudget);
-                $lines[] = "[OK] {$name} ({$campaignId}): Budget=\${$currentBudget} → \${$newBudget} (ACOS={$acos}%, SBGT={$newBudget})";
+                $unchanged = (int) round($currentBudget) === $newBudget;
+                $changeNote = $unchanged ? ' (already at SBGT — confirmed in Google Ads)' : '';
+                $lines[] = "[OK] {$name} ({$campaignId}): Budget=\${$currentBudget} → \${$newBudget}{$changeNote} (ACOS={$acos}%, SBGT={$newBudget})";
                 $updated++;
             } catch (\Throwable $e) {
                 $lines[] = "[ERROR] {$name} ({$campaignId}): ".$e->getMessage();
@@ -322,7 +326,7 @@ class GoogleShoppingCampaignsController extends Controller
         return response()->json([
             'ok' => $errors === 0,
             'exit_code' => $errors === 0 ? 0 : 1,
-            'command' => 'push-sbgt',
+            'command' => $this->pushSbgtCommandLabel(),
             'message' => $errors === 0
                 ? "SBGT push finished — {$updated} campaign(s) updated."
                 : "SBGT push finished with {$errors} error(s).",
@@ -344,7 +348,7 @@ class GoogleShoppingCampaignsController extends Controller
             return response()->json([
                 'ok' => false,
                 'exit_code' => 1,
-                'command' => 'push-sbid',
+                'command' => $this->pushSbidCommandLabel(),
                 'message' => 'Google Ads customer ID is not configured.',
                 'output' => '',
             ], 500);
@@ -393,8 +397,9 @@ class GoogleShoppingCampaignsController extends Controller
             $ub1 = round((float) ($row['ub1'] ?? 0), 1);
 
             try {
-                $sbidService->updateCampaignSbids($customerId, $campaignId, $sbid);
-                $lines[] = "[OK] {$name} ({$campaignId}): SBID=\${$sbid} (7UB={$ub7}%, 1UB={$ub1}%)";
+                $pushNote = $this->pushSbidToGoogleAds($sbidService, $customerId, $campaignId, $sbid, $row);
+                $noteSuffix = $pushNote !== '' ? " — {$pushNote}" : '';
+                $lines[] = "[OK] {$name} ({$campaignId}): SBID=\${$sbid} (7UB={$ub7}%, 1UB={$ub1}%){$noteSuffix}";
                 $updated++;
             } catch (\Throwable $e) {
                 $lines[] = "[ERROR] {$name} ({$campaignId}): ".$e->getMessage();
@@ -410,7 +415,7 @@ class GoogleShoppingCampaignsController extends Controller
         return response()->json([
             'ok' => $errors === 0,
             'exit_code' => $errors === 0 ? 0 : 1,
-            'command' => 'push-sbid',
+            'command' => $this->pushSbidCommandLabel(),
             'message' => $errors === 0
                 ? "SBID push finished — {$updated} campaign(s) updated."
                 : "SBID push finished with {$errors} error(s).",
@@ -446,6 +451,33 @@ class GoogleShoppingCampaignsController extends Controller
         }
 
         return $byId;
+    }
+
+    /**
+     * Push SBID for one campaign. Shopping pages update ad groups + product groups;
+     * SERP/YouTube subclasses override to strategy-aware Search/Video bid updates.
+     *
+     * @param  array<string, mixed>  $row
+     * @return string Optional note appended to push log lines
+     */
+    protected function pushSbidToGoogleAds(GoogleAdsSbidService $sbidService, string $customerId, string $campaignId, float $sbid, array $row = []): string
+    {
+        $sbidService->updateCampaignSbids($customerId, $campaignId, $sbid, true);
+
+        return '';
+    }
+
+    /**
+     * Label shown in push API responses / UI toasts.
+     */
+    protected function pushSbgtCommandLabel(): string
+    {
+        return 'push-sbgt';
+    }
+
+    protected function pushSbidCommandLabel(): string
+    {
+        return 'push-sbid';
     }
 
     /**

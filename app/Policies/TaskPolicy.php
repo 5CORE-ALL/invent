@@ -4,6 +4,7 @@ namespace App\Policies;
 
 use App\Models\Task;
 use App\Models\User;
+use App\Support\SuperAdminAccess;
 use Illuminate\Auth\Access\Response;
 
 class TaskPolicy
@@ -38,6 +39,10 @@ class TaskPolicy
             return false;
         }
 
+        if (SuperAdminAccess::is($user)) {
+            return true;
+        }
+
         $email = strtolower(trim((string) ($user->email ?? '')));
 
         return $email !== '' && in_array($email, self::TASK_MAINTENANCE_TOOL_EMAILS, true);
@@ -48,7 +53,7 @@ class TaskPolicy
      */
     private function isAdmin(User $user): bool
     {
-        return strtolower($user->role ?? '') === 'admin';
+        return SuperAdminAccess::is($user) || strtolower($user->role ?? '') === 'admin';
     }
 
     /**

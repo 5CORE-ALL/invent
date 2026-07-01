@@ -8,8 +8,10 @@ use App\Models\PayrollMonth;
 use App\Models\PayrollPaymentDeduction;
 use App\Models\PayrollPayslip;
 use App\Models\PayrollSalaryComponent;
+use App\Models\TeamLoggerHours;
 use App\Models\User;
 use App\Models\UserSalary;
+use App\Services\TeamLoggerService;
 use Carbon\Carbon;
 
 class PayrollService
@@ -18,9 +20,9 @@ class PayrollService
         protected TeamSalaryCalculator $teamSalary
     ) {}
 
-    public function teamLoggerDataForMonth(string $monthLabel): array
+    public function teamLoggerDataForMonth(string $monthLabel, bool $useCache = true, bool $preferApi = false): array
     {
-        return $this->teamSalary->teamLoggerDataForMonth($monthLabel);
+        return $this->teamSalary->teamLoggerDataForMonth($monthLabel, $useCache, $preferApi);
     }
 
     public function resolveTeamLoggerEmail(string $userEmail): string
@@ -456,37 +458,99 @@ class PayrollService
      * Refresh stored working hours from live TeamLogger for an unlocked month, then
      * recompute amounts. Salary inputs (PP, increment, other, adv) are kept as stored,
      * and users with no live TeamLogger entry keep their existing hours.
+     *
+     * @return array{updated:int, skipped_overridden:int, skipped_no_data:int, unchanged:int, teamlogger_users:int, locked:bool}
      */
-    public function refreshLiveHours(PayrollMonth $month): void
+    public function refreshLiveHours(PayrollMonth $month, bool $freshFromApi = false): array
     {
+        $stats = [
+            'updated' => 0,
+            'skipped_overridden' => 0,
+            'skipped_no_data' => 0,
+            'unchanged' => 0,
+            'teamlogger_users' => 0,
+            'locked' => (bool) $month->is_locked,
+        ];
+
         if ($month->is_locked) {
-            return;
+            return $stats;
         }
 
-        $teamLogger = $this->teamLoggerDataForMonth($month->month_label);
+        if ($freshFromApi) {
+            (new TeamLoggerService())->clearCacheForMonth($month->month_label);
+        }
+
+        $teamLogger = $this->teamLoggerDataForMonth($month->month_label, ! $freshFromApi, $freshFromApi);
+        $stats['teamlogger_users'] = count($teamLogger);
+
+        if ($freshFromApi && $teamLogger !== []) {
+            $this->persistTeamLoggerHours($month->month_label, $teamLogger);
+        }
+
         $changed = false;
+        $respectOverrides = ! $freshFromApi;
 
         foreach (PayrollEmployeeSalary::with('user')->where('payroll_month_id', $month->id)->get() as $row) {
             if (! $row->user) {
                 continue;
             }
-            // Manually edited hours win — don't overwrite them with live data.
-            if ($row->hours_overridden) {
+            if ($respectOverrides && $row->hours_overridden) {
+                $stats['skipped_overridden']++;
                 continue;
             }
             $email = $this->resolveTeamLoggerEmail($row->user->email);
             if (! array_key_exists($email, $teamLogger)) {
-                continue; // no live data for this user — keep the stored snapshot
+                $stats['skipped_no_data']++;
+                continue;
             }
             $hours = (float) ($teamLogger[$email]['hours'] ?? 0);
-            if ((float) $row->hours_worked !== $hours) {
-                $row->update(['hours_worked' => $hours]);
+            $hoursChanged = (float) $row->hours_worked !== $hours;
+            $clearOverride = $freshFromApi && $row->hours_overridden;
+
+            if ($hoursChanged || $clearOverride) {
+                $payload = ['hours_worked' => $hours];
+                if ($freshFromApi) {
+                    $payload['hours_overridden'] = false;
+                }
+                $row->update($payload);
+                $stats['updated']++;
                 $changed = true;
+            } else {
+                $stats['unchanged']++;
             }
         }
 
         if ($changed) {
             $this->recalculateMonth($month);
+        }
+
+        return $stats;
+    }
+
+    /** @param  array<string, array<string, mixed>>  $teamLogger */
+    protected function persistTeamLoggerHours(string $monthLabel, array $teamLogger): void
+    {
+        [$start, $end] = $this->periodDatesFromLabel($monthLabel);
+        if (! $start || ! $end) {
+            return;
+        }
+
+        foreach ($teamLogger as $email => $hours) {
+            TeamLoggerHours::updateOrCreate(
+                [
+                    'employee_email' => strtolower(trim((string) $email)),
+                    'month' => $monthLabel,
+                ],
+                [
+                    'start_date' => $start,
+                    'end_date' => $end,
+                    'productive_hours' => (int) ($hours['hours'] ?? 0),
+                    'total_hours' => $hours['total_hours'] ?? 0,
+                    'idle_hours' => $hours['idle_hours'] ?? 0,
+                    'active_hours' => $hours['active_hours'] ?? 0,
+                    'fetched_at' => now(),
+                ]
+            );
         }
     }
 

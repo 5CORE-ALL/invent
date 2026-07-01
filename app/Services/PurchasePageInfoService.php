@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\PurchasePageInfoNote;
+use App\Support\SuperAdminAccess;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
 
@@ -15,9 +16,7 @@ class PurchasePageInfoService
 
     public static function userCanEdit(): bool
     {
-        $email = strtolower(trim((string) Auth::user()?->email ?? ''));
-
-        return in_array($email, self::EDIT_EMAILS, true);
+        return SuperAdminAccess::allows(Auth::user(), self::EDIT_EMAILS);
     }
 
     public static function resolvePageKeyFromRoute(?string $routeName = null): ?string

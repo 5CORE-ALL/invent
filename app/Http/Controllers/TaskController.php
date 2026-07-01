@@ -44,7 +44,7 @@ class TaskController extends Controller
     public function index()
     {
         $user = Auth::user();
-        $isAdmin = strtolower($user->role ?? '') === 'admin';
+        $isAdmin = \App\Support\SuperAdminAccess::isTaskAdmin($user);
 
         $tasksQuery = $this->taskManagerVisibilityQuery();
 
@@ -381,7 +381,7 @@ class TaskController extends Controller
     protected function taskManagerVisibilityQuery(): Builder
     {
         $user = Auth::user();
-        $isAdmin = strtolower($user->role ?? '') === 'admin';
+        $isAdmin = \App\Support\SuperAdminAccess::isTaskAdmin($user);
 
         $tasksQuery = Task::query();
         if (!$isAdmin) {
@@ -1300,7 +1300,7 @@ class TaskController extends Controller
 
         // Map to old table field names
         $user = Auth::user();
-        $isAdmin = strtolower($user->role ?? '') === 'admin';
+        $isAdmin = \App\Support\SuperAdminAccess::isTaskAdmin($user);
         
         // Get assignor email
         if ($isAdmin && $request->has('assignor_id')) {
@@ -1594,7 +1594,7 @@ class TaskController extends Controller
             ]);
         }
 
-        $isAdmin = strtolower($user->role ?? '') === 'admin';
+        $isAdmin = \App\Support\SuperAdminAccess::isTaskAdmin($user);
 
         if ($canEditAll) {
             // Get assignor email
@@ -1901,7 +1901,7 @@ class TaskController extends Controller
     {
         try {
             $user = Auth::user();
-            $isAdmin = strtolower($user->role ?? '') === 'admin';
+            $isAdmin = \App\Support\SuperAdminAccess::isTaskAdmin($user);
 
             // Check if this is for automated tasks
             // Either based on is_automated flag or specific actions only for automated tasks
@@ -2398,7 +2398,7 @@ class TaskController extends Controller
     public function automatedIndex()
     {
         $user = Auth::user();
-        $isAdmin = strtolower($user->role ?? '') === 'admin';
+        $isAdmin = \App\Support\SuperAdminAccess::isTaskAdmin($user);
 
         // Get active users for filter dropdowns (same behavior as task page)
         $users = User::where('is_active', true)
@@ -2425,7 +2425,7 @@ class TaskController extends Controller
     public function getAutomatedData()
     {
         $user = Auth::user();
-        $isAdmin = strtolower($user->role ?? '') === 'admin';
+        $isAdmin = \App\Support\SuperAdminAccess::isTaskAdmin($user);
 
         $query = \DB::table('automate_tasks');
         
@@ -2626,7 +2626,7 @@ class TaskController extends Controller
         }
 
         $user = Auth::user();
-        $isAdmin = strtolower($user->role ?? '') === 'admin';
+        $isAdmin = \App\Support\SuperAdminAccess::isTaskAdmin($user);
         
         $assignorEmail = $isAdmin && $request->has('assignor_id') 
             ? User::find($validated['assignor_id'])->email ?? $user->email
@@ -3076,7 +3076,7 @@ class TaskController extends Controller
      */
     private function revertOneTodayDeleted(DeletedTask $deletedTask, User $user): array
     {
-        $isAdmin = strtolower($user->role ?? '') === 'admin';
+        $isAdmin = \App\Support\SuperAdminAccess::isTaskAdmin($user);
 
         $todayStart = TaskBusinessTime::todayStart();
         $todayEnd = TaskBusinessTime::todayEnd();
@@ -3349,7 +3349,7 @@ class TaskController extends Controller
     public function deletedBadgeStats(Request $request)
     {
         $user = Auth::user();
-        $isAdmin = strtolower($user->role ?? '') === 'admin';
+        $isAdmin = \App\Support\SuperAdminAccess::isTaskAdmin($user);
 
         $assignorName = trim((string) $request->query('assignor', ''));
         $assigneeName = trim((string) $request->query('assignee', ''));
@@ -3407,7 +3407,7 @@ class TaskController extends Controller
     public function deletedIndex()
     {
         $user = Auth::user();
-        $isAdmin = strtolower($user->role ?? '') === 'admin';
+        $isAdmin = \App\Support\SuperAdminAccess::isTaskAdmin($user);
 
         // Get selected user from session (set from tasks index page)
         $selectedUserName = Session::get('selected_user_name', '');
@@ -3523,7 +3523,7 @@ class TaskController extends Controller
     public function deletedData()
     {
         $user = Auth::user();
-        $isAdmin = strtolower($user->role ?? '') === 'admin';
+        $isAdmin = \App\Support\SuperAdminAccess::isTaskAdmin($user);
 
         // Show only tasks deleted in the last 30 days
         $query = DeletedTask::query()
@@ -3721,7 +3721,7 @@ class TaskController extends Controller
         }
 
         $user = Auth::user();
-        $isAdmin = strtolower($user->role ?? '') === 'admin';
+        $isAdmin = \App\Support\SuperAdminAccess::isTaskAdmin($user);
         $assignorEmail = $user->email;
 
         $assigneeIds = $request->assignee_ids ?? [];

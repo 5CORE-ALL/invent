@@ -13,6 +13,7 @@ use App\Models\PayrollSalaryComponent;
 use App\Models\PayrollSettlement;
 use App\Models\User;
 use App\Services\PayrollService;
+use App\Support\SuperAdminAccess;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -32,7 +33,13 @@ class PayrollController extends Controller
 
     protected function authorizeSheetAdmin(): void
     {
-        abort_unless(Gate::allows('payroll.sheet-admin'), 403, 'Only HR and the President can use this function.');
+        $user = auth()->user();
+
+        $allowed = SuperAdminAccess::is($user)
+            || Gate::allows('payroll.sheet-admin')
+            || Gate::allows('payroll.manage');
+
+        abort_unless($allowed, 403, 'You do not have permission to use this function.');
     }
 
     protected function ensureUnlocked(?PayrollMonth $month): void
@@ -133,8 +140,6 @@ class PayrollController extends Controller
 
         return response()->json([
             'month' => $payrollMonth,
-            'hours_override_locked' => $payrollMonth->isOverrideLocked(),
-            'hours_override_unlock_date' => $payrollMonth->overrideUnlockDate()?->toIso8601String(),
             'employees' => $employees,
             'components' => PayrollSalaryComponent::with('user')->where('payroll_month_id', $payrollMonth->id)->get(),
             'payments' => PayrollPaymentDeduction::with('user')->where('payroll_month_id', $payrollMonth->id)->get(),
@@ -216,20 +221,49 @@ class PayrollController extends Controller
         $this->authorizeSheetAdmin();
         $this->ensureUnlocked($payrollMonth);
 
-        $userIds = $request->input('user_ids', []);
-        $newOnly = (bool) $request->input('new_hires_only', false);
-
-        $count = $this->payroll->syncEmployeesFromUsers(
-            $payrollMonth,
-            is_array($userIds) ? $userIds : [],
-            $newOnly
-        );
-        $this->payroll->recalculateMonth($payrollMonth);
+        // Only refresh login hours from TeamLogger — leave salary and other fields as-is.
+        $this->payroll->ensureSheetPopulated($payrollMonth);
+        $stats = $this->payroll->refreshLiveHours($payrollMonth, freshFromApi: true);
 
         return response()->json([
             'success' => true,
-            'message' => "{$count} employee salary record(s) synced.",
+            'message' => $this->syncHoursMessage($stats, $payrollMonth->month_label),
+            'stats' => $stats,
         ]);
+    }
+
+    /** @param  array<string, int|bool>  $stats */
+    protected function syncHoursMessage(array $stats, string $monthLabel): string
+    {
+        if (! empty($stats['locked'])) {
+            return 'Payroll month is locked. Unlock it to sync hours.';
+        }
+
+        if (($stats['teamlogger_users'] ?? 0) === 0) {
+            return "No TeamLogger data returned for {$monthLabel}. Check TEAM_LOGGER_API_TOKEN and try again.";
+        }
+
+        $updated = (int) ($stats['updated'] ?? 0);
+        $unchanged = (int) ($stats['unchanged'] ?? 0);
+        $skippedOverride = (int) ($stats['skipped_overridden'] ?? 0);
+        $skippedNoData = (int) ($stats['skipped_no_data'] ?? 0);
+
+        if ($updated === 0 && $unchanged === 0 && $skippedNoData > 0) {
+            return "TeamLogger has {$stats['teamlogger_users']} user(s) for {$monthLabel}, but none matched payroll employees. Check email mapping.";
+        }
+
+        $parts = ["{$updated} employee hour row(s) updated from TeamLogger."];
+        if ($unchanged > 0) {
+            $parts[] = "{$unchanged} already up to date.";
+        }
+        if ($skippedOverride > 0) {
+            $parts[] = "{$skippedOverride} skipped (manually edited — use Sync Hours to overwrite).";
+        }
+        if ($skippedNoData > 0) {
+            $parts[] = "{$skippedNoData} had no TeamLogger match.";
+        }
+
+        return implode(' ', $parts);
     }
 
     public function updateEmployeeSalary(Request $request, PayrollEmployeeSalary $payrollEmployeeSalary): JsonResponse
@@ -267,16 +301,11 @@ class PayrollController extends Controller
 
         // A manually edited Hours value is locked in too: flag it so the live
         // TeamLogger refresh stops overwriting it and the edited value persists.
-        // Overrides are blocked until the 2nd of the next month so last month's
-        // working hours can settle first; only an actual change counts as an edit.
+        // Only an actual change counts as an edit.
         if (array_key_exists('hours_worked', $validated)) {
             $hoursChanged = (float) $payrollEmployeeSalary->hours_worked !== (float) $validated['hours_worked'];
 
             if ($hoursChanged) {
-                if ($month && $month->isOverrideLocked()) {
-                    $unlock = $month->overrideUnlockDate()?->format('d M Y');
-                    abort(422, "Hours can be edited only from {$unlock} (the 2nd of next month). Last month's working hours are still being finalised.");
-                }
                 $validated['hours_overridden'] = true;
             } else {
                 // No real change — don't touch the value or flip the override flag.

@@ -134,6 +134,30 @@ class TeamLoggerService
     }
 
     /**
+     * Drop cached summary data for a payroll / TeamLogger month label.
+     */
+    public function clearCacheForMonth(string $month): void
+    {
+        try {
+            $monthParts = explode(' ', trim($month));
+            if (count($monthParts) !== 2) {
+                return;
+            }
+
+            $monthName = $monthParts[0];
+            $year = (int) $monthParts[1];
+            $monthNumber = (int) date('m', strtotime($monthName.' 1'));
+            $startDate = Carbon::create($year, $monthNumber, 1)->format('Y-m-d');
+            $endDate = Carbon::create($year, $monthNumber)->endOfMonth()->format('Y-m-d');
+
+            Cache::forget("teamlogger_{$startDate}_{$endDate}");
+            unset(self::$cache["teamlogger_{$startDate}_{$endDate}"]);
+        } catch (\Throwable $e) {
+            Log::warning('TeamLogger cache clear failed for '.$month.': '.$e->getMessage());
+        }
+    }
+
+    /**
      * Fetch TeamLogger data for a specific employee
      *
      * @param string $email Employee email

@@ -5,6 +5,7 @@ namespace App\Providers;
 use App\Models\ResourceMaster;
 use App\Models\User;
 use App\Policies\ResourceMasterPolicy;
+use App\Support\SuperAdminAccess;
 use App\Support\TeamManagementAccess;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Foundation\Support\Providers\AuthServiceProvider as ServiceProvider;
@@ -26,6 +27,12 @@ class AuthServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        Gate::before(function (User $user) {
+            if (SuperAdminAccess::is($user)) {
+                return true;
+            }
+        });
+
         Gate::define('resources-master.manage', function (User $user): bool {
             $emails = array_map('strtolower', config('resources_master.manager_emails', []));
 

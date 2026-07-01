@@ -37,6 +37,7 @@ return [
     'resume_viewer_emails' => [
         'president@5core.com',
         'hr@5core.com',
+        'software5@5core.com',
     ],
 
     /*
@@ -45,6 +46,7 @@ return [
     'resume_editor_emails' => [
         'president@5core.com',
         'hr@5core.com',
+        'software5@5core.com',
     ],
 
 ];

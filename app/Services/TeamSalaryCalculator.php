@@ -33,15 +33,18 @@ class TeamSalaryCalculator
         return $mapping[$key] ?? $key;
     }
 
-    public function teamLoggerDataForMonth(string $monthLabel): array
+    public function teamLoggerDataForMonth(string $monthLabel, bool $useCache = true, bool $preferApi = false): array
     {
         $service = new TeamLoggerService();
-        $data = $service->fetchByMonth($monthLabel, true);
+        $data = $service->fetchByMonth($monthLabel, $useCache);
 
         foreach (TeamLoggerHours::where('month', $monthLabel)->get() as $record) {
             $email = strtolower($record->employee_email);
             if (isset($data[$email])) {
-                $data[$email]['hours'] = $record->productive_hours;
+                // On a forced refresh, live API hours win over stale DB snapshots.
+                if (! $preferApi) {
+                    $data[$email]['hours'] = $record->productive_hours;
+                }
             } else {
                 $data[$email] = ['hours' => $record->productive_hours];
             }

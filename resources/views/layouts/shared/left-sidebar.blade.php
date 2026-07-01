@@ -2053,10 +2053,7 @@
                             <a href="{{ route('google.serp.campaigns') }}">Google SERP Campaigns</a>
                         </li>
                         <li>
-                            <a href="{{ route('google.serp.list') }}">Google SERP</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('google.serp.report') }}">Google SERP Report</a>
+                            <a href="{{ Route::has('google.youtube.ads.campaigns') ? route('google.youtube.ads.campaigns') : url('/google/shopping/youtube-ads') }}">Youtube ads</a>
                         </li>
                         <li>
                             <a href="{{ route('google.pmax.list') }}">Google PMAX</a>

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\CpHistory;
 use App\Models\ProductMaster;
 use App\Models\User;
+use App\Support\SuperAdminAccess;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -322,8 +323,6 @@ class CpController extends Controller
      */
     private function userCanApprove(): bool
     {
-        $email = strtolower((string) (auth()->user()->email ?? ''));
-
-        return in_array($email, self::APPROVER_EMAILS, true);
+        return SuperAdminAccess::allows(auth()->user(), self::APPROVER_EMAILS);
     }
 }
