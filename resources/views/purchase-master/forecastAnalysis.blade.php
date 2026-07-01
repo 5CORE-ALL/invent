@@ -1129,7 +1129,7 @@
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label small mb-1">Supplier</label>
-                                <select class="form-select" id="fre_supplier">
+                                <select class="form-select select-searchable" id="fre_supplier">
                                     <option value="">-- Select --</option>
                                 </select>
                             </div>
@@ -1404,6 +1404,7 @@
                 if (name === value) opt.selected = true;
                 sel.appendChild(opt);
             });
+            if (window.SelectSearchable) window.SelectSearchable.refresh(sel);
         }
 
         function populateForecastRowEditCategorySelect(selectedValue) {
