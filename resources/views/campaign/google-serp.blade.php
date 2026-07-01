@@ -325,6 +325,10 @@
                         <button type="button" id="gac-raw-refresh" class="btn btn-sm btn-outline-primary gac-raw-icon-btn" title="Refresh grid" aria-label="Refresh grid">
                             <i class="fa fa-refresh"></i>
                         </button>
+                        <button type="button" id="gac-raw-pull-data" class="btn btn-sm btn-primary" title="Runs app:fetch-google-ads-campaigns — pulls fresh campaign metrics from Google Ads + GA4. Waits until complete; shows success or error.">
+                            <i class="fa fa-cloud-download-alt"></i> Pull Data
+                            <input type="number" id="gac-raw-pull-days" min="1" max="30" value="1" class="form-control form-control-sm d-inline-block ms-1" style="width: 56px; padding: 1px 4px; height: 22px; font-size: 11px;" title="Days to fetch (1-30)" onclick="event.stopPropagation();">
+                        </button>
                         <button type="button" id="gac-raw-export" class="btn btn-sm btn-success gac-raw-icon-btn" title="Export current page as CSV" aria-label="Export current page as CSV">
                             <i class="fas fa-file-csv"></i>
                         </button>
@@ -612,6 +616,7 @@
             const gacRawRuleSaveUrl = @json(route('google.serp.campaigns.rule.save'));
             const gacRawPushSbgtUrl = @json(route('google.serp.campaigns.push.sbgt'));
             const gacRawPushSbidUrl = @json(route('google.serp.campaigns.push.sbid'));
+            const gacRawPullDataUrl = @json(route('google.shopping.campaigns.pull.data'));
             const gacRawBadgeHistoryUrl = @json(route('google.serp.campaigns.badge.history'));
             const gacRawU7PieDistribUrl = @json(route('google.serp.campaigns.u7.distribution'));
             const gacRawU7PieHistoryUrl = @json(route('google.serp.campaigns.u7.history'));
@@ -1497,6 +1502,69 @@
                         if (sbgtB) sbgtB.disabled = false;
                         if (sbidB) sbidB.disabled = false;
                     });
+            }
+
+            var pullDataBtn = document.getElementById('gac-raw-pull-data');
+            if (pullDataBtn) {
+                pullDataBtn.addEventListener('click', function(ev) {
+                    if (ev && ev.target && ev.target.id === 'gac-raw-pull-days') {
+                        return;
+                    }
+                    var daysEl = document.getElementById('gac-raw-pull-days');
+                    var days = daysEl ? parseInt(daysEl.value, 10) : 1;
+                    if (!Number.isFinite(days) || days < 1) days = 1;
+                    if (days > 30) days = 30;
+                    if (daysEl) daysEl.value = String(days);
+
+                    if (!window.confirm('Run app:fetch-google-ads-campaigns for the last ' + days + ' day(s)? This pulls campaigns + metrics from Google Ads / GA4 and waits until complete (may take several minutes).')) {
+                        return;
+                    }
+
+                    var origHtml = pullDataBtn.innerHTML;
+                    pullDataBtn.disabled = true;
+                    pullDataBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Pulling…';
+                    gacShowPushLoading('Pulling data (app:fetch-google-ads-campaigns)…',
+                        'Fetching the last ' + days + ' day(s) from Google Ads + GA4. This runs synchronously — do not close this tab.');
+
+                    var token = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+                    fetch(gacRawPullDataUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            Accept: 'application/json',
+                            'X-CSRF-TOKEN': token,
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({ days: days }),
+                    })
+                        .then(function(res) {
+                            return res.json().then(function(body) {
+                                return { ok: res.ok, status: res.status, body: body };
+                            });
+                        })
+                        .then(function(out) {
+                            var b = out.body || {};
+                            var cmd = b.command || 'app:fetch-google-ads-campaigns';
+                            var success = out.ok && b.ok !== false;
+                            var title = cmd + ' — ' + (success ? 'finished' : 'failed');
+                            if (b.exit_code != null) {
+                                title += ' (exit ' + b.exit_code + ')';
+                            }
+                            var text = (b.message ? b.message + '\n\n' : '') + (b.output || '');
+                            gacShowPushResult(title, text, success ? 'success' : 'error');
+                            if (success && table) {
+                                Promise.resolve(table.setData(dataUrl)).finally(gacRawRefreshTableUiSoon);
+                            }
+                        })
+                        .catch(function(err) {
+                            gacShowPushResult('Request failed', String(err && err.message ? err.message : err), 'error');
+                        })
+                        .finally(function() {
+                            pullDataBtn.innerHTML = origHtml;
+                            pullDataBtn.disabled = false;
+                        });
+                });
             }
 
             var pushSbgtBtn = document.getElementById('gac-raw-push-sbgt');

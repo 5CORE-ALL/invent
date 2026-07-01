@@ -346,7 +346,6 @@
                     { title: 'ADS SALES', field: 'sales', hozAlign: 'center', formatter: wholeMoneyFormatter, headerSort: true, cssClass: 'sam-metric-cell', cellClick: samCellChart },
                     { title: 'CVR',     field: 'cvr',     hozAlign: 'center', formatter: percentFormatter,    headerSort: true, cssClass: 'sam-metric-cell', cellClick: samCellChart },
                     { title: 'ACOS',    field: 'acos',    hozAlign: 'center', formatter: percentFormatter,    headerSort: true, cssClass: 'sam-metric-cell', cellClick: samCellChart },
-                    { title: 'TCOS',    field: 'tcos',    hozAlign: 'center', formatter: percentFormatter,    headerSort: true, cssClass: 'sam-metric-cell', cellClick: samCellChart },
                 ],
             });
 

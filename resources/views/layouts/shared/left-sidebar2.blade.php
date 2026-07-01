@@ -396,7 +396,7 @@
                                                                     </a>
                                                                     <div class="collapse" id="ppcGroup1">
                                                                         <ul class="side-nav-fifth-level">
-                                                                            <li><a href="#">Google SERP</a></li>
+                                                                            <li><a href="{{ route('google.serp.campaigns') }}">Google SERP</a></li>
                                                                         </ul>
                                                                     </div>
                                                                 </li>
