@@ -281,6 +281,11 @@ use App\Http\Controllers\PurchaseMaster\TransitContainerDetailsController;
 use App\Http\Controllers\PurchaseMaster\UpComingContainerController;
 use App\Http\Controllers\ResourcesController;
 use App\Http\Controllers\Payroll\PayrollController;
+use App\Http\Controllers\Attendance\AttendanceAgentController;
+use App\Http\Controllers\Attendance\AttendanceController;
+use App\Http\Controllers\Attendance\AttendanceMonitorController;
+use App\Http\Controllers\Attendance\AttendancePayrollController;
+use App\Http\Controllers\Attendance\AttendanceSummaryController;
 use App\Http\Controllers\ResourcesMasterController;
 use App\Http\Controllers\RoutingController;
 use App\Http\Controllers\Sales\AmazonSalesController;
@@ -6118,6 +6123,35 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/settlements/{payrollSettlement}/process', [PayrollController::class, 'processSettlement'])->name('settlements.process');
     });
 
+    // Attendance & WFH Monitoring
+    Route::prefix('attendance')->middleware('auth')->name('attendance.')->group(function () {
+        Route::get('/', [AttendanceController::class, 'index'])->name('index');
+        Route::get('/status', [AttendanceController::class, 'status'])->name('status');
+        Route::post('/clock-in', [AttendanceController::class, 'clockIn'])->name('clock-in');
+        Route::post('/clock-out', [AttendanceController::class, 'clockOut'])->name('clock-out');
+        Route::post('/heartbeat', [AttendanceController::class, 'heartbeat'])->name('heartbeat');
+        Route::post('/pause', [AttendanceController::class, 'pause'])->name('pause');
+        Route::post('/resume', [AttendanceController::class, 'resume'])->name('resume');
+
+        Route::get('/monitor', [AttendanceMonitorController::class, 'index'])->name('monitor');
+        Route::get('/monitor/team-data', [AttendanceMonitorController::class, 'teamData'])->name('monitor.team-data');
+        Route::get('/summary', [AttendanceSummaryController::class, 'index'])->name('summary');
+        Route::get('/summary/data', [AttendanceSummaryController::class, 'data'])->name('summary.data');
+        Route::get('/summary/export', [AttendanceSummaryController::class, 'export'])->name('summary.export');
+        Route::get('/payroll', [AttendancePayrollController::class, 'index'])->name('payroll.index');
+        Route::get('/payroll/export', [AttendancePayrollController::class, 'export'])->name('payroll.export');
+        Route::post('/payroll/lines/{user}', [AttendancePayrollController::class, 'saveLine'])->name('payroll.lines');
+        Route::get('/employee/{user}/screenshots', [AttendanceMonitorController::class, 'employeeScreenshots'])->name('employee.screenshots');
+        Route::get('/employee/{user}', [AttendanceMonitorController::class, 'employeeDetail'])->name('employee');
+        Route::post('/employee/{user}/analyze', [AttendanceMonitorController::class, 'analyzeDay'])->name('analyze');
+        Route::post('/flags/{flag}/review', [AttendanceMonitorController::class, 'reviewFlag'])->name('flags.review');
+        Route::get('/policies', [AttendanceMonitorController::class, 'policies'])->name('policies');
+        Route::post('/policies', [AttendanceMonitorController::class, 'storePolicy'])->name('policies.store');
+        Route::get('/agent', [AttendanceMonitorController::class, 'agentDownload'])->name('agent');
+        Route::get('/agent/download', [AttendanceMonitorController::class, 'agentInstallerDownload'])->name('agent.download');
+        Route::get('/screenshots/{screenshot}', [AttendanceAgentController::class, 'showScreenshot'])->name('screenshots.show');
+    });
+
     // API endpoint for active users
     Route::get('/api/users/active', [UserController::class, 'getActiveUsers'])
         ->middleware('auth')
@@ -6280,6 +6314,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 });
 
 
+
+// Attendance Desktop Agent API — see routes/attendance-agent.php (registered in RouteServiceProvider)
 
 // =============================================================================
 // eBay Push Microservice — LOCAL MOCK ENDPOINT (for testing only)

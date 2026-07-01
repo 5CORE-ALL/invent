@@ -29,6 +29,10 @@ class RouteServiceProvider extends ServiceProvider
         });
 
         $this->routes(function () {
+            // Desktop agent API — must load before web catch-all routes
+            Route::middleware('api')
+                ->group(base_path('routes/attendance-agent.php'));
+
             Route::middleware('api')
                 ->prefix('api')
                 ->group(base_path('routes/api.php'));

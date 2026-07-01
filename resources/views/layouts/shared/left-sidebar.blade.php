@@ -3275,28 +3275,58 @@
 
             {{-- User --}}
 
+            @php
+                $userMenuActive = request()->routeIs('roles')
+                    || request()->routeIs('users.add')
+                    || request()->routeIs('permissions')
+                    || request()->routeIs('permissions.view')
+                    || request()->routeIs('attendance.monitor*')
+                    || request()->routeIs('attendance.employee')
+                    || request()->routeIs('attendance.summary*')
+                    || request()->routeIs('attendance.payroll*')
+                    || request()->routeIs('attendance.agent');
+            @endphp
             <li class="side-nav-item">
-                <a data-bs-toggle="collapse" href="#sidebarPages1" aria-expanded="false" aria-controls="sidebarPages1"
-                    class="side-nav-link">
+                <a data-bs-toggle="collapse" href="#sidebarPages1" aria-expanded="{{ $userMenuActive ? 'true' : 'false' }}" aria-controls="sidebarPages1"
+                    class="side-nav-link {{ $userMenuActive ? 'active' : '' }}">
                     <i class="ri-user-line"></i>
                     <span>User</span>
                     <span class="menu-arrow"></span>
                 </a>
-                <div class="collapse" id="sidebarPages1">
+                <div class="collapse {{ $userMenuActive ? 'show' : '' }}" id="sidebarPages1">
                     <ul class="side-nav-second-level">
                         <li>
-                            <a href="{{ route('roles') }}">Roles</a>
+                            <a href="{{ route('roles') }}" class="{{ request()->routeIs('roles') ? 'active' : '' }}">Roles</a>
                         </li>
                         <li>
-                            <a href="{{ route('users.add') }}">Add User</a>
+                            <a href="{{ route('users.add') }}" class="{{ request()->routeIs('users.add') ? 'active' : '' }}">Add User</a>
                         </li>
                         <li>
-                            <a href="{{ route('permissions') }}" class="text-danger bg-light"><i
+                            <a href="{{ route('permissions') }}" class="text-danger bg-light {{ request()->routeIs('permissions') ? 'active' : '' }}"><i
                                     class="ri-error-warning-line text-danger"></i> Reset Permission</a>
                         </li>
                         <li>
-                            <a href="{{ route('permissions.view') }}">View Permissions</a>
+                            <a href="{{ route('permissions.view') }}" class="{{ request()->routeIs('permissions.view') ? 'active' : '' }}">View Permissions</a>
                         </li>
+                        @if(\App\Support\AttendanceAccess::canMonitor())
+                        <li>
+                            <a href="{{ route('attendance.summary') }}" class="{{ request()->routeIs('attendance.summary*') || request()->routeIs('attendance.monitor*') || request()->routeIs('attendance.employee') ? 'active' : '' }}">
+                                <i class="ri-group-line me-2"></i>Team Monitoring
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ route('attendance.payroll.index') }}" class="{{ request()->routeIs('attendance.payroll*') ? 'active' : '' }}">
+                                <i class="ri-wallet-3-line me-2"></i>Payroll
+                            </a>
+                        </li>
+                        @endif
+                        @if(\App\Support\AttendanceAccess::canSeeMenu())
+                        <li>
+                            <a href="{{ route('attendance.agent') }}" class="{{ request()->routeIs('attendance.agent') ? 'active' : '' }}">
+                                <i class="ri-computer-line me-2"></i>Desktop Agent
+                            </a>
+                        </li>
+                        @endif
                     </ul>
                 </div>
 

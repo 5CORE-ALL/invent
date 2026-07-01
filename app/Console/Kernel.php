@@ -1537,6 +1537,14 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        $schedule->command('attendance:analyze')
+            ->dailyAt('23:30')
+            ->timezone('Asia/Kolkata')
+            ->name('attendance-daily-analysis')
+            ->withoutOverlapping(120)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         /*
         |--------------------------------------------------------------------------
         | DEDICATED QUEUE WORKERS (permanent watchdog)
