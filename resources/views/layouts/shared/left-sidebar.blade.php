@@ -3308,7 +3308,6 @@
                         <li>
                             <a href="{{ route('permissions.view') }}" class="{{ request()->routeIs('permissions.view') ? 'active' : '' }}">View Permissions</a>
                         </li>
-                        @if(\App\Support\AttendanceAccess::canMonitor())
                         <li>
                             <a href="{{ route('attendance.summary') }}" class="{{ request()->routeIs('attendance.summary*') || request()->routeIs('attendance.monitor*') || request()->routeIs('attendance.employee') ? 'active' : '' }}">
                                 <i class="ri-group-line me-2"></i>Team Monitoring
@@ -3319,14 +3318,11 @@
                                 <i class="ri-wallet-3-line me-2"></i>Payroll
                             </a>
                         </li>
-                        @endif
-                        @if(\App\Support\AttendanceAccess::canSeeMenu())
                         <li>
                             <a href="{{ route('attendance.agent') }}" class="{{ request()->routeIs('attendance.agent') ? 'active' : '' }}">
                                 <i class="ri-computer-line me-2"></i>Desktop Agent
                             </a>
                         </li>
-                        @endif
                     </ul>
                 </div>
 
