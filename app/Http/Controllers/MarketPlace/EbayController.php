@@ -11,6 +11,7 @@ use App\Http\Controllers\Controller;
 use App\Models\MarketplacePercentage;
 use Illuminate\Support\Facades\Cache;
 use App\Http\Controllers\ApiController;
+use App\Models\LmpCompetitorHistory;
 use App\Models\ChannelMaster;
 use App\Models\ADVMastersData;
 use App\Models\EbayPriorityReport;
@@ -19,6 +20,7 @@ use App\Models\EbaySkuDailyData;
 use App\Models\AmazonDatasheet;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Auth;
 use App\Models\EbayListingStatus;
 use App\Services\EbayApiService;
 use App\Services\EbayPushService;
@@ -3207,6 +3209,21 @@ class EbayController extends Controller
                 'product_title' => $validated['product_title'] ?? null,
                 'image' => $validated['image'] ?? null,
             ]);
+
+            $parent = ProductMaster::query()
+                ->whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper(trim($sku))])
+                ->value('parent');
+
+            LmpCompetitorHistory::logAction(
+                sku: $sku,
+                action: 'added',
+                itemId: $itemId,
+                competitorId: (int) $lmp->id,
+                productTitle: $validated['product_title'] ?? null,
+                totalPrice: $totalPrice,
+                parent: $parent ? (string) $parent : null,
+                updatedBy: Auth::user()?->name ?? 'N/A',
+            );
             
             DB::commit();
             
@@ -3283,6 +3300,21 @@ class EbayController extends Controller
             $sku = $lmp->sku;
             $itemId = $lmp->item_id;
             $totalPrice = $lmp->total_price;
+
+            $parent = ProductMaster::query()
+                ->whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper(trim((string) $sku))])
+                ->value('parent');
+
+            LmpCompetitorHistory::logAction(
+                sku: (string) $sku,
+                action: 'deleted',
+                itemId: (string) $itemId,
+                competitorId: (int) $lmp->id,
+                productTitle: $lmp->product_title,
+                totalPrice: is_numeric($totalPrice) ? (float) $totalPrice : null,
+                parent: $parent ? (string) $parent : null,
+                updatedBy: Auth::user()?->name ?? 'N/A',
+            );
             
             $lmp->delete();
             

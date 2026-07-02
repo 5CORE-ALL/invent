@@ -34,14 +34,18 @@ use App\Models\AmazonSkuCompetitor;
 use App\Models\FbaPrice;
 use App\Models\FbaTable;
 use App\Services\FbaInventoryService;
+use App\Services\LmpSkuGroupService;
 
 class OverallAmazonController extends Controller
 {
     protected $apiController;
     protected $amazonDataService;
 
-    public function __construct(ApiController $apiController, AmazonDataService $amazonDataService)
-    {
+    public function __construct(
+        ApiController $apiController,
+        AmazonDataService $amazonDataService,
+        private LmpSkuGroupService $lmpSkuGroupService
+    ) {
         $this->apiController = $apiController;
         $this->amazonDataService = $amazonDataService;
     }
@@ -138,6 +142,8 @@ class OverallAmazonController extends Controller
             ->get();
 
         $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
+
+        $this->lmpSkuGroupService->prepareForSkus($skus);
 
         // Build SKU variants for amazon_datsheets lookup: as-is, nbsp→space, and space-removed (so "PS 01 WH" and "PS01WH" both match)
         $cleanedSkus = array_map(function ($s) {
@@ -490,14 +496,22 @@ class OverallAmazonController extends Controller
             $row['js_comp_manual_link'] = null;
             $row['bid_cap'] = null;
 
-            // LMP data - lowest entry plus all competitors
-            $skuLookupKey = AmazonSkuCompetitor::normalizeSkuKey($pm->sku);
-            $lmpEntries = $lmpDetailsLookup->get($skuLookupKey);
-            if (!$lmpEntries instanceof \Illuminate\Support\Collection) {
-                $lmpEntries = collect();
+            // LMP data — lowest entry plus all competitors (merged across Sku Link LMP group)
+            $linkedLmpSkus = $this->linkedLmpSkusForProduct((string) $pm->sku);
+            $row['linked_lmp_skus'] = $linkedLmpSkus;
+
+            $allLmpEntries = collect();
+            foreach ($linkedLmpSkus as $linkedSku) {
+                $lookupKey = AmazonSkuCompetitor::normalizeSkuKey($linkedSku);
+                $entries = $lmpDetailsLookup->get($lookupKey);
+                if ($entries instanceof \Illuminate\Support\Collection) {
+                    $allLmpEntries = $allLmpEntries->merge($entries);
+                }
             }
 
-            $lowestLmp = $lmpLowestLookup->get($skuLookupKey);
+            $allLmpEntries = AmazonSkuCompetitor::dedupeByAsin($allLmpEntries);
+            $lowestLmp = $allLmpEntries->first();
+
             $row['lmp_price'] = ($lowestLmp && isset($lowestLmp->price))
                 ? (is_numeric($lowestLmp->price) ? floatval($lowestLmp->price) : null)
                 : null;
@@ -516,7 +530,7 @@ class OverallAmazonController extends Controller
             $row['lmp_buy_box_owner'] = $lowestLmp->buy_box_owner ?? null;
             $row['lmp_seller_type'] = $lowestLmp->seller_type_js ?? null;
             
-            $row['lmp_entries'] = $lmpEntries
+            $row['lmp_entries'] = $allLmpEntries
                 ->map(function ($entry) {
                     return [
                         'id' => $entry->id,
@@ -544,7 +558,7 @@ class OverallAmazonController extends Controller
                     ];
                 })
                 ->toArray();
-            $row['lmp_entries_total'] = $lmpEntries->count();
+            $row['lmp_entries_total'] = $allLmpEntries->count();
 
             // GPFT% Formula = ((price × 0.80 - ship - lp) / price) × 100
             $row['GPFT%'] = $price > 0
@@ -2884,6 +2898,43 @@ class OverallAmazonController extends Controller
     }
 
     /**
+     * @return list<string>
+     */
+    private function linkedLmpSkusForProduct(string $sku): array
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return [];
+        }
+
+        $group = $this->lmpSkuGroupService->groupContaining($sku);
+
+        return $this->normalizeLinkedSkuGroup($group !== [] ? $group : [$sku]);
+    }
+
+    /**
+     * @param  list<string>  $group
+     * @return list<string>
+     */
+    private function normalizeLinkedSkuGroup(array $group): array
+    {
+        $seen = [];
+        $normalized = [];
+
+        foreach ($group as $memberSku) {
+            $display = trim((string) $memberSku);
+            $norm = strtoupper($display);
+            if ($norm === '' || isset($seen[$norm])) {
+                continue;
+            }
+            $seen[$norm] = true;
+            $normalized[] = $display;
+        }
+
+        return $normalized;
+    }
+
+    /**
      * Normalize a competitor delivery value (array | json string | string) into a
      * short display string. Returns null when there is nothing to show.
      */
@@ -2906,13 +2957,22 @@ class OverallAmazonController extends Controller
     {
         try {
             $sku = trim($request->input('sku'));
+            $linkedSkus = $request->input('linked_lmp_skus', []);
             
             if (!$sku) {
                 return response()->json(['error' => 'SKU is required'], 400);
             }
-            
-            // Use 'amazon' to match database marketplace value
-            $competitors = AmazonSkuCompetitor::getCompetitorsForSku($sku, 'amazon');
+
+            if (! is_array($linkedSkus)) {
+                $linkedSkus = [];
+            }
+
+            $groupSkus = array_values(array_unique(array_filter(array_map(
+                fn ($value) => trim((string) $value),
+                array_merge([$sku], $linkedSkus)
+            ))));
+
+            $competitors = AmazonSkuCompetitor::getCompetitorsForSkus($groupSkus, 'amazon');
             
             $lowestPrice = $competitors->first();
             

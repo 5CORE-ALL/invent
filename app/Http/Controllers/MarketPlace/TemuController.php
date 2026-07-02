@@ -48,6 +48,7 @@ use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Carbon\Carbon;
 use App\Models\AmazonChannelSummary;
 use App\Support\TemuGoodsIdHelper;
+use App\Services\LmpSkuGroupService;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\RichText\RichText;
 
@@ -55,8 +56,10 @@ class TemuController extends Controller
 {
     protected $apiController;
 
-    public function __construct(ApiController $apiController)
-    {
+    public function __construct(
+        ApiController $apiController,
+        private LmpSkuGroupService $lmpSkuGroupService
+    ) {
         $this->apiController = $apiController;
     }
     public function temuView(Request $request)
@@ -2917,6 +2920,8 @@ class TemuController extends Controller
                 ->values()
                 ->all();
 
+            $this->lmpSkuGroupService->prepareForSkus($skus);
+
             // Helper function to normalize SKU for matching
             $normalizeSku = function($sku) {
                 $sku = strtoupper(trim($sku));
@@ -3557,22 +3562,17 @@ class TemuController extends Controller
                     $missing = '';
                 }
 
-                // LMP entries from Temu LMP table (array of {price, link}); first price used for lmp column display
-                $temuLmpRow = $temuLmpByNormalizedSku[$normalizeSku($sku)] ?? null;
+                // LMP entries merged across Sku Link LMP group (array of {price, link})
+                $linkedLmpSkus = $this->linkedLmpSkusForProduct($sku);
                 $lmpEntries = [];
-                if ($temuLmpRow) {
-                    $entries = $temuLmpRow->lmp_entries;
-                    if (is_array($entries) && count($entries) > 0) {
-                        $lmpEntries = $entries;
-                    } else {
-                        if ($temuLmpRow->lmp !== null || $temuLmpRow->lmp_link) {
-                            $lmpEntries[] = ['price' => $temuLmpRow->lmp, 'link' => $temuLmpRow->lmp_link];
-                        }
-                        if ($temuLmpRow->lmp_2 !== null || $temuLmpRow->lmp_link_2) {
-                            $lmpEntries[] = ['price' => $temuLmpRow->lmp_2, 'link' => $temuLmpRow->lmp_link_2];
-                        }
+                foreach ($linkedLmpSkus as $linkedSku) {
+                    $temuLmpRow = $temuLmpByNormalizedSku[$normalizeSku($linkedSku)] ?? null;
+                    if ($temuLmpRow) {
+                        $lmpEntries = array_merge($lmpEntries, $this->extractTemuLmpEntries($temuLmpRow));
                     }
                 }
+                $lmpEntries = $this->dedupeTemuLmpEntries($lmpEntries);
+                $temuLmpRow = $temuLmpByNormalizedSku[$normalizeSku($sku)] ?? null;
                 $prices = array_values(array_filter(array_map(function ($e) {
                     $p = $e['price'] ?? null;
                     return $p !== null && $p !== '' ? (float) $p : null;
@@ -3666,6 +3666,7 @@ class TemuController extends Controller
                     'lmp' => $lmp,
                     'lmp_link' => $lmp_link,
                     'lmp_entries' => $lmpEntries,
+                    'linked_lmp_skus' => $linkedLmpSkus,
                 ];
             });
 
@@ -5938,6 +5939,98 @@ class TemuController extends Controller
             // Don't break the main response if summary save fails
             Log::error('Error saving daily Temu summary: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function linkedLmpSkusForProduct(string $sku): array
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return [];
+        }
+
+        $group = $this->lmpSkuGroupService->groupContaining($sku);
+
+        return $this->normalizeLinkedSkuGroup($group !== [] ? $group : [$sku]);
+    }
+
+    /**
+     * @param  list<string>  $group
+     * @return list<string>
+     */
+    private function normalizeLinkedSkuGroup(array $group): array
+    {
+        $seen = [];
+        $normalized = [];
+
+        foreach ($group as $memberSku) {
+            $display = trim((string) $memberSku);
+            $norm = strtoupper($display);
+            if ($norm === '' || isset($seen[$norm])) {
+                continue;
+            }
+            $seen[$norm] = true;
+            $normalized[] = $display;
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * @return list<array{price: mixed, link: mixed}>
+     */
+    private function extractTemuLmpEntries(?TemuLmp $temuLmpRow): array
+    {
+        if (!$temuLmpRow) {
+            return [];
+        }
+
+        $entries = $temuLmpRow->lmp_entries;
+        if (is_array($entries) && count($entries) > 0) {
+            return $entries;
+        }
+
+        $lmpEntries = [];
+        if ($temuLmpRow->lmp !== null || $temuLmpRow->lmp_link) {
+            $lmpEntries[] = ['price' => $temuLmpRow->lmp, 'link' => $temuLmpRow->lmp_link];
+        }
+        if ($temuLmpRow->lmp_2 !== null || $temuLmpRow->lmp_link_2) {
+            $lmpEntries[] = ['price' => $temuLmpRow->lmp_2, 'link' => $temuLmpRow->lmp_link_2];
+        }
+
+        return $lmpEntries;
+    }
+
+    /**
+     * @param  list<array{price: mixed, link: mixed}>  $entries
+     * @return list<array{price: mixed, link: mixed}>
+     */
+    private function dedupeTemuLmpEntries(array $entries): array
+    {
+        $seen = [];
+        $out = [];
+
+        foreach ($entries as $entry) {
+            $price = $entry['price'] ?? null;
+            $link = strtoupper(trim((string) ($entry['link'] ?? '')));
+            $key = (string) $price . '|' . $link;
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $out[] = $entry;
+        }
+
+        usort($out, function ($a, $b) {
+            $pa = ($a['price'] ?? null) !== null && $a['price'] !== '' ? (float) $a['price'] : PHP_FLOAT_MAX;
+            $pb = ($b['price'] ?? null) !== null && $b['price'] !== '' ? (float) $b['price'] : PHP_FLOAT_MAX;
+
+            return $pa <=> $pb;
+        });
+
+        return $out;
     }
 
     /**

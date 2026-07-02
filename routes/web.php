@@ -255,6 +255,7 @@ use App\Http\Controllers\ProductMaster\ToOrderAnalysisController;
 use App\Http\Controllers\PurchaseMaster\CategoryController;
 use App\Http\Controllers\PurchaseMaster\ChinaLoadController;
 use App\Http\Controllers\PurchaseMaster\ComparisonController;
+use App\Http\Controllers\PurchaseMaster\SkuLinkLmpController;
 use App\Http\Controllers\PurchaseMaster\ClaimReimbursementController;
 use App\Http\Controllers\PurchaseMaster\ContainerPlanningController;
 use App\Http\Controllers\PurchaseMaster\InstructionsItemPkgController;
@@ -4275,6 +4276,36 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/supplier/{supplierName}', 'getSupplierRemarks')->name('follow.up.history.supplier.remarks');
         Route::post('/store', 'store')->name('follow.up.history.store');
         Route::delete('/delete/{id}', 'destroy')->name('follow.up.history.delete');
+    });
+
+    // SKU Link LMP
+    Route::controller(SkuLinkLmpController::class)->prefix('purchase-master/sku-link-lmp')->group(function () {
+        Route::get('/', 'index')->name('sku.link.lmp.index');
+        Route::get('/data', 'getData')->name('sku.link.lmp.data');
+        Route::get('/parents', 'getParents')->name('sku.link.lmp.parents');
+        Route::get('/lmp-data', 'getLmpData')->name('sku.link.lmp.lmp-data');
+        Route::post('/linked-skus/add', 'addLinkedSku')->name('sku.link.lmp.linked-skus.add');
+        Route::post('/linked-skus/bulk-link', 'bulkLinkSkus')->name('sku.link.lmp.linked-skus.bulk-link');
+        Route::post('/linked-skus/remove', 'removeLinkedSku')->name('sku.link.lmp.linked-skus.remove');
+        Route::post('/save-m', 'saveM')->name('sku.link.lmp.save-m');
+        Route::post('/save-m-bulk', 'bulkSaveM')->name('sku.link.lmp.save-m-bulk');
+        Route::get('/filtered-skus', 'getFilteredSkus')->name('sku.link.lmp.filtered-skus');
+        Route::get('/history', 'getHistory')->name('sku.link.lmp.history');
+    });
+
+    // Legacy alias (old Link SKU path)
+    Route::controller(SkuLinkLmpController::class)->prefix('purchase-master/link-sku')->group(function () {
+        Route::get('/', 'index')->name('link.sku.index');
+        Route::get('/data', 'getData')->name('link.sku.data');
+        Route::get('/parents', 'getParents')->name('link.sku.parents');
+        Route::get('/lmp-data', 'getLmpData')->name('link.sku.lmp-data');
+        Route::post('/linked-skus/add', 'addLinkedSku')->name('link.sku.linked-skus.add');
+        Route::post('/linked-skus/bulk-link', 'bulkLinkSkus')->name('link.sku.linked-skus.bulk-link');
+        Route::post('/linked-skus/remove', 'removeLinkedSku')->name('link.sku.linked-skus.remove');
+        Route::post('/save-m', 'saveM')->name('link.sku.save-m');
+        Route::post('/save-m-bulk', 'bulkSaveM')->name('link.sku.save-m-bulk');
+        Route::get('/filtered-skus', 'getFilteredSkus')->name('link.sku.filtered-skus');
+        Route::get('/history', 'getHistory')->name('link.sku.history');
     });
 
     // Comparison

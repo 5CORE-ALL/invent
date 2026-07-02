@@ -111,4 +111,39 @@ class AmazonSkuCompetitor extends Model
             ->orderByNumericPrice('asc')
             ->get();
     }
+
+    /**
+     * Dedupe competitors by ASIN, keeping lowest price first.
+     */
+    public static function dedupeByAsin(iterable $competitors): \Illuminate\Support\Collection
+    {
+        $seen = [];
+        $unique = [];
+
+        foreach ($competitors as $competitor) {
+            $asin = strtoupper(trim((string) ($competitor->asin ?? '')));
+            $key = $asin !== '' ? $asin : 'id:' . ($competitor->id ?? spl_object_id($competitor));
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $unique[] = $competitor;
+        }
+
+        return self::sortCollectionByNumericPrice($unique);
+    }
+
+    /**
+     * @param  list<string>  $skus
+     */
+    public static function getCompetitorsForSkus(array $skus, string $marketplace = 'amazon'): \Illuminate\Support\Collection
+    {
+        $competitors = collect();
+
+        foreach ($skus as $sku) {
+            $competitors = $competitors->merge(self::getCompetitorsForSku($sku, $marketplace));
+        }
+
+        return self::dedupeByAsin($competitors);
+    }
 }

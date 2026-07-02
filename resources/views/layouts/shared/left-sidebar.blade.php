@@ -3033,6 +3033,9 @@
                             <a href="{{ route('comparison.index') }}">Comparison</a>
                         </li>
                         <li>
+                            <a href="{{ route('sku.link.lmp.index') }}">SKU Link LMP</a>
+                        </li>
+                        <li>
                             <a href="{{ route('ready.to.ship') }}">Ready To Ship</a>
                         </li>
                         <li>

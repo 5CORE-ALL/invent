@@ -35,5 +35,7 @@ return [
         'quality.enhance' => 'quality_enhance',
         'follow.up.history' => 'follow_up_history',
         'comparison.index' => 'comparison',
+        'sku.link.lmp.index' => 'sku_link_lmp',
+        'link.sku.index' => 'sku_link_lmp',
     ],
 ];

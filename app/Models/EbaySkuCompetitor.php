@@ -174,4 +174,35 @@ class EbaySkuCompetitor extends Model
             'lmp_entries_total' => 0,
         ];
     }
+
+    /**
+     * Merge competitor rows from multiple SKUs, keeping one row per eBay item_id.
+     *
+     * @param  iterable<mixed>  $competitors
+     */
+    public static function dedupeByItemId(iterable $competitors): \Illuminate\Support\Collection
+    {
+        $byItemId = [];
+
+        foreach ($competitors as $competitor) {
+            $itemId = strtolower(trim((string) ($competitor->item_id ?? '')));
+            $key = $itemId !== '' ? 'item:'.$itemId : 'id:'.(string) ($competitor->id ?? spl_object_id($competitor));
+
+            if (! isset($byItemId[$key])) {
+                $byItemId[$key] = $competitor;
+                continue;
+            }
+
+            $existingPrice = (float) ($byItemId[$key]->total_price ?? 0);
+            $candidatePrice = (float) ($competitor->total_price ?? 0);
+
+            if ($candidatePrice > 0 && ($existingPrice <= 0 || $candidatePrice < $existingPrice)) {
+                $byItemId[$key] = $competitor;
+            }
+        }
+
+        return collect(array_values($byItemId))
+            ->sortBy(fn ($entry) => (float) ($entry->total_price ?? 0))
+            ->values();
+    }
 }
