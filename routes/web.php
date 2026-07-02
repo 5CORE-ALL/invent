@@ -1853,6 +1853,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         ->name('customer.care.dispatch.issues.list.update');
     Route::patch('/customer-care/all-issues/issues/{id}/claim-filed', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'updateClaimFiled'])
         ->name('customer.care.dispatch.issues.list.patch.claim.filed');
+    Route::patch('/customer-care/all-issues/issues/{id}/claimable', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'updateClaimable'])
+        ->name('customer.care.dispatch.issues.list.patch.claimable');
     Route::patch('/customer-care/all-issues/issues/{id}/amp-usd', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'updateAmpUsd'])
         ->name('customer.care.dispatch.issues.list.patch.amp.usd');
     Route::patch('/customer-care/all-issues/issues/{id}/amt-rec', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'updateAmtRec'])

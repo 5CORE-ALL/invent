@@ -44,6 +44,10 @@
         $extraClaimColumns[] = 'issue_carrier';
         $extraClaimSample[]  = 'USPS';
     }
+    if ($showClaimableColumn ?? false) {
+        $extraClaimColumns[] = 'claimable';
+        $extraClaimSample[]  = 'yes';
+    }
     if ($showClaimFiledColumn ?? false) {
         $extraClaimColumns[] = 'claim_filed';
         $extraClaimSample[]  = 'no'; // yes / no
@@ -155,6 +159,82 @@
             color: #115e59;
             background: rgba(13, 148, 136, 0.12);
             border-radius: 4px;
+        }
+
+        /* Row history column: purple clock button (read-only audit modal). */
+        .qc-row-history-btn {
+            border: none;
+            background: transparent;
+            padding: 1px 4px;
+            cursor: pointer;
+            color: #7c3aed;
+        }
+        .qc-row-history-btn:hover {
+            color: #5b21b6;
+            background: rgba(124, 58, 237, 0.12);
+            border-radius: 4px;
+        }
+
+        /* Row history modal — compact table of edit events for one issue. */
+        #rowHistoryModal .ai-history-table-wrap {
+            border: 1px solid #e5e7eb;
+            border-radius: 0.5rem;
+            overflow: auto;
+            background: #fff;
+        }
+        #rowHistoryModal table.ai-history-table {
+            width: 100%;
+            margin-bottom: 0;
+            font-size: 0.78rem;
+            border-collapse: separate;
+            border-spacing: 0;
+        }
+        #rowHistoryModal table.ai-history-table thead th {
+            position: sticky;
+            top: 0;
+            z-index: 1;
+            background: #f8fafc;
+            color: #475569;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            font-size: 0.68rem;
+            padding: 0.45rem 0.55rem;
+            border-bottom: 1px solid #e5e7eb;
+            white-space: nowrap;
+        }
+        #rowHistoryModal table.ai-history-table tbody td {
+            padding: 0.42rem 0.55rem;
+            border-bottom: 1px solid #f3f4f6;
+            vertical-align: top;
+            max-width: 220px;
+            word-break: break-word;
+        }
+        #rowHistoryModal table.ai-history-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+        #rowHistoryModal table.ai-history-table tbody td.empty {
+            color: #9ca3af;
+        }
+        #rowHistoryModal .ai-history-badge {
+            display: inline-block;
+            padding: 0.15rem 0.45rem;
+            border-radius: 999px;
+            font-size: 0.68rem;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        #rowHistoryModal .ai-history-badge.event-created  { background: #dcfce7; color: #166534; }
+        #rowHistoryModal .ai-history-badge.event-updated  { background: #dbeafe; color: #1e40af; }
+        #rowHistoryModal .ai-history-badge.event-archived { background: #fee2e2; color: #991b1b; }
+        #rowHistoryModal .ai-history-badge.event-default  { background: #f3f4f6; color: #374151; }
+        #rowHistoryModal .ai-history-empty {
+            text-align: center;
+            color: #6b7280;
+            padding: 2rem 1rem;
+        }
+        #rowHistoryModal .modal-dialog {
+            max-width: min(960px, 96vw);
         }
 
         /* Read-only "Details" modal grid */
@@ -418,6 +498,30 @@
         }
 
         .claim-filed-dot--on {
+            background: #198754;
+        }
+
+        .orders-hold-table th.orders-hold-col-claimable,
+        .orders-hold-table td.orders-hold-col-claimable {
+            width: 1%;
+            min-width: 2.75rem;
+            max-width: 3.75rem;
+            vertical-align: middle;
+        }
+
+        .claimable-dot {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            line-height: 0;
+        }
+
+        .claimable-dot--off {
+            background: #dc3545;
+        }
+
+        .claimable-dot--on {
             background: #198754;
         }
 
@@ -1210,16 +1314,21 @@
                                     <th
                                         class="orders-hold-col-action @if ($showDispatchExtras ?? false) dispatch-action-col @endif">
                                         Action</th>
+                                    @if (($showCarrierColumn ?? false) && ($carrierColumnAfterAction ?? false))
+                                        <th class="orders-hold-col-carrier">Carrier</th>
+                                    @endif
                                     {{-- Read-only "view all column data" magnifier; opens a modal
                                          showing every relevant field for the row. --}}
                                     @if ($showDetailsColumn ?? false)
                                         <th class="orders-hold-col-action text-center">Details</th>
                                     @endif
-                                    {{-- Carrier / Tracking / Track R / Img 1 / Img 2 / Link
-                                         can be hidden as a group via $hideCarrierTrackingMediaColumns
-                                         — used by Carrier and Claim / Carrier Scan Issues, where
-                                         this data is reachable through the Details modal. --}}
-                                    @if (($showCarrierColumn ?? false) && !($hideCarrierTrackingMediaColumns ?? false))
+                                    @if ($showRowHistoryColumn ?? false)
+                                        <th class="orders-hold-col-action text-center">History</th>
+                                    @endif
+                                    {{-- Carrier column stays visible when $showCarrierColumn is set.
+                                         Tracking / Track R / Img / Link can be hidden as a group
+                                         via $hideCarrierTrackingMediaColumns (Carrier boards). --}}
+                                    @if (($showCarrierColumn ?? false) && !($carrierColumnAfterAction ?? false))
                                         <th class="orders-hold-col-carrier">Carrier</th>
                                     @endif
                                     @if (($showDispatchExtras ?? false) && !($hideCarrierTrackingMediaColumns ?? false))
@@ -1236,6 +1345,9 @@
                                     @if ($createdAtColumnAfterTrack ?? false)
                                         @if (!($mergeCreatedAtIntoCreatedBy ?? false))
                                             <th class="orders-hold-col-created-at">Created At</th>
+                                        @endif
+                                        @if ($showClaimableColumn ?? false)
+                                            <th class="orders-hold-col-claimable text-center">Claim<br>able</th>
                                         @endif
                                         @if ($showClaimFiledColumn ?? false)
                                             <th class="orders-hold-col-claim-filed text-center">Claim<br>Filed</th>
@@ -1270,6 +1382,9 @@
                                         @if (!($mergeCreatedAtIntoCreatedBy ?? false))
                                             <th class="orders-hold-col-created-at">Created At</th>
                                         @endif
+                                        @if ($showClaimableColumn ?? false)
+                                            <th class="orders-hold-col-claimable text-center">Claim<br>able</th>
+                                        @endif
                                         @if ($showClaimFiledColumn ?? false)
                                             <th class="orders-hold-col-claim-filed text-center">Claim<br>Filed</th>
                                         @endif
@@ -1287,7 +1402,7 @@
                             </thead>
                             <tbody id="hold_issue_table_body">
                                 <tr id="hold_issue_empty_row">
-                                    <td colspan="{{ ($showDispatchExtras ?? false ? 22 : ($showOrderIdField ?? false ? 17 : 16)) - ($hideDepartmentColumnAndFilter ?? false ? 1 : 0) - ($hideRootCauseAndInstructionsCtnColumns ?? false ? 3 : 0) + ($showClaimFiledColumn ?? false ? 1 : 0) + ($showAmpUsdColumn ?? false ? 1 : 0) + ($showAmtRecColumn ?? false ? 1 : 0) + ($showClaimReceivedColumn ?? false ? 1 : 0) + ($showCarrierColumn ?? false ? 1 : 0) + ($showDepartmentColumnAfterCreatedBy ?? false ? 1 : 0) + ($showDetailsColumn ?? false ? 1 : 0) - ($hideCarrierTrackingMediaColumns ?? false ? (($showDispatchExtras ?? false ? 5 : 1) + ($showCarrierColumn ?? false ? 1 : 0)) : 0) - ($mergeCreatedAtIntoCreatedBy ?? false ? 1 : 0) }}"
+                                    <td colspan="{{ ($showDispatchExtras ?? false ? 22 : ($showOrderIdField ?? false ? 17 : 16)) - ($hideDepartmentColumnAndFilter ?? false ? 1 : 0) - ($hideRootCauseAndInstructionsCtnColumns ?? false ? 3 : 0) + ($showClaimableColumn ?? false ? 1 : 0) + ($showClaimFiledColumn ?? false ? 1 : 0) + ($showAmpUsdColumn ?? false ? 1 : 0) + ($showAmtRecColumn ?? false ? 1 : 0) + ($showClaimReceivedColumn ?? false ? 1 : 0) + ($showCarrierColumn ?? false ? 1 : 0) + ($showDepartmentColumnAfterCreatedBy ?? false ? 1 : 0) + ($showDetailsColumn ?? false ? 1 : 0) + ($showRowHistoryColumn ?? false ? 1 : 0) - ($hideCarrierTrackingMediaColumns ?? false ? ($showDispatchExtras ?? false ? 5 : 1) : 0) - ($mergeCreatedAtIntoCreatedBy ?? false ? 1 : 0) }}"
                                         class="text-center text-muted py-4">No records found.</td>
                                 </tr>
                             </tbody>
@@ -1320,6 +1435,9 @@
                                     <th class="orders-hold-col-action">Action</th>
                                     @if ($showDetailsColumn ?? false)
                                         <th class="orders-hold-col-action text-center">Details</th>
+                                    @endif
+                                    @if ($showRowHistoryColumn ?? false)
+                                        <th class="orders-hold-col-action text-center">History</th>
                                     @endif
                                     @if (($showDispatchExtras ?? false) && !($hideCarrierTrackingMediaColumns ?? false))
                                         <th class="orders-hold-col-action">Tracking</th>
@@ -1357,7 +1475,7 @@
                             </thead>
                             <tbody id="hold_issue_history_table_body">
                                 <tr id="hold_issue_history_empty_row">
-                                    <td colspan="{{ ($showOrderIdField ?? false ? 18 : 17) + ($showDispatchExtras ?? false ? 4 : 0) - ($hideDepartmentColumnAndFilter ?? false ? 1 : 0) - ($hideRootCauseAndInstructionsCtnColumns ?? false ? 3 : 0) + ($showDepartmentColumnAfterCreatedBy ?? false ? 1 : 0) + ($showDetailsColumn ?? false ? 1 : 0) - ($hideCarrierTrackingMediaColumns ?? false ? ($showDispatchExtras ?? false ? 5 : 1) : 0) - ($mergeCreatedAtIntoCreatedBy ?? false ? 1 : 0) }}"
+                                    <td colspan="{{ ($showOrderIdField ?? false ? 18 : 17) + ($showDispatchExtras ?? false ? 4 : 0) - ($hideDepartmentColumnAndFilter ?? false ? 1 : 0) - ($hideRootCauseAndInstructionsCtnColumns ?? false ? 3 : 0) + ($showDepartmentColumnAfterCreatedBy ?? false ? 1 : 0) + ($showDetailsColumn ?? false ? 1 : 0) + ($showRowHistoryColumn ?? false ? 1 : 0) - ($hideCarrierTrackingMediaColumns ?? false ? ($showDispatchExtras ?? false ? 5 : 1) : 0) - ($mergeCreatedAtIntoCreatedBy ?? false ? 1 : 0) }}"
                                         class="text-center text-muted py-4">No history found.</td>
                                 </tr>
                             </tbody>
@@ -1391,6 +1509,33 @@
         </div>
     @endif
 
+    @if ($showRowHistoryColumn ?? false)
+        {{-- Per-row edit history modal (audit log for one issue + dept-split siblings). --}}
+        <div class="modal fade" id="rowHistoryModal" tabindex="-1" aria-hidden="true" aria-labelledby="rowHistoryModalLabel">
+            <div class="modal-dialog modal-lg modal-dialog-scrollable">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="rowHistoryModalLabel">
+                            <i class="bi bi-clock-history me-2"></i>Issue history
+                            <span class="text-muted small ms-1" id="rowHistoryModalSubtitle"></span>
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body" id="rowHistoryModalBody">
+                        <div class="ai-history-empty">
+                            <div class="spinner-border spinner-border-sm" role="status"></div>
+                            <span class="ms-2">Loading history…</span>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <span class="text-muted small me-auto" id="rowHistoryModalCount"></span>
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    @endif
+
     {{-- ── Import CSV Modal ── --}}
     <div class="modal fade" id="importCsvModal" tabindex="-1" aria-labelledby="importCsvModalLabel"
         aria-hidden="true">
@@ -1417,6 +1562,7 @@
                                                                                 : 'sku, qty, order_qty, parent, marketplace_1,';
                         $csvClaimsTail = '';
                         if ($showCarrierColumn ?? false)        { $csvClaimsTail .= ', issue_carrier'; }
+                        if ($showClaimableColumn ?? false)      { $csvClaimsTail .= ', claimable'; }
                         if ($showClaimFiledColumn ?? false)     { $csvClaimsTail .= ', claim_filed'; }
                         if ($showAmpUsdColumn ?? false)         { $csvClaimsTail .= ', amp_usd'; }
                         if ($showAmtRecColumn ?? false)         { $csvClaimsTail .= ', amt_rec'; }
@@ -1432,7 +1578,7 @@
                         <code>{{ $csvSampleHeaders }}</code>
                     </p>
                     <p class="text-muted small mb-3">
-                        Required: <strong>sku</strong>, <strong>qty</strong>, <strong>issue</strong> (Root Cause Found),
+                        Required: <strong>sku</strong>, <strong>qty</strong>@if ($requireRootCauseFound ?? true), <strong>issue</strong> (Root Cause Found)@endif,
                         <strong>department</strong>. Use multiple departments separated by <strong>|</strong> or
                         <strong>,</strong> (e.g. <code>Dispatch|QC</code>). Other columns are optional.
                     </p>
@@ -1636,11 +1782,14 @@
                             @endif
 
                             <div class="col-md-6">
-                                <label for="hold_issue_text" class="form-label">Root Cause Found <span
-                                        class="text-danger">*</span></label>
+                                <label for="hold_issue_text" class="form-label">Root Cause Found
+                                    @if ($requireRootCauseFound ?? true)
+                                        <span class="text-danger">*</span>
+                                    @endif
+                                </label>
                                 <input type="text" class="form-control" id="hold_issue_text" name="issue"
                                     list="hold_issue_root_cause_found_datalist" placeholder="Type or select root cause..."
-                                    autocomplete="off" required>
+                                    autocomplete="off" @if ($requireRootCauseFound ?? true) required @endif>
                                 <datalist id="hold_issue_root_cause_found_datalist"></datalist>
                             </div>
 
@@ -1707,11 +1856,10 @@
                                         <option value="Dispatch" @selected(!empty($lockedDepartment ?? null))>Dispatch</option>
                                         <option value="Shipping">Shipping</option>
                                         <option value="Listing">Listing</option>
-                                        {{-- Display labels renamed to "Carrier Claim" / "Carrier Claim
-                                             Issues" while the `value=` payload stays the same so saved
-                                             rows and department filters continue to match. --}}
-                                        <option value="Carrier">Carrier Claim</option>
-                                        <option value="Carrier Issue">Carrier Claim Issues</option>
+                                        {{-- Display labels for carrier departments; `value=` stays the
+                                             same so saved rows and department filters continue to match. --}}
+                                        <option value="Carrier">Carrier Claims</option>
+                                        <option value="Carrier Issue">Carrier Scan Issue</option>
                                         <option value="Customer Care">Customer Care</option>
                                         <option value="Pricing">Pricing</option>
                                         <option value="QC">QC</option>
@@ -1884,6 +2032,10 @@
             const dropdownOptionsDeleteUrl = @json($dropdownOptionsDeleteUrl ?? route('customer.care.qc.and.packing.dropdown.options.delete'));
             const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
             const hideActionRemark = @json((bool) ($hideActionRemark ?? false));
+            const requireRootCauseFound = @json((bool) ($requireRootCauseFound ?? true));
+            const showRowHistoryColumn = @json((bool) ($showRowHistoryColumn ?? false));
+            const rowHistoryBaseUrl = @json($rowHistoryBaseUrl ?? url('/customer-care/all-issues/issues'));
+            const singleEntryIssueBoard = @json((bool) ($singleEntryIssueBoard ?? false));
 
             const skuInput = document.getElementById('hold_issue_sku');
             const skuDatalist = document.getElementById('hold_issue_sku_datalist');
@@ -1928,6 +2080,7 @@
             const hideDepartmentColumnAndFilter = @json((bool) ($hideDepartmentColumnAndFilter ?? false));
             const showDispatchExtras = @json((bool) ($showDispatchExtras ?? false));
             const showClaimFiledColumn = @json((bool) ($showClaimFiledColumn ?? false));
+            const showClaimableColumn = @json((bool) ($showClaimableColumn ?? false));
             const showAmpUsdColumn = @json((bool) ($showAmpUsdColumn ?? false));
             const showAmtRecColumn = @json((bool) ($showAmtRecColumn ?? false));
             const showClaimReceivedColumn = @json((bool) ($showClaimReceivedColumn ?? false));
@@ -1988,6 +2141,44 @@
                 return parseDepartmentList(r.department);
             }
 
+            function canonicalDepartmentValue(name) {
+                const t = String(name ?? '').trim();
+                const map = {
+                    'Carrier Claims': 'Carrier',
+                    'Carrier Scan Issue': 'Carrier Issue',
+                    'Carrier Scan Issues': 'Carrier Issue',
+                    'Carrier Claim Issues': 'Carrier Issue',
+                    'Carrier Claim': 'Carrier',
+                    'Carrier and Claim': 'Carrier',
+                    'Carriers Claims': 'Carrier',
+                };
+                return map[t] || t;
+            }
+
+            function rowDepartmentValues(r) {
+                return rowDepartments(r).map(canonicalDepartmentValue).filter(Boolean);
+            }
+
+            const DEPARTMENT_DISPLAY_LABELS = {
+                'Carrier': 'Carrier Claims',
+                'Carrier Issue': 'Carrier Scan Issue',
+                'Carrier and Claim': 'Carrier Claims',
+                'Carriers Claims': 'Carrier Claims',
+            };
+
+            function formatDepartmentLabel(name) {
+                const t = String(name ?? '').trim();
+                return DEPARTMENT_DISPLAY_LABELS[t] || t;
+            }
+
+            function formatDepartmentsDisplay(row) {
+                const raw = rowDepartmentValues(row);
+                const labels = raw.map(formatDepartmentLabel).filter(Boolean);
+                if (labels.length) return labels.join(', ');
+                const fallback = String(row?.department ?? '').trim();
+                return fallback ? formatDepartmentLabel(canonicalDepartmentValue(fallback)) : '—';
+            }
+
             function getDepartmentPayload() {
                 if (lockedDepartment) return [lockedDepartment];
                 if (!departmentInput) return [];
@@ -1996,7 +2187,7 @@
 
             function setDepartmentMultiSelect(record) {
                 if (!departmentInput) return;
-                const depts = rowDepartments(record);
+                const depts = rowDepartmentValues(record);
                 Array.from(departmentInput.options).forEach(o => {
                     o.selected = depts.includes(o.value);
                 });
@@ -2079,7 +2270,7 @@
                     r.c_action_1, r.c_action_1_remark,
                     r.issue, r.issue_remark,
                     r.marketplace_1, r.department, depts,
-                    r.amp_usd, r.amt_rec, r.total_loss,
+                    r.amp_usd, r.amt_rec, r.total_loss, r.amz_price, r.amz_loss,
                     r.created_by, r.close_note, r.event_type,
                     r.issue_link
                 ];
@@ -2182,6 +2373,70 @@
                 const el = document.createElement('div');
                 el.textContent = String(value ?? '');
                 return el.innerHTML;
+            }
+
+            // Loss $ — prefer Amazon listing price from amazon_datsheets (same
+            // as /customer-care/all-issues). Cell shows rounded unit price;
+            // hover tooltip shows price × qty = total loss.
+            function lossQtyForRow(row) {
+                const orderQty = row?.order_qty;
+                const qty = row?.qty;
+                if (orderQty != null && orderQty !== '' && !isNaN(parseFloat(orderQty)) && parseFloat(orderQty) > 0) {
+                    return parseFloat(orderQty);
+                }
+                if (qty != null && qty !== '' && !isNaN(parseFloat(qty)) && parseFloat(qty) > 0) {
+                    return parseFloat(qty);
+                }
+                return null;
+            }
+
+            function lossCellDisplay(row) {
+                const price = row?.amz_price;
+                if (price != null && price !== '' && !isNaN(parseFloat(price))) {
+                    return '$' + Math.round(Number(price)).toLocaleString();
+                }
+                const tl = row?.total_loss;
+                if (tl != null && tl !== '' && !isNaN(parseFloat(tl))) {
+                    return '$' + Math.round(parseFloat(tl)).toLocaleString();
+                }
+                return '—';
+            }
+
+            function lossCellTooltip(row) {
+                const price = row?.amz_price;
+                if (price == null || price === '' || isNaN(parseFloat(price))) {
+                    const tl = row?.total_loss;
+                    if (tl != null && tl !== '' && !isNaN(parseFloat(tl))) {
+                        return 'Loss $' + Number(tl).toFixed(2);
+                    }
+                    return 'No Amazon price for this SKU';
+                }
+                const loss = row?.amz_loss;
+                const lossQty = lossQtyForRow(row);
+                const parts = ['Amazon price $' + Number(price).toFixed(2)];
+                if (lossQty != null) {
+                    parts.push('× qty ' + lossQty);
+                }
+                if (loss != null && !isNaN(parseFloat(loss))) {
+                    parts.push('= total loss $' + Number(loss).toFixed(2));
+                }
+                return parts.join(' ');
+            }
+
+            function lossDetailsDisplay(row) {
+                const price = row?.amz_price;
+                const lossTotal = row?.amz_loss;
+                if (price != null && price !== '' && !isNaN(parseFloat(price))) {
+                    return '$' + Math.round(Number(price)).toLocaleString() +
+                        (lossTotal != null && !isNaN(parseFloat(lossTotal))
+                            ? '  (total loss $' + Math.round(Number(lossTotal)).toLocaleString() + ')'
+                            : '');
+                }
+                const tl = row?.total_loss;
+                if (tl != null && tl !== '' && !isNaN(parseFloat(tl))) {
+                    return '$' + Math.round(parseFloat(tl)).toLocaleString();
+                }
+                return '';
             }
 
             /**
@@ -2361,6 +2616,18 @@
                     'data-issue-id="' + escAttr(String(row.id)) + '" data-claim-filed="' + (filed ? '1' : '0') + '" ' +
                     'title="' + escAttr(filed ? 'Claim filed — click to mark as not filed' :
                         'Not filed — click when claim is filed') + '">' +
+                    '<span class="' + dotClass + '" aria-hidden="true"></span>' +
+                    '</button></td>';
+            }
+
+            function claimableCellHtml(row) {
+                const claimable = row.claimable !== false && row.claimable !== 0 && row.claimable !== '0';
+                const dotClass = claimable ? 'claimable-dot claimable-dot--on' : 'claimable-dot claimable-dot--off';
+                return '<td class="text-center orders-hold-col-claimable">' +
+                    '<button type="button" class="btn btn-link p-0 border-0 claimable-toggle" ' +
+                    'data-issue-id="' + escAttr(String(row.id)) + '" data-claimable="' + (claimable ? '1' : '0') +
+                    '" title="' + escAttr(claimable ? 'Claimable — click to mark as not claimable' :
+                        'Not claimable — click to mark as claimable') + '">' +
                     '<span class="' + dotClass + '" aria-hidden="true"></span>' +
                     '</button></td>';
             }
@@ -2595,6 +2862,44 @@
                     loadClaimsStats();
                 } catch (e) {
                     alert(e.message || 'Could not update claim status');
+                }
+            }
+
+            async function patchClaimableToggle(btn) {
+                const id = btn.getAttribute('data-issue-id');
+                const current = btn.getAttribute('data-claimable') === '1';
+                const next = !current;
+                try {
+                    const res = await fetch(recordsUpdateBaseUrl + '/' + encodeURIComponent(id) + '/claimable', {
+                        method: 'PATCH',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken,
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                        body: JSON.stringify({
+                            claimable: next
+                        }),
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok) {
+                        throw new Error(data.message || 'Update failed');
+                    }
+                    btn.setAttribute('data-claimable', next ? '1' : '0');
+                    const dot = btn.querySelector('.claimable-dot');
+                    if (dot) {
+                        dot.classList.toggle('claimable-dot--on', next);
+                        dot.classList.toggle('claimable-dot--off', !next);
+                    }
+                    btn.title = next ? 'Claimable — click to mark as not claimable' :
+                        'Not claimable — click to mark as claimable';
+                    const r = holdIssueRows.find(x => String(x.id) === String(id));
+                    if (r) {
+                        r.claimable = next;
+                    }
+                } catch (e) {
+                    alert(e.message || 'Could not update claimable status');
                 }
             }
 
@@ -2839,6 +3144,10 @@
                         v.forEach(d => fd.append('department[]', d));
                         continue;
                     }
+                    if (k === 'single_entry_board') {
+                        if (v) fd.append('single_entry_board', '1');
+                        continue;
+                    }
                     if (v === undefined || v === null) continue;
                     if (typeof v === 'object') continue;
                     fd.append(k, String(v));
@@ -2888,6 +3197,149 @@
                     '<button type="button" class="qc-details-btn" data-id="' + escAttr(id) +
                     '" title="View all column data for this row" aria-label="View details">' +
                     '<i class="bi bi-search"></i></button></td>';
+            }
+
+            function qcRowHistoryCellHtml(row) {
+                const id = row?.id != null ? String(row.id) : '';
+                return '<td class="orders-hold-col-action text-center">' +
+                    '<button type="button" class="qc-row-history-btn" data-id="' + escAttr(id) +
+                    '" title="View this issue\'s edit history" aria-label="View history">' +
+                    '<i class="bi bi-clock-history"></i></button></td>';
+            }
+
+            function rowHistoryBadge(eventType) {
+                const t = String(eventType || '').toLowerCase().trim();
+                let cls = 'event-default';
+                if (t === 'created') cls = 'event-created';
+                else if (t === 'updated') cls = 'event-updated';
+                else if (t === 'archived') cls = 'event-archived';
+                const label = t ? t.charAt(0).toUpperCase() + t.slice(1) : '—';
+                return '<span class="ai-history-badge ' + cls + '">' + escapeHtml(label) + '</span>';
+            }
+
+            function rowHistoryCell(raw) {
+                const t = String(raw ?? '').trim();
+                if (t === '') return '<td class="empty">—</td>';
+                return '<td>' + escapeHtml(t) + '</td>';
+            }
+
+            function renderRowHistoryBody(rows) {
+                if (!Array.isArray(rows) || rows.length === 0) {
+                    return '<div class="ai-history-empty">No history found for this issue.</div>';
+                }
+
+                const headers = [
+                    'When', 'Event', 'Ref', 'By', 'Dept',
+                    'Issue?', 'Action', 'Root Cause', 'RC Fixed',
+                    'QTY', 'MKT', 'Tracking', 'Track R', 'Close Note',
+                ];
+                const thead =
+                    '<thead><tr>' +
+                    headers.map(function(h) { return '<th>' + escapeHtml(h) + '</th>'; }).join('') +
+                    '</tr></thead>';
+
+                const tbody = '<tbody>' + rows.map(function(r) {
+                    const ref = r.issue_ref || (r.orders_on_hold_issue_id != null ? String(r.orders_on_hold_issue_id) : '');
+                    const deptList = (Array.isArray(r.departments) && r.departments.length)
+                        ? r.departments
+                        : parseDepartmentList(r.department);
+                    const depts = deptList.map(formatDepartmentLabel).join(', ');
+
+                    const action = String(r.action_1 || '').trim();
+                    const actionRemark = String(r.action_1_remark || '').trim();
+                    const actionDisplay = action
+                        ? (actionRemark ? action + ' — ' + actionRemark : action)
+                        : actionRemark;
+
+                    const rootCause = String(r.issue || '').trim();
+                    const rootCauseRemark = String(r.issue_remark || '').trim();
+                    const rootCauseDisplay = rootCause
+                        ? (rootCauseRemark ? rootCause + ' — ' + rootCauseRemark : rootCause)
+                        : rootCauseRemark;
+
+                    const ca = String(r.c_action_1 || '').trim();
+                    const car = String(r.c_action_1_remark || '').trim();
+                    const cActionDisplay = ca ? (car ? ca + ' — ' + car : ca) : car;
+
+                    const qty = (r.order_qty != null && r.order_qty !== '') ? r.order_qty : (r.qty || '');
+
+                    return '<tr>' +
+                        rowHistoryCell(r.logged_at_display) +
+                        '<td>' + rowHistoryBadge(r.event_type) + '</td>' +
+                        rowHistoryCell(ref) +
+                        rowHistoryCell(r.created_by) +
+                        rowHistoryCell(depts) +
+                        rowHistoryCell(r.what_happened) +
+                        rowHistoryCell(actionDisplay) +
+                        rowHistoryCell(rootCauseDisplay) +
+                        rowHistoryCell(cActionDisplay) +
+                        rowHistoryCell(qty) +
+                        rowHistoryCell(r.marketplace_1) +
+                        rowHistoryCell(r.tracking_number) +
+                        rowHistoryCell(r.replacement_tracking) +
+                        rowHistoryCell(r.close_note) +
+                        '</tr>';
+                }).join('') + '</tbody>';
+
+                return '<div class="ai-history-table-wrap"><table class="ai-history-table">' +
+                    thead + tbody + '</table></div>';
+            }
+
+            async function openRowHistoryModal(rowData) {
+                if (!showRowHistoryColumn || !rowData || rowData.id == null) return;
+                const id = rowData.id;
+
+                const subtitleParts = [];
+                if (rowData.sku) subtitleParts.push(String(rowData.sku));
+                if (rowData.order_number) subtitleParts.push('Ord #' + String(rowData.order_number));
+                subtitleParts.push('Row #' + String(id));
+                const subEl = document.getElementById('rowHistoryModalSubtitle');
+                if (subEl) subEl.textContent = subtitleParts.join('  ·  ');
+
+                const body = document.getElementById('rowHistoryModalBody');
+                if (body) {
+                    body.innerHTML =
+                        '<div class="ai-history-empty">' +
+                        '<div class="spinner-border spinner-border-sm" role="status"></div>' +
+                        '<span class="ms-2">Loading history…</span>' +
+                        '</div>';
+                }
+                const countEl = document.getElementById('rowHistoryModalCount');
+                if (countEl) countEl.textContent = '';
+
+                const el = document.getElementById('rowHistoryModal');
+                if (el) bootstrap.Modal.getOrCreateInstance(el).show();
+
+                try {
+                    const historyUrl = rowHistoryBaseUrl + '/' + encodeURIComponent(id) + '/history' +
+                        (singleEntryIssueBoard ? '?scope=row' : '');
+                    const res = await fetch(historyUrl, {
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                    });
+                    if (!res.ok) {
+                        throw new Error('HTTP ' + res.status);
+                    }
+                    const json = await res.json();
+                    const rows = Array.isArray(json?.data) ? json.data : [];
+                    const totalRaw = Number(json?.total_raw ?? rows.length);
+                    const hidden = Math.max(0, totalRaw - rows.length);
+                    if (body) body.innerHTML = renderRowHistoryBody(rows);
+                    if (countEl) {
+                        const base = rows.length === 1 ? '1 change' : (rows.length + ' changes');
+                        countEl.textContent = hidden > 0
+                            ? (base + '  ·  ' + hidden + ' duplicate ' + (hidden === 1 ? 'revision' : 'revisions') + ' hidden')
+                            : base;
+                    }
+                } catch (err) {
+                    if (body) {
+                        body.innerHTML = '<div class="ai-history-empty text-danger">' +
+                            'Failed to load history: ' + escapeHtml(String(err && err.message ? err.message : err)) +
+                            '</div>';
+                    }
+                }
             }
 
             function qcDetailsRowHtml(label, valueHtml, isEmpty) {
@@ -2947,11 +3399,9 @@
             function renderQcDetailsBody(d) {
                 if (!d) return '<div class="text-muted">No data.</div>';
                 const departments = (Array.isArray(d.departments) && d.departments.length)
-                    ? d.departments.join(', ')
-                    : (d.department || '');
-                const totalLossDisplay = (d.total_loss != null && d.total_loss !== '')
-                    ? '$' + Math.round(parseFloat(d.total_loss)).toLocaleString()
-                    : '';
+                    ? d.departments.map(formatDepartmentLabel).join(', ')
+                    : (d.department ? formatDepartmentLabel(d.department) : '');
+                const totalLossDisplay = lossDetailsDisplay(d);
                 const action = String(d.action_1 || '').trim();
                 const actionRemark = String(d.action_1_remark || '').trim();
                 const actionDisplay = action
@@ -2998,6 +3448,10 @@
 
                 // Claims section only when relevant fields are populated.
                 const claimsRows = [];
+                if (typeof d.claimable !== 'undefined') {
+                    const isClaimable = d.claimable !== false && d.claimable !== 0 && d.claimable !== '0';
+                    claimsRows.push(qcDetailsTextRow('Claimable', isClaimable ? 'Yes' : 'No'));
+                }
                 if (typeof d.claim_filed !== 'undefined') {
                     claimsRows.push(qcDetailsTextRow('Claim filed', d.claim_filed ? 'Yes' : 'No'));
                 }
@@ -3266,8 +3720,8 @@
                                 '" title="' + escAttr(row.order_number) +
                                 '"><i class="bi bi-clipboard"></i></button><span class="order-num-short">' +
                                 escapeHtml(row.order_number) + '</span>' : '—') + '</td>' +
-                            '<td class="orders-hold-loss-cell">' + (row.total_loss != null && row.total_loss !==
-                                '' ? '$' + Math.round(parseFloat(row.total_loss)) : '—') + '</td>' +
+                            '<td class="orders-hold-loss-cell" title="' + escAttr(lossCellTooltip(row)) + '">' +
+                                lossCellDisplay(row) + '</td>' +
                         @elseif ($showOrderIdField ?? false)
                             '<td class="order-num-cell">' + (row.order_number ?
                                 '<button class="copy-order-btn" data-copy="' + escAttr(row.order_number) +
@@ -3291,10 +3745,16 @@
                         '<td>' + action1DisplayHtml(row.action_1, hideActionRemark ? '' : row.action_1_remark) +
                             '</td>' +
                     @endif
+                    @if (($showCarrierColumn ?? false) && ($carrierColumnAfterAction ?? false))
+                        carrierSelectCellHtml(row) +
+                    @endif
                     @if ($showDetailsColumn ?? false)
                         qcDetailsCellHtml(row) +
                     @endif
-                    @if (($showCarrierColumn ?? false) && !($hideCarrierTrackingMediaColumns ?? false))
+                    @if ($showRowHistoryColumn ?? false)
+                        qcRowHistoryCellHtml(row) +
+                    @endif
+                    @if (($showCarrierColumn ?? false) && !($carrierColumnAfterAction ?? false))
                         carrierSelectCellHtml(row) +
                     @endif
                     @if (($showDispatchExtras ?? false) && !($hideCarrierTrackingMediaColumns ?? false))
@@ -3311,6 +3771,9 @@
                         @endif
                     @if (($createdAtColumnAfterTrack ?? false) && !($mergeCreatedAtIntoCreatedBy ?? false))
                         issueRecordDateTdHtml(row.created_at) +
+                    @endif
+                    @if (($showClaimableColumn ?? false) && ($createdAtColumnAfterTrack ?? false))
+                        claimableCellHtml(row) +
                     @endif
                     @if (($showClaimFiledColumn ?? false) && ($createdAtColumnAfterTrack ?? false))
                         claimFiledCellHtml(row) +
@@ -3332,7 +3795,7 @@
                             rootCauseFixedDisplayHtml(row.c_action_1, row.c_action_1_remark) + '</td>' +
                     @endif
                     @if (!($hideDepartmentColumnAndFilter ?? false))
-                        '<td>' + escapeHtml(row.department || '—') + '</td>' +
+                        '<td>' + escapeHtml(formatDepartmentsDisplay(row)) + '</td>' +
                     @endif
                     '<td class="orders-hold-close-cell">' + buttonsHtml + '</td>' +
                         @if ($mergeCreatedAtIntoCreatedBy ?? false)
@@ -3341,11 +3804,14 @@
                             '<td>' + escapeHtml(row.created_by) + '</td>' +
                         @endif
                         @if ($showDepartmentColumnAfterCreatedBy ?? false)
-                            '<td>' + escapeHtml(rowDepartments(row).join(', ') || row.department || '—') + '</td>' +
+                            '<td>' + escapeHtml(formatDepartmentsDisplay(row)) + '</td>' +
                         @endif
                         @if (!($createdAtColumnAfterTrack ?? false) && !($mergeCreatedAtIntoCreatedBy ?? false))
                             issueRecordDateTdHtml(row.created_at) +
                         @endif
+                    @if (($showClaimableColumn ?? false) && !($createdAtColumnAfterTrack ?? false))
+                        claimableCellHtml(row) +
+                    @endif
                     @if (($showClaimFiledColumn ?? false) && !($createdAtColumnAfterTrack ?? false))
                         claimFiledCellHtml(row) +
                     @endif
@@ -3437,7 +3903,7 @@
                             rootCauseFixedDisplayHtml(row.c_action_1, row.c_action_1_remark) + '</td>' +
                     @endif
                     @if (!($hideDepartmentColumnAndFilter ?? false))
-                        '<td>' + escapeHtml(row.department || '—') + '</td>' +
+                        '<td>' + escapeHtml(formatDepartmentsDisplay(row)) + '</td>' +
                     @endif
                     '<td>' + escapeHtml(row.close_note) + '</td>' +
                         '<td>' + escapeHtml(row.event_type) + '</td>' +
@@ -3447,7 +3913,7 @@
                             '<td>' + escapeHtml(row.created_by) + '</td>' +
                         @endif
                         @if ($showDepartmentColumnAfterCreatedBy ?? false)
-                            '<td>' + escapeHtml(rowDepartments(row).join(', ') || row.department || '—') + '</td>' +
+                            '<td>' + escapeHtml(formatDepartmentsDisplay(row)) + '</td>' +
                         @endif
                         @if (!($createdAtColumnAfterTrack ?? false) && !($mergeCreatedAtIntoCreatedBy ?? false))
                             issueRecordDateTdHtml(row.logged_at) +
@@ -3491,9 +3957,12 @@
                     created_at: row?.created_at_display ?? row?.created_at ?? '',
                     order_number: row?.order_number ?? '',
                     total_loss: row?.total_loss ?? null,
+                    amz_price: row?.amz_price ?? null,
+                    amz_loss: row?.amz_loss ?? null,
                     product_master_id: row?.product_master_id ?? null,
                     ctn_instructions: row?.ctn_instructions ?? '',
                     claim_filed: !!row?.claim_filed,
+                    claimable: row?.claimable === undefined || row?.claimable === null ? true : !!row.claimable,
                     amp_usd: row?.amp_usd != null && row?.amp_usd !== '' ? String(row.amp_usd).slice(0, 6) : '',
                     amt_rec: row?.amt_rec != null && row?.amt_rec !== '' ? String(row.amt_rec).slice(0, 6) : '',
                     claim_received: !!row?.claim_received,
@@ -3721,7 +4190,23 @@
                 @endif
                 cAction1Input.value = record.c_action_1 || '';
                 cAction1RemarkInput.value = record.c_action_1_remark || '';
-                setDepartmentMultiSelect(record);
+                // For dept-split groups: pre-select ALL departments in the group
+                // (same group_id + same SKU) so saving without changes preserves them.
+                let editDepts = rowDepartmentValues(record);
+                if (record.group_id) {
+                    const set = new Set();
+                    holdIssueRows.forEach(function(r) {
+                        if (r.group_id === record.group_id && r.sku === record.sku) {
+                            rowDepartmentValues(r).forEach(function(d) {
+                                set.add(d);
+                            });
+                        }
+                    });
+                    if (set.size) editDepts = Array.from(set);
+                }
+                setDepartmentMultiSelect({
+                    departments: editDepts
+                });
                 toggleCAction1RemarkField();
                 hideAlert();
 
@@ -3870,7 +4355,7 @@
                     skuInput.focus();
                     return;
                 }
-                if (!issue) {
+                if (requireRootCauseFound && !issue) {
                     showAlert('Root Cause Found is required.');
                     issueInput.focus();
                     return;
@@ -3933,7 +4418,17 @@
                         c_action_1: cAction1Input.value.trim(),
                         c_action_1_remark: cAction1RemarkInput.value.trim(),
                         department: deptPayload,
+                        @if ($showCarrierColumn ?? false)
+                            issue_carrier: (function() {
+                                const el = document.getElementById('hold_issue_issue_carrier');
+                                const v = el ? String(el.value || '').trim() : '';
+                                return v.length ? v : '';
+                            })(),
+                        @endif
                     };
+                    if (singleEntryIssueBoard) {
+                        sharedFields.single_entry_board = true;
+                    }
 
                     let payload;
                     if (isMultiSku) {
@@ -4116,10 +4611,25 @@
                     return;
                 }
 
+                const historyBtn = event.target.closest('.qc-row-history-btn');
+                if (historyBtn && tableBody.contains(historyBtn) && showRowHistoryColumn) {
+                    event.preventDefault();
+                    const record = getRecordById(historyBtn.getAttribute('data-id'));
+                    openRowHistoryModal(record);
+                    return;
+                }
+
                 const claimBtn = event.target.closest('.claim-filed-toggle');
                 if (claimBtn && tableBody.contains(claimBtn) && showClaimFiledColumn) {
                     event.preventDefault();
                     patchClaimFiledToggle(claimBtn);
+                    return;
+                }
+
+                const claimableBtn = event.target.closest('.claimable-toggle');
+                if (claimableBtn && tableBody.contains(claimableBtn) && showClaimableColumn) {
+                    event.preventDefault();
+                    patchClaimableToggle(claimableBtn);
                     return;
                 }
 

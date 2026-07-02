@@ -422,6 +422,7 @@ class DispatchIssuesController extends IssueBoardControllerBase
             'tracking_number' => ['tracking_number', 'tracking', 'tracking number'],
             'issue_link'      => ['issue_link', 'link', 'url'],
             'issue_carrier'   => ['issue_carrier', 'carrier'],
+            'claimable'       => ['claimable', 'claimable?'],
             'claim_filed'     => ['claim_filed', 'claim filed'],
             'amp_usd'         => ['amp_usd', 'amt $', 'amt$', 'amt usd', 'amt'],
             'amt_rec'         => ['amt_rec', 'amt rec', 'amount received', 'amt received'],
@@ -440,6 +441,12 @@ class DispatchIssuesController extends IssueBoardControllerBase
 
         if (Schema::hasColumn($issuesTable, 'issue_carrier')) {
             $payload['issue_carrier'] = self::csvNonEmpty($get('issue_carrier'), 20);
+        }
+        if (Schema::hasColumn($issuesTable, 'claimable')) {
+            $claimableRaw = $get('claimable');
+            $payload['claimable'] = trim((string) ($claimableRaw ?? '')) === ''
+                ? true
+                : self::csvParseBool($claimableRaw);
         }
         if (Schema::hasColumn($issuesTable, 'claim_filed')) {
             $payload['claim_filed'] = self::csvParseBool($get('claim_filed'));
@@ -494,7 +501,7 @@ class DispatchIssuesController extends IssueBoardControllerBase
         $amp = $row->amp_usd ?? null;
         $amtRec = $row->amt_rec ?? null;
 
-        return [
+        $slice = [
             'claim_filed' => (bool) ($row->claim_filed ?? false),
             'amp_usd' => $amp !== null && trim((string) $amp) !== '' ? (string) $amp : null,
             'amt_rec' => $amtRec !== null && trim((string) $amtRec) !== '' ? (string) $amtRec : null,
@@ -503,6 +510,12 @@ class DispatchIssuesController extends IssueBoardControllerBase
                 ? trim((string) $row->issue_carrier)
                 : null,
         ];
+
+        if (Schema::hasColumn($table, 'claimable')) {
+            $slice['claimable'] = (bool) ($row->claimable ?? true);
+        }
+
+        return $slice;
     }
 
     private static function parseAmpUsdAmount(mixed $raw): float
@@ -594,6 +607,28 @@ class DispatchIssuesController extends IssueBoardControllerBase
         }
 
         return response()->json(['message' => 'Updated.', 'claim_filed' => $next]);
+    }
+
+    public function updateClaimable(Request $request, int $id): JsonResponse
+    {
+        if (! Schema::hasColumn($this->issuesTable(), 'claimable')) {
+            return response()->json(['message' => 'Not available.'], 503);
+        }
+        $validated = $request->validate(['claimable' => 'required|boolean']);
+        $next = (bool) $validated['claimable'];
+
+        $updated = DB::table($this->issuesTable())
+            ->where('id', $id)
+            ->where(function ($q) {
+                $q->whereNull('is_archived')->orWhere('is_archived', false);
+            })
+            ->update(['claimable' => $next, 'updated_at' => now()]);
+
+        if ($updated === 0) {
+            return response()->json(['message' => 'Record not found.'], 404);
+        }
+
+        return response()->json(['message' => 'Updated.', 'claimable' => $next]);
     }
 
     public function updateClaimReceived(Request $request, int $id): JsonResponse
@@ -1052,15 +1087,20 @@ class DispatchIssuesController extends IssueBoardControllerBase
         $sku = trim((string) ($issue->sku ?? ''));
         $groupId = $issue->group_id ?? null;
 
-        $relatedIdsQuery = DB::table($this->issuesTable())->select('id');
-        if ($groupId && $sku !== '') {
-            $relatedIdsQuery->where('group_id', $groupId)->where('sku', $sku);
+        $scope = strtolower(trim((string) request()->query('scope', 'group')));
+        if ($scope === 'row') {
+            $relatedIds = [$id];
         } else {
-            $relatedIdsQuery->where('id', $id);
-        }
-        $relatedIds = $relatedIdsQuery->pluck('id')->map(fn ($v) => (int) $v)->all();
-        if (! in_array($id, $relatedIds, true)) {
-            $relatedIds[] = $id;
+            $relatedIdsQuery = DB::table($this->issuesTable())->select('id');
+            if ($groupId && $sku !== '') {
+                $relatedIdsQuery->where('group_id', $groupId)->where('sku', $sku);
+            } else {
+                $relatedIdsQuery->where('id', $id);
+            }
+            $relatedIds = $relatedIdsQuery->pluck('id')->map(fn ($v) => (int) $v)->all();
+            if (! in_array($id, $relatedIds, true)) {
+                $relatedIds[] = $id;
+            }
         }
 
         // Fetch oldest-first so we can deduplicate "overwrite-with-same-data"
@@ -1688,7 +1728,7 @@ class DispatchIssuesController extends IssueBoardControllerBase
             'marketplace_1'        => isset($validated['marketplace_1']) ? trim((string) $validated['marketplace_1']) : null,
             'marketplace_2'        => isset($validated['marketplace_2']) ? trim((string) $validated['marketplace_2']) : null,
             'what_happened'        => isset($validated['what_happened']) ? trim((string) $validated['what_happened']) : null,
-            'issue'                => trim($validated['issue']),
+            'issue'                => (($issueVal = trim((string) ($validated['issue'] ?? ''))) !== '') ? $issueVal : null,
             'issue_remark'         => isset($validated['issue_remark']) ? trim((string) $validated['issue_remark']) : null,
             'action_1'             => isset($validated['action_1']) ? trim((string) $validated['action_1']) : null,
             'action_1_remark'      => isset($validated['action_1_remark']) ? trim((string) $validated['action_1_remark']) : null,
@@ -1701,6 +1741,131 @@ class DispatchIssuesController extends IssueBoardControllerBase
         $fieldPayload = array_merge($fieldPayload, $this->buildExtraPayload($validated));
 
         $now = now();
+
+        // Carrier Claims / Carrier Scan Issues (and similar single-entry boards):
+        // always update the row being edited; append history on that row; never
+        // insert a sibling row from dept-split reconcile.
+        if ($request->boolean('single_entry_board') && count($newDepts) === 1) {
+            $payload = array_merge($fieldPayload, [
+                'sku'        => $sku,
+                'department' => CustomerCareDepartments::encode($newDepts),
+                'group_id'   => $groupId,
+                'updated_at' => $now,
+            ]);
+
+            DB::transaction(function () use ($id, $existing, $payload, $actorName, $user, $request, $now, $groupId, $sku) {
+                DB::table($this->issuesTable())->where('id', $id)->update($payload);
+
+                $nextRevision = ((int) DB::table($this->historyTable())
+                    ->where('orders_on_hold_issue_id', $id)
+                    ->max('revision_no')) + 1;
+                DB::table($this->historyTable())->insert(array_merge($payload, [
+                    'orders_on_hold_issue_id' => $id,
+                    'event_type'              => 'updated',
+                    'revision_no'             => $nextRevision,
+                    'created_by'              => $actorName,
+                    'created_by_user_id'      => $user?->id,
+                    'logged_at'               => $now,
+                    'created_at'              => $now,
+                ]));
+
+                $this->afterIssueUpdate($id, $request, $existing);
+
+                if (! $existing->group_id) {
+                    DB::table($this->issuesTable())->where('id', $id)->update(['group_id' => $groupId]);
+                }
+
+                // Fold stray duplicate rows (same group + SKU) into one entry.
+                if ($existing->group_id && $sku !== '') {
+                    $dupes = DB::table($this->issuesTable())
+                        ->where('group_id', $existing->group_id)
+                        ->where('sku', $sku)
+                        ->where('id', '!=', $id)
+                        ->where(function ($q) {
+                            $q->whereNull('is_archived')->orWhere('is_archived', false);
+                        })
+                        ->get();
+                    foreach ($dupes as $dupe) {
+                        DB::table($this->issuesTable())->where('id', $dupe->id)->update([
+                            'is_archived' => true,
+                            'archived_at' => $now,
+                            'archived_by' => $actorName,
+                            'updated_at'  => $now,
+                        ]);
+                        $dupeRevision = ((int) DB::table($this->historyTable())
+                            ->where('orders_on_hold_issue_id', $dupe->id)
+                            ->max('revision_no')) + 1;
+                        DB::table($this->historyTable())->insert([
+                            'orders_on_hold_issue_id' => $dupe->id,
+                            'event_type'              => 'archived',
+                            'revision_no'             => $dupeRevision,
+                            'sku'                     => $dupe->sku,
+                            'qty'                     => (float) $dupe->qty,
+                            'order_qty'               => $dupe->order_qty !== null ? (float) $dupe->order_qty : null,
+                            'parent'                  => $dupe->parent,
+                            'marketplace_1'           => $dupe->marketplace_1 ?? null,
+                            'marketplace_2'           => $dupe->marketplace_2 ?? null,
+                            'what_happened'           => $dupe->what_happened ?? null,
+                            'issue'                   => $dupe->issue,
+                            'issue_remark'            => $dupe->issue_remark ?? null,
+                            'action_1'                => $dupe->action_1 ?? null,
+                            'action_1_remark'         => $dupe->action_1_remark ?? null,
+                            'replacement_tracking'    => $dupe->replacement_tracking ?? null,
+                            'c_action_1'              => $dupe->c_action_1 ?? null,
+                            'c_action_1_remark'       => $dupe->c_action_1_remark ?? null,
+                            'close_note'              => $dupe->close_note ?? null,
+                            'department'              => $dupe->department,
+                            'created_by'              => $actorName,
+                            'created_by_user_id'      => $user?->id,
+                            'logged_at'               => $now,
+                            'created_at'              => $now,
+                            'updated_at'              => $now,
+                        ]);
+                    }
+                }
+            });
+
+            return $this->updateResponseAfterSave($request, $validated, $groupId, $sku);
+        }
+
+        // Single row + single department: update in place. The full dept-split
+        // reconcile path below archives the row and inserts a "new" one when
+        // department strings don't match exactly (e.g. legacy aliases vs the
+        // current dropdown values) — which looked like a duplicate entry on
+        // Carrier Claims / Carrier Scan Issues.
+        if ($siblings->count() === 1 && count($newDepts) === 1) {
+            $payload = array_merge($fieldPayload, [
+                'sku'        => $sku,
+                'department' => CustomerCareDepartments::encode($newDepts),
+                'group_id'   => $groupId,
+                'updated_at' => $now,
+            ]);
+
+            DB::transaction(function () use ($id, $existing, $payload, $actorName, $user, $request, $now, $groupId) {
+                DB::table($this->issuesTable())->where('id', $id)->update($payload);
+
+                $nextRevision = ((int) DB::table($this->historyTable())
+                    ->where('orders_on_hold_issue_id', $id)
+                    ->max('revision_no')) + 1;
+                DB::table($this->historyTable())->insert(array_merge($payload, [
+                    'orders_on_hold_issue_id' => $id,
+                    'event_type'              => 'updated',
+                    'revision_no'             => $nextRevision,
+                    'created_by'              => $actorName,
+                    'created_by_user_id'      => $user?->id,
+                    'logged_at'               => $now,
+                    'created_at'              => $now,
+                ]));
+
+                $this->afterIssueUpdate($id, $request, $existing);
+
+                if (! $existing->group_id) {
+                    DB::table($this->issuesTable())->where('id', $id)->update(['group_id' => $groupId]);
+                }
+            });
+
+            return $this->updateResponseAfterSave($request, $validated, $groupId, $sku);
+        }
 
         DB::transaction(function () use ($id, $siblings, $newDepts, $sku, $groupId, $existing, $fieldPayload, $actorName, $user, $request, $now) {
             // Index existing siblings by their (single) department.
@@ -1810,10 +1975,16 @@ class DispatchIssuesController extends IssueBoardControllerBase
             }
         });
 
-        // Outgoing trigger on update — only fires if Outgoing needed is checked
-        // and the group hasn't already been processed (idempotent). Computed
-        // once and reused for both the Replacement and Wrong-Item outgoing
-        // triggers so we don't query siblings twice.
+        return $this->updateResponseAfterSave($request, $validated, $groupId, $sku);
+    }
+
+    /**
+     * Shared post-update response: optional outgoing triggers + JSON payload.
+     *
+     * @param  array<string, mixed>  $validated
+     */
+    private function updateResponseAfterSave(Request $request, array $validated, string $groupId, string $sku): JsonResponse
+    {
         $outgoingMsg          = null;
         $wrongSentOutgoingMsg = null;
         $outgoingWarning      = null;

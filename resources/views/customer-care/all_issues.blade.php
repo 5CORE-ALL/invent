@@ -15,6 +15,7 @@
         'tracking_number',
         'issue_link',
         'replacement_tracking',
+        'issue_carrier',
         'issue',
         'issue_remark',
         'c_action_1',
@@ -34,6 +35,7 @@
         '1Z999AA10123456784',
         'https://example.com',
         'TRK123',
+        'USPS',
         'Quality Issue',
         '',
         'Fixed',
@@ -206,6 +208,13 @@
         .tracking-cell:hover .tracking-full,
         .tracking-cell:hover .copy-tracking-btn {
             display: inline;
+        }
+
+        #all-issues-tabulator .carrier-issue-carrier-select {
+            font-size: 0.8125rem;
+            padding-top: 0.15rem;
+            padding-bottom: 0.15rem;
+            min-width: 4.5rem;
         }
 
         .copy-order-btn.copied,
@@ -740,7 +749,7 @@
                     <p class="text-muted small mb-2">
                         Upload a CSV file with the following columns (header row required):<br>
                         <code>sku, order_number, qty, order_qty, parent, marketplace_1, what_happened, action_1,
-                            action_1_remark, tracking_number, issue_link, replacement_tracking, issue, issue_remark,
+                            action_1_remark, tracking_number, issue_link, replacement_tracking, issue_carrier, issue, issue_remark,
                             c_action_1, c_action_1_remark, department</code>
                     </p>
                     <p class="text-muted small mb-3">
@@ -1196,6 +1205,17 @@
                             </div>
 
                             <div class="col-md-6">
+                                <label for="hold_issue_issue_carrier" class="form-label">Carrier</label>
+                                <select class="form-select" id="hold_issue_issue_carrier" name="issue_carrier">
+                                    <option value="">— Select carrier —</option>
+                                    <option value="USPS">USPS</option>
+                                    <option value="FEDEX">FEDEX</option>
+                                    <option value="GOFO">GOFO</option>
+                                    <option value="UPS">UPS</option>
+                                </select>
+                            </div>
+
+                            <div class="col-md-6">
                                 <label for="hold_issue_text" class="form-label">Root Cause</label>
                                 <div class="input-group">
                                     <input type="text" class="form-control" id="hold_issue_text" name="issue"
@@ -1271,13 +1291,10 @@
                                     <option value="Dispatch">Dispatch</option>
                                     <option value="Shipping">Shipping</option>
                                     <option value="Listing">Listing</option>
-                                    {{-- Display labels were renamed (Carrier Claim / Carrier Claim Issues)
-                                         per ops manager request. The `value` attributes are intentionally
-                                         left unchanged because they are what gets persisted into the
-                                         `department` JSON column and what server-side filters compare
-                                         against (see DispatchIssuesController + CustomerCareDepartments). --}}
-                                    <option value="Carrier">Carrier Claim</option>
-                                    <option value="Carrier Issue">Carrier Claim Issues</option>
+                                    {{-- Display labels for carrier departments; `value` attributes are
+                                         left unchanged because they are persisted and used for filters. --}}
+                                    <option value="Carrier">Carrier Claims</option>
+                                    <option value="Carrier Issue">Carrier Scan Issue</option>
                                     <option value="Customer Care">Customer Care</option>
                                     <option value="Pricing">Pricing</option>
                                     <option value="QC">QC</option>
@@ -1452,6 +1469,7 @@
             const COLVIS_CHANNEL = 'all_issues';
             const importCsvHeaders = @json($importCsvHeaders);
             const importCsvSampleRow = @json($importCsvSampleRow);
+            const issueCarrierOptions = ['USPS', 'UPS', 'FEDEX', 'GOFO'];
 
             const jsonHeaders = {
                 'Accept': 'application/json',
@@ -1650,6 +1668,19 @@
                     '<span class="tracking-full">' + escapeHtml(t) + '</span>' +
                     '<button class="copy-tracking-btn" data-copy="' + escAttr(t) +
                     '" title="Copy tracking"><i class="bi bi-clipboard"></i></button></span>';
+            };
+            const fmtIssueCarrier = function(cell) {
+                const d = cell.getData();
+                const v = String(d.issue_carrier ?? '').trim();
+                let html = '<select class="form-select form-select-sm carrier-issue-carrier-select" data-issue-id="' +
+                    escAttr(String(d.id)) + '" aria-label="Carrier">';
+                html += '<option value=""' + (v === '' ? ' selected' : '') + '>—</option>';
+                issueCarrierOptions.forEach(function(opt) {
+                    html += '<option value="' + escAttr(opt) + '"' + (v === opt ? ' selected' : '') + '>' +
+                        escapeHtml(opt) + '</option>';
+                });
+                html += '</select>';
+                return html;
             };
             const fmtIssueImg = function(cell) {
                 const u = String(cell.getValue() || '').trim();
@@ -1941,6 +1972,7 @@
                 sections.push(
                     '<div class="ai-detail-section">' +
                     '<div class="ai-detail-section-title">Tracking &amp; media</div>' +
+                    detailsTextRow('Carrier', d.issue_carrier) +
                     detailsTrackingRow('Tracking', d.tracking_number) +
                     detailsTrackingRow('Track R (replacement)', d.replacement_tracking) +
                     detailsImageRow('SKU image', d.image_url) +
@@ -2305,6 +2337,14 @@
                     field: '_row_history',
                     width: 70,
                     formatter: fmtRowHistory,
+                    headerSort: false,
+                    hozAlign: 'center'
+                },
+                {
+                    title: 'Carrier',
+                    field: 'issue_carrier',
+                    width: 90,
+                    formatter: fmtIssueCarrier,
                     headerSort: false,
                     hozAlign: 'center'
                 },
@@ -2815,6 +2855,8 @@
                     tracking_number: row?.tracking_number ?? '',
                     issue_link: row?.issue_link ?? '',
                     replacement_tracking: row?.replacement_tracking ?? '',
+                    issue_carrier: row?.issue_carrier != null && row?.issue_carrier !== ''
+                        ? String(row.issue_carrier).trim() : '',
                     image_1_url: row?.image_1_url ?? null,
                     image_2_url: row?.image_2_url ?? null,
                     c_action_1: row?.c_action_1 ?? '',
@@ -2933,6 +2975,50 @@
                     return true;
                 });
                 updateTotalCount();
+            }
+
+            async function saveIssueCarrierFromSelect(sel) {
+                const id = sel.getAttribute('data-issue-id');
+                if (!id) return;
+                let newV = String(sel.value || '').trim();
+                if (newV !== '' && issueCarrierOptions.indexOf(newV) === -1) {
+                    newV = '';
+                    sel.value = '';
+                }
+                const r = holdIssueRows.find(x => String(x.id) === String(id));
+                const prev = r ? String(r.issue_carrier ?? '').trim() : '';
+                if (newV === prev) return;
+                try {
+                    const res = await fetch(recordsUpdateBaseUrl + '/' + encodeURIComponent(id) +
+                        '/issue-carrier', {
+                            method: 'PATCH',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json',
+                                'X-CSRF-TOKEN': csrfToken,
+                                'X-Requested-With': 'XMLHttpRequest',
+                            },
+                            body: JSON.stringify({
+                                issue_carrier: newV.length ? newV : null
+                            }),
+                        });
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok) {
+                        throw new Error(data.message || 'Save failed');
+                    }
+                    if (r) {
+                        r.issue_carrier = newV;
+                    }
+                    const row = table ? table.getRow(id) : null;
+                    if (row) {
+                        row.update({
+                            issue_carrier: newV
+                        });
+                    }
+                } catch (e) {
+                    alert(e.message || 'Unable to save carrier.');
+                    sel.value = prev;
+                }
             }
 
             function updateTotalCount() {
@@ -3928,6 +4014,10 @@
                 toggleActionSubsection();
                 toggleWhatHappenedSubsection();
                 toggleCAction1RemarkField();
+                {
+                    const carrierSel = document.getElementById('hold_issue_issue_carrier');
+                    if (carrierSel) carrierSel.value = '';
+                }
                 hideAlert();
             }
 
@@ -4045,6 +4135,14 @@
                 if (trackingNumberInput) trackingNumberInput.value = record.tracking_number || '';
                 if (issueLinkInput) issueLinkInput.value = record.issue_link || '';
                 if (replacementTrackingInput) replacementTrackingInput.value = record.replacement_tracking || '';
+                {
+                    const carrierSel = document.getElementById('hold_issue_issue_carrier');
+                    if (carrierSel) {
+                        const v = String(record.issue_carrier || '').toUpperCase();
+                        const allowed = ['USPS', 'FEDEX', 'GOFO', 'UPS'];
+                        carrierSel.value = allowed.indexOf(v) > -1 ? v : '';
+                    }
+                }
                 (function() {
                     const e1 = document.getElementById('hold_issue_image_1_existing');
                     const e2 = document.getElementById('hold_issue_image_2_existing');
@@ -4382,6 +4480,11 @@
                         tracking_number: (trackingNumberInput?.value || '').trim(),
                         issue_link: (issueLinkInput?.value || '').trim(),
                         replacement_tracking: replacementTrackingValue,
+                        issue_carrier: (function() {
+                            const el = document.getElementById('hold_issue_issue_carrier');
+                            const v = el ? String(el.value || '').trim() : '';
+                            return v.length ? v : '';
+                        })(),
                         c_action_1: cAction1Input.value.trim(),
                         c_action_1_remark: cAction1RemarkInput.value.trim(),
                         department: deptPayload,
@@ -4576,13 +4679,13 @@
                     URL.revokeObjectURL(url);
                 }
                 const headers = ['#', 'SKU', 'Order Number', 'Order QTY', 'MKT', 'Issue?', 'Action', 'Action Remark',
-                    'Tracking', 'Link', 'Track R', 'Root Cause', 'Root Cause Remark', 'Root Cause Fixed',
+                    'Carrier', 'Tracking', 'Link', 'Track R', 'Root Cause', 'Root Cause Remark', 'Root Cause Fixed',
                     'Root Cause Fixed Remark', 'Dept', 'Created By', 'Created At'
                 ];
                 const data = holdIssueRows.map(r => [
                     r.id, r.sku, r.order_number || '', r.order_qty, r.marketplace_1, r.what_happened, r
                     .action_1, r.action_1_remark,
-                    r.tracking_number || '', r.issue_link || '', r.replacement_tracking, r.issue, r
+                    r.issue_carrier || '', r.tracking_number || '', r.issue_link || '', r.replacement_tracking, r.issue, r
                     .issue_remark, r.c_action_1, r.c_action_1_remark,
                     r.department || '', r.created_by, r.created_at_display,
                 ]);
@@ -4977,6 +5080,11 @@
                     loadL30Issues();
                 });
                 document.getElementById('ai-search')?.addEventListener('input', applyFilters);
+
+                document.getElementById('all-issues-tabulator')?.addEventListener('change', function(e) {
+                    const sel = e.target.closest('.carrier-issue-carrier-select');
+                    if (sel) saveIssueCarrierFromSelect(sel);
+                });
 
                 skuInput.addEventListener('input', () => {
                     clearTimeout(skuTimer);

@@ -4781,6 +4781,7 @@
             return nr === 'NR' || nr === 'LATER';
         }
 
+        
         function apprReqYellowRowVisible(rowData) {
             if (!rowData || rowData.is_parent || rowData.isParent) return false;
             const raw = rowData.raw_data || {};

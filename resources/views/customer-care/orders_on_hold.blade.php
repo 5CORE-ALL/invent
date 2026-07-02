@@ -933,11 +933,9 @@
                                     <option value="Dispatch">Dispatch</option>
                                     <option value="Shipping">Shipping</option>
                                     <option value="Listing">Listing</option>
-                                    {{-- Display labels renamed to "Carrier Claim" / "Carrier Claim
-                                         Issues" while the `value=` payload stays the same so saved
-                                         rows and department filters continue to match. --}}
-                                    <option value="Carrier">Carrier Claim</option>
-                                    <option value="Carrier Issue">Carrier Claim Issues</option>
+                                    {{-- Display labels for carrier departments; `value=` stays the same. --}}
+                                    <option value="Carrier">Carrier Claims</option>
+                                    <option value="Carrier Issue">Carrier Scan Issue</option>
                                     <option value="Customer Care">Customer Care</option>
                                     <option value="Pricing">Pricing</option>
                                     <option value="QC">QC</option>

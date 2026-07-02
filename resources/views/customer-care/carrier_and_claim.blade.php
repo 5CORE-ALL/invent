@@ -17,14 +17,20 @@
     'marketplaces' => $marketplaces ?? collect(),
     'showDispatchExtras' => true,
     'defaultDepartmentFilter' => 'Carrier',
+    // One table row per issue; in-place edits + row-scoped history (no dept split).
+    'lockedDepartment' => 'Carrier',
+    'hideDepartmentFieldInModal' => true,
+    'singleEntryIssueBoard' => true,
     'hideDepartmentColumnAndFilter' => true,
     // Render the Department column AFTER the Created By column instead of
     // its default position, so the user can see which department(s) the
     // ticket belongs to without bringing back the dropdown filter.
     'showDepartmentColumnAfterCreatedBy' => true,
     'hideRootCauseAndInstructionsCtnColumns' => true,
+    'requireRootCauseFound' => false,
     'createdAtColumnAfterTrack' => true,
     'showClaimsSummaryBadges' => true,
+    'showClaimableColumn' => true,
     'showClaimFiledColumn' => true,
     'showAmpUsdColumn' => true,
     // "Amt Rec" (Amount Received) — inline-editable text input that mirrors
@@ -32,12 +38,17 @@
     'showAmtRecColumn' => true,
     'showClaimReceivedColumn' => true,
     'showCarrierColumn' => true,
+    // Show Carrier immediately after Action so it is visible on the homepage
+    // without scrolling past Details / History.
+    'carrierColumnAfterAction' => true,
     // Read-only "Details" magnifier column (after Action) that opens a
     // modal listing every relevant field for the row.
     'showDetailsColumn' => true,
-    // Hide the wide "Carrier / Tracking / Track R / Img 1 / Img 2 / Link"
-    // group from the table — the same data is available via the Details
-    // magnifier modal.
+    // Per-row edit history button (clock icon) opens audit trail modal.
+    'showRowHistoryColumn' => true,
+    'rowHistoryBaseUrl' => url('/customer-care/all-issues/issues'),
+    // Hide Tracking / Track R / Img / Link from the table — carrier column
+    // stays visible; other fields are available via the Details modal.
     'hideCarrierTrackingMediaColumns' => true,
     // Merge the standalone "Created At" date column into the "Created By"
     // cell (name on top, short "21 JUN" date underneath, full timestamp

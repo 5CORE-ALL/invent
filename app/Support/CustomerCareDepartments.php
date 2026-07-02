@@ -11,6 +11,63 @@ use Illuminate\Database\Query\Builder;
 class CustomerCareDepartments
 {
     /**
+     * User-facing labels for stored department values. Keys are the exact
+     * strings persisted in the `department` JSON column; values are unchanged.
+     */
+    private const DISPLAY_LABELS = [
+        'Carrier' => 'Carrier Claims',
+        'Carrier Issue' => 'Carrier Scan Issue',
+        // Legacy / import aliases still seen in older rows.
+        'Carrier and Claim' => 'Carrier Claims',
+        'Carriers Claims' => 'Carrier Claims',
+    ];
+
+    /**
+     * Map display labels / legacy aliases to the canonical value stored in DB
+     * and used in department filters (option value= attributes).
+     */
+    private const CANONICAL_ALIASES = [
+        'carrier' => 'Carrier',
+        'carrier and claim' => 'Carrier',
+        'carriers claims' => 'Carrier',
+        'carrier claims' => 'Carrier',
+        'carrier claim' => 'Carrier',
+        'carrier issue' => 'Carrier Issue',
+        'carrier scan issue' => 'Carrier Issue',
+        'carrier scan issues' => 'Carrier Issue',
+        'carrier claim issues' => 'Carrier Issue',
+    ];
+
+    public static function canonicalDepartment(string $value): string
+    {
+        $t = trim($value);
+        if ($t === '') {
+            return '';
+        }
+        $lower = strtolower($t);
+
+        return self::CANONICAL_ALIASES[$lower] ?? $t;
+    }
+
+    public static function displayLabel(string $value): string
+    {
+        $t = trim($value);
+
+        return self::DISPLAY_LABELS[$t] ?? $t;
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function displayLabelsList(?string $raw): array
+    {
+        return array_map(
+            [self::class, 'displayLabel'],
+            self::decode($raw)
+        );
+    }
+
+    /**
      * @return list<string>
      */
     public static function decode(?string $raw): array
@@ -29,7 +86,7 @@ class CustomerCareDepartments
             }
         }
 
-        return [$t];
+        return self::normalizeStringList([$t]);
     }
 
     /**
@@ -45,7 +102,9 @@ class CustomerCareDepartments
 
     public static function label(?string $raw): string
     {
-        return implode(', ', self::decode($raw));
+        $list = self::displayLabelsList($raw);
+
+        return implode(', ', $list);
     }
 
     /**
@@ -77,7 +136,7 @@ class CustomerCareDepartments
     {
         $out = [];
         foreach ($items as $item) {
-            $s = trim((string) $item);
+            $s = self::canonicalDepartment(trim((string) $item));
             if ($s !== '') {
                 $out[] = $s;
             }
