@@ -16,7 +16,8 @@
 /attendance-agent/dist/
 
 # Ignore compiled files
-/public/hot
+/public/downloads/*.exe
+/public/downloads/*.blockmap
 /public/storage
 /public/images/products
 /public/uploads/tasks/*

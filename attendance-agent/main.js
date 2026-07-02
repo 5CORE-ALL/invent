@@ -103,7 +103,7 @@ let config = {
 function getApiBase() {
     const fromEnv = process.env.FIVECORE_API_URL;
     const fromStore = store.get('apiUrl');
-    let base = (fromEnv || fromStore || 'http://127.0.0.1:8000').replace(/\/+$/, '');
+    let base = (fromEnv || fromStore || 'https://inventory.5coremanagement.com').replace(/\/+$/, '');
     base = base.replace(/\/api$/i, '').replace(/\/attendance$/i, '');
     return base;
 }
