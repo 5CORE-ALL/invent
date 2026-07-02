@@ -1011,9 +1011,11 @@
                                     <li>
                                         <a href="{{ route('meta.all.ads') }}">ALL ADS</a>
                                     </li>
+                                    @if (Route::has('meta.ads.saved.raw'))
                                     <li>
                                         <a href="{{ route('meta.ads.saved.raw') }}">All Raw Meta Ads</a>
                                     </li>
+                                    @endif
                                     <li>
                                         <a data-bs-toggle="collapse" href="#facebook-ads-submenu"
                                             aria-expanded="false" aria-controls="facebook-ads-submenu">
