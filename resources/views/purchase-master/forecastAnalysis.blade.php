@@ -1950,14 +1950,21 @@
             const rowData = row.getData() || {};
             const stLow = String(newValue || '').trim().toLowerCase();
             const moqNum = parseFloat(rowData.MOQ) || 0;
-            const updateData = {
-                stage: stLow,
-                two_order_qty: stLow === 'to_order_analysis' ? moqNum : 0,
-                appr_req_qty: stLow === 'appr_req' ? moqNum : 0,
-                order_given: stLow === 'mip' ? rowData.order_given : 0,
-                readyToShipQty: stLow === 'r2s' ? rowData.readyToShipQty : 0,
-                transit: stLow === 'transit' ? rowData.transit : 0,
-            };
+            const existingOrderQty = parseFloat(rowData.two_order_qty) || 0;
+            const updateData = { stage: stLow };
+
+            if (stLow === 'to_order_analysis') {
+                updateData.two_order_qty = moqNum > 0 ? moqNum : existingOrderQty;
+                updateData.appr_req_qty = 0;
+            } else if (stLow === 'appr_req') {
+                updateData.appr_req_qty = moqNum;
+            } else {
+                updateData.two_order_qty = 0;
+                updateData.appr_req_qty = 0;
+                updateData.order_given = stLow === 'mip' ? rowData.order_given : 0;
+                updateData.readyToShipQty = stLow === 'r2s' ? rowData.readyToShipQty : 0;
+                updateData.transit = stLow === 'transit' ? rowData.transit : 0;
+            }
             row.update(updateData, true);
             if (typeof syncParentStageQtyColumns === 'function') {
                 syncParentStageQtyColumns(rowData.Parent || rowData.parentKey);
@@ -2509,10 +2516,32 @@
                             markerHtml = '<span class="stage-status-dot" style="background-color:' + dotColor + ';" aria-hidden="true"></span>';
                         }
 
+                        const isParent = !!(rowData.is_parent || rowData.isParent || String(rowData.SKU || '').toLowerCase().includes('parent'));
+                        if (isParent) {
+                            return (
+                                '<div class="stage-dot-cell d-flex justify-content-center align-items-center w-100" title="' + tipAttr + '">' +
+                                markerHtml +
+                                '</div>'
+                            );
+                        }
+
+                        const mkOpt = function(val, label) {
+                            return '<option value="' + val + '"' + (value === val ? ' selected' : '') + '>' + label + '</option>';
+                        };
+
                         return (
-                            '<div class="stage-dot-cell d-flex justify-content-center align-items-center w-100" title="' + tipAttr + '">' +
+                            '<div class="stage-dot-cell position-relative d-flex justify-content-center align-items-center w-100" title="' + tipAttr + '">' +
                             markerHtml +
-                            '</div>'
+                            '<select class="form-select form-select-sm editable-select editable-select-stage stage-stage-select position-absolute top-0 start-0 w-100 h-100"' +
+                            ' data-type="Stage" data-sku="' + sku + '" data-parent="' + parent + '" data-initial-stage="' + value + '" aria-label="' + tipAttr + '">' +
+                            '<option value="">Select</option>' +
+                            mkOpt('appr_req', 'Appr Req') +
+                            mkOpt('to_order_analysis', 'Order') +
+                            mkOpt('mip', 'MIP') +
+                            mkOpt('r2s', 'R2S') +
+                            mkOpt('transit', 'Transit') +
+                            mkOpt('all_good', 'All Good') +
+                            '</select></div>'
                         );
                     },
                     // select value is already controlled by formatter selected options
@@ -3554,12 +3583,23 @@
                     const toOrder = Math.round(effectiveMslForToOrder - inv - effectiveTransit - effectiveOrderGiven - effectiveR2s);
 
                     const stageNorm = String(itemStage || '').trim().toLowerCase();
-                    const twoOrderQty = stageNorm === 'to_order_analysis'
-                        ? (parseFloat(item.two_order_qty ?? item['two_order_qty'] ?? item.MOQ ?? item['Approved QTY']) || 0)
-                        : 0;
-                    const apprReqQty = stageNorm === 'appr_req'
-                        ? (parseFloat(item.MOQ ?? item['Approved QTY']) || 0)
-                        : 0;
+                    const rawTwoOrder = parseFloat(item.two_order_qty ?? item['two_order_qty'] ?? 0) || 0;
+                    const moqForStage = parseFloat(item.MOQ ?? item['Approved QTY'] ?? item.approved_qty) || 0;
+                    // Multi-stage: keep to_order qty from backend regardless of current stage;
+                    // appr qty shows for appr_req (and pending rows), clears once moved to Order.
+                    let twoOrderQty = rawTwoOrder;
+                    let apprReqQty = 0;
+                    if (stageNorm === 'to_order_analysis') {
+                        twoOrderQty = rawTwoOrder > 0 ? rawTwoOrder : moqForStage;
+                        apprReqQty = 0;
+                    } else if (stageNorm === 'appr_req') {
+                        apprReqQty = moqForStage;
+                    } else if (!['mip', 'r2s', 'transit', 'all_good'].includes(stageNorm)) {
+                        const toOrdVal = parseFloat(item.to_order ?? item['to_order'] ?? 0);
+                        if (Number.isFinite(toOrdVal) && toOrdVal >= 0 && moqForStage > 0) {
+                            apprReqQty = moqForStage;
+                        }
+                    }
 
                     // if (toOrder == 0) {
                     //     return false;
@@ -4765,6 +4805,14 @@
             if (!rowData || rowData.is_parent || rowData.isParent) return 0;
             if (apprReqHideRowForNrp2BdcOrLater(rowData)) return 0;
             const raw = rowData.raw_data || {};
+            const stageNorm = String(rowData.stage ?? raw.stage ?? '').trim().toLowerCase();
+
+            // Already in Order or a downstream pipeline stage — Appr must be zero.
+            if (stageNorm === 'to_order_analysis' || stageNorm === 'mip' || stageNorm === 'r2s'
+                || stageNorm === 'transit' || stageNorm === 'all_good') {
+                return 0;
+            }
+
             const twoOrdVal = parseFloat(rowData.to_order ?? raw.to_order ?? 0);
 
             // When 2 Ord > 0, show MOQ — order still needed even if row is in transit/MIP/R2S.
@@ -4775,14 +4823,6 @@
                 }
             }
 
-            // Rows already moved into a downstream pipeline stage no longer need approval —
-            // hide the Appr Req value for them so they drop off /approval.required and /to-order-analysis.
-            // 'to_order_analysis' is also excluded so the Appr Req filter/count matches /approval.required
-            // (which separates 2Order rows into their own dropdown option).
-            const stageNorm = String(rowData.stage ?? raw.stage ?? '').trim().toLowerCase();
-            if (stageNorm === 'mip' || stageNorm === 'r2s' || stageNorm === 'transit' || stageNorm === 'all_good' || stageNorm === 'to_order_analysis') {
-                return 0;
-            }
             const explicitApprReq = parseFloat(rowData.appr_req_qty);
             if (Number.isFinite(explicitApprReq) && explicitApprReq > 0) {
                 return explicitApprReq;
@@ -5798,15 +5838,15 @@
                         newValue = newValue.toLowerCase();
                     }
 
-                    if (field === "Stage" && newValue === "appr_req") {
+                    if (field === "Stage" && (newValue === "appr_req" || newValue === "to_order_analysis")) {
                         const row = table.getRow(sku);
                         const rowData = row ? row.getData() : null;
                         const approvedQty = rowData ? rowData["MOQ"] : null;
-                        const previousStage = rowData ? (rowData["stage"] || '') : '';
-                        
-                        if (!approvedQty || approvedQty === "0" || parseInt(approvedQty) === 0) {
+                        const previousStage = $el.data('initial-stage') || (rowData ? (rowData["stage"] || '') : '');
+
+                        if (!approvedQty || approvedQty === "0" || parseInt(approvedQty, 10) === 0) {
                             alert("MOQ cannot be empty or zero.");
-                            $el.val(previousStage); // Restore previous stage value
+                            $el.val(previousStage);
                             return;
                         }
                     }
@@ -5846,7 +5886,8 @@
                                     return;
                                 } else if (field === 'Stage') {
                                     const rowData = row.getData();
-                                    
+                                    $el.data('initial-stage', newValue);
+
                                     // Stage to table mapping
                                     const stageTableMap = {
                                         'mip': { table: 'mfrg-progress', field: 'order_given' },
@@ -5855,16 +5896,22 @@
                                     };
 
                                     const stageConfig = stageTableMap[newValue];
-                                    
-                                    // Prepare update - clear other stage fields
                                     const stLow = String(newValue || '').trim().toLowerCase();
+                                    const moqNum = parseFloat(rowData.MOQ) || 0;
                                     const updateData = { stage: newValue };
-                                    updateData.two_order_qty = stLow === 'to_order_analysis' ? (parseFloat(rowData.MOQ) || 0) : 0;
-                                    updateData.appr_req_qty = stLow === 'appr_req' ? (parseFloat(rowData.MOQ) || 0) : 0;
-                                    if (newValue !== 'mip') updateData['order_given'] = 0;
-                                    if (newValue !== 'r2s') updateData['readyToShipQty'] = 0;
-                                    if (newValue !== 'transit') updateData['transit'] = 0;
-                                    
+
+                                    if (stLow === 'to_order_analysis') {
+                                        updateData.two_order_qty = moqNum > 0 ? moqNum : (parseFloat(rowData.two_order_qty) || 0);
+                                        updateData.appr_req_qty = 0;
+                                    } else if (stLow === 'appr_req') {
+                                        updateData.appr_req_qty = moqNum;
+                                    } else {
+                                        updateData.two_order_qty = 0;
+                                        updateData.appr_req_qty = 0;
+                                        if (newValue !== 'mip') updateData['order_given'] = 0;
+                                        if (newValue !== 'r2s') updateData['readyToShipQty'] = 0;
+                                        if (newValue !== 'transit') updateData['transit'] = 0;
+                                    }
                                     if (stageConfig && stageConfig.table) {
                                         // Fetch quantity for the stage
                                         fetch(`/forecast-analysis/get-sku-quantity?sku=${encodeURIComponent(sku)}&table=${stageConfig.table}`, {

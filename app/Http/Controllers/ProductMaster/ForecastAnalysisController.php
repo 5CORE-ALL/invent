@@ -1004,7 +1004,7 @@ class ForecastAnalysisController extends Controller
             // silently revert them to ''.
             if (! $item->is_parent) {
                 $currentStage = strtolower(trim((string) ($item->stage ?? '')));
-                $manualStages = ['appr_req', 'all_good', 'transit'];
+                $manualStages = ['appr_req', 'to_order_analysis', 'all_good', 'transit'];
 
                 if (! in_array($currentStage, $manualStages, true)) {
                     $qtyTransit = (float) ($item->transit ?? 0);
@@ -1741,40 +1741,36 @@ class ForecastAnalysisController extends Controller
             }
 
             if (strtolower($column) === 'stage'){
-                // Get MOQ from ProductMaster table (not from approved_qty)
-                $product = ProductMaster::whereRaw('TRIM(LOWER(sku)) = ?', [strtolower($sku)])->first();
-                $moqValue = null;
-                if ($product && $product->Values) {
-                    $values = is_array($product->Values) ? $product->Values : json_decode($product->Values, true);
-                    $moqValue = $values['moq'] ?? null;
-                }
-                
-                // Use MOQ value from ProductMaster
-                $orderQty = $moqValue ?? null;
+                $forecastApproved = isset($existing->approved_qty) && is_numeric($existing->approved_qty)
+                    ? (float) $existing->approved_qty
+                    : null;
+                $orderQty = $this->resolveForecastOrderQty($sku, $forecastApproved);
+                $stageLower = strtolower(trim((string) $value));
 
-                if (strtolower($value) === 'appr_req' && is_numeric($orderQty) && (float) $orderQty > 0) {
+                if ($stageLower === 'appr_req' && $orderQty !== null && $orderQty > 0) {
                     DB::table('forecast_analysis')
                         ->whereRaw('TRIM(LOWER(sku)) = ?', [strtolower($sku)])
                         ->whereRaw('TRIM(LOWER(parent)) = ?', [strtolower($parent)])
                         ->update([
-                            'approved_qty' => (float) $orderQty,
+                            'approved_qty' => $orderQty,
                             'updated_at' => now(),
                         ]);
+                    ToOrderSkuFieldSync::setStageForSku($sku, 'appr_req', $parent !== '' ? $parent : null);
                 }
-                
-                if(strtolower($value) === 'to_order_analysis'){
+
+                if ($stageLower === 'to_order_analysis') {
                     $this->syncToOrderAnalysisForStage(
                         $sku,
                         $parent,
                         (string) ($currentValue ?? ''),
                         $orderQty,
-                        isset($existing->approved_qty) ? $existing->approved_qty : null
+                        $forecastApproved
                     );
                 }
 
-                if(strtolower($value) === 'mip'){
-                    // Always use MOQ value from ProductMaster
-                    $qtyToSet = (int)($orderQty ?? 0);
+                if ($stageLower === 'mip') {
+                    // Always use resolved MOQ for MIP qty
+                    $qtyToSet = (int) ($orderQty ?? 0);
                     
                     // Check if record exists - match by SKU only
                     $existingMfrg = DB::table('mfrg_progress')
@@ -1819,7 +1815,6 @@ class ForecastAnalysisController extends Controller
                 // is still the old MOQ -> deriver picks r2s and overwrites the
                 // saved "mip" on refresh, so the Edit modal looked like it did
                 // nothing.
-                $stageLower = strtolower($value);
                 $skuLower   = strtolower($sku);
                 if ($stageLower !== 'mip') {
                     DB::table('mfrg_progress')
@@ -1872,34 +1867,27 @@ class ForecastAnalysisController extends Controller
             $this->logForecastAnalysisChange($sku, $parent, $columnKey, null, $value);
 
             if (strtolower($column) === 'stage'){
-                // Get MOQ from ProductMaster table (not from approved_qty)
-                $product = ProductMaster::whereRaw('TRIM(LOWER(sku)) = ?', [strtolower($sku)])->first();
-                $moqValue = null;
-                if ($product && $product->Values) {
-                    $values = is_array($product->Values) ? $product->Values : json_decode($product->Values, true);
-                    $moqValue = $values['moq'] ?? null;
-                }
-                
-                // Use MOQ value from ProductMaster
-                $orderQty = $moqValue ?? null;
+                $orderQty = $this->resolveForecastOrderQty($sku, null);
+                $stageLower = strtolower(trim((string) $value));
 
-                if (strtolower($value) === 'appr_req' && is_numeric($orderQty) && (float) $orderQty > 0) {
+                if ($stageLower === 'appr_req' && $orderQty !== null && $orderQty > 0) {
                     DB::table('forecast_analysis')
                         ->whereRaw('TRIM(LOWER(sku)) = ?', [strtolower($sku)])
                         ->whereRaw('TRIM(LOWER(parent)) = ?', [strtolower($parent)])
                         ->update([
-                            'approved_qty' => (float) $orderQty,
+                            'approved_qty' => $orderQty,
                             'updated_at' => now(),
                         ]);
+                    ToOrderSkuFieldSync::setStageForSku($sku, 'appr_req', $parent !== '' ? $parent : null);
                 }
-                    
-                if(strtolower($value) === 'to_order_analysis'){
+
+                if ($stageLower === 'to_order_analysis') {
                     $this->syncToOrderAnalysisForStage($sku, $parent, '', $orderQty, null);
                 }
 
-                if(strtolower($value) === 'mip'){
-                    // Always use MOQ value from ProductMaster
-                    $qtyToSet = (int)($orderQty ?? 0);
+                if ($stageLower === 'mip') {
+                    // Always use resolved MOQ for MIP qty
+                    $qtyToSet = (int) ($orderQty ?? 0);
                     
                     // Check if record exists - match by SKU only
                     $existingMfrg = DB::table('mfrg_progress')
@@ -1940,7 +1928,6 @@ class ForecastAnalysisController extends Controller
                 // stages leaves stale qty on the previous pipeline table and the
                 // forecast deriver reverts our newly-saved stage on the next
                 // load.
-                $stageLower = strtolower($value);
                 $skuLower   = strtolower($sku);
                 if ($stageLower !== 'mip') {
                     DB::table('mfrg_progress')
@@ -2699,6 +2686,27 @@ class ForecastAnalysisController extends Controller
     }
 
     /**
+     * Resolve order qty for stage transitions — prefer forecast approved_qty, then product master MOQ.
+     */
+    private function resolveForecastOrderQty(string $sku, ?float $forecastApprovedQty = null): ?float
+    {
+        if ($forecastApprovedQty !== null && is_numeric($forecastApprovedQty) && (float) $forecastApprovedQty > 0) {
+            return (float) $forecastApprovedQty;
+        }
+
+        $product = ProductMaster::whereRaw('TRIM(LOWER(sku)) = ?', [strtolower($sku)])->first();
+        if ($product && $product->Values) {
+            $values = is_array($product->Values) ? $product->Values : json_decode($product->Values, true);
+            $moqValue = $values['moq'] ?? null;
+            if (is_numeric($moqValue) && (float) $moqValue > 0) {
+                return (float) $moqValue;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * When stage moves from appr_req → to_order_analysis, stamp DOA on the
      * to_order_analysis row (matched by normalized SKU) and keep approved_qty.
      */
@@ -2721,9 +2729,13 @@ class ForecastAnalysisController extends Controller
             ->first();
 
         $orderQty = $existingOrder->approved_qty ?? $forecastApprovedQty ?? $fallbackOrderQty;
+        if (! is_numeric($orderQty) || (float) $orderQty <= 0) {
+            $orderQty = $this->resolveForecastOrderQty($sku, is_numeric($forecastApprovedQty) ? (float) $forecastApprovedQty : null);
+        }
 
         $payload = [
             'approved_qty' => $orderQty,
+            'stage' => 'to_order_analysis',
             'auth_user' => optional(Auth::user())->name,
             'updated_at' => now(),
             'deleted_at' => null,
@@ -2742,7 +2754,6 @@ class ForecastAnalysisController extends Controller
         DB::table('to_order_analysis')->insert(array_merge($payload, [
             'sku' => $skuUpper,
             'parent' => $parent !== '' ? $parent : null,
-            'stage' => '',
             'created_at' => now(),
         ]));
     }
