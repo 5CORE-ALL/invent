@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\ShopifyMetaCampaign;
 use App\Services\ShopifyMarketingService;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 class FetchShopifyMetaCampaigns extends Command
@@ -95,6 +96,7 @@ class FetchShopifyMetaCampaigns extends Command
             }
 
             $this->info("✓ Completed! Total campaigns processed: {$totalCampaigns}");
+            Cache::forget('meta_saved_raw_shopify_campaign_metrics');
             Log::info("Completed Shopify Meta Campaigns fetch", ['total_campaigns' => $totalCampaigns, 'channel' => $channel]);
             
             return 0;

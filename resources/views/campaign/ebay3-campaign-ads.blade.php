@@ -99,11 +99,13 @@
                 <p class="small text-muted mb-3">
                     Selected <strong id="enroll-listing-count">0</strong> eligible listing(s) will be added to the chosen campaign
                     with bid calculated from SCVR + current SBID rule.
+                    <span class="d-block mt-1">Default: newest RUNNING PMT campaign (eBay 1 shows only RUNNING campaigns).</span>
                 </p>
-                <label class="form-label fw-semibold">Select Campaign (RUNNING · COST_PER_SALE)</label>
+                <label class="form-label fw-semibold">Select Campaign (COST_PER_SALE · not ENDED)</label>
                 <select class="form-select" id="enroll-campaign-select">
                     <option value="">Loading campaigns…</option>
                 </select>
+                <p class="small text-warning mt-2 d-none" id="enroll-empty-msg">No COST_PER_SALE campaigns found on this eBay account. Create or resume a PMT campaign in eBay first.</p>
                 <p class="small text-danger mt-2 d-none" id="enroll-err"></p>
             </div>
             <div class="modal-footer py-2">
@@ -541,13 +543,34 @@ function updateSelectedCount() {
     }
 }
 
-// Load campaigns when enroll modal opens
+// Load campaigns when enroll modal opens (live from eBay Marketing API)
 document.getElementById('enrollModal').addEventListener('show.bs.modal', function() {
-    $.get('/ebay3/campaign-ads/campaigns', function(data) {
-        const sel = $('#enroll-campaign-select');
-        sel.empty().append('<option value="">— Select a campaign —</option>');
-        data.forEach(c => sel.append(`<option value="${c.campaign_id}">${c.campaign_name}</option>`));
-    });
+    const sel      = $('#enroll-campaign-select');
+    const emptyMsg = document.getElementById('enroll-empty-msg');
+    sel.empty().append('<option value="">Loading campaigns…</option>');
+    emptyMsg.classList.add('d-none');
+
+    $.get('/ebay3/campaign-ads/campaigns')
+        .done(function(data) {
+            sel.empty().append('<option value="">— Select a campaign —</option>');
+            if (!data || !data.length) {
+                emptyMsg.classList.remove('d-none');
+                return;
+            }
+            let defaultId = null;
+            data.forEach(c => {
+                const status = c.campaign_status ? ` · ${c.campaign_status}` : '';
+                const tag = c.is_default ? ' (default)' : '';
+                sel.append(`<option value="${c.campaign_id}">${c.campaign_name}${status}${tag}</option>`);
+                if (c.is_default) defaultId = c.campaign_id;
+            });
+            if (defaultId) sel.val(defaultId);
+        })
+        .fail(function() {
+            sel.empty().append('<option value="">— Failed to load campaigns —</option>');
+            emptyMsg.textContent = 'Could not load campaigns from eBay. Check EBAY_3 credentials and try again.';
+            emptyMsg.classList.remove('d-none');
+        });
 });
 
 // Enroll confirm

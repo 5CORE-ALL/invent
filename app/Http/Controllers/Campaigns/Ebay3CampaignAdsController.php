@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Campaigns;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Artisan;
 
 /**
@@ -340,16 +341,71 @@ class Ebay3CampaignAdsController extends Controller
 
     public function getCampaignList()
     {
-        $campaigns = DB::table('ebay3_campaign_ads')
-            ->where('funding_strategy', 'COST_PER_SALE')
-            ->where('campaign_status', 'RUNNING')
-            ->whereNotNull('campaign_id')
-            ->select('campaign_id', 'campaign_name')
-            ->distinct()
-            ->orderBy('campaign_name')
-            ->get();
+        try {
+            $service = new \App\Services\EbayThreeApiService();
+            $token   = $service->generateBearerToken();
 
-        return response()->json($campaigns);
+            $all    = [];
+            $offset = 0;
+            $limit  = 200;
+
+            do {
+                $resp  = Http::withToken($token)
+                    ->get('https://api.ebay.com/sell/marketing/v1/ad_campaign', [
+                        'limit'  => $limit,
+                        'offset' => $offset,
+                    ]);
+                $data  = $resp->json();
+                $batch = $data['campaigns'] ?? [];
+                $total = (int)($data['total'] ?? 0);
+                $all   = array_merge($all, $batch);
+                $offset += $limit;
+            } while (count($all) < $total && !empty($batch));
+
+            $statusRank = ['RUNNING' => 0, 'PAUSED' => 1, 'SYSTEM_PAUSED' => 2];
+
+            $campaigns = collect($all)
+                ->filter(function ($c) {
+                    $funding = $c['fundingStrategy']['fundingModel'] ?? null;
+                    $status  = $c['campaignStatus'] ?? null;
+                    return $funding === 'COST_PER_SALE' && $status !== 'ENDED';
+                })
+                ->map(fn($c) => [
+                    'campaign_id'     => (string)($c['campaignId'] ?? ''),
+                    'campaign_name'   => $c['campaignName'] ?? '',
+                    'campaign_status' => $c['campaignStatus'] ?? '',
+                    'start_date'      => $c['startDate'] ?? '',
+                ])
+                ->filter(fn($c) => $c['campaign_id'] !== '')
+                ->sort(function ($a, $b) use ($statusRank) {
+                    $rankA = $statusRank[$a['campaign_status']] ?? 99;
+                    $rankB = $statusRank[$b['campaign_status']] ?? 99;
+                    if ($rankA !== $rankB) {
+                        return $rankA <=> $rankB;
+                    }
+                    return strcmp($b['start_date'], $a['start_date']);
+                })
+                ->values()
+                ->map(function ($c, $i) {
+                    $c['is_default'] = ($i === 0);
+                    unset($c['start_date']);
+                    return $c;
+                });
+
+            return response()->json($campaigns);
+        } catch (\Exception $e) {
+            // Fallback: local rows (only populated when sync step 1 found in-campaign ads).
+            $campaigns = DB::table('ebay3_campaign_ads')
+                ->where('funding_strategy', 'COST_PER_SALE')
+                ->whereNotIn('campaign_status', ['ENDED'])
+                ->whereNotNull('campaign_id')
+                ->select('campaign_id', 'campaign_name', 'campaign_status')
+                ->distinct()
+                ->orderBy('campaign_name')
+                ->get();
+
+            return response()->json($campaigns);
+        }
     }
 
     public function enrollInCampaign(Request $request)

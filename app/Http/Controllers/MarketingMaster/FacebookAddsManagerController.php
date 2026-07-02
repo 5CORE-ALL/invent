@@ -9,8 +9,10 @@ use Illuminate\Http\Request;
 use App\Models\AmazonDataView;
 use App\Models\MetaAllAd;
 use App\Models\MetaAdGroup;
+use App\Models\MetaAdRawData;
 use App\Models\ShopifyMetaCampaign;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache;
 use App\Services\MetaApiService;
 
 class FacebookAddsManagerController extends Controller
@@ -31,11 +33,7 @@ class FacebookAddsManagerController extends Controller
     {
         $metaAds = MetaAllAd::orderBy('campaign_name', 'asc')->get();
 
-        // Fetch all Shopify Meta campaign sales data grouped by campaign_id and date_range
-        $shopifySales = ShopifyMetaCampaign::whereNotNull('campaign_id')
-            ->select('campaign_id', 'date_range', 'sales', 'orders')
-            ->get()
-            ->groupBy('campaign_id');
+        $shopifyMetrics = ShopifyMetaCampaign::latestCampaignMetricsMap();
 
         $data = [];
         foreach ($metaAds as $ad) {
@@ -54,26 +52,18 @@ class FacebookAddsManagerController extends Controller
             $clicks_l60 = $ad->clicks_l30 ?? 0;
             $units_sold_l60 = 0;
             
-            // Fetch sales data from Shopify Facebook campaigns by matching campaign_id
             $sales_l30 = 0;
             $sales_l60 = 0;
             $sales_l7 = 0;
-            
-            if ($ad->campaign_id && isset($shopifySales[$ad->campaign_id])) {
-                $campaignSales = $shopifySales[$ad->campaign_id];
-                
-                foreach ($campaignSales as $sale) {
-                    if ($sale->date_range === '30_days') {
-                        $sales_l30 = $sale->sales ?? 0;
-                        $units_sold_l30 = $sale->orders ?? 0;
-                    } elseif ($sale->date_range === '60_days') {
-                        $sales_l60 = $sale->sales ?? 0;
-                        $units_sold_l60 = $sale->orders ?? 0;
-                    } elseif ($sale->date_range === '7_days') {
-                        $sales_l7 = $sale->sales ?? 0;
-                        $units_sold_l7 = $sale->orders ?? 0;
-                    }
-                }
+
+            if ($ad->campaign_id && isset($shopifyMetrics[$ad->campaign_id])) {
+                $campaignMetrics = $shopifyMetrics[$ad->campaign_id];
+                $sales_l30 = $campaignMetrics['30_days']['sales'] ?? 0;
+                $units_sold_l30 = $campaignMetrics['30_days']['orders'] ?? 0;
+                $sales_l60 = $campaignMetrics['60_days']['sales'] ?? 0;
+                $units_sold_l60 = $campaignMetrics['60_days']['orders'] ?? 0;
+                $sales_l7 = $campaignMetrics['7_days']['sales'] ?? 0;
+                $units_sold_l7 = $campaignMetrics['7_days']['orders'] ?? 0;
             }
             
             // Calculate ACOS L30 using Amazon formula: ACOS = (Spend / Sales) * 100
@@ -433,16 +423,8 @@ class FacebookAddsManagerController extends Controller
         
         $metaAds = $query->get();
 
-        // Fetch Shopify Meta campaign sales data grouped by campaign_id and date_range
-        $shopifySalesQuery = ShopifyMetaCampaign::whereNotNull('campaign_id')
-            ->select('campaign_id', 'date_range', 'sales', 'orders', 'referring_channel');
-        
-        // Filter by channel if specified (facebook, instagram)
-        if ($channel) {
-            $shopifySalesQuery->where('referring_channel', $channel);
-        }
-        
-        $shopifySales = $shopifySalesQuery->get()->groupBy('campaign_id');
+        $shopifyChannels = $channel ? [$channel] : null;
+        $shopifyMetrics = ShopifyMetaCampaign::latestCampaignMetricsMap(['7_days', '30_days', '60_days'], $shopifyChannels);
 
         $data = [];
         foreach ($metaAds as $ad) {
@@ -461,29 +443,15 @@ class FacebookAddsManagerController extends Controller
             $sales_l30 = 0;
             $sales_l60 = 0;
             $sales_l7 = 0;
-            
-            // Match Shopify sales data by campaign_id
-            // Channel filtering is already applied in the query, but we verify here for safety
-            if ($ad->campaign_id && isset($shopifySales[$ad->campaign_id])) {
-                $campaignSales = $shopifySales[$ad->campaign_id];
-                
-                foreach ($campaignSales as $sale) {
-                    // Double-check channel match if channel filter is applied (safety check for data integrity)
-                    if ($channel && isset($sale->referring_channel) && $sale->referring_channel !== $channel) {
-                        continue;
-                    }
-                    
-                    if ($sale->date_range === '30_days') {
-                        $sales_l30 = $sale->sales ?? 0;
-                        $units_sold_l30 = $sale->orders ?? 0;
-                    } elseif ($sale->date_range === '60_days') {
-                        $sales_l60 = $sale->sales ?? 0;
-                        $units_sold_l60 = $sale->orders ?? 0;
-                    } elseif ($sale->date_range === '7_days') {
-                        $sales_l7 = $sale->sales ?? 0;
-                        $units_sold_l7 = $sale->orders ?? 0;
-                    }
-                }
+
+            if ($ad->campaign_id && isset($shopifyMetrics[$ad->campaign_id])) {
+                $campaignMetrics = $shopifyMetrics[$ad->campaign_id];
+                $sales_l30 = $campaignMetrics['30_days']['sales'] ?? 0;
+                $units_sold_l30 = $campaignMetrics['30_days']['orders'] ?? 0;
+                $sales_l60 = $campaignMetrics['60_days']['sales'] ?? 0;
+                $units_sold_l60 = $campaignMetrics['60_days']['orders'] ?? 0;
+                $sales_l7 = $campaignMetrics['7_days']['sales'] ?? 0;
+                $units_sold_l7 = $campaignMetrics['7_days']['orders'] ?? 0;
             }
             
             $acos_l30 = 0;
@@ -1196,6 +1164,209 @@ class FacebookAddsManagerController extends Controller
                 'type' => $request->get('type', 'ads'),
             ], 500);
         }
+    }
+
+    /**
+     * Display all saved raw Meta ads from database
+     */
+    public function showSavedRawAds()
+    {
+        $syncDates = MetaAdRawData::query()
+            ->select('sync_date')
+            ->distinct()
+            ->orderByDesc('sync_date')
+            ->pluck('sync_date')
+            ->map(fn ($date) => $date instanceof \Carbon\Carbon ? $date->format('Y-m-d') : (string) $date);
+
+        $latestSyncDate = $syncDates->first();
+        $totalRecords = MetaAdRawData::count();
+        $latestCount = $latestSyncDate
+            ? MetaAdRawData::whereDate('sync_date', $latestSyncDate)->count()
+            : 0;
+
+        return view('marketing-masters.meta_ads_manager.saved_raw_ads', [
+            'syncDates' => $syncDates,
+            'latestSyncDate' => $latestSyncDate,
+            'totalRecords' => $totalRecords,
+            'latestCount' => $latestCount,
+        ]);
+    }
+
+    /**
+     * Paginated JSON data for saved raw Meta ads table
+     */
+    public function getSavedRawAdsData(Request $request)
+    {
+        $query = $this->buildSavedRawAdsQuery($request);
+
+        $sortField = $request->input('sort_field', 'ad_name');
+        $sortDir = strtolower($request->input('sort_dir', 'asc')) === 'desc' ? 'desc' : 'asc';
+        $allowedSort = ['ad_id', 'ad_name', 'campaign_id', 'campaign_name', 'status', 'sync_date', 'ad_updated_time', 'ad_created_time'];
+        if (in_array($sortField, $allowedSort, true)) {
+            $query->orderBy($sortField, $sortDir);
+        } else {
+            $query->orderBy('ad_name', 'asc');
+        }
+
+        $page = max(1, (int) $request->input('page', 1));
+        $size = min(500, max(10, (int) $request->input('size', 100)));
+
+        $paginator = $query->paginate($size, ['*'], 'page', $page);
+        $shopifyMetrics = $this->getShopifyCampaignSalesMaps();
+
+        $data = $paginator->getCollection()->map(function (MetaAdRawData $row) use ($shopifyMetrics) {
+            $campaignId = (string) ($row->campaign_id ?? '');
+            $l7 = $shopifyMetrics[$campaignId]['7_days'] ?? ShopifyMetaCampaign::emptyMetrics();
+            $l30 = $shopifyMetrics[$campaignId]['30_days'] ?? ShopifyMetaCampaign::emptyMetrics();
+
+            return [
+                'id' => $row->id,
+                'ad_id' => $row->ad_id,
+                'ad_name' => $row->ad_name,
+                'campaign_id' => $row->campaign_id,
+                'campaign_name' => $row->campaign_name,
+                'adset_id' => $row->adset_id,
+                'status' => $row->status,
+                'sync_date' => $row->sync_date?->format('Y-m-d'),
+                'ad_created_time' => $row->ad_created_time?->format('Y-m-d H:i:s'),
+                'ad_updated_time' => $row->ad_updated_time?->format('Y-m-d H:i:s'),
+                'preview_shareable_link' => $row->preview_shareable_link,
+                'source_ad_id' => $row->source_ad_id,
+                'effective_object_story_id' => $row->effective_object_story_id,
+                'sales_l7' => round($l7['sales'], 2),
+                'sales_l30' => round($l30['sales'], 2),
+                'orders_l7' => $l7['orders'],
+                'orders_l30' => $l30['orders'],
+                'sessions_l30' => $l30['sessions'],
+                'raw_data' => $row->raw_data,
+                'creative_data' => $row->creative_data,
+            ];
+        })->values();
+
+        if (in_array($sortField, ['sales_l7', 'sales_l30', 'orders_l7', 'orders_l30', 'sessions_l30'], true)) {
+            $data = $data->sortBy($sortField, SORT_REGULAR, $sortDir === 'desc')->values();
+        }
+
+        return response()->json([
+            'last_page' => $paginator->lastPage(),
+            'data' => $data,
+            'total' => $paginator->total(),
+        ]);
+    }
+
+    /**
+     * Sales summary stats for saved raw Meta ads (top cards).
+     */
+    public function getSavedRawAdsSalesStats(Request $request)
+    {
+        try {
+            $campaignIds = $this->buildSavedRawAdsQuery($request)
+                ->whereNotNull('campaign_id')
+                ->distinct()
+                ->pluck('campaign_id')
+                ->filter()
+                ->values()
+                ->all();
+
+            $shopifyMetrics = $this->getShopifyCampaignSalesMaps();
+            $stats = $this->summarizeShopifyCampaignSales($campaignIds, $shopifyMetrics);
+            $stats['shopify_synced_at'] = ShopifyMetaCampaign::max('updated_at');
+
+            return response()->json([
+                'success' => true,
+                'stats' => $stats,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Saved Raw Ads Sales Stats Error', ['error' => $e->getMessage()]);
+
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+                'stats' => $this->emptyShopifySalesStats(),
+            ], 500);
+        }
+    }
+
+    private function buildSavedRawAdsQuery(Request $request)
+    {
+        $query = MetaAdRawData::query();
+
+        if ($request->filled('sync_date')) {
+            $query->whereDate('sync_date', $request->sync_date);
+        } elseif ($request->boolean('latest_only', true)) {
+            $latestSyncDate = MetaAdRawData::max('sync_date');
+            if ($latestSyncDate) {
+                $query->whereDate('sync_date', $latestSyncDate);
+            }
+        }
+
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->where('ad_name', 'like', "%{$search}%")
+                    ->orWhere('ad_id', 'like', "%{$search}%")
+                    ->orWhere('campaign_id', 'like', "%{$search}%")
+                    ->orWhere('campaign_name', 'like', "%{$search}%")
+                    ->orWhere('adset_id', 'like', "%{$search}%")
+                    ->orWhere('status', 'like', "%{$search}%");
+            });
+        }
+
+        return $query;
+    }
+
+    /**
+     * @return array<string, array<string, array{sales: float, orders: int, sessions: int}>>
+     */
+    private function getShopifyCampaignSalesMaps(): array
+    {
+        return Cache::remember('meta_saved_raw_shopify_campaign_metrics', 300, function () {
+            return ShopifyMetaCampaign::latestCampaignMetricsMap(['7_days', '30_days'], ['facebook', 'instagram']);
+        });
+    }
+
+    /**
+     * @param array<int, string> $campaignIds
+     * @param array<string, array<string, array{sales: float, orders: int, sessions: int}>> $shopifyMetrics
+     */
+    private function summarizeShopifyCampaignSales(array $campaignIds, array $shopifyMetrics): array
+    {
+        $stats = $this->emptyShopifySalesStats();
+
+        foreach ($campaignIds as $campaignId) {
+            $l7 = $shopifyMetrics[$campaignId]['7_days'] ?? ShopifyMetaCampaign::emptyMetrics();
+            $l30 = $shopifyMetrics[$campaignId]['30_days'] ?? ShopifyMetaCampaign::emptyMetrics();
+
+            $stats['sales_l7'] += $l7['sales'];
+            $stats['sales_l30'] += $l30['sales'];
+            $stats['orders_l7'] += $l7['orders'];
+            $stats['orders_l30'] += $l30['orders'];
+            $stats['sessions_l30'] += $l30['sessions'];
+
+            if (($l30['sales'] ?? 0) > 0) {
+                $stats['campaigns_with_sales_l30']++;
+            }
+        }
+
+        $stats['sales_l7'] = round($stats['sales_l7'], 2);
+        $stats['sales_l30'] = round($stats['sales_l30'], 2);
+
+        return $stats;
+    }
+
+    /**
+     * @return array{sales_l7: float, sales_l30: float, orders_l7: int, orders_l30: int, sessions_l30: int, campaigns_with_sales_l30: int}
+     */
+    private function emptyShopifySalesStats(): array
+    {
+        return [
+            'sales_l7' => 0,
+            'sales_l30' => 0,
+            'orders_l7' => 0,
+            'orders_l30' => 0,
+            'sessions_l30' => 0,
+            'campaigns_with_sales_l30' => 0,
+        ];
     }
 }
 

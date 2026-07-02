@@ -648,6 +648,118 @@ class MetaApiService
     }
 
     /**
+     * Fetch ad-level insights with spend and purchase metrics.
+     *
+     * @param string $datePreset
+     * @return array<int, array<string, mixed>>
+     */
+    public function fetchAdLevelInsights(string $datePreset = 'last_30d'): array
+    {
+        try {
+            $insights = [];
+            $url = "{$this->baseUrl}/act_{$this->adAccountId}/insights";
+
+            $params = [
+                'access_token' => $this->accessToken,
+                'date_preset' => $datePreset,
+                'level' => 'ad',
+                'fields' => implode(',', [
+                    'ad_id',
+                    'ad_name',
+                    'campaign_id',
+                    'spend',
+                    'impressions',
+                    'clicks',
+                    'actions',
+                    'action_values',
+                ]),
+                'limit' => 500,
+            ];
+
+            do {
+                $response = Http::timeout(120)->get($url, $params);
+
+                if (!$response->successful()) {
+                    Log::error('Meta API Error - Ad Level Insights', [
+                        'status' => $response->status(),
+                        'body' => $response->body(),
+                        'date_preset' => $datePreset,
+                    ]);
+                    throw new \Exception('Failed to fetch ad insights: ' . $response->body());
+                }
+
+                $data = $response->json();
+                $insights = array_merge($insights, $data['data'] ?? []);
+
+                $url = $data['paging']['next'] ?? null;
+                $params = [];
+            } while ($url);
+
+            return $insights;
+        } catch (\Exception $e) {
+            Log::error('Meta API Error - fetchAdLevelInsights', [
+                'error' => $e->getMessage(),
+                'date_preset' => $datePreset,
+            ]);
+            throw $e;
+        }
+    }
+
+    /**
+     * Parse purchase count and sales value from an insights row.
+     *
+     * @param array<string, mixed> $insight
+     * @return array{purchases: int, sales: float, spend: float}
+     */
+    public static function parsePurchaseMetrics(array $insight): array
+    {
+        $purchases = 0;
+        $sales = 0.0;
+
+        foreach ($insight['actions'] ?? [] as $action) {
+            if (($action['action_type'] ?? '') === 'purchase') {
+                $purchases = (int) ($action['value'] ?? 0);
+                break;
+            }
+        }
+
+        foreach ($insight['action_values'] ?? [] as $actionValue) {
+            if (($actionValue['action_type'] ?? '') === 'purchase') {
+                $sales = (float) ($actionValue['value'] ?? 0);
+                break;
+            }
+        }
+
+        return [
+            'purchases' => $purchases,
+            'sales' => $sales,
+            'spend' => (float) ($insight['spend'] ?? 0),
+        ];
+    }
+
+    /**
+     * Build ad_id => metrics map from ad-level insights.
+     *
+     * @param array<int, array<string, mixed>> $insights
+     * @return array<string, array{purchases: int, sales: float, spend: float}>
+     */
+    public static function mapAdInsightsByAdId(array $insights): array
+    {
+        $map = [];
+
+        foreach ($insights as $insight) {
+            $adId = (string) ($insight['ad_id'] ?? '');
+            if ($adId === '') {
+                continue;
+            }
+
+            $map[$adId] = self::parsePurchaseMetrics($insight);
+        }
+
+        return $map;
+    }
+
+    /**
      * Fetch raw insights data from Meta API
      * 
      * @param string $datePreset Date preset (last_7d, last_30d, etc.)

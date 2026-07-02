@@ -5259,6 +5259,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         // Raw Facebook Ads Data routes
         Route::get('/meta-ads/raw-data', 'showRawAdsData')->name('meta.ads.raw');
         Route::get('/meta-ads/raw-data/fetch', 'fetchRawAdsData')->name('meta.ads.raw.data');
+        Route::get('/meta-ads/saved-raw', 'showSavedRawAds')->name('meta.ads.saved.raw');
+        Route::get('/meta-ads/saved-raw/data', 'getSavedRawAdsData')->name('meta.ads.saved.raw.data');
+        Route::get('/meta-ads/saved-raw/sales-stats', 'getSavedRawAdsSalesStats')->name('meta.ads.saved.raw.sales.stats');
         Route::get('/meta-ads/test-connection', 'testMetaApiConnection')->name('meta.ads.test.connection');
 
         Route::get('/facebook-ads-control/data', 'index')->name('facebook.ads.index');
