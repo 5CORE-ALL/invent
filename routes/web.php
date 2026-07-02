@@ -5915,6 +5915,22 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             ->whereNumber('id')
             ->name('audit.master.parameters.destroy');
 
+        // Shipping Health (dynamic parameters on CC Shipping Audit)
+        Route::get('/shipping-health/config', [AuditMasterController::class, 'getShippingHealthConfig'])
+            ->name('audit.master.shipping.health.config');
+        Route::post('/shipping-health/assessments', [AuditMasterController::class, 'storeShippingHealthAssessment'])
+            ->name('audit.master.shipping.health.store');
+        Route::get('/shipping-health/history', [AuditMasterController::class, 'getShippingHealthHistory'])
+            ->name('audit.master.shipping.health.history');
+        Route::post('/shipping-health/parameters/manage', [AuditMasterController::class, 'storeShippingHealthParameter'])
+            ->name('audit.master.shipping.health.parameters.store');
+        Route::put('/shipping-health/parameters/manage/{id}', [AuditMasterController::class, 'updateShippingHealthParameter'])
+            ->whereNumber('id')
+            ->name('audit.master.shipping.health.parameters.update');
+        Route::delete('/shipping-health/parameters/manage/{id}', [AuditMasterController::class, 'destroyShippingHealthParameter'])
+            ->whereNumber('id')
+            ->name('audit.master.shipping.health.parameters.destroy');
+
         // SOP (Standard Operating Procedure) content per audit module.
         // GET is open to everyone with access to the page; POST is gated to
         // SOP_ADMIN_EMAILS in the controller (president@5core.com, software5@5core.com).
@@ -6141,6 +6157,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/month/{payrollMonth}/export', [PayrollController::class, 'exportMonth'])->name('month.export');
         Route::get('/month/{payrollMonth}/payout-sheet', [PayrollController::class, 'exportPayoutSheet'])->name('month.payout-sheet');
         Route::put('/employee-salary/{payrollEmployeeSalary}', [PayrollController::class, 'updateEmployeeSalary'])->name('employee-salary.update');
+        Route::post('/employee-salary/{payrollEmployeeSalary}/document', [PayrollController::class, 'uploadEmployeeDocument'])->name('employee-salary.document.upload');
+        Route::get('/employee-salary/{payrollEmployeeSalary}/document/{type}', [PayrollController::class, 'downloadEmployeeDocument'])->name('employee-salary.document.download');
+        Route::delete('/employee-salary/{payrollEmployeeSalary}/document/{type}', [PayrollController::class, 'deleteEmployeeDocument'])->name('employee-salary.document.delete');
         Route::put('/components/{payrollSalaryComponent}', [PayrollController::class, 'updateComponent'])->name('components.update');
         Route::delete('/components/{payrollSalaryComponent}', [PayrollController::class, 'destroyComponent'])->name('components.destroy');
         Route::delete('/payments/{payrollPaymentDeduction}', [PayrollController::class, 'destroyPaymentDeduction'])->name('payments.destroy');

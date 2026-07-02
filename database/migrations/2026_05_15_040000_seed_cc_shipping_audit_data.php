@@ -89,8 +89,8 @@ return new class extends Migration
             // ----- Label Accuracy -----
             ['correct_platform_selected',     'Correct shipping platform selected',          'UPS / FedEx / USPS / Amazon Shipping / DHL etc. matches the order.', 10, 1.5, true],
             ['correct_service_selected',      'Correct shipping service selected',           'Ground / Express / 2-Day / Overnight matches buyer SLA.',           10, 1.2, false],
-            ['correct_weight',                'Correct package weight entered',              'Weight matches actual; protects against carrier surcharges.',       10, 1.5, true],
-            ['correct_dimensions',            'Correct package dimensions entered',          'L × W × H matches actual; avoids dimensional weight charges.',     10, 1.0, false],
+            ['correct_weight',                'Required package weight entered',              'Weight matches actual; protects against carrier surcharges.',       10, 1.5, true],
+            ['correct_dimensions',            'Required package dimensions entered',          'L × W × H matches actual; avoids dimensional weight charges.',     10, 1.0, false],
             ['cost_optimization',             'Correct shipping cost optimization',          'Cheapest eligible service used.',                                    10, 1.0, false],
             ['correct_package_type',          'Correct package type selected',               'Box / envelope / poly mailer / pak as per item.',                    10, 0.8, false],
             ['hazmat_handling',               'Correct hazardous / non-hazardous handling',  'HazMat flag, label, and surcharge applied if needed.',               10, 1.5, true],

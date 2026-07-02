@@ -291,6 +291,30 @@ class EbayController extends Controller
         // 3. Related Models (NBSP / Unicode space–safe PM ↔ shopify_skus match)
         $shopifyData = ShopifySku::mapByProductSkus($skus);
 
+        // Forecast Analysis NRP (forecast_analysis.nr) — same source as /forecast.analysis NRP column.
+        $normalizeSkuFa = static fn ($value) => strtoupper(str_replace("\u{00a0}", ' ', trim((string) $value)));
+        $forecastNrpBySku = [];
+        $pmKeysForFa = collect($skus)->map(fn ($s) => $normalizeSkuFa($s))->unique()->filter(fn ($s) => $s !== '')->values();
+        if ($pmKeysForFa->isNotEmpty()) {
+            $faRows = DB::table('forecast_analysis')
+                ->whereIn(DB::raw('UPPER(TRIM(sku))'), $pmKeysForFa->all())
+                ->get(['sku', 'parent', 'nr', 'stage']);
+            foreach ($faRows->groupBy(fn ($r) => $normalizeSkuFa($r->sku)) as $k => $group) {
+                $withStage = $group->first(function ($r) {
+                    return $r->stage !== null && trim((string) $r->stage) !== '';
+                });
+                if ($withStage) {
+                    $forecastNrpBySku[$k] = $withStage;
+
+                    continue;
+                }
+                $withNr = $group->first(function ($r) {
+                    return $r->nr !== null && trim((string) $r->nr) !== '';
+                });
+                $forecastNrpBySku[$k] = $withNr ?? $group->first();
+            }
+        }
+
         // Key by NBSP / Unicode space–safe normalized SKU: ebay_metrics.sku can contain
         // non-breaking spaces (U+00A0) while product_masters.sku uses normal spaces, which
         // otherwise breaks the lookup (item_id/price missing → row wrongly shows as Missing L).
@@ -974,6 +998,16 @@ class EbayController extends Controller
             // Image
             $row["image_path"] = $shopify->image_src ?? ($values["image_path"] ?? ($pm->image_path ?? null));
             $row['_parent_sort'] = 0; // child row: keep before parent summary row when sorting
+
+            $faRecNrp = $forecastNrpBySku[$normalizeSkuFa($pm->sku)] ?? null;
+            $nrpOut = '';
+            if ($faRecNrp && $faRecNrp->nr !== null && trim((string) $faRecNrp->nr) !== '') {
+                $nrpOut = strtoupper(trim((string) $faRecNrp->nr));
+                if (! in_array($nrpOut, ['REQ', 'NR', 'LATER'], true)) {
+                    $nrpOut = 'REQ';
+                }
+            }
+            $row['nrp'] = $nrpOut;
 
             $result[] = (object) $row;
         }

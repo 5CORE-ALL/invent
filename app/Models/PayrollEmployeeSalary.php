@@ -16,6 +16,10 @@ class PayrollEmployeeSalary extends Model
         'other',
         'adv_inc_other',
         'incentive',
+        'incentive_document_path',
+        'incentive_document_name',
+        'bill_document_path',
+        'bill_document_name',
         'hours_worked',
         'hours_overridden',
         'gross_amount',
@@ -58,6 +62,6 @@ class PayrollEmployeeSalary extends Model
 
     public function user(): BelongsTo
     {
-        return $this->belongsTo(User::class);
+        return $this->belongsTo(User::class)->withTrashed();
     }
 }

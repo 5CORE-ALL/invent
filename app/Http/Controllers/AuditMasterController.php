@@ -18,6 +18,9 @@ use App\Models\CcShippingChecklist;
 use App\Models\CcShippingReturnsChannelNext;
 use App\Models\CcShippingReturnsChecklist;
 use App\Models\ChannelMaster;
+use App\Models\ShippingHealthAssessment;
+use App\Models\ShippingHealthAssessmentItem;
+use App\Models\ShippingHealthParameter;
 use App\Support\SuperAdminAccess;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\JsonResponse;
@@ -191,7 +194,7 @@ class AuditMasterController extends Controller
     {
         $hasLogo = Schema::hasColumn('channel_master', 'logo');
 
-        $columns = ['channel'];
+        $columns = ['id', 'channel'];
         if ($hasLogo) {
             $columns[] = 'logo';
         }
@@ -201,8 +204,9 @@ class AuditMasterController extends Controller
             ->get($columns)
             ->filter(fn ($row) => !empty($row->channel))
             ->map(fn ($row) => [
-                'channel' => $row->channel,
-                'logo'    => $hasLogo ? ($row->logo ?? null) : null,
+                'channel_id' => (int) $row->id,
+                'channel'    => $row->channel,
+                'logo'       => $hasLogo ? ($row->logo ?? null) : null,
             ])
             ->values()
             ->toArray();
@@ -1612,15 +1616,43 @@ class AuditMasterController extends Controller
             ->pluck('last_at', 'channel')
             ->toArray();
 
-        $channelsWithLogo = array_map(function ($row) use ($lastAuditMap) {
+        $healthMap = ShippingHealthAssessment::query()
+            ->whereIn('id', function ($q) {
+                $q->from('shipping_health_assessments')
+                    ->selectRaw('MAX(id)')
+                    ->groupBy('channel');
+            })
+            ->get(['channel', 'health_score', 'assessed_at'])
+            ->keyBy('channel');
+
+        $channelsWithLogo = array_map(function ($row) use ($lastAuditMap, $healthMap) {
             $row['last_audited_at'] = $lastAuditMap[$row['channel']] ?? null;
+            $health = $healthMap[$row['channel']] ?? null;
+            $row['shipping_health_score'] = $health ? (float) $health->health_score : null;
+            $row['shipping_health_at']    = $health?->assessed_at?->toIso8601String();
             return $row;
         }, $channelsWithLogo);
+
+        $healthScores = collect($channelsWithLogo)
+            ->pluck('shipping_health_score')
+            ->filter(fn ($v) => $v !== null)
+            ->values();
+
+        $avgShippingHealth = $healthScores->isNotEmpty()
+            ? round((float) $healthScores->avg(), 0)
+            : null;
+        $avgShippingHealthCount = $healthScores->count();
+        $totalChannelCount      = count($channelsWithLogo);
 
         $isAuditAdmin = $this->isAuditAdmin();
 
         return view('audit-master.cc-shipping-audit', compact(
-            'channels', 'channelsWithLogo', 'isAuditAdmin'
+            'channels',
+            'channelsWithLogo',
+            'isAuditAdmin',
+            'avgShippingHealth',
+            'avgShippingHealthCount',
+            'totalChannelCount',
         ));
     }
 
@@ -2221,6 +2253,373 @@ class AuditMasterController extends Controller
         if (is_bool($v)) return $v;
         if (is_numeric($v)) return (int) $v === 1;
         return in_array(strtolower((string) $v), ['1', 'true', 'on', 'yes'], true);
+    }
+
+    // =====================================================================
+    //  Shipping Health (CC Shipping Audit — dynamic parameters)
+    // =====================================================================
+
+    /**
+     * GET /audit-master/shipping-health/config?channel=Amazon
+     */
+    public function getShippingHealthConfig(Request $request): JsonResponse
+    {
+        $channel = trim((string) $request->input('channel', ''));
+
+        $parameters = ShippingHealthParameter::active()
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get([
+                'id', 'code', 'label', 'description',
+                'value_type', 'required_value', 'sort_order',
+            ]);
+
+        $latest = null;
+        if ($channel !== '') {
+            $latest = ShippingHealthAssessment::query()
+                ->with(['items', 'user:id,name'])
+                ->where('channel', $channel)
+                ->latest('id')
+                ->first();
+        }
+
+        return response()->json([
+            'success'    => true,
+            'parameters' => $parameters,
+            'latest'     => $latest ? $this->presentShippingHealthAssessment($latest) : null,
+            'is_admin'   => $this->isAuditAdmin(),
+        ]);
+    }
+
+    /**
+     * POST /audit-master/shipping-health/assessments
+     */
+    public function storeShippingHealthAssessment(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'channel'              => 'required|string|max:191',
+            'channel_id'           => 'nullable|integer|exists:channel_master,id',
+            'notes'                => 'nullable|string|max:4000',
+            'items'                => 'required|array|min:1',
+            'items.*.parameter_id' => 'required|integer|exists:shipping_health_parameters,id',
+            'items.*.current_value'=> 'nullable|string|max:255',
+        ]);
+
+        $params = ShippingHealthParameter::active()
+            ->whereIn('id', collect($validated['items'])->pluck('parameter_id'))
+            ->get()
+            ->keyBy('id');
+
+        if ($params->isEmpty()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No active shipping health parameters found.',
+            ], 422);
+        }
+
+        $itemsPayload = [];
+        $metCount     = 0;
+        $currentPcts  = [];
+
+        foreach ($validated['items'] as $row) {
+            $param = $params->get((int) $row['parameter_id']);
+            if (! $param) {
+                continue;
+            }
+
+            $current = trim((string) ($row['current_value'] ?? ''));
+            $meets   = $this->shippingHealthMeetsRequired(
+                (string) $param->value_type,
+                $param->required_value,
+                $current
+            );
+
+            if ($meets) {
+                $metCount++;
+            }
+
+            $parsed = $this->parseShippingHealthPercent($current);
+            if ($parsed !== null) {
+                $currentPcts[] = $parsed;
+            }
+
+            $storedCurrent = $current !== '' ? $this->formatShippingHealthPercent($current) : null;
+
+            $itemsPayload[] = [
+                'parameter_id'    => $param->id,
+                'parameter_label' => $param->label,
+                'value_type'      => $param->value_type,
+                'required_value'  => $param->required_value,
+                'current_value'   => $storedCurrent,
+                'meets_required'  => $meets,
+            ];
+        }
+
+        $total = count($itemsPayload);
+        // Overall health = average of entered current % values
+        $healthScore = count($currentPcts) > 0
+            ? round(array_sum($currentPcts) / count($currentPcts), 2)
+            : 0;
+
+        $assessment = DB::transaction(function () use ($validated, $healthScore, $itemsPayload) {
+            $assessment = ShippingHealthAssessment::create([
+                'channel'      => $validated['channel'],
+                'channel_id'   => $validated['channel_id'] ?? null,
+                'health_score' => $healthScore,
+                'notes'        => trim((string) ($validated['notes'] ?? '')) ?: null,
+                'assessed_at'  => now(),
+                'user_id'      => Auth::id(),
+            ]);
+
+            $now = now();
+            $rows = array_map(function ($item) use ($assessment, $now) {
+                return $item + [
+                    'assessment_id' => $assessment->id,
+                    'created_at'    => $now,
+                    'updated_at'    => $now,
+                ];
+            }, $itemsPayload);
+
+            ShippingHealthAssessmentItem::insert($rows);
+
+            return $assessment->load(['items', 'user:id,name']);
+        });
+
+        return response()->json([
+            'success'    => true,
+            'assessment' => $this->presentShippingHealthAssessment($assessment),
+        ]);
+    }
+
+    /**
+     * GET /audit-master/shipping-health/history?channel=Amazon
+     */
+    public function getShippingHealthHistory(Request $request): JsonResponse
+    {
+        $channel = trim((string) $request->input('channel', ''));
+        if ($channel === '') {
+            return response()->json(['success' => false, 'message' => 'Channel is required.'], 422);
+        }
+
+        $assessments = ShippingHealthAssessment::query()
+            ->with(['items', 'user:id,name'])
+            ->where('channel', $channel)
+            ->orderByDesc('assessed_at')
+            ->orderByDesc('id')
+            ->limit(50)
+            ->get()
+            ->map(fn ($row) => $this->presentShippingHealthAssessment($row))
+            ->values();
+
+        return response()->json([
+            'success'     => true,
+            'channel'     => $channel,
+            'assessments' => $assessments,
+        ]);
+    }
+
+    /**
+     * POST /audit-master/shipping-health/parameters/manage
+     */
+    public function storeShippingHealthParameter(Request $request): JsonResponse
+    {
+        if (! $this->isAuditAdmin()) {
+            return response()->json(['success' => false, 'message' => 'Forbidden.'], 403);
+        }
+
+        $data = $request->validate($this->shippingHealthParameterRules());
+
+        if (empty($data['code'])) {
+            $data['code'] = $this->generateUniqueShippingHealthCode($data['label']);
+        } elseif (ShippingHealthParameter::where('code', $data['code'])->exists()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'A parameter with this code already exists.',
+            ], 422);
+        }
+
+        $data['is_active'] = $this->boolish($data['is_active'] ?? true);
+        if (! isset($data['sort_order'])) {
+            $data['sort_order'] = (int) (ShippingHealthParameter::max('sort_order') ?? 0) + 1;
+        }
+
+        $param = ShippingHealthParameter::create($data);
+
+        return response()->json(['success' => true, 'parameter' => $param]);
+    }
+
+    /**
+     * PUT /audit-master/shipping-health/parameters/manage/{id}
+     */
+    public function updateShippingHealthParameter(Request $request, int $id): JsonResponse
+    {
+        if (! $this->isAuditAdmin()) {
+            return response()->json(['success' => false, 'message' => 'Forbidden.'], 403);
+        }
+
+        $param = ShippingHealthParameter::find($id);
+        if (! $param) {
+            return response()->json(['success' => false, 'message' => 'Parameter not found.'], 404);
+        }
+
+        $data = $request->validate($this->shippingHealthParameterRules($id));
+        $data['is_active'] = $this->boolish($data['is_active'] ?? $param->is_active);
+
+        if (! empty($data['code']) && $data['code'] !== $param->code) {
+            $taken = ShippingHealthParameter::where('code', $data['code'])
+                ->where('id', '!=', $id)
+                ->exists();
+            if ($taken) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'A parameter with this code already exists.',
+                ], 422);
+            }
+        }
+
+        $param->update($data);
+
+        return response()->json(['success' => true, 'parameter' => $param->fresh()]);
+    }
+
+    /**
+     * DELETE /audit-master/shipping-health/parameters/manage/{id}
+     */
+    public function destroyShippingHealthParameter(int $id): JsonResponse
+    {
+        if (! $this->isAuditAdmin()) {
+            return response()->json(['success' => false, 'message' => 'Forbidden.'], 403);
+        }
+
+        $param = ShippingHealthParameter::find($id);
+        if (! $param) {
+            return response()->json(['success' => false, 'message' => 'Parameter not found.'], 404);
+        }
+
+        $param->is_active = false;
+        $param->save();
+
+        return response()->json(['success' => true, 'message' => 'Parameter archived.']);
+    }
+
+    private function shippingHealthParameterRules(?int $ignoreId = null): array
+    {
+        $codeRule = 'nullable|string|max:80';
+        if ($ignoreId) {
+            $codeRule .= '|unique:shipping_health_parameters,code,'.$ignoreId;
+        } else {
+            $codeRule .= '|unique:shipping_health_parameters,code';
+        }
+
+        return [
+            'code'           => $codeRule,
+            'label'          => 'required|string|max:255',
+            'description'    => 'nullable|string|max:2000',
+            'value_type'     => 'required|in:boolean,number,text,percent',
+            'required_value' => 'nullable|string|max:255',
+            'sort_order'     => 'nullable|integer|min:0|max:65535',
+            'is_active'      => 'nullable',
+        ];
+    }
+
+    private function generateUniqueShippingHealthCode(string $label): string
+    {
+        $base = strtolower(trim($label));
+        $base = preg_replace('/[^a-z0-9]+/', '_', $base);
+        $base = trim($base, '_');
+        if ($base === '') {
+            $base = 'param';
+        }
+        if (strlen($base) > 60) {
+            $base = substr($base, 0, 60);
+        }
+
+        $code = $base;
+        $i    = 1;
+        while (ShippingHealthParameter::where('code', $code)->exists()) {
+            $i++;
+            $code = $base.'_'.$i;
+        }
+
+        return $code;
+    }
+
+    private function shippingHealthMeetsRequired(string $type, ?string $required, ?string $current): bool
+    {
+        if ($type === 'percent' || $type === 'number') {
+            $req = $this->parseShippingHealthPercent($required);
+            $cur = $this->parseShippingHealthPercent($current);
+            if ($req === null) {
+                return $cur !== null;
+            }
+            if ($cur === null) {
+                return false;
+            }
+
+            return $cur >= $req;
+        }
+
+        $current  = trim((string) $current);
+        $required = trim((string) $required);
+
+        if ($type === 'boolean') {
+            $curBool = in_array(strtolower($current), ['1', 'true', 'yes', 'on'], true);
+            $reqBool = in_array(strtolower($required), ['1', 'true', 'yes', 'on'], true);
+
+            return $curBool === $reqBool;
+        }
+
+        if ($required === '') {
+            return $current !== '';
+        }
+
+        return strcasecmp($current, $required) === 0;
+    }
+
+    private function parseShippingHealthPercent(?string $value): ?float
+    {
+        $s = trim(str_replace('%', '', (string) $value));
+        if ($s === '' || ! is_numeric($s)) {
+            return null;
+        }
+
+        return (float) $s;
+    }
+
+    private function formatShippingHealthPercent(?string $value): ?string
+    {
+        $n = $this->parseShippingHealthPercent($value);
+        if ($n === null) {
+            return trim((string) $value) !== '' ? trim((string) $value) : null;
+        }
+
+        $formatted = rtrim(rtrim(number_format($n, 2, '.', ''), '0'), '.');
+
+        return $formatted.'%';
+    }
+
+    private function presentShippingHealthAssessment(ShippingHealthAssessment $row): array
+    {
+        return [
+            'id'           => $row->id,
+            'channel'      => $row->channel,
+            'channel_id'   => $row->channel_id,
+            'health_score' => $row->health_score !== null ? (float) $row->health_score : null,
+            'notes'        => $row->notes,
+            'assessed_at'  => $row->assessed_at?->format('Y-m-d H:i'),
+            'user'         => $row->user ? [
+                'id'   => $row->user->id,
+                'name' => $row->user->name,
+            ] : null,
+            'items'        => $row->items->map(fn ($it) => [
+                'parameter_id'    => $it->parameter_id,
+                'parameter_label' => $it->parameter_label,
+                'value_type'      => $it->value_type,
+                'required_value'  => $it->required_value,
+                'current_value'   => $it->current_value,
+                'meets_required'  => (bool) $it->meets_required,
+            ])->values(),
+        ];
     }
 
     /**

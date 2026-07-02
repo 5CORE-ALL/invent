@@ -18,7 +18,9 @@ use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class PayrollController extends Controller
 {
@@ -109,30 +111,7 @@ class PayrollController extends Controller
             ->where('payroll_month_id', $payrollMonth->id)
             ->orderBy('id')
             ->get()
-            ->map(fn ($r) => [
-                'id' => $r->id,
-                'user_id' => $r->user_id,
-                'name' => $r->user?->name,
-                'email' => $r->user?->email,
-                'salary_pp' => $r->salary_pp,
-                'increment' => $r->increment,
-                'other' => $r->other,
-                'adv_inc_other' => $r->adv_inc_other,
-                'incentive' => $r->incentive,
-                'salary_lm' => (float) $r->salary_pp + (float) $r->increment,
-                'hours_worked' => $r->hours_worked,
-                'hours_overridden' => (bool) $r->hours_overridden,
-                'amount_lm' => $r->gross_amount,
-                'amount_p' => $r->net_amount,
-                'gross_amount' => $r->gross_amount,
-                'net_amount' => $r->net_amount,
-                'is_new_hire' => $r->is_new_hire,
-                'bank_1' => $r->bank_1,
-                'bank_2' => $r->bank_2,
-                'upi_id' => $r->upi_id,
-                'edited_by' => $r->edited_by,
-                'edited_at' => $r->edited_at?->toIso8601String(),
-            ]);
+            ->map(fn ($r) => $this->employeeRowPayload($r));
 
         $salaryByUser = PayrollEmployeeSalary::where('payroll_month_id', $payrollMonth->id)
             ->get()
@@ -320,6 +299,125 @@ class PayrollController extends Controller
         $this->payroll->recalculateMonth($month);
 
         return response()->json(['success' => true, 'row' => $payrollEmployeeSalary->fresh()->load('user')]);
+    }
+
+    public function uploadEmployeeDocument(Request $request, PayrollEmployeeSalary $payrollEmployeeSalary): JsonResponse
+    {
+        $this->authorizeManage();
+        $this->ensureUnlocked($payrollEmployeeSalary->payrollMonth);
+
+        $validated = $request->validate([
+            'type' => 'required|in:incentive,bill',
+            'file' => 'required|file|max:10240|mimes:pdf,jpg,jpeg,png,webp,doc,docx,xls,xlsx',
+        ]);
+
+        $type = $validated['type'];
+        $pathColumn = $type.'_document_path';
+        $nameColumn = $type.'_document_name';
+
+        $this->deleteStoredPayrollDocument($payrollEmployeeSalary, $type);
+
+        $file = $request->file('file');
+        $extension = $file->getClientOriginalExtension() ?: 'bin';
+        $storedPath = $file->storeAs(
+            'payroll/'.$payrollEmployeeSalary->payroll_month_id.'/'.$payrollEmployeeSalary->user_id,
+            $type.'_'.now()->format('YmdHis').'.'.$extension,
+            'local'
+        );
+
+        $payrollEmployeeSalary->update([
+            $pathColumn => $storedPath,
+            $nameColumn => $file->getClientOriginalName(),
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => ucfirst($type).' document uploaded.',
+            'row' => $this->employeeRowPayload($payrollEmployeeSalary->fresh()->load('user')),
+        ]);
+    }
+
+    public function downloadEmployeeDocument(PayrollEmployeeSalary $payrollEmployeeSalary, string $type): StreamedResponse
+    {
+        $this->authorizeManage();
+
+        if (! in_array($type, ['incentive', 'bill'], true)) {
+            abort(404);
+        }
+
+        $path = $payrollEmployeeSalary->{$type.'_document_path'};
+        $name = $payrollEmployeeSalary->{$type.'_document_name'} ?: ($type.'-document');
+
+        if (! $path || ! Storage::disk('local')->exists($path)) {
+            abort(404, 'Document not found.');
+        }
+
+        return Storage::disk('local')->download($path, $name);
+    }
+
+    public function deleteEmployeeDocument(PayrollEmployeeSalary $payrollEmployeeSalary, string $type): JsonResponse
+    {
+        $this->authorizeManage();
+        $this->ensureUnlocked($payrollEmployeeSalary->payrollMonth);
+
+        if (! in_array($type, ['incentive', 'bill'], true)) {
+            abort(404);
+        }
+
+        $this->deleteStoredPayrollDocument($payrollEmployeeSalary, $type);
+
+        $payrollEmployeeSalary->update([
+            $type.'_document_path' => null,
+            $type.'_document_name' => null,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => ucfirst($type).' document removed.',
+            'row' => $this->employeeRowPayload($payrollEmployeeSalary->fresh()->load('user')),
+        ]);
+    }
+
+    protected function deleteStoredPayrollDocument(PayrollEmployeeSalary $row, string $type): void
+    {
+        $path = $row->{$type.'_document_path'};
+        if ($path && Storage::disk('local')->exists($path)) {
+            Storage::disk('local')->delete($path);
+        }
+    }
+
+    /** @return array<string, mixed> */
+    protected function employeeRowPayload(PayrollEmployeeSalary $r): array
+    {
+        return [
+            'id' => $r->id,
+            'user_id' => $r->user_id,
+            'name' => $r->user?->name,
+            'email' => $r->user?->email,
+            'is_active' => $r->user ? (bool) $r->user->is_active : null,
+            'salary_pp' => $r->salary_pp,
+            'increment' => $r->increment,
+            'other' => $r->other,
+            'adv_inc_other' => $r->adv_inc_other,
+            'incentive' => $r->incentive,
+            'incentive_document_path' => $r->incentive_document_path,
+            'incentive_document_name' => $r->incentive_document_name,
+            'bill_document_path' => $r->bill_document_path,
+            'bill_document_name' => $r->bill_document_name,
+            'salary_lm' => (float) $r->salary_pp + (float) $r->increment,
+            'hours_worked' => $r->hours_worked,
+            'hours_overridden' => (bool) $r->hours_overridden,
+            'amount_lm' => $r->gross_amount,
+            'amount_p' => $r->net_amount,
+            'gross_amount' => $r->gross_amount,
+            'net_amount' => $r->net_amount,
+            'is_new_hire' => $r->is_new_hire,
+            'bank_1' => $r->bank_1,
+            'bank_2' => $r->bank_2,
+            'upi_id' => $r->upi_id,
+            'edited_by' => $r->edited_by,
+            'edited_at' => $r->edited_at?->toIso8601String(),
+        ];
     }
 
     public function storeComponent(Request $request, PayrollMonth $payrollMonth): JsonResponse

@@ -104,8 +104,96 @@
         .audit-btn-red:hover img    { filter: drop-shadow(0 2px 4px rgba(183, 28, 28, 0.55)); }
         .audit-btn-green img  { filter: drop-shadow(0 1px 2px rgba(27, 94, 32, 0.30)); }
         .audit-btn-green:hover img  { filter: drop-shadow(0 2px 4px rgba(27, 94, 32, 0.55)); }
-        .audit-btn-blue img   { filter: drop-shadow(0 1px 2px rgba(13, 71, 161, 0.25)); }
-        .audit-btn-blue:hover img   { filter: drop-shadow(0 2px 4px rgba(13, 71, 161, 0.45)); }
+        .audit-btn-yellow img {
+            filter: hue-rotate(35deg) saturate(1.35) brightness(1.05)
+                drop-shadow(0 1px 2px rgba(180, 130, 0, 0.35));
+        }
+        .audit-btn-yellow:hover img {
+            filter: hue-rotate(35deg) saturate(1.35) brightness(1.05)
+                drop-shadow(0 2px 4px rgba(180, 130, 0, 0.55));
+        }
+
+        /* Shipping Health column button (ship icon — green / yellow) */
+        .sh-health-btn {
+            background: transparent;
+            border: 0;
+            padding: 0;
+            cursor: pointer;
+            line-height: 0;
+            transition: transform 0.15s ease, filter 0.15s ease;
+        }
+        .sh-health-btn img {
+            width: 32px;
+            height: 32px;
+            object-fit: contain;
+        }
+        .sh-health-btn.sh-yellow img {
+            filter: drop-shadow(0 1px 2px rgba(180, 130, 0, 0.35));
+        }
+        .sh-health-btn.sh-yellow:hover img {
+            transform: scale(1.08);
+            filter: drop-shadow(0 2px 4px rgba(180, 130, 0, 0.55));
+        }
+        .sh-health-btn.sh-green img {
+            filter: drop-shadow(0 1px 2px rgba(27, 94, 32, 0.30));
+        }
+        .sh-health-btn.sh-green:hover img {
+            transform: scale(1.08);
+            filter: drop-shadow(0 2px 4px rgba(27, 94, 32, 0.55));
+        }
+
+        /* Shipping Health modal */
+        #shippingHealthModal .modal-header {
+            background: linear-gradient(135deg, #00897b 0%, #00695c 100%);
+            color: #fff;
+        }
+        #shippingHealthModal .sh-channel-pill {
+            background: rgba(255, 255, 255, 0.2);
+            color: #fff;
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-left: 8px;
+        }
+        .sh-param-table th {
+            font-size: 12px;
+            background: #f8f9fa;
+        }
+        .sh-param-table td {
+            font-size: 12.5px;
+            vertical-align: middle;
+        }
+        .sh-required-text {
+            font-size: 12.5px;
+            font-weight: 600;
+            color: #495057;
+        }
+        .sh-percent-input {
+            max-width: 110px;
+        }
+        .sh-score-card {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 10px 14px;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            background: #f8f9fa;
+            margin-bottom: 12px;
+        }
+        .sh-score-ring {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            font-size: 14px;
+            color: #fff;
+            flex-shrink: 0;
+        }
 
         /* Audit modal checklist styling */
         #auditChecklistModal .modal-header {
@@ -297,7 +385,7 @@
 
         .audit-param-row {
             display: grid;
-            grid-template-columns: 1fr 130px 110px 1fr;
+            grid-template-columns: 1fr 130px 1fr;
             gap: 10px;
             padding: 10px 14px;
             border-top: 1px solid #f1f3f5;
@@ -349,19 +437,6 @@
             color: #6c757d;
             font-size: 12px;
             font-weight: 600;
-        }
-
-        .audit-param-row .critical-fail-toggle {
-            display: flex;
-            align-items: center;
-            gap: 4px;
-            font-size: 11.5px;
-            color: #dc3545;
-            font-weight: 600;
-        }
-
-        .audit-param-row .critical-fail-toggle input {
-            accent-color: #dc3545;
         }
 
         .audit-param-row .remarks-input {
@@ -479,8 +554,9 @@
             margin-left: 8px;
         }
 
-        /* Param editor (nested) modal — must sit above the audit modal */
-        #paramEditorModal { z-index: 1080; }
+        /* Param editor (nested) modal — must sit above the parent modal */
+        #paramEditorModal,
+        #shParamEditorModal { z-index: 1080 !important; }
         .modal-backdrop.show + .modal-backdrop.show { z-index: 1075; }
 
         /* ============== Agent-wise KPI panel ============== */
@@ -638,6 +714,31 @@
             font-size: 11px;
             margin-left: 6px;
         }
+
+        /* Avg shipping health badge (page header) */
+        .avg-health-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 14px;
+            border-radius: 999px;
+            font-size: 13px;
+            font-weight: 700;
+            border: 1px solid transparent;
+            line-height: 1.2;
+        }
+        .avg-health-badge .avg-health-value {
+            font-size: 15px;
+        }
+        .avg-health-badge .avg-health-meta {
+            font-size: 11px;
+            font-weight: 500;
+            opacity: 0.85;
+        }
+        .avg-health-badge.sh-green  { background: #d1e7dd; color: #0f5132; border-color: #a3cfbb; }
+        .avg-health-badge.sh-yellow { background: #fff3cd; color: #664d03; border-color: #ffe69c; }
+        .avg-health-badge.sh-red    { background: #f8d7da; color: #842029; border-color: #f1aeb5; }
+        .avg-health-badge.sh-gray   { background: #e9ecef; color: #495057; border-color: #dee2e6; }
     </style>
 @endsection
 
@@ -645,9 +746,24 @@
     <div class="row">
         <div class="col-12">
             <div class="page-title-box d-flex align-items-center justify-content-between">
-                <h4 class="page-title mb-0">
-                    <i class="ri-truck-line me-2 text-primary"></i>CC Shipping Audit
-                </h4>
+                <div class="d-flex align-items-center flex-wrap gap-3">
+                    <h4 class="page-title mb-0">
+                        <i class="ri-truck-line me-2 text-primary"></i>CC Shipping Audit
+                    </h4>
+                    <span class="avg-health-badge sh-{{ $avgShippingHealth !== null ? ($avgShippingHealth >= 80 ? 'green' : ($avgShippingHealth >= 50 ? 'yellow' : 'red')) : 'gray' }}" id="avgHealthBadge"
+                        title="Average of latest shipping health % across all platforms">
+                        <i class="ri-heart-pulse-line"></i>
+                        <span>Avg Health:</span>
+                        <span class="avg-health-value" id="avgHealthBadgeValue">{{ $avgShippingHealth !== null ? $avgShippingHealth . '%' : '—' }}</span>
+                        <span class="avg-health-meta" id="avgHealthBadgeMeta">
+                            @if($avgShippingHealthCount > 0)
+                                {{ $avgShippingHealthCount }} of {{ $totalChannelCount }} platforms assessed
+                            @else
+                                No assessments yet
+                            @endif
+                        </span>
+                    </span>
+                </div>
                 <div class="page-title-right">
                     <ol class="breadcrumb m-0">
                         <li class="breadcrumb-item"><a href="javascript:void(0);">Audit Master</a></li>
@@ -815,17 +931,12 @@
                             <form id="auditForm" enctype="multipart/form-data">
                                 {{-- Header / context fields --}}
                                 <div class="row g-2 mb-3">
-                                    <div class="col-md-4">
+                                    <div class="col-md-8">
                                         <label class="form-label small fw-semibold mb-1">Shipping Executive</label>
                                         <input type="text" class="form-control form-control-sm" id="auditExecutive"
                                             placeholder="Executive who generated the label" maxlength="191">
                                     </div>
-                                    <div class="col-md-5">
-                                        <label class="form-label small fw-semibold mb-1">Order / Tracking Reference</label>
-                                        <input type="text" class="form-control form-control-sm" id="auditMessageRef"
-                                            placeholder="Order #, tracking #, carrier label URL, etc." maxlength="500">
-                                    </div>
-                                    <div class="col-md-3">
+                                    <div class="col-md-4">
                                         <label class="form-label small fw-semibold mb-1">Audit Date</label>
                                         <input type="date" class="form-control form-control-sm" id="auditDate">
                                     </div>
@@ -937,6 +1048,166 @@
         </div>
     </div>
 
+    {{-- ============ SHIPPING HEALTH MODAL ============ --}}
+    <div class="modal fade" id="shippingHealthModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title d-flex align-items-center flex-wrap gap-2">
+                        <i class="ri-heart-pulse-line"></i>
+                        <span>Shipping Health</span>
+                        <span class="sh-channel-pill" id="shChannelName">Channel</span>
+                        <span id="shAdminBadge" class="admin-only-badge d-none">
+                            <i class="ri-shield-user-line"></i> Admin Mode
+                        </span>
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <ul class="nav nav-tabs audit-tabs mb-3" role="tablist">
+                        <li class="nav-item">
+                            <button class="nav-link active" id="sh-form-tab" data-bs-toggle="tab"
+                                data-bs-target="#sh-form-pane" type="button" role="tab">
+                                <i class="ri-edit-line me-1"></i> Current Assessment
+                            </button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link" id="sh-history-tab" data-bs-toggle="tab"
+                                data-bs-target="#sh-history-pane" type="button" role="tab">
+                                <i class="ri-history-line me-1"></i> History
+                                <span class="badge bg-secondary" id="shHistoryCount">0</span>
+                            </button>
+                        </li>
+                    </ul>
+
+                    <div class="tab-content">
+                        <div class="tab-pane fade show active" id="sh-form-pane" role="tabpanel">
+                            <div id="shLoading" class="text-center text-muted py-4 d-none">
+                                <div class="spinner-border spinner-border-sm me-2"></div> Loading parameters…
+                            </div>
+
+                            <div class="sh-score-card">
+                                <div class="sh-score-ring" id="shScoreRing">—</div>
+                                <div class="flex-grow-1">
+                                    <div class="fw-semibold">Health Score</div>
+                                    <div class="text-muted small" id="shScoreSummary">Enter current values against required parameters.</div>
+                                </div>
+                                <button type="button" class="btn btn-sm btn-outline-secondary d-none" id="shAddParamBtn">
+                                    <i class="ri-add-line"></i> Add Parameter
+                                </button>
+                            </div>
+
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered sh-param-table mb-2">
+                                    <thead>
+                                        <tr>
+                                            <th>Parameter</th>
+                                            <th style="width:120px;">Required</th>
+                                            <th style="width:140px;">Current %</th>
+                                            <th style="width:70px;" class="text-center sh-admin-col d-none">Admin</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="shParamsBody">
+                                        <tr><td colspan="4" class="text-center text-muted py-3">Loading…</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <div class="mt-2">
+                                <label class="form-label small fw-semibold mb-1">Notes</label>
+                                <textarea id="shNotes" class="form-control form-control-sm" rows="2"
+                                    placeholder="Optional notes about this platform's shipping health"></textarea>
+                            </div>
+                        </div>
+
+                        <div class="tab-pane fade" id="sh-history-pane" role="tabpanel">
+                            <div id="shHistoryLoading" class="text-center text-muted py-4 d-none">
+                                <div class="spinner-border spinner-border-sm me-2"></div> Loading history…
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-striped audit-history-table mb-0">
+                                    <thead>
+                                        <tr>
+                                            <th>#</th>
+                                            <th>Date</th>
+                                            <th>User</th>
+                                            <th class="text-end">Score</th>
+                                            <th class="text-center">Met</th>
+                                            <th>Notes</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="shHistoryBody">
+                                        <tr><td colspan="6" class="text-center text-muted py-3">No assessments yet.</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-success" id="saveShippingHealthBtn">
+                        <i class="ri-save-line me-1"></i> Save Assessment
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- ============ SHIPPING HEALTH PARAMETER EDITOR (admin) ============ --}}
+    <div class="modal fade" id="shParamEditorModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header" style="background: #e0f2f1; color: #00695c;">
+                    <h5 class="modal-title">
+                        <i class="ri-tools-line me-1"></i>
+                        <span id="shParamEditorTitle">Add Shipping Health Parameter</span>
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="shParamEditorForm">
+                        <input type="hidden" id="shParamEditorId">
+                        <div class="mb-2">
+                            <label class="form-label small fw-semibold mb-1">Label <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control form-control-sm" id="shParamEditorLabel" maxlength="255" required>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small fw-semibold mb-1">Description</label>
+                            <textarea class="form-control form-control-sm" id="shParamEditorDescription" rows="2"></textarea>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small fw-semibold mb-1">Required (text)</label>
+                            <input type="text" class="form-control form-control-sm" id="shParamEditorRequired"
+                                placeholder="e.g. 100%">
+                            <div class="form-text">Target value shown in the Required column (editable here).</div>
+                        </div>
+                        <input type="hidden" id="shParamEditorType" value="percent">
+                        <div class="row g-2 mt-1">
+                            <div class="col-md-4">
+                                <label class="form-label small fw-semibold mb-1">Sort Order</label>
+                                <input type="number" class="form-control form-control-sm" id="shParamEditorSort" min="0" placeholder="auto">
+                            </div>
+                            <div class="col-md-8 d-flex align-items-end">
+                                <div class="form-check">
+                                    <input type="checkbox" class="form-check-input" id="shParamEditorActive" checked>
+                                    <label class="form-check-label small" for="shParamEditorActive">Active</label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="small text-danger mt-2 d-none" id="shParamEditorError"></div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-sm btn-primary" id="shParamEditorSaveBtn">
+                        <i class="ri-save-line me-1"></i> Save
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     {{-- ============ PARAMETER EDITOR (admin only, nested) ============ --}}
     <div class="modal fade" id="paramEditorModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
@@ -1038,28 +1309,27 @@
             // Audit-button image variants. Picked dynamically based on how
             // recently the channel was last audited.
             const AUDIT_BTN = {
-                green: "{{ asset('images/audit-button-green.png') }}",  // <= 7 days
-                blue:  "{{ asset('images/audit-button-blue.png') }}",   // 8 - 15 days
-                red:   "{{ asset('images/audit-button-red.png') }}",    // never audited or > 15 days
+                green:  "{{ asset('images/audit-button-green.png') }}",  // audited within 7 days
+                yellow: "{{ asset('images/audit-button-red.png') }}",    // default / not yet audited
+                red:    "{{ asset('images/audit-button-red.png') }}",    // audited > 7 days ago
             };
 
-            // Returns 'red' | 'blue' | 'green' for a given last-audited timestamp.
-            // null / empty => RED (never audited)
+            // Returns 'yellow' | 'green' | 'red' for a given last-audited timestamp.
+            // Default (never audited) => yellow; <= 7 days => green; > 7 days => red
             function pickAuditColor(lastAuditedAt) {
-                if (!lastAuditedAt) return 'red';
+                if (!lastAuditedAt) return 'yellow';
                 const last = new Date(lastAuditedAt);
-                if (isNaN(last.getTime())) return 'red';
+                if (isNaN(last.getTime())) return 'yellow';
                 const days = Math.floor((Date.now() - last.getTime()) / 86400000);
-                if (days <= 7)  return 'green';
-                if (days > 15)  return 'red';
-                return 'blue';
+                if (days <= 7) return 'green';
+                return 'red';
             }
 
-            // Human-friendly label like "12 days ago" / "Never audited"
+            // Human-friendly label like "12 days ago" / "Not audited yet"
             function lastAuditedLabel(lastAuditedAt) {
-                if (!lastAuditedAt) return 'Never audited';
+                if (!lastAuditedAt) return 'Not audited yet';
                 const last = new Date(lastAuditedAt);
-                if (isNaN(last.getTime())) return 'Never audited';
+                if (isNaN(last.getTime())) return 'Not audited yet';
                 const days = Math.floor((Date.now() - last.getTime()) / 86400000);
                 if (days <= 0) return 'Audited today';
                 if (days === 1) return 'Audited 1 day ago';
@@ -1068,13 +1338,64 @@
 
             const tableData = channelsWithLogo.map((row, index) => ({
                 id: index + 1,
+                channel_id: row.channel_id || null,
                 channel: row.channel,
                 logo: row.logo || null,
                 last_audited_at: row.last_audited_at || null,
                 last_audited: row.last_audited_at
                     ? new Date(row.last_audited_at).toLocaleDateString()
                     : '-',
+                shipping_health_score: row.shipping_health_score ?? null,
+                shipping_health_at: row.shipping_health_at || null,
             }));
+
+            const SH_HEALTH_BTN = {
+                green:  "{{ asset('images/shipping-health-button-green.svg') }}",
+                yellow: "{{ asset('images/shipping-health-button-yellow.svg') }}",
+            };
+
+            // Yellow = no assessment yet; green = has a saved health score
+            function pickHealthIconColor(score) {
+                if (score === null || score === undefined || score === '') return 'yellow';
+                const n = parseFloat(score);
+                return isNaN(n) ? 'yellow' : 'green';
+            }
+
+            function pickHealthColor(score) {
+                if (score === null || score === undefined || score === '') return 'gray';
+                const n = parseFloat(score);
+                if (isNaN(n)) return 'gray';
+                if (n >= 80) return 'green';
+                if (n >= 50) return 'yellow';
+                return 'red';
+            }
+
+            function refreshAvgHealthBadge() {
+                const rows = table.getData();
+                const scores = rows
+                    .map(r => r.shipping_health_score)
+                    .filter(s => s !== null && s !== undefined && !isNaN(parseFloat(s)))
+                    .map(s => parseFloat(s));
+                const total = rows.length;
+                const $badge = $('#avgHealthBadge');
+                if (!scores.length) {
+                    $badge.removeClass('sh-green sh-yellow sh-red').addClass('sh-gray');
+                    $('#avgHealthBadgeValue').text('—');
+                    $('#avgHealthBadgeMeta').text('No assessments yet');
+                    return;
+                }
+                const avg = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+                const color = pickHealthColor(avg);
+                $badge.removeClass('sh-green sh-yellow sh-red sh-gray').addClass('sh-' + color);
+                $('#avgHealthBadgeValue').text(avg + '%');
+                $('#avgHealthBadgeMeta').text(`${scores.length} of ${total} platforms assessed`);
+            }
+
+            function formatHealthScore(score) {
+                if (score === null || score === undefined || score === '') return '—';
+                const n = parseFloat(score);
+                return isNaN(n) ? '—' : n.toFixed(0) + '%';
+            }
 
             const table = new Tabulator('#ccShippingAuditTable', {
                 data: tableData,
@@ -1109,6 +1430,30 @@
                         formatter: cell => `<span class="channel-pill">${cell.getValue() ?? ''}</span>`,
                     },
                     {
+                        title: 'Shipping Health',
+                        field: 'shipping_health_score',
+                        width: 90,
+                        hozAlign: 'center',
+                        headerSort: false,
+                        formatter: function (cell) {
+                            const data    = cell.getRow().getData();
+                            const channel = (data.channel || '').toString();
+                            const safeCh  = channel.replace(/"/g, '&quot;');
+                            const score   = data.shipping_health_score;
+                            const color   = pickHealthIconColor(score);
+                            const label   = formatHealthScore(score);
+                            const tip     = score != null
+                                ? `${channel} — Health ${label}`
+                                : `${channel} — No assessment yet`;
+                            return `<button type="button" class="sh-health-btn open-sh-health-btn sh-${color}"
+                                        data-channel="${safeCh}"
+                                        data-channel-id="${data.channel_id || ''}"
+                                        title="${tip.replace(/"/g, '&quot;')}">
+                                        <img src="${SH_HEALTH_BTN[color]}" alt="Shipping Health ${label}"/>
+                                    </button>`;
+                        },
+                    },
+                    {
                         title: 'Audit',
                         field: 'last_audited_at',
                         width: 90,
@@ -1127,9 +1472,11 @@
                                     </button>`;
                         },
                     },
-                    { title: 'Last Audited', field: 'last_audited', width: 160 },
+                    { title: 'Last Audited & Health', field: 'last_audited', width: 180 },
                 ],
             });
+
+            refreshAvgHealthBadge();
 
             // ============================================================
             //  CC Shipping Audit Modal — dynamic, DB-backed
@@ -1141,8 +1488,14 @@
                 history:   '{{ route('audit.master.audits.history') }}',
                 agentKpis: '{{ route('audit.master.agent.kpis') }}',
                 paramStore:   '{{ route('audit.master.parameters.store') }}',
-                paramUpdate:  '{{ url('/audit-master/parameters/manage') }}', // append /{id}
-                paramDestroy: '{{ url('/audit-master/parameters/manage') }}', // append /{id}
+                paramUpdate:  '{{ url('/audit-master/parameters/manage') }}',
+                paramDestroy: '{{ url('/audit-master/parameters/manage') }}',
+                shConfig:     '{{ route('audit.master.shipping.health.config') }}',
+                shStore:      '{{ route('audit.master.shipping.health.store') }}',
+                shHistory:    '{{ route('audit.master.shipping.health.history') }}',
+                shParamStore: '{{ route('audit.master.shipping.health.parameters.store') }}',
+                shParamUpdate: '{{ url('/audit-master/shipping-health/parameters/manage') }}',
+                shParamDestroy: '{{ url('/audit-master/shipping-health/parameters/manage') }}',
             };
 
             // Server-supplied admin flag (also re-confirmed by getAuditConfig response)
@@ -1254,10 +1607,6 @@
                                 min="0" max="${p.max_score}" step="0.5" value="${p.max_score}">
                             <span class="max-score">/ ${p.max_score}</span>
                         </div>
-                        <label class="critical-fail-toggle">
-                            <input type="checkbox" class="param-critical-fail">
-                            <span>Critical fail</span>
-                        </label>
                         <div>
                             <input type="text" class="form-control form-control-sm remarks-input param-remarks"
                                 placeholder="Remarks (optional)" maxlength="500">
@@ -1292,9 +1641,7 @@
                     if (score > max) score = max;
                     $row.find('.param-score').val(score);
 
-                    const failedManually = $row.find('.param-critical-fail').is(':checked');
-                    const failedAuto     = isCrit && score < (max * 0.5);
-                    const failed         = failedManually || failedAuto;
+                    const failed = isCrit && score < (max * 0.5);
 
                     $row.toggleClass('is-failed', failed);
                     if (failed) hasCritical = true;
@@ -1415,7 +1762,6 @@
             // Reset form fields and switch to the form tab
             function resetAuditForm() {
                 $('#auditExecutive').val('');
-                $('#auditMessageRef').val('');
                 $('#auditDate').val(todayIso());
                 $('#auditBonusPoints').val(0);
                 $('#auditNotes').val('');
@@ -1446,7 +1792,6 @@
 
             // Live recalculation
             $(document).on('input change', '#auditParamsContainer .param-score, #auditBonusPoints', recalcScore);
-            $(document).on('change', '#auditParamsContainer .param-critical-fail', recalcScore);
 
             // Critical failure preset chips (toggle + sync into textarea)
             $(document).on('click', '.audit-critical-chip', function () {
@@ -1470,10 +1815,13 @@
 
                 const items = $('#auditParamsContainer .audit-param-row').map(function () {
                     const $row = $(this);
+                    const max   = parseFloat($row.data('max')) || 0;
+                    const score = parseFloat($row.find('.param-score').val()) || 0;
+                    const isCrit = parseInt($row.data('is-critical'), 10) === 1;
                     return {
                         id: parseInt($row.data('param-id'), 10),
-                        score: parseFloat($row.find('.param-score').val()) || 0,
-                        is_critical_failed: $row.find('.param-critical-fail').is(':checked') ? 1 : 0,
+                        score: score,
+                        is_critical_failed: (isCrit && score < max * 0.5) ? 1 : 0,
                         remarks: ($row.find('.param-remarks').val() || '').trim(),
                     };
                 }).get();
@@ -1483,7 +1831,6 @@
                 formData.append('module', AUDIT_MODULE);
                 formData.append('channel', currentChannel);
                 formData.append('executive_name', $('#auditExecutive').val().trim());
-                formData.append('message_reference', $('#auditMessageRef').val().trim());
                 formData.append('audit_date', $('#auditDate').val() || todayIso());
                 formData.append('bonus_points', $('#auditBonusPoints').val() || 0);
                 formData.append('auditor_notes', $('#auditNotes').val().trim());
@@ -1931,6 +2278,334 @@
 
             // Initial load
             loadAgentKpis();
+
+            // ============================================================
+            //  Shipping Health Modal — dynamic parameters
+            // ============================================================
+            let shCurrentChannel   = null;
+            let shCurrentChannelId = null;
+            let shParameters       = [];
+
+            function shFormatRequired(p) {
+                const v = String(p.required_value ?? '').trim();
+                return v || '—';
+            }
+
+            function shParsePercent(v) {
+                const s = String(v ?? '').trim().replace('%', '');
+                if (s === '' || isNaN(parseFloat(s))) return null;
+                return parseFloat(s);
+            }
+
+            function shCurrentInputHtml(p, value) {
+                const num = shParsePercent(value);
+                const display = num !== null ? num : '';
+                return `<div class="input-group input-group-sm sh-percent-input">
+                            <input type="number" min="0" max="100" step="0.1"
+                                class="form-control form-control-sm sh-current-input"
+                                data-param-id="${p.id}" data-type="percent"
+                                value="${display !== '' ? escapeHtml(String(display)) : ''}"
+                                placeholder="0">
+                            <span class="input-group-text">%</span>
+                        </div>`;
+            }
+
+            function shReadCurrentValue($input) {
+                const raw = ($input.val() || '').trim();
+                if (raw === '') return '';
+                const n = shParsePercent(raw);
+                return n !== null ? String(n) : raw;
+            }
+
+            function shScoreColor(score) {
+                if (score >= 80) return '#198754';
+                if (score >= 50) return '#ffc107';
+                return '#dc3545';
+            }
+
+            function shRecalcScore() {
+                let pctSum = 0;
+                let pctCount = 0;
+                $('#shParamsBody tr[data-param-id]').each(function () {
+                    const $row = $(this);
+                    const paramId = parseInt($row.data('param-id'), 10);
+                    const p = shParameters.find(x => x.id === paramId);
+                    if (!p) return;
+                    const $input = $row.find('.sh-current-input');
+                    const current = shReadCurrentValue($input);
+                    const curPct = shParsePercent(current);
+                    if (curPct !== null) {
+                        pctSum += curPct;
+                        pctCount++;
+                    }
+                });
+                const score = pctCount > 0 ? Math.round(pctSum / pctCount) : 0;
+                $('#shScoreRing').text(score + '%').css('background', shScoreColor(score));
+                $('#shScoreSummary').text(
+                    pctCount > 0
+                        ? `Average current health: ${score}%`
+                        : 'Enter current % for each parameter.'
+                );
+                return score;
+            }
+
+            function shRenderParameters() {
+
+                if (!shParameters.length) {
+                    $('#shParamsBody').html(`<tr><td colspan="4" class="text-center text-muted py-3">
+                        No shipping health parameters configured yet.
+                        ${isAuditAdmin ? ' Use Add Parameter to create one.' : ''}
+                    </td></tr>`);
+                    $('#shScoreRing').text('—').css('background', '#adb5bd');
+                    $('#shScoreSummary').text('No parameters to assess.');
+                    return;
+                }
+
+                const adminCol = isAuditAdmin ? '' : 'd-none';
+                const rows = shParameters.map(p => {
+                    const desc = p.description
+                        ? `<div class="text-muted small">${escapeHtml(p.description)}</div>` : '';
+                    const adminBtns = isAuditAdmin
+                        ? `<button type="button" class="btn btn-link btn-sm p-0 sh-edit-param-btn" data-param-id="${p.id}" title="Edit">
+                               <i class="ri-pencil-line"></i>
+                           </button>
+                           <button type="button" class="btn btn-link btn-sm p-0 text-danger sh-archive-param-btn" data-param-id="${p.id}" title="Archive">
+                               <i class="ri-archive-line"></i>
+                           </button>`
+                        : '';
+                    return `<tr data-param-id="${p.id}">
+                        <td>
+                            <div class="fw-semibold">${escapeHtml(p.label)}</div>
+                            ${desc}
+                        </td>
+                        <td><span class="sh-required-text">${escapeHtml(shFormatRequired(p))}</span></td>
+                        <td>${shCurrentInputHtml(p, '')}</td>
+                        <td class="text-center sh-admin-col ${adminCol}">${adminBtns}</td>
+                    </tr>`;
+                }).join('');
+                $('#shParamsBody').html(rows);
+                shRecalcScore();
+            }
+
+            function shLoadConfig() {
+                $('#shLoading').removeClass('d-none');
+                return $.get(ROUTES.shConfig, { channel: shCurrentChannel })
+                    .then(res => {
+                        shParameters = res.parameters || [];
+                        if (typeof res.is_admin !== 'undefined') {
+                            isAuditAdmin = !!res.is_admin;
+                        }
+                        $('#shAdminBadge').toggleClass('d-none', !isAuditAdmin);
+                        $('#shAddParamBtn').toggleClass('d-none', !isAuditAdmin);
+                        $('.sh-admin-col').toggleClass('d-none', !isAuditAdmin);
+                        shRenderParameters();
+                        $('#shNotes').val('');
+                    })
+                    .catch(() => {
+                        $('#shParamsBody').html(`<tr><td colspan="4" class="text-center text-danger py-3">
+                            Failed to load shipping health parameters.
+                        </td></tr>`);
+                    })
+                    .always(() => $('#shLoading').addClass('d-none'));
+            }
+
+            function shLoadHistory() {
+                $('#shHistoryLoading').removeClass('d-none');
+                $('#shHistoryBody').empty();
+                return $.get(ROUTES.shHistory, { channel: shCurrentChannel })
+                    .then(res => {
+                        const rows = res.assessments || [];
+                        $('#shHistoryCount').text(rows.length);
+                        if (!rows.length) {
+                            $('#shHistoryBody').html(`<tr><td colspan="6" class="text-center text-muted py-3">No assessments yet.</td></tr>`);
+                            return;
+                        }
+                        const html = rows.map((a, i) => {
+                            const met = (a.items || []).filter(it => it.meets_required).length;
+                            const total = (a.items || []).length;
+                            return `<tr>
+                                <td>${i + 1}</td>
+                                <td>${escapeHtml(a.assessed_at || '')}</td>
+                                <td>${escapeHtml(a.user?.name || '—')}</td>
+                                <td class="text-end fw-bold">${a.health_score != null ? parseFloat(a.health_score).toFixed(0) + '%' : '—'}</td>
+                                <td class="text-center">${met}/${total}</td>
+                                <td class="text-truncate" style="max-width:200px;" title="${escapeHtml(a.notes || '')}">${escapeHtml(a.notes || '—')}</td>
+                            </tr>`;
+                        }).join('');
+                        $('#shHistoryBody').html(html);
+                    })
+                    .catch(() => {
+                        $('#shHistoryBody').html(`<tr><td colspan="6" class="text-center text-danger py-3">Failed to load history.</td></tr>`);
+                    })
+                    .always(() => $('#shHistoryLoading').addClass('d-none'));
+            }
+
+            function shUpdateTableRow(score) {
+                const rows = table.getRows();
+                rows.forEach(r => {
+                    const d = r.getData();
+                    if (d.channel === shCurrentChannel) {
+                        r.update({
+                            shipping_health_score: score,
+                            shipping_health_at: new Date().toISOString(),
+                        });
+                    }
+                });
+                refreshAvgHealthBadge();
+            }
+
+            $(document).on('click', '.open-sh-health-btn', function () {
+                shCurrentChannel   = $(this).data('channel') || '';
+                shCurrentChannelId = $(this).data('channel-id') || null;
+                $('#shChannelName').text(shCurrentChannel);
+                $('#shNotes').val('');
+                const tabEl = document.getElementById('sh-form-tab');
+                if (tabEl) bootstrap.Tab.getOrCreateInstance(tabEl).show();
+                shLoadConfig();
+                shLoadHistory();
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('shippingHealthModal')).show();
+            });
+
+            $('#sh-history-tab').on('shown.bs.tab', function () {
+                if (shCurrentChannel) shLoadHistory();
+            });
+
+            $(document).on('input change', '#shParamsBody .sh-current-input', shRecalcScore);
+
+            $('#saveShippingHealthBtn').on('click', function () {
+                if (!shCurrentChannel || !shParameters.length) return;
+
+                const items = $('#shParamsBody tr[data-param-id]').map(function () {
+                    const paramId = parseInt($(this).data('param-id'), 10);
+                    const $input = $(this).find('.sh-current-input');
+                    return {
+                        parameter_id: paramId,
+                        current_value: shReadCurrentValue($input),
+                    };
+                }).get();
+
+                const $btn = $(this).prop('disabled', true)
+                    .html('<span class="spinner-border spinner-border-sm me-1"></span> Saving...');
+
+                $.ajax({
+                    url: ROUTES.shStore,
+                    method: 'POST',
+                    data: {
+                        _token: $('meta[name="csrf-token"]').attr('content'),
+                        channel: shCurrentChannel,
+                        channel_id: shCurrentChannelId || null,
+                        notes: $('#shNotes').val().trim(),
+                        items: items,
+                    },
+                })
+                .done(res => {
+                    if (res.success && res.assessment) {
+                        shUpdateTableRow(res.assessment.health_score);
+                        shLoadHistory();
+                        const tabEl = document.getElementById('sh-form-tab');
+                        if (tabEl) bootstrap.Tab.getOrCreateInstance(tabEl).show();
+                        shRenderParameters();
+                    }
+                })
+                .fail(xhr => {
+                    alert(xhr.responseJSON?.message || 'Failed to save shipping health assessment.');
+                })
+                .always(() => {
+                    $btn.prop('disabled', false).html('<i class="ri-save-line me-1"></i> Save Assessment');
+                });
+            });
+
+            function getShParamEditorModal() {
+                const el = document.getElementById('shParamEditorModal');
+                let inst = bootstrap.Modal.getInstance(el);
+                if (!inst) {
+                    // No second backdrop — avoids it covering the nested modal close button
+                    inst = new bootstrap.Modal(el, { backdrop: false, keyboard: true });
+                }
+                return inst;
+            }
+
+            function openShParamEditorModal() {
+                const el = document.getElementById('shParamEditorModal');
+                el.style.zIndex = '1080';
+                getShParamEditorModal().show();
+            }
+
+            // Admin: add / edit / archive shipping health parameters
+            $('#shAddParamBtn').on('click', function () {
+                $('#shParamEditorId').val('');
+                $('#shParamEditorTitle').text('Add Shipping Health Parameter');
+                $('#shParamEditorLabel, #shParamEditorDescription, #shParamEditorRequired, #shParamEditorSort').val('');
+                $('#shParamEditorType').val('percent');
+                $('#shParamEditorActive').prop('checked', true);
+                $('#shParamEditorError').addClass('d-none');
+                openShParamEditorModal();
+            });
+
+            $(document).on('click', '.sh-edit-param-btn', function () {
+                const p = shParameters.find(x => x.id === parseInt($(this).data('param-id'), 10));
+                if (!p) return;
+                $('#shParamEditorId').val(p.id);
+                $('#shParamEditorTitle').text('Edit Shipping Health Parameter');
+                $('#shParamEditorLabel').val(p.label);
+                $('#shParamEditorDescription').val(p.description || '');
+                $('#shParamEditorType').val('percent');
+                $('#shParamEditorRequired').val(p.required_value || '');
+                $('#shParamEditorSort').val(p.sort_order || '');
+                $('#shParamEditorActive').prop('checked', true);
+                $('#shParamEditorError').addClass('d-none');
+                openShParamEditorModal();
+            });
+
+            $(document).on('click', '.sh-archive-param-btn', function () {
+                const id = parseInt($(this).data('param-id'), 10);
+                if (!confirm('Archive this parameter? It will no longer appear in new assessments.')) return;
+                $.ajax({
+                    url: `${ROUTES.shParamDestroy}/${id}`,
+                    method: 'DELETE',
+                    data: { _token: $('meta[name="csrf-token"]').attr('content') },
+                }).done(() => shLoadConfig())
+                  .fail(() => alert('Failed to archive parameter.'));
+            });
+
+            $('#shParamEditorSaveBtn').on('click', function () {
+                const id = $('#shParamEditorId').val();
+                const payload = {
+                    _token: $('meta[name="csrf-token"]').attr('content'),
+                    label: $('#shParamEditorLabel').val().trim(),
+                    description: $('#shParamEditorDescription').val().trim(),
+                    value_type: 'percent',
+                    required_value: $('#shParamEditorRequired').val().trim(),
+                    is_active: $('#shParamEditorActive').is(':checked') ? 1 : 0,
+                };
+                const sort = $('#shParamEditorSort').val();
+                if (sort !== '') payload.sort_order = parseInt(sort, 10);
+
+                if (!payload.label) {
+                    $('#shParamEditorError').text('Label is required.').removeClass('d-none');
+                    return;
+                }
+
+                const $btn = $(this).prop('disabled', true);
+                const req = id
+                    ? $.ajax({ url: `${ROUTES.shParamUpdate}/${id}`, method: 'PUT', data: payload })
+                    : $.post(ROUTES.shParamStore, payload);
+
+                req.done(() => {
+                    getShParamEditorModal().hide();
+                    shLoadConfig();
+                })
+                .fail(xhr => {
+                    $('#shParamEditorError').text(xhr.responseJSON?.message || 'Save failed.').removeClass('d-none');
+                })
+                .always(() => $btn.prop('disabled', false));
+            });
+
+            $(document).on('click', '#shParamEditorModal .btn-close, #shParamEditorModal [data-bs-dismiss="modal"]', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                getShParamEditorModal().hide();
+            });
         });
     </script>
 @endsection

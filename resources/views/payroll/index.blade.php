@@ -24,7 +24,9 @@
     .payroll-status-badge.processing { background: rgba(255,193,7,.2); color: #997404; }
     .payroll-status-badge.processed { background: rgba(13,110,253,.15); color: #0d6efd; }
     .payroll-status-badge.released { background: rgba(25,135,84,.15); color: #198754; }
-    .nav-tabs .nav-link { font-size: .875rem; }
+    .payroll-doc-row { display: flex; align-items: center; justify-content: center; gap: .25rem; flex-wrap: wrap; margin: .15rem 0; font-size: .72rem; }
+    .payroll-doc-label { color: #6c757d; min-width: 42px; text-align: right; }
+    .payroll-doc-actions { display: inline-flex; align-items: center; gap: .15rem; }
     .table-payroll { font-size: .85rem; }
     /* Center-align all payroll table data and headers. */
     #payrollApp .tabulator .tabulator-cell,
@@ -128,6 +130,7 @@
             </div>
         </div>
         <div id="employeesTable"></div>
+        <input type="file" id="payrollDocInput" class="d-none" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx">
     </div>
 </div>
 
@@ -225,6 +228,67 @@
 
     function fmt(n) { return '₹' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 }); }
 
+    function formatDocSlot(d, type, label, locked) {
+        const pathKey = type + '_document_path';
+        const nameKey = type + '_document_name';
+        const hasFile = !!(d[pathKey]);
+        const downloadUrl = base + '/employee-salary/' + d.id + '/document/' + type;
+        const fileName = hasFile ? esc(d[nameKey] || label) : '';
+        let actions = '';
+        if (hasFile) {
+            actions += '<a href="' + downloadUrl + '" class="btn btn-sm btn-link p-0 text-success" title="Download ' + esc(label) + '"><i class="ri-download-line"></i></a>';
+            if (canManage && !locked) {
+                actions += '<button type="button" class="btn btn-sm btn-link p-0 text-danger btn-delete-doc" data-id="' + d.id + '" data-type="' + type + '" title="Remove ' + esc(label) + '"><i class="ri-delete-bin-line"></i></button>';
+            }
+        } else if (canManage && !locked) {
+            actions += '<button type="button" class="btn btn-sm btn-link p-0 text-primary btn-upload-doc" data-id="' + d.id + '" data-type="' + type + '" title="Upload ' + esc(label) + '"><i class="ri-upload-2-line"></i></button>';
+        } else {
+            actions += '<span class="text-muted">—</span>';
+        }
+        const title = hasFile ? (' title="' + fileName + '"') : '';
+        return '<div class="payroll-doc-row"' + title + '>'
+            + '<span class="payroll-doc-label">' + esc(label) + '</span>'
+            + '<span class="payroll-doc-actions">' + actions + '</span>'
+            + '</div>';
+    }
+
+    function formatDocumentsCell(d, locked) {
+        return formatDocSlot(d, 'incentive', 'Inc', locked) + formatDocSlot(d, 'bill', 'Bill', locked);
+    }
+
+    async function uploadPayrollDocument(rowId, type, file) {
+        const fd = new FormData();
+        fd.append('type', type);
+        fd.append('file', file);
+        const r = await fetch(base + '/employee-salary/' + rowId + '/document', {
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' },
+            body: fd,
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j.message || 'Upload failed');
+        return j;
+    }
+
+    async function deletePayrollDocument(rowId, type) {
+        const r = await fetch(base + '/employee-salary/' + rowId + '/document/' + type, {
+            method: 'DELETE',
+            headers: { 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' },
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j.message || 'Delete failed');
+        return j;
+    }
+
+    function applyEmployeeRowUpdate(rowData) {
+        if (!rowData || !rowData.id) return;
+        employeeRowsById[rowData.id] = rowData;
+        if (employeesTable && employeesTableBuilt) {
+            const row = employeesTable.getRows().find(r => String(r.getData().id) === String(rowData.id));
+            if (row) row.update(Object.assign({}, row.getData(), rowData));
+        }
+    }
+
     async function onHoursEdited(cell) {
         const row = cell.getRow();
         const d = row.getData();
@@ -264,7 +328,11 @@
         const columns = [
             { title: 'Name', field: 'name', minWidth: 180, formatter: (c) => {
                 const d = c.getRow().getData();
-                return (d.name || '—');
+                let html = esc(d.name || '—');
+                if (d.is_active === false) {
+                    html += ' <span class="badge bg-secondary" style="font-size:.65rem">Inactive</span>';
+                }
+                return html;
             } },
             { title: 'Hours LM', field: 'hours_worked', hozAlign: 'center', width: 110,
                 editor: canManage ? 'number' : false,
@@ -287,6 +355,8 @@
             { title: 'Incr', field: 'increment', hozAlign: 'right', formatter: (c) => fmt(c.getValue()) },
             { title: 'Other', field: 'other', hozAlign: 'right', formatter: (c) => fmt(c.getValue()) },
             { title: 'Incentive', field: 'incentive', hozAlign: 'right', formatter: (c) => fmt(c.getValue()) },
+            { title: 'Documents', field: 'documents', hozAlign: 'center', headerSort: false, minWidth: 130,
+                formatter: (c) => formatDocumentsCell(c.getRow().getData(), !!c.getRow().getData()._locked) },
             { title: 'Advance', field: 'adv_inc_other', hozAlign: 'right', formatter: (c) => fmt(c.getValue()) },
             { title: 'Amount', field: 'gross_amount', hozAlign: 'right', formatter: (c) => fmt(c.getRow().getData().gross_amount ?? c.getRow().getData().amount_lm) },
             { title: 'Payable', field: 'net_amount', hozAlign: 'right', formatter: (c) => '<strong>' + fmt(c.getRow().getData().net_amount ?? c.getRow().getData().amount_p) + '</strong>' },
@@ -538,7 +608,43 @@
         loadMonth();
     });
 
+    let pendingDocUpload = null;
+
+    document.getElementById('payrollDocInput')?.addEventListener('change', async (e) => {
+        const input = e.target;
+        const file = input.files && input.files[0];
+        const pending = pendingDocUpload;
+        input.value = '';
+        pendingDocUpload = null;
+        if (!file || !pending) return;
+        try {
+            const res = await uploadPayrollDocument(pending.id, pending.type, file);
+            applyEmployeeRowUpdate(res.row);
+            alert(res.message || 'Document uploaded.');
+        } catch (err) {
+            alert((err && err.message) ? err.message : 'Upload failed.');
+        }
+    });
+
     document.addEventListener('click', async (e) => {
+        const uploadBtn = e.target.closest('.btn-upload-doc');
+        if (uploadBtn) {
+            pendingDocUpload = { id: uploadBtn.dataset.id, type: uploadBtn.dataset.type };
+            document.getElementById('payrollDocInput')?.click();
+            return;
+        }
+        const deleteBtn = e.target.closest('.btn-delete-doc');
+        if (deleteBtn) {
+            if (!confirm('Remove this document?')) return;
+            try {
+                const res = await deletePayrollDocument(deleteBtn.dataset.id, deleteBtn.dataset.type);
+                applyEmployeeRowUpdate(res.row);
+            } catch (err) {
+                alert((err && err.message) ? err.message : 'Delete failed.');
+            }
+            return;
+        }
+
         const editBtn = e.target.closest('.btn-edit-salary');
         if (editBtn) {
             const row = employeeRowsById[editBtn.dataset.id];

@@ -78,16 +78,8 @@ class PayrollService
     }
 
     /**
-     * Base query for employees eligible for payroll: every active user that is
-     * marked to show in salary and has not been deleted. SoftDeletes excludes
-     * `deleted_at` rows, deactivated users (is_active = false) are excluded, and
-     * anyone with show_in_salary = false is left off payroll entirely.
-     *
-     * When a $month is supplied, the joining date is respected as well: a user
-     * only belongs on a month's sheet once they have joined on or before that
-     * month ends. Users joining later (e.g. a May hire relative to April) are
-     * therefore excluded. Users without a recorded joining date are treated as
-     * existing staff and stay eligible for every month.
+     * Base query for employees eligible to be *added* to a payroll month: active
+     * users marked show_in_salary who had joined on or before the month ends.
      */
     protected function eligibleUsersQuery(?PayrollMonth $month = null)
     {
@@ -109,9 +101,66 @@ class PayrollService
     }
 
     /**
-     * Drop rows on an unlocked month's sheet for anyone no longer eligible
-     * (deactivated/deleted users, or hires who joined after the month ended), so
-     * they stop showing automatically.
+     * Users who may receive a row when back-filling a month. Includes deactivated
+     * staff so a missing prior-month row can be restored after an account is turned off.
+     */
+    protected function sheetPopulationQuery(PayrollMonth $month)
+    {
+        $query = User::query()
+            ->where('show_in_salary', true)
+            ->with('userSalary');
+
+        if ($month->period_end) {
+            $joinedBy = $month->period_end->copy()->endOfDay();
+
+            $query->where(function ($q) use ($joinedBy) {
+                $q->whereNull('date_of_joining')
+                    ->orWhere('date_of_joining', '<=', $joinedBy);
+            });
+        }
+
+        return $query;
+    }
+
+    /**
+     * Existing payroll rows to drop from an unlocked month. Deactivated staff are
+     * kept so prior months stay visible after an account is turned off. Only remove
+     * rows for users excluded from salary, late joiners, or deleted accounts.
+     *
+     * @return list<int>
+     */
+    protected function userIdsToRemoveFromMonth(PayrollMonth $month): array
+    {
+        $existingUserIds = PayrollEmployeeSalary::where('payroll_month_id', $month->id)
+            ->pluck('user_id')
+            ->all();
+
+        if ($existingUserIds === []) {
+            return [];
+        }
+
+        $keepQuery = User::withTrashed()
+            ->whereIn('id', $existingUserIds)
+            ->where('show_in_salary', true);
+
+        if ($month->period_end) {
+            $joinedBy = $month->period_end->copy()->endOfDay();
+
+            $keepQuery->where(function ($q) use ($joinedBy) {
+                $q->whereNull('date_of_joining')
+                    ->orWhere('date_of_joining', '<=', $joinedBy);
+            });
+        }
+
+        $keepIds = $keepQuery->pluck('id')->all();
+
+        return array_values(array_diff($existingUserIds, $keepIds));
+    }
+
+    /**
+     * Drop rows on an unlocked month's sheet for users who should never appear on
+     * that month (removed from salary, joined after the period, etc.). Deactivated
+     * users are kept — their past-month payroll remains visible.
      */
     public function removeIneligibleEmployees(PayrollMonth $month): int
     {
@@ -119,13 +168,14 @@ class PayrollService
             return 0;
         }
 
-        $eligibleIds = $this->eligibleUsersQuery($month)->pluck('id')->all();
+        $removeIds = $this->userIdsToRemoveFromMonth($month);
+
+        if ($removeIds === []) {
+            return 0;
+        }
 
         return PayrollEmployeeSalary::where('payroll_month_id', $month->id)
-            ->when(
-                $eligibleIds !== [],
-                fn ($q) => $q->whereNotIn('user_id', $eligibleIds)
-            )
+            ->whereIn('user_id', $removeIds)
             ->delete();
     }
 
@@ -289,7 +339,7 @@ class PayrollService
             ->pluck('user_id')
             ->all();
 
-        $missing = $this->eligibleUsersQuery($month)
+        $missing = $this->sheetPopulationQuery($month)
             ->when($existingUserIds !== [], fn ($q) => $q->whereNotIn('id', $existingUserIds))
             ->get();
 

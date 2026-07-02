@@ -163,6 +163,30 @@ class OverallAmazonController extends Controller
 
         $shopifyData = ShopifySku::mapByProductSkus($skus);
 
+        // Forecast Analysis NRP (forecast_analysis.nr) — same source as /forecast.analysis NRP column.
+        $normalizeSkuFa = static fn ($value) => strtoupper(str_replace("\u{00a0}", ' ', trim((string) $value)));
+        $forecastNrpBySku = [];
+        $pmKeysForFa = collect($skus)->map(fn ($s) => $normalizeSkuFa($s))->unique()->filter(fn ($s) => $s !== '')->values();
+        if ($pmKeysForFa->isNotEmpty()) {
+            $faRows = DB::table('forecast_analysis')
+                ->whereIn(DB::raw('UPPER(TRIM(sku))'), $pmKeysForFa->all())
+                ->get(['sku', 'parent', 'nr', 'stage']);
+            foreach ($faRows->groupBy(fn ($r) => $normalizeSkuFa($r->sku)) as $k => $group) {
+                $withStage = $group->first(function ($r) {
+                    return $r->stage !== null && trim((string) $r->stage) !== '';
+                });
+                if ($withStage) {
+                    $forecastNrpBySku[$k] = $withStage;
+
+                    continue;
+                }
+                $withNr = $group->first(function ($r) {
+                    return $r->nr !== null && trim((string) $r->nr) !== '';
+                });
+                $forecastNrpBySku[$k] = $withNr ?? $group->first();
+            }
+        }
+
         // Last Shopify B2C price push status (CVR / UpdatePriceApiController persist into shopifyb2c_data_view.value)
         $shopifyB2cDataBySku = [];
         foreach (Shopifyb2cDataView::whereIn('sku', $skus)->get() as $b2cRow) {
@@ -701,6 +725,16 @@ class OverallAmazonController extends Controller
             }
 
             $this->applyAmazonTabulatorFbaSuffixZeroFbaInvAdPauseOverlay($row);
+
+            $faRecNrp = $forecastNrpBySku[$normalizeSkuFa($pm->sku)] ?? null;
+            $nrpOut = '';
+            if ($faRecNrp && $faRecNrp->nr !== null && trim((string) $faRecNrp->nr) !== '') {
+                $nrpOut = strtoupper(trim((string) $faRecNrp->nr));
+                if (! in_array($nrpOut, ['REQ', 'NR', 'LATER'], true)) {
+                    $nrpOut = 'REQ';
+                }
+            }
+            $row['nrp'] = $nrpOut;
 
             $result[] = (object) $row;
         }

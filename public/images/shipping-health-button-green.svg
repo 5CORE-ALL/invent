@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Shipping Health">
+  <defs>
+    <linearGradient id="gbg" x1="18%" y1="12%" x2="82%" y2="88%">
+      <stop offset="0%" stop-color="#43a047"/>
+      <stop offset="100%" stop-color="#2e7d32"/>
+    </linearGradient>
+  </defs>
+  <circle cx="32" cy="32" r="32" fill="url(#gbg)"/>
+  <g fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M18 39h28l-3.5 6H21.5L18 39z"/>
+    <path d="M21 39V33"/>
+    <path d="M43 39V33"/>
+    <path d="M26 33l6-10 6 10"/>
+    <path d="M38 33l5-8 5 8"/>
+    <path d="M35 24v9"/>
+    <path d="M32 21h6"/>
+    <path d="M32 27h6"/>
+  </g>
+</svg>
