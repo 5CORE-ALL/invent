@@ -96,6 +96,125 @@ class ShopifyAdsMasterController extends Controller
         ];
     }
 
+    /**
+     * Rolled-up parent channels for Advertisement Master (sub-rows excluded so
+     * Facebook · G Video etc. do not double-count the Shopify parent total).
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function getAdvertisementMasterChannelRows(): array
+    {
+        $sep = self::SUBROW_SEPARATOR;
+        $parentMetrics = ['spend' => 0.0, 'clicks' => 0, 'sold' => 0, 'sales' => 0.0];
+        $children = [];
+
+        $flatChildSources = [
+            ['Google Shopping', 'shopify_google_shopping', $this->googleShoppingMetrics()],
+            ['Google SERP', 'shopify_google_serp', $this->googleSerpMetrics()],
+            ['Youtube ads', 'shopify_youtube_ads', $this->googleYoutubeAdsMetrics()],
+        ];
+
+        foreach ($flatChildSources as [$label, $source, $row]) {
+            $parentMetrics['spend'] += (float) ($row['spend'] ?? 0);
+            $parentMetrics['clicks'] += (int) ($row['clicks'] ?? 0);
+            $parentMetrics['sold'] += (int) ($row['sold'] ?? 0);
+            $parentMetrics['sales'] += (float) ($row['sales'] ?? 0);
+
+            $children[] = self::advertisementMasterMetricRow(
+                'Shopify'.$sep.$label,
+                $source,
+                (object) $row,
+                true
+            );
+        }
+
+        $facebookMetrics = $this->metaChannelMetrics('Facebook', 'FB');
+        $parentMetrics['spend'] += (float) ($facebookMetrics['spend'] ?? 0);
+        $parentMetrics['clicks'] += (int) ($facebookMetrics['clicks'] ?? 0);
+        $parentMetrics['sold'] += (int) ($facebookMetrics['sold'] ?? 0);
+        $parentMetrics['sales'] += (float) ($facebookMetrics['sales'] ?? 0);
+
+        $facebookRow = self::advertisementMasterMetricRow(
+            'Shopify'.$sep.'Facebook',
+            'shopify_facebook',
+            (object) $facebookMetrics,
+            true
+        );
+
+        $facebookSubTypes = [
+            ['G Video', 'shopify_facebook_g_video', ['GROUP VIDEO']],
+            ['G Carousal', 'shopify_facebook_g_carousal', ['GROUP CAROUSAL']],
+            ['P Video', 'shopify_facebook_p_video', ['PARENT VIDEO']],
+            ['P Carousal', 'shopify_facebook_p_carousal', ['PARENT CAROUSAL']],
+        ];
+
+        $facebookChildren = [];
+        foreach ($facebookSubTypes as [$suffix, $source, $adTypes]) {
+            $subMetrics = $this->metaChannelMetrics('Facebook'.$sep.$suffix, 'FB', $adTypes, true);
+            $facebookChildren[] = self::advertisementMasterMetricRow(
+                'Shopify'.$sep.'Facebook'.$sep.$suffix,
+                $source,
+                (object) $subMetrics,
+                true
+            );
+        }
+        $facebookRow['_children'] = $facebookChildren;
+        $children[] = $facebookRow;
+
+        $instagramMetrics = $this->metaChannelMetrics('Instagram', 'Insta');
+        $parentMetrics['spend'] += (float) ($instagramMetrics['spend'] ?? 0);
+        $parentMetrics['clicks'] += (int) ($instagramMetrics['clicks'] ?? 0);
+        $parentMetrics['sold'] += (int) ($instagramMetrics['sold'] ?? 0);
+        $parentMetrics['sales'] += (float) ($instagramMetrics['sales'] ?? 0);
+
+        $instagramRow = self::advertisementMasterMetricRow(
+            'Shopify'.$sep.'Instagram',
+            'shopify_instagram',
+            (object) $instagramMetrics,
+            true
+        );
+
+        $instagramSubTypes = [
+            ['G Video', 'shopify_instagram_g_video', ['GROUP VIDEO']],
+            ['G Carousal', 'shopify_instagram_g_carousal', ['GROUP CAROUSAL']],
+            ['P Video', 'shopify_instagram_p_video', ['PARENT VIDEO']],
+            ['P Carousal', 'shopify_instagram_p_carousal', ['PARENT CAROUSAL']],
+        ];
+
+        $instagramChildren = [];
+        foreach ($instagramSubTypes as [$suffix, $source, $adTypes]) {
+            $subMetrics = $this->metaChannelMetrics('Instagram'.$sep.$suffix, 'Insta', $adTypes, true);
+            $instagramChildren[] = self::advertisementMasterMetricRow(
+                'Shopify'.$sep.'Instagram'.$sep.$suffix,
+                $source,
+                (object) $subMetrics,
+                true
+            );
+        }
+        $instagramRow['_children'] = $instagramChildren;
+        $children[] = $instagramRow;
+
+        $parent = self::advertisementMasterMetricRow('Shopify', 'shopify', (object) $parentMetrics, false);
+        $parent['_children'] = $children;
+
+        return [$parent];
+    }
+
+    /**
+     * Shopify L30 store net sales — same source as the S Sales badge on
+     * /shopify-ads-master.
+     */
+    public static function advertisementMasterNetSales(): float
+    {
+        try {
+            return round((new self())->shopifyNetSales(), 2);
+        } catch (\Throwable $e) {
+            \Log::warning('Advertisement Master Shopify net sales lookup failed: '.$e->getMessage());
+
+            return 0.0;
+        }
+    }
+
     public function index(Request $request)
     {
         $mode = $request->query('mode');
@@ -387,9 +506,19 @@ class ShopifyAdsMasterController extends Controller
     }
 
     /**
-     * Shared L30 totals query for the two Google Ads sub-channels. `$scope = 'shopping'`
-     * excludes SEARCH-named campaigns; `$scope = 'serp'` includes only SEARCH-named
-     * campaigns. Anything else returns the unfiltered total (back-compat path).
+     * YouTube ads totals (campaigns whose name ends with " YT" — same scope as
+     * /google/shopping/youtube-ads).
+     */
+    private function googleYoutubeAdsMetrics(): array
+    {
+        return $this->googleAdsChannelMetrics('Youtube ads', 'youtube');
+    }
+
+    /**
+     * Shared L30 totals query for Google Ads sub-channels:
+     *   shopping — excludes SEARCH and YT (matches /google/shopping/google-shopping)
+     *   serp     — SEARCH-named campaigns only
+     *   youtube  — names ending with " YT"
      */
     private function googleAdsChannelMetrics(string $label, string $scope): array
     {
@@ -414,9 +543,12 @@ class ShopifyAdsMasterController extends Controller
             }
 
             if ($scope === 'shopping') {
-                $campaigns->whereRaw('UPPER(campaign_name) NOT LIKE ?', ['% SEARCH%']);
+                $campaigns->whereRaw('UPPER(campaign_name) NOT LIKE ?', ['% SEARCH%'])
+                    ->whereRaw('UPPER(campaign_name) NOT LIKE ?', ['% YT']);
             } elseif ($scope === 'serp') {
                 $campaigns->whereRaw('UPPER(campaign_name) LIKE ?', ['% SEARCH%']);
+            } elseif ($scope === 'youtube') {
+                $campaigns->whereRaw('UPPER(campaign_name) LIKE ?', ['% YT']);
             }
 
             $row = DB::query()
@@ -844,6 +976,33 @@ class ShopifyAdsMasterController extends Controller
             // "Facebook · G Video" is a subset of "Facebook"). Frontend
             // skips them when summing the rolled-up "All channels" badges.
             'is_sub_row' => $isSubRow,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private static function advertisementMasterMetricRow(string $channel, string $source, ?object $row, bool $isSubRow = false): array
+    {
+        $spend = (float) ($row->spend ?? 0);
+        $clicks = (float) ($row->clicks ?? 0);
+        $sold = (float) ($row->sold ?? 0);
+        $sales = (float) ($row->sales ?? 0);
+
+        return [
+            'channel'     => $channel,
+            'source'      => $source,
+            'spend'       => round($spend, 2),
+            'clicks'      => (int) round($clicks),
+            'sold'        => (int) round($sold),
+            'sales'       => round($sales, 2),
+            'cvr'         => $clicks > 0 ? round(($sold / $clicks) * 100, 1) : 0,
+            'acos'        => $sales > 0
+                ? round(($spend / $sales) * 100, 0)
+                : ($spend > 0 ? 100 : 0),
+            'tcos'        => 0,
+            'is_sub_row'  => $isSubRow,
+            'marketplace' => 'shopify',
         ];
     }
 

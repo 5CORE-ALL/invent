@@ -2,9 +2,12 @@
 
 namespace App\Http\Controllers\Campaigns;
 
+use App\Http\Controllers\Campaigns\Concerns\ProvidesEbayCampaignAdsBadgeSummary;
 use App\Http\Controllers\Controller;
+use App\Services\EbayChannelMetricsService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Artisan;
 
@@ -19,6 +22,7 @@ use Illuminate\Support\Facades\Artisan;
  */
 class Ebay3CampaignAdsController extends Controller
 {
+    use ProvidesEbayCampaignAdsBadgeSummary;
     public function index()
     {
         $rule = DB::table('ebay_sbid_rules')->where('key', 'ebay3')->first();
@@ -621,5 +625,130 @@ class Ebay3CampaignAdsController extends Controller
             'total' => $total,
             'data'  => $data,
         ]);
+    }
+
+    /**
+     * Single eBay 3 row for /advertisement-master — KW + PMT combined from daily
+     * ebay_3_priority_reports and ebay_3_general_reports (31-day window).
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function getAdvertisementMasterChannelRows(): array
+    {
+        $kwMetrics = $this->advertisementMasterKwMetrics();
+        $pmtMetrics = $this->advertisementMasterPmtMetrics();
+
+        return [
+            self::advertisementMasterMetricRow('eBay 3', 'ebay3', (object) [
+                'spend'  => $kwMetrics['spend'] + $pmtMetrics['spend'],
+                'clicks' => $kwMetrics['clicks'] + $pmtMetrics['clicks'],
+                'sold'   => $kwMetrics['sold'] + $pmtMetrics['sold'],
+                'sales'  => $kwMetrics['sales'] + $pmtMetrics['sales'],
+            ], false),
+        ];
+    }
+
+    public static function advertisementMasterNetSales(): float
+    {
+        try {
+            $metrics = EbayChannelMetricsService::latestDailyMetrics('eBay 3');
+
+            return round((float) ($metrics?->total_sales ?? 0), 2);
+        } catch (\Throwable $e) {
+            \Log::warning('Advertisement Master eBay 3 net sales lookup failed: '.$e->getMessage());
+
+            return 0.0;
+        }
+    }
+
+    /**
+     * @return array{spend: float, clicks: int, sold: int, sales: float}
+     */
+    protected function advertisementMasterKwMetrics(): array
+    {
+        return $this->advertisementMasterReportMetrics('ebay_3_priority_reports', 'kw');
+    }
+
+    /**
+     * @return array{spend: float, clicks: int, sold: int, sales: float}
+     */
+    protected function advertisementMasterPmtMetrics(): array
+    {
+        return $this->advertisementMasterReportMetrics('ebay_3_general_reports', 'pmt');
+    }
+
+    /**
+     * @return array{spend: float, clicks: int, sold: int, sales: float}
+     */
+    private function advertisementMasterReportMetrics(string $table, string $type): array
+    {
+        $empty = ['spend' => 0.0, 'clicks' => 0, 'sold' => 0, 'sales' => 0.0];
+
+        if (! Schema::hasTable($table)) {
+            return $empty;
+        }
+
+        $startDate = now()->subDays(31)->format('Y-m-d');
+        $endDate = now()->format('Y-m-d');
+
+        if ($type === 'kw') {
+            $row = DB::table($table)
+                ->where('report_range', '>=', $startDate)
+                ->where('report_range', '<=', $endDate)
+                ->where('report_range', 'NOT LIKE', 'L%')
+                ->selectRaw('COALESCE(SUM(cpc_clicks), 0) as clicks')
+                ->selectRaw('COALESCE(SUM(REPLACE(REPLACE(cpc_sale_amount_payout_currency, "USD ", ""), ",", "")), 0) as sales')
+                ->selectRaw('COALESCE(SUM(cpc_attributed_sales), 0) as sold')
+                ->selectRaw('COALESCE(SUM(REPLACE(REPLACE(cpc_ad_fees_payout_currency, "USD ", ""), ",", "")), 0) as spend')
+                ->first();
+        } else {
+            $row = DB::table($table)
+                ->where('report_range', '>=', $startDate)
+                ->where('report_range', '<=', $endDate)
+                ->where('report_range', 'NOT LIKE', 'L%')
+                ->selectRaw('COALESCE(SUM(clicks), 0) as clicks')
+                ->selectRaw('COALESCE(SUM(REPLACE(REPLACE(sale_amount, "USD ", ""), ",", "")), 0) as sales')
+                ->selectRaw('COALESCE(SUM(sales), 0) as sold')
+                ->selectRaw('COALESCE(SUM(REPLACE(REPLACE(ad_fees, "USD ", ""), ",", "")), 0) as spend')
+                ->first();
+        }
+
+        if ($row === null) {
+            return $empty;
+        }
+
+        return [
+            'spend'  => round((float) ($row->spend ?? 0), 2),
+            'clicks' => (int) round((float) ($row->clicks ?? 0)),
+            'sold'   => (int) round((float) ($row->sold ?? 0)),
+            'sales'  => round((float) ($row->sales ?? 0), 2),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private static function advertisementMasterMetricRow(string $channel, string $source, ?object $row, bool $isSubRow = false): array
+    {
+        $spend  = (float) ($row->spend ?? 0);
+        $clicks = (float) ($row->clicks ?? 0);
+        $sold   = (float) ($row->sold ?? 0);
+        $sales  = (float) ($row->sales ?? 0);
+
+        return [
+            'channel'     => $channel,
+            'source'      => $source,
+            'spend'       => round($spend, 2),
+            'clicks'      => (int) round($clicks),
+            'sold'        => (int) round($sold),
+            'sales'       => round($sales, 2),
+            'cvr'         => $clicks > 0 ? round(($sold / $clicks) * 100, 1) : 0,
+            'acos'        => $sales > 0
+                ? round(($spend / $sales) * 100, 0)
+                : ($spend > 0 ? 100 : 0),
+            'tcos'        => 0,
+            'is_sub_row'  => $isSubRow,
+            'marketplace' => 'ebay3',
+        ];
     }
 }

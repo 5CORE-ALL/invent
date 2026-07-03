@@ -607,6 +607,25 @@
             @endif
 
             <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#sidebarAdsMastersList" aria-expanded="false"
+                    aria-controls="sidebarAdsMastersList" class="side-nav-link">
+                    <i class="ri-bar-chart-grouped-line"></i>
+                    <span>Ads Masters</span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse" id="sidebarAdsMastersList">
+                    <ul class="side-nav-second-level">
+                        <li>
+                            <a href="{{ route('advertisement.master') }}">Advertisement Master</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('shopify.ads.master') }}">Shopify Ads Master</a>
+                        </li>
+                    </ul>
+                </div>
+            </li>
+
+            <li class="side-nav-item">
                 <a data-bs-toggle="collapse" href="#sidebarPages2" aria-expanded="false"
                     aria-controls="sidebarPages2" class="side-nav-link">
                     <i class="ri-store-3-line"></i>
@@ -1389,10 +1408,6 @@
 
                                         <li>
                                             <a href="{{ url('shopify-pricing-cvr') }}">Shopify Pricing - CVR</a>
-                                        </li>
-
-                                        <li>
-                                            <a href="{{ route('shopify.ads.master') }}">Shopify Ads - Master</a>
                                         </li>
 
                                         <li>

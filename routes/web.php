@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AdsMaster\AdsMasterController;
+use App\Http\Controllers\AdvertisementMaster\AdvertisementMasterController;
 use App\Http\Controllers\AdvertisementMaster\Demand_Gen_parent\GoogleNetworksController;
 use App\Http\Controllers\AdvertisementMaster\Headline_Advt\HeadlineAmazonController;
 use App\Http\Controllers\AdvertisementMaster\Kw_Advt\KwAmazonController;
@@ -4014,6 +4015,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/temu-pricing/save-starget', [TemuController::class, 'saveStarget'])->name('temu.save.starget');
 
     // Advertisement Master view routes
+    Route::get('/advertisement-master', [AdvertisementMasterController::class, 'index'])->name('advertisement.master');
+    Route::get('/advertisement-master/data', [AdvertisementMasterController::class, 'data'])->name('advertisement.master.data');
     Route::get('/kw-amazon', [KwAmazonController::class, 'Amazon'])->name('advertisment.kw.amazon');
     Route::post('/update-checkbox-flag', [KwAmazonController::class, 'updateCheckboxes']);
     Route::get('/kw-ebay', [KwEbayController::class, 'Ebay'])->name('advertisment.kw.eBay');
@@ -5502,6 +5505,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     Route::controller(EbayCampaignAdsController::class)->group(function () {
         Route::get('/ebay/campaign-ads', 'index')->name('ebay.campaign.ads');
+        Route::get('/ebay/campaign-ads/badges', 'getBadgeSummary')->name('ebay.campaign.ads.badges');
         Route::get('/ebay/campaign-ads/data', 'getData')->name('ebay.campaign.ads.data');
         Route::get('/ebay/campaign-ads/rule', 'getRule')->name('ebay.campaign.ads.rule');
         Route::post('/ebay/campaign-ads/rule', 'saveRule')->name('ebay.campaign.ads.rule.save');
@@ -5515,6 +5519,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     Route::controller(Ebay2CampaignAdsController::class)->group(function () {
         Route::get('/ebay2/campaign-ads', 'index')->name('ebay2.campaign.ads');
+        Route::get('/ebay2/campaign-ads/badges', 'getBadgeSummary')->name('ebay2.campaign.ads.badges');
         Route::get('/ebay2/campaign-ads/data', 'getData')->name('ebay2.campaign.ads.data');
         Route::get('/ebay2/campaign-ads/rule', 'getRule')->name('ebay2.campaign.ads.rule');
         Route::post('/ebay2/campaign-ads/rule', 'saveRule')->name('ebay2.campaign.ads.rule.save');
@@ -5528,6 +5533,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     Route::controller(Ebay3CampaignAdsController::class)->group(function () {
         Route::get('/ebay3/campaign-ads', 'index')->name('ebay3.campaign.ads');
+        Route::get('/ebay3/campaign-ads/badges', 'getBadgeSummary')->name('ebay3.campaign.ads.badges');
         Route::get('/ebay3/campaign-ads/data', 'getData')->name('ebay3.campaign.ads.data');
         Route::get('/ebay3/campaign-ads/rule', 'getRule')->name('ebay3.campaign.ads.rule');
         Route::post('/ebay3/campaign-ads/rule', 'saveRule')->name('ebay3.campaign.ads.rule.save');
