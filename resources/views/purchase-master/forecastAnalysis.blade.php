@@ -1130,14 +1130,14 @@
          the user actually changes are sent; unchanged fields are skipped. --}}
     <div class="modal fade" id="forecastRowEditModal" tabindex="-1" role="dialog"
         aria-labelledby="forecastRowEditLabel" aria-hidden="true">
-        <div class="modal-dialog modal-xl modal-dialog-scrollable shadow-none" role="document">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable shadow-none" role="document" style="max-width: 860px;">
             <div class="modal-content border-0 shadow-lg">
-                <div class="modal-header bg-primary text-white border-0">
-                    <h5 class="modal-title" id="forecastRowEditLabel">
+                <div class="modal-header bg-primary text-dark border-0">
+                    <h5 class="modal-title fw-bold text-dark" id="forecastRowEditLabel">
                         <i class="fas fa-edit me-2"></i> Edit Row
-                        <small class="text-white-50 ms-2" id="forecastRowEditSubtitle"></small>
+                        <small class="text-dark fw-bold ms-2" id="forecastRowEditSubtitle"></small>
                     </h5>
-                    <button type="button" class="close text-white custom-close" data-bs-dismiss="modal"
+                    <button type="button" class="close text-dark custom-close" data-bs-dismiss="modal"
                         aria-label="Close" style="font-size:25px; background-color: transparent; border: none;">
                         <span aria-hidden="true">&times;</span>
                     </button>
@@ -1148,48 +1148,40 @@
                         <input type="hidden" id="fre_parent">
 
                         <div class="row g-3">
-                            {{-- Quantities --}}
                             <div class="col-12">
-                                <h6 class="text-muted small text-uppercase mb-2">Quantities</h6>
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label small mb-1">MOQ (Approved Qty)</label>
-                                <input type="number" step="1" class="form-control" id="fre_moq">
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label small mb-1">2 Order</label>
-                                <input type="number" step="1" min="0" class="form-control" id="fre_order">
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label small mb-1">MIP</label>
-                                <input type="number" step="1" min="0" class="form-control" id="fre_mip">
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label small mb-1">R2S</label>
-                                <input type="number" step="1" min="0" class="form-control" id="fre_r2s">
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label small mb-1">Transit</label>
-                                <input type="number" step="1" min="0" class="form-control" id="fre_transit">
-                            </div>
-
-                            {{-- Product Master (CP / CBM live on product_master.Values) --}}
-                            <div class="col-12 mt-3">
-                                <h6 class="text-muted small text-uppercase mb-2">Product Master</h6>
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label small mb-1">CP</label>
-                                <input type="number" step="0.01" class="form-control" id="fre_cp">
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label small mb-1">CBM</label>
-                                <input type="number" step="0.0001" class="form-control" id="fre_cbm">
+                                <div class="d-flex flex-nowrap gap-2">
+                                    <div class="flex-fill" style="min-width:0;">
+                                        <label class="form-label small mb-1">MOQ <span class="text-muted" style="font-weight:400;">(Min Order)</span></label>
+                                        <input type="number" step="1" class="form-control" id="fre_moq">
+                                    </div>
+                                    <div class="flex-fill" style="min-width:0;">
+                                        <label class="form-label small mb-1">Order <span class="text-muted" style="font-weight:400;">(appr.)</span></label>
+                                        <input type="number" step="1" min="0" class="form-control" id="fre_order" title="Approved order qty">
+                                    </div>
+                                    <div class="flex-fill" style="min-width:0;">
+                                        <label class="form-label small mb-1">MIP</label>
+                                        <input type="number" step="1" min="0" class="form-control" id="fre_mip">
+                                    </div>
+                                    <div class="flex-fill" style="min-width:0;">
+                                        <label class="form-label small mb-1">R2S</label>
+                                        <input type="number" step="1" min="0" class="form-control" id="fre_r2s">
+                                    </div>
+                                    <div class="flex-fill" style="min-width:0;">
+                                        <label class="form-label small mb-1">Transit</label>
+                                        <input type="number" step="1" min="0" class="form-control" id="fre_transit">
+                                    </div>
+                                    {{-- CP / CBM (live on product_master.Values) --}}
+                                    <div class="flex-fill" style="min-width:0;">
+                                        <label class="form-label small mb-1">CP</label>
+                                        <input type="number" step="0.01" class="form-control" id="fre_cp">
+                                    </div>
+                                    <div class="flex-fill" style="min-width:0;">
+                                        <label class="form-label small mb-1">CBM</label>
+                                        <input type="number" step="0.0001" class="form-control" id="fre_cbm">
+                                    </div>
+                                </div>
                             </div>
 
-                            {{-- Workflow --}}
-                            <div class="col-12 mt-3">
-                                <h6 class="text-muted small text-uppercase mb-2">Workflow</h6>
-                            </div>
                             <div class="col-md-3">
                                 <label class="form-label small mb-1">Supplier</label>
                                 <select class="form-select select-searchable" id="fre_supplier">
@@ -1204,16 +1196,36 @@
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label small mb-1">Zone</label>
-                                <input type="text" class="form-control" id="fre_zone" maxlength="80" placeholder="e.g. Ningbo">
+                                <select class="form-select" id="fre_zone">
+                                    <option value="">-- Select --</option>
+                                    <option value="Ningbo">Ningbo</option>
+                                    <option value="Ghz">Ghz</option>
+                                    <option value="Tianjin">Tianjin</option>
+                                </select>
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label small mb-1">Stage <span class="text-muted" style="font-weight:400;">(multi)</span></label>
-                                <select class="form-select" id="fre_stage" multiple size="6" title="A SKU can be in several stages at once. Hold Ctrl/Cmd to select multiple.">
-                                    <option value="appr_req">Approval Required</option>
-                                    <option value="to_order_analysis">To Order Analysis</option>
+                                <div class="dropdown" id="fre_stage_dd">
+                                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle w-100 text-start d-flex justify-content-between align-items-center"
+                                        type="button" id="fre_stage_dd_btn" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false"
+                                        title="A SKU can be in several stages at once.">
+                                        <span id="fre_stage_dd_label" class="text-truncate">Select stage(s)</span>
+                                    </button>
+                                    <ul class="dropdown-menu p-2 shadow-sm" style="min-width: 210px;">
+                                        <li><label class="dropdown-item-text d-flex align-items-center gap-2 mb-1" style="cursor:pointer;"><input type="checkbox" class="form-check-input fre-stage-cb m-0" value="appr_req"><span>Appr Req</span></label></li>
+                                        <li><label class="dropdown-item-text d-flex align-items-center gap-2 mb-1" style="cursor:pointer;"><input type="checkbox" class="form-check-input fre-stage-cb m-0" value="to_order_analysis"><span>Order</span></label></li>
+                                        <li><label class="dropdown-item-text d-flex align-items-center gap-2 mb-1" style="cursor:pointer;"><input type="checkbox" class="form-check-input fre-stage-cb m-0" value="mip"><span>MIP</span></label></li>
+                                        <li><label class="dropdown-item-text d-flex align-items-center gap-2 mb-1" style="cursor:pointer;"><input type="checkbox" class="form-check-input fre-stage-cb m-0" value="r2s"><span>R2S</span></label></li>
+                                        <li><label class="dropdown-item-text d-flex align-items-center gap-2 mb-1 text-muted" style="cursor:not-allowed;" title="Set from the Transit workflow"><input type="checkbox" class="form-check-input fre-stage-cb m-0" value="transit" disabled><span>Transit</span></label></li>
+                                        <li><label class="dropdown-item-text d-flex align-items-center gap-2" style="cursor:pointer;"><input type="checkbox" class="form-check-input fre-stage-cb m-0" value="all_good"><span>All Good</span></label></li>
+                                    </ul>
+                                </div>
+                                <select class="d-none" id="fre_stage" multiple>
+                                    <option value="appr_req">Appr Req</option>
+                                    <option value="to_order_analysis">Order</option>
                                     <option value="mip">MIP</option>
                                     <option value="r2s">R2S</option>
-                                    <option value="transit" disabled title="Set from the Transit workflow">Transit</option>
+                                    <option value="transit">Transit</option>
                                     <option value="all_good">All Good</option>
                                 </select>
                             </div>
@@ -1230,49 +1242,32 @@
                                 <label class="form-label small mb-1">Date of Appr</label>
                                 <input type="date" class="form-control" id="fre_dateappr">
                             </div>
-                            <div class="col-md-3">
-                                <label class="form-label small mb-1">REQ</label>
-                                <input type="text" maxlength="20" class="form-control" id="fre_req">
-                            </div>
 
                             {{-- Links --}}
                             <div class="col-12 mt-3">
                                 <h6 class="text-muted small text-uppercase mb-2">Links</h6>
                             </div>
-                            <div class="col-md-6">
-                                <label class="form-label small mb-1">Comparison Link (Clink)</label>
-                                <input type="url" class="form-control" id="fre_clink" placeholder="https://...">
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label small mb-1">Order Link (Olink)</label>
-                                <input type="url" class="form-control" id="fre_olink" placeholder="https://...">
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label small mb-1">RFQ Form Link</label>
-                                <input type="url" class="form-control" id="fre_rfq_form" placeholder="https://...">
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label small mb-1">RFQ Report</label>
-                                <input type="url" class="form-control" id="fre_rfq_report" placeholder="https://...">
+                            <div class="col-12">
+                                <div class="d-flex flex-nowrap gap-2">
+                                    <div class="flex-fill" style="min-width:0;">
+                                        <label class="form-label small mb-1">Comparison Link (Clink)</label>
+                                        <input type="url" class="form-control" id="fre_clink" placeholder="https://...">
+                                    </div>
+                                    <div class="flex-fill" style="min-width:0;">
+                                        <label class="form-label small mb-1">Order Link (Olink)</label>
+                                        <input type="url" class="form-control" id="fre_olink" placeholder="https://...">
+                                    </div>
+                                    <div class="flex-fill" style="min-width:0;">
+                                        <label class="form-label small mb-1">RFQ Form Link</label>
+                                        <input type="url" class="form-control" id="fre_rfq_form" placeholder="https://...">
+                                    </div>
+                                    <div class="flex-fill" style="min-width:0;">
+                                        <label class="form-label small mb-1">RFQ Report</label>
+                                        <input type="url" class="form-control" id="fre_rfq_report" placeholder="https://...">
+                                    </div>
+                                </div>
                             </div>
 
-                            {{-- Misc --}}
-                            <div class="col-12 mt-3">
-                                <h6 class="text-muted small text-uppercase mb-2">Other</h6>
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label small mb-1">Hide</label>
-                                <select class="form-select" id="fre_hide">
-                                    <option value="">— No change —</option>
-                                    <option value="1">Hidden (1)</option>
-                                    <option value="0">Visible (0)</option>
-                                </select>
-                            </div>
-                            <div class="col-md-9">
-                                <label class="form-label small mb-1">Notes</label>
-                                <textarea class="form-control" id="fre_notes" rows="2"
-                                    placeholder="Internal notes" style="resize:vertical;"></textarea>
-                            </div>
                         </div>
 
                         <div id="forecastRowEditStatus" class="small mt-3"></div>
@@ -1591,7 +1586,8 @@
             // buildForecastAnalysisData() emits.
             const original = {
                 moq:        forecastRowGetField(d, 'MOQ', 'Approved QTY', 'approved_qty'),
-                order:      forecastRowGetField(d, 'to_order', 'order', 'two_order_qty'),
+                order:      forecastRowGetField(d, 'two_order_qty', 'order'),
+                two_ord:    forecastRowGetField(d, 'to_order'),
                 mip:        forecastRowGetField(d, 'order_given', 'Order Given'),
                 r2s:        forecastRowGetField(d, 'readyToShipQty', 'ready_to_ship', 'r2s'),
                 transit:    forecastRowGetField(d, 'transit', 'Transit'),
@@ -1637,6 +1633,7 @@
 
             $('#fre_moq').val(original.moq);
             $('#fre_order').val(original.order);
+            syncFreStageDropdown();
             $('#fre_mip').val(original.mip);
             $('#fre_r2s').val(original.r2s);
             $('#fre_transit').val(original.transit);
@@ -1645,13 +1642,10 @@
             $('#fre_stage').val(original.stages || []);
             $('#fre_nr').val(original.nr);
             $('#fre_dateappr').val(original.date_appr);
-            $('#fre_req').val(original.req);
             $('#fre_clink').val(original.clink);
             $('#fre_olink').val(original.olink);
             $('#fre_rfq_form').val(original.rfq_form);
             $('#fre_rfq_report').val(original.rfq_report);
-            $('#fre_hide').val(original.hide);
-            $('#fre_notes').val(original.notes);
             populateForecastRowEditSupplierSelect(original.supplier);
             populateForecastRowEditCategorySelect(original.category);
             $('#fre_zone').val(original.zone);
@@ -1806,13 +1800,10 @@
                 { id: 'fre_zone',        column: 'area',          key: 'zone' },
                 { id: 'fre_nr',          column: 'NR',            key: 'nr' },
                 { id: 'fre_dateappr',    column: 'Date of Appr',  key: 'date_appr' },
-                { id: 'fre_req',         column: 'REQ',           key: 'req' },
                 { id: 'fre_clink',       column: 'Clink',         key: 'clink' },
                 { id: 'fre_olink',       column: 'Olink',         key: 'olink' },
                 { id: 'fre_rfq_form',    column: 'rfq_form_link', key: 'rfq_form' },
                 { id: 'fre_rfq_report', column: 'rfq_report',    key: 'rfq_report' },
-                { id: 'fre_hide',        column: 'Hide',          key: 'hide' },
-                { id: 'fre_notes',       column: 'Notes',         key: 'notes' },
             ];
 
             const original = forecastRowEditState.original || {};
@@ -2048,6 +2039,31 @@
             all_good: 'All Good'
         };
         const FORECAST_STAGE_ORDER = ['appr_req', 'to_order_analysis', 'mip', 'r2s', 'transit', 'all_good'];
+
+        // Keep the Edit-modal Stage dropdown (checkboxes) in sync with its hidden
+        // <select multiple id="fre_stage"> so the existing prefill/save logic works.
+        function syncFreStageDropdown() {
+            const sel = document.getElementById('fre_stage');
+            if (!sel) return;
+            const selected = Array.from(sel.selectedOptions).map(function(o) { return o.value; });
+            document.querySelectorAll('.fre-stage-cb').forEach(function(cb) {
+                cb.checked = selected.indexOf(cb.value) !== -1;
+            });
+            const lbl = document.getElementById('fre_stage_dd_label');
+            if (lbl) {
+                lbl.textContent = selected.length
+                    ? selected.map(function(s) { return FORECAST_STAGE_LABELS[s] || s; }).join(', ')
+                    : 'Select stage(s)';
+            }
+        }
+        $(document).off('change.frestage', '.fre-stage-cb').on('change.frestage', '.fre-stage-cb', function() {
+            const sel = document.getElementById('fre_stage');
+            if (!sel) return;
+            const val = this.value;
+            const checked = this.checked;
+            Array.from(sel.options).forEach(function(o) { if (o.value === val) o.selected = checked; });
+            syncFreStageDropdown();
+        });
 
         function normalizeForecastStages(list) {
             const seen = {};
@@ -3835,9 +3851,10 @@
                     const nrNorm      = String(item.nr || '').trim().toUpperCase();
 
                     if (itemStages.indexOf('mip') !== -1 && readyToShip !== 'Yes' && nrNorm !== 'NR') {
-                        const qty  = parseFloat(item.order_given) || 0;
-                        const rate = parseFloat(item.mip_rate)    || 0;
-                        if (qty > 0 && rate > 0) totalMipValue += qty * rate;
+                        // MIP value = MIP qty (order_given) x CP.
+                        const qty = parseFloat(item.order_given) || 0;
+                        const cp  = parseFloat(item.CP) || 0;
+                        if (qty > 0) totalMipValue += qty * cp;
                     }
                     if (itemStages.indexOf('r2s') !== -1 && nrNorm !== 'NR') {
                         const qty  = parseFloat(item.readyToShipQty) || 0;
@@ -5533,19 +5550,11 @@
                         // IMPORTANT: mfrg-in-progress page calculates from items that are already filtered in template (using continue directive in Blade)
                         // So we need to match the exact same filtering logic here
                         if (rowStages.indexOf('mip') !== -1 && readyToShipValue !== 'Yes' && nrValue !== 'NR') {
-                            // Calculate directly as qty * rate (like mfrg-in-progress page calculates from DOM)
-                            // In mfrg-in-progress: $item->qty * $item->rate (directly from mfrg_progress table)
-                            // In forecastAnalysis: order_given (qty) and mip_rate (rate) from mfrg_progress table
-                            // But ONLY if ready_to_ship === 'No' (controller already sets order_given=0 if ready_to_ship='Yes')
-                            
-                            // Check if item has mfrg_progress data (order_given > 0 means ready_to_ship was 'No')
+                            // MIP value = MIP qty (order_given) x CP.
                             const qty = parseFloat(data.order_given || data["order_given"] || (data.raw_data && data.raw_data["order_given"]) || 0) || 0;
-                            const rate = parseFloat(data.mip_rate || data["mip_rate"] || (data.raw_data && data.raw_data["mip_rate"]) || 0) || 0;
-                            
-                            // Only calculate if both qty and rate are available (matching mfrg-in-progress template logic)
-                            // mfrg-in-progress template: is_numeric($item->qty) && is_numeric($item->rate)
-                            if (qty > 0 && rate > 0) {
-                                totalMipValue += (qty * rate);
+                            const cp = parseFloat(data.CP || data["CP"] || (data.raw_data && data.raw_data["CP"]) || 0) || 0;
+                            if (qty > 0) {
+                                totalMipValue += (qty * cp);
                             }
                         }
                     }
