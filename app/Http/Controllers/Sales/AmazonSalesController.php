@@ -69,6 +69,13 @@ class AmazonSalesController extends Controller
         $daysFrom8Feb = $start8Feb->isFuture() ? 0 : $start8Feb->diffInDays($endDate) + 1;
         $salesFrom8Feb = $start8Feb->isFuture() ? 0.0 : AmazonOrder::badgeTotalSalesByOrderDate($start8Feb, $endDate);
 
+        // Yesterday only — Pacific calendar day (converted to UTC for the UTC-stored
+        // order_date column, DST-safe) + product sales (tax excluded) to match Amazon's
+        // Seller Central "Sales" tile as closely as possible.
+        $yesterdayStartUtc = $yesterdayPacific->copy()->startOfDay()->utc();
+        $yesterdayEndUtc = $yesterdayPacific->copy()->endOfDay()->utc();
+        $salesYesterday = AmazonOrder::productSalesByOrderDate($yesterdayStartUtc, $yesterdayEndUtc);
+
         return view('sales.amazon_daily_sales_data', [
             'kwSpent'                 => (float) $kwSpent,
             'ptSpent'                 => (float) $ptSpent,
@@ -78,6 +85,8 @@ class AmazonSalesController extends Controller
             'amazonSalesTotalMode'    => AmazonOrder::salesTotalMode(),
             'salesFrom8Feb'           => $salesFrom8Feb,
             'daysFrom8Feb'            => $daysFrom8Feb,
+            'salesYesterday'          => $salesYesterday,
+            'amazonYesterdayLabel'    => $yesterdayPacific->format('M j, Y'),
             'amazonSalesWindowStart'  => $startWindow->copy()->timezone('America/Los_Angeles')->format('M j, Y'),
             'amazonSalesWindowEnd'    => $yesterdayPacific->format('M j, Y'),
         ]);

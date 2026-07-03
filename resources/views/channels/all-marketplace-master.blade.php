@@ -1636,9 +1636,28 @@
                         }
                     },
                     {
-                        // "Source" mirrors the channel's "Update" tag (A = API/Automated, S = Sheet/Manual).
-                        // The value is set per channel via the Edit Channel modal and persists on
-                        // channel_master.update — see ChannelMasterController::update().
+                        title: "L7 Sales",
+                        field: "L7 Sales",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 90,
+                        headerTooltip: "Sales over the last 7 Pacific calendar days ending yesterday (inclusive).",
+                        formatter: function(cell) {
+                            const value = parseNumber(cell.getValue() || 0);
+                            if (!value || value === 0) {
+                                return `<span style="color:#adb5bd;font-weight:600;" title="No L7 Sales">-</span>`;
+                            }
+                            return `<span style="font-weight:600;color:#0d6efd;">$${Math.round(value).toLocaleString('en-US')}</span>`;
+                        },
+                        bottomCalc: "sum",
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            if (!value || value === 0) return '<strong style="color:#adb5bd;">-</strong>';
+                            return `<strong style="color:#0d6efd;">$${Math.round(parseNumber(value)).toLocaleString('en-US')}</strong>`;
+                        }
+                    },
+                    {
+                      
                         title: "Source",
                         field: "Update",
                         headerTooltip: "Data source tag for this channel. A = API, S = GS. Set in the channel's Edit modal.",
@@ -1768,10 +1787,7 @@
                             const row = cell.getRow().getData();
                             const channel = (row['Channel '] || '').trim();
                             const views = parseNumber(row['Total Views'] || 0);
-                            // Prefer server-provided CVR when present (Temu / Temu 2): matches the
-                            // /temu-decrease and /temu2-decrease "CVR" badge byte-for-byte
-                            // (sum of temu_l30 ÷ sum of product_clicks). For channels that don't
-                            // pre-compute it, fall back to the legacy Qty ÷ Views formula.
+                           
                             const serverCvr = row['CVR'];
                             const hasServerCvr = (serverCvr !== undefined && serverCvr !== null && serverCvr !== '');
                             let pct;
@@ -1784,7 +1800,6 @@
                             }
                             const dotColor = getMetricDotColor(channel, 'cvr');
                             const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="cvr" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View CVR trend"></i>`;
-                            // 2 decimals so day-to-day movement on a rolling window is visible (matches chart precision).
                             return `<span style="font-weight:600;color:${dotColor};">${pct.toFixed(2)}%</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -3839,7 +3854,7 @@
                 'ads': ['L30 Sales', 'Total Ad Spend', 'Total Views', 'CVR', 'KW Spent', 'PT Spent', 'HL Spent', 'PMT Spent', 'KW ACOS', 'PT ACOS', 'HL ACOS', 'PMT ACOS', 'Shopping Spent', 'SERP Spent', 'clicks', 'KW Clicks', 'PT Clicks', 'HL Clicks', 'PMT Clicks', 'Shopping Clicks', 'SERP Clicks', 'Ad Sales', 'KW Sales', 'PT Sales', 'HL Sales', 'PMT Sales', 'Shopping Sales', 'SERP Sales', 'ad_sold', 'KW Sold', 'PT Sold', 'HL Sold', 'PMT Sold', 'Shopping Sold', 'SERP Sold', 'ACOS', 'Shopping ACOS', 'SERP ACOS', 'Ads CVR', 'KW CVR', 'PT CVR', 'HL CVR', 'PMT CVR', 'Shopping CVR', 'SERP CVR', 'TAcos %', 'Missing Ads'],
                 'inv': ['Avl', 'Res', 'Inb', 'Unf', 'Wrk', 'Total Inv', 'Allocated'],
                 'margins': ['G PFT%', 'G ROI%', 'N PFT%', 'N ROI%', 'COGS', 'Total Ad Spend', 'TAcos %', '_gross_pft'],
-                'movement': ['L30 Sales', 'Growth %', 'Y Sales', 'L30 Orders', 'Qty items', 'Velocity'],
+                'movement': ['L30 Sales', 'Growth %', 'Y Sales', 'L7 Sales', 'L30 Orders', 'Qty items', 'Velocity'],
                 'returns': ['Return Rate', 'Return Units', 'Return Value'],
                 'ah': ['AH Score', 'Policy Violations', 'Customer Complaints', 'Shipping Health', 'CC Health', 'Returns %', 'A2Z Claims', 'Ratings & Reviews', 'Seller Rating & Reviews'],
                 'expenses': ['Total Ad Spend', 'Shipping Cost', 'FBA Fees', 'Storage Fees'],

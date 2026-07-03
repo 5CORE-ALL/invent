@@ -19,6 +19,15 @@ class FetchAmazonOrders extends Command
     private const DEFAULT_RECENT_DAYS = 35;
 
     /**
+     * Trailing Pacific days (in addition to today) that auto-sync always re-fetches
+     * in full, even if already "completed". A day can be marked completed during a
+     * mid-day pass (CreatedBefore = now − 2min), which freezes it before the Pacific
+     * day closes and permanently drops orders placed later that day. Re-syncing the
+     * trailing window on every run keeps recent days aligned with Seller Central.
+     */
+    private const RESYNC_TRAILING_DAYS = 2;
+
+    /**
      * The name and signature of the console command.
      *
      * @var string
@@ -834,6 +843,24 @@ class FetchAmazonOrders extends Command
     private function autoSyncPendingDays($accessToken)
     {
         $this->ensureDailySyncRecord(Carbon::today('America/Los_Angeles'));
+
+        // Force the trailing Pacific days (today + RESYNC_TRAILING_DAYS prior) back to
+        // pending so they are fully re-fetched. Without this, a day marked "completed"
+        // during a mid-day pass is never re-synced and permanently under-reports the
+        // orders placed after that pass (only opportunistically backfilled by the
+        // LastUpdated refresh, which can be cut off before it reaches recent days).
+        $today = Carbon::today('America/Los_Angeles');
+        for ($i = 0; $i <= self::RESYNC_TRAILING_DAYS; $i++) {
+            $dateString = $today->copy()->subDays($i)->toDateString();
+            $this->ensureDailySyncRecord($today->copy()->subDays($i));
+            AmazonDailySync::where('sync_date', $dateString)
+                ->where('status', AmazonDailySync::STATUS_COMPLETED)
+                ->update([
+                    'status' => AmazonDailySync::STATUS_PENDING,
+                    'next_token' => null,
+                ]);
+        }
+        $this->info('↻ Trailing re-sync window: last ' . (self::RESYNC_TRAILING_DAYS + 1) . ' Pacific day(s) reset to pending for a full refresh.');
 
         $query = AmazonDailySync::needsSync()->orderBy('sync_date', 'asc');
 

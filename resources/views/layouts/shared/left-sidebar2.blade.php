@@ -635,7 +635,7 @@
                 <div class="collapse" id="sidebarPages2">
                     <ul class="side-nav-second-level">
 
-                            <li class="side-nav-item">
+                            <li class="side-nav-item">   
                                 <a data-bs-toggle="collapse" href="#sidebarvideoSales" aria-expanded="false"
                                     aria-controls="sidebarvideoSales">
                                     <span>Video Directory</span>

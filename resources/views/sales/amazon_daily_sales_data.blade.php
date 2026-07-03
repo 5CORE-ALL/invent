@@ -115,6 +115,7 @@
                         <span class="badge bg-primary fs-6 p-2" id="total-orders-badge" style="color: white; font-weight: bold;">Total Orders: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: white; font-weight: bold;">Total Quantity: 0</span>
                         <span class="badge fs-6 p-2" id="amazon-sales-total-badge" style="background-color: #0d6efd; color: white; font-weight: bold;"> Total Sales: ${{ number_format($amazonSalesTotal ?? 0, 2) }}</span>
+                        <span class="badge fs-6 p-2" id="y-sales-badge" title="Yesterday's product sales, tax excluded ({{ $amazonYesterdayLabel ?? '' }} Pacific) — matches Amazon Seller Central 'Sales'" style="background-color: #0dcaf0; color: black; font-weight: bold;">Y Sales: ${{ number_format($salesYesterday ?? 0, 2) }}</span>
                         <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge" style="color: white; font-weight: bold;">GPFT %: 0%</span>
                         <span class="badge fs-6 p-2" id="roi-percentage-badge" style="background-color: purple; color: white; font-weight: bold;">ROI %: 0%</span>
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>
