@@ -10,12 +10,14 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use App\Services\Support\DescriptionWithImagesFormatter;
+use App\Services\Support\Concerns\MiraklConnectProductUpsert;
 use App\Services\Support\SavesMarketplaceVideoMetrics;
 use App\Services\Support\VideoMasterMarketplaceMethods;
 use App\Models\ProductStockMapping;
 
 class BestBuyApiService
 {
+    use MiraklConnectProductUpsert;
     use SavesMarketplaceVideoMetrics;
     use VideoMasterMarketplaceMethods;
     protected function miraklChannelCode(): string
@@ -23,51 +25,23 @@ class BestBuyApiService
         return 'bestbuyusa';
     }
 
+    protected function miraklConnectAccessToken(): ?string
+    {
+        return $this->getAccessToken();
+    }
+
     /**
      * @param  array<string, mixed>  $attributes
      * @return array{success: bool, message: string}
      */
-    protected function miraklUpsertAttributes(string $sku, array $attributes): array
+    protected function miraklUpsertAttributes(string $sku, array $attributes, ?array $descriptions = null): array
     {
-        $sku = trim($sku);
-        if ($sku === '' || $attributes === []) {
-            return ['success' => false, 'message' => 'SKU and attributes are required.'];
-        }
-
-        $token = $this->getAccessToken();
-        if (! $token) {
-            return ['success' => false, 'message' => 'Mirakl access token not available.'];
-        }
-
-        $baseUrl = 'https://miraklconnect.com/api/products';
-        $productPayload = [
-            'id' => $sku,
-            'attributes' => $attributes,
-        ];
-        $headers = [
-            'Accept' => 'application/json',
-            'Content-Type' => 'application/json',
-            'channel_id' => $this->miraklChannelCode(),
-        ];
-
-        try {
-            $request = Http::withoutVerifying()->withToken($token)->withHeaders($headers)->timeout(60);
-            $response = $request->post($baseUrl, ['products' => [$productPayload]]);
-            if (! $response->successful()) {
-                $response = $request->patch("{$baseUrl}/{$sku}", $productPayload);
-            }
-            if (! $response->successful()) {
-                $response = $request->put("{$baseUrl}/{$sku}", $productPayload);
-            }
-
-            if (! $response->successful()) {
-                return ['success' => false, 'message' => 'Mirakl update failed: '.$response->body()];
-            }
-
-            return ['success' => true, 'message' => 'Product updated on Mirakl channel.'];
-        } catch (\Throwable $e) {
-            return ['success' => false, 'message' => $e->getMessage()];
-        }
+        return $this->miraklConnectUpsertProduct(
+            $sku,
+            $this->miraklChannelCode(),
+            $attributes,
+            $descriptions
+        );
     }
 
     protected function getAccessToken()
@@ -176,11 +150,48 @@ class BestBuyApiService
             return ['success' => false, 'message' => 'Bullet points are required.'];
         }
 
-        $result = $this->miraklUpsertAttributes($sku, ['bulletPoints' => $bulletPoints]);
+        $lines = $this->miraklConnectBulletLines($bulletPoints);
+        $channel = $this->miraklChannelCode();
+        $product = $this->miraklConnectFetchProductBySku($sku, $channel, $channel);
+        $currentDescription = '';
+        foreach (($product['descriptions'] ?? []) as $row) {
+            if (($row['locale'] ?? '') === 'en_US' && trim((string) ($row['value'] ?? '')) !== '') {
+                $currentDescription = trim((string) $row['value']);
+                break;
+            }
+        }
 
-        return $result['success']
-            ? ['success' => true, 'message' => 'Best Buy bullet points updated.']
-            : $result;
+        $aboutItem = $this->miraklConnectAboutItemText($bulletPoints);
+        $descriptions = null;
+        if ($aboutItem !== '') {
+            $body = $currentDescription;
+            if ($body !== '' && ! str_starts_with(mb_strtolower($body), 'about item')) {
+                $body = trim($aboutItem.' '.$body);
+            } elseif ($body === '') {
+                $body = $aboutItem;
+            } else {
+                $body = $aboutItem;
+            }
+            $descriptions = [['locale' => 'en_US', 'value' => $body]];
+        }
+
+        $result = $this->miraklUpsertAttributes($sku, [
+            'bulletPoints' => implode("\n", array_slice($lines, 0, 5)),
+        ], $descriptions);
+
+        if (! ($result['success'] ?? false)) {
+            return $result;
+        }
+
+        $verify = $this->miraklConnectVerifyBulletAttribute($sku, $channel, $channel, $bulletPoints);
+
+        return [
+            'success' => $verify['success'],
+            'message' => $verify['success']
+                ? 'Best Buy Connect catalog updated. '.$verify['message']
+                : ($verify['message'] ?? 'Best Buy bullet verify failed.'),
+            'connect_verified' => $verify['connect_verified'] ?? false,
+        ];
     }
 
     /**

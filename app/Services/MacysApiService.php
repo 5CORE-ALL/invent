@@ -383,7 +383,16 @@ class MacysApiService
             return ['success' => false, 'message' => $failurePrefix.': '.json_encode($json), 'response' => $json];
         }
 
-        return ['success' => true, 'message' => $successMessage, 'response' => $json];
+        $verifyNote = $descriptions !== null && ($context['description_changed'] ?? true) === false
+            ? ' Connect catalog already matched PM bullets (description unchanged).'
+            : '';
+
+        return [
+            'success' => true,
+            'message' => $successMessage.$verifyNote.' Live Macy\'s PDP syncs from Mirakl Connect separately.',
+            'response' => $json,
+            'connect_verified' => true,
+        ];
     }
 
     /**
