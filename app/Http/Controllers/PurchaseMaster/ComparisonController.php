@@ -9,6 +9,7 @@ use App\Models\ComparisonData;
 use App\Models\ComparisonHistory;
 use App\Models\EbaySkuCompetitor;
 use App\Models\ForecastAnalysisHistory;
+use App\Models\ProductCategory;
 use App\Models\ProductMaster;
 use App\Models\RfqForm;
 use App\Models\ShopifySku;
@@ -46,6 +47,7 @@ class ComparisonController extends Controller
             $size = min(200, max(1, (int) $request->query('size', 50)));
             $skuFilter = trim((string) $request->query('sku', ''));
             $parentFilter = trim((string) $request->query('parent', ''));
+            $parentExact = trim((string) $request->query('parent_exact', ''));
             $skuList = array_values(array_unique(array_filter(array_map(
                 fn ($value) => trim((string) $value),
                 is_array($request->query('skus')) ? $request->query('skus') : explode(',', (string) $request->query('skus', ''))
@@ -66,6 +68,11 @@ class ComparisonController extends Controller
                 }
             }
 
+            // Exact parent match used by the playback (parent navigation) controls.
+            if ($parentExact !== '') {
+                $baseQuery->whereRaw('TRIM(parent) = ?', [$parentExact]);
+            }
+
             $total = (clone $baseQuery)->count();
 
             $productsQuery = (clone $baseQuery)
@@ -74,8 +81,8 @@ class ComparisonController extends Controller
                 ->orderBy('sku');
 
             $products = $skuList !== []
-                ? $productsQuery->get(['id', 'parent', 'sku', 'category_id', 'Values', 'main_image', 'image1'])
-                : $productsQuery->forPage($page, $size)->get(['id', 'parent', 'sku', 'category_id', 'Values', 'main_image', 'image1']);
+                ? $productsQuery->get(['id', 'parent', 'sku', 'category_id', 'mfr_category_ids', 'Values', 'main_image', 'image1'])
+                : $productsQuery->forPage($page, $size)->get(['id', 'parent', 'sku', 'category_id', 'mfr_category_ids', 'Values', 'main_image', 'image1']);
 
             if ($products->isEmpty()) {
                 return response()->json([
@@ -88,6 +95,30 @@ class ComparisonController extends Controller
 
             $skus = $products->pluck('sku')->filter()->values()->all();
             $shopifyBySku = ShopifySku::mapByProductSkus($skus);
+
+            // Build a category id -> name map covering both the single category_id
+            // and the multi mfr_category_ids list for every product on this page.
+            $categoryIdSet = [];
+            foreach ($products as $p) {
+                if ($p->category_id) {
+                    $categoryIdSet[(int) $p->category_id] = true;
+                }
+                foreach ((is_array($p->mfr_category_ids) ? $p->mfr_category_ids : []) as $cid) {
+                    if ((int) $cid > 0) {
+                        $categoryIdSet[(int) $cid] = true;
+                    }
+                }
+            }
+            $categoryNameById = $categoryIdSet === []
+                ? []
+                : ProductCategory::query()
+                    ->whereIn('id', array_keys($categoryIdSet))
+                    ->pluck('category_name', 'id')
+                    ->map(fn ($name) => trim((string) $name))
+                    ->all();
+
+            // Suppliers on /supplier.list grouped by category name (used by the Suppliers column).
+            $suppliersByCategoryName = $this->suppliersByCategoryNames(array_values($categoryNameById));
 
             $forecastBySku = [];
             foreach (array_chunk($skus, 200) as $skuChunk) {
@@ -116,7 +147,7 @@ class ComparisonController extends Controller
 
             $supplierCountBySheetSku = [];
 
-            $data = $products->map(function ($product) use ($shopifyBySku, $forecastBySku, $lmpDetailsLookup, $lmpLowestLookup, $ebayLmpLowestLookup, $historySummary, $sheetBySku, &$supplierCountBySheetSku) {
+            $data = $products->map(function ($product) use ($shopifyBySku, $forecastBySku, $lmpDetailsLookup, $lmpLowestLookup, $ebayLmpLowestLookup, $historySummary, $sheetBySku, $categoryNameById, $suppliersByCategoryName, &$supplierCountBySheetSku) {
                 $shopify = $shopifyBySku->get($product->sku);
                 $image = $this->resolveProductImage($product, $shopify);
 
@@ -152,7 +183,34 @@ class ComparisonController extends Controller
                     'latest_change' => null,
                 ];
 
-                $productCategory = trim((string) ($product->productCategory?->category_name ?? ''));
+                // Multiple Mfr categories: use mfr_category_ids when present, otherwise
+                // fall back to the single category_id for backward compatibility.
+                $categoryIds = is_array($product->mfr_category_ids) ? $product->mfr_category_ids : [];
+                $categoryIds = array_values(array_filter(array_map('intval', $categoryIds)));
+                if ($categoryIds === [] && $product->category_id) {
+                    $categoryIds = [(int) $product->category_id];
+                }
+                $categories = [];
+                foreach ($categoryIds as $cid) {
+                    $name = trim((string) ($categoryNameById[$cid] ?? ''));
+                    if ($name !== '') {
+                        $categories[] = ['id' => $cid, 'name' => $name];
+                    }
+                }
+                $productCategory = $categories[0]['name'] ?? trim((string) ($product->productCategory?->category_name ?? ''));
+
+                // Suppliers for this row's categories (deduped across all its categories).
+                $suppliers = [];
+                $seenSupplierIds = [];
+                foreach ($categories as $catItem) {
+                    $key = strtolower($catItem['name']);
+                    foreach ($suppliersByCategoryName[$key] ?? [] as $supplier) {
+                        if (! isset($seenSupplierIds[$supplier['id']])) {
+                            $seenSupplierIds[$supplier['id']] = true;
+                            $suppliers[] = $supplier;
+                        }
+                    }
+                }
 
                 $linkedSkus = $this->linkedSkusForProduct((string) $product->sku);
                 $skuGroup = $linkedSkus;
@@ -183,6 +241,8 @@ class ComparisonController extends Controller
                     'sku' => $product->sku,
                     'category_id' => $product->category_id,
                     'category' => $productCategory,
+                    'categories' => $categories,
+                    'suppliers' => $suppliers,
                     'linked_skus' => $linkedSkus,
                     'sheet_sku' => $sheetSku,
                     'clink' => $clink,
@@ -216,6 +276,89 @@ class ComparisonController extends Controller
                 'message' => 'Failed to load comparison data.',
             ], 500);
         }
+    }
+
+    /**
+     * Distinct parent list used by the playback (parent navigation) controls.
+     */
+    public function getParents(Request $request)
+    {
+        try {
+            $parents = ProductMaster::query()
+                ->whereRaw("UPPER(sku) NOT LIKE '%PARENT%'")
+                ->whereNotNull('parent')
+                ->whereRaw("TRIM(parent) <> ''")
+                ->orderBy('parent')
+                ->distinct()
+                ->pluck('parent')
+                ->map(fn ($parent) => trim((string) $parent))
+                ->filter()
+                ->unique()
+                ->values()
+                ->all();
+
+            return response()->json([
+                'success' => true,
+                'parents' => $parents,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Comparison getParents failed: ' . $e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to load parents.',
+                'parents' => [],
+            ], 500);
+        }
+    }
+
+    /**
+     * Set the Mfr category on a SKU and propagate it to all linked SKUs
+     * (same group-sharing behaviour as the C link / CD columns).
+     */
+    public function saveCategory(Request $request)
+    {
+        $validated = $request->validate([
+            'sku' => 'required|string',
+            'category_ids' => 'nullable|array',
+            'category_ids.*' => 'integer',
+            // Kept for backward compatibility with single-value callers.
+            'category_id' => 'nullable|integer',
+        ]);
+
+        $sku = trim($validated['sku']);
+        if ($sku === '') {
+            return response()->json(['success' => false, 'message' => 'SKU is required.'], 422);
+        }
+
+        $rawIds = $validated['category_ids'] ?? null;
+        if ($rawIds === null && ! empty($validated['category_id'])) {
+            $rawIds = [(int) $validated['category_id']];
+        }
+        $categoryIds = $this->normalizeCategoryIds(is_array($rawIds) ? $rawIds : []);
+
+        // Validate every category exists / is active.
+        foreach ($categoryIds as $categoryId) {
+            $category = ProductCategory::withTrashed()->find($categoryId);
+            if (! $category || $category->trashed() || $category->status !== 'active') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Selected category does not exist or is inactive.',
+                ], 400);
+            }
+        }
+
+        $this->linkedSkuGroupService->prepareForSkus([$sku]);
+        $group = $this->resolveLinkedSkuGroupMembers($sku);
+
+        // Assign the full category list to every linked member so the group stays unified.
+        $this->syncCategoryForGroup($group, $categoryIds);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Category updated for linked SKUs.',
+            'affected' => $this->buildAffectedLinkedSkuRows($sku),
+        ]);
     }
 
     public function getSheet(Request $request)
@@ -399,6 +542,7 @@ class ComparisonController extends Controller
 
         $this->skuLinkService->link($sku, $linkedSku, $user);
         $this->linkedSkuGroupService->prepareForSkus([$sku, $linkedSku]);
+        $this->syncCategoryForGroup($this->resolveLinkedSkuGroupMembers($sku));
 
         ComparisonHistory::logChange(
             $sku,
@@ -435,6 +579,7 @@ class ComparisonController extends Controller
 
         $this->skuLinkService->syncFullyConnectedGroup($skus, $user);
         $this->linkedSkuGroupService->prepareForSkus($skus);
+        $this->syncCategoryForGroup($this->resolveLinkedSkuGroupMembers($skus[0]));
 
         $affectedBySku = [];
         foreach ($this->buildAffectedLinkedSkuRows($skus[0]) as $row) {
@@ -484,7 +629,18 @@ class ComparisonController extends Controller
 
         $this->linkedSkuGroupService->prepareForSkus([$sku, $linkedSku]);
         $beforeGroup = $this->resolveLinkedSkuGroupMembers($sku);
-        $this->skuLinkService->unlink($sku, $linkedSku);
+
+        // Fully detach the removed SKU from every member of the group. Bulk links
+        // create a fully-connected graph, so unlinking only the clicked pair would
+        // leave the SKU connected transitively and it would reappear in the group.
+        $linkedNorm = strtoupper($linkedSku);
+        foreach ($beforeGroup as $memberSku) {
+            if (strtoupper(trim($memberSku)) === $linkedNorm) {
+                continue;
+            }
+            $this->skuLinkService->unlink($memberSku, $linkedSku);
+        }
+
         $this->linkedSkuGroupService->prepareForSkus($beforeGroup);
 
         $affectedBySku = [];
@@ -1224,6 +1380,64 @@ class ComparisonController extends Controller
     }
 
     /**
+     * Batched supplier lookup for a set of category names (as shown on /supplier.list).
+     * Returns suppliers grouped by lowercased category name.
+     *
+     * @param  list<string>  $names
+     * @return array<string, list<array{id: int, name: string, company: ?string, link: ?string}>>
+     */
+    private function suppliersByCategoryNames(array $names): array
+    {
+        $names = array_values(array_unique(array_filter(array_map('trim', $names))));
+        if ($names === []) {
+            return [];
+        }
+
+        $categories = Category::query()->whereIn('name', $names)->get(['id', 'name']);
+        if ($categories->isEmpty()) {
+            return [];
+        }
+
+        $idToNameLower = [];
+        foreach ($categories as $cat) {
+            $idToNameLower[(int) $cat->id] = strtolower(trim((string) $cat->name));
+        }
+        $catIds = array_keys($idToNameLower);
+
+        $suppliers = Supplier::query()
+            ->whereNotNull('name')
+            ->where('name', '!=', '')
+            ->where(function ($query) use ($catIds) {
+                foreach ($catIds as $cid) {
+                    $query->orWhereRaw('FIND_IN_SET(?, REPLACE(category_id, " ", ""))', [$cid]);
+                }
+            })
+            ->orderBy('name')
+            ->get(['id', 'name', 'company', 'category_id', 'alibaba', 'link_1688', 'website', 'email', 'whatsapp', 'wechat', 'qq', 'phone', 'country_code']);
+
+        $result = [];
+        foreach ($suppliers as $supplier) {
+            $payload = [
+                'id' => (int) $supplier->id,
+                'name' => trim((string) $supplier->name),
+                'company' => trim((string) ($supplier->company ?? '')) ?: null,
+                'link' => $this->resolveSupplierListLink($supplier),
+            ];
+            $supplierCatIds = array_filter(array_map(
+                'intval',
+                preg_split('/\s*,\s*/', (string) ($supplier->category_id ?? ''), -1, PREG_SPLIT_NO_EMPTY) ?: []
+            ));
+            foreach ($supplierCatIds as $cid) {
+                if (isset($idToNameLower[$cid])) {
+                    $result[$idToNameLower[$cid]][] = $payload;
+                }
+            }
+        }
+
+        return $result;
+    }
+
+    /**
      * Communication / platform links for a supplier (matches MFRG In-Progress + supplier.list columns).
      *
      * @return list<array{label: string, url: ?string, external?: bool, display?: string}>
@@ -1782,16 +1996,170 @@ class ComparisonController extends Controller
     private function buildAffectedLinkedSkuRows(string $sku): array
     {
         $group = $this->resolveLinkedSkuGroupMembers($sku);
-        $rows = [];
+        if ($group === []) {
+            return [];
+        }
 
+        // Resolve the C link + CD (comparison sheet) shared across the whole group so
+        // every linked SKU exposes the same values immediately after (un)linking.
+        $sharedClink = $this->linkedSkuGroupService->resolveSharedClink($group);
+        $clink = trim((string) ($sharedClink['clink'] ?? ''));
+        $clinkSku = trim((string) ($sharedClink['clink_sku'] ?? ''));
+        $clinkIsSheet = $this->sheetStorage->isGoogleSheetUrl($clink);
+
+        $sharedSheet = $this->resolveSharedSheetSku($group);
+        $sheetSku = (string) ($sharedSheet['sheet_sku'] ?? ($group[0] ?? $sku));
+        $hasSheetData = (bool) ($sharedSheet['has_sheet_data'] ?? false);
+
+        $supplierCount = 0;
+        if ($hasSheetData && $sheetSku !== '') {
+            $record = ComparisonData::whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper($sheetSku)])->first();
+            $cells = $record?->sheet_data['cells'] ?? ($this->sheetStorage->cellsForSku($sheetSku) ?? []);
+            $supplierCount = $this->countSupplierColumns(is_array($cells) ? $cells : []);
+        }
+
+        // Resolve the Mfr categories shared across the group (products are unified on link).
+        $categoryIds = $this->resolveSharedCategoryIds($group);
+        $categories = $this->categoriesPayload($categoryIds);
+        $primaryId = $categoryIds[0] ?? null;
+        $primaryName = $categories[0]['name'] ?? '';
+
+        // Suppliers for the shared categories (deduped) so the Suppliers column stays in sync.
+        $suppliersByCategoryName = $this->suppliersByCategoryNames(array_map(fn ($c) => $c['name'], $categories));
+        $suppliers = [];
+        $seenSupplierIds = [];
+        foreach ($categories as $catItem) {
+            foreach ($suppliersByCategoryName[strtolower($catItem['name'])] ?? [] as $supplier) {
+                if (! isset($seenSupplierIds[$supplier['id']])) {
+                    $seenSupplierIds[$supplier['id']] = true;
+                    $suppliers[] = $supplier;
+                }
+            }
+        }
+
+        $rows = [];
         foreach ($group as $memberSku) {
             $rows[] = [
                 'sku' => $memberSku,
                 'linked_skus' => $group,
+                'clink' => $clink,
+                'clink_sku' => ($clinkSku !== '' && strtoupper($clinkSku) !== strtoupper((string) $memberSku)) ? $clinkSku : null,
+                'clink_is_sheet' => $clinkIsSheet,
+                'sheet_sku' => $sheetSku,
+                'has_sheet_data' => $hasSheetData,
+                'sheet_supplier_count' => $supplierCount,
+                'category_id' => $primaryId,
+                'category' => $primaryName,
+                'categories' => $categories,
+                'suppliers' => $suppliers,
             ];
         }
 
         return $rows;
+    }
+
+    /**
+     * Resolve the Mfr category id list shared across a linked group. Picks the most
+     * recently updated member that has categories assigned.
+     *
+     * @param  list<string>  $group
+     * @return list<int>
+     */
+    private function resolveSharedCategoryIds(array $group): array
+    {
+        $members = array_values(array_unique(array_filter(array_map('trim', $group))));
+        if ($members === []) {
+            return [];
+        }
+
+        $products = ProductMaster::query()
+            ->whereIn('sku', $members)
+            ->orderByDesc('updated_at')
+            ->get(['id', 'sku', 'category_id', 'mfr_category_ids', 'updated_at']);
+
+        foreach ($products as $product) {
+            $ids = $this->normalizeCategoryIds(
+                is_array($product->mfr_category_ids) ? $product->mfr_category_ids : [],
+                $product->category_id ? (int) $product->category_id : null
+            );
+            if ($ids !== []) {
+                return $ids;
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * @param  list<mixed>  $ids
+     * @return list<int>
+     */
+    private function normalizeCategoryIds(array $ids, ?int $fallbackId = null): array
+    {
+        $normalized = array_values(array_unique(array_filter(array_map('intval', $ids), fn ($id) => $id > 0)));
+        if ($normalized === [] && $fallbackId) {
+            $normalized = [$fallbackId];
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * @param  list<int>  $categoryIds
+     * @return list<array{id: int, name: string}>
+     */
+    private function categoriesPayload(array $categoryIds): array
+    {
+        if ($categoryIds === []) {
+            return [];
+        }
+
+        $names = ProductCategory::query()
+            ->whereIn('id', $categoryIds)
+            ->pluck('category_name', 'id')
+            ->all();
+
+        $payload = [];
+        foreach ($categoryIds as $id) {
+            $name = trim((string) ($names[$id] ?? ''));
+            if ($name !== '') {
+                $payload[] = ['id' => (int) $id, 'name' => $name];
+            }
+        }
+
+        return $payload;
+    }
+
+    /**
+     * Assign the given Mfr category id list to every linked member so the whole
+     * group stays unified (same group-sharing behaviour as the C link / CD columns).
+     *
+     * @param  list<string>  $group
+     * @param  list<int>|null  $categoryIds
+     */
+    private function syncCategoryForGroup(array $group, ?array $categoryIds = null): void
+    {
+        $members = array_values(array_unique(array_filter(array_map('trim', $group))));
+        if ($members === []) {
+            return;
+        }
+
+        $ids = $categoryIds !== null
+            ? $this->normalizeCategoryIds($categoryIds)
+            : $this->resolveSharedCategoryIds($members);
+
+        if ($categoryIds === null && $ids === []) {
+            // Nothing set anywhere in the group; leave products untouched.
+            return;
+        }
+
+        // Query-builder update() bypasses model casts, so encode the JSON manually.
+        ProductMaster::query()
+            ->whereIn('sku', $members)
+            ->update([
+                'mfr_category_ids' => json_encode(array_values($ids)),
+                'category_id' => $ids[0] ?? null,
+            ]);
     }
 
     /**

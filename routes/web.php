@@ -4316,6 +4316,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::controller(ComparisonController::class)->prefix('purchase-master/comparison')->group(function () {
         Route::get('/', 'index')->name('comparison.index');
         Route::get('/data', 'getData')->name('comparison.data');
+        Route::get('/parents', 'getParents')->name('comparison.parents');
+        Route::post('/category/save', 'saveCategory')->name('comparison.category.save');
         Route::get('/suppliers-for-sku', 'suppliersForSku')->name('comparison.suppliers-for-sku');
         Route::get('/history', 'getHistory')->name('comparison.history');
         Route::get('/sheet', 'getSheet')->name('comparison.sheet.get');

@@ -846,7 +846,6 @@
                                 <option value="r2s">R2S</option>
                                 <option value="transit">Trn</option>
                             </select>
-                            <span id="stage-filter-badge" style="display:none;background:#0d6efd;color:#fff;font-size:0.78rem;font-weight:700;border-radius:20px;padding:3px 10px;white-space:nowrap;box-shadow:0 1px 4px rgba(13,110,253,.35);"></span>
 
                             <select id="row-data-type" class="form-select form-select-sm border border-primary forecast-filter-field" aria-label="Row type"></select>
                         </div>
@@ -1085,6 +1084,15 @@
                                 </select>
                             </div>
                             <div class="col-md-3">
+                                <label class="form-label small mb-1">Exec</label>
+                                <select class="form-select select-searchable" id="fre_exec" data-search-placeholder="Search exec…">
+                                    <option value="">NA</option>
+                                    @foreach (($execUsers ?? []) as $execName)
+                                        <option value="{{ $execName }}">{{ $execName }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div class="col-md-3">
                                 <label class="form-label small mb-1">Stage <span class="text-muted" style="font-weight:400;">(multi)</span></label>
                                 <div class="dropdown" id="fre_stage_dd">
                                     <button class="btn btn-sm btn-outline-secondary dropdown-toggle w-100 text-start d-flex justify-content-between align-items-center"
@@ -1213,6 +1221,21 @@
                 </div>
                 <div class="modal-body">
                     <!-- dynamic content here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- Comparison Data (CD) — opens the real /purchase-master/comparison CD view for the SKU in an iframe --}}
+    <div class="modal fade" id="forecastCdModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-fullscreen modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-dark border-0 py-2">
+                    <h5 class="modal-title fw-bold text-dark"><i class="mdi mdi-scale-balance me-2"></i>Comparison Data <small class="text-dark fw-bold ms-2" id="forecastCdModalSku"></small></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-0" style="overflow:hidden;">
+                    <iframe id="forecastCdIframe" title="Comparison Data" style="width:100%;height:100%;border:0;display:block;"></iframe>
                 </div>
             </div>
         </div>
@@ -1501,6 +1524,7 @@
                 supplier:   forecastRowGetField(d, 'mfrg_supplier', 'Supplier'),
                 category:   forecastRowGetField(d, 'Category', 'category'),
                 zone:       forecastRowGetField(d, 'r2s_zone', 'zone'),
+                exec:       forecastRowGetField(d, 'exec', 'Exec'),
             };
             forecastRowEditState.original = original;
 
@@ -1530,6 +1554,8 @@
             populateForecastRowEditSupplierSelect(original.supplier);
             populateForecastRowEditCategorySelect(original.category);
             $('#fre_zone').val(original.zone);
+            $('#fre_exec').val(original.exec);
+            if (window.SelectSearchable) window.SelectSearchable.refresh(document.getElementById('fre_exec'));
             $('#forecastRowEditStatus').empty();
 
             const modalEl = document.getElementById('forecastRowEditModal');
@@ -1679,6 +1705,7 @@
                 { id: 'fre_supplier',    column: 'supplier',      key: 'supplier' },
                 { id: 'fre_category',    column: 'Category',      key: 'category' },
                 { id: 'fre_zone',        column: 'area',          key: 'zone' },
+                { id: 'fre_exec',        column: 'Exec',          key: 'exec' },
                 { id: 'fre_nr',          column: 'NR',            key: 'nr' },
                 { id: 'fre_dateappr',    column: 'Date of Appr',  key: 'date_appr' },
                 { id: 'fre_clink',       column: 'Clink',         key: 'clink' },
@@ -2268,6 +2295,7 @@
             else if (col === 'supplier') patch.mfrg_supplier = value;
             else if (col === 'Category') patch.Category = value;
             else if (col === 'area') patch.r2s_zone = value;
+            else if (col === 'Exec') patch.exec = value;
 
             if (!Object.keys(patch).length) return;
             row.update(patch, true);
@@ -3248,11 +3276,11 @@
                         if (!url) {
                             return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
                         }
+                        const sku = String(d.SKU || '').trim().replace(/&/g, '&amp;').replace(/"/g, '&quot;');
                         return `<div style="display:flex;align-items:center;justify-content:center;">
-                            <a href="${url}" target="_blank" rel="noopener noreferrer"
-                                class="btn btn-sm btn-outline-primary py-0 px-2" title="Open link" aria-label="Open link">
+                            <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2 forecast-cd-open" data-sku="${sku}" title="Open comparison" aria-label="Open comparison">
                                 <i class="mdi mdi-link"></i>
-                            </a>
+                            </button>
                         </div>`;
                     },
                 },
@@ -3273,12 +3301,11 @@
                         if (!sku) {
                             return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
                         }
-                        const url = '{{ route('comparison.index') }}?sku=' + encodeURIComponent(sku);
+                        const safeSku = sku.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
                         return `<div style="display:flex;align-items:center;justify-content:center;">
-                            <a href="${url}" target="_blank" rel="noopener noreferrer"
-                                class="btn btn-sm btn-outline-secondary py-0 px-2" title="Open comparison data" aria-label="Open comparison data">
+                            <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2 forecast-cd-open" data-sku="${safeSku}" title="Open comparison data" aria-label="Open comparison data">
                                 <i class="mdi mdi-scale-balance"></i>
-                            </a>
+                            </button>
                         </div>`;
                     },
                 },
@@ -6449,6 +6476,22 @@
             const instance = new bootstrap.Modal(modal);
             instance.show();
         }
+
+        // CD column — open the real comparison CD view for this SKU in an iframe modal.
+        $(document).off('click', '.forecast-cd-open').on('click', '.forecast-cd-open', function() {
+            const sku = String($(this).data('sku') || '').trim();
+            if (!sku) return;
+            const url = '{{ route('comparison.index') }}?cd_sku=' + encodeURIComponent(sku) + '&embed=1';
+            const iframe = document.getElementById('forecastCdIframe');
+            if (iframe) iframe.src = url;
+            const skuLabel = document.getElementById('forecastCdModalSku');
+            if (skuLabel) skuLabel.textContent = sku;
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('forecastCdModal')).show();
+        });
+        document.getElementById('forecastCdModal')?.addEventListener('hidden.bs.modal', function() {
+            const iframe = document.getElementById('forecastCdIframe');
+            if (iframe) iframe.src = 'about:blank';
+        });
 
         // SKU copy handler
         $(document).on('click', '.forecast-copy-sku', function(e) {

@@ -114,7 +114,7 @@
                                 <a href="{{ route('mfrg.in.progress') }}">MIP</a>
                             </li>
                         <li>
-                            <a href="{{ route('comparison.index') }}">Comparison</a>
+                            <a href="{{ route('comparison.index') }}">Purchase Comparison</a>
                         </li>
                         <li>
                             <a href="{{ route('ready.to.ship') }}">Ready To Ship</a>

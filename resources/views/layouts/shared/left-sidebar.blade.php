@@ -3043,7 +3043,7 @@
                             <a href="{{ route('mfrg.in.progress') }}">MIP</a>
                         </li>
                         <li>
-                            <a href="{{ route('comparison.index') }}">Comparison</a>
+                            <a href="{{ route('comparison.index') }}">Purchase Comparison</a>
                         </li>
                         <li>
                             <a href="{{ url('/purchase-master/sku-link-lmp') }}">SKU Link LMP</a>

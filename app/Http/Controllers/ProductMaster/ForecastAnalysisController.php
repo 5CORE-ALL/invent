@@ -1334,6 +1334,20 @@ class ForecastAnalysisController extends Controller
             return response()->json(['success' => true, 'message' => 'Supplier updated successfully']);
         }
 
+        // Exec: single source of truth in to_order_analysis.exec (same as the
+        // inline Exec column editor and MFRG In Progress).
+        if (strtoupper($column) === 'EXEC') {
+            try {
+                ToOrderSkuFieldSync::setExecForSku($sku, $value, $parent !== '' ? $parent : null);
+            } catch (\Throwable $e) {
+                Log::error('Forecast exec save failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+                return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            }
+
+            return response()->json(['success' => true, 'message' => 'Exec updated successfully']);
+        }
+
         // Handle MOQ updates: save to forecast_analysis.approved_qty and to_order_analysis so forecast and to-order show same value
         if (strtoupper($column) === 'MOQ') {
             try {
