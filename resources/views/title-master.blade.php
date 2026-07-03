@@ -1746,6 +1746,25 @@
         const TM_TILES = __tmMp.tiles || {};
         const TM_ENABLED = __tmMp.enabled || [];
         const TM_TITLE_META = __tmMp.titleMeta || {};
+        const TM_TITLE_PUSH_BY_TYPE = __tmMp.titlePushByType || {};
+
+        function tmTitlePushKeysForType(type) {
+            if (TM_TITLE_PUSH_BY_TYPE[type] && TM_TITLE_PUSH_BY_TYPE[type].length) {
+                return TM_TITLE_PUSH_BY_TYPE[type];
+            }
+            const keys = [];
+            Object.values(TM_TITLE_META).forEach(function (meta) {
+                if (meta.type === type && keys.indexOf(meta.push) === -1) keys.push(meta.push);
+            });
+            return keys;
+        }
+
+        function tmPushKeyLabel(pushKey) {
+            for (const regKey in TM_TITLE_META) {
+                if (TM_TITLE_META[regKey].push === pushKey) return TM_LABELS[regKey] || pushKey;
+            }
+            return pushKey;
+        }
 
         function tmPushKey(mp) {
             const meta = TM_TITLE_META[mp];
@@ -1794,7 +1813,7 @@
         }
 
         function tmGroupCellInner(groupKey, sku, item) {
-            const keys = TM_GROUPS[groupKey] || [];
+            const keys = (TM_GROUPS[groupKey] || []).filter(function (mp) { return TM_ENABLED.includes(mp); });
             return '<div class="bp-mp-inline">'
                 + keys.map(function (mp) { return tmMpStackHtml(sku, mp, item); }).join('')
                 + '</div>';
@@ -2029,7 +2048,7 @@
                         alert('No titles to distribute. Ensure rows have Title 170 data.');
                         return;
                     }
-                    document.getElementById('pushConfirmMessage').textContent = 'Distribute ' + items.length + ' title(s) on this page to Amazon, Temu & Reverb? This may take several minutes.';
+                    document.getElementById('pushConfirmMessage').textContent = 'Distribute ' + items.length + ' title(s) on this page to all ' + tmTitlePushKeysForType('150').length + ' Title 150 marketplaces? This may take several minutes.';
                     const confirmModalEl = document.getElementById('pushConfirmModal');
                     const confirmModal = bootstrap.Modal.getOrCreateInstance(confirmModalEl);
                     document.getElementById('pushConfirmBtn').onclick = function() {
@@ -2055,7 +2074,7 @@
                         alert('No titles to distribute. Selected rows need Title 170 data.');
                         return;
                     }
-                    document.getElementById('pushConfirmMessage').textContent = 'Distribute ' + items.length + ' selected title(s) on this page to Amazon, Temu & Reverb?';
+                    document.getElementById('pushConfirmMessage').textContent = 'Distribute ' + items.length + ' selected title(s) on this page to all ' + tmTitlePushKeysForType('150').length + ' Title 150 marketplaces?';
                     const confirmModalEl = document.getElementById('pushConfirmModal');
                     const confirmModal = bootstrap.Modal.getOrCreateInstance(confirmModalEl);
                     document.getElementById('pushConfirmBtn').onclick = function() {
@@ -3227,12 +3246,12 @@
         }
 
         function renderMarketplaceDots(sku, statusMap) {
-            const mps = ['amazon', 'temu', 'reverb'];
-            const labels = { amazon: 'Amazon', temu: 'Temu', reverb: 'Reverb' };
+            const mps = tmTitlePushKeysForType('150');
             let html = '<div class="marketplaces-dots" data-sku="' + (sku || '') + '">';
             mps.forEach(function(mp) {
                 const st = (statusMap && statusMap[mp]) ? statusMap[mp] : 'pending';
-                const title = labels[mp] + ': ' + (st === 'success' ? 'Pushed' : st === 'failed' ? 'Failed' : st === 'loading' ? 'In progress...' : 'Not pushed');
+                const label = tmPushKeyLabel(mp);
+                const title = label + ': ' + (st === 'success' ? 'Pushed' : st === 'failed' ? 'Failed' : st === 'loading' ? 'In progress...' : 'Not pushed');
                 html += '<span class="mp-dot marketplace-tooltip ' + mp + ' ' + st + '" data-marketplace="' + mp + '" title="' + escapeTooltipAttr(title) + '"></span>';
             });
             html += '</div>';
@@ -3253,12 +3272,12 @@
         }
 
         function renderMarketplaceDots100(sku, statusMap) {
-            const mps = ['shopify_main', 'shopify_pls', 'macy'];
-            const labels = { shopify_main: 'Shopify Main', shopify_pls: 'Shopify PLS', macy: "Macy's" };
+            const mps = tmTitlePushKeysForType('100');
             let html = '<div class="marketplaces-dots" data-sku="' + (sku || '') + '">';
             mps.forEach(function(mp) {
                 const st = (statusMap && statusMap[mp]) ? statusMap[mp] : 'pending';
-                const title = labels[mp] + ': ' + (st === 'success' ? 'Pushed' : st === 'failed' ? 'Failed' : st === 'loading' ? 'In progress...' : 'Not pushed');
+                const label = tmPushKeyLabel(mp);
+                const title = label + ': ' + (st === 'success' ? 'Pushed' : st === 'failed' ? 'Failed' : st === 'loading' ? 'In progress...' : 'Not pushed');
                 html += '<span class="mp-dot marketplace-tooltip ' + mp + ' ' + st + '" data-marketplace="' + mp + '" title="' + escapeTooltipAttr(title) + '"></span>';
             });
             html += '</div>';
@@ -3271,7 +3290,7 @@
             const btn = row.querySelector('.push-all-marketplaces-btn');
             const skuVal = (btn && btn.getAttribute('data-sku')) ? btn.getAttribute('data-sku') : '';
             const statusMap = {};
-            ['amazon', 'temu', 'reverb'].forEach(function(mp) {
+            tmTitlePushKeysForType('150').forEach(function(mp) {
                 statusMap[mp] = (results[mp] && results[mp].status) ? results[mp].status : 'pending';
             });
             wrapper.innerHTML = renderMarketplaceDots(skuVal, statusMap);
@@ -3284,7 +3303,7 @@
             const btn = row.querySelector('.push-all-marketplaces-btn');
             const skuVal = (btn && btn.getAttribute('data-sku')) ? btn.getAttribute('data-sku') : '';
             const statusMap100 = {};
-            ['shopify_main', 'shopify_pls', 'macy'].forEach(function(mp) {
+            tmTitlePushKeysForType('100').forEach(function(mp) {
                 statusMap100[mp] = (results[mp] && results[mp].status) ? results[mp].status : 'pending';
             });
             wrapper100.innerHTML = renderMarketplaceDots100(skuVal, statusMap100);
@@ -4078,7 +4097,9 @@
                 const cell = row.querySelector('.marketplaces-150-cell');
                 const wrap = cell ? cell.querySelector('.marketplaces-dots-wrapper') : null;
                 if (wrap) {
-                    wrap.innerHTML = renderMarketplaceDots(sku, { amazon: 'loading', temu: 'loading', reverb: 'loading' });
+                    const loadingMap = {};
+                    tmTitlePushKeysForType('150').forEach(function (mp) { loadingMap[mp] = 'loading'; });
+                    wrap.innerHTML = renderMarketplaceDots(sku, loadingMap);
                     initMarketplaceTooltips(wrap);
                 }
             }
@@ -4096,8 +4117,9 @@
                 if (data.success && data.results) {
                     if (row) updateMarketplaceDotsInRow(row, data.results);
                     const r = data.results;
-                    const ok = [r.amazon, r.temu, r.reverb].filter(x => x && x.status === 'success').length;
-                    const fail = [r.amazon, r.temu, r.reverb].filter(x => x && x.status === 'failed').length;
+                    const keys150 = tmTitlePushKeysForType('150');
+                    const ok = keys150.filter(function (mp) { return r[mp] && r[mp].status === 'success'; }).length;
+                    const fail = keys150.filter(function (mp) { return r[mp] && r[mp].status === 'failed'; }).length;
                     alert('Distribute completed for ' + sku + ': ' + ok + ' succeeded, ' + fail + ' failed.');
                 } else {
                     if (row) {
@@ -4137,7 +4159,7 @@
             const progressBar = document.getElementById('pushProgressBar');
             const progressText = document.getElementById('pushProgressText');
             progressModal.show();
-            progressText.textContent = 'Distributing to Amazon, Temu, Reverb...';
+            progressText.textContent = 'Distributing Title 150 to all marketplaces...';
 
             function updateProgress(done) {
                 const pct = total ? Math.round((done / total) * 100) : 0;

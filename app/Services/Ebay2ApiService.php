@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Ebay2Metric;
 use App\Models\ProductStockMapping;
 use App\Services\Concerns\ResolvesBulletPointIdentifier;
+use App\Services\Support\Concerns\ResolvesEbayListingItemId;
 use App\Services\Support\DescriptionWithImagesFormatter;
 use App\Services\Support\EbaySellInventoryListingResolver;
 use App\Services\Support\EbayTradingReviseItem;
@@ -21,6 +22,7 @@ use ZipArchive;
 class Ebay2ApiService
 {
     use ResolvesBulletPointIdentifier;
+    use ResolvesEbayListingItemId;
     use SavesMarketplaceVideoMetrics;
     use VideoMasterMarketplaceMethods;
 
@@ -1488,15 +1490,23 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
         }
 
         $row = $this->findMetricRowBySkuOrAlternateIds('ebay_2_metrics', $identifier, ['item_id']);
-        $itemId = $row->item_id ?? null;
-        if (! $itemId) {
-            return ['success' => false, 'message' => 'Product not found in ebay_2_metrics (try SKU or eBay item_id).'];
-        }
-
         try {
             $token = $this->generateBearerToken();
         } catch (\Throwable $e) {
             return ['success' => false, 'message' => $e->getMessage()];
+        }
+
+        $resolved = $this->resolveEbayItemIdForPush(
+            'ebay_2_metrics',
+            $identifier,
+            $token,
+            $this->endpoint,
+            $this->tradingApiHeadersBase()
+        );
+        $itemId = $resolved['item_id'];
+        $row = $resolved['row'] ?? $row;
+        if (! $itemId) {
+            return ['success' => false, 'message' => 'No eBay2 listing found for this SKU or item_id (check ebay_2_metrics or Inventory / GetSellerList).'];
         }
 
         $getItemResponse = $this->getItem((string) $itemId);
@@ -1804,15 +1814,23 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
         }
 
         $row = $this->findMetricRowBySkuOrAlternateIds('ebay_2_metrics', $identifier, ['item_id']);
-        $itemId = $row->item_id ?? null;
-        if (! $itemId) {
-            return ['success' => false, 'message' => 'Product not found in ebay_2_metrics (try SKU or eBay item_id).'];
-        }
-
         try {
             $token = $this->generateBearerToken();
         } catch (\Throwable $e) {
             return ['success' => false, 'message' => $e->getMessage()];
+        }
+
+        $resolved = $this->resolveEbayItemIdForPush(
+            'ebay_2_metrics',
+            $identifier,
+            $token,
+            $this->endpoint,
+            $this->tradingApiHeadersBase()
+        );
+        $itemId = $resolved['item_id'];
+        $row = $resolved['row'] ?? $row;
+        if (! $itemId) {
+            return ['success' => false, 'message' => 'No eBay2 listing found for this SKU or item_id.'];
         }
 
         $html = '<div class="product-description">'.

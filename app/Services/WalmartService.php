@@ -9,10 +9,12 @@ use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use App\Services\Support\Concerns\HandlesMarketplaceApiExceptions;
 use App\Services\Support\SavesMarketplaceImageMetrics;
 
 class WalmartService
 {
+    use HandlesMarketplaceApiExceptions;
     use SavesMarketplaceImageMetrics;
     protected $clientId;
     protected $clientSecret;
@@ -212,17 +214,54 @@ class WalmartService
 
         $feedXml = $this->buildBulletFeedXml($sku, $body);
 
-        return $this->submitMpItemFeed($feedXml, $sku, 'Walmart bullet points');
+        return $this->submitMpItemFeed($feedXml, $sku, 'Walmart bullet points', 'Walmart bullet points updated successfully');
     }
 
     /**
-     * Product description uses the same MP_ITEM feed fields as marketing copy (truncate in caller if needed).
+     * Product description via MP_ITEM feed (shortDescription only — separate from bullet shelf copy).
      *
      * @return array{success:bool,message:string,feed_id?:string,feed_status?:string,response?:mixed}
      */
     public function updateProductDescription(string $identifier, string $description): array
     {
-        return $this->updateBulletPoints($identifier, $description);
+        $sku = trim($identifier);
+        $body = trim($description);
+        if ($sku === '' || $body === '') {
+            return ['success' => false, 'message' => 'SKU and description are required.'];
+        }
+
+        $feedXml = $this->buildDescriptionFeedXml($sku, $body);
+
+        return $this->submitMpItemFeed($feedXml, $sku, 'Walmart description', 'Walmart description updated successfully');
+    }
+
+    private function buildDescriptionFeedXml(string $sku, string $description): string
+    {
+        $escapedSku = htmlspecialchars($sku, ENT_XML1);
+        $escaped = htmlspecialchars($description, ENT_XML1);
+        $lines = preg_split('/\r\n|\r|\n/', $description);
+        $titleLine = trim($lines[0] ?? '') ?: $sku;
+        $escapedName = htmlspecialchars($titleLine, ENT_XML1);
+
+        return '<?xml version="1.0" encoding="UTF-8"?>
+<MPItemFeed xmlns="http://walmart.com/" xmlns:ns2="http://walmart.com/mp/orders" xmlns:ns3="http://walmart.com/">
+  <MPItemFeedHeader>
+    <mart>US</mart>
+    <sellingChannel>marketplace</sellingChannel>
+    <processMode>REPLACE</processMode>
+    <subset>EXTERNAL</subset>
+    <locale>en</locale>
+    <version>4.8</version>
+  </MPItemFeedHeader>
+  <MPItem>
+    <Orderable>
+      <sku>'.$escapedSku.'</sku>
+      <productName>'.$escapedName.'</productName>
+      <shortDescription>'.$escaped.'</shortDescription>
+      <productType>Item</productType>
+    </Orderable>
+  </MPItem>
+</MPItemFeed>';
     }
 
     private function buildBulletFeedXml(string $sku, string $bulletText): string
@@ -258,7 +297,7 @@ class WalmartService
     /**
      * @return array{success:bool,message:string,feed_id?:string,feed_status?:string,response?:mixed}
      */
-    private function submitMpItemFeed(string $feedXml, string $sku, string $logLabel): array
+    private function submitMpItemFeed(string $feedXml, string $sku, string $logLabel, string $successMessage = 'Walmart update completed successfully'): array
     {
         Log::info("🚀 {$logLabel} update started", ['sku' => $sku]);
 
@@ -304,7 +343,7 @@ class WalmartService
             if (in_array($finalStatus, ['PROCESSED', 'COMPLETED', 'DONE'], true)) {
                 return [
                     'success' => true,
-                    'message' => 'Walmart bullet points updated successfully',
+                    'message' => $successMessage,
                     'feed_id' => (string) $feedId,
                     'feed_status' => $finalStatus,
                     'response' => $statusResult,

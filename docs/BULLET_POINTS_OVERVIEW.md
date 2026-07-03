@@ -1,6 +1,6 @@
 # Bullet Points Page Overview
 
-Last reviewed: 2026-06-11
+Last reviewed: 2026-07-03
 
 ## User-Facing Page
 
@@ -70,18 +70,14 @@ Important: although the browser URL can be `/bullet-points`, the active blade fe
 4. `getCombinedData()` delegates to `getData()`.
 5. `getData()` calls `ProductMasterController@getViewProductData()` to load all `product_master` rows.
 6. Product rows include `SKU`, `Parent`, `bullet1` through `bullet5`, images, descriptions, and flattened `Values` JSON.
-7. `getData()` also loads saved marketplace bullet text from these metrics tables:
-   - `ebay_metrics`
-   - `ebay_2_metrics`
-   - `ebay_3_metrics`
-   - `macy_metrics`
-   - `amazon_metrics`
-   - `temu_metrics`
-   - `reverb_metrics`
-   - `wayfair_metrics`
-   - `bestbuy_metrics`
-   - `shopify_metrics`
-   - `shopify_pls_metrics`
+7. `getData()` loads saved marketplace bullet text from every metrics table returned by `MarketplaceMetricsTableResolver::bulletTableMap()` (backed by `ProductMasterMarketplaceMaps::bulletServiceMap()`). As of 2026-07-03 that is **24** marketplaces, including:
+   - `ebay_metrics`, `ebay_2_metrics`, `ebay_3_metrics`
+   - `amazon_metrics`, `macy_metrics`, `temu_metrics`, `temu2_metrics`
+   - `reverb_metrics`, `wayfair_metrics`, `bestbuy_metrics`, `walmart_metrics`
+   - `shopify_metrics`, `shopify_pls_metrics` (also used for `shopify_b5c`)
+   - `doba_metrics`, `faire_metrics`, `shein_metrics`
+   - `aliexpress_metric`, `alibaba_metrics`, `purchasing_power_metrics`
+   - `newegg_metrics`, `topdawg_metrics`, `tiktok_metrics`
 8. Each product row receives:
    - `default_bullets`: `bullet1` through `bullet5` combined from `product_master`.
    - `bullet_points`: object keyed by marketplace, containing saved metrics-table text only.
@@ -123,18 +119,13 @@ Important: although the browser URL can be `/bullet-points`, the active blade fe
 ## Marketplace Push Flow
 
 - `BulletPointMasterController@update` validates `{ sku, updates: [{ marketplace, bullet_points }] }`.
-- Allowed marketplace keys:
-  - `ebay`
-  - `ebay2`
-  - `ebay3`
-  - `macy`
-  - `amazon`
-  - `temu`
-  - `reverb`
-  - `wayfair`
-  - `bestbuy`
-  - `shopify_main`
-  - `shopify_pls`
+- Allowed marketplace keys (from `ProductMasterMarketplaceMaps::bulletServiceMap()` — **24** total):
+  - `ebay`, `ebay2`, `ebay3`, `macy`, `amazon`, `temu`, `temu2`
+  - `reverb`, `wayfair`, `bestbuy`, `walmart`, `doba`, `faire`, `shein`
+  - `shopify_main`, `shopify_pls`, `shopify_b5c`
+  - `aliexpress`, `alibaba`, `purchasing_power`
+  - `newegg`, `topdawg`, `tiktok`, `tiktok2`
+- UI tiles come from `AllMarketplaceChannelRegistry` (`bullet => true`). Push is only allowed when the mapped metrics table exists in the database (`MarketplaceMetricsTableResolver`).
 - For each update:
   - Loads the latest saved `product_master.bullet1` through `bullet5` server-side and uses those newline-separated bullets for marketplace pushes when the SKU exists.
   - Saves that same pushed text to the mapped metrics table using `saveToMarketplaceTable()`.
@@ -161,17 +152,44 @@ Important: although the browser URL can be `/bullet-points`, the active blade fe
 
 ## Marketplace Service Map
 
-- `ebay` -> `App\Services\EbayApiService`
-- `ebay2` -> `App\Services\Ebay2ApiService`
-- `ebay3` -> `App\Services\EbayThreeApiService`
-- `macy` -> `App\Services\MacysApiService`
-- `amazon` -> `App\Services\AmazonSpApiService`
-- `temu` -> `App\Services\TemuApiService`
-- `reverb` -> `App\Services\ReverbApiService`
-- `wayfair` -> `App\Services\WayfairApiService`
-- `bestbuy` -> `App\Services\BestBuyApiService`
-- `shopify_main` -> `App\Services\ShopifyApiService`
-- `shopify_pls` -> `App\Services\ShopifyPLSApiService`
+Canonical map: `ProductMasterMarketplaceMaps::bulletServiceMap()` (24 entries). Summary:
+
+| Key | Service |
+|-----|---------|
+| ebay | `EbayApiService` |
+| ebay2 | `Ebay2ApiService` |
+| ebay3 | `EbayThreeApiService` |
+| macy | `MacysApiService` |
+| amazon | `AmazonSpApiService` |
+| temu | `TemuApiService` |
+| temu2 | `Temu2ApiService` |
+| reverb | `ReverbApiService` |
+| wayfair | `WayfairApiService` |
+| bestbuy | `BestBuyApiService` |
+| walmart | `WalmartService` |
+| doba | `DobaApiService` |
+| faire | `FaireService` |
+| shein | `SheinApiService` |
+| shopify_main | `ShopifyApiService` |
+| shopify_pls | `ShopifyPLSApiService` |
+| shopify_b5c | `ShopifyPLSApiService` (Business 5Core store) |
+| aliexpress | `AliExpressApiService` |
+| alibaba | `AlibabaApiService` (extends AliExpress signing) |
+| purchasing_power | `PurchasingPowerApiService` (Mirakl `purchasingpower`) |
+| newegg | `NeweggApiService` |
+| topdawg | `TopDawgApiService` |
+| tiktok / tiktok2 | `TikTokShopService` |
+
+## Safe testing (dry-run)
+
+Default test SKU: `SP 12120 4OHM GTR` (`config/marketplace_testing.php`).
+
+```bash
+php artisan marketplace:audit-master bullet --dry-run --sku="SP 12120 4OHM GTR"
+php artisan marketplace:audit-master bullet --live --sku="SP 12120 4OHM GTR" --marketplace=ebay
+```
+
+See `docs/MARKETPLACE_API_INTEGRATION.md` and `docs/MARKETPLACE_MASTER_DRY_RUN_RESULTS.md` for full audit output.
 
 ## Things To Watch While Debugging
 

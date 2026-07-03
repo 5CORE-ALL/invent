@@ -1,6 +1,6 @@
 # Description Master Page Overview
 
-Last reviewed: 2026-06-18
+Last reviewed: 2026-07-03
 
 ## User-Facing Pages
 
@@ -85,12 +85,12 @@ DM2 is a separate structured HTML builder (bullets, images, features, specs, pac
 
 Product Master stores four description tiers. The UI maps them to marketplace character limits:
 
-| Tier column | Max chars | Marketplaces |
-|-------------|-----------|--------------|
-| `description_1500` | 1500 | Amazon, Temu, Reverb |
-| `description_1000` | 1000 | Shopify Main, Shopify PLS |
-| `description_800` | 800 | eBay1, eBay2, eBay3 |
-| `description_600` | 600 | Macy's |
+| Tier column | Max chars | Marketplaces (PM tier source on quick push) |
+|-------------|-----------|---------------------------------------------|
+| `description_1500` | 1500 | Amazon, Temu, Temu2, Reverb, Wayfair, Best Buy, Walmart, Shein, AliExpress |
+| `description_1000` | 1000 | Shopify Main, Shopify PLS, Doba (falls back to 1500) |
+| `description_800` | 800 | eBay1, eBay2, eBay3 (falls back to 1500) |
+| `description_600` | 600 | Macy's, Faire, Alibaba, Purchasing Power, Newegg, TopDawg, TikTok, TikTok2, Shopify B5C (falls back to 1500) |
 
 Fallback logic when a tier is empty: shorter tiers are auto-truncated from `description_1500` (see `getPmTextForMp()` in the blade).
 
@@ -104,10 +104,12 @@ Fallback logic when a tier is empty: shorter tiers are auto-truncated from `desc
 - Product Name
 - Preview (PM) — first ~100 chars of `description_1500`
 - Action buttons
-- DESC 1500 — Amazon, Temu, Reverb
-- DESC 1000 — Shopify Main, Shopify PLS
-- DESC 800 — eBay1, eBay2, eBay3
-- DESC 600 — Macy's
+- **DESC 1500** — Amazon, Temu, Temu2, Reverb, Wayfair, Best Buy, Walmart, Shein, AliExpress (from `__ALL_MP__.enabled` tier map)
+- **DESC 1000** — Shopify Main, Shopify PLS, Doba
+- **DESC 800** — eBay1, eBay2, eBay3
+- **DESC 600** — Macy's, Faire, Alibaba, Purchasing Power, Newegg, TopDawg, TikTok, TikTok2, Shopify B5C
+
+Table tile buttons are built dynamically in `product-description.blade.php` from `AllMarketplaceChannelRegistry` (`partials/all-marketplace-master-channels`, `allMpMaster => description`). The edit modal lists all **24** enabled marketplaces as tabs.
 
 ### Marketplace tiles
 
@@ -146,37 +148,57 @@ This is handled in `ShopifyApiService::updateDescription()` / `ShopifyPLSApiServ
 
 ## Marketplace Push Flow
 
-- `POST /product-description/update` with `{ sku, updates: [{ marketplace, description, image_urls? }] }`.
+- `POST /product-description/update` with `{ sku, updates: [{ marketplace, description, description_html?, image_urls? }] }`.
 - For each marketplace:
-  1. Validates non-empty text and character limit.
-  2. Saves text to local metrics `description_master` column.
-  3. Calls marketplace service with retry/backoff.
-  4. Returns per-marketplace `success`, `message`, `attempts`, `retried`.
-- Push success is based on **external API result**, not only local metrics save.
+  1. Resolves text from request body, or Product Master tier (`loadMasterDescriptionTextForSku`) when empty.
+  2. Validates non-empty text and character limit (`MarketplaceCharacterLimits::descriptionLimit()`).
+  3. Calls marketplace service via `ProductMasterMarketplaceMaps::descriptionServiceMap()` with retry/backoff (`RetriesMarketplacePush`).
+  4. On **API success only**, saves to metrics `description_master` (`saveDescriptionToMarketplaceTable`).
+  5. Returns per-marketplace `success`, `message`, `local_saved`, `attempts`, `retried`.
+- Push success is based on **external API result**; metrics save runs only after a successful API response.
 - `reset-marketplace` clears local metrics `description_master` only; live listings are unchanged until a new push.
+- Separate endpoint `saveMarketplaceDescription` can save metrics text without pushing (edit modal Save).
 
 ## Marketplace Service Map (DM1)
 
-| Code | Metrics table | Service method | Notes |
-|------|---------------|----------------|-------|
-| `amazon` | `amazon_metrics` | `AmazonSpApiService::updateAplusContent` | A+ style content; supports `image_urls` |
-| `temu` | `temu_metrics` | `TemuApiService::updateDescription` | |
-| `reverb` | `reverb_metrics` | `ReverbApiService::updateDescription` | See DB gap below |
-| `shopify_main` | `shopify_metrics` | `ShopifyApiService::updateDescription` | Combines bullets + description |
-| `shopify_pls` | `shopify_pls_metrics` | `ShopifyPLSApiService::updateDescription` | Combines bullets + description |
-| `ebay` | `ebay_metrics` | `EbayApiService::updateDescription` | |
-| `ebay2` | `ebay_2_metrics` | `Ebay2ApiService::updateDescription` | |
-| `ebay3` | `ebay_3_metrics` | `EbayThreeApiService::updateDescription` | UI warns about different listing structure |
-| `macy` | `macy_metrics` | `MacysApiService::updateDescription` | See DB gap below |
+Canonical map: `ProductMasterMarketplaceMaps::descriptionServiceMap()` — **24** marketplaces (same SET API coverage as Bullet/Title/Image/Video masters).
 
-### Not wired in DM1 (yet)
+| Code | Metrics table | Service method |
+|------|---------------|----------------|
+| `amazon` | `amazon_metrics` | `AmazonSpApiService::updateAplusContent` |
+| `temu` / `temu2` | `temu_metrics` / `temu2_metrics` | `TemuApiService` / `Temu2ApiService::updateDescription` |
+| `reverb` | `reverb_metrics` | `ReverbApiService::updateDescription` |
+| `macy` | `macy_metrics` | `MacysApiService::updateDescription` |
+| `ebay` / `ebay2` / `ebay3` | `ebay_metrics` / `ebay_2_metrics` / `ebay_3_metrics` | `EbayApiService` / `Ebay2ApiService` / `EbayThreeApiService::updateDescription` |
+| `wayfair` | `wayfair_metrics` | `WayfairApiService::updateProductDescription` |
+| `bestbuy` | `bestbuy_metrics` | `BestBuyApiService::updateDescription` |
+| `doba` | `doba_metrics` | `DobaApiService::updateProductDescription` |
+| `walmart` | `walmart_metrics` | `WalmartService::updateProductDescription` |
+| `faire` | `faire_metrics` | `FaireService::updateProductDescription` |
+| `shein` | `shein_metrics` | `SheinApiService::updateProductDescription` |
+| `aliexpress` | `aliexpress_metric` | `AliExpressApiService::updateProductDescription` |
+| `alibaba` | `alibaba_metrics` | `AlibabaApiService::updateProductDescription` |
+| `shopify_main` | `shopify_metrics` | `ShopifyApiService::updateDescription` |
+| `shopify_pls` | `shopify_pls_metrics` | `ShopifyPLSApiService::updateDescription` |
+| `shopify_b5c` | `shopify_pls_metrics` | `ShopifyPLSApiService::updateDescription` |
+| `purchasing_power` | `purchasing_power_metrics` | `PurchasingPowerApiService::updateDescription` |
+| `newegg` | `newegg_metrics` | `NeweggApiService::updateDescription` |
+| `topdawg` | `topdawg_metrics` | `TopDawgApiService::updateDescription` |
+| `tiktok` / `tiktok2` | `tiktok_metrics` | `TikTokShopService::updateDescription` |
 
-| Platform | Metrics table exists | `description_master` column | Service `updateDescription` |
-|----------|---------------------|---------------------------|----------------------------|
-| Wayfair | yes (`wayfair_metrics`) | yes | **no** |
-| Best Buy | yes (`bestbuy_metrics`) | yes | **no** |
+UI tiles: `AllMarketplaceChannelRegistry` with `description => true` (via `partials/all-marketplace-master-channels`).
 
-Wayfair and Best Buy are present in Image Master and Bullet Points Master but are **not** in `DescriptionMasterController::marketplaceTableMap()` or the DM1 UI.
+## Safe testing (dry-run)
+
+Default test SKU: `SP 12120 4OHM GTR` (`config/marketplace_testing.php` → `description_sku`).
+
+```bash
+php artisan marketplace:audit-master description --dry-run --sku="SP 12120 4OHM GTR"
+```
+
+Unlike bullets, **description push requires non-empty PM tier text** — empty `description_1500`–`description_600` will fail push with “Description cannot be empty” even when API wiring is ready.
+
+See `docs/MARKETPLACE_API_INTEGRATION.md` and `docs/MARKETPLACE_MASTER_DRY_RUN_RESULTS.md`.
 
 ## AI Generate
 
@@ -219,13 +241,13 @@ DM2 does **not** share the DM1 marketplace tile table or metrics `description_ma
 
 ---
 
-## Current Status Summary (audit 2026-06-18)
+## Current Status Summary (audit 2026-07-03)
 
 ### What works today
 
-- DM1 page loads with **pagination** and SKU/text filters.
+- DM1 page with pagination and SKU/text filters.
 - Product Master tier save (`description_1500`–`description_600`).
-- Per-marketplace push for **10 marketplaces** (Amazon, Temu, Reverb, Shopify Main/PLS, eBay1–3, Macy's).
+- Per-marketplace push for **24 marketplaces** (full SET API parity with other masters).
 - Per-row and bulk push (selected checkboxes, push all on page).
 - Per-marketplace edit modal with save+push and metrics reset.
 - AI description generation by tier.
@@ -234,52 +256,33 @@ DM2 does **not** share the DM1 marketplace tile table or metrics `description_ma
 - Automatic push retries with user-visible retry messaging.
 - DM2 structured editor with Amazon/eBay fetch and Shopify+eBay HTML push.
 
+### Dry-run (test SKU `SP 12120 4OHM GTR`)
+
+- **Wiring:** 24/24 ready (credentials + service + metrics table).
+- **Content:** all description tier fields empty in `product_master` — dry-run warns `desc 0 chars`; live push will reject until tiers are filled or AI-generated.
+- **Metrics rows:** same as bullets — only ebay, ebay3, temu, doba, walmart have listing sync rows; `description_master` column empty until first push.
+
 ### Gaps vs Bullet Points / Image Master
 
 | Feature | Bullet Points | Image Master | Description Master (DM1) |
 |---------|---------------|--------------|--------------------------|
 | Shopify Pull (import from website → PM) | yes | yes | **no** |
 | Full table load (no pagination) | yes | yes | **no** (paginated) |
-| Wayfair / Best Buy buttons | yes | yes | **no** |
-| Push status persistence table | `bullet_point_marketplace_push_statuses` | metrics `image_master_json` | metrics `description_master` only |
 | Row pull icon | yes (bullets) | yes (images) | **no** |
+| Push without PM content | yes (uses `bullet1`–`5`) | uses image URLs | **no** (requires tier text) |
 
-### Database / config gaps (this environment)
+### Likely fix priorities (optional UX)
 
-| Table | Exists | `description_master` column |
-|-------|--------|----------------------------|
-| `amazon_metrics` | yes | yes |
-| `temu_metrics` | yes | yes |
-| `ebay_metrics` | yes | yes |
-| `ebay_2_metrics` | yes | yes |
-| `ebay_3_metrics` | yes | yes |
-| `shopify_metrics` | yes | yes |
-| `shopify_pls_metrics` | yes | yes |
-| `wayfair_metrics` | yes | yes |
-| `bestbuy_metrics` | yes | yes |
-| `macy_metrics` | yes | **no** |
-| `reverb_metrics` | **no** | **no** |
-
-Impact:
-
-- **Reverb pushes** may save to a missing `reverb_metrics` table (local status dot may not persist). Reverb listing data also lives in `reverb_products.description`.
-- **Macy's pushes** cannot persist `description_master` until the column is added to `macy_metrics`.
-- **Wayfair / Best Buy** tables are ready but DM1 has no UI or controller wiring.
-
-### Likely fix priorities (for upcoming work)
-
-1. **Shopify Description Pull** — mirror Bullet Points / Image Master pull (import `body_html` or product description into PM tiers, background job + modal).
-2. **DB alignment** — add `description_master` to `macy_metrics`; ensure Reverb uses `reverb_products` or create `reverb_metrics`.
-3. **Wayfair + Best Buy** — add `updateDescription` service methods and DM1 UI tiles if those channels need description push.
-4. **UX parity** — optional row pull icon, confirmation modal, and clearer separation of “save to PM” vs “push to marketplace” (Image Master pattern).
-5. **DM1 vs DM2** — clarify which page is canonical for Shopify/eBay HTML vs plain tier text.
+1. **Shopify Description Pull** — mirror Bullet Points / Image Master pull.
+2. **DM1 vs DM2** — clarify which page is canonical for Shopify/eBay HTML vs plain tier text.
+3. **Test SKU content** — populate `description_1500` etc. before live description push tests.
 
 ## Things To Watch While Debugging
 
-- Green marketplace dot means **local metrics text exists**, not that the live listing matches.
-- Push uses **Product Master tier text** on quick tile click, not necessarily the text shown in the per-marketplace edit textarea unless that was saved/pushed.
-- Shopify push depends on **Bullet Points Master** text being available in metrics or PM.
-- `reverb_metrics` missing in DB will break local save for Reverb description push status.
-- `macy_metrics` without `description_master` breaks Macy's local save.
+- Green marketplace dot means **local metrics `description_master` text exists**, not that the live listing matches.
+- Push uses **Product Master tier text** on quick tile click when the edit modal field is empty.
+- **Empty PM tiers block push** — unlike bullets, description cannot push from an empty master.
+- Blank metrics rows (no `description_master`) do **not** block push when PM tiers have content; metrics fill in after push.
+- Shopify push combines **Bullet Points Master** text + description tier in `body_html`.
 - DM2 and DM1 are separate; changes in one do not automatically sync to the other.
 - Pagination means bulk push only affects **the current page**, not the full catalog.

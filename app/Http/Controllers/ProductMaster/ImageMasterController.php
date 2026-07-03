@@ -533,7 +533,11 @@ class ImageMasterController extends Controller
 
         $row = DB::table($table)->where('sku', $sku)->first();
         if (! $row) {
-            return ['success' => false, 'message' => 'Dry run: no eBay listing row for SKU.', 'dry_run' => true];
+            return [
+                'success' => true,
+                'message' => 'Dry run: no eBay metrics row; listing resolved via API on live push.',
+                'dry_run' => true,
+            ];
         }
 
         foreach ($imageUrls as $url) {

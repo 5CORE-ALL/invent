@@ -16,6 +16,7 @@ use App\Services\ReverbApiService;
 use App\Services\ShopifyApiService;
 use App\Services\ShopifyPLSApiService;
 use App\Services\Support\DescriptionWithImagesFormatter;
+use App\Services\Support\MarketplaceCharacterLimits;
 use App\Services\Support\ProductMasterMarketplaceMaps;
 use App\Services\TemuApiService;
 use App\Services\WayfairApiService;
@@ -857,16 +858,7 @@ class DescriptionMasterController extends Controller
 
     private function maxCharsForMarketplace(string $marketplace): int
     {
-        // Platform listing limits (Amazon/Temu: plain text; Shopify: no hard cap; eBay: 500k — ~800 visible on mobile).
-        return match ($marketplace) {
-            'amazon', 'temu', 'temu2', 'walmart', 'shein', 'aliexpress' => 2000,
-            'shopify_main', 'shopify_pls' => 500000,
-            'ebay', 'ebay2', 'ebay3' => 500000,
-            'reverb', 'bestbuy', 'doba' => 1500,
-            'wayfair' => 2000,
-            'macy', 'faire' => 600,
-            default => 1500,
-        };
+        return MarketplaceCharacterLimits::descriptionLimit($marketplace);
     }
 
     /**

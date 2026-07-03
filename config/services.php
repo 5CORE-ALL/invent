@@ -206,6 +206,11 @@ return [
         'token' => env('TOPDAWG_API_TOKEN'),
     ],
 
+    'purchasingpower' => [
+        'api_key' => env('PURCHASING_POWER_API_KEY'),
+        'api_base' => env('PURCHASING_POWER_API_BASE', 'https://api.purchasingpower.com'),
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | Shipment Tracking (multi-carrier aggregator)
@@ -539,6 +544,18 @@ return [
     | AliExpress
     |--------------------------------------------------------------------------
     */
+  /*
+    |--------------------------------------------------------------------------
+    | Alibaba.com (B2B)
+    |--------------------------------------------------------------------------
+    */
+    'alibaba' => [
+        'app_key' => env('ALIBABA_APP_KEY'),
+        'app_secret' => env('ALIBABA_APP_SECRET'),
+        'access_token' => env('ALIBABA_ACCESS_TOKEN'),
+        'api_base' => env('ALIBABA_API_BASE', 'https://openapi.alibaba.com'),
+    ],
+
     'aliexpress' => [
         'app_key' => env('ALIEXPRESS_APP_KEY'),
         'app_secret' => env('ALIEXPRESS_APP_SECRET'),

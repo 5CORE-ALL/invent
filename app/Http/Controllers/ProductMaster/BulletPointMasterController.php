@@ -12,6 +12,7 @@ use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\ShopifyVariant;
 use App\Services\ShopifyPlsTokenService;
+use App\Services\Support\MarketplaceMetricsTableResolver;
 use App\Services\Support\ProductMasterMarketplaceMaps;
 use App\Services\Support\ShopifyBulletPointsFormatter;
 use App\Services\Support\ShopifyBulletPullJobStore;
@@ -859,7 +860,7 @@ class BulletPointMasterController extends Controller
 
     private function marketplaceTableMap(): array
     {
-        return ProductMasterMarketplaceMaps::bulletTableMap();
+        return app(MarketplaceMetricsTableResolver::class)->bulletTableMap();
     }
 
     /**
@@ -987,7 +988,7 @@ class BulletPointMasterController extends Controller
     private function saveToMarketplaceTable(string $marketplace, string $sku, string $text): bool
     {
         $text = $this->cleanBulletText($text);
-        $table = $this->marketplaceTableMap()[$marketplace] ?? null;
+        $table = app(MarketplaceMetricsTableResolver::class)->table($marketplace);
         if (! $table) {
             return false;
         }
@@ -1381,7 +1382,10 @@ class BulletPointMasterController extends Controller
 
             $result = $service->updateBulletPoints($sku, $text);
             if (is_array($result)) {
-                return $result + ['success' => false, 'message' => 'Unknown service response'];
+                return [
+                    'success' => (bool) ($result['success'] ?? false),
+                    'message' => (string) ($result['message'] ?? (($result['success'] ?? false) ? 'Updated' : 'Update failed')),
+                ];
             }
             if (is_bool($result)) {
                 return ['success' => $result, 'message' => $result ? 'Updated' : 'Failed'];

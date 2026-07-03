@@ -358,6 +358,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const csrfToken = getCsrfToken();
     const __mp = window.__ALL_MP__ || {};
     const MARKETPLACES = __mp.enabled || [];
+    const ENABLED_MP = MARKETPLACES;
     const EBAY3_WARNING = 'eBay3 has different listing structure. Please verify bullet points format before pushing.';
     const LABELS = __mp.labels || {};
     const VIEW_LABELS = { ...LABELS };
@@ -547,7 +548,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const tile = MP_TILE[mp] || { cls: 'btn-secondary', short: '?' };
         const stateText = pushed ? 'Pushed' : (failed ? 'Push failed' : 'Not pushed');
         const dotClass = pushed ? 'pushed' : (failed ? 'failed' : '');
-        const st = mpPushTileState(mp, { label: LABELS[mp], statusHint: stateText });
+        const st = mpPushTileState(mp, { label: LABELS[mp], implemented: ENABLED_MP.includes(mp), statusHint: stateText });
         return `
             <button type="button" class="bp-mp-stack${st.noApiClass}" data-push-mp="${esc(mp)}" data-sku="${esc(sku)}" data-api-configured="${st.configured ? '1' : '0'}" title="${esc(st.title)}" ${st.disabled ? 'disabled' : ''}>
                 <span class="bp-mp-dot ${dotClass}" aria-hidden="true"></span>
@@ -556,7 +557,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function groupCell(groupKey, sku, bp, statuses = {}) {
-        const marketplaces = GROUPS[groupKey] || [];
+        const marketplaces = (GROUPS[groupKey] || []).filter((mp) => ENABLED_MP.includes(mp));
         return `
             <div class="marketplaces-cell">
                 <div class="bp-mp-inline">

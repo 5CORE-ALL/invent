@@ -276,6 +276,81 @@ class TopDawgApiService
     }
 
     /**
+     * @param  array<string, mixed>  $fields
+     * @return array{success: bool, message: string}
+     */
+    protected function pushSupplierProductFields(string $sku, array $fields): array
+    {
+        $this->assertConfigured();
+        $sku = trim($sku);
+        if ($sku === '') {
+            return ['success' => false, 'message' => 'Product code / SKU is required.'];
+        }
+
+        $url = $this->baseUrl.'/SupplierProduct/update';
+        $attempts = [
+            array_merge(['product_code' => $sku], $fields),
+            array_merge(['sku' => $sku], $fields),
+        ];
+
+        $lastMessage = 'TopDawg product update failed.';
+        foreach ($attempts as $body) {
+            $response = Http::withHeaders($this->headers())->timeout(45)->post($url, $body);
+            if ($response->successful()) {
+                return ['success' => true, 'message' => 'TopDawg product update submitted for review.'];
+            }
+            $payload = $response->json();
+            $lastMessage = is_array($payload)
+                ? (string) ($payload['message'] ?? $response->body())
+                : (string) $response->body();
+        }
+
+        return ['success' => false, 'message' => $lastMessage];
+    }
+
+    public function updateTitle(string $sku, string $title): array
+    {
+        return $this->pushSupplierProductFields($sku, ['title' => $title, 'product_title' => $title]);
+    }
+
+    public function updateBulletPoints(string $identifier, string $bulletPoints): array
+    {
+        return $this->pushSupplierProductFields($identifier, [
+            'bullet_points' => $bulletPoints,
+            'description_bullets' => $bulletPoints,
+        ]);
+    }
+
+    public function updateProductDescription(string $identifier, string $description): array
+    {
+        return $this->updateDescription($identifier, $description);
+    }
+
+    public function updateDescription(string $identifier, string $description, array $imageUrls = []): array
+    {
+        return $this->pushSupplierProductFields($identifier, [
+            'description' => $description,
+            'long_description' => $description,
+        ]);
+    }
+
+    /**
+     * @param  list<string>  $images
+     */
+    public function updateImages(string $identifier, array $images, string $mode = 'replace'): array
+    {
+        $images = array_values(array_filter(array_map('trim', $images), fn ($v) => $v !== ''));
+        if ($images === []) {
+            return ['success' => false, 'message' => 'At least one image URL is required.'];
+        }
+
+        return $this->pushSupplierProductFields($identifier, [
+            'image_url' => $images[0],
+            'main_image' => $images[0],
+        ]);
+    }
+
+    /**
      * @param  list<string>  $videos
      * @return array{success: bool, message: string, normalized_urls?: list<string>}
      */

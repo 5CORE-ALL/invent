@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Ebay3Metric;
 use App\Services\Concerns\ResolvesBulletPointIdentifier;
 use App\Services\Support\DescriptionWithImagesFormatter;
+use App\Services\Support\Concerns\ResolvesEbayListingItemId;
 use App\Services\Support\EbaySellInventoryListingResolver;
 use App\Services\Support\EbayTradingReviseItem;
 use App\Services\Support\SavesMarketplaceVideoMetrics;
@@ -19,6 +20,7 @@ use SimpleXMLElement;
 class EbayThreeApiService
 {
     use ResolvesBulletPointIdentifier;
+    use ResolvesEbayListingItemId;
     use SavesMarketplaceVideoMetrics;
     use VideoMasterMarketplaceMethods;
 
@@ -1197,15 +1199,23 @@ class EbayThreeApiService
         }
 
         $row = $this->findMetricRowBySkuOrAlternateIds('ebay_3_metrics', $identifier, ['item_id']);
-        $itemId = $row->item_id ?? null;
-        if (! $itemId) {
-            return ['success' => false, 'message' => 'Product not found in ebay_3_metrics (try SKU or eBay item_id).'];
-        }
-
         try {
             $token = $this->generateBearerToken();
         } catch (\Throwable $e) {
             return ['success' => false, 'message' => $e->getMessage()];
+        }
+
+        $resolved = $this->resolveEbayItemIdForPush(
+            'ebay_3_metrics',
+            $identifier,
+            $token,
+            $this->endpoint,
+            $this->tradingApiHeadersBase()
+        );
+        $itemId = $resolved['item_id'];
+        $row = $resolved['row'] ?? $row;
+        if (! $itemId) {
+            return ['success' => false, 'message' => 'No eBay3 listing found for this SKU or item_id (check ebay_3_metrics or Inventory / GetSellerList).'];
         }
 
         $getItemResponse = $this->getItem((string) $itemId);

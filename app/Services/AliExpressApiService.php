@@ -1026,7 +1026,8 @@ class AliExpressApiService
             ]);
             if (! empty($res['success'])) {
                 $sku = $row && $row->sku ? (string) $row->sku : $trim;
-                $this->saveVideoUrlsToMetricsRow('aliexpress_metrics', $sku, $videos);
+                $table = app(\App\Services\Support\MarketplaceMetricsTableResolver::class)->table('aliexpress') ?? 'aliexpress_metric';
+                $this->saveVideoUrlsToMetricsRow($table, $sku, $videos);
 
                 return [
                     'success' => true,
@@ -1082,7 +1083,8 @@ class AliExpressApiService
             ]);
             if (! empty($res['success'])) {
                 $sku = $row && $row->sku ? (string) $row->sku : $trim;
-                $this->saveImageUrlsToMetricsRow('aliexpress_metrics', $sku, $images);
+                $table = app(\App\Services\Support\MarketplaceMetricsTableResolver::class)->table('aliexpress') ?? 'aliexpress_metric';
+                $this->saveImageUrlsToMetricsRow($table, $sku, $images);
 
                 return [
                     'success' => true,

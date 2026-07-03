@@ -1,6 +1,6 @@
 # Image Master Page Overview
 
-Last reviewed: 2026-06-25
+Last reviewed: 2026-07-04
 
 ## User-Facing Page
 
@@ -8,21 +8,50 @@ Last reviewed: 2026-06-25
 - Route name: `image.master`
 - View: `resources/views/image-master.blade.php`
 - Controller: `App\Http\Controllers\ProductMaster\ImageMasterController`
+- Push runner: `App\Services\Support\ImageMasterPushRunner` (background job)
 
 ## Pull vs push (UI)
 
 | Action | UI |
 |---|---|
 | **Shopify pull** | **Run in BG** (toolbar modal or row download icon) |
-| **Marketplace push** | Row marketplace tiles, **Push ALL** |
+| **Marketplace push** | Row marketplace tiles (**24** channels), **Push ALL** |
 
-No dry-run buttons in the UI. Backend APIs still accept `dry_run: true` for developer/testing use only.
+Backend APIs accept `dry_run: true` on `POST /image-master/push` for safe API tests. Artisan audit: `php artisan marketplace:audit-master image --dry-run`.
 
 ## Routes
 
-- `POST /image-master/push` — live push (optional `dry_run: true` for API tests only)
-- `POST /image-master/shopify-pull-one` — single SKU pull (optional `dry_run: true` for API tests only)
+- `POST /image-master/push` — live push (optional `dry_run: true`)
+- `POST /image-master/shopify-pull-one` — single SKU pull (optional `dry_run: true`)
 - `POST /image-master/shopify-pull/start` — background live pull
+
+## Marketplace Service Map
+
+Canonical map: `ProductMasterMarketplaceMaps::imagePushMap()` — **24** marketplaces.
+
+| Code | Service method | Metrics persistence |
+|------|----------------|---------------------|
+| ebay / ebay2 / ebay3 | `updateListingImages` | `ebay_*_metrics.image_master_json` |
+| amazon | `updateImages` | `amazon_metrics` |
+| temu / temu2 | `updateListingImages` | `temu_metrics` / `temu2_metrics` |
+| wayfair / bestbuy / macy | `updateImages` / `updateListingImages` | respective `*_metrics` |
+| shopify_main / shopify_pls / shopify_b5c | `updateListingImages` | `shopify_metrics` / `shopify_pls_metrics` |
+| reverb | `updateListingImages` | `reverb_products` (special table) |
+| doba / walmart / faire / shein | `updateImages` | respective `*_metrics` |
+| aliexpress / alibaba | `updateImages` | `aliexpress_metric` / `alibaba_metrics` |
+| purchasing_power / newegg / topdawg / tiktok / tiktok2 | `updateImages` | respective `*_metrics` |
+
+UI tiles: `AllMarketplaceChannelRegistry` with `image => true` via `partials/all-marketplace-master-channels`, `allMpMaster => image`. Table shows **24** enabled push buttons (gChannels + gShopify).
+
+## Safe testing (dry-run)
+
+Default test SKU: `SP 12120 4OHM GTR` (`config/marketplace_testing.php` → `image_sku`).
+
+```bash
+php artisan marketplace:audit-master image --dry-run --sku="SP 12120 4OHM GTR"
+```
+
+Unlike description, image push can proceed when `product_master` has image URLs even if metrics `image_master_json` is empty.
 
 ## Shopify pull
 
@@ -44,9 +73,9 @@ php artisan queue:work --queue=shopify-image-pull --sleep=3 --tries=1 --timeout=
 
 | Path | Behavior |
 |---|---|
-| Row marketplace tile | Live replace push, per-platform main image |
-| **Push ALL** | Live bulk push to all 11 marketplaces |
-| Push Selected | Stub |
+| Row marketplace tile | Live replace push via background job (`ImageMasterPushRunner`) |
+| **Push ALL** | Live bulk push to all configured marketplaces on current filter/page |
+| Push Selected | Per-checkbox bulk (configured marketplaces) |
 
 ## Marketplace push (background job)
 
@@ -80,6 +109,14 @@ php artisan queue:work --queue=shopify-image-pull --sleep=3 --tries=1 --timeout=
 
 - Per-marketplace main image is clamped to the available image count in JS (`normalizeMainByMarketplace`) and server-side (`sanitizeMainByMarketplace`).
 - Push progress box: shown at the top (not sticky), does not auto-hide (user closes it), survives page refresh (`resumeImagePushProgress`), and the spinner stops when the job finishes.
+- Green dot on tile = non-empty `image_master_json` saved for that SKU + marketplace (not “live listing matches”).
+- Blank metrics rows do **not** block push when `product_master` has image URLs.
+
+## Current status (audit 2026-07-04, SKU `SP 12120 4OHM GTR`)
+
+- **Dry-run:** 24/24 ready, 9 image URL(s)
+- **UI buttons:** 24/24 enabled marketplaces in table
+- **Live push:** not run (deferred)
 
 ## Debugging
 
