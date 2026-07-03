@@ -338,7 +338,7 @@
             align-items: stretch;
             justify-content: flex-start;
             gap: 4px;
-            min-height: 108px;
+            min-height: 65px;
             padding: 4px 3px;
             box-sizing: border-box;
         }
@@ -350,7 +350,7 @@
             justify-content: center;
             gap: 2px;
             flex: 0 0 auto;
-            min-height: 56px;
+            min-height: 34px;
             width: 100%;
         }
         #forecast-table-wrap .tabulator .tabulator-header .tabulator-col:not(:first-child):not(.tabulator-field-SKU) .tabulator-col-title,
@@ -789,16 +789,6 @@
                             <span class="badge bg-warning text-dark forecast-play-label" id="supplier-play-label" style="display:none;"></span>
                         </div>
 
-                        <!-- Container play -->
-                        <div class="forecast-play-group" title="Play by Container">
-                            <small class="text-muted fw-semibold">C</small>
-                            <button id="container-play-backward" class="btn btn-light btn-sm rounded-circle p-0" title="Prev container"><i class="fas fa-step-backward"></i></button>
-                            <button id="container-play-pause"    class="btn btn-dark btn-sm rounded-circle p-0" style="display:none;" title="Stop container"><i class="fas fa-pause"></i></button>
-                            <button id="container-play-auto"     class="btn btn-outline-dark btn-sm rounded-circle p-0 fw-bold forecast-play-letter" title="Play by container">C</button>
-                            <button id="container-play-forward"  class="btn btn-light btn-sm rounded-circle p-0" title="Next container"><i class="fas fa-step-forward"></i></button>
-                            <span class="badge bg-dark text-white forecast-play-label" id="container-play-label" style="display:none;"></span>
-                        </div>
-
                         <span class="forecast-toolbar-vr" aria-hidden="true"></span>
 
                         <div id="forecast-summary-badges">
@@ -852,14 +842,12 @@
 
                             <select id="stage-filter" class="form-select form-select-sm border border-primary forecast-filter-field"
                                     title="Stage — child SKU rows currently visible after Stage and all other filters. QTY is the sum of that stage’s quantity column (e.g. appr_req_qty for Appr Req).">
-                                <option value="">Stage</option>
-                                <option value="__blank__">Not Req Now</option>
+                                <option value="">All Stage</option>
                                 <option value="two_ord_nonneg">2 Ord</option>
-                                <option value="appr_req">Appr Req</option>
+                                <option value="to_order_analysis">Order</option>
                                 <option value="mip">MIP</option>
                                 <option value="r2s">R2S</option>
                                 <option value="transit">Trn</option>
-                                <option value="to_order_analysis">Order</option>
                             </select>
                             <span id="stage-filter-badge" style="display:none;background:#0d6efd;color:#fff;font-size:0.78rem;font-weight:700;border-radius:20px;padding:3px 10px;white-space:nowrap;box-shadow:0 1px 4px rgba(13,110,253,.35);"></span>
 
@@ -916,110 +904,6 @@
                         </div>
                     </div>
 
-                    <!-- Bulk edit badge (shown when rows selected) -->
-                    <div id="bulk-edit-badge" class="d-none mb-2 p-2 rounded border bg-light d-flex align-items-center gap-2 flex-wrap" style="min-height: 40px;">
-                        <span class="fw-semibold text-dark" id="bulk-edit-count">0 selected</span>
-                        <div class="d-flex align-items-center gap-2">
-                            <select id="bulk-current-supplier-select" class="form-select form-select-sm select-searchable" style="min-width: 180px;">
-                                <option value="">Select supplier...</option>
-                            </select>
-                            <button class="btn btn-sm btn-secondary" type="button" id="bulk-apply-current-supplier">
-                                <i class="fas fa-check me-1"></i> Apply
-                            </button>
-                        </div>
-                        <div class="dropdown">
-                            <button class="btn btn-sm btn-info dropdown-toggle" type="button" id="bulkEditStageBtn" data-bs-toggle="dropdown" aria-expanded="false">
-                                Stage
-                            </button>
-                            <ul class="dropdown-menu" aria-labelledby="bulkEditStageBtn">
-                                <li class="px-3 py-2">
-                                    <select id="bulk-stage-select" class="form-select form-select-sm" style="min-width: 160px;">
-                                        <option value="">Select stage...</option>
-                                        <option value="appr_req">Appr Req</option>
-                                        <option value="mip">MIP</option>
-                                        <option value="r2s">R2S</option>
-                                        <option value="transit">Trn</option>
-                                        <option value="to_order_analysis">Order</option>
-                                    </select>
-                                </li>
-                                <li><hr class="dropdown-divider"></li>
-                                <li>
-                                    <button class="dropdown-item" type="button" id="bulk-apply-stage">
-                                        <i class="fas fa-check me-1"></i> Apply
-                                    </button>
-                                </li>
-                            </ul>
-                        </div>
-                        <div class="dropdown">
-                            <button class="btn btn-sm btn-dark dropdown-toggle" type="button" id="bulkEditNrpBtn" data-bs-toggle="dropdown" aria-expanded="false">
-                                NRP
-                            </button>
-                            <ul class="dropdown-menu" aria-labelledby="bulkEditNrpBtn">
-                                <li class="px-3 py-2">
-                                    <select id="bulk-nrp-select" class="form-select form-select-sm" style="min-width: 150px;">
-                                        <option value="">Select NRP...</option>
-                                        <option value="REQ">REQ</option>
-                                        <option value="NR">2BDC</option>
-                                        <option value="LATER">LATER</option>
-                                    </select>
-                                </li>
-                                <li><hr class="dropdown-divider"></li>
-                                <li>
-                                    <button class="dropdown-item" type="button" id="bulk-apply-nrp">
-                                        <i class="fas fa-check me-1"></i> Apply
-                                    </button>
-                                </li>
-                            </ul>
-                        </div>
-                        <div class="dropdown">
-                            <button class="btn btn-sm btn-warning dropdown-toggle" type="button" id="bulkEditMoqBtn" data-bs-toggle="dropdown" aria-expanded="false" title="Minimum Order Quantity">
-                                MOQ
-                            </button>
-                            <ul class="dropdown-menu" aria-labelledby="bulkEditMoqBtn">
-                                <li class="px-3 py-2">
-                                    <input type="number" id="bulk-moq-input" class="form-control form-control-sm" placeholder="Enter MOQ" style="min-width: 140px;">
-                                </li>
-                                <li><hr class="dropdown-divider"></li>
-                                <li>
-                                    <button class="dropdown-item" type="button" id="bulk-apply-moq">
-                                        <i class="fas fa-check me-1"></i> Apply
-                                    </button>
-                                </li>
-                            </ul>
-                        </div>
-                        <div class="dropdown">
-                            <button class="btn btn-sm btn-primary dropdown-toggle" type="button" id="bulkEditOrderBtn" data-bs-toggle="dropdown" aria-expanded="false">
-                                Order
-                            </button>
-                            <ul class="dropdown-menu" aria-labelledby="bulkEditOrderBtn">
-                                <li class="px-3 py-2">
-                                    <input type="number" id="bulk-order-input" class="form-control form-control-sm" placeholder="Enter Order" style="min-width: 140px;">
-                                </li>
-                                <li><hr class="dropdown-divider"></li>
-                                <li>
-                                    <button class="dropdown-item" type="button" id="bulk-apply-order">
-                                        <i class="fas fa-check me-1"></i> Apply
-                                    </button>
-                                </li>
-                            </ul>
-                        </div>
-                        <div class="dropdown">
-                            <button class="btn btn-sm btn-success dropdown-toggle" type="button" id="bulkEditCpBtn" data-bs-toggle="dropdown" aria-expanded="false">
-                                CP
-                            </button>
-                            <ul class="dropdown-menu" aria-labelledby="bulkEditCpBtn">
-                                <li class="px-3 py-2">
-                                    <input type="number" step="0.01" id="bulk-cp-input" class="form-control form-control-sm" placeholder="Enter CP" style="min-width: 140px;">
-                                </li>
-                                <li><hr class="dropdown-divider"></li>
-                                <li>
-                                    <button class="dropdown-item" type="button" id="bulk-apply-cp">
-                                        <i class="fas fa-check me-1"></i> Apply
-                                    </button>
-                                </li>
-                            </ul>
-                        </div>
-                    </div>
                     <div id="forecast-table-wrap" class="flex-grow-1" style="min-height: 0;">
                         <div id="forecast-table"></div>
                     </div>
@@ -2089,6 +1973,30 @@
             return normalizeForecastStages(list);
         }
 
+        // MIP / R2S value per row (single source of truth for the toolbar totals).
+        // MIP = order_given x CP (excludes ready_to_ship=Yes and NR). R2S = qty x r2s_rate (excludes NR).
+        function forecastRowMipValue(d) {
+            if (!d || d.is_parent || d.isParent) return 0;
+            if (getForecastStages(d).indexOf('mip') === -1) return 0;
+            const raw = d.raw_data || {};
+            const ready = String(d.mfrg_ready_to_ship ?? raw.mfrg_ready_to_ship ?? 'No').trim();
+            const nr = String(d.nr ?? raw.nr ?? '').trim().toUpperCase();
+            if (ready === 'Yes' || nr === 'NR') return 0;
+            const qty = parseFloat(d.order_given ?? raw.order_given ?? 0) || 0;
+            const cp = parseFloat(d.CP ?? raw.CP ?? 0) || 0;
+            return qty > 0 ? qty * cp : 0;
+        }
+        function forecastRowR2sValue(d) {
+            if (!d || d.is_parent || d.isParent) return 0;
+            if (getForecastStages(d).indexOf('r2s') === -1) return 0;
+            const raw = d.raw_data || {};
+            const nr = String(d.nr ?? raw.nr ?? '').trim().toUpperCase();
+            if (nr === 'NR') return 0;
+            const qty = parseFloat(d.readyToShipQty ?? raw.readyToShipQty ?? 0) || 0;
+            const rate = parseFloat(d.r2s_rate ?? raw.r2s_rate ?? 0) || 0;
+            return (qty > 0 && rate > 0) ? qty * rate : 0;
+        }
+
         function forecastStageMarkerHtml(stg) {
             if (stg === 'transit') return '<span class="stage-transit-icon" aria-hidden="true">🚢</span>';
             if (stg === 'mip') return '<i class="fas fa-hammer stage-mip-icon" aria-hidden="true"></i>';
@@ -2661,17 +2569,13 @@
                         // Copy icon
                         const copyBtn = `<i class="fa fa-copy forecast-copy-sku" data-sku="${safeSku}" title="Copy SKU" style="cursor:pointer;margin-left:6px;color:#6c757d;font-size:12px;flex-shrink:0;"></i>`;
 
-                        // B / S links
+                        // B link (Buyer). Seller link removed per request.
                         const buyerLink  = String(rowData.Clink || '').trim();
-                        const sellerLink = String(rowData.Olink || '').trim();
                         const buyerBtn   = buyerLink
                             ? `<a href="${buyerLink}" target="_blank" class="btn btn-sm btn-outline-primary" title="Buyer Link" style="padding:1px 6px;font-size:11px;line-height:1.4;flex-shrink:0;">B</a>`
                             : '';
-                        const sellerBtn  = sellerLink
-                            ? `<a href="${sellerLink}" target="_blank" class="btn btn-sm btn-outline-secondary" title="Seller Link" style="padding:1px 6px;font-size:11px;line-height:1.4;flex-shrink:0;">S</a>`
-                            : '';
-                        const linkPart   = (buyerBtn || sellerBtn)
-                            ? `<span style="display:flex;gap:4px;flex-shrink:0;">${buyerBtn}${sellerBtn}</span>`
+                        const linkPart   = buyerBtn
+                            ? `<span style="display:flex;gap:4px;flex-shrink:0;">${buyerBtn}</span>`
                             : '';
 
                         return `<div style="display:flex;align-items:center;gap:4px;min-width:0;">
@@ -2691,37 +2595,6 @@
                         return `<span style="display:block; text-align:center;">${value}</span>`;
                     }
                 },
-                // {
-                //     title: "Shopify Price",
-                //     field: "shopifyb2c_price",
-                //     accessor: row => row["shopifyb2c_price"],
-                //     formatter: function(cell) {
-                //         const value = cell.getValue() || 0;
-                //         const roundedValue = (value);
-                //         return `<span style="display:block; text-align:center; font-weight:bold;">$${roundedValue.toLocaleString()}</span>`;
-                //     }
-                // },
-                // {
-                //     title: "INV Value",
-                //     field: "inv_value",
-                //     accessor: row => row["inv_value"],
-                //     formatter: function(cell) {
-                //         const value = cell.getValue() || 0;
-                //         const roundedValue = Math.round(parseFloat(value));
-                //         return `<span style="display:block; text-align:center; font-weight:bold;">$${roundedValue.toLocaleString()}</span>`;
-                //     }
-                // },
-                // {
-                //     title: "LP Value",
-                //     field: "lp_value",
-                //     accessor: row => row["lp_value"],
-                //     formatter: function(cell) {
-                //         const value = cell.getValue() || 0;
-                //         const roundedValue = Math.round(parseFloat(value));
-                //         return `<span style="display:block; text-align:center; font-weight:bold;">$${roundedValue.toLocaleString()}</span>`;
-                //     }
-                // },
-               
                 {
                     title: "l30",
                     field: "L30",
@@ -2870,33 +2743,6 @@
                     },
                 },
                 {
-                    title: "Appr",
-                    field: "appr_req_qty",
-                    accessor: row => (row ? row.appr_req_qty : null),
-                    sorter: "number",
-                    headerSort: true,
-                    hozAlign: "center",
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData() || {};
-                        const isParent = !!(rowData.is_parent || rowData.isParent);
-                        const renderValue = function(valueText, isFallback) {
-                            const bg = (!isParent && isFallback) ? 'background:#fff3a0;border-radius:4px;padding:2px 4px;' : '';
-                            return `<div style="text-align:center;font-weight:700;${bg}">${valueText}</div>`;
-                        };
-                        if (!isParent && apprReqHideRowForNrp2BdcOrLater(rowData)) {
-                            return renderValue('0', false);
-                        }
-                        const effective = getEffectiveApprReqValue(rowData);
-                        if (!(effective > 0)) {
-                            return '<div style="text-align:center;" class="text-muted">—</div>';
-                        }
-                        const explicit = parseFloat(cell.getValue());
-                        const isFallback = !(Number.isFinite(explicit) && explicit > 0);
-                        const disp = Number.isInteger(effective) ? effective : effective.toFixed(2).replace(/\.?0+$/, '');
-                        return renderValue(disp, isFallback);
-                    }
-                },
-                {
                     title: "Order",
                     field: "two_order_qty",
                     accessor: row => (row ? row.two_order_qty : null),
@@ -2905,64 +2751,35 @@
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const isParent = !!(rowData.is_parent || rowData.isParent);
-                        // NRP = 2BDC (NR) or LATER means no order is placed now —
-                        // show 0 (same rule as MOQ / Appr).
-                        if (!isParent && apprReqHideRowForNrp2BdcOrLater(rowData)) {
-                            return '<div style="text-align:center;font-weight:bold;" title="2BDC / LATER — no order">0</div>';
-                        }
-                        // Once the SKU has progressed into MIP or R2S, the order is
-                        // already placed — the Order column should read 0.
-                        if (!isParent) {
-                            const stages = getForecastStages(rowData);
-                            if (stages.indexOf('mip') !== -1 || stages.indexOf('r2s') !== -1) {
-                                return '<div style="text-align:center;font-weight:bold;" title="Already in MIP / R2S">0</div>';
-                            }
-                        }
                         const v = parseFloat(cell.getValue());
-                        if (!v || isNaN(v)) {
-                            return '<div style="text-align:center;" class="text-muted">—</div>';
+
+                        if (isParent) {
+                            const disp = (!v || isNaN(v)) ? 0 : (Number.isInteger(v) ? v : v.toFixed(2).replace(/\.?0+$/, ''));
+                            return `<div style="text-align:center;font-weight:bold;">${disp}</div>`;
                         }
-                        const disp = Number.isInteger(v) ? v : v.toFixed(2).replace(/\.?0+$/, '');
-                        return `<div style="text-align:center;font-weight:bold;">${disp}</div>`;
+
+                        // Order only applies when 2 Ord >= 0 AND there is no MIP qty,
+                        // no R2S qty, and NRP is not 2BDC / LATER. Otherwise show 0.
+                        const raw = rowData.raw_data || {};
+                        const twoOrd = parseFloat(rowData.to_order ?? raw.to_order ?? 0);
+                        const mip = parseFloat(rowData.order_given ?? raw.order_given ?? raw['Order Given'] ?? 0) || 0;
+                        const r2s = parseFloat(rowData.readyToShipQty ?? raw.readyToShipQty ?? 0) || 0;
+
+                        if (apprReqHideRowForNrp2BdcOrLater(rowData)
+                            || !(Number.isFinite(twoOrd) && twoOrd >= 0)
+                            || mip !== 0 || r2s !== 0) {
+                            return '<div style="text-align:center;font-weight:bold;">0</div>';
+                        }
+
+                        // Conditions met: show the approved order qty if set, else MOQ.
+                        if (Number.isFinite(v) && v > 0) {
+                            const disp = Number.isInteger(v) ? v : v.toFixed(2).replace(/\.?0+$/, '');
+                            return `<div style="text-align:center;font-weight:bold;">${disp}</div>`;
+                        }
+                        const moq = getEffectiveApprReqValue(rowData);
+                        return `<div style="text-align:center;font-weight:bold;">${moq > 0 ? moq : 0}</div>`;
                     },
                 },
-                //   {
-                //     title: "S-MSL",
-                //     field: "s_msl",
-                //     headerSort: true,
-                //     formatter: function(cell) {
-                //         const value = cell.getValue();
-                //         const rowData = cell.getRow().getData();
-
-                //         const sku = rowData.SKU ?? '';
-                //         const parent = rowData.Parent ?? '';
-
-                //         return `<div 
-                //         class="editable-qty" 
-                //         contenteditable="true" 
-                //         data-field="S-MSL"
-                //         data-original="${value ?? ''}" 
-                //         data-sku='${sku}' 
-                //         data-parent='${parent}' 
-                //         style="outline:none; min-width:50px; text-align:center;">
-                //         ${value ?? ''}
-                //     </div>`;
-                //     }
-                // },
-                // {
-                //     title: "MSL_VL",
-                //     field: "MSL_C",
-                //     accessor: row => row["MSL_C"],
-                //     formatter: function(cell) {
-                //         const value = cell.getValue() || 0;
-                //         const wholeNumber = Math.round(parseFloat(value));
-                //         return `<div style="text-align:center; font-weight:bold;">${wholeNumber}</div>`;
-                //     },
-                //     sum: function(cells) {
-                //         return cells.reduce((acc, cell) => acc + (cell.getValue() || 0), 0);
-                //     }
-                // },
-                
                 {
                     title: "MIP",
                     field: "order_given",
@@ -2994,71 +2811,6 @@
                         return `<div style="text-align:center;font-weight:bold;">${String(value)}</div>`;
                     },
                 },
-                // {
-                //     title: "MIP Value",
-                //     field: "MIP_Value",
-                //     accessor: row => (row ? row["MIP_Value"] : null),
-                //     sorter: "number",
-                //     headerSort: true,
-                //     formatter: function(cell) {
-                //         const value = cell.getValue();
-
-                //         return value ?? '';
-                //     }
-                // },
-
-                // {
-                //     title: "R2S Value",
-                //     field: "R2S_Value",
-                //     accessor: row => (row ? row["R2S_Value"] : null),
-                //     sorter: "number",
-                //     headerSort: true,
-                //     formatter: function(cell) {
-                //         const value = cell.getValue();
-
-                //         return value ?? '';
-                //     }
-                // },
-
-                // {
-                //     title: "Transit Value",
-                //     field: "Transit_Value",
-                //     accessor: row => (row ? row["Transit_Value"] : null),
-                //     sorter: "number",
-                //     headerSort: true,
-                //     formatter: function(cell) {
-                //         const value = cell.getValue();
-
-                //         return value ?? '';
-                //     }
-                // },
-
-                // {
-                //     title: "Trnst",
-                //     field: "transit",
-                //     accessor: row => (row ? row["transit"] : null),
-                //     sorter: "number",
-                //     headerSort: true,
-                //     formatter: function(cell) {
-                //         const value = cell.getValue();
-                //         const rowData = cell.getRow().getData();
-
-                //         const sku = rowData.SKU ?? '';
-                //         const parent = rowData.Parent ?? '';
-
-                //         return `<div 
-                //             class="editable-qty" 
-                //             contenteditable="true" 
-                //             data-field="Transit" 
-                //             data-original="${value ?? ''}" 
-                //             data-sku='${sku}' 
-                //             data-parent='${parent}' 
-                //             style="outline:none; min-width:40px; text-align:center; font-weight:bold;">
-                //             ${value ?? ''}
-                //         </div>`;
-                //     }
-                // },
-
                 {
                     title: "Trn",
                     field: "transit",
@@ -3112,9 +2864,9 @@
                             </div>`;
                         }
 
-                        if (isNrp2BdcRow(rowData)) {
+                        if (apprReqHideRowForNrp2BdcOrLater(rowData)) {
                             return `<span class="forecast-moq-cell" style="display:block;outline:none;min-width:40px;text-align:center;font-weight:bold;color:#212529;"
-                                title="2BDC — MOQ shown as 0">0</span>`;
+                                title="2BDC / LATER — MOQ shown as 0">0</span>`;
                         }
 
                         let moqColor = '#212529';
@@ -3243,7 +2995,19 @@
                         if (!v) {
                             return '<span class="text-muted">—</span>';
                         }
-                        return '<span style="font-weight:700;">' + v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</span>';
+                        const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                        const words = v.split(/\s+/).filter(Boolean);
+                        let disp;
+                        if (words.length >= 2) {
+                            // 2+ words: show the first letter of each word (initials).
+                            disp = words.map(w => w.charAt(0)).join('').toUpperCase();
+                        } else if (v.length > 6) {
+                            // Single long word: show first 6 characters.
+                            disp = v.slice(0, 6);
+                        } else {
+                            disp = v;
+                        }
+                        return '<span style="font-weight:700;" title="' + esc(v).replace(/"/g, '&quot;') + '">' + esc(disp) + '</span>';
                     }
                 },
                 {
@@ -3844,23 +3608,10 @@
                         totalRestockLpSum      += lp;
                     }
 
-                    // Multi-stage: count MIP / R2S value whenever that stage is
-                    // active for the SKU (a SKU can be MIP + Transit at once).
-                    const itemStages = getForecastStages(item);
-                    const readyToShip = String(item.mfrg_ready_to_ship || 'No').trim();
-                    const nrNorm      = String(item.nr || '').trim().toUpperCase();
-
-                    if (itemStages.indexOf('mip') !== -1 && readyToShip !== 'Yes' && nrNorm !== 'NR') {
-                        // MIP value = MIP qty (order_given) x CP.
-                        const qty = parseFloat(item.order_given) || 0;
-                        const cp  = parseFloat(item.CP) || 0;
-                        if (qty > 0) totalMipValue += qty * cp;
-                    }
-                    if (itemStages.indexOf('r2s') !== -1 && nrNorm !== 'NR') {
-                        const qty  = parseFloat(item.readyToShipQty) || 0;
-                        const rate = parseFloat(item.r2s_rate)       || 0;
-                        if (qty > 0 && rate > 0) totalR2sValue += qty * rate;
-                    }
+                    // Multi-stage MIP / R2S value (shared helpers so the logic
+                    // lives in one place — see setCombinedFilters recalculation).
+                    totalMipValue += forecastRowMipValue(item);
+                    totalR2sValue += forecastRowR2sValue(item);
 
                     const t  = parseFloat(item.transit) || 0;
                     const cp = parseFloat(item.CP)      || 0;
@@ -4252,7 +4003,6 @@
                 .then(function(data) {
                     window.forecastSuppliersList = data.suppliers || [];
                     if (table) table.redraw();
-                    populateBulkSupplierSelect();
                     const freSel = document.getElementById('fre_supplier');
                     if (freSel && freSel.closest('.modal.show')) {
                         populateForecastRowEditSupplierSelect(freSel.value);
@@ -4329,173 +4079,7 @@
             ]);
         });
 
-        // Populate bulk supplier dropdowns when suppliers load
-        function refreshBulkSupplierSearchSelect() {
-            const sel = document.getElementById('bulk-current-supplier-select');
-            if (!sel || !window.SelectSearchable) return;
-            window.SelectSearchable.refresh(sel);
-        }
-        function populateBulkSupplierSelect() {
-            const sel = document.getElementById('bulk-current-supplier-select');
-            if (!sel) return;
-            sel.innerHTML = '<option value="">Select supplier...</option>';
-            (window.forecastSuppliersList || []).forEach(function(s) {
-                const opt = document.createElement('option');
-                opt.value = s.name || s.id;
-                opt.textContent = s.name || s.id;
-                sel.appendChild(opt);
-            });
-            refreshBulkSupplierSearchSelect();
-        }
-        loadForecastSuppliers(function() { populateBulkSupplierSelect(); });
-
-        document.getElementById('bulk-apply-current-supplier')?.addEventListener('click', function(e) {
-            e.preventDefault();
-            const supplierName = (document.getElementById('bulk-current-supplier-select')?.value || '').trim();
-            if (!supplierName) { alert('Please select a supplier.'); return; }
-            const selectedRows = getForecastBulkTargetRows();
-            const validRows = selectedRows.map(function (row) {
-                return { row: row, sku: String((row.getData() || {}).SKU || '').trim() };
-            }).filter(function (item) { return item.sku && !item.sku.toLowerCase().includes('parent'); });
-            if (validRows.length === 0) { alert('No valid SKUs in selection.'); return; }
-            const btn = this;
-            btn.disabled = true;
-            const token = document.querySelector('input[name="_token"]')?.value || document.querySelector('meta[name="csrf-token"]')?.content || '';
-            const promises = validRows.map(function(item) {
-                const d = item.row.getData() || {};
-                const parent = String(d.Parent || d.parent || '').trim();
-                return updateForecastFieldPromise({
-                    sku: item.sku,
-                    parent: parent,
-                    column: 'Supplier',
-                    value: supplierName
-                }).then(function(res) {
-                    return res && res.ok ? res : Promise.reject(new Error((res && res.message) || 'Not saved'));
-                });
-            });
-            Promise.all(promises).then(function() {
-                validRows.forEach(function(item) {
-                    item.row.update({ mfrg_supplier: supplierName }, true);
-                });
-                table.deselectRow();
-                forecastBulkSelectionCache = [];
-                updateBulkEditBadge();
-                btn.disabled = false;
-                const sel = document.getElementById('bulk-current-supplier-select');
-                if (sel) {
-                    sel.value = '';
-                    sel.dispatchEvent(new Event('change', { bubbles: true }));
-                }
-            }).catch(function() { btn.disabled = false; });
-        });
-
-        function bulkApplyForecastField(column, getValue, btnId, selectId, ddBtnId) {
-            const val = getValue();
-            if (val === '' || val === null || val === undefined) {
-                alert('Please enter a value.');
-                return;
-            }
-            const selectedRows = getForecastBulkTargetRows();
-            if (selectedRows.length === 0) {
-                alert('Select one or more rows using the checkboxes first.');
-                return;
-            }
-            const btn = document.getElementById(btnId);
-            if (btn) btn.disabled = true;
-            const stageVal = String(column).toLowerCase() === 'stage' ? String(val).trim().toLowerCase() : val;
-
-            (async function () {
-                const failed = [];
-                let ok = 0;
-                for (let i = 0; i < selectedRows.length; i++) {
-                    const row = selectedRows[i];
-                    const d = row.getData() || {};
-                    const sku = String(d.SKU || '').trim();
-                    const parent = String(d.Parent || '').trim();
-                    if (!sku) continue;
-
-                    if (column === 'Stage') {
-                        const moq = parseInt(d.MOQ, 10) || 0;
-                        if (!moq) {
-                            failed.push(sku + ' (MOQ=0)');
-                            continue;
-                        }
-                    }
-
-                    try {
-                        const res = await updateForecastFieldPromise({
-                            sku: sku,
-                            parent: parent,
-                            column: column,
-                            value: column === 'Stage' ? stageVal : val
-                        });
-                        if (!res || !res.ok) {
-                            failed.push(sku + (res && res.message ? ': ' + res.message : ''));
-                            continue;
-                        }
-                        ok++;
-                        if (column === 'Stage') {
-                            patchForecastRowAfterStage(row, stageVal);
-                        } else if (column === 'NR') {
-                            row.update({ nr: val }, true);
-                            row.reformat();
-                        } else if (column === 'MOQ') {
-                            row.update({ MOQ: val }, true);
-                            if (typeof row.reformat === 'function') row.reformat();
-                        } else if (column === 'Order') {
-                            row.update({ two_order_qty: val }, true);
-                        } else if (column === 'CP') {
-                            row.update({ CP: val }, true);
-                        }
-                    } catch (e) {
-                        failed.push(sku + ': ' + (e.message || 'error'));
-                    }
-                }
-
-                table.deselectRow();
-                forecastBulkSelectionCache = [];
-                updateBulkEditBadge();
-                if (btn) btn.disabled = false;
-                const el = document.getElementById(selectId);
-                if (el) el.value = el.tagName === 'SELECT' ? '' : '';
-                const dd = bootstrap.Dropdown.getInstance(document.querySelector('#' + ddBtnId));
-                if (dd) dd.hide();
-
-                if (failed.length) {
-                    alert('Updated ' + ok + ' row(s). Failed: ' + failed.join('; '));
-                }
-            })();
-        }
-
-        document.getElementById('bulk-apply-stage')?.addEventListener('click', function(e) {
-            e.preventDefault();
-            bulkApplyForecastField('Stage', function() { return document.getElementById('bulk-stage-select')?.value?.trim() || ''; },
-                'bulk-apply-stage', 'bulk-stage-select', 'bulkEditStageBtn');
-        });
-        document.getElementById('bulk-apply-nrp')?.addEventListener('click', function(e) {
-            e.preventDefault();
-            const v = document.getElementById('bulk-nrp-select')?.value?.trim() || '';
-            if (!v) { alert('Please select an NRP value.'); return; }
-            bulkApplyForecastField('NR', function() { return v; }, 'bulk-apply-nrp', 'bulk-nrp-select', 'bulkEditNrpBtn');
-        });
-        document.getElementById('bulk-apply-moq')?.addEventListener('click', function(e) {
-            e.preventDefault();
-            const v = document.getElementById('bulk-moq-input')?.value?.trim() || '';
-            if (!v || isNaN(parseFloat(v))) { alert('Please enter a valid MOQ.'); return; }
-            bulkApplyForecastField('MOQ', function() { return v; }, 'bulk-apply-moq', 'bulk-moq-input', 'bulkEditMoqBtn');
-        });
-        document.getElementById('bulk-apply-order')?.addEventListener('click', function(e) {
-            e.preventDefault();
-            const v = document.getElementById('bulk-order-input')?.value?.trim() || '';
-            if (!v || isNaN(parseFloat(v))) { alert('Please enter a valid Order quantity.'); return; }
-            bulkApplyForecastField('Order', function() { return v; }, 'bulk-apply-order', 'bulk-order-input', 'bulkEditOrderBtn');
-        });
-        document.getElementById('bulk-apply-cp')?.addEventListener('click', function(e) {
-            e.preventDefault();
-            const v = document.getElementById('bulk-cp-input')?.value?.trim() || '';
-            if (!v || isNaN(parseFloat(v))) { alert('Please enter a valid CP.'); return; }
-            bulkApplyForecastField('CP', function() { return v; }, 'bulk-apply-cp', 'bulk-cp-input', 'bulkEditCpBtn');
-        });
+        loadForecastSuppliers();
 
         let currentParentFilter = null;
         let currentColorFilter = null;
@@ -5116,7 +4700,7 @@
         }
 
         function displayMoqForRow(rowData) {
-            if (isNrp2BdcRow(rowData)) return 0;
+            if (apprReqHideRowForNrp2BdcOrLater(rowData)) return 0;
             const raw = rowData.raw_data || {};
             const n = parseFloat(rowData.MOQ ?? raw.MOQ ?? raw['Approved QTY']);
             return Number.isFinite(n) ? n : 0;
@@ -5155,38 +4739,14 @@
             if (apprReqHideRowForNrp2BdcOrLater(rowData)) return 0;
             const raw = rowData.raw_data || {};
 
-            // Already in Order or a downstream pipeline stage — Appr must be zero.
-            // Multi-stage: check the whole stage set, not just the primary stage.
-            const stages = getForecastStages(rowData);
-            if (stages.some(function (s) {
-                return s === 'to_order_analysis' || s === 'mip' || s === 'r2s' || s === 'transit' || s === 'all_good';
-            })) {
-                return 0;
-            }
-
             const twoOrdVal = parseFloat(rowData.to_order ?? raw.to_order ?? 0);
+            const mipQty = parseFloat(rowData.order_given ?? raw.order_given ?? raw['Order Given'] ?? 0) || 0;
+            const r2sQty = parseFloat(rowData.readyToShipQty ?? raw.readyToShipQty ?? 0) || 0;
 
-            // When 2 Ord > 0, show MOQ — order still needed even if row is in transit/MIP/R2S.
-            if (Number.isFinite(twoOrdVal) && twoOrdVal > 0) {
-                const moqForOrder = displayMoqForRow(rowData);
-                if (moqForOrder > 0) {
-                    return moqForOrder;
-                }
-            }
-
-            const explicitApprReq = parseFloat(rowData.appr_req_qty);
-            if (Number.isFinite(explicitApprReq) && explicitApprReq > 0) {
-                return explicitApprReq;
-            }
-            // Loose Appr rule: to_order >= 0, no pipeline qty — show MOQ (yellow in cell).
-            if (apprReqHideRowForPipelineQty(rowData)) {
-                return 0;
-            }
-            if (Number.isFinite(twoOrdVal) && twoOrdVal >= 0) {
-                const moqVal = displayMoqForRow(rowData);
-                if (moqVal > 0) {
-                    return moqVal;
-                }
+            // Show MOQ only when 2 Ord >= 0 AND there is no MIP qty AND no R2S qty.
+            if (Number.isFinite(twoOrdVal) && twoOrdVal >= 0 && mipQty === 0 && r2sQty === 0) {
+                const moq = displayMoqForRow(rowData);
+                return moq > 0 ? moq : 0;
             }
             return 0;
         }
@@ -5523,89 +5083,20 @@
                 const visibleAverageLp = visibleRestockCount > 0 ? visibleTotalLp / visibleRestockCount : 0;
                 const totalRestockMslLp = visibleRestockCount * (visibleAverageLp / 4);
 
-                // Calculate total MIP Value - from ALL rows (not filtered), only for rows with stage === 'mip' (like mfrg-in-progress page)
-                // Get all rows regardless of filters to calculate MIP Value
-                // Filter criteria: stage === 'mip', ready_to_ship !== 'Yes', nr !== 'NR' (same as mfrg-in-progress page)
-                // Calculate directly as qty * rate (like mfrg-in-progress page calculates from DOM)
-                const allRowsForMip = table.getRows();
+                // MIP + R2S value totals from ALL rows (single pass, shared helpers
+                // so the logic matches the ajaxResponse pass exactly).
                 let totalMipValue = 0;
-                
-                allRowsForMip.forEach(row => {
+                let totalR2sValue = 0;
+                table.getRows().forEach(function (row) {
                     const data = row.getData();
-                    if (!data.is_parent) {
-                        // Multi-stage: count the row if MIP is one of its active stages
-                        // (a SKU can be MIP + Transit at once, so the single primary
-                        // stage is not enough).
-                        const rowStages = getForecastStages(data);
-
-                        // Check ready_to_ship from mfrg_progress table (exclude if 'Yes', like mfrg-in-progress page)
-                        const mfrgReadyToShip = data.mfrg_ready_to_ship || (data.raw_data && data.raw_data.mfrg_ready_to_ship) || 'No';
-                        const readyToShipValue = String(mfrgReadyToShip || '').trim();
-                        
-                        // Check nr field (exclude if 'NR', like mfrg-in-progress page)
-                        const nr = data.nr || (data.raw_data && data.raw_data.nr) || '';
-                        const nrValue = String(nr || '').trim().toUpperCase();
-                        
-                        // Only count if MIP is active, ready_to_ship !== 'Yes', and nr !== 'NR' (matching mfrg-in-progress page logic)
-                        // IMPORTANT: mfrg-in-progress page calculates from items that are already filtered in template (using continue directive in Blade)
-                        // So we need to match the exact same filtering logic here
-                        if (rowStages.indexOf('mip') !== -1 && readyToShipValue !== 'Yes' && nrValue !== 'NR') {
-                            // MIP value = MIP qty (order_given) x CP.
-                            const qty = parseFloat(data.order_given || data["order_given"] || (data.raw_data && data.raw_data["order_given"]) || 0) || 0;
-                            const cp = parseFloat(data.CP || data["CP"] || (data.raw_data && data.raw_data["CP"]) || 0) || 0;
-                            if (qty > 0) {
-                                totalMipValue += (qty * cp);
-                            }
-                        }
-                    }
+                    totalMipValue += forecastRowMipValue(data);
+                    totalR2sValue += forecastRowR2sValue(data);
                 });
 
-                // Update total MIP Value display
                 const totalMipValueElement = document.getElementById('total_mip_value_display');
                 if (totalMipValueElement) {
                     totalMipValueElement.textContent = formatBadgeK(totalMipValue);
                 }
-
-                // Calculate total R2S Value - from ALL rows (not filtered), only for rows with stage === 'r2s' (like ready-to-ship page)
-                // Get all rows regardless of filters to calculate R2S Value
-                // Filter criteria: stage === 'r2s', transit_inv_status === 0, nr !== 'NR' (same as ready-to-ship page)
-                // Calculate directly as qty * rate (like ready-to-ship page calculates from DOM)
-                const allRowsForR2s = table.getRows();
-                let totalR2sValue = 0;
-                
-                allRowsForR2s.forEach(row => {
-                    const data = row.getData();
-                    if (!data.is_parent) {
-                        // Multi-stage: count the row if R2S is one of its active stages.
-                        const rowStages = getForecastStages(data);
-
-                        // Check nr field (exclude if 'NR', like ready-to-ship page)
-                        const nr = data.nr || (data.raw_data && data.raw_data.nr) || '';
-                        const nrValue = String(nr || '').trim().toUpperCase();
-                        
-                        // Only count if R2S is active and nr !== 'NR' (matching ready-to-ship page logic)
-                        // IMPORTANT: ready-to-ship page calculates from items that are already filtered in template (using continue directive in Blade)
-                        // Controller already filters: transit_inv_status = 0 and stage === 'r2s'
-                        if (rowStages.indexOf('r2s') !== -1 && nrValue !== 'NR') {
-                            // Calculate directly as qty * rate (same as ready-to-ship page)
-                            // In ready-to-ship: $item->qty * $item->rate (directly from ready_to_ship table)
-                            // In forecastAnalysis: readyToShipQty (qty) and r2s_rate (rate) from ready_to_ship table
-                            
-                            // Only calculate if both qty and rate are available (matching ready-to-ship template logic)
-                            // ready-to-ship template: is_numeric($item->qty) && is_numeric($item->rate)
-                            const qty = parseFloat(data.readyToShipQty || data["readyToShipQty"] || (data.raw_data && data.raw_data["readyToShipQty"]) || 0) || 0;
-                            const rate = parseFloat(data.r2s_rate || data["r2s_rate"] || (data.raw_data && data.raw_data["r2s_rate"]) || 0) || 0;
-                            
-                            // Only calculate if both qty and rate are available (matching ready-to-ship template logic)
-                            if (qty > 0 && rate > 0) {
-                                totalR2sValue += (qty * rate);
-                            }
-                            // Note: We don't use fallback to R2S_Value here because ready-to-ship page doesn't show items without qty*rate
-                        }
-                    }
-                });
-
-                // Update total R2S Value display
                 const totalR2sValueElement = document.getElementById('total_r2s_value_display');
                 if (totalR2sValueElement) {
                     totalR2sValueElement.textContent = formatBadgeK(totalR2sValue);
@@ -6672,39 +6163,7 @@
                 }
             }
 
-            document.getElementById('container-play-auto').addEventListener('click', function() {
-                const list = getContainerList();
-                if (!list.length) { alert('No container data available.'); return; }
-                isContainerPlaying = true;
-                containerIndex = 0;
-                renderContainerGroup(list[containerIndex]);
-                document.getElementById('container-play-pause').style.display = 'inline-block';
-                document.getElementById('container-play-auto').style.display = 'none';
-            });
-
-            document.getElementById('container-play-forward').addEventListener('click', function() {
-                if (!isContainerPlaying) return;
-                const list = getContainerList();
-                containerIndex = (containerIndex + 1) % list.length;
-                renderContainerGroup(list[containerIndex]);
-            });
-
-            document.getElementById('container-play-backward').addEventListener('click', function() {
-                if (!isContainerPlaying) return;
-                const list = getContainerList();
-                containerIndex = (containerIndex - 1 + list.length) % list.length;
-                renderContainerGroup(list[containerIndex]);
-            });
-
-            document.getElementById('container-play-pause').addEventListener('click', function() {
-                isContainerPlaying = false;
-                currentContainerFilter = null;
-                setCombinedFilters();
-                document.getElementById('container-play-pause').style.display = 'none';
-                document.getElementById('container-play-auto').style.display = 'inline-block';
-                const lbl = document.getElementById('container-play-label');
-                if (lbl) lbl.style.display = 'none';
-            });
+            // (Container play controls removed.)
             // ─────────────────────────────────────────────────────────────
 
             currentColorFilter = '';
