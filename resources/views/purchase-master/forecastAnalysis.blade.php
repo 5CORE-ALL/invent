@@ -175,6 +175,70 @@
             color: #2563eb;
         }
 
+        /* Multi-stage: a SKU can carry several stage markers at once */
+        .stage-dot-cell.stage-multi-cell {
+            flex-wrap: wrap;
+            gap: 2px;
+            cursor: pointer;
+            padding: 2px 0;
+        }
+        .stage-dot-cell.stage-multi-cell .stage-transit-icon,
+        .stage-dot-cell.stage-multi-cell .stage-mip-icon {
+            font-size: 0.85rem;
+        }
+        .stage-dot-cell.stage-multi-cell .stage-status-dot {
+            width: 11px;
+            height: 11px;
+        }
+        .stage-empty-dash { color: #94a3b8; font-weight: 700; }
+        .stage-multi-popover {
+            position: fixed;
+            z-index: 3000;
+            background: #fff;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            box-shadow: 0 6px 24px rgba(0, 0, 0, .18);
+            padding: 6px;
+            min-width: 158px;
+            font-size: 0.8rem;
+        }
+        .stage-multi-popover .spm-title {
+            font-weight: 700;
+            font-size: 0.7rem;
+            color: #475569;
+            padding: 2px 4px 4px;
+            border-bottom: 1px solid #eef2f7;
+            margin-bottom: 4px;
+        }
+        .stage-multi-popover .form-check { margin: 1px 0; padding-left: 1.6rem; }
+        .stage-multi-popover .form-check-label { cursor: pointer; }
+        .stage-multi-popover .form-check-input:disabled ~ .form-check-label { opacity: .6; }
+
+        /* Center every column header (covers custom titleFormatter headers too) */
+        #forecast-table .tabulator-col .tabulator-col-title {
+            text-align: center;
+            width: 100%;
+        }
+        #forecast-table .tabulator-col .tabulator-col-content .tabulator-col-title-holder {
+            justify-content: center;
+        }
+        /* Compact cells + headers so the grid fits the screen width (fitColumns) */
+        #forecast-table .tabulator-cell {
+            padding-left: 3px !important;
+            padding-right: 3px !important;
+            font-size: 0.72rem;
+        }
+        #forecast-table .tabulator-col {
+            padding-left: 2px !important;
+            padding-right: 2px !important;
+        }
+
+        /* Pagination: match the Amazon Daily Sales page (default Tabulator theme
+           with a "Show [size]" selector). */
+        #forecast-table .tabulator-paginator label {
+            margin-right: 5px;
+        }
+
         .tabulator-cell.forecast-rating-combo-cell {
             font-size: 0.65rem;
             line-height: 1.1;
@@ -744,7 +808,6 @@
                             <button id="total_inv_value" class="btn btn-sm btn-info fw-semibold text-dark" title="INV Value">INV $<span id="total_inv_value_display">0</span></button>
                             <button id="total_lp_value" class="btn btn-sm btn-warning fw-semibold text-dark" title="LP Value">LP $<span id="total_lp_value_display">0</span></button>
                             <button id="total_order_value" class="btn btn-sm btn-warning fw-semibold text-dark" title="2 Ord × CP">Ord $<span id="total_order_value_display">0</span></button>
-                            <button id="total_minimal_msl" class="btn btn-sm btn-secondary fw-semibold text-white" title="Missing forecast.analysis">Missing $<span id="total_minimal_msl_value">0</span></button>
                             <button id="total_mip_value" class="btn btn-sm btn-warning fw-semibold text-dark" title="MIP Value">MIP $<span id="total_mip_value_display">0</span></button>
                             <button id="total_r2s_value" class="btn btn-sm btn-warning fw-semibold text-dark" title="R2S Value">R2S $<span id="total_r2s_value_display">0</span></button>
                             <button id="total_transit_value" class="btn btn-sm btn-secondary fw-semibold text-dark" title="Transit Value">Trn $<span id="total_transit_value_display">0</span></button>
@@ -1144,14 +1207,13 @@
                                 <input type="text" class="form-control" id="fre_zone" maxlength="80" placeholder="e.g. Ningbo">
                             </div>
                             <div class="col-md-3">
-                                <label class="form-label small mb-1">Stage</label>
-                                <select class="form-select" id="fre_stage">
-                                    <option value="">— None —</option>
+                                <label class="form-label small mb-1">Stage <span class="text-muted" style="font-weight:400;">(multi)</span></label>
+                                <select class="form-select" id="fre_stage" multiple size="6" title="A SKU can be in several stages at once. Hold Ctrl/Cmd to select multiple.">
                                     <option value="appr_req">Approval Required</option>
+                                    <option value="to_order_analysis">To Order Analysis</option>
                                     <option value="mip">MIP</option>
                                     <option value="r2s">R2S</option>
-                                    <option value="transit">Transit</option>
-                                    <option value="to_order_analysis">To Order Analysis</option>
+                                    <option value="transit" disabled title="Set from the Transit workflow">Transit</option>
                                     <option value="all_good">All Good</option>
                                 </select>
                             </div>
@@ -1321,6 +1383,12 @@
         function formatBadgeK(value) {
             const n = parseFloat(value);
             if (!Number.isFinite(n)) return '0';
+            // Show millions (M) once the value reaches 1,000,000; smaller values
+            // stay in thousands (K). e.g. 1,858,000 -> "1.86M", 235,000 -> "235K".
+            if (Math.abs(n) >= 1000000) {
+                const m = Math.round((n / 1000000) * 100) / 100;
+                return m.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + 'M';
+            }
             return Math.round(n / 1000).toLocaleString('en-US') + 'K';
         }
 
@@ -1530,6 +1598,7 @@
                 cp:         forecastRowGetField(d, 'CP', 'cp', 'LP'),
                 cbm:        forecastRowGetField(d, 'CBM', 'cbm'),
                 stage:      String(forecastRowGetField(d, 'stage', 'Stage') || '').trim().toLowerCase(),
+                stages:     getForecastStages(d),
                 // Mirror the table cell's default: empty / invalid -> 'REQ'. This way the
                 // modal opens with the same value the user already sees in the NR column,
                 // and the diff logic won't no-op when the stored value is empty but the
@@ -1573,7 +1642,7 @@
             $('#fre_transit').val(original.transit);
             $('#fre_cp').val(original.cp);
             $('#fre_cbm').val(original.cbm);
-            $('#fre_stage').val(original.stage);
+            $('#fre_stage').val(original.stages || []);
             $('#fre_nr').val(original.nr);
             $('#fre_dateappr').val(original.date_appr);
             $('#fre_req').val(original.req);
@@ -1732,7 +1801,6 @@
                 { id: 'fre_transit',     column: 'Transit',       key: 'transit' },
                 { id: 'fre_cp',          column: 'CP',            key: 'cp' },
                 { id: 'fre_cbm',         column: 'CBM',           key: 'cbm' },
-                { id: 'fre_stage',       column: 'Stage',         key: 'stage' },
                 { id: 'fre_supplier',    column: 'supplier',      key: 'supplier' },
                 { id: 'fre_category',    column: 'Category',      key: 'category' },
                 { id: 'fre_zone',        column: 'area',          key: 'zone' },
@@ -1757,7 +1825,19 @@
                 }
             });
 
-            if (fieldChanges.length === 0) {
+            // Multi-stage: diff the selected stage set against the original set and
+            // build add/remove operations (transit is managed by its own workflow).
+            const originalStages = Array.isArray(original.stages) ? original.stages : [];
+            const selectedStages = normalizeForecastStages($('#fre_stage').val() || []);
+            const stageOps = [];
+            selectedStages.forEach(function(s) {
+                if (s !== 'transit' && originalStages.indexOf(s) === -1) stageOps.push({ stage: s, checked: true });
+            });
+            originalStages.forEach(function(s) {
+                if (s !== 'transit' && selectedStages.indexOf(s) === -1) stageOps.push({ stage: s, checked: false });
+            });
+
+            if (fieldChanges.length === 0 && stageOps.length === 0) {
                 $status.html('<span class="text-muted">No changes to save.</span>');
                 return;
             }
@@ -1771,7 +1851,7 @@
             }
 
             $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-2"></i>Saving…');
-            $status.html('<span class="text-muted">Saving ' + fieldChanges.length + ' field(s) to ' + targetRows.length + ' row(s)…</span>');
+            $status.html('<span class="text-muted">Saving ' + (fieldChanges.length + stageOps.length) + ' change(s) to ' + targetRows.length + ' row(s)…</span>');
 
             (async function() {
                 const failed = [];
@@ -1786,17 +1866,8 @@
 
                     for (let fi = 0; fi < fieldChanges.length; fi++) {
                         const fc = fieldChanges[fi];
-                        if (fc.column === 'Stage') {
-                            const moq = parseInt(d.MOQ, 10) || 0;
-                            if (!moq) {
-                                failed.push(tSku + ' (MOQ=0, Stage skipped)');
-                                continue;
-                            }
-                        }
 
-                        const saveVal = fc.column === 'Stage'
-                            ? String(fc.value || '').trim().toLowerCase()
-                            : fc.value;
+                        const saveVal = fc.value;
 
                         try {
                             let res;
@@ -1823,10 +1894,25 @@
                             failed.push(tSku + ' · ' + fc.column + ': ' + (e.message || 'error'));
                         }
                     }
+
+                    // Multi-stage add/remove for this row.
+                    for (let si = 0; si < stageOps.length; si++) {
+                        const op = stageOps[si];
+                        try {
+                            const res = await applyForecastStageChange(targetRow, op.stage, op.checked);
+                            if (!res || !res.ok) {
+                                failed.push(tSku + ' · Stage ' + op.stage + (res && res.message ? ': ' + res.message : ''));
+                                continue;
+                            }
+                            ok++;
+                        } catch (e) {
+                            failed.push(tSku + ' · Stage ' + op.stage + ': ' + (e.message || 'error'));
+                        }
+                    }
                 }
 
                 if (failed.length === 0) {
-                    $status.html('<span class="text-success">Saved ' + fieldChanges.length + ' field(s) on ' + targetRows.length + ' row(s).</span>');
+                    $status.html('<span class="text-success">Saved ' + (fieldChanges.length + stageOps.length) + ' change(s) on ' + targetRows.length + ' row(s).</span>');
                     setTimeout(function() {
                         const modalEl = document.getElementById('forecastRowEditModal');
                         const modal = bootstrap.Modal.getInstance(modalEl);
@@ -1946,25 +2032,252 @@
             return [];
         }
 
+        // ============================================================
+        // Multi-stage Stage column
+        // A single SKU can sit in several stages at once (e.g. MIP 100 given
+        // AND some qty already in Transit). The backend derives the full set of
+        // active stages from the pipeline quantities; here we render one marker
+        // per stage and let the user tick/untick stages without wiping the rest.
+        // ============================================================
+        const FORECAST_STAGE_LABELS = {
+            appr_req: 'Appr Req',
+            to_order_analysis: 'Order',
+            mip: 'MIP',
+            r2s: 'R2S',
+            transit: 'Transit',
+            all_good: 'All Good'
+        };
+        const FORECAST_STAGE_ORDER = ['appr_req', 'to_order_analysis', 'mip', 'r2s', 'transit', 'all_good'];
+
+        function normalizeForecastStages(list) {
+            const seen = {};
+            (list || []).forEach(function (s) {
+                const v = String(s || '').trim().toLowerCase();
+                if (v) seen[v] = true;
+            });
+            const out = [];
+            FORECAST_STAGE_ORDER.forEach(function (o) { if (seen[o]) { out.push(o); delete seen[o]; } });
+            Object.keys(seen).forEach(function (v) { out.push(v); });
+            return out;
+        }
+
+        function getForecastStages(rowData) {
+            if (!rowData) return [];
+            let list;
+            if (Array.isArray(rowData.stages)) {
+                list = rowData.stages.slice();
+            } else {
+                const single = String(rowData.stage || '').trim().toLowerCase();
+                list = single ? [single] : [];
+            }
+            return normalizeForecastStages(list);
+        }
+
+        function forecastStageMarkerHtml(stg) {
+            if (stg === 'transit') return '<span class="stage-transit-icon" aria-hidden="true">🚢</span>';
+            if (stg === 'mip') return '<i class="fas fa-hammer stage-mip-icon" aria-hidden="true"></i>';
+            let dotColor = '#94a3b8';
+            if (stg === 'appr_req') dotColor = '#facc15';
+            else if (stg === 'to_order_analysis') dotColor = '#c2410c';
+            else if (stg === 'r2s') dotColor = '#16a34a';
+            else if (stg === 'all_good') dotColor = '#0ea5e9';
+            return '<span class="stage-status-dot" style="background-color:' + dotColor + ';" aria-hidden="true"></span>';
+        }
+
+        // Stage -> per-column endpoint mapping. mip/r2s/order write their own
+        // pipeline table; appr_req/all_good are stored in forecast_analysis.stage.
+        const FORECAST_STAGE_QTY_MAP = {
+            mip: { column: 'MIP', field: 'order_given' },
+            r2s: { column: 'R2S', field: 'readyToShipQty' },
+            to_order_analysis: { column: 'Order', field: 'two_order_qty' }
+        };
+
+        /** Add or remove a single stage from a row without touching the others. */
+        function applyForecastStageChange(row, stage, checked) {
+            const rowData = row.getData() || {};
+            const sku = String(rowData.SKU || '').trim();
+            const parent = String(rowData.Parent || '').trim();
+            const moqNum = parseFloat(rowData.MOQ) || 0;
+            stage = String(stage || '').trim().toLowerCase();
+
+            let payload = null;
+            if (checked) {
+                const needsMoq = (stage === 'appr_req' || stage === 'to_order_analysis' || stage === 'mip' || stage === 'r2s');
+                if (needsMoq && moqNum <= 0) {
+                    return Promise.resolve({ ok: false, message: 'MOQ cannot be empty or zero.' });
+                }
+                if (stage === 'appr_req' || stage === 'all_good') {
+                    payload = { sku: sku, parent: parent, column: 'Stage', value: stage };
+                } else if (FORECAST_STAGE_QTY_MAP[stage]) {
+                    const cur = parseFloat(rowData[FORECAST_STAGE_QTY_MAP[stage].field]) || 0;
+                    payload = { sku: sku, parent: parent, column: FORECAST_STAGE_QTY_MAP[stage].column, value: cur > 0 ? cur : moqNum };
+                } else {
+                    return Promise.resolve({ ok: false, message: FORECAST_STAGE_LABELS[stage] + ' is managed elsewhere.' });
+                }
+            } else {
+                if (stage === 'appr_req' || stage === 'all_good') {
+                    payload = { sku: sku, parent: parent, column: 'Stage', value: '' };
+                } else if (FORECAST_STAGE_QTY_MAP[stage]) {
+                    payload = { sku: sku, parent: parent, column: FORECAST_STAGE_QTY_MAP[stage].column, value: 0 };
+                } else {
+                    return Promise.resolve({ ok: false, message: FORECAST_STAGE_LABELS[stage] + ' is managed elsewhere.' });
+                }
+            }
+
+            return updateForecastFieldPromise(payload).then(function (res) {
+                if (!res || !res.ok) return res || { ok: false };
+
+                let next = getForecastStages(rowData);
+                if (checked) {
+                    if (stage === 'appr_req') next = next.filter(function (s) { return s !== 'all_good'; });
+                    if (stage === 'all_good') next = next.filter(function (s) { return s !== 'appr_req'; });
+                    if (next.indexOf(stage) === -1) next.push(stage);
+                } else {
+                    next = next.filter(function (s) { return s !== stage; });
+                }
+                next = normalizeForecastStages(next);
+
+                const patch = { stages: next, stage: next[0] || '' };
+                if (FORECAST_STAGE_QTY_MAP[stage]) {
+                    patch[FORECAST_STAGE_QTY_MAP[stage].field] = checked ? (parseFloat(payload.value) || 0) : 0;
+                }
+                if (stage === 'appr_req') patch.appr_req_qty = checked ? moqNum : 0;
+                row.update(patch, true);
+
+                if (typeof syncParentStageQtyColumns === 'function') {
+                    syncParentStageQtyColumns(rowData.Parent || rowData.parentKey);
+                }
+                if (typeof row.reformat === 'function') row.reformat();
+                if (typeof setCombinedFilters === 'function') setCombinedFilters();
+                return { ok: true };
+            });
+        }
+
+        // ---- Shared checkbox popover for the Stage cell ----
+        let forecastStagePopoverEl = null;
+        let forecastStagePopoverRow = null;
+
+        function ensureForecastStagePopover() {
+            if (forecastStagePopoverEl) return forecastStagePopoverEl;
+            const el = document.createElement('div');
+            el.className = 'stage-multi-popover';
+            el.style.display = 'none';
+            let html = '<div class="spm-title">Stages</div>';
+            FORECAST_STAGE_ORDER.forEach(function (s) {
+                const dis = s === 'transit' ? ' disabled' : '';
+                const ttl = s === 'transit' ? ' title="Set from the Transit workflow"' : '';
+                html += '<div class="form-check"' + ttl + '>' +
+                    '<input class="form-check-input spm-stage" type="checkbox" value="' + s + '" id="spm-' + s + '"' + dis + '>' +
+                    '<label class="form-check-label" for="spm-' + s + '">' + FORECAST_STAGE_LABELS[s] + '</label>' +
+                    '</div>';
+            });
+            el.innerHTML = html;
+            document.body.appendChild(el);
+
+            el.addEventListener('change', function (e) {
+                const cb = e.target.closest('.spm-stage');
+                if (!cb || !forecastStagePopoverRow) return;
+                const stage = cb.value;
+                const checked = cb.checked;
+                cb.disabled = true;
+                applyForecastStageChange(forecastStagePopoverRow, stage, checked).then(function (res) {
+                    cb.disabled = (stage === 'transit');
+                    if (!res || !res.ok) {
+                        cb.checked = !checked;
+                        if (res && res.message) alert(res.message);
+                        return;
+                    }
+                    if (checked && stage === 'appr_req') { const o = el.querySelector('#spm-all_good'); if (o) o.checked = false; }
+                    if (checked && stage === 'all_good') { const o = el.querySelector('#spm-appr_req'); if (o) o.checked = false; }
+                });
+            });
+
+            forecastStagePopoverEl = el;
+            return el;
+        }
+
+        function openForecastStagePopover(cellEl, row) {
+            const el = ensureForecastStagePopover();
+            forecastStagePopoverRow = row;
+            const stages = getForecastStages(row.getData() || {});
+            el.querySelectorAll('.spm-stage').forEach(function (cb) {
+                cb.checked = stages.indexOf(cb.value) !== -1;
+                cb.disabled = (cb.value === 'transit');
+            });
+            el.style.display = 'block';
+            const r = cellEl.getBoundingClientRect();
+            let left = r.left;
+            const maxLeft = window.innerWidth - el.offsetWidth - 8;
+            if (left > maxLeft) left = maxLeft;
+            let top = r.bottom + 4;
+            const maxTop = window.innerHeight - el.offsetHeight - 8;
+            if (top > maxTop) top = Math.max(8, r.top - el.offsetHeight - 4);
+            el.style.left = Math.max(8, left) + 'px';
+            el.style.top = Math.max(8, top) + 'px';
+        }
+
+        function closeForecastStagePopover() {
+            if (forecastStagePopoverEl) forecastStagePopoverEl.style.display = 'none';
+            forecastStagePopoverRow = null;
+        }
+
+        document.addEventListener('click', function (e) {
+            const toggle = e.target.closest('.forecast-stage-toggle');
+            if (toggle) {
+                e.stopPropagation();
+                const sku = toggle.getAttribute('data-sku') || '';
+                const parent = toggle.getAttribute('data-parent') || '';
+                let row = null;
+                try { row = (typeof table !== 'undefined' && table) ? table.getRow(sku) : null; } catch (err) { row = null; }
+                if (!row && typeof table !== 'undefined' && table) {
+                    row = table.getRows().find(function (r) {
+                        const d = r.getData() || {};
+                        return String(d.SKU || '') === sku && String(d.Parent || '') === parent;
+                    });
+                }
+                if (row) openForecastStagePopover(toggle, row);
+                return;
+            }
+            if (forecastStagePopoverEl && forecastStagePopoverEl.style.display !== 'none' && !e.target.closest('.stage-multi-popover')) {
+                closeForecastStagePopover();
+            }
+        });
+        window.addEventListener('scroll', function () { closeForecastStagePopover(); }, true);
+
+        /** Additive stage patch used by the bulk editor and per-row Edit modal:
+         *  seeds only the chosen stage's own qty and merges it into the row's
+         *  stage set, never clearing the SKU's other active stages. */
         function patchForecastRowAfterStage(row, newValue) {
             const rowData = row.getData() || {};
             const stLow = String(newValue || '').trim().toLowerCase();
             const moqNum = parseFloat(rowData.MOQ) || 0;
-            const existingOrderQty = parseFloat(rowData.two_order_qty) || 0;
-            const updateData = { stage: stLow };
+            const updateData = {};
 
             if (stLow === 'to_order_analysis') {
+                const existingOrderQty = parseFloat(rowData.two_order_qty) || 0;
                 updateData.two_order_qty = moqNum > 0 ? moqNum : existingOrderQty;
-                updateData.appr_req_qty = 0;
             } else if (stLow === 'appr_req') {
                 updateData.appr_req_qty = moqNum;
-            } else {
-                updateData.two_order_qty = 0;
-                updateData.appr_req_qty = 0;
-                updateData.order_given = stLow === 'mip' ? rowData.order_given : 0;
-                updateData.readyToShipQty = stLow === 'r2s' ? rowData.readyToShipQty : 0;
-                updateData.transit = stLow === 'transit' ? rowData.transit : 0;
+            } else if (stLow === 'mip') {
+                const cur = parseFloat(rowData.order_given) || 0;
+                updateData.order_given = cur > 0 ? cur : moqNum;
+            } else if (stLow === 'r2s') {
+                const cur = parseFloat(rowData.readyToShipQty) || 0;
+                updateData.readyToShipQty = cur > 0 ? cur : moqNum;
+            } else if (stLow === 'transit') {
+                updateData.transit = parseFloat(rowData.transit) || 0;
             }
+
+            let next = getForecastStages(rowData);
+            if (stLow) {
+                if (stLow === 'appr_req') next = next.filter(function (s) { return s !== 'all_good'; });
+                if (stLow === 'all_good') next = next.filter(function (s) { return s !== 'appr_req'; });
+                if (next.indexOf(stLow) === -1) next.push(stLow);
+            }
+            next = normalizeForecastStages(next);
+            updateData.stages = next;
+            updateData.stage = next[0] || stLow;
+
             row.update(updateData, true);
             if (typeof syncParentStageQtyColumns === 'function') {
                 syncParentStageQtyColumns(rowData.Parent || rowData.parentKey);
@@ -2171,12 +2484,36 @@
                     "Pragma": "no-cache"
                 }
             },
-            layout: "fitDataFill",
+            layout: "fitColumns",
+            columnDefaults: {
+                headerHozAlign: "center",
+            },
             pagination: true,
             paginationSize: 100,
+            paginationSizeSelector: [10, 25, 50, 100, 200],
+            paginationCounter: "rows",
+            langs: {
+                "default": {
+                    "pagination": {
+                        "page_size": "Show",
+                        "first": "First",
+                        "first_title": "First Page",
+                        "last": "Last",
+                        "last_title": "Last Page",
+                        "prev": "Prev",
+                        "prev_title": "Prev Page",
+                        "next": "Next",
+                        "next_title": "Next Page",
+                        "counter": {
+                            "showing": "Showing",
+                            "of": "of",
+                            "rows": "rows"
+                        }
+                    }
+                }
+            },
             initialSort: [{ column: "mfrg_order_date", dir: "asc" }],
             initialHeaderFilter: [{ field: "nr", value: "" }, { field: "stage", value: "" }, { field: "INV", value: "" }],
-            paginationCounter: "rows",
             movableColumns: true,
             resizableColumns: true,
             height: 600,
@@ -2270,8 +2607,7 @@
                 {
                     title: "Parent",
                     field: "Parent",
-                    visible: false,
-                    hideFromColumnPicker: true,
+                    visible: true,
                     width: 92,
                     minWidth: 72,
                     maxWidth: 180,
@@ -2486,65 +2822,36 @@
                     },
                     headerSort: true,
                     formatter: function(cell) {
-                        let value = cell.getValue() ?? '';
-                        value = String(value).trim().toLowerCase();
                         const rowData = cell.getRow().getData();
-                        const sku = (rowData["SKU"] || '').replace(/'/g, "\\'");
-                        const parent = (rowData["Parent"] || '').replace(/'/g, "\\'");
-
-                        const stageTips = {
-                            '': 'Select stage',
-                            'appr_req': 'Appr Req — Approval',
-                            'mip': 'MIP',
-                            'r2s': 'R2S — Ready to ship',
-                            'transit': 'Transit',
-                            'to_order_analysis': 'Order — 2 Order'
-                        };
-                        const tip = stageTips[value] || 'Select stage';
+                        const stages = getForecastStages(rowData);
+                        const tip = stages.length
+                            ? stages.map(function(s) { return FORECAST_STAGE_LABELS[s] || s; }).join(', ')
+                            : 'Select stage';
                         const tipAttr = String(tip).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 
-                        let markerHtml = '';
-                        if (value === 'transit') {
-                            markerHtml = '<span class="stage-transit-icon" aria-hidden="true">🚢</span>';
-                        } else if (value === 'mip') {
-                            markerHtml = '<i class="fas fa-hammer stage-mip-icon" aria-hidden="true"></i>';
-                        } else {
-                            let dotColor = '#94a3b8';
-                            if (value === 'appr_req') dotColor = '#facc15';
-                            else if (value === 'to_order_analysis') dotColor = '#c2410c';
-                            else if (value === 'r2s') dotColor = '#16a34a';
-                            markerHtml = '<span class="stage-status-dot" style="background-color:' + dotColor + ';" aria-hidden="true"></span>';
-                        }
+                        const markers = stages.length
+                            ? stages.map(forecastStageMarkerHtml).join('')
+                            : '<span class="stage-empty-dash">–</span>';
 
                         const isParent = !!(rowData.is_parent || rowData.isParent || String(rowData.SKU || '').toLowerCase().includes('parent'));
                         if (isParent) {
                             return (
-                                '<div class="stage-dot-cell d-flex justify-content-center align-items-center w-100" title="' + tipAttr + '">' +
-                                markerHtml +
+                                '<div class="stage-dot-cell d-flex justify-content-center align-items-center flex-wrap w-100" title="' + tipAttr + '">' +
+                                markers +
                                 '</div>'
                             );
                         }
 
-                        const mkOpt = function(val, label) {
-                            return '<option value="' + val + '"' + (value === val ? ' selected' : '') + '>' + label + '</option>';
-                        };
+                        const sku = String(rowData.SKU || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+                        const parent = String(rowData.Parent || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 
                         return (
-                            '<div class="stage-dot-cell position-relative d-flex justify-content-center align-items-center w-100" title="' + tipAttr + '">' +
-                            markerHtml +
-                            '<select class="form-select form-select-sm editable-select editable-select-stage stage-stage-select position-absolute top-0 start-0 w-100 h-100"' +
-                            ' data-type="Stage" data-sku="' + sku + '" data-parent="' + parent + '" data-initial-stage="' + value + '" aria-label="' + tipAttr + '">' +
-                            '<option value="">Select</option>' +
-                            mkOpt('appr_req', 'Appr Req') +
-                            mkOpt('to_order_analysis', 'Order') +
-                            mkOpt('mip', 'MIP') +
-                            mkOpt('r2s', 'R2S') +
-                            mkOpt('transit', 'Transit') +
-                            mkOpt('all_good', 'All Good') +
-                            '</select></div>'
+                            '<div class="stage-dot-cell stage-multi-cell forecast-stage-toggle d-flex justify-content-center align-items-center w-100"' +
+                            ' title="' + tipAttr + '" data-sku="' + sku + '" data-parent="' + parent + '">' +
+                            markers +
+                            '</div>'
                         );
                     },
-                    // select value is already controlled by formatter selected options
                 },
                 {
                     title: "Appr",
@@ -2581,6 +2888,20 @@
                     headerSort: true,
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
+                        const isParent = !!(rowData.is_parent || rowData.isParent);
+                        // NRP = 2BDC (stored as NR) means the SKU is to be discontinued,
+                        // so no order is placed — show 0 (same rule as MOQ / Appr).
+                        if (!isParent && isNrp2BdcRow(rowData)) {
+                            return '<div style="text-align:center;font-weight:bold;" title="2BDC — no order">0</div>';
+                        }
+                        // Once the SKU has progressed into MIP or R2S, the order is
+                        // already placed — the Order column should read 0.
+                        if (!isParent) {
+                            const stages = getForecastStages(rowData);
+                            if (stages.indexOf('mip') !== -1 || stages.indexOf('r2s') !== -1) {
+                                return '<div style="text-align:center;font-weight:bold;" title="Already in MIP / R2S">0</div>';
+                            }
+                        }
                         const v = parseFloat(cell.getValue());
                         if (!v || isNaN(v)) {
                             return '<div style="text-align:center;" class="text-muted">—</div>';
@@ -2845,7 +3166,7 @@
                     }
                 },
                 {
-                    title: "Supplier",
+                    title: "Supp.",
                     field: "mfrg_supplier",
                     accessor: function(value) { return value ?? ''; },
                     minWidth: 68,
@@ -2868,7 +3189,7 @@
                     },
                     titleFormatter: function() {
                         const span = document.createElement('span');
-                        span.textContent = 'Supplier';
+                        span.textContent = 'Supp.';
                         span.setAttribute('title', 'Supplier');
                         span.style.fontWeight = '700';
                         return span;
@@ -2891,11 +3212,11 @@
                     }
                 },
                 {
-                    title: "Category",
+                    title: "Cat",
                     field: "Category",
-                    minWidth: 90,
-                    width: 100,
-                    maxWidth: 130,
+                    minWidth: 52,
+                    width: 60,
+                    maxWidth: 110,
                     widthGrow: 0,
                     hozAlign: "center",
                     vertAlign: "middle",
@@ -2910,16 +3231,18 @@
                     }
                 },
                 {
-                    title: "Rating",
+                    title: "Rat",
                     field: "rating",
-                    minWidth: 80,
-                    width: 90,
+                    minWidth: 48,
+                    width: 56,
+                    maxWidth: 90,
+                    widthGrow: 0,
                     headerSort: true,
                     hozAlign: "center",
                     vertAlign: "middle",
                     titleFormatter: function() {
                         const span = document.createElement("span");
-                        span.textContent = "Rating";
+                        span.textContent = "Rat";
                         span.setAttribute("title", "Rating & reviews (Jungle Scout)");
                         return span;
                     },
@@ -3111,7 +3434,6 @@
                     title: "C link",
                     field: "Clink",
                     visible: false,
-                    hideFromColumnPicker: true,
                     hozAlign: "center",
                     headerSort: false,
                     headerTooltip: "Comparison link",
@@ -3128,6 +3450,32 @@
                             <a href="${url}" target="_blank" rel="noopener noreferrer"
                                 class="btn btn-sm btn-outline-primary py-0 px-2" title="Open link" aria-label="Open link">
                                 <i class="mdi mdi-link"></i>
+                            </a>
+                        </div>`;
+                    },
+                },
+                {
+                    title: "CD",
+                    field: "cd_link",
+                    visible: false,
+                    hozAlign: "center",
+                    headerSort: false,
+                    headerTooltip: "Comparison Data — open comparison page for this SKU",
+                    accessor: function() { return ''; },
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        if (d.is_parent || d.isParent) {
+                            return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
+                        }
+                        const sku = String(d.SKU || '').trim();
+                        if (!sku) {
+                            return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
+                        }
+                        const url = '{{ route('comparison.index') }}?sku=' + encodeURIComponent(sku);
+                        return `<div style="display:flex;align-items:center;justify-content:center;">
+                            <a href="${url}" target="_blank" rel="noopener noreferrer"
+                                class="btn btn-sm btn-outline-secondary py-0 px-2" title="Open comparison data" aria-label="Open comparison data">
+                                <i class="mdi mdi-scale-balance"></i>
                             </a>
                         </div>`;
                     },
@@ -3450,7 +3798,6 @@
                 let totalInvValue = 0;
                 let totalLpValue = 0;
                 let totalRestockMsl = 0;
-                let totalMinimalMsl = 0;
                 let sumRestockShopifyPrice = 0;
                 let totalRestockLpSum = 0;
                 let restockCount = 0;
@@ -3477,21 +3824,22 @@
                         restockCount++;
                         const lp = parseFloat(item.LP) || 0;
                         totalRestockMsl        += lp / 4;
-                        totalMinimalMsl        += parseFloat(item.MSL_SP) || 0;
                         sumRestockShopifyPrice += parseFloat(item.shopifyb2c_price) || 0;
                         totalRestockLpSum      += lp;
                     }
 
-                    const stageNorm   = String(item.stage || '').trim().toLowerCase();
+                    // Multi-stage: count MIP / R2S value whenever that stage is
+                    // active for the SKU (a SKU can be MIP + Transit at once).
+                    const itemStages = getForecastStages(item);
                     const readyToShip = String(item.mfrg_ready_to_ship || 'No').trim();
                     const nrNorm      = String(item.nr || '').trim().toUpperCase();
 
-                    if (stageNorm === 'mip' && readyToShip !== 'Yes' && nrNorm !== 'NR') {
+                    if (itemStages.indexOf('mip') !== -1 && readyToShip !== 'Yes' && nrNorm !== 'NR') {
                         const qty  = parseFloat(item.order_given) || 0;
                         const rate = parseFloat(item.mip_rate)    || 0;
                         if (qty > 0 && rate > 0) totalMipValue += qty * rate;
                     }
-                    if (stageNorm === 'r2s' && nrNorm !== 'NR') {
+                    if (itemStages.indexOf('r2s') !== -1 && nrNorm !== 'NR') {
                         const qty  = parseFloat(item.readyToShipQty) || 0;
                         const rate = parseFloat(item.r2s_rate)       || 0;
                         if (qty > 0 && rate > 0) totalR2sValue += qty * rate;
@@ -3527,7 +3875,6 @@
                 setBadgeText('total_inv_value_display',          totalInvValue);
                 setBadgeText('total_lp_value_display',           totalLpValue);
                 setBadgeText('total_restock_msl_value',          totalRestockMsl);
-                setBadgeText('total_minimal_msl_value',          totalMinimalMsl);
                 setBadgeText('sum_restock_shopify_price_value',  sumRestockShopifyPrice);
                 setBadgeText('total_mip_value_display',          totalMipValue);
                 setBadgeText('total_r2s_value_display',          totalR2sValue);
@@ -3566,19 +3913,13 @@
 
                     // Get stage from item to determine which fields to use for to_order calculation
                     const itemStage = item.stage || '';
-                    
-                    // For to_order calculation, transit is always considered (since it always shows)
-                    // MIP and R2S are only considered when their respective stage matches
-                    let effectiveOrderGiven = 0;
-                    let effectiveR2s = 0;
-                    let effectiveTransit = transit; // Always include transit in calculation
-                    
-                    if (itemStage === 'mip') {
-                        effectiveOrderGiven = orderGiven;
-                    } else if (itemStage === 'r2s') {
-                        effectiveR2s = r2s;
-                    }
-                    // Note: Transit is always included regardless of stage
+
+                    // Multi-stage: a SKU can hold MIP, R2S and Transit qty at the
+                    // same time, so subtract every pipeline quantity it actually
+                    // has. Each is 0 unless there's a real qty behind it.
+                    const effectiveOrderGiven = orderGiven;
+                    const effectiveR2s = r2s;
+                    const effectiveTransit = transit;
 
                     const toOrder = Math.round(effectiveMslForToOrder - inv - effectiveTransit - effectiveOrderGiven - effectiveR2s);
 
@@ -3627,18 +3968,12 @@
                     const originalReadyToShipQty = parseFloat(item['readyToShipQty'] ?? item['ready_to_ship'] ?? 0);
                     const originalTransit = parseFloat(item['transit'] ?? item['Transit'] ?? 0);
                     
-                    // Clear stage fields based on current stage - only show value for matching stage
-                    // Transit values always show regardless of stage
-                    let finalOrderGiven = 0;
-                    let finalReadyToShipQty = 0;
-                    let finalTransit = originalTransit; // Always show transit value
-                    
-                    // If stage is set, only show value for matching stage (except transit which always shows)
-                    if (itemStage === 'mip') {
-                        finalOrderGiven = originalOrderGiven;
-                    } else if (itemStage === 'r2s') {
-                        finalReadyToShipQty = originalReadyToShipQty;
-                    }
+                    // Multi-stage: show each pipeline column's real quantity. They
+                    // no longer wipe each other, so a SKU can display MIP, R2S and
+                    // Transit values simultaneously.
+                    const finalOrderGiven = originalOrderGiven;
+                    const finalReadyToShipQty = originalReadyToShipQty;
+                    const finalTransit = originalTransit;
 
                     const processedItem = {
                         ...item,
@@ -3870,7 +4205,10 @@
                 }
             }
             window.addEventListener('resize', function() { requestAnimationFrame(applyForecastTableHeight); });
-            table.on('tableBuilt', function() { requestAnimationFrame(applyForecastTableHeight); });
+            table.on('tableBuilt', function() {
+                if (typeof restoreColumnVisibilityFromLocalStorage === 'function') restoreColumnVisibilityFromLocalStorage();
+                requestAnimationFrame(applyForecastTableHeight);
+            });
             table.on('dataLoaded', function() { requestAnimationFrame(applyForecastTableHeight); });
             window.addEventListener('load', function() { requestAnimationFrame(applyForecastTableHeight); });
             const host = document.querySelector('#forecast-table-wrap')?.closest('.card-body');
@@ -4489,52 +4827,39 @@
             return String(value).trim().toLowerCase();
         }
         function matchesStageFilterValue(rowData, stageFilterValue) {
-            const stageValue = normalizeStageValue(rowData && rowData.stage);
+            // Multi-stage: a SKU can belong to several stages at once, so match on
+            // the whole stage set rather than the single primary stage. A row is
+            // counted under EVERY stage it belongs to.
+            const stages = getForecastStages(rowData);
             const raw = rowData && rowData.raw_data ? rowData.raw_data : {};
             if (!stageFilterValue) return true;
             if (stageFilterValue === '__blank__') {
                 const twoOrd = parseFloat(rowData?.to_order ?? raw.to_order ?? 0);
-                return (!stageValue || stageValue === '') || (Number.isFinite(twoOrd) && twoOrd < 0);
+                return stages.length === 0 || (Number.isFinite(twoOrd) && twoOrd < 0);
             }
             if (stageFilterValue === 'two_ord_nonneg') {
-                // Strict: rows that still need to be routed somewhere (to_order >= 0 AND no explicit
-                // stage yet). Rows already tagged Appr Req / MIP / R2S / Trn / Order / All Good
-                // belong to their own dropdown options, so they shouldn't be double-counted here.
+                // Rows that still need routing (to_order >= 0 AND no explicit stage yet).
+                // Rows already tagged with any stage belong to their own options.
                 const twoOrd = parseFloat(rowData?.to_order ?? raw.to_order ?? 0);
                 if (!Number.isFinite(twoOrd) || twoOrd < 0) return false;
-                if (stageValue === 'appr_req' || stageValue === 'mip' || stageValue === 'r2s'
-                    || stageValue === 'transit' || stageValue === 'all_good'
-                    || stageValue === 'to_order_analysis') {
-                    return false;
-                }
-                return true;
+                return stages.length === 0;
             }
             if (stageFilterValue === 'transit') {
-                // Strict: only rows whose stage is actually 'transit'. Rows with a positive transit
-                // qty but a different stage are still in their own bucket and shouldn't double-count.
-                return stageValue === 'transit';
+                return stages.indexOf('transit') !== -1;
             }
             if (stageFilterValue === 'appr_req') {
                 return rowCountsForApprColumnHeader(rowData);
             }
             if (stageFilterValue === 'mip') {
-                // Strict: only rows whose stage is actually 'mip'. This keeps the MIP count on
-                // /forecast.analysis aligned with the MIP rows displayed on /mfrg-in-progress.
-                return stageValue === 'mip';
+                return stages.indexOf('mip') !== -1;
             }
             if (stageFilterValue === 'r2s') {
-                // Strict: only rows whose stage is actually 'r2s'. Same alignment with the R2S
-                // rows shown on /mfrg-in-progress (which now lists both MIP and R2S stages).
-                return stageValue === 'r2s';
+                return stages.indexOf('r2s') !== -1;
             }
             if (stageFilterValue === 'to_order_analysis') {
-                // Strict: only count rows whose stage is actually 'to_order_analysis' so this
-                // matches the "2Order" filter/count on /approval.required. Rows with two_order_qty>0
-                // but a different stage (mip/r2s/transit/all_good) are already past the 2-Order step
-                // and should not appear under the "Order" stage filter here either.
-                return stageValue === 'to_order_analysis';
+                return stages.indexOf('to_order_analysis') !== -1;
             }
-            return stageValue === stageFilterValue;
+            return stages.indexOf(stageFilterValue) !== -1;
         }
         function syncColumnsAfterTatForStageFilter() {
             if (!table || typeof table.getColumns !== 'function') return;
@@ -4806,11 +5131,13 @@
             if (!rowData || rowData.is_parent || rowData.isParent) return 0;
             if (apprReqHideRowForNrp2BdcOrLater(rowData)) return 0;
             const raw = rowData.raw_data || {};
-            const stageNorm = String(rowData.stage ?? raw.stage ?? '').trim().toLowerCase();
 
             // Already in Order or a downstream pipeline stage — Appr must be zero.
-            if (stageNorm === 'to_order_analysis' || stageNorm === 'mip' || stageNorm === 'r2s'
-                || stageNorm === 'transit' || stageNorm === 'all_good') {
+            // Multi-stage: check the whole stage set, not just the primary stage.
+            const stages = getForecastStages(rowData);
+            if (stages.some(function (s) {
+                return s === 'to_order_analysis' || s === 'mip' || s === 'r2s' || s === 'transit' || s === 'all_good';
+            })) {
                 return 0;
             }
 
@@ -5141,7 +5468,7 @@
                     totalRestockMslElement.textContent = formatBadgeK(totalRestockMsl);
                 }
 
-                // Calculate total Minimal MSL for visible rows
+                // Restock items (INV = 0) — used for the restock shopify price badge.
                 const visibleRestockItems = visibleRows.filter(row => {
                     const data = row.getData();
                     return !data.is_parent && (parseFloat(data.INV) || 0) === 0;
@@ -5152,16 +5479,6 @@
                     return sum + (parseFloat(data.shopifyb2c_price) || 0);
                 }, 0);
                 const visibleAverageShopifyPrice = visibleRestockCount > 0 ? visibleTotalShopifyPrice / visibleRestockCount : 0;
-                const totalMinimalMsl = visibleRestockItems.reduce((sum, row) => {
-                    const data = row.getData();
-                    return sum + (parseFloat(data.MSL_SP) || 0);
-                }, 0);
-
-                // Update total Minimal MSL display
-                const totalMinimalMslElement = document.getElementById('total_minimal_msl_value');
-                if (totalMinimalMslElement) {
-                    totalMinimalMslElement.textContent = formatBadgeK(totalMinimalMsl);
-                }
 
                 // Calculate sum restock shopify price for visible rows
                 const visibleSumRestockShopifyPrice = visibleRestockItems.reduce((sum, row) => {
@@ -5193,10 +5510,11 @@
                 allRowsForMip.forEach(row => {
                     const data = row.getData();
                     if (!data.is_parent) {
-                        // Check stage field - both direct and from raw_data
-                        const stage = data.stage || (data.raw_data && data.raw_data.stage) || '';
-                        const stageValue = String(stage || '').trim().toLowerCase();
-                        
+                        // Multi-stage: count the row if MIP is one of its active stages
+                        // (a SKU can be MIP + Transit at once, so the single primary
+                        // stage is not enough).
+                        const rowStages = getForecastStages(data);
+
                         // Check ready_to_ship from mfrg_progress table (exclude if 'Yes', like mfrg-in-progress page)
                         const mfrgReadyToShip = data.mfrg_ready_to_ship || (data.raw_data && data.raw_data.mfrg_ready_to_ship) || 'No';
                         const readyToShipValue = String(mfrgReadyToShip || '').trim();
@@ -5205,10 +5523,10 @@
                         const nr = data.nr || (data.raw_data && data.raw_data.nr) || '';
                         const nrValue = String(nr || '').trim().toUpperCase();
                         
-                        // Only count if stage is 'mip', ready_to_ship !== 'Yes', and nr !== 'NR' (matching mfrg-in-progress page logic)
+                        // Only count if MIP is active, ready_to_ship !== 'Yes', and nr !== 'NR' (matching mfrg-in-progress page logic)
                         // IMPORTANT: mfrg-in-progress page calculates from items that are already filtered in template (using continue directive in Blade)
                         // So we need to match the exact same filtering logic here
-                        if (stageValue === 'mip' && readyToShipValue !== 'Yes' && nrValue !== 'NR') {
+                        if (rowStages.indexOf('mip') !== -1 && readyToShipValue !== 'Yes' && nrValue !== 'NR') {
                             // Calculate directly as qty * rate (like mfrg-in-progress page calculates from DOM)
                             // In mfrg-in-progress: $item->qty * $item->rate (directly from mfrg_progress table)
                             // In forecastAnalysis: order_given (qty) and mip_rate (rate) from mfrg_progress table
@@ -5243,18 +5561,17 @@
                 allRowsForR2s.forEach(row => {
                     const data = row.getData();
                     if (!data.is_parent) {
-                        // Check stage field - both direct and from raw_data
-                        const stage = data.stage || (data.raw_data && data.raw_data.stage) || '';
-                        const stageValue = String(stage || '').trim().toLowerCase();
-                        
+                        // Multi-stage: count the row if R2S is one of its active stages.
+                        const rowStages = getForecastStages(data);
+
                         // Check nr field (exclude if 'NR', like ready-to-ship page)
                         const nr = data.nr || (data.raw_data && data.raw_data.nr) || '';
                         const nrValue = String(nr || '').trim().toUpperCase();
                         
-                        // Only count if stage is 'r2s' and nr !== 'NR' (matching ready-to-ship page logic)
+                        // Only count if R2S is active and nr !== 'NR' (matching ready-to-ship page logic)
                         // IMPORTANT: ready-to-ship page calculates from items that are already filtered in template (using continue directive in Blade)
                         // Controller already filters: transit_inv_status = 0 and stage === 'r2s'
-                        if (stageValue === 'r2s' && nrValue !== 'NR') {
+                        if (rowStages.indexOf('r2s') !== -1 && nrValue !== 'NR') {
                             // Calculate directly as qty * rate (same as ready-to-ship page)
                             // In ready-to-ship: $item->qty * $item->rate (directly from ready_to_ship table)
                             // In forecastAnalysis: readyToShipQty (qty) and r2s_rate (rate) from ready_to_ship table
@@ -5612,10 +5929,6 @@
 
         const COLUMN_VIS_KEY = "tabulator_column_visibility_forecast";
 
-        function saveColumnVisibilityToLocalStorage() {
-            /* no-op — column visibility is not persisted across refresh */
-        }
-
         function initColumnModal() {
             const trigger = document.getElementById("hide-column-dropdown");
             const modalEl = document.getElementById("columnCustomizeModal");
@@ -5703,8 +6016,37 @@
             });
         }
 
+        // Persist the user's Show/Hide column choices across refreshes.
         function saveColumnVisibilityToLocalStorage() {
-            /* no-op — column visibility is not persisted across refresh */
+            try {
+                if (typeof table === 'undefined' || !table) return;
+                const map = {};
+                table.getColumns().forEach(function(col) {
+                    const f = col.getField();
+                    if (!f) return;
+                    const def = col.getDefinition() || {};
+                    if (def.hideFromColumnPicker) return; // only user-toggleable columns
+                    map[f] = col.isVisible();
+                });
+                localStorage.setItem(COLUMN_VIS_KEY, JSON.stringify(map));
+            } catch (e) {}
+        }
+
+        function restoreColumnVisibilityFromLocalStorage() {
+            let map = null;
+            try {
+                const raw = localStorage.getItem(COLUMN_VIS_KEY);
+                if (raw) map = JSON.parse(raw);
+            } catch (e) { map = null; }
+            if (!map || typeof map !== 'object' || typeof table === 'undefined' || !table) return;
+            table.getColumns().forEach(function(col) {
+                const f = col.getField();
+                if (!f || !(f in map)) return;
+                const def = col.getDefinition() || {};
+                if (def.hideFromColumnPicker) return;
+                if (f === 'SKU') return; // never hide the key column
+                if (map[f]) col.show(); else col.hide();
+            });
         }
 
         document.addEventListener("DOMContentLoaded", () => {
