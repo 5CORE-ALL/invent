@@ -3011,9 +3011,6 @@
                             <a href="{{ route('claim.reimbursement') }}">Claims & Reimbursements</a>
                         </li>
                         <li>
-                            <a href="{{ route('approval.required') }}">Approval Required</a>
-                        </li>
-                        <li>
                             <a href="{{ route('forecast.analysis') }}">Forecast Analysis</a>
                         </li>
                         <li>

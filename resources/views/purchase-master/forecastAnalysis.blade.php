@@ -793,14 +793,14 @@
 
                         <div id="forecast-summary-badges">
                             <span id="filtered-row-badge" class="btn btn-sm btn-dark fw-semibold text-white" title="Filtered child SKU rows"><span id="filtered-row-count">0</span></span>
-                            <button id="total_msl_c" class="btn btn-sm btn-success fw-semibold text-dark">MSL_LP $<span id="total_msl_c_value">0.00</span></button>
-                            <button type="button" class="btn btn-sm btn-info fw-semibold text-dark" title="MSL × AMZ price ÷ 4">MSL_SP $<span id="total_msl_sp_amz_value">0</span></button>
-                            <button id="total_inv_value" class="btn btn-sm btn-info fw-semibold text-dark" title="INV Value">INV $<span id="total_inv_value_display">0</span></button>
-                            <button id="total_lp_value" class="btn btn-sm btn-warning fw-semibold text-dark" title="LP Value">LP $<span id="total_lp_value_display">0</span></button>
-                            <button id="total_order_value" class="btn btn-sm btn-warning fw-semibold text-dark" title="2 Ord × CP">Ord $<span id="total_order_value_display">0</span></button>
-                            <button id="total_mip_value" class="btn btn-sm btn-warning fw-semibold text-dark" title="MIP Value">MIP $<span id="total_mip_value_display">0</span></button>
-                            <button id="total_r2s_value" class="btn btn-sm btn-warning fw-semibold text-dark" title="R2S Value">R2S $<span id="total_r2s_value_display">0</span></button>
-                            <button id="total_transit_value" class="btn btn-sm btn-secondary fw-semibold text-dark" title="Transit Value">Trn $<span id="total_transit_value_display">0</span></button>
+                            <button id="total_msl_c" class="btn btn-sm btn-success fw-semibold text-dark">MSL_LP <span id="total_msl_c_value">0.00</span></button>
+                            <button type="button" class="btn btn-sm btn-info fw-semibold text-dark" title="MSL × AMZ price ÷ 4">MSL_SP <span id="total_msl_sp_amz_value">0</span></button>
+                            <button id="total_inv_value" class="btn btn-sm btn-info fw-semibold text-dark" title="INV Value">INV <span id="total_inv_value_display">0</span></button>
+                            <button id="total_lp_value" class="btn btn-sm btn-warning fw-semibold text-dark" title="LP Value">LP <span id="total_lp_value_display">0</span></button>
+                            <button id="total_order_value" class="btn btn-sm btn-warning fw-semibold text-dark" title="Σ (CP × Order)">Ord <span id="total_order_value_display">0</span></button>
+                            <button id="total_mip_value" class="btn btn-sm btn-warning fw-semibold text-dark" title="MIP Value">MIP <span id="total_mip_value_display">0</span></button>
+                            <button id="total_r2s_value" class="btn btn-sm btn-warning fw-semibold text-dark" title="R2S Value">R2S <span id="total_r2s_value_display">0</span></button>
+                            <button id="total_transit_value" class="btn btn-sm btn-secondary fw-semibold text-dark" title="Transit Value">Trn <span id="total_transit_value_display">0</span></button>
                             <button id="total_cbm_value" class="btn btn-sm btn-info fw-semibold text-dark" title="Total CBM — Σ (MSL × CBM/unit) across visible child SKUs">CBM <span id="total_cbm_value_display">0</span></button>
                             <button type="button" id="zero-stock-badge-btn" class="btn btn-sm btn-danger fw-semibold text-white" style="cursor:pointer;" title="Child SKUs with INV ≤ 0 (zero or negative). Click to filter or clear." aria-pressed="false"><span id="zero-stock-count">0%</span></button>
                         </div>
@@ -1997,6 +1997,23 @@
             return (qty > 0 && rate > 0) ? qty * rate : 0;
         }
 
+        // Displayed Order qty for a row — single source of truth for the Order
+        // column and the Ord $ badge. Order applies only when 2 Ord >= 0, no MIP,
+        // no R2S, and NRP is not 2BDC/LATER; shows approved qty if set, else MOQ.
+        function forecastRowOrderQty(d) {
+            if (!d || d.is_parent || d.isParent) return 0;
+            if (apprReqHideRowForNrp2BdcOrLater(d)) return 0;
+            const raw = d.raw_data || {};
+            const twoOrd = parseFloat(d.to_order ?? raw.to_order ?? 0);
+            const mip = parseFloat(d.order_given ?? raw.order_given ?? raw['Order Given'] ?? 0) || 0;
+            const r2s = parseFloat(d.readyToShipQty ?? raw.readyToShipQty ?? 0) || 0;
+            if (!(Number.isFinite(twoOrd) && twoOrd >= 0) || mip !== 0 || r2s !== 0) return 0;
+            const approved = parseFloat(d.two_order_qty ?? raw.two_order_qty ?? 0) || 0;
+            if (approved > 0) return approved;
+            const moq = getEffectiveApprReqValue(d);
+            return moq > 0 ? moq : 0;
+        }
+
         function forecastStageMarkerHtml(stg) {
             if (stg === 'transit') return '<span class="stage-transit-icon" aria-hidden="true">🚢</span>';
             if (stg === 'mip') return '<i class="fas fa-hammer stage-mip-icon" aria-hidden="true"></i>';
@@ -2758,26 +2775,11 @@
                             return `<div style="text-align:center;font-weight:bold;">${disp}</div>`;
                         }
 
-                        // Order only applies when 2 Ord >= 0 AND there is no MIP qty,
-                        // no R2S qty, and NRP is not 2BDC / LATER. Otherwise show 0.
-                        const raw = rowData.raw_data || {};
-                        const twoOrd = parseFloat(rowData.to_order ?? raw.to_order ?? 0);
-                        const mip = parseFloat(rowData.order_given ?? raw.order_given ?? raw['Order Given'] ?? 0) || 0;
-                        const r2s = parseFloat(rowData.readyToShipQty ?? raw.readyToShipQty ?? 0) || 0;
-
-                        if (apprReqHideRowForNrp2BdcOrLater(rowData)
-                            || !(Number.isFinite(twoOrd) && twoOrd >= 0)
-                            || mip !== 0 || r2s !== 0) {
-                            return '<div style="text-align:center;font-weight:bold;">0</div>';
-                        }
-
-                        // Conditions met: show the approved order qty if set, else MOQ.
-                        if (Number.isFinite(v) && v > 0) {
-                            const disp = Number.isInteger(v) ? v : v.toFixed(2).replace(/\.?0+$/, '');
-                            return `<div style="text-align:center;font-weight:bold;">${disp}</div>`;
-                        }
-                        const moq = getEffectiveApprReqValue(rowData);
-                        return `<div style="text-align:center;font-weight:bold;">${moq > 0 ? moq : 0}</div>`;
+                        // Order applies only when 2 Ord >= 0, no MIP/R2S qty, and not
+                        // 2BDC/LATER (shared helper — also drives the Ord $ badge).
+                        const q = forecastRowOrderQty(rowData);
+                        const disp = (q > 0) ? (Number.isInteger(q) ? q : q.toFixed(2).replace(/\.?0+$/, '')) : 0;
+                        return `<div style="text-align:center;font-weight:bold;">${disp}</div>`;
                     },
                 },
                 {
@@ -4464,7 +4466,9 @@
                 return stages.indexOf('r2s') !== -1;
             }
             if (stageFilterValue === 'to_order_analysis') {
-                return stages.indexOf('to_order_analysis') !== -1;
+                // "Order" filter: only rows that actually display an Order qty
+                // (matches the Order column via the shared helper).
+                return forecastRowOrderQty(rowData) > 0;
             }
             return stages.indexOf(stageFilterValue) !== -1;
         }
@@ -5013,8 +5017,9 @@
                 }
                 const visibleOrderValue = visibleChildRows.reduce(function(sum, row) {
                     const d = row.getData();
-                    const orderQty = parseFloat(d.two_order_qty);
-                    if (!Number.isFinite(orderQty) || orderQty <= 0) return sum;
+                    // Ord $ = sum(CP x displayed Order qty) — matches the Order column.
+                    const orderQty = forecastRowOrderQty(d);
+                    if (!(orderQty > 0)) return sum;
                     const cp = parseFloat(d.CP ?? (d.raw_data ? d.raw_data.CP : 0)) || 0;
                     return sum + (orderQty * cp);
                 }, 0);

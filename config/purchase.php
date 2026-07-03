@@ -10,7 +10,6 @@ return [
         'rfq-form.index' => 'rfq_form',
         'rfq-form.reports' => 'rfq_form_reports',
         'claim.reimbursement' => 'claim_reimbursement',
-        'approval.required' => 'approval_required',
         'forecast.analysis' => 'forecast',
         'to.order.analysis' => 'to_order',
         'to.order.analysis.new' => 'to_order',
