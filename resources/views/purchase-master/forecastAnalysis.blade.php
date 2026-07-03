@@ -2889,10 +2889,10 @@
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const isParent = !!(rowData.is_parent || rowData.isParent);
-                        // NRP = 2BDC (stored as NR) means the SKU is to be discontinued,
-                        // so no order is placed — show 0 (same rule as MOQ / Appr).
-                        if (!isParent && isNrp2BdcRow(rowData)) {
-                            return '<div style="text-align:center;font-weight:bold;" title="2BDC — no order">0</div>';
+                        // NRP = 2BDC (NR) or LATER means no order is placed now —
+                        // show 0 (same rule as MOQ / Appr).
+                        if (!isParent && apprReqHideRowForNrp2BdcOrLater(rowData)) {
+                            return '<div style="text-align:center;font-weight:bold;" title="2BDC / LATER — no order">0</div>';
                         }
                         // Once the SKU has progressed into MIP or R2S, the order is
                         // already placed — the Order column should read 0.
@@ -4209,7 +4209,13 @@
                 if (typeof restoreColumnVisibilityFromLocalStorage === 'function') restoreColumnVisibilityFromLocalStorage();
                 requestAnimationFrame(applyForecastTableHeight);
             });
-            table.on('dataLoaded', function() { requestAnimationFrame(applyForecastTableHeight); });
+            table.on('dataLoaded', function() {
+                // Re-apply saved column visibility: ajaxResponse rebuilds some
+                // column definitions (titles) which can reset visibility, and that
+                // runs after tableBuilt, so we must restore again here.
+                if (typeof restoreColumnVisibilityFromLocalStorage === 'function') restoreColumnVisibilityFromLocalStorage();
+                requestAnimationFrame(applyForecastTableHeight);
+            });
             window.addEventListener('load', function() { requestAnimationFrame(applyForecastTableHeight); });
             const host = document.querySelector('#forecast-table-wrap')?.closest('.card-body');
             if (host && typeof ResizeObserver !== 'undefined') {
