@@ -1253,10 +1253,24 @@ class ForecastAnalysisController extends Controller
             ->values()
             ->all();
 
+        // Executive list — dynamic from the users table (drives the Exec column
+        // editor and the Exec filter dropdown).
+        $execUsers = \App\Models\User::query()
+            ->whereNotNull('name')
+            ->where('name', '!=', '')
+            ->orderBy('name')
+            ->pluck('name')
+            ->map(fn ($n) => trim((string) $n))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
         return view('purchase-master.forecastAnalysis', [
             'mode' => $mode,
             'demo' => $demo,
             'allCategories' => $allCategories,
+            'execUsers' => $execUsers,
         ]);
     }
 

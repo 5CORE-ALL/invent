@@ -820,12 +820,9 @@
                                     aria-label="Exec filter">
                                 <option value="">Exec</option>
                                 <option value="__unassigned__">NA</option>
-                                <option value="Atin">Atin</option>
-                                <option value="Jack">Jack</option>
-                                <option value="Nitish">Nitish</option>
-                                <option value="Ajay">Ajay</option>
-                                <option value="Candy">Candy</option>
-                                <option value="Sruti">Sruti</option>
+                                @foreach (($execUsers ?? []) as $execName)
+                                    <option value="{{ $execName }}">{{ $execName }}</option>
+                                @endforeach
                             </select>
 
                             <div class="dropdown forecast-filter-nrp">
@@ -1924,6 +1921,17 @@
         };
         const FORECAST_STAGE_ORDER = ['appr_req', 'to_order_analysis', 'mip', 'r2s', 'transit', 'all_good'];
 
+        // Executive list — dynamic from the users table (server-provided).
+        const FORECAST_EXEC_USERS = @json($execUsers ?? []);
+        const FORECAST_EXEC_EDITOR_VALUES = (function () {
+            const o = { "": "NA" };
+            (FORECAST_EXEC_USERS || []).forEach(function (n) {
+                const v = String(n == null ? '' : n).trim();
+                if (v) o[v] = v;
+            });
+            return o;
+        })();
+
         // Keep the Edit-modal Stage dropdown (checkboxes) in sync with its hidden
         // <select multiple id="fre_stage"> so the existing prefill/save logic works.
         function syncFreStageDropdown() {
@@ -2978,7 +2986,19 @@
                         const display = value
                             ? escHtml(formatSupplierShortName(value))
                             : '-';
-                        return '<span class="forecast-supplier-name" title="' + escHtml(value) + '">' + display + '</span>';
+                        // Colour the supplier name: FIND = yellow; every other
+                        // supplier gets a distinct, stable colour from its name.
+                        let color = '#212529';
+                        if (value) {
+                            if (value.toUpperCase() === 'FIND') {
+                                color = '#eab308'; // yellow
+                            } else {
+                                let h = 0;
+                                for (let i = 0; i < value.length; i++) h = (h * 31 + value.charCodeAt(i)) % 360;
+                                color = 'hsl(' + h + ', 70%, 40%)';
+                            }
+                        }
+                        return '<span class="forecast-supplier-name" title="' + escHtml(value) + '" style="color:' + color + ';font-weight:700;">' + display + '</span>';
                     }
                 },
                 {
@@ -3441,7 +3461,7 @@
                     cssClass: "forecast-exec-cell",
                     editor: "list",
                     editorParams: {
-                        values: { "": "NA", "Atin": "Atin", "Jack": "Jack", "Nitish": "Nitish", "Ajay": "Ajay", "Candy": "Candy", "Sruti": "Sruti" },
+                        values: FORECAST_EXEC_EDITOR_VALUES,
                         defaultValue: "",
                         verticalNavigation: "editor",
                     },
