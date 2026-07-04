@@ -1084,10 +1084,10 @@
                         l1_spend: 'L1 Spend',
                     };
                     var utilizedStyleTitles = {
-                        cpc_L30: 'CPC',
-                        cpc_L7: 'L7 CPC',
-                        cpc_L2: 'L2 CPC',
-                        cpc_L1: 'L1 CPC',
+                        cpc_L30: 'CPV',
+                        cpc_L7: 'L7 CPV',
+                        cpc_L2: 'L2 CPV',
+                        cpc_L1: 'L1 CPV',
                         ad_sold_L30: 'Sold',
                         ad_sales_L30: 'Sales',
                         acos_l30: 'ACOS',
@@ -1295,6 +1295,15 @@
                             } else if (col.field === 'bgt') {
                                 col.formatter = moneyRoundedFormatter;
                                 col.minWidth = Math.max(col.minWidth || 0, 57);
+                            } else if (col.field === 'cpc_L30' || col.field === 'cpc_L7' || col.field === 'cpc_L2' || col.field === 'cpc_L1') {
+                                // CPV (cost per view) — TrueView bids are per-view, small values,
+                                // so show 3 decimals like Google Ads' "TrueView avg. CPV".
+                                col.formatter = function(c) {
+                                    var v = parseFloat(c.getValue());
+                                    if (!isFinite(v)) return '';
+                                    return '$' + v.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+                                };
+                                col.minWidth = Math.max(col.minWidth || 0, 70);
                             } else {
                                 col.formatter = moneyFormatter;
                                 col.minWidth = Math.max(col.minWidth || 0, 70);

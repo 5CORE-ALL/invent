@@ -3731,4 +3731,145 @@ class AmazonAdsController extends Controller
         
         return $response;
     }
+
+    /**
+     * Amazon rows for /advertisement-master — parent Amazon total plus KW / PT / HL
+     * sub-rows (same L30 distinct-campaign aggregation as /amazon-ads/all badges).
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function getAdvertisementMasterChannelRows(): array
+    {
+        $spMetrics = $this->advertisementMasterMetricsForSource('sp_reports');
+        $sbMetrics = $this->advertisementMasterMetricsForSource('sb_reports');
+
+        $amazonMetrics = [
+            'spend'  => $spMetrics['spend'] + $sbMetrics['spend'],
+            'clicks' => $spMetrics['clicks'] + $sbMetrics['clicks'],
+            'sold'   => $spMetrics['sold'] + $sbMetrics['sold'],
+            'sales'  => $spMetrics['sales'] + $sbMetrics['sales'],
+        ];
+
+        $kwMetrics = $this->advertisementMasterMetricsForSource(
+            'sp_reports',
+            fn (Builder $query) => self::applyAdvertisementMasterKwScope($query)
+        );
+        $ptMetrics = $this->advertisementMasterMetricsForSource(
+            'sp_reports',
+            fn (Builder $query) => self::applyAdvertisementMasterPtScope($query)
+        );
+        $hlMetrics = $this->advertisementMasterMetricsForSource(
+            'sb_reports',
+            fn (Builder $query) => self::applyAdvertisementMasterHlScope($query)
+        );
+
+        $sep = ' · ';
+
+        $parent = self::advertisementMasterMetricRow('Amazon', 'amazon', (object) $amazonMetrics, false);
+        $parent['_children'] = [
+            self::advertisementMasterMetricRow('Amazon'.$sep.'KW', 'amazon_kw', (object) $kwMetrics, true),
+            self::advertisementMasterMetricRow('Amazon'.$sep.'PT', 'amazon_pt', (object) $ptMetrics, true),
+            self::advertisementMasterMetricRow('Amazon'.$sep.'HL', 'amazon_hl', (object) $hlMetrics, true),
+        ];
+
+        return [$parent];
+    }
+
+    /** KW scope — SP campaigns excluding PT / FBA suffixes (same as AMZ KW utilized charts). */
+    private static function applyAdvertisementMasterKwScope(Builder $query): void
+    {
+        $query->whereRaw("campaignName NOT REGEXP '(PT\\.?$|FBA$)'")
+            ->whereRaw('(campaignStatus IS NULL OR campaignStatus != \'ARCHIVED\')');
+    }
+
+    /** PT scope — SP campaigns ending in PT (excludes FBA PT). */
+    private static function applyAdvertisementMasterPtScope(Builder $query): void
+    {
+        $query->where(function ($q) {
+            $q->whereRaw("campaignName LIKE '%PT'")
+                ->orWhereRaw("campaignName LIKE '%PT.'");
+        })
+            ->whereRaw("campaignName NOT LIKE '%FBA PT%'")
+            ->whereRaw("campaignName NOT LIKE '%FBA PT.%'")
+            ->whereRaw('(campaignStatus IS NULL OR campaignStatus != \'ARCHIVED\')');
+    }
+
+    /** HL scope — all non-archived SB campaigns. */
+    private static function applyAdvertisementMasterHlScope(Builder $query): void
+    {
+        $query->whereRaw('(campaignStatus IS NULL OR campaignStatus != \'ARCHIVED\')');
+    }
+
+    /**
+     * @param  callable(Builder): void|null  $scope
+     * @return array{spend: float, clicks: int, sold: int, sales: float}
+     */
+    private function advertisementMasterMetricsForSource(string $source, ?callable $scope = null): array
+    {
+        $empty = ['spend' => 0.0, 'clicks' => 0, 'sold' => 0, 'sales' => 0.0];
+
+        if (! isset(self::RAW_TABLE_SOURCES[$source])) {
+            return $empty;
+        }
+
+        $table = self::RAW_TABLE_SOURCES[$source];
+        if (! Schema::hasTable($table)) {
+            return $empty;
+        }
+
+        $dbColumns = self::orderedColumnsForTable($table);
+        $columns = self::displayColumnsForTable($table);
+        if ($columns === [] || $dbColumns === []) {
+            return $empty;
+        }
+
+        $query = DB::table($table);
+        if ($scope !== null) {
+            $scope($query);
+        }
+        $l30Agg = self::aggregateL30CostAndSalesDistinctForFilteredAmazonAdsRows(
+            $query,
+            $table,
+            $dbColumns,
+            $columns
+        );
+
+        if ($l30Agg === null) {
+            return $empty;
+        }
+
+        return [
+            'spend'  => round((float) ($l30Agg['cost_sum'] ?? 0), 2),
+            'clicks' => (int) round((float) ($l30Agg['clicks_sum'] ?? 0)),
+            'sold'   => (int) round((float) ($l30Agg['purchases_sum'] ?? 0)),
+            'sales'  => round((float) ($l30Agg['sales_sum'] ?? 0), 2),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private static function advertisementMasterMetricRow(string $channel, string $source, ?object $row, bool $isSubRow = false): array
+    {
+        $spend  = (float) ($row->spend ?? 0);
+        $clicks = (float) ($row->clicks ?? 0);
+        $sold   = (float) ($row->sold ?? 0);
+        $sales  = (float) ($row->sales ?? 0);
+
+        return [
+            'channel'    => $channel,
+            'source'     => $source,
+            'spend'      => round($spend, 2),
+            'clicks'     => (int) round($clicks),
+            'sold'       => (int) round($sold),
+            'sales'      => round($sales, 2),
+            'cvr'        => $clicks > 0 ? round(($sold / $clicks) * 100, 1) : 0,
+            'acos'       => $sales > 0
+                ? round(($spend / $sales) * 100, 0)
+                : ($spend > 0 ? 100 : 0),
+            'tcos'       => 0,
+            'is_sub_row' => $isSubRow,
+            'marketplace' => 'amazon',
+        ];
+    }
 }

@@ -309,14 +309,13 @@ class FetchGoogleAdsCampaigns extends Command
     /**
      * Build GAQL query for fetching campaign data.
      *
-     * NOTE: Do NOT add `metrics.video_views`, `metrics.video_view_rate`, or
-     * `metrics.average_cpv` here. Google Ads API v22 rejects them with
-     * QueryError.UNRECOGNIZED_FIELD when the query is not scoped to a video
-     * campaign (`campaign.advertising_channel_type = 'VIDEO'`). The DB columns
-     * `metrics_video_views`, `metrics_video_view_rate`, `metrics_average_cpv`
-     * still exist on `google_ads_campaigns` and are written as 0 by
-     * {@see prepareData()} via the `?? 0` fallback — no schema change required
-     * if you ever need to re-introduce these for a video-only sub-fetch.
+     * NOTE: Google Ads API v22 renamed the video-view metrics to add a
+     * `trueview_` prefix, so we select `metrics.video_trueview_views`,
+     * `metrics.trueview_average_cpv`, and `metrics.video_trueview_view_rate`
+     * (the old `video_views` / `average_cpv` / `video_view_rate` names now
+     * return QueryError.UNRECOGNIZED_FIELD). These populate the existing
+     * `metrics_video_views`, `metrics_average_cpv`, `metrics_video_view_rate`
+     * DB columns so YouTube/TrueView campaigns can show CPV (spend ÷ views).
      */
     private function buildQuery($startDate, $endDate)
     {
@@ -378,6 +377,9 @@ class FetchGoogleAdsCampaigns extends Command
                 metrics.video_quartile_p50_rate,
                 metrics.video_quartile_p75_rate,
                 metrics.video_quartile_p100_rate,
+                metrics.video_trueview_views,
+                metrics.trueview_average_cpv,
+                metrics.video_trueview_view_rate,
                 segments.date
             FROM campaign
             WHERE segments.date BETWEEN '{$startDate}' AND '{$endDate}'
@@ -453,7 +455,7 @@ class FetchGoogleAdsCampaigns extends Command
             'metrics_average_cpc' => isset($metrics['averageCpc']) ? $metrics['averageCpc'] / 1000000 : 0,
             'metrics_average_cpm' => isset($metrics['averageCpm']) ? $metrics['averageCpm'] / 1000000 : 0,
             'metrics_average_cpe' => isset($metrics['averageCpe']) ? $metrics['averageCpe'] / 1000000 : 0,
-            'metrics_average_cpv' => isset($metrics['averageCpv']) ? $metrics['averageCpv'] / 1000000 : 0,
+            'metrics_average_cpv' => isset($metrics['trueviewAverageCpv']) ? $metrics['trueviewAverageCpv'] / 1000000 : 0,
             'metrics_cost_micros' => $metrics['costMicros'] ?? 0,
             'metrics_interactions' => $metrics['interactions'] ?? 0,
             'metrics_interaction_rate' => $metrics['interactionRate'] ?? 0,
@@ -469,12 +471,12 @@ class FetchGoogleAdsCampaigns extends Command
             'metrics_search_impression_share' => $metrics['searchImpressionShare'] ?? 0,
             'metrics_search_rank_lost_impression_share' => $metrics['searchRankLostImpressionShare'] ?? 0,
             'metrics_search_budget_lost_impression_share' => $metrics['searchBudgetLostImpressionShare'] ?? 0,
-            'metrics_video_views' => $metrics['videoViews'] ?? 0,
+            'metrics_video_views' => $metrics['videoTrueviewViews'] ?? 0,
             'metrics_video_quartile_p25_rate' => $metrics['videoQuartileP25Rate'] ?? 0,
             'metrics_video_quartile_p50_rate' => $metrics['videoQuartileP50Rate'] ?? 0,
             'metrics_video_quartile_p75_rate' => $metrics['videoQuartileP75Rate'] ?? 0,
             'metrics_video_quartile_p100_rate' => $metrics['videoQuartileP100Rate'] ?? 0,
-            'metrics_video_view_rate' => $metrics['videoViewRate'] ?? 0,
+            'metrics_video_view_rate' => $metrics['videoTrueviewViewRate'] ?? 0,
             
             // ga4_sold_units: Use conversions (primary=Purchase) to align with GA4 "Key events purchase"
             // allConversions = add-to-cart, begin-checkout, purchase, etc. — too high vs GA4

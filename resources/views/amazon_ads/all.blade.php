@@ -1070,21 +1070,17 @@
                 if (!row || typeof row !== 'object') {
                     return null;
                 }
-                var m = parseFloat(row.sbid_m);
-                if (!isNaN(m) && m > 0) {
-                    return m;
-                }
-                var y = parseFloat(row.yes_sbid);
-                if (!isNaN(y) && y > 0) {
-                    return y;
-                }
+                // Push exactly what the grid shows: the visible SBID column (`row.sbid`, the
+                // freshly computed suggestion). The hidden `sbid_m` / `yes_sbid` values are
+                // intentionally NOT used, so the pushed bid always matches the number on screen
+                // in every range (Calendar, L30, etc.).
                 var s = parseFloat(row.sbid);
                 if (!isNaN(s) && s > 0) {
                     return s;
                 }
                 // Lbid fallback — when a low-traffic day has no fresh sbid recommendation, the
                 // grid still shows the most recent non-zero recommendation in `last_sbid` (the
-                // "Lbid" column). Honour that so the row isn't silently skipped on push.
+                // visible "Lbid" column). Honour that so the row isn't silently skipped on push.
                 var l = parseFloat(row.last_sbid);
                 if (!isNaN(l) && l > 0) {
                     return l;
@@ -1241,7 +1237,7 @@
                 if (btn) {
                     btn.disabled = !sbidOk;
                     btn.title = sbidOk
-                        ? 'Uses sbid_m, yes_sbid, or sbid for rows on this page (' + (isSp ? 'SP keywords/targets' : 'SB keywords') + ' API)'
+                        ? 'Pushes the SBID shown on this page (Lbid fallback) for each row (' + (isSp ? 'SP keywords/targets' : 'SB keywords') + ' API)'
                         : 'Switch to SP or SB reports to push SBID';
                 }
                 if (sbgtBtn) {
@@ -2200,7 +2196,7 @@
                             var rows = isSp ? amazonAdsCollectSpSbidPushRows() : amazonAdsCollectSbSbidPushRows();
                             if (!rows.length) {
                                 if (statusEl) {
-                                    statusEl.textContent = 'No rows on this page with campaign_id and a positive sbid_m / yes_sbid / sbid.';
+                                    statusEl.textContent = 'No rows on this page with campaign_id and a positive SBID (or Lbid).';
                                 }
                                 return;
                             }

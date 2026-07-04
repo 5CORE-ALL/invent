@@ -32,6 +32,12 @@
         </div>
     </div>
 
+    @include('campaign.partials.ebay-campaign-ads-stat-badges', [
+        'badgePrefix' => 'eca3',
+        'badgesUrl' => route('ebay3.campaign.ads.badges'),
+        'storeSalesTitle' => 'eBay 3 L30 store sales',
+    ])
+
     {{-- Filters --}}
     <div class="card border-0 shadow-sm mb-3">
         <div class="card-body py-2">
@@ -300,6 +306,7 @@ function clearFilters() {
 }
 
 $(document).ready(function () {
+    loadEbayCampaignAdsStatBadges(@json(route('ebay3.campaign.ads.badges')), 'eca3');
 
     table = new Tabulator('#ebay3-campaign-ads-table', {
         data: [],

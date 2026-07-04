@@ -782,7 +782,7 @@
                     <div class="kpi-panel-header">
                         <h5>
                             <i class="ri-team-line"></i>
-                            Agent-wise KPI
+                            Shipping KPI
                             <small class="text-muted fw-normal" id="kpiWindowLabel">last 90 days</small>
                         </h5>
                         <div class="d-flex align-items-center gap-2">

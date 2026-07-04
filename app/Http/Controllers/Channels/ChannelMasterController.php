@@ -4087,29 +4087,34 @@ class ChannelMasterController extends Controller
         // the Amazon order sync lagged: with no Jun 15 rows yet, "yesterday" became Jun 13
         // instead of Jun 14, and the badge showed a too-small number (e.g. $1,358).
         //
-        // Uses AmazonOrder::badgeTotalSalesByOrderDate so the formula and status filter
-        // match the Amazon Daily Sales badge exactly (AMAZON_SALES_TOTAL_MODE; both
-        // 'Canceled' and 'Cancelled' excluded).
+        // Uses AmazonOrder::productSalesByOrderDate (product sales, tax excluded) over the
+        // Pacific calendar day converted to UTC (DST-safe) so the figure matches Amazon
+        // Seller Central's "Sales" tile / the Amazon Daily Sales page "Y Sales" badge.
+        // order_date is stored in UTC, so Pacific boundaries MUST be converted to UTC —
+        // passing raw Pacific wall-clock would bucket by UTC day and over-report.
         try {
             // Today PT (start of day) — passed to pacificL7WindowEndingYesterday which subtracts
             // a day internally. Y Sales uses the explicit start/end-of-day for yesterday PT.
             $todayPacific = Carbon::now('America/Los_Angeles')->startOfDay();
             $yesterdayPacific = $todayPacific->copy()->subDay();
-            $yStartPacific = $yesterdayPacific->copy()->startOfDay();
-            $yEndPacific   = $yesterdayPacific->copy()->endOfDay();
+            $yStartUtc = $yesterdayPacific->copy()->startOfDay()->utc();
+            $yEndUtc   = $yesterdayPacific->copy()->endOfDay()->utc();
 
-            $amazonYSales = AmazonOrder::badgeTotalSalesByOrderDate($yStartPacific, $yEndPacific);
+            $amazonYSales = AmazonOrder::productSalesByOrderDate($yStartUtc, $yEndUtc);
             $yesterdaySummaries['amazon'] = round($amazonYSales, 2);
 
-            [$l7StartPacific, $l7EndPacific] = $this->pacificL7WindowEndingYesterday($todayPacific);
-            $amazonL7Sales = AmazonOrder::badgeTotalSalesByOrderDate($l7StartPacific, $l7EndPacific);
+            // L7 = rolling 7 Pacific days INCLUDING today (today + previous 6), matching
+            // Amazon Seller Central's "7 days" dropdown. Today is partial, so this figure
+            // moves through the day exactly like Amazon's tile.
+            $l7StartUtc = $todayPacific->copy()->subDays(6)->startOfDay()->utc();
+            $l7EndUtc   = $todayPacific->copy()->endOfDay()->utc();
+            $amazonL7Sales = AmazonOrder::productSalesByOrderDate($l7StartUtc, $l7EndUtc);
             $l7Summaries['amazon'] = round($amazonL7Sales, 2);
         } catch (\Throwable $e) {
             Log::warning('Amazon Y Sales calculation failed: ' . $e->getMessage());
         }
 
-        // Temu / Temu 2 Y Sales: same relative "yesterday" as Amazon (day before latest purchase_date),
-        // sum of FB price × qty for ProductMaster rows — matches L30 Sales source (marketplace_daily_metrics).
+    
         $temuY = $this->computeTemuYSalesLikeAmazon(false);
         if ($temuY !== null) {
             $yesterdaySummaries['temu'] = $temuY;
@@ -4119,8 +4124,7 @@ class ChannelMasterController extends Controller
             $yesterdaySummaries['temu2'] = $temu2Y;
         }
 
-        // eBay 1 / 2 / 3 Y Sales: same relative "yesterday" as Amazon (day before latest order time in Pacific).
-        // Revenue = sum of line totals (matches UpdateMarketplaceDailyMetrics: items.price is line total).
+       
         try {
             $ebayY = $this->computeEbayYSalesLikeAmazon(1);
             if ($ebayY !== null) {

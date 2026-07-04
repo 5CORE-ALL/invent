@@ -512,6 +512,7 @@ class GoogleShoppingCampaignsController extends Controller
             }
 
             self::enrichRawRowGoogleShoppingStyle($arr, $rawRule);
+            $this->applyRowChannelOverrides($arr);
 
             return self::prepareRawRowForTabulator($arr);
         })->values();
@@ -781,28 +782,28 @@ class GoogleShoppingCampaignsController extends Controller
         $applyBounds($clicks30Sub);
         $this->applyCampaignNameScope($clicks30Sub);
         $clicks30Sub->whereNotNull('campaign_id')
-            ->selectRaw('campaign_id, SUM(metrics_clicks) as sum_clicks_30')
+            ->selectRaw('campaign_id, SUM(metrics_clicks) as sum_clicks_30, SUM(metrics_video_views) as sum_views_30')
             ->groupBy('campaign_id');
 
         $clicksL7Sub = DB::table('google_ads_campaigns');
         $applyL7Bounds($clicksL7Sub);
         $this->applyCampaignNameScope($clicksL7Sub);
         $clicksL7Sub->whereNotNull('campaign_id')
-            ->selectRaw('campaign_id, SUM(metrics_clicks) as sum_clicks_l7')
+            ->selectRaw('campaign_id, SUM(metrics_clicks) as sum_clicks_l7, SUM(metrics_video_views) as sum_views_l7')
             ->groupBy('campaign_id');
 
         $clicksL2Sub = DB::table('google_ads_campaigns');
         $applyL2Bounds($clicksL2Sub);
         $this->applyCampaignNameScope($clicksL2Sub);
         $clicksL2Sub->whereNotNull('campaign_id')
-            ->selectRaw('campaign_id, SUM(metrics_clicks) as sum_clicks_l2')
+            ->selectRaw('campaign_id, SUM(metrics_clicks) as sum_clicks_l2, SUM(metrics_video_views) as sum_views_l2')
             ->groupBy('campaign_id');
 
         $clicksL1Sub = DB::table('google_ads_campaigns');
         $applyL1Bounds($clicksL1Sub);
         $this->applyCampaignNameScope($clicksL1Sub);
         $clicksL1Sub->whereNotNull('campaign_id')
-            ->selectRaw('campaign_id, SUM(metrics_clicks) as sum_clicks_l1')
+            ->selectRaw('campaign_id, SUM(metrics_clicks) as sum_clicks_l1, SUM(metrics_video_views) as sum_views_l1')
             ->groupBy('campaign_id');
 
         $ga30Sub = DB::table('google_ads_campaigns');
@@ -865,6 +866,10 @@ class GoogleShoppingCampaignsController extends Controller
             ->addSelect(DB::raw('COALESCE(cClicksL7.sum_clicks_l7, 0) as clicks_sum_l7'))
             ->addSelect(DB::raw('COALESCE(cClicksL2.sum_clicks_l2, 0) as clicks_sum_l2'))
             ->addSelect(DB::raw('COALESCE(cClicksL1.sum_clicks_l1, 0) as clicks_sum_l1'))
+            ->addSelect(DB::raw('COALESCE(cClicks30.sum_views_30, 0) as views_sum_30'))
+            ->addSelect(DB::raw('COALESCE(cClicksL7.sum_views_l7, 0) as views_sum_l7'))
+            ->addSelect(DB::raw('COALESCE(cClicksL2.sum_views_l2, 0) as views_sum_l2'))
+            ->addSelect(DB::raw('COALESCE(cClicksL1.sum_views_l1, 0) as views_sum_l1'))
             ->addSelect(DB::raw('COALESCE(cGa30.sum_ga4_actual, 0) as sum_ga4_actual'))
             ->addSelect(DB::raw('COALESCE(cGa30.sum_ga4_ads, 0) as sum_ga4_ads'))
             ->addSelect(DB::raw('COALESCE(cGa30.sum_ga4_actual_sold, 0) as sum_ga4_actual_sold'))
@@ -1230,6 +1235,19 @@ class GoogleShoppingCampaignsController extends Controller
      *
      * @param  array{sbgt: array<string, float|int>, sbid: array<string, float>}  $rawRule
      */
+    /**
+     * Per-channel display adjustments applied to an enriched grid row before it is
+     * trimmed for Tabulator. Default (Shopping/SERP): no change — the grid keeps the
+     * click-based CPC columns. Subclasses (e.g. YouTube) override this to surface
+     * view-based CPV instead.
+     *
+     * @param  array<string, mixed>  $arr
+     */
+    protected function applyRowChannelOverrides(array &$arr): void
+    {
+        // No-op for Shopping/SERP.
+    }
+
     private static function enrichRawRowGoogleShoppingStyle(array &$arr, array $rawRule): void
     {
         $spend = (float) ($arr['spend'] ?? 0);
@@ -1243,12 +1261,27 @@ class GoogleShoppingCampaignsController extends Controller
         $clicksL1 = (int) ($arr['clicks_sum_l1'] ?? 0);
         unset($arr['clicks_sum_30'], $arr['clicks_sum_l7'], $arr['clicks_sum_l2'], $arr['clicks_sum_l1']);
 
+        // TrueView views per window (video campaigns are billed per view, not per click).
+        $views30 = (int) ($arr['views_sum_30'] ?? 0);
+        $viewsL7 = (int) ($arr['views_sum_l7'] ?? 0);
+        $viewsL2 = (int) ($arr['views_sum_l2'] ?? 0);
+        $viewsL1 = (int) ($arr['views_sum_l1'] ?? 0);
+        unset($arr['views_sum_30'], $arr['views_sum_l7'], $arr['views_sum_l2'], $arr['views_sum_l1']);
+
         // Show/sum L30 clicks in the grid; g.metrics_clicks is only the latest date row.
         $arr['metrics_clicks'] = $clicks30;
         $arr['cpc_L30'] = $clicks30 > 0 ? round($spend / $clicks30, 6) : 0.0;
         $arr['cpc_L7'] = $clicksL7 > 0 ? round($l7Spend / $clicksL7, 6) : 0.0;
         $arr['cpc_L2'] = $clicksL2 > 0 ? round($l2Spend / $clicksL2, 6) : 0.0;
         $arr['cpc_L1'] = $clicksL1 > 0 ? round($l1Spend / $clicksL1, 6) : 0.0;
+
+        // CPV (cost per view) per window — used by the YouTube/TrueView grid, which is
+        // billed per view. Shopping/SERP ignore these keys (not in their column priority).
+        $arr['cpv_L30'] = $views30 > 0 ? round($spend / $views30, 6) : 0.0;
+        $arr['cpv_L7'] = $viewsL7 > 0 ? round($l7Spend / $viewsL7, 6) : 0.0;
+        $arr['cpv_L2'] = $viewsL2 > 0 ? round($l2Spend / $viewsL2, 6) : 0.0;
+        $arr['cpv_L1'] = $viewsL1 > 0 ? round($l1Spend / $viewsL1, 6) : 0.0;
+        $arr['video_views_L30'] = $views30;
 
         $sumActual = (float) ($arr['sum_ga4_actual'] ?? 0);
         $sumAds = (float) ($arr['sum_ga4_ads'] ?? 0);

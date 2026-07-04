@@ -1,10 +1,60 @@
-@extends('layouts.vertical', ['title' => 'Comparison'])
+@extends('layouts.vertical', ['title' => 'Purchase Comparison'])
 
 @section('css')
 <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
 <style>
+    /* Playback (parent navigation) controls */
+    .comparison-playback-group button {
+        width: 38px;
+        height: 38px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid #dee2e6;
+        margin-right: 4px;
+        transition: all 0.15s ease;
+    }
+
+    .comparison-playback-group button i {
+        font-size: 1rem;
+    }
+
+    #comparison-play-auto {
+        color: #28a745;
+    }
+
+    #comparison-play-auto:hover {
+        background-color: #28a745 !important;
+        color: #fff !important;
+    }
+
+    #comparison-play-pause {
+        color: #ffc107;
+    }
+
+    #comparison-play-pause:hover {
+        background-color: #ffc107 !important;
+        color: #fff !important;
+    }
+
+    #comparison-play-backward,
+    #comparison-play-forward {
+        color: #007bff;
+    }
+
+    #comparison-play-backward:hover,
+    #comparison-play-forward:hover {
+        background-color: #007bff !important;
+        color: #fff !important;
+    }
+
+    .comparison-playback-group button:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+    }
+
     .tabulator {
-        font-size: 13px;
+        font-size: 12px;
         border: 1px solid #dee2e6;
     }
 
@@ -19,7 +69,7 @@
     }
 
     .tabulator-row {
-        min-height: 35px !important;
+        min-height: 30px !important;
     }
 
     .tabulator-row:hover {
@@ -27,7 +77,7 @@
     }
 
     .tabulator-cell {
-        padding: 8px !important;
+        padding: 4px 6px !important;
     }
 
     .tabulator .tabulator-footer .tabulator-paginator .tabulator-page {
@@ -62,10 +112,6 @@
 
     .tabulator-cell[tabulator-field="cd_view"] {
         cursor: pointer;
-    }
-
-    .tabulator-cell[tabulator-field="cd_edit"] {
-        cursor: default;
     }
 
     .comparison-cd-cell {
@@ -229,6 +275,23 @@
     }
 
     .linked-sku-badge-wrap .comparison-linked-sku-remove:hover {
+        opacity: 1;
+    }
+
+    .comparison-cat-badge-wrap {
+        display: inline-flex;
+        align-items: center;
+        gap: 2px;
+    }
+
+    .comparison-cat-badge-wrap .comparison-category-remove {
+        font-size: 0.55rem;
+        opacity: 0.65;
+        padding: 0;
+        margin-left: 2px;
+    }
+
+    .comparison-cat-badge-wrap .comparison-category-remove:hover {
         opacity: 1;
     }
 
@@ -676,12 +739,27 @@
                     <div class="d-flex align-items-center gap-2">
                         @include('purchase-master.partials.page-info-toolbar', ['pageKey' => 'comparison'])
                         <h4 class="mb-0">
-                            <i class="fas fa-balance-scale"></i> Comparison
+                            <i class="fas fa-balance-scale"></i> Purchase Comparison
                         </h4>
                     </div>
                 </div>
                 <div class="card-body">
                     <div class="mb-3 d-flex gap-2 flex-wrap align-items-center">
+                        <div class="btn-group comparison-playback-group" role="group" aria-label="Parent navigation">
+                            <button id="comparison-play-backward" type="button" class="btn btn-light rounded-circle" title="Previous parent">
+                                <i class="mdi mdi-skip-previous"></i>
+                            </button>
+                            <button id="comparison-play-pause" type="button" class="btn btn-light rounded-circle" title="Show all products" style="display: none;">
+                                <i class="mdi mdi-pause"></i>
+                            </button>
+                            <button id="comparison-play-auto" type="button" class="btn btn-light rounded-circle" title="Start parent navigation">
+                                <i class="mdi mdi-play"></i>
+                            </button>
+                            <button id="comparison-play-forward" type="button" class="btn btn-light rounded-circle" title="Next parent">
+                                <i class="mdi mdi-skip-next"></i>
+                            </button>
+                        </div>
+                        <span id="comparison-playback-label" class="text-muted small fw-semibold d-none"></span>
                         <input type="text" id="comparison-search-parent" class="form-control form-control-sm" style="max-width: 220px;" placeholder="Search Parent...">
                         <input type="text" id="comparison-search-sku" class="form-control form-control-sm" style="max-width: 220px;" placeholder="Search SKU...">
                     </div>
@@ -710,6 +788,25 @@
                 <button type="button" class="btn btn-primary" id="comparison-linked-sku-save-btn">
                     <i class="mdi mdi-link"></i> Link SKU
                 </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="comparisonCategoryPickerModal" tabindex="-1" aria-labelledby="comparisonCategoryPickerModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="comparisonCategoryPickerModalLabel">Choose Category</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small mb-2">Set the category for <strong id="comparison-category-picker-sku"></strong>. Click a category to apply it.</p>
+                <input type="text" id="comparison-category-picker-search" class="form-control mb-2" placeholder="Search categories..." autocomplete="off">
+                <div id="comparison-category-picker-list" class="list-group" style="max-height: 340px; overflow-y: auto;"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
             </div>
         </div>
     </div>
@@ -1070,6 +1167,8 @@ document.addEventListener('DOMContentLoaded', function () {
     const linkedSkuAddUrl = @json(route('comparison.linked-skus.add'));
     const linkedSkuBulkLinkUrl = @json(route('comparison.linked-skus.bulk-link'));
     const linkedSkuRemoveUrl = @json(route('comparison.linked-skus.remove'));
+    const comparisonParentsUrl = @json(route('comparison.parents'));
+    const comparisonCategorySaveUrl = @json(route('comparison.category.save'));
     const cdHoverPreview = document.getElementById('cd-hover-preview');
     const cdModalEl = document.getElementById('comparisonCdModal');
     const cdModal = cdModalEl ? new bootstrap.Modal(cdModalEl) : null;
@@ -1081,9 +1180,18 @@ document.addEventListener('DOMContentLoaded', function () {
     const linkedSkuModal = linkedSkuModalEl ? new bootstrap.Modal(linkedSkuModalEl) : null;
     const commModalEl = document.getElementById('comparisonCommModal');
     const commModal = commModalEl ? new bootstrap.Modal(commModalEl) : null;
+    const categoryPickerModalEl = document.getElementById('comparisonCategoryPickerModal');
+    const categoryPickerModal = categoryPickerModalEl ? new bootstrap.Modal(categoryPickerModalEl) : null;
 
     let linkedSkuModalRow = null;
+    let categoryPickerRow = null;
     let comparisonSuppliersByName = {};
+
+    // Playback (parent navigation) state
+    let comparisonParents = [];
+    let comparisonPlaybackActive = false;
+    let comparisonPlaybackParent = '';
+    let comparisonPlaybackIndex = -1;
 
     const COMM_PLAT_ICON = {
         Website: 'fas fa-globe',
@@ -1230,21 +1338,6 @@ document.addEventListener('DOMContentLoaded', function () {
         if (table) {
             table.deselectRow();
         }
-    }
-
-    function resolveComparisonBulkEditSkus(rowData, tabulatorRow) {
-        const selectedSkus = getSelectedComparisonRows()
-            .map(r => r.getData().sku)
-            .filter(Boolean);
-        if (selectedSkus.length >= 1 && tabulatorRow?.isSelected?.()) {
-            return selectedSkus;
-        }
-        return null;
-    }
-
-    function openComparisonModalForEdit(rowData, tabulatorRow) {
-        comparisonBulkEditSkus = resolveComparisonBulkEditSkus(rowData, tabulatorRow);
-        openComparisonModal(rowData);
     }
 
     function buildSheetRequestParams(row) {
@@ -4403,14 +4496,6 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    function cdEditFormatter() {
-        const title = 'Edit comparison data for this SKU';
-        return `<button type="button" class="btn btn-sm btn-outline-primary comparison-cd-edit-btn py-0 px-2"
-            title="${escapeHtmlAttr(title)}" aria-label="${escapeHtmlAttr(title)}">
-            <i class="mdi mdi-pencil"></i>
-        </button>`;
-    }
-
     function cdFormatter(cell) {
         const row = cell.getRow().getData();
         const hasSheet = !!row.has_sheet_data;
@@ -4441,10 +4526,12 @@ document.addEventListener('DOMContentLoaded', function () {
         const date = row.latest_history_at || '—';
         const user = row.latest_history_by || 'N/A';
         const change = row.latest_change || 'View history';
+        const tooltip = `${change}\nLast: ${date} by ${user}`;
 
-        return `<button type="button" class="btn btn-sm btn-link p-0 comparison-history-btn" title="${escapeHtmlAttr(change)}">
-            <div><i class="fas fa-history text-secondary"></i> <small>${escapeHtml(date)}</small></div>
-            <small class="text-muted d-block">${escapeHtml(user)}</small>
+        return `<button type="button" class="btn btn-sm btn-link p-0 comparison-history-btn position-relative"
+            title="${escapeHtmlAttr(tooltip)}" aria-label="View history">
+            <i class="fas fa-history text-secondary" style="font-size:1.1rem;"></i>
+            <span class="badge bg-secondary" style="font-size:0.6rem;position:absolute;top:-6px;right:-10px;">${count}</span>
         </button>`;
     }
 
@@ -4531,25 +4618,79 @@ document.addEventListener('DOMContentLoaded', function () {
         const bySku = {};
         affected.forEach(function (item) {
             if (item?.sku) {
-                bySku[item.sku] = item.linked_skus || [];
+                bySku[item.sku] = item;
             }
         });
+
+        // Remember which rows are selected so we can restore the checkbox after updating,
+        // since the update reformats cells (including the shared C link / CD indicators).
+        const selectedSkuKeys = new Set(
+            getSelectedComparisonRows().map(function (row) {
+                return String(row.getData().sku || '').trim().toUpperCase();
+            })
+        );
+
+        const shareableFields = [
+            'clink', 'clink_sku', 'clink_is_sheet',
+            'sheet_sku', 'has_sheet_data', 'sheet_supplier_count',
+            'category', 'category_id', 'categories', 'suppliers',
+        ];
 
         table.getRows().forEach(function (row) {
             const data = row.getData();
             if (!Object.prototype.hasOwnProperty.call(bySku, data.sku)) {
                 return;
             }
-            row.update({ linked_skus: bySku[data.sku] });
+
+            const item = bySku[data.sku];
+            const fields = { linked_skus: item.linked_skus || [] };
+            shareableFields.forEach(function (key) {
+                if (Object.prototype.hasOwnProperty.call(item, key)) {
+                    fields[key] = item[key];
+                }
+            });
+
+            const wasSelected = selectedSkuKeys.has(String(data.sku || '').trim().toUpperCase());
+            const done = function () {
+                // Reformat so the CD column (whose formatter reads data-only fields) refreshes,
+                // then re-assert selection so the row-selection checkbox stays visible/checked.
+                if (typeof row.reformat === 'function') {
+                    row.reformat();
+                }
+                if (wasSelected && typeof row.select === 'function') {
+                    row.select();
+                }
+            };
+
+            const res = row.update(fields);
+            if (res && typeof res.then === 'function') {
+                res.then(done);
+            } else {
+                done();
+            }
         });
     }
 
     function bulkLinkSelectedSkus(rowData, addBtn) {
-        const selectedSkus = getSelectedComparisonRows()
-            .map(function (row) { return String(row.getData().sku || '').trim(); })
-            .filter(Boolean);
+        // Merge the clicked row's SKU with the current selection. Tabulator can toggle
+        // the clicked row's selection when the "+" is pressed, so relying only on
+        // getSelectedRows() may drop the count below 2 and wrongly open the modal.
+        const clickedSku = String(rowData?.sku || '').trim();
+        const selectedSkus = [clickedSku].concat(
+            getSelectedComparisonRows().map(function (row) { return String(row.getData().sku || '').trim(); })
+        ).filter(Boolean);
 
-        if (selectedSkus.length < 2) {
+        const seen = new Set();
+        const uniqueSkus = [];
+        selectedSkus.forEach(function (sku) {
+            const key = sku.toUpperCase();
+            if (!seen.has(key)) {
+                seen.add(key);
+                uniqueSkus.push(sku);
+            }
+        });
+
+        if (uniqueSkus.length < 2) {
             openLinkedSkuModal(rowData);
             return;
         }
@@ -4568,7 +4709,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 'X-Requested-With': 'XMLHttpRequest',
                 'Accept': 'application/json',
             },
-            body: JSON.stringify({ skus: selectedSkus }),
+            body: JSON.stringify({ skus: uniqueSkus }),
         })
         .then(function (res) { return res.json(); })
         .then(function (res) {
@@ -4576,7 +4717,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 throw new Error(res.message || 'Could not link selected SKUs.');
             }
             applyAffectedLinkedSkuRows(res.affected);
-            showComparisonToast('success', selectedSkus.length + ' selected SKUs linked as related.');
+            showComparisonToast('success', uniqueSkus.length + ' SKUs linked. C link and comparison data are now shared.');
         })
         .catch(function (err) {
             alert(err.message || 'Could not link selected SKUs.');
@@ -4840,9 +4981,220 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function categoryFormatter(cell) {
-        const val = String(cell.getValue() || '').trim();
-        const display = val ? escapeHtml(val) : '<span class="text-muted">—</span>';
-        return `<div class="comparison-category-cell" title="Click to search and select category">${display}</div>`;
+        const row = cell.getRow().getData();
+        const cats = Array.isArray(row.categories) ? row.categories : [];
+        if (!cats.length) {
+            return `<div class="comparison-category-cell text-muted" title="Click to add a category">—</div>`;
+        }
+        const badges = cats.map(function (c) {
+            const name = String(c.name || '').trim();
+            if (!name) {
+                return '';
+            }
+            return `<span class="comparison-cat-badge-wrap badge bg-info-subtle text-dark border me-1 mb-1">
+                <span class="comparison-cat-badge">${escapeHtml(name)}</span>
+                <button type="button" class="btn-close comparison-category-remove"
+                    data-category-id="${escapeHtmlAttr(String(c.id))}" aria-label="Remove ${escapeHtmlAttr(name)}"></button>
+            </span>`;
+        }).join('');
+        return `<div class="comparison-category-cell d-flex flex-wrap align-items-start py-1" title="Click to add a category" style="line-height:1.6;">${badges}</div>`;
+    }
+
+    function suppliersColumnFormatter(cell) {
+        const suppliers = Array.isArray(cell.getRow().getData().suppliers) ? cell.getRow().getData().suppliers : [];
+        if (!suppliers.length) {
+            return '<span class="text-muted fst-italic">No suppliers</span>';
+        }
+        const badges = suppliers.map(function (s) {
+            const name = String(s.name || '').trim();
+            if (!name) {
+                return '';
+            }
+            const link = String(s.link || '').trim();
+            const title = s.company ? `${name} — ${s.company}` : name;
+            if (link) {
+                return `<a href="${escapeHtmlAttr(link)}" target="_blank" rel="noopener noreferrer"
+                    class="badge bg-secondary-subtle text-dark border text-decoration-none me-1 mb-1 comparison-supplier-badge"
+                    title="${escapeHtmlAttr(title)}">${escapeHtml(name)}</a>`;
+            }
+            return `<span class="badge bg-secondary-subtle text-dark border me-1 mb-1 comparison-supplier-badge"
+                title="${escapeHtmlAttr(title)}">${escapeHtml(name)}</span>`;
+        }).join('');
+        return `<div class="d-flex flex-wrap align-items-start py-1" style="line-height:1.6;">${badges}</div>`;
+    }
+
+    function rowCategoryIds(rowData) {
+        const cats = Array.isArray(rowData?.categories) ? rowData.categories : [];
+        return cats
+            .map(function (c) { return parseInt(c.id, 10); })
+            .filter(function (n) { return Number.isInteger(n) && n > 0; });
+    }
+
+    function saveCategoryIdsForRow(row, categoryIds, cellEl) {
+        const rowData = row.getData();
+        const sku = rowData.sku;
+        if (!sku) {
+            return;
+        }
+        if (cellEl) {
+            cellEl.style.opacity = '0.6';
+        }
+        fetch(comparisonCategorySaveUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrfToken,
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json',
+            },
+            body: JSON.stringify({ sku: sku, category_ids: categoryIds }),
+        })
+        .then(function (res) { return res.json(); })
+        .then(function (res) {
+            if (cellEl) {
+                cellEl.style.opacity = '1';
+            }
+            if (!res.success) {
+                alert('Error: ' + (res.message || 'Could not save category.'));
+                return;
+            }
+            if (Array.isArray(res.affected)) {
+                applyAffectedLinkedSkuRows(res.affected);
+            }
+        })
+        .catch(function () {
+            if (cellEl) {
+                cellEl.style.opacity = '1';
+            }
+            alert('Could not save category.');
+        });
+    }
+
+    function addCategoryToRow(row, categoryName) {
+        const name = String(categoryName || '').trim();
+        if (!name || !row) {
+            return;
+        }
+        resolveProductCategoryId(name).then(function (categoryId) {
+            const id = parseInt(categoryId, 10);
+            if (!Number.isInteger(id) || id <= 0) {
+                return;
+            }
+            const ids = rowCategoryIds(row.getData());
+            if (ids.includes(id)) {
+                return;
+            }
+            ids.push(id);
+            saveCategoryIdsForRow(row, ids, row.getCell('category')?.getElement());
+        });
+    }
+
+    function removeCategoryFromRow(row, categoryId) {
+        const target = parseInt(categoryId, 10);
+        if (!row || !Number.isInteger(target)) {
+            return;
+        }
+        const ids = rowCategoryIds(row.getData()).filter(function (id) { return id !== target; });
+        saveCategoryIdsForRow(row, ids, row.getCell('category')?.getElement());
+    }
+
+    function clearCategoriesForRow(row) {
+        if (row) {
+            saveCategoryIdsForRow(row, [], row.getCell('category')?.getElement());
+        }
+    }
+
+    function categoryAddFormatter(cell) {
+        if (!String(cell.getRow().getData().sku || '').trim()) {
+            return '';
+        }
+        return `<div class="d-flex align-items-center justify-content-center py-1">
+            <button type="button" class="btn btn-sm btn-outline-primary comparison-category-add-btn"
+                title="Choose category from list" style="padding:2px 8px;">
+                <i class="mdi mdi-plus"></i>
+            </button>
+        </div>`;
+    }
+
+    function openCategoryPickerModal(row) {
+        if (!categoryPickerModal || !row) {
+            return;
+        }
+        categoryPickerRow = row;
+        const rowData = row.getData();
+        const sourceEl = document.getElementById('comparison-category-picker-sku');
+        if (sourceEl) {
+            sourceEl.textContent = String(rowData.sku || '').trim();
+        }
+        const search = document.getElementById('comparison-category-picker-search');
+        if (search) {
+            search.value = '';
+        }
+        renderCategoryPickerList('');
+        categoryPickerModal.show();
+        setTimeout(function () { search?.focus(); }, 200);
+    }
+
+    function renderCategoryPickerList(term) {
+        const listEl = document.getElementById('comparison-category-picker-list');
+        if (!listEl) {
+            return;
+        }
+
+        const query = String(term || '').trim().toLowerCase();
+        const addedNames = new Set(
+            (Array.isArray(categoryPickerRow?.getData().categories) ? categoryPickerRow.getData().categories : [])
+                .map(function (c) { return String(c.name || '').trim().toLowerCase(); })
+                .filter(Boolean)
+        );
+        const matches = (query
+            ? supplierCategoryOptions.filter(function (cat) {
+                return String(cat.name || '').toLowerCase().includes(query);
+            })
+            : supplierCategoryOptions.slice());
+
+        listEl.innerHTML = '';
+
+        if (!supplierCategoryOptions.length) {
+            listEl.innerHTML = '<div class="list-group-item text-muted">No categories loaded.</div>';
+            return;
+        }
+        if (!matches.length) {
+            listEl.innerHTML = '<div class="list-group-item text-muted">No matching categories.</div>';
+            return;
+        }
+
+        matches.forEach(function (cat) {
+            const name = String(cat.name || '').trim();
+            if (!name) {
+                return;
+            }
+            const isAdded = addedNames.has(name.toLowerCase());
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'list-group-item list-group-item-action d-flex justify-content-between align-items-center comparison-category-picker-item'
+                + (isAdded ? ' active' : '');
+            btn.dataset.category = name;
+            btn.innerHTML = `<span>${escapeHtml(name)}</span>`
+                + (isAdded ? '<span class="badge bg-success">Added</span>' : '<span class="badge bg-light text-dark">Add</span>');
+            listEl.appendChild(btn);
+        });
+    }
+
+    function applyCategoryFromPicker(categoryName) {
+        if (!categoryPickerRow) {
+            return;
+        }
+        const name = String(categoryName || '').trim();
+        const addedNames = (Array.isArray(categoryPickerRow.getData().categories) ? categoryPickerRow.getData().categories : [])
+            .map(function (c) { return String(c.name || '').trim().toLowerCase(); });
+        if (name && !addedNames.includes(name.toLowerCase())) {
+            addCategoryToRow(categoryPickerRow, name);
+        }
+        // Keep the modal open so multiple categories can be added; refresh the list
+        // shortly after so the newly added one shows as "Added".
+        const search = document.getElementById('comparison-category-picker-search');
+        setTimeout(function () { renderCategoryPickerList(search?.value || ''); }, 400);
     }
 
     function closeCategoryDropdown() {
@@ -4938,6 +5290,8 @@ document.addEventListener('DOMContentLoaded', function () {
                     tabulatorRow.update({
                         category_id: updated.category_id,
                         category: updated.category,
+                        categories: updated.categories,
+                        suppliers: updated.suppliers,
                         linked_skus: updated.linked_skus,
                         has_sheet_data: updated.has_sheet_data,
                         sheet_sku: updated.sheet_sku,
@@ -5019,8 +5373,12 @@ document.addEventListener('DOMContentLoaded', function () {
         const cellEl = cell.getElement();
         cellEl.style.opacity = '0.6';
 
+        let resolvedCategoryId = null;
         resolveProductCategoryId(normalizedName).then(function (productCategoryId) {
-            return fetch(groupMasterUpdateFieldUrl, {
+            resolvedCategoryId = productCategoryId;
+            // Save via the comparison endpoint so the category is propagated to all
+            // linked SKUs (same group-sharing behaviour as the C link / CD columns).
+            return fetch(comparisonCategorySaveUrl, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -5029,10 +5387,8 @@ document.addEventListener('DOMContentLoaded', function () {
                     'Accept': 'application/json',
                 },
                 body: JSON.stringify({
-                    product_id: productId,
                     sku: sku,
-                    field: 'category_id',
-                    value: productCategoryId,
+                    category_id: productCategoryId,
                 }),
             });
         })
@@ -5044,12 +5400,14 @@ document.addEventListener('DOMContentLoaded', function () {
                 return;
             }
 
-            const savedName = res.data?.category_name || normalizedName;
-            cell.getRow().update({
-                category_id: res.data?.category_id ?? null,
-                category: savedName,
-            });
-            refreshComparisonRowFromServer(sku);
+            if (Array.isArray(res.affected) && res.affected.length) {
+                applyAffectedLinkedSkuRows(res.affected);
+            } else {
+                cell.getRow().update({
+                    category_id: resolvedCategoryId ?? null,
+                    category: normalizedName,
+                });
+            }
         })
         .catch(function () {
             cellEl.style.opacity = '1';
@@ -5085,10 +5443,12 @@ document.addEventListener('DOMContentLoaded', function () {
         const handleSelect = function (categoryName) {
             closeCategoryDropdown();
             const nextName = String(categoryName || '').trim();
-            if (nextName === currentCategoryName) {
+            if (nextName === '') {
+                // "— No Category —" clears all categories for the group.
+                clearCategoriesForRow(cell.getRow());
                 return;
             }
-            saveProductCategory(cell, nextName);
+            addCategoryToRow(cell.getRow(), nextName);
         };
 
         renderCategoryDropdownResults(results, '', handleSelect);
@@ -5167,11 +5527,15 @@ document.addEventListener('DOMContentLoaded', function () {
             });
             const skuTerm = (document.getElementById('comparison-search-sku')?.value || '').trim();
             const parentTerm = (document.getElementById('comparison-search-parent')?.value || '').trim();
-            if (skuTerm) {
-                query.set('sku', skuTerm);
-            }
-            if (parentTerm) {
-                query.set('parent', parentTerm);
+            if (comparisonPlaybackActive && comparisonPlaybackParent) {
+                query.set('parent_exact', comparisonPlaybackParent);
+            } else {
+                if (skuTerm) {
+                    query.set('sku', skuTerm);
+                }
+                if (parentTerm) {
+                    query.set('parent', parentTerm);
+                }
             }
             return `${url}?${query.toString()}`;
         },
@@ -5194,7 +5558,7 @@ document.addEventListener('DOMContentLoaded', function () {
         layout: 'fitColumns',
         movableColumns: true,
         resizableColumns: true,
-        height: '650px',
+        height: 'calc(100vh - 200px)',
         placeholder: 'No comparison data found',
         selectableRows: true,
         selectableRowsPersistence: false,
@@ -5214,7 +5578,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 field: 'image',
                 hozAlign: 'center',
                 headerHozAlign: 'center',
-                width: 90,
+                width: 55,
                 headerSort: false,
                 formatter: imageFormatter,
             },
@@ -5223,35 +5587,21 @@ document.addEventListener('DOMContentLoaded', function () {
                 field: 'parent',
                 hozAlign: 'center',
                 headerHozAlign: 'center',
-                width: 180,
+                width: 110,
             },
             {
                 title: 'SKU',
                 field: 'sku',
                 hozAlign: 'center',
                 headerHozAlign: 'center',
-                width: 220,
-            },
-            {
-                title: 'Category',
-                field: 'category',
-                hozAlign: 'center',
-                headerHozAlign: 'center',
-                width: 180,
-                headerSort: true,
-                cssClass: 'comparison-category-col',
-                formatter: categoryFormatter,
-                cellClick: function (e, cell) {
-                    e.stopPropagation();
-                    openCategoryDropdown(cell);
-                },
+                width: 130,
             },
             {
                 title: 'Link Sku Purchase',
                 field: 'linked_skus',
                 hozAlign: 'left',
                 headerHozAlign: 'center',
-                width: 220,
+                width: 150,
                 headerSort: false,
                 cssClass: 'linked-sku-col',
                 formatter: linkedSkuFormatter,
@@ -5287,11 +5637,60 @@ document.addEventListener('DOMContentLoaded', function () {
                 },
             },
             {
+                title: 'Mfr Category',
+                field: 'category',
+                hozAlign: 'center',
+                headerHozAlign: 'center',
+                width: 130,
+                headerSort: true,
+                cssClass: 'comparison-category-col',
+                formatter: categoryFormatter,
+                cellClick: function (e, cell) {
+                    e.stopPropagation();
+                    const removeBtn = e.target.closest('.comparison-category-remove');
+                    if (removeBtn) {
+                        e.preventDefault();
+                        removeCategoryFromRow(cell.getRow(), removeBtn.dataset.categoryId || '');
+                        return;
+                    }
+                    openCategoryDropdown(cell);
+                },
+            },
+            {
+                title: '+',
+                field: 'category_add',
+                hozAlign: 'center',
+                headerHozAlign: 'center',
+                width: 52,
+                headerSort: false,
+                headerTooltip: 'Pick a category from the full list',
+                cssClass: 'category-add-col',
+                formatter: categoryAddFormatter,
+                cellClick: function (e, cell) {
+                    if (e.target.closest('.comparison-category-add-btn')) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        openCategoryPickerModal(cell.getRow());
+                    }
+                },
+            },
+            {
+                title: 'Suppliers',
+                field: 'suppliers',
+                hozAlign: 'left',
+                headerHozAlign: 'center',
+                width: 200,
+                headerSort: false,
+                headerTooltip: 'Suppliers for the Mfr Category (from supplier.list)',
+                cssClass: 'comparison-suppliers-col',
+                formatter: suppliersColumnFormatter,
+            },
+            {
                 title: 'C link',
                 field: 'clink',
                 hozAlign: 'center',
                 headerHozAlign: 'center',
-                width: 90,
+                width: 60,
                 headerTooltip: 'Comparison link',
                 formatter: clinkFormatter,
                 editor: 'input',
@@ -5304,7 +5703,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 field: 'lmp_price',
                 hozAlign: 'center',
                 headerHozAlign: 'center',
-                width: 100,
+                width: 75,
                 headerSort: true,
                 headerTooltip: 'Lowest market price and competition product links',
                 formatter: lmpFormatter,
@@ -5345,29 +5744,11 @@ document.addEventListener('DOMContentLoaded', function () {
                 },
             },
             {
-                title: 'Edit',
-                field: 'cd_edit',
-                hozAlign: 'center',
-                headerHozAlign: 'center',
-                width: 70,
-                headerSort: false,
-                headerTooltip: 'Edit comparison data',
-                formatter: cdEditFormatter,
-                cellClick: function (e, cell) {
-                    if (!e.target.closest('.comparison-cd-edit-btn')) {
-                        return;
-                    }
-                    e.preventDefault();
-                    e.stopPropagation();
-                    openComparisonModalForEdit(cell.getRow().getData(), cell.getRow());
-                },
-            },
-            {
                 title: 'History',
                 field: 'history_view',
                 hozAlign: 'center',
                 headerHozAlign: 'center',
-                width: 140,
+                width: 80,
                 headerSort: false,
                 headerTooltip: 'Change history',
                 formatter: historyFormatter,
@@ -5382,6 +5763,17 @@ document.addEventListener('DOMContentLoaded', function () {
 
     table.on('pageLoaded', function () {
         table.deselectRow();
+    });
+
+    document.getElementById('comparison-category-picker-search')?.addEventListener('input', function () {
+        renderCategoryPickerList(this.value);
+    });
+    document.getElementById('comparison-category-picker-list')?.addEventListener('click', function (e) {
+        const item = e.target.closest('.comparison-category-picker-item');
+        if (!item) {
+            return;
+        }
+        applyCategoryFromPicker(item.dataset.category || '');
     });
 
     document.getElementById('comparison-linked-sku-save-btn')?.addEventListener('click', saveLinkedSkuFromModal);
@@ -5426,6 +5818,106 @@ document.addEventListener('DOMContentLoaded', function () {
 
     document.getElementById('comparison-search-sku')?.addEventListener('input', scheduleComparisonTableSearch);
     document.getElementById('comparison-search-parent')?.addEventListener('input', scheduleComparisonTableSearch);
+
+    initComparisonPlaybackControls();
+    }
+
+    function initComparisonPlaybackControls() {
+        document.getElementById('comparison-play-auto')?.addEventListener('click', comparisonPlaybackStart);
+        document.getElementById('comparison-play-pause')?.addEventListener('click', comparisonPlaybackStop);
+        document.getElementById('comparison-play-forward')?.addEventListener('click', comparisonPlaybackNext);
+        document.getElementById('comparison-play-backward')?.addEventListener('click', comparisonPlaybackPrev);
+        updateComparisonPlaybackButtons();
+
+        // Preload the distinct parents list so navigation is instant.
+        fetch(comparisonParentsUrl, {
+            headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+        })
+        .then(function (res) { return res.json(); })
+        .then(function (res) {
+            comparisonParents = (res && res.success && Array.isArray(res.parents)) ? res.parents : [];
+            updateComparisonPlaybackButtons();
+        })
+        .catch(function () { comparisonParents = []; });
+    }
+
+    function comparisonPlaybackStart() {
+        if (!table) {
+            return;
+        }
+        if (!comparisonParents.length) {
+            showComparisonToast('info', 'No parents available to navigate.');
+            return;
+        }
+        comparisonPlaybackActive = true;
+        comparisonPlaybackIndex = 0;
+        document.getElementById('comparison-play-auto')?.style.setProperty('display', 'none');
+        document.getElementById('comparison-play-pause')?.style.setProperty('display', 'inline-flex');
+        comparisonShowCurrentParent();
+    }
+
+    function comparisonPlaybackStop() {
+        comparisonPlaybackActive = false;
+        comparisonPlaybackParent = '';
+        comparisonPlaybackIndex = -1;
+        document.getElementById('comparison-play-pause')?.style.setProperty('display', 'none');
+        document.getElementById('comparison-play-auto')?.style.setProperty('display', 'inline-flex');
+        const label = document.getElementById('comparison-playback-label');
+        if (label) {
+            label.classList.add('d-none');
+            label.textContent = '';
+        }
+        updateComparisonPlaybackButtons();
+        if (table) {
+            clearComparisonRowSelection();
+            table.setPage(1);
+        }
+    }
+
+    function comparisonPlaybackNext() {
+        if (!comparisonPlaybackActive || comparisonPlaybackIndex >= comparisonParents.length - 1) {
+            return;
+        }
+        comparisonPlaybackIndex++;
+        comparisonShowCurrentParent();
+    }
+
+    function comparisonPlaybackPrev() {
+        if (!comparisonPlaybackActive || comparisonPlaybackIndex <= 0) {
+            return;
+        }
+        comparisonPlaybackIndex--;
+        comparisonShowCurrentParent();
+    }
+
+    function comparisonShowCurrentParent() {
+        if (!comparisonPlaybackActive || comparisonPlaybackIndex < 0 || !table) {
+            return;
+        }
+        comparisonPlaybackParent = String(comparisonParents[comparisonPlaybackIndex] || '');
+        const label = document.getElementById('comparison-playback-label');
+        if (label) {
+            label.classList.remove('d-none');
+            label.textContent = `Parent ${comparisonPlaybackIndex + 1} / ${comparisonParents.length}: ${comparisonPlaybackParent}`;
+        }
+        clearComparisonRowSelection();
+        table.setPage(1);
+        updateComparisonPlaybackButtons();
+    }
+
+    function updateComparisonPlaybackButtons() {
+        const backBtn = document.getElementById('comparison-play-backward');
+        const fwdBtn = document.getElementById('comparison-play-forward');
+        const autoBtn = document.getElementById('comparison-play-auto');
+        if (backBtn) {
+            backBtn.disabled = !comparisonPlaybackActive || comparisonPlaybackIndex <= 0;
+        }
+        if (fwdBtn) {
+            fwdBtn.disabled = !comparisonPlaybackActive || comparisonPlaybackIndex >= comparisonParents.length - 1;
+        }
+        if (autoBtn) {
+            autoBtn.disabled = comparisonParents.length === 0;
+        }
     }
 
     document.getElementById('comparison-cd-import-btn')?.addEventListener('click', importComparisonGoogleSheet);
@@ -5439,6 +5931,35 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     });
     document.getElementById('comparison-cd-copy-specs-btn')?.addEventListener('click', copySpecsToMemory);
+
+    // Deep-link: /purchase-master/comparison?cd_sku=SKU filters to that SKU and
+    // auto-opens its CD modal. Used by the Forecast Analysis CD column iframe.
+    (function () {
+        try {
+            const params = new URLSearchParams(window.location.search);
+            const cdSku = (params.get('cd_sku') || '').trim();
+            if (!cdSku) return;
+            const skuInput = document.getElementById('comparison-search-sku');
+            if (skuInput) skuInput.value = cdSku;
+            let opened = false;
+            const openMatch = function () {
+                if (opened || typeof table === 'undefined' || !table) return;
+                const match = table.getRows().find(function (r) {
+                    return String((r.getData() || {}).sku || '').trim().toUpperCase() === cdSku.toUpperCase();
+                });
+                if (match && typeof openComparisonModal === 'function') {
+                    opened = true;
+                    openComparisonModal(match.getData());
+                }
+            };
+            const start = function () {
+                if (typeof table === 'undefined' || !table) { setTimeout(start, 100); return; }
+                table.on('dataLoaded', openMatch);
+                try { table.replaceData(); } catch (e) {}
+            };
+            start();
+        } catch (e) {}
+    })();
     document.getElementById('comparison-cd-replace-specs-btn')?.addEventListener('click', replaceSpecsFromMemory);
     function updateCdGoogleUrlDotUI() {
         const input = document.getElementById('comparison-cd-google-url');

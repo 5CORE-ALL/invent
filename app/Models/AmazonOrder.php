@@ -145,6 +145,24 @@ class AmazonOrder extends Model
     }
 
     /**
+     * Product sales (Σ line price, tax excluded) over a UTC order_date window.
+     * Closest match to Amazon Seller Central's "Sales" tile (ordered product sales).
+     * Pass Pacific-day boundaries already converted to UTC to match Amazon's day grouping.
+     */
+    public static function productSalesByOrderDate(DateTimeInterface $start, DateTimeInterface $end): float
+    {
+        return (float) DB::table('amazon_orders as o')
+            ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
+            ->where('o.order_date', '>=', $start)
+            ->where('o.order_date', '<=', $end)
+            ->where(function ($q) {
+                $q->whereNull('o.status')
+                    ->orWhereNotIn('o.status', ['Canceled', 'Cancelled']);
+            })
+            ->sum(DB::raw('COALESCE(i.price, 0)'));
+    }
+
+    /**
      * Legacy: Σ (quantity × price) on joined lines — kept for other callers; use badgeTotalSalesByOrderDate on the sales page.
      */
     public static function revenueSumQtyTimesPriceByOrderDate(DateTimeInterface $start, DateTimeInterface $end): float

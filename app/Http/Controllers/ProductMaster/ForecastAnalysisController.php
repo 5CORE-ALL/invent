@@ -997,41 +997,71 @@ class ForecastAnalysisController extends Controller
             }
             $item->r2s_amount = round(((float) $r2sOrderQty) * $cp, 0);
 
-            // Stage from pipeline qtys: Transit → R2S → MIP → 2 Order; none → Select (empty)
-            // Never auto-overwrite manually-managed statuses (appr_req / all_good /
-            // transit) — they're set from the grid or the Edit modal and have no
-            // pipeline qty backing them, so the derived-stage pass would otherwise
-            // silently revert them to ''.
+            // Multi-stage: a SKU can be in several stages at once (e.g. MIP 100
+            // given AND some qty already in Transit). We derive the full SET of
+            // active stages from the pipeline quantities and merge in any stored
+            // manual-only flag (appr_req / all_good) that has no qty backing, so
+            // manually-set statuses are never lost. The single `stage` field is
+            // still populated (highest-priority active stage) for sorting and
+            // backward compatibility with code that reads one value.
+            $item->stages = [];
             if (! $item->is_parent) {
                 $currentStage = strtolower(trim((string) ($item->stage ?? '')));
-                $manualStages = ['appr_req', 'to_order_analysis', 'all_good', 'transit'];
 
-                if (! in_array($currentStage, $manualStages, true)) {
-                    $qtyTransit = (float) ($item->transit ?? 0);
-                    $qtyR2s = (float) ($item->readyToShipQty ?? 0);
-                    $qtyMip = (float) ($item->order_given ?? 0);
-                    // 2 Order column = to_order_analysis approved qty only (not Appr.req MOQ)
-                    $qtyTwoOrder = (float) ($item->two_order_qty ?? 0);
-                    if ($qtyTransit > 0) {
-                        $derivedStage = 'transit';
-                    } elseif ($qtyR2s > 0) {
-                        $derivedStage = 'r2s';
-                    } elseif ($qtyMip > 0) {
-                        $derivedStage = 'mip';
-                    } elseif ($qtyTwoOrder > 0) {
-                        $derivedStage = 'to_order_analysis';
+                $qtyTransit  = (float) ($item->transit ?? 0);
+                $qtyR2s      = (float) ($item->readyToShipQty ?? 0);
+                $qtyMip      = (float) ($item->order_given ?? 0);
+                // 2 Order column = to_order_analysis approved qty only (not Appr.req MOQ)
+                $qtyTwoOrder = (float) ($item->two_order_qty ?? 0);
+
+                // Quantity-backed stages (order = left→right pipeline for display).
+                $activeStages = [];
+                if ($qtyTwoOrder > 0) { $activeStages[] = 'to_order_analysis'; }
+                if ($qtyMip > 0)      { $activeStages[] = 'mip'; }
+                if ($qtyR2s > 0)      { $activeStages[] = 'r2s'; }
+                if ($qtyTransit > 0)  { $activeStages[] = 'transit'; }
+
+                // Preserve a stored manual-only flag (appr_req / all_good) that has
+                // no quantity column of its own. Quantity-backed stages
+                // (order/mip/r2s/transit) are derived purely from their qty, so a
+                // stale stored value with no backing qty is intentionally dropped.
+                $isManualFlag = in_array($currentStage, ['appr_req', 'all_good'], true);
+                if ($isManualFlag && ! in_array($currentStage, $activeStages, true)) {
+                    if ($currentStage === 'appr_req') {
+                        array_unshift($activeStages, 'appr_req'); // sits before the pipeline
                     } else {
-                        $derivedStage = '';
+                        $activeStages[] = $currentStage;           // all_good is terminal
                     }
-                    if ($currentStage !== $derivedStage) {
-                        $stagePendingUpdates[$sheetSku] = $derivedStage;
-                    }
-                    $item->stage = $derivedStage;
-                } elseif ($currentStage === 'transit' && (float) ($item->readyToShipQty ?? 0) > 0) {
-                    // Split pipeline: partial move to transit — balance still on Ready to Ship.
-                    $item->stage = 'r2s';
-                    $stagePendingUpdates[$sheetSku] = 'r2s';
                 }
+
+                $item->stages = array_values(array_unique($activeStages));
+
+                // Primary single stage: highest-priority active stage.
+                $primaryPriority = ['transit', 'r2s', 'mip', 'to_order_analysis', 'appr_req', 'all_good'];
+                $primary = '';
+                foreach ($primaryPriority as $candidate) {
+                    if (in_array($candidate, $item->stages, true)) { $primary = $candidate; break; }
+                }
+                $item->stage = $primary;
+
+                // Persist the derived primary back to DB only for SINGLE-stage rows
+                // (exactly one qty-backed stage) — this keeps the historical
+                // behaviour intact for the common case. When a SKU legitimately sits
+                // in several stages at once we must NOT overwrite the stored stage,
+                // because downstream pages (mfrg-in-progress, ready-to-ship, transit)
+                // still filter on that single column and would otherwise drop the
+                // row from a page where it still has real quantity. We also never
+                // clobber a manual flag (appr_req / all_good).
+                $qtyStageCount = ($qtyTransit > 0 ? 1 : 0)
+                    + ($qtyR2s > 0 ? 1 : 0)
+                    + ($qtyMip > 0 ? 1 : 0)
+                    + ($qtyTwoOrder > 0 ? 1 : 0);
+                if ($qtyStageCount === 1 && ! $isManualFlag && $currentStage !== $primary) {
+                    $stagePendingUpdates[$sheetSku] = $primary;
+                }
+            } else {
+                $parentStage = strtolower(trim((string) ($item->stage ?? '')));
+                $item->stages = $parentStage !== '' ? [$parentStage] : [];
             }
 
             $item->product_master_moq = $productMasterMoq;
@@ -1223,21 +1253,24 @@ class ForecastAnalysisController extends Controller
             ->values()
             ->all();
 
+        // Executive list — dynamic from the users table (drives the Exec column
+        // editor and the Exec filter dropdown).
+        $execUsers = \App\Models\User::query()
+            ->whereNotNull('name')
+            ->where('name', '!=', '')
+            ->orderBy('name')
+            ->pluck('name')
+            ->map(fn ($n) => trim((string) $n))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
         return view('purchase-master.forecastAnalysis', [
             'mode' => $mode,
             'demo' => $demo,
             'allCategories' => $allCategories,
-        ]);
-    }
-
-    public function approvalRequired(Request $request)
-    {
-        $mode = $request->query('mode');
-        $demo = $request->query('demo');
-
-        return view('purchase-master.approvalRequired', [
-            'mode' => $mode,
-            'demo' => $demo,
+            'execUsers' => $execUsers,
         ]);
     }
 
@@ -1299,6 +1332,20 @@ class ForecastAnalysisController extends Controller
             }
 
             return response()->json(['success' => true, 'message' => 'Supplier updated successfully']);
+        }
+
+        // Exec: single source of truth in to_order_analysis.exec (same as the
+        // inline Exec column editor and MFRG In Progress).
+        if (strtoupper($column) === 'EXEC') {
+            try {
+                ToOrderSkuFieldSync::setExecForSku($sku, $value, $parent !== '' ? $parent : null);
+            } catch (\Throwable $e) {
+                Log::error('Forecast exec save failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+                return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            }
+
+            return response()->json(['success' => true, 'message' => 'Exec updated successfully']);
         }
 
         // Handle MOQ updates: save to forecast_analysis.approved_qty and to_order_analysis so forecast and to-order show same value
@@ -1807,33 +1854,12 @@ class ForecastAnalysisController extends Controller
                     $this->upsertReadyToShipQtyForSku($sku, $parent, (float) ($orderQty ?? 0));
                 }
 
-                // Switching stages must clear the OTHER pipeline tables for this
-                // SKU, otherwise the derived-stage pass on the next forecast load
-                // (which prefers transit > r2s > mip > to_order) silently
-                // reverts the user's saved stage. e.g. switching r2s → mip:
-                // mfrg_progress.qty gets set to MOQ above, but ready_to_ship.qty
-                // is still the old MOQ -> deriver picks r2s and overwrites the
-                // saved "mip" on refresh, so the Edit modal looked like it did
-                // nothing.
-                $skuLower   = strtolower($sku);
-                if ($stageLower !== 'mip') {
-                    DB::table('mfrg_progress')
-                        ->whereRaw('TRIM(LOWER(sku)) = ?', [$skuLower])
-                        ->whereNull('deleted_at')
-                        ->update(['qty' => 0, 'updated_at' => now()]);
-                }
-                if ($stageLower !== 'r2s') {
-                    DB::table('ready_to_ship')
-                        ->whereRaw('TRIM(LOWER(sku)) = ?', [$skuLower])
-                        ->whereNull('deleted_at')
-                        ->update(['qty' => 0, 'updated_at' => now()]);
-                }
-                if (!in_array($stageLower, ['to_order_analysis', 'appr_req'], true)) {
-                    DB::table('to_order_analysis')
-                        ->whereRaw('TRIM(LOWER(sku)) = ?', [$skuLower])
-                        ->whereNull('deleted_at')
-                        ->update(['approved_qty' => 0, 'updated_at' => now()]);
-                }
+                // Multi-stage: a SKU can legitimately sit in several stages at once
+                // (e.g. MIP 100 given AND some qty already in Transit). Setting a
+                // stage now only ensures THAT stage's backing qty exists (handled
+                // above) and never zeroes the other pipeline tables, so the earlier
+                // stages are preserved. The load-time deriver keeps every active
+                // stage rather than collapsing to one.
             }
 
             return response()->json(['success' => true, 'message' => 'Updated or already up-to-date']);
@@ -1923,30 +1949,9 @@ class ForecastAnalysisController extends Controller
                     $this->upsertReadyToShipQtyForSku($sku, $parent, (float) ($orderQty ?? 0));
                 }
 
-                // Clear OTHER pipeline tables (see comment in the existing-record
-                // branch above for context). Without this, switching between
-                // stages leaves stale qty on the previous pipeline table and the
-                // forecast deriver reverts our newly-saved stage on the next
-                // load.
-                $skuLower   = strtolower($sku);
-                if ($stageLower !== 'mip') {
-                    DB::table('mfrg_progress')
-                        ->whereRaw('TRIM(LOWER(sku)) = ?', [$skuLower])
-                        ->whereNull('deleted_at')
-                        ->update(['qty' => 0, 'updated_at' => now()]);
-                }
-                if ($stageLower !== 'r2s') {
-                    DB::table('ready_to_ship')
-                        ->whereRaw('TRIM(LOWER(sku)) = ?', [$skuLower])
-                        ->whereNull('deleted_at')
-                        ->update(['qty' => 0, 'updated_at' => now()]);
-                }
-                if (!in_array($stageLower, ['to_order_analysis', 'appr_req'], true)) {
-                    DB::table('to_order_analysis')
-                        ->whereRaw('TRIM(LOWER(sku)) = ?', [$skuLower])
-                        ->whereNull('deleted_at')
-                        ->update(['approved_qty' => 0, 'updated_at' => now()]);
-                }
+                // Multi-stage: keep every other pipeline table intact so a SKU can
+                // hold more than one active stage at once. Setting a stage only
+                // seeds that stage's own backing qty (handled above).
             }
 
             return response()->json(['success' => true, 'message' => 'Inserted new row']);

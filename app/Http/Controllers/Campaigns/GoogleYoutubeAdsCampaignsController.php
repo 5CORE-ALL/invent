@@ -44,6 +44,25 @@ class GoogleYoutubeAdsCampaignsController extends GoogleShoppingCampaignsControl
         return 'Video campaign — ad group bids updated';
     }
 
+    /**
+     * YouTube/TrueView campaigns are billed per view, not per click, so the grid's
+     * CPC columns are replaced with CPV (cost ÷ TrueView views). We reuse the same
+     * `cpc_L30/L7/L2/L1` field keys (so sorting/formatters keep working) but fill them
+     * with the CPV values computed in {@see enrichRawRowGoogleShoppingStyle}; the
+     * YouTube view relabels these columns as CPV.
+     *
+     * @param  array<string, mixed>  $arr
+     */
+    protected function applyRowChannelOverrides(array &$arr): void
+    {
+        foreach (['L30', 'L7', 'L2', 'L1'] as $window) {
+            $cpvKey = 'cpv_'.$window;
+            if (array_key_exists($cpvKey, $arr)) {
+                $arr['cpc_'.$window] = $arr[$cpvKey];
+            }
+        }
+    }
+
     protected function pushSbgtCommandLabel(): string
     {
         return 'push-sbgt-youtube';
