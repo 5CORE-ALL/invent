@@ -350,6 +350,8 @@ return [
         'item_specific_bullet_max_length' => (int) env('EBAY_ITEM_SPECIFIC_BULLET_MAX_LENGTH', 65),
         /** Required by some categories when revising item specifics. Override with EBAY_TYPE_FALLBACK_VALUE if needed. */
         'type_fallback_value' => env('EBAY_TYPE_FALLBACK_VALUE', 'Audio Connector'),
+        /** Guitar/amp categories may require Amplifier Type when revising bullets (eBay3). */
+        'amplifier_type_fallback_value' => env('EBAY_AMPLIFIER_TYPE_FALLBACK_VALUE', 'Guitar Speaker'),
     ],
     'ebay1' => [
         'app_id' => env('EBAY_APP_ID'),
@@ -420,6 +422,8 @@ return [
         'api_endpoint' => env('WALMART_API_ENDPOINT', 'https://marketplace.walmartapis.com'),
         'marketplace_id' => env('WALMART_MARKETPLACE_ID', 'WMTMP'),
         'channel_type' => env('WALMART_CHANNEL_TYPE', '0f3e4dd4-0514-4346-b39d-af0e00ea066d'),
+        'market' => env('WALMART_MARKET', 'us'),
+        'global_version' => env('WALMART_GLOBAL_VERSION', '3.1'),
     ],
 
     /*

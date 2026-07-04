@@ -265,6 +265,7 @@ class MarketplaceApiConfigService
             'alibaba' => $this->filledAll([
                 'services.alibaba.app_key',
                 'services.alibaba.app_secret',
+                'services.alibaba.access_token',
             ]),
             'shopify_main' => $this->shopifyMainConfigured(),
             'shopify_pls' => $this->shopifyPlsConfigured(),

@@ -505,6 +505,7 @@ final class EbayTradingReviseItem
         $merged = self::mergeBulletAspectsIntoItemSpecifics($existing, $lines, $aspectNames);
         $merged = self::deduplicateItemSpecificsByName($merged);
         $merged = self::applyRequiredTypeFallback($merged);
+        $merged = self::applyRequiredAmplifierTypeFallback($merged);
         $merged = self::applyForcedBrandForBulletUpdate($merged);
         $merged = self::applyForcedMpnFromSku($item, $merged);
 
@@ -532,6 +533,31 @@ final class EbayTradingReviseItem
         }
 
         $rows[] = ['name' => 'Type', 'values' => [$typeValue]];
+
+        return $rows;
+    }
+
+    /**
+     * Guitar/amp categories (e.g. eBay3) require Amplifier Type when revising item specifics.
+     *
+     * @param  array<int, array{name: string, values: list<string>}>  $rows
+     * @return array<int, array{name: string, values: list<string>}>
+     */
+    private static function applyRequiredAmplifierTypeFallback(array $rows): array
+    {
+        foreach ($rows as $row) {
+            if (strtolower(trim($row['name'])) === 'amplifier type') {
+                return $rows;
+            }
+        }
+
+        $value = config('services.ebay.amplifier_type_fallback_value');
+        $value = is_string($value) ? trim($value) : '';
+        if ($value === '') {
+            return $rows;
+        }
+
+        $rows[] = ['name' => 'Amplifier Type', 'values' => [$value]];
 
         return $rows;
     }

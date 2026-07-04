@@ -2,8 +2,10 @@
 
 namespace App\Services;
 
+use App\Models\TopDawgProduct;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use App\Services\Support\SavesMarketplaceVideoMetrics;
 use App\Services\Support\VideoMasterMarketplaceMethods;
 
@@ -276,6 +278,48 @@ class TopDawgApiService
     }
 
     /**
+     * TopDawg product_code (often tdid) — may differ from internal PM SKU.
+     */
+    protected function resolveProductCode(string $sku): ?string
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return null;
+        }
+
+        if (Schema::hasTable('topdawg_metrics')) {
+            $fromMetrics = \Illuminate\Support\Facades\DB::table('topdawg_metrics')
+                ->where(function ($q) use ($sku) {
+                    $q->where('sku', $sku)
+                        ->orWhere('sku', strtoupper($sku))
+                        ->orWhere('sku', strtolower($sku));
+                })
+                ->whereNotNull('product_id')
+                ->where('product_id', '!=', '')
+                ->value('product_id');
+            if ($fromMetrics !== null && trim((string) $fromMetrics) !== '') {
+                return trim((string) $fromMetrics);
+            }
+        }
+
+        $product = TopDawgProduct::query()
+            ->where('sku', $sku)
+            ->orWhere('sku', strtoupper($sku))
+            ->orWhere('sku', strtolower($sku))
+            ->first();
+        if ($product) {
+            foreach (['tdid', 'topdawg_listing_id'] as $column) {
+                $code = trim((string) ($product->{$column} ?? ''));
+                if ($code !== '') {
+                    return $code;
+                }
+            }
+        }
+
+        return $sku;
+    }
+
+    /**
      * @param  array<string, mixed>  $fields
      * @return array{success: bool, message: string}
      */
@@ -287,9 +331,19 @@ class TopDawgApiService
             return ['success' => false, 'message' => 'Product code / SKU is required.'];
         }
 
+        $productCode = $this->resolveProductCode($sku);
+        if ($productCode === null || $productCode === '') {
+            return [
+                'success' => false,
+                'message' => 'TopDawg product_code not found for SKU (sync topdawg_products or topdawg_metrics first).',
+            ];
+        }
+
         $url = $this->baseUrl.'/SupplierProduct/update';
         $attempts = [
+            array_merge(['product_code' => $productCode], $fields),
             array_merge(['product_code' => $sku], $fields),
+            array_merge(['sku' => $productCode], $fields),
             array_merge(['sku' => $sku], $fields),
         ];
 
@@ -301,8 +355,14 @@ class TopDawgApiService
             }
             $payload = $response->json();
             $lastMessage = is_array($payload)
-                ? (string) ($payload['message'] ?? $response->body())
+                ? (string) ($payload['message'] ?? json_encode($payload))
                 : (string) $response->body();
+            Log::warning('TopDawgApiService: product update attempt failed', [
+                'sku' => $sku,
+                'product_code' => $productCode,
+                'status' => $response->status(),
+                'body' => mb_substr((string) $response->body(), 0, 500),
+            ]);
         }
 
         return ['success' => false, 'message' => $lastMessage];

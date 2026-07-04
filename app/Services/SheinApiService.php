@@ -90,10 +90,6 @@ class SheinApiService
         );
         $url = $this->baseUrl.$endpoint;
 
-        $timestamp = (int) round(microtime(true) * 1000);
-        $random = Str::random(5);
-        $signature = $this->generateSheinSignature($endpoint, $timestamp, $random);
-
         $payload = [
             'skuCode' => $sku,
             'productName' => $normalized,
@@ -117,13 +113,7 @@ class SheinApiService
 
             $response = Http::withoutVerifying()
                 ->timeout(45)
-                ->withHeaders([
-                    'Language' => 'en-us',
-                    'x-lt-openKeyId' => $openKeyId,
-                    'x-lt-timestamp' => (string) $timestamp,
-                    'x-lt-signature' => $signature,
-                    'Content-Type' => 'application/json',
-                ])
+                ->withHeaders($this->buildSheinAuthHeaders($endpoint))
                 ->post($url, $payload);
 
             $body = $response->body();
@@ -314,6 +304,26 @@ class SheinApiService
         $finalSignature = $randomKey . $base64Signature;
 
         return $finalSignature;
+    }
+
+    /**
+     * Signed headers for SHEIN Open Platform (includes x-lt-randomKey required by auth policy).
+     *
+     * @return array<string, string>
+     */
+    protected function buildSheinAuthHeaders(string $endpoint): array
+    {
+        $timestamp = (int) round(microtime(true) * 1000);
+        $random = Str::random(5);
+        $signature = $this->generateSheinSignature($endpoint, $timestamp, $random);
+
+        return [
+            'Language' => 'en-us',
+            'x-lt-openKeyId' => (string) config('services.shein.open_key_id'),
+            'x-lt-timestamp' => (string) $timestamp,
+            'x-lt-signature' => $signature,
+            'Content-Type' => 'application/json',
+        ];
     }
 
 
@@ -863,10 +873,6 @@ public function getStock(array $skuCodes)
         );
         $url = $this->baseUrl.$endpoint;
 
-        $timestamp = (int) round(microtime(true) * 1000);
-        $random = Str::random(5);
-        $signature = $this->generateSheinSignature($endpoint, $timestamp, $random);
-
         $metric = $this->safeSheinMetricFindBySku($sku);
         $productName = $metric && ! empty($metric->product_name) ? $metric->product_name : $sku;
 
@@ -883,13 +889,7 @@ public function getStock(array $skuCodes)
         try {
             $response = Http::withoutVerifying()
                 ->timeout(60)
-                ->withHeaders([
-                    'Language' => 'en-us',
-                    'x-lt-openKeyId' => $openKeyId,
-                    'x-lt-timestamp' => (string) $timestamp,
-                    'x-lt-signature' => $signature,
-                    'Content-Type' => 'application/json',
-                ])
+                ->withHeaders($this->buildSheinAuthHeaders($endpoint))
                 ->post($url, $payload);
 
             $json = is_array($response->json()) ? $response->json() : null;

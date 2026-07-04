@@ -7,6 +7,10 @@ namespace App\Services;
  */
 class AlibabaApiService extends AliExpressApiService
 {
+    protected string $channelLabel = 'Alibaba';
+
+    protected string $tokenEnvKey = 'ALIBABA_ACCESS_TOKEN';
+
     public function __construct()
     {
         parent::__construct();

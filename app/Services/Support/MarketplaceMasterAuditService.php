@@ -453,6 +453,8 @@ class MarketplaceMasterAuditService
                     $row['warnings'][] = 'No aliexpress_metric product_id — live push may fail until synced.';
                 }
             }
+
+            $row['warnings'] = array_merge($row['warnings'], $this->marketplacePushWarnings($marketplace, $sku));
         }
 
         $row['ready'] = $row['credentials_configured']
@@ -584,6 +586,132 @@ class MarketplaceMasterAuditService
             ->first();
 
         return $row && ! empty($row->product_id) ? (string) $row->product_id : null;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function marketplacePushWarnings(string $marketplace, string $sku): array
+    {
+        $warnings = [];
+
+        if (in_array($marketplace, ['temu', 'temu2', 'tiktok', 'tiktok2'], true)) {
+            $warnings[] = 'Channel may require server IP allowlist — push fails with NOT_IN_IP_WHITE_LIST / IP not in allow list.';
+        }
+
+        if ($marketplace === 'newegg') {
+            $warnings[] = 'Newegg API may return HTTP 403 until this server IP is whitelisted in the Newegg seller portal.';
+        }
+
+        if ($marketplace === 'wayfair') {
+            $warnings[] = 'Wayfair uses OAuth client credentials — verify WAYFAIR_CLIENT_ID / WAYFAIR_CLIENT_SECRET / WAYFAIR_AUDIENCE.';
+        }
+
+        if ($marketplace === 'walmart') {
+            $warnings[] = 'Walmart feeds API requires active partner status — TERMINATED accounts get FORBIDDEN on v3/feeds.';
+        }
+
+        if ($marketplace === 'faire' && ! $this->configService->isConfigured('faire')) {
+            $warnings[] = 'Set FAIRE_BEARER_TOKEN or FAIRE_ACCESS_TOKEN in .env (app_id/secret alone are not enough for push).';
+        }
+
+        if ($marketplace === 'alibaba' && ! $this->filledConfig('services.alibaba.access_token')) {
+            $warnings[] = 'Set ALIBABA_ACCESS_TOKEN in .env (separate from AliExpress token).';
+        }
+
+        if ($marketplace === 'temu2' && ! $this->temu2GoodsIdForSku($sku)) {
+            $warnings[] = 'No temu2_pricing/temu2_metrics goods_id — push will fail until Temu 2 listing is synced.';
+        }
+
+        if ($marketplace === 'topdawg' && ! $this->topdawgProductCodeForSku($sku)) {
+            $warnings[] = 'No topdawg_products/tdid row for SKU — TopDawg product_code may be missing on push.';
+        }
+
+        if ($marketplace === 'doba') {
+            if (! $this->dobaItemNoForSku($sku)) {
+                $warnings[] = 'No doba_metrics item_id for SKU — cannot resolve Doba itemNo on push.';
+            }
+            $warnings[] = 'Doba OpenAPI requires server IP whitelist — /api/goods/update returns 403 otherwise.';
+        }
+
+        return $warnings;
+    }
+
+    private function filledConfig(string $key): bool
+    {
+        $value = config($key);
+
+        return is_string($value) ? trim($value) !== '' : ! empty($value);
+    }
+
+    private function temu2GoodsIdForSku(string $sku): bool
+    {
+        if (Schema::hasTable('temu2_pricing') && Schema::hasColumn('temu2_pricing', 'goods_id')) {
+            $id = DB::table('temu2_pricing')
+                ->where('sku', $sku)
+                ->orWhereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
+                ->whereNotNull('goods_id')
+                ->where('goods_id', '!=', '')
+                ->value('goods_id');
+            if ($id) {
+                return true;
+            }
+        }
+
+        if (Schema::hasTable('temu2_metrics') && Schema::hasColumn('temu2_metrics', 'goods_id')) {
+            return DB::table('temu2_metrics')
+                ->where('sku', $sku)
+                ->orWhereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
+                ->whereNotNull('goods_id')
+                ->where('goods_id', '!=', '')
+                ->exists();
+        }
+
+        return false;
+    }
+
+    private function topdawgProductCodeForSku(string $sku): bool
+    {
+        if (Schema::hasTable('topdawg_metrics')) {
+            $exists = DB::table('topdawg_metrics')
+                ->where('sku', $sku)
+                ->orWhereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
+                ->whereNotNull('product_id')
+                ->where('product_id', '!=', '')
+                ->exists();
+            if ($exists) {
+                return true;
+            }
+        }
+
+        if (! Schema::hasTable('topdawg_products')) {
+            return false;
+        }
+
+        return DB::table('topdawg_products')
+            ->where('sku', $sku)
+            ->orWhereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
+            ->where(function ($q) {
+                $q->whereNotNull('tdid')->where('tdid', '!=', '')
+                    ->orWhere(function ($q2) {
+                        $q2->whereNotNull('topdawg_listing_id')->where('topdawg_listing_id', '!=', '');
+                    });
+            })
+            ->exists();
+    }
+
+    private function dobaItemNoForSku(string $sku): bool
+    {
+        if (! Schema::hasTable('doba_metrics')) {
+            return false;
+        }
+
+        return DB::table('doba_metrics')
+            ->where('sku', $sku)
+            ->orWhereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
+            ->whereNotNull('item_id')
+            ->where('item_id', '!=', '')
+            ->exists();
     }
 
     private function isLiveRiskWarning(string $warning): bool

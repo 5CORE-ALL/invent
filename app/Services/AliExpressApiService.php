@@ -58,6 +58,12 @@ class AliExpressApiService
     /** Matches IOP SDK msectime() vs true millisecond timestamp. */
     protected string $timestampStyle;
 
+    /** Human label for OAuth token error messages (override in subclasses). */
+    protected string $channelLabel = 'AliExpress';
+
+    /** .env key hint in token error messages (override in subclasses). */
+    protected string $tokenEnvKey = 'ALIEXPRESS_ACCESS_TOKEN';
+
     public function __construct()
     {
         $this->appKey = (string) (config('services.aliexpress.app_key') ?: env('ALIEXPRESS_APP_KEY', ''));
@@ -239,7 +245,7 @@ class AliExpressApiService
         if (empty($this->accessToken)) {
             return [
                 'success' => false,
-                'message' => 'AliExpress OAuth token is missing (set ALIEXPRESS_ACCESS_TOKEN; sent as '.$this->tokenParam.').',
+                'message' => $this->channelLabel.' OAuth token is missing (set '.$this->tokenEnvKey.'; sent as '.$this->tokenParam.').',
             ];
         }
 

@@ -908,11 +908,17 @@ class DobaApiService
             $content = $this->getContent($timestamp);
             $sign = $this->generateSignature($content);
 
-            $payload = [
-                'itemNo' => (string) $itemNo,
-                'productTitle' => $sellerSku,
-                'productDescription' => $bulletPoints,
-                'description' => $bulletPoints,
+            $payloadAttempts = [
+                ['itemNo' => (string) $itemNo, 'goodsDesc' => $bulletPoints],
+                ['itemNo' => (string) $itemNo, 'productDescription' => $bulletPoints],
+                ['itemNo' => (string) $itemNo, 'description' => $bulletPoints],
+                ['itemNo' => (string) $itemNo, 'detail' => $bulletPoints],
+                ['itemNo' => (string) $itemNo, 'productDetail' => $bulletPoints],
+                [
+                    'itemNo' => (string) $itemNo,
+                    'productTitle' => $sellerSku,
+                    'productDescription' => $bulletPoints,
+                ],
             ];
 
             $headers = [
@@ -924,15 +930,36 @@ class DobaApiService
             ];
 
             $attempts = [
-                ['url' => 'https://openapi.doba.com/api/goods/info/update', 'method' => 'post', 'body' => 'form'],
-                ['url' => 'https://openapi.doba.com/api/goods/update', 'method' => 'post', 'body' => 'form'],
+                'https://openapi.doba.com/api/goods/update',
             ];
 
-            foreach ($attempts as $attempt) {
-                $response = Http::withHeaders($headers)->asForm()->post($attempt['url'], $payload);
-                if ($response->successful()) {
+            $lastMessage = 'Doba bullet update failed for all endpoints.';
+            foreach ($attempts as $url) {
+                foreach ($payloadAttempts as $payload) {
+                    $response = Http::withHeaders($headers)->asForm()->post($url, $payload);
                     $responseData = $response->json();
+                    Log::info('Doba bullet update response', [
+                        'url' => $url,
+                        'item_no' => $itemNo,
+                        'payload_keys' => array_keys($payload),
+                        'status' => $response->status(),
+                        'response' => $responseData,
+                    ]);
+
+                    if (! $response->successful()) {
+                        $msg = (string) ($responseData['responseMessage'] ?? mb_substr((string) $response->body(), 0, 300));
+                        if (stripos($msg, 'IP whitelist') !== false || stripos($msg, 'whitelist') !== false) {
+                            return [
+                                'success' => false,
+                                'message' => 'Doba API IP whitelist check failed — add this server IP in the Doba Open Platform app settings.',
+                            ];
+                        }
+                        $lastMessage = 'HTTP '.$response->status().': '.$msg;
+                        continue;
+                    }
+
                     if (isset($responseData['responseCode']) && $responseData['responseCode'] !== '000000') {
+                        $lastMessage = (string) ($responseData['responseMessage'] ?? 'Doba API error '.$responseData['responseCode']);
                         continue;
                     }
 
@@ -940,7 +967,7 @@ class DobaApiService
                 }
             }
 
-            return ['success' => false, 'message' => 'Doba bullet update failed for all endpoints.'];
+            return ['success' => false, 'message' => $lastMessage];
         } catch (\Throwable $e) {
             return ['success' => false, 'message' => $e->getMessage()];
         }
