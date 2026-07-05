@@ -1727,12 +1727,11 @@ class VerificationAdjustmentController extends Controller
         // as the app zone (Asia/Kolkata) was double-shifting and showing the
         // wrong time. `updated_at`/`created_at` are Eloquent timestamps stored
         // in the app zone, so they parse with the default zone.
-        // Lost/Gain passes display_tz=America/Los_Angeles (US California);
-        // other consumers default to America/New_York.
+        // Timestamps are shown in US California (Pacific) time by default.
         $allowedTz = ['America/New_York', 'America/Los_Angeles'];
-        $displayTz = $request->input('display_tz', 'America/New_York');
+        $displayTz = $request->input('display_tz', 'America/Los_Angeles');
         if (! in_array($displayTz, $allowedTz, true)) {
-            $displayTz = 'America/New_York';
+            $displayTz = 'America/Los_Angeles';
         }
 
         // Order: latest update/approval first (approved_at then updated_at)
