@@ -3429,6 +3429,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::put('/video-ads-master/{id}',                  [\App\Http\Controllers\VideoAdsMasterController::class, 'update'])->whereNumber('id')->name('video.ads.master.update');
     Route::delete('/video-ads-master/{id}',               [\App\Http\Controllers\VideoAdsMasterController::class, 'destroy'])->whereNumber('id')->name('video.ads.master.destroy');
     Route::post('/video-ads-master/{id}/copy',            [\App\Http\Controllers\VideoAdsMasterController::class, 'copy'])->whereNumber('id')->name('video.ads.master.copy');
+    Route::put('/video-ads-master/{id}/check',            [\App\Http\Controllers\VideoAdsMasterController::class, 'toggleCheck'])->whereNumber('id')->name('video.ads.master.check');
+    Route::get('/video-ads-master/{id}/check-history',    [\App\Http\Controllers\VideoAdsMasterController::class, 'checkHistory'])->whereNumber('id')->name('video.ads.master.check.history');
     Route::post('/video-ads-master/hook-options',         [\App\Http\Controllers\VideoAdsMasterController::class, 'storeHookOption'])->name('video.ads.master.hook.options.store');
     Route::get('/video-ads-master/sample-csv',            [\App\Http\Controllers\VideoAdsMasterController::class, 'sampleCsv'])->name('video.ads.master.sample.csv');
     Route::get('/video-ads-master/export',                [\App\Http\Controllers\VideoAdsMasterController::class, 'export'])->name('video.ads.master.export');
@@ -3490,6 +3492,13 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/instagram-ads/group-carousal',            [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'instagramGroupCarousalIndex'])->name('instagram.ads.channel.group.carousal');
     Route::get('/instagram-ads/parent-video',              [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'instagramParentVideoIndex'])->name('instagram.ads.channel.parent.video');
     Route::get('/instagram-ads/parent-carousal',           [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'instagramParentCarousalIndex'])->name('instagram.ads.channel.parent.carousal');
+
+    // ── Music Store / Music School — same Meta dataset as /facebook-all-ads-sheet,
+    // lensed to ad_type = MUSIC STORE / MUSIC SCHOOL. They reuse the Facebook
+    // blade + all /facebook-all-ads-sheet/* data & action endpoints; only the
+    // ad_type filter differs (just like the G Video / P Carousal child pages).
+    Route::get('/music-store-ads-sheet',                   [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'musicStoreIndex'])->name('music.store.ads.sheet');
+    Route::get('/music-school-ads-sheet',                  [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'musicSchoolIndex'])->name('music.school.ads.sheet');
 
     // ── TikTok Video Ads — fully independent module (own tables, own
     // controller). Same page layout / filters as the Meta sheet but a
@@ -4017,6 +4026,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Advertisement Master view routes
     Route::get('/advertisement-master', [AdvertisementMasterController::class, 'index'])->name('advertisement.master');
     Route::get('/advertisement-master/data', [AdvertisementMasterController::class, 'data'])->name('advertisement.master.data');
+    Route::get('/advertisement-master/history', [AdvertisementMasterController::class, 'history'])->name('advertisement.master.history');
     Route::get('/kw-amazon', [KwAmazonController::class, 'Amazon'])->name('advertisment.kw.amazon');
     Route::post('/update-checkbox-flag', [KwAmazonController::class, 'updateCheckboxes']);
     Route::get('/kw-ebay', [KwEbayController::class, 'Ebay'])->name('advertisment.kw.eBay');
@@ -5683,6 +5693,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/google/shopping/google-shopping/push-sbid', 'pushSbidShopping')->name('google.shopping.campaigns.push.sbid');
         Route::post('/google/shopping/google-shopping/pull-data', 'pullData')->name('google.shopping.campaigns.pull.data');
         Route::get('/google/shopping/google-shopping/badge-history', 'badgeHistory')->name('google.shopping.campaigns.badge.history');
+        Route::get('/google/shopping/google-shopping/sbgt-history', 'sbgtHistory')->name('google.shopping.campaigns.sbgt.history');
         Route::post('/google/shopping/google-shopping/u7-distribution', 'u7Distribution')->name('google.shopping.campaigns.u7.distribution');
         Route::post('/google/shopping/google-shopping/u7-distribution-history', 'u7DistributionHistory')->name('google.shopping.campaigns.u7.history');
     });
@@ -5697,6 +5708,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/google/shopping/google-serp/push-sbgt', 'pushSbgtShoppingBudgets')->name('google.serp.campaigns.push.sbgt');
         Route::post('/google/shopping/google-serp/push-sbid', 'pushSbidShopping')->name('google.serp.campaigns.push.sbid');
         Route::get('/google/shopping/google-serp/badge-history', 'badgeHistory')->name('google.serp.campaigns.badge.history');
+        Route::get('/google/shopping/google-serp/sbgt-history', 'sbgtHistory')->name('google.serp.campaigns.sbgt.history');
         Route::post('/google/shopping/google-serp/u7-distribution', 'u7Distribution')->name('google.serp.campaigns.u7.distribution');
         Route::post('/google/shopping/google-serp/u7-distribution-history', 'u7DistributionHistory')->name('google.serp.campaigns.u7.history');
     });
@@ -5711,6 +5723,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/google/shopping/youtube-ads/push-sbgt', 'pushSbgtShoppingBudgets')->name('google.youtube.ads.campaigns.push.sbgt');
         Route::post('/google/shopping/youtube-ads/push-sbid', 'pushSbidShopping')->name('google.youtube.ads.campaigns.push.sbid');
         Route::get('/google/shopping/youtube-ads/badge-history', 'badgeHistory')->name('google.youtube.ads.campaigns.badge.history');
+        Route::get('/google/shopping/youtube-ads/sbgt-history', 'sbgtHistory')->name('google.youtube.ads.campaigns.sbgt.history');
         Route::post('/google/shopping/youtube-ads/u7-distribution', 'u7Distribution')->name('google.youtube.ads.campaigns.u7.distribution');
         Route::post('/google/shopping/youtube-ads/u7-distribution-history', 'u7DistributionHistory')->name('google.youtube.ads.campaigns.u7.history');
     });

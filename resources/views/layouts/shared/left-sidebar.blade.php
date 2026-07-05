@@ -338,7 +338,7 @@
                             </a>
                         </li>
                         <li>
-                            <a href="{{ route('customer.care.orders.on.hold') }}">Orders On Hold</a>
+                            <a href="{{ route('customer.care.orders.on.hold') }}">on hold / Mapping</a>
                         </li>
                         <li>
                             <a href="{{ route('customer.care.qc.and.packing') }}">QC And Packing</a>
@@ -740,6 +740,12 @@
                         </li>
                         <li>
                             <a href="{{ route('facebook.carousal.ads.sheet') }}">Facebook Carousal Ads Sheet</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('music.store.ads.sheet') }}">Music Store</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('music.school.ads.sheet') }}">Music School</a>
                         </li>
                     </ul>
                 </div>

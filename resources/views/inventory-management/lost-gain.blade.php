@@ -1011,7 +1011,10 @@
                         reason: reason,
                         approved_by: approvedBy,
                         date_from: dateFrom,
-                        date_to: dateTo
+                        date_to: dateTo,
+                        // Include stock sent out (type = 'outgoing') so it reflects
+                        // in Lost/Gain alongside manual verification adjustments.
+                        include_outgoing: 1
                     },
                     success: function(res) {
                         const tableBody = $('#lostGainTable tbody');

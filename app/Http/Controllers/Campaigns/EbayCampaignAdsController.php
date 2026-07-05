@@ -598,8 +598,44 @@ class EbayCampaignAdsController extends Controller
                 'clicks' => $kwMetrics['clicks'] + $pmtMetrics['clicks'],
                 'sold'   => $kwMetrics['sold'] + $pmtMetrics['sold'],
                 'sales'  => $kwMetrics['sales'] + $pmtMetrics['sales'],
+                'active' => $this->advertisementMasterActiveCount('ebay_priority_reports', 'ebay_campaign_ads'),
             ], false),
         ];
+    }
+
+    /**
+     * Active (RUNNING) eBay campaigns: keyword (CPC) campaigns from the priority-report
+     * L30 rows plus promoted (CPS / COST_PER_SALE) campaigns from the campaign-ads table.
+     * Defensive column/table checks keep it at 0 rather than erroring if a schema differs.
+     */
+    protected function advertisementMasterActiveCount(string $priorityTable, string $campaignAdsTable): int
+    {
+        $kw = 0;
+        if (Schema::hasTable($priorityTable)
+            && Schema::hasColumn($priorityTable, 'campaignStatus')
+            && Schema::hasColumn($priorityTable, 'campaign_id')) {
+            $kw = (int) DB::table($priorityTable)
+                ->whereRaw("UPPER(TRIM(report_range)) = 'L30'")
+                ->whereRaw("UPPER(TRIM(campaignStatus)) = 'RUNNING'")
+                ->whereNotNull('campaign_id')
+                ->distinct()
+                ->count('campaign_id');
+        }
+
+        $pmt = 0;
+        if (Schema::hasTable($campaignAdsTable)
+            && Schema::hasColumn($campaignAdsTable, 'campaign_status')
+            && Schema::hasColumn($campaignAdsTable, 'campaign_id')) {
+            $q = DB::table($campaignAdsTable)
+                ->whereRaw("UPPER(TRIM(campaign_status)) = 'RUNNING'")
+                ->whereNotNull('campaign_id');
+            if (Schema::hasColumn($campaignAdsTable, 'funding_strategy')) {
+                $q->where('funding_strategy', 'COST_PER_SALE');
+            }
+            $pmt = (int) $q->distinct()->count('campaign_id');
+        }
+
+        return $kw + $pmt;
     }
 
     /**
@@ -704,6 +740,7 @@ class EbayCampaignAdsController extends Controller
                 ? round(($spend / $sales) * 100, 0)
                 : ($spend > 0 ? 100 : 0),
             'tcos'        => 0,
+            'active'      => (int) ($row->active ?? 0),
             'is_sub_row'  => $isSubRow,
             'marketplace' => 'ebay',
         ];

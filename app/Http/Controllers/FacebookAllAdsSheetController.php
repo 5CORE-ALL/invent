@@ -34,6 +34,11 @@ class FacebookAllAdsSheetController extends Controller
         'group-carousal'  => ['GROUP CAROUSAL'],
         'parent-video'    => ['PARENT VIDEO'],
         'parent-carousal' => ['PARENT CAROUSAL'],
+        // Music Store / Music School — same Meta dataset, lensed to a single
+        // ad_type. These back the /music-store-ads-sheet + /music-school-ads-sheet
+        // pages under the Facebook menu.
+        'music-store'     => ['MUSIC STORE'],
+        'music-school'    => ['MUSIC SCHOOL'],
     ];
 
     /** All-ads page (no ad_type filter, full dropdown). */
@@ -152,6 +157,30 @@ class FacebookAllAdsSheetController extends Controller
     public function instagramParentCarousalIndex(): \Illuminate\View\View
     {
         return $this->renderTypedChannelChild('Insta', 'parent-carousal', 'P Carousal');
+    }
+
+    /** Music Store page — Meta dataset lensed to ad_type = MUSIC STORE. */
+    public function musicStoreIndex()
+    {
+        return view('facebook-all-ads-sheet', [
+            'pageType'       => 'music-store',
+            'pageTitle'      => 'Music Store',
+            'pageSubtitle'   => 'Meta campaigns tagged Type = MUSIC STORE',
+            'allowedAdTypes' => FacebookAllAdsSheet::AD_TYPES,
+            'chOptions'      => FacebookAllAdsSheet::CH_OPTIONS,
+        ]);
+    }
+
+    /** Music School page — Meta dataset lensed to ad_type = MUSIC SCHOOL. */
+    public function musicSchoolIndex()
+    {
+        return view('facebook-all-ads-sheet', [
+            'pageType'       => 'music-school',
+            'pageTitle'      => 'Music School',
+            'pageSubtitle'   => 'Meta campaigns tagged Type = MUSIC SCHOOL',
+            'allowedAdTypes' => FacebookAllAdsSheet::AD_TYPES,
+            'chOptions'      => FacebookAllAdsSheet::CH_OPTIONS,
+        ]);
     }
 
     /** Carousal-only page — shows GROUP CAROUSAL + PARENT CAROUSAL rows. */

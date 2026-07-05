@@ -24,6 +24,8 @@ class FacebookAllAdsSheet extends Model
         'GROUP CAROUSAL',
         'PARENT VIDEO',
         'PARENT CAROUSAL',
+        'MUSIC STORE',
+        'MUSIC SCHOOL',
     ];
 
     /** Allowed CH (channel) dropdown values shown on the page. */

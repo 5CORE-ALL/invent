@@ -63,6 +63,11 @@ class GoogleYoutubeAdsCampaignsController extends GoogleShoppingCampaignsControl
         }
     }
 
+    protected function channelKey(): string
+    {
+        return 'youtube';
+    }
+
     protected function pushSbgtCommandLabel(): string
     {
         return 'push-sbgt-youtube';

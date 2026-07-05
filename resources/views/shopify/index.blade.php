@@ -239,8 +239,14 @@
     }
 
     // ── Date pickers ───────────────────────────────────────────────────────
-    const fpFrom = flatpickr('#date-from', { dateFormat: 'Y-m-d', defaultDate: new Date(Date.now() - 29*86400*1000) });
-    const fpTo   = flatpickr('#date-to',   { dateFormat: 'Y-m-d', defaultDate: new Date() });
+    // Default window comes from the server-side canonical Pacific L30 range
+    // (shopifyDirectL30Range) so the page's Net Sales lines up with the
+    // cross-page badges (e.g. "S SALES" on /shopify-ads-master) no matter the
+    // viewer's browser timezone.
+    const L30_FROM = '{{ $defaultFrom }}';
+    const L30_TO   = '{{ $defaultTo }}';
+    const fpFrom = flatpickr('#date-from', { dateFormat: 'Y-m-d', defaultDate: L30_FROM });
+    const fpTo   = flatpickr('#date-to',   { dateFormat: 'Y-m-d', defaultDate: L30_TO });
 
     function buildParams() {
         return {
@@ -556,8 +562,8 @@
 
         $('#apply-date-btn').on('click', loadData);
         $('#reset-date-btn').on('click', function () {
-            fpFrom.setDate(new Date(Date.now() - 29*86400*1000));
-            fpTo.setDate(new Date());
+            fpFrom.setDate(L30_FROM);
+            fpTo.setDate(L30_TO);
             loadData();
         });
 

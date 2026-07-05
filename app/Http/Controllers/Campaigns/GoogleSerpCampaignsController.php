@@ -50,6 +50,11 @@ class GoogleSerpCampaignsController extends GoogleShoppingCampaignsController
         );
     }
 
+    protected function channelKey(): string
+    {
+        return 'serp';
+    }
+
     protected function pushSbgtCommandLabel(): string
     {
         return 'push-sbgt-serp';

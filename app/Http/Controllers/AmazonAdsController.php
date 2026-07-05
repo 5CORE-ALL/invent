@@ -3743,24 +3743,40 @@ class AmazonAdsController extends Controller
         $spMetrics = $this->advertisementMasterMetricsForSource('sp_reports');
         $sbMetrics = $this->advertisementMasterMetricsForSource('sb_reports');
 
+        $spActive = $this->advertisementMasterActiveCountForSource('sp_reports');
+        $sbActive = $this->advertisementMasterActiveCountForSource('sb_reports');
+
         $amazonMetrics = [
             'spend'  => $spMetrics['spend'] + $sbMetrics['spend'],
             'clicks' => $spMetrics['clicks'] + $sbMetrics['clicks'],
             'sold'   => $spMetrics['sold'] + $sbMetrics['sold'],
             'sales'  => $spMetrics['sales'] + $sbMetrics['sales'],
+            'active' => $spActive + $sbActive,
         ];
 
         $kwMetrics = $this->advertisementMasterMetricsForSource(
             'sp_reports',
-            fn (Builder $query) => self::applyAdvertisementMasterKwScope($query)
+            fn (Builder $query, array $cols, string $tbl) => self::applyAdvertisementMasterKwScope($query, $cols, $tbl)
+        );
+        $kwMetrics['active'] = $this->advertisementMasterActiveCountForSource(
+            'sp_reports',
+            fn (Builder $query, array $cols, string $tbl) => self::applyAdvertisementMasterKwScope($query, $cols, $tbl)
         );
         $ptMetrics = $this->advertisementMasterMetricsForSource(
             'sp_reports',
-            fn (Builder $query) => self::applyAdvertisementMasterPtScope($query)
+            fn (Builder $query, array $cols, string $tbl) => self::applyAdvertisementMasterPtScope($query, $cols, $tbl)
+        );
+        $ptMetrics['active'] = $this->advertisementMasterActiveCountForSource(
+            'sp_reports',
+            fn (Builder $query, array $cols, string $tbl) => self::applyAdvertisementMasterPtScope($query, $cols, $tbl)
         );
         $hlMetrics = $this->advertisementMasterMetricsForSource(
             'sb_reports',
-            fn (Builder $query) => self::applyAdvertisementMasterHlScope($query)
+            fn (Builder $query, array $cols, string $tbl) => self::applyAdvertisementMasterHlScope($query, $cols, $tbl)
+        );
+        $hlMetrics['active'] = $this->advertisementMasterActiveCountForSource(
+            'sb_reports',
+            fn (Builder $query, array $cols, string $tbl) => self::applyAdvertisementMasterHlScope($query, $cols, $tbl)
         );
 
         $sep = ' · ';
@@ -3775,33 +3791,66 @@ class AmazonAdsController extends Controller
         return [$parent];
     }
 
-    /** KW scope — SP campaigns excluding PT / FBA suffixes (same as AMZ KW utilized charts). */
-    private static function applyAdvertisementMasterKwScope(Builder $query): void
+    /**
+     * KW scope — mirrors /amazon-ads/all with "KW" typed into the global search
+     * box on the SP reports table: %KW% OR-matched across every column. The L30
+     * badge aggregation then runs over exactly those matched rows.
+     *
+     * @param  array<int, string>  $dbColumns
+     */
+    private static function applyAdvertisementMasterKwScope(Builder $query, array $dbColumns, string $table): void
     {
-        $query->whereRaw("campaignName NOT REGEXP '(PT\\.?$|FBA$)'")
-            ->whereRaw('(campaignStatus IS NULL OR campaignStatus != \'ARCHIVED\')');
-    }
-
-    /** PT scope — SP campaigns ending in PT (excludes FBA PT). */
-    private static function applyAdvertisementMasterPtScope(Builder $query): void
-    {
-        $query->where(function ($q) {
-            $q->whereRaw("campaignName LIKE '%PT'")
-                ->orWhereRaw("campaignName LIKE '%PT.'");
-        })
-            ->whereRaw("campaignName NOT LIKE '%FBA PT%'")
-            ->whereRaw("campaignName NOT LIKE '%FBA PT.%'")
-            ->whereRaw('(campaignStatus IS NULL OR campaignStatus != \'ARCHIVED\')');
-    }
-
-    /** HL scope — all non-archived SB campaigns. */
-    private static function applyAdvertisementMasterHlScope(Builder $query): void
-    {
-        $query->whereRaw('(campaignStatus IS NULL OR campaignStatus != \'ARCHIVED\')');
+        self::applyAdvertisementMasterSearchScope($query, $dbColumns, $table, 'KW');
     }
 
     /**
-     * @param  callable(Builder): void|null  $scope
+     * PT scope — mirrors /amazon-ads/all with "PT" typed into the global search
+     * box on the SP reports table (%PT% OR-matched across every column).
+     *
+     * @param  array<int, string>  $dbColumns
+     */
+    private static function applyAdvertisementMasterPtScope(Builder $query, array $dbColumns, string $table): void
+    {
+        self::applyAdvertisementMasterSearchScope($query, $dbColumns, $table, 'PT');
+    }
+
+    /**
+     * HL scope — mirrors /amazon-ads/all with the SB reports table selected and
+     * an empty search box: every SB campaign counts, so no extra filtering.
+     *
+     * @param  array<int, string>  $dbColumns
+     */
+    private static function applyAdvertisementMasterHlScope(Builder $query, array $dbColumns, string $table): void
+    {
+        // No search term: HL == all SB campaigns (matches picking the SB table
+        // on /amazon-ads/all with an empty search box).
+    }
+
+    /**
+     * Replicate the /amazon-ads/all DataTables global search: the term wrapped
+     * in %...% and OR-matched across every column of the table, so these badge
+     * totals line up with what the grid shows for the same typed search.
+     * Columns are qualified with the table name so the same scope also works on
+     * the joined "active" count query without ambiguous-column errors.
+     *
+     * @param  array<int, string>  $dbColumns
+     */
+    private static function applyAdvertisementMasterSearchScope(Builder $query, array $dbColumns, string $table, string $search): void
+    {
+        if ($dbColumns === []) {
+            return;
+        }
+
+        $term = '%'.addcslashes($search, '%_\\').'%';
+        $query->where(function ($q) use ($dbColumns, $table, $term) {
+            foreach ($dbColumns as $col) {
+                $q->orWhere($table.'.'.$col, 'LIKE', $term);
+            }
+        });
+    }
+
+    /**
+     * @param  callable(Builder, array<int, string>, string): void|null  $scope
      * @return array{spend: float, clicks: int, sold: int, sales: float}
      */
     private function advertisementMasterMetricsForSource(string $source, ?callable $scope = null): array
@@ -3824,8 +3873,13 @@ class AmazonAdsController extends Controller
         }
 
         $query = DB::table($table);
+        // Match the /amazon-ads/all default view: it pre-fills the date box with
+        // the latest available report day (single Calendar day), so the badge
+        // totals reflect that one day. Mirror it here so the advertisement rows
+        // equal what /amazon-ads/all shows on load.
+        self::applyAdvertisementMasterLatestDayFilter($query, $table);
         if ($scope !== null) {
-            $scope($query);
+            $scope($query, $dbColumns, $table);
         }
         $l30Agg = self::aggregateL30CostAndSalesDistinctForFilteredAmazonAdsRows(
             $query,
@@ -3844,6 +3898,83 @@ class AmazonAdsController extends Controller
             'sold'   => (int) round((float) ($l30Agg['purchases_sum'] ?? 0)),
             'sales'  => round((float) ($l30Agg['sales_sum'] ?? 0), 2),
         ];
+    }
+
+    /**
+     * Count ACTIVE (campaignStatus = ENABLED) campaigns in the same window the
+     * metrics use — the latest available report day (single Calendar day), same
+     * default as /amazon-ads/all. Optional $scope applies the same KW / PT / HL
+     * search scope as {@see advertisementMasterMetricsForSource}. Falls back to
+     * the latest `report_date_range = 'L30'` row per campaign when no daily day
+     * is available.
+     *
+     * @param  callable(Builder, array<int, string>, string): void|null  $scope
+     */
+    private function advertisementMasterActiveCountForSource(string $source, ?callable $scope = null): int
+    {
+        if (! isset(self::RAW_TABLE_SOURCES[$source])) {
+            return 0;
+        }
+        $table = self::RAW_TABLE_SOURCES[$source];
+        if (! Schema::hasTable($table)) {
+            return 0;
+        }
+        $dbColumns = self::orderedColumnsForTable($table);
+        if (! in_array('campaign_id', $dbColumns, true)
+            || ! in_array('report_date_range', $dbColumns, true)
+            || ! in_array('campaignStatus', $dbColumns, true)
+            || ! in_array('id', $dbColumns, true)) {
+            return 0;
+        }
+
+        $latestDay = self::latestAvailableReportDayYmd($table);
+
+        if ($latestDay !== null) {
+            // Enabled distinct campaigns that ran on the latest report day, so
+            // the "active" count lines up with the single-day metric window.
+            $query = DB::table($table);
+            self::whereReportDateRangeDailyYmdInRange($query, $latestDay, $latestDay);
+            $query->whereRaw("UPPER(TRIM({$table}.campaignStatus)) = 'ENABLED'");
+
+            if ($scope !== null) {
+                $scope($query, $dbColumns, $table);
+            }
+
+            return (int) $query->distinct()->count($table.'.campaign_id');
+        }
+
+        // Fallback (no daily rows): latest L30 row id per campaign.
+        $latest = DB::table($table)
+            ->whereRaw("UPPER(TRIM(report_date_range)) = 'L30'")
+            ->whereNotNull('campaign_id')
+            ->selectRaw('campaign_id, MAX(id) AS max_id')
+            ->groupBy('campaign_id');
+
+        $query = DB::table($table)
+            ->joinSub($latest, 'l30x', fn ($j) => $j->on($table.'.id', '=', 'l30x.max_id'))
+            ->whereRaw("UPPER(TRIM({$table}.campaignStatus)) = 'ENABLED'");
+
+        // The scope qualifies its search columns with $table, so joining l30x
+        // (which only carries campaign_id + max_id) stays unambiguous.
+        if ($scope !== null) {
+            $scope($query, $dbColumns, $table);
+        }
+
+        return (int) $query->distinct()->count($table.'.campaign_id');
+    }
+
+    /**
+     * Apply the /amazon-ads/all default date filter: the latest available report
+     * day for this table as a single Calendar day. No-op when the table has no
+     * dated daily rows (then the full L30 rolling window is used).
+     */
+    private static function applyAdvertisementMasterLatestDayFilter(Builder $query, string $table): void
+    {
+        $latestDay = self::latestAvailableReportDayYmd($table);
+        if ($latestDay === null) {
+            return;
+        }
+        self::whereReportDateRangeDailyYmdInRange($query, $latestDay, $latestDay);
     }
 
     /**
@@ -3868,6 +3999,7 @@ class AmazonAdsController extends Controller
                 ? round(($spend / $sales) * 100, 0)
                 : ($spend > 0 ? 100 : 0),
             'tcos'       => 0,
+            'active'     => (int) ($row->active ?? 0),
             'is_sub_row' => $isSubRow,
             'marketplace' => 'amazon',
         ];

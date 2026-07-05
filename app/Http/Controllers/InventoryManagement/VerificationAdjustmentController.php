@@ -1645,7 +1645,20 @@ class VerificationAdjustmentController extends Controller
 
     public function getVerifiedStockActivityLog(Request $request)
     {
-        $query = Inventory::where('type', null)->where('is_approved', true);
+        // By default only manual verification adjustments (type = null) are
+        // returned — this endpoint is shared by several inventory pages.
+        // The Lost/Gain page opts in with `include_outgoing=1` so that stock
+        // sent out (type = 'outgoing', e.g. All Issues Replacement / Wrong-Item
+        // and /outgoing-view) is also reflected there.
+        $includeOutgoing = $request->boolean('include_outgoing');
+
+        $query = Inventory::where('is_approved', true)
+            ->where(function ($q) use ($includeOutgoing) {
+                $q->whereNull('type');
+                if ($includeOutgoing) {
+                    $q->orWhere('type', 'outgoing');
+                }
+            });
         
         // Apply reason filter - handle comma-separated values
         if ($request->filled('reason')) {

@@ -12,7 +12,7 @@
     $chFilter        = $chFilter        ?? null;
     $pageTitle       = $pageTitle       ?? 'Facebook All Ads Sheet';
     $pageSubtitle    = $pageSubtitle    ?? 'Generic CSV / Excel / TSV importer — upload any sheet and view it as a table';
-    $allowedAdTypes  = $allowedAdTypes  ?? ['GROUP VIDEO', 'GROUP CAROUSAL', 'PARENT VIDEO', 'PARENT CAROUSAL'];
+    $allowedAdTypes  = $allowedAdTypes  ?? ['GROUP VIDEO', 'GROUP CAROUSAL', 'PARENT VIDEO', 'PARENT CAROUSAL', 'MUSIC STORE', 'MUSIC SCHOOL'];
 @endphp
 
 @extends('layouts.vertical', ['title' => $pageTitle, 'sidenav' => 'condensed'])
@@ -150,7 +150,7 @@
                          lets the strip scroll horizontally on narrow screens
                          instead of pushing the right-side controls onto a
                          second line. --}}
-                    <div class="d-flex align-items-center flex-nowrap gap-2 flex-grow-1 overflow-x-auto py-1"
+                    <div class="d-flex align-items-center flex-wrap gap-2 flex-grow-1 py-1"
                          style="min-width:0;">
                         {{-- Live sums of the IMPR / CLK columns
                              across whatever rows are currently visible
@@ -161,6 +161,8 @@
                              a chart link; clicking does nothing. --}}
                         <span id="faasCountBadge" class="faas-stat-badge faas-stat-badge--count"
                               title="Visible row count">Count:<span id="faasCountValue">0</span></span>
+                        <span id="faasActiveBadge" class="faas-stat-badge faas-stat-badge--sales"
+                              title="Active campaigns among the visible rows">Active:<span id="faasActiveValue">0</span></span>
                         <span id="faasImpressionsBadge" data-metric="impr" data-label="Impr"
                               class="faas-stat-badge faas-stat-badge--impr badge-chart-link"
                               title="Click for 32-day trend">Impr:<span id="faasImpressionsValue">0</span></span>
@@ -329,6 +331,22 @@
                            class="form-control form-control-sm"
                            placeholder="Search across all columns…"
                            style="flex-grow:1; min-width:220px;">
+
+                    {{-- CTR % min-max range filter. --}}
+                    <div class="d-flex align-items-center gap-1" style="flex-shrink:0;" title="Filter rows by CTR %">
+                        <span class="small fw-semibold text-muted">CTR%</span>
+                        <input type="number" id="faasCtrMin" class="form-control form-control-sm" placeholder="Min" min="0" step="0.01" inputmode="decimal" style="width:64px;text-align:center;">
+                        <span class="text-muted">–</span>
+                        <input type="number" id="faasCtrMax" class="form-control form-control-sm" placeholder="Max" min="0" step="0.01" inputmode="decimal" style="width:64px;text-align:center;">
+                    </div>
+
+                    {{-- CVR % min-max range filter. --}}
+                    <div class="d-flex align-items-center gap-1" style="flex-shrink:0;" title="Filter rows by CVR %">
+                        <span class="small fw-semibold text-muted">CVR%</span>
+                        <input type="number" id="faasCvrMin" class="form-control form-control-sm" placeholder="Min" min="0" step="0.01" inputmode="decimal" style="width:64px;text-align:center;">
+                        <span class="text-muted">–</span>
+                        <input type="number" id="faasCvrMax" class="form-control form-control-sm" placeholder="Max" min="0" step="0.01" inputmode="decimal" style="width:64px;text-align:center;">
+                    </div>
 
                     {{-- Sbgt-band multi-select (penultimate). --}}
                     <div class="dropdown faas-sbgt-dropdown" style="flex-shrink:0;">
@@ -769,6 +787,8 @@
             'GROUP CAROUSAL':  { bg: '#dcfce7', fg: '#166534' },
             'PARENT VIDEO':    { bg: '#fef3c7', fg: '#92400e' },
             'PARENT CAROUSAL': { bg: '#fce7f3', fg: '#9d174d' },
+            'MUSIC STORE':     { bg: '#ede9fe', fg: '#5b21b6' },
+            'MUSIC SCHOOL':    { bg: '#cffafe', fg: '#155e75' },
         };
         // CH (channel) dropdown — which platform the campaign runs on.
         const CH_OPTIONS = @json($chOptions ?? ['FB', 'Insta']);
@@ -795,6 +815,87 @@
         let savedColumnVisibility = {};
 
         let tabulator = null;
+
+        // Weighted CTR / CVR averages over the whole merged dataset, refreshed by
+        // faasComputeAverages() each time the table loads. They drive the CTR/CVR
+        // flag colours (red < avg*0.80, magenta > avg*1.20, green in between).
+        let faasAvgCtr = 0;
+        let faasAvgCvr = 0;
+
+        // Recompute the weighted averages from a raw row set (CTR = ΣCLK/ΣIMPR,
+        // CVR = ΣSOLD/ΣCLK) — matches the toolbar CTR/CVR badge formulas.
+        function faasComputeAverages(rows) {
+            let impr = 0, clk = 0, sold = 0;
+            (rows || []).forEach(function (r) {
+                impr += toNumber(r.IMPR);
+                clk  += toNumber(r.CLK);
+                sold += toNumber(r.SOLD);
+            });
+            faasAvgCtr = impr > 0 ? (clk / impr) * 100 : 0;
+            faasAvgCvr = clk  > 0 ? (sold / clk) * 100 : 0;
+        }
+
+        // Wrap a CTR/CVR display string in a colour span relative to `avg`:
+        //   red     value < avg*0.80  (or, when avg<=0, value == 0 — the floor)
+        //   magenta value > avg*1.20  (or, when avg<=0, any value > 0)
+        //   green   in between
+        // Blank / non-numeric values render red "0%" so empty ratios still stand out.
+        function faasFlagRatioHtml(rawValue, avg) {
+            const hasVal = !(rawValue === null || rawValue === undefined || String(rawValue).trim() === '');
+            const display = hasVal ? String(rawValue) : '0%';
+            const value = toNumber(rawValue);
+            let color;
+            if (!isFinite(avg) || avg <= 0) {
+                color = value > 0 ? '#d400d4' : '#dc2626';
+            } else if (value < avg * 0.80) {
+                color = '#dc2626';
+            } else if (value > avg * 1.20) {
+                color = '#d400d4';
+            } else {
+                color = '#16a34a';
+            }
+            return '<span style="color:' + color + ';font-weight:700;">' + display + '</span>';
+        }
+
+        // Current average ACOS (%) — mirrors the toolbar ACOS badge
+        // (ΣSPEND / ΣSALES over the visible rows). Refreshed by
+        // updateMetricBadges() and drives the Action column alert.
+        let faasAvgAcos = 0;
+        let faasReformatting = false;
+
+        // Action column: show a red alert triangle when a row is BOTH
+        // over the current average ACOS AND spending more than $30 — i.e.
+        // an expensive campaign performing worse than the visible average.
+        // Reads the live faasAvgAcos so it re-evaluates as filters change.
+        function formatActionCell(cell) {
+            const row   = cell.getRow().getData();
+            const acos  = toNumber(row['Acos']);
+            const spend = toNumber(row['SPEND']);
+            if (acos > faasAvgAcos && spend > 30) {
+                const tip = 'ACOS ' + acos + '% > avg ' + Math.round(faasAvgAcos)
+                          + '% and Spend $' + Math.round(spend) + ' > $30';
+                return '<i class="fas fa-exclamation-triangle" title="' + tip + '"'
+                     + ' style="color:#dc2626;font-size:15px;"></i>';
+            }
+            return '';
+        }
+
+        // Re-run the Action column formatter after the average ACOS changes
+        // (filter / search / page-type switch). Guarded against re-entry so
+        // the reformat can't loop back through updateMetricBadges.
+        function faasReformatActionColumn() {
+            if (!tabulator || faasReformatting) return;
+            faasReformatting = true;
+            try {
+                // reformat() re-runs the row's cell formatters (incl. the
+                // Action cell) against the freshly-updated faasAvgAcos, so
+                // the alert reflects the current visible average live.
+                (tabulator.getRows('active') || []).forEach(function (r) {
+                    r.reformat();
+                });
+            } catch (e) { /* table not ready */ }
+            faasReformatting = false;
+        }
 
         // Render the Ad Type cell as a coloured pill — pill text uses
         // the short label (G VIDEO / P CAROUSAL / …), but the underlying
@@ -1012,6 +1113,10 @@
                     }
                     updateBatchPill(resp.batch);
 
+                    // Weighted CTR/CVR averages for the whole dataset — computed once
+                    // per load so the cell flag colours are stable while filtering.
+                    faasComputeAverages(resp.data || []);
+
                     // Numeric / metric columns get no per-column search box —
                     // a free-text filter on a number doesn't make sense and
                     // it eats vertical space under the header.
@@ -1042,14 +1147,14 @@
                         }
                         return String(v);
                     }
-                    // CVR is a ratio — show "0%" in red when blank
-                    // (no clicks → no conversion to compute).
+                    // CVR is a ratio — flag-coloured relative to the dataset average
+                    // CVR (red below, magenta above, green in band). Blank → red "0%".
                     function formatCvrCell(cell) {
-                        const v = cell.getValue();
-                        if (v === null || v === undefined || String(v).trim() === '') {
-                            return '<span style="color:#dc2626;font-weight:700;">0%</span>';
-                        }
-                        return String(v);
+                        return faasFlagRatioHtml(cell.getValue(), faasAvgCvr);
+                    }
+                    // CTR flag-coloured relative to the dataset average CTR.
+                    function formatCtrCell(cell) {
+                        return faasFlagRatioHtml(cell.getValue(), faasAvgCtr);
                     }
                     // Campaign name can be very long — truncate to 70
                     // chars in the cell but expose the full text on
@@ -1168,6 +1273,7 @@
                         else if (COLOR_BY_BAND.has(c.field))   formatter = formatBandColoredCell;
                         else if (c.field === 'SALES')        formatter = formatSalesCell;
                         else if (c.field === 'SOLD')         formatter = formatSoldCell;
+                        else if (c.field === 'CTR')          formatter = formatCtrCell;
                         else if (c.field === 'CVR')          formatter = formatCvrCell;
                         else if (c.field === 'Campaign name') formatter = formatCampaignNameCell;
                         else if (c.field === 'Link')         formatter = formatLinkCell;
@@ -1296,6 +1402,20 @@
                             formatter:    formatAdTypeCell,
                         }
                     );
+                    // Action column — red alert when ACOS > current avg ACOS
+                    // AND Spend > $30. `_action` has no backing data; the
+                    // formatter derives everything from the row + live average.
+                    cols.push({
+                        title:        'Action',
+                        field:        '_action',
+                        headerSort:   false,
+                        headerFilter: false,
+                        width:        80,
+                        minWidth:     70,
+                        hozAlign:     'center',
+                        headerHozAlign: 'center',
+                        formatter:    formatActionCell,
+                    });
 
                     if (tabulator) {
                         tabulator.destroy();
@@ -1384,6 +1504,7 @@
 
             let imprSum = 0, clkSum = 0, spendSum = 0, salesSum = 0, soldSum = 0;
             let visibleCount = 0;
+            let activeCount = 0;
             if (tabulator) {
                 // 'active' = rows after filters / search are applied,
                 // which is what users see in the table.
@@ -1395,9 +1516,12 @@
                     spendSum += toNumber(r.SPEND);
                     salesSum += toNumber(r.SALES);
                     soldSum  += toNumber(r.SOLD);
+                    if (statusKey(r.Status) === 'active') activeCount++;
                 });
             }
             if (countEl) countEl.textContent = visibleCount.toLocaleString();
+            const activeEl = document.getElementById('faasActiveValue');
+            if (activeEl) activeEl.textContent = activeCount.toLocaleString();
             // Match column formatters: Spend & Sales are whole-dollar
             // amounts (controller already rounds them). Sold is a count.
             imprEl.textContent  = imprSum.toLocaleString();
@@ -1410,6 +1534,15 @@
             acosEl.textContent  = divPct(spendSum, salesSum, 0);
             ctrEl.textContent   = divPct(clkSum,   imprSum,  1);
             cvrEl.textContent   = divPct(soldSum,  clkSum,   1);
+
+            // Keep the numeric average ACOS (matches the badge: ΣSPEND/ΣSALES,
+            // 0 when there are no sales) in sync and repaint the Action column
+            // so its red alert reflects the current visible average.
+            const newAvgAcos = salesSum > 0 ? (spendSum / salesSum) * 100 : 0;
+            if (newAvgAcos !== faasAvgAcos) {
+                faasAvgAcos = newAvgAcos;
+                faasReformatActionColumn();
+            }
         }
 
         // ── Column visibility (channel_tabulator_column_settings) ─────
@@ -1506,6 +1639,21 @@
             // search box, Sbgt, Type and Status filters always AND
             // together correctly.
             input.oninput = applyAllFilters;
+            // CTR / CVR range boxes re-run the same combined filter.
+            ['faasCtrMin', 'faasCtrMax', 'faasCvrMin', 'faasCvrMax'].forEach(function (id) {
+                const el = document.getElementById(id);
+                if (el) el.oninput = applyAllFilters;
+            });
+        }
+
+        // Read a numeric range box; returns null when blank / negative / non-numeric.
+        function faasRangeVal(id) {
+            const el = document.getElementById(id);
+            if (!el) return null;
+            const v = String(el.value || '').trim();
+            if (v === '') return null;
+            const n = parseFloat(v);
+            return (Number.isFinite(n) && n >= 0) ? n : null;
         }
 
         // ── Wiring ──────────────────────────────────────────────
@@ -1665,9 +1813,16 @@
             const term = (document.getElementById('faas-search')?.value || '')
                 .toLowerCase().trim();
 
+            // CTR / CVR numeric range bounds (blank / negative → no bound).
+            const ctrMin = faasRangeVal('faasCtrMin');
+            const ctrMax = faasRangeVal('faasCtrMax');
+            const cvrMin = faasRangeVal('faasCvrMin');
+            const cvrMax = faasRangeVal('faasCvrMax');
+            const hasRange = ctrMin !== null || ctrMax !== null || cvrMin !== null || cvrMax !== null;
+
             // Fast path — no filters active → clear so Tabulator skips
             // the per-row predicate cost entirely.
-            if (sbgtSel.size === 0 && typeSel.size === 0 && statusSel.size === 0 && !term) {
+            if (sbgtSel.size === 0 && typeSel.size === 0 && statusSel.size === 0 && !term && !hasRange) {
                 tabulator.clearFilter(false);
                 return;
             }
@@ -1677,6 +1832,15 @@
                 if (sbgtSel.size > 0) {
                     const v = Number(row['Sbgt']);
                     if (!sbgtSel.has(v)) return false;
+                }
+                // CTR / CVR — numeric min-max on the "X.Y%" ratio strings.
+                if (hasRange) {
+                    const ctr = toNumber(row['CTR']);
+                    const cvr = toNumber(row['CVR']);
+                    if (ctrMin !== null && ctr < ctrMin) return false;
+                    if (ctrMax !== null && ctr > ctrMax) return false;
+                    if (cvrMin !== null && cvr < cvrMin) return false;
+                    if (cvrMax !== null && cvr > cvrMax) return false;
                 }
                 // Type (ad_type) — exact-match by full string.
                 if (typeSel.size > 0) {

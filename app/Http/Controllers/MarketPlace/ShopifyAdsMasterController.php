@@ -35,6 +35,14 @@ class ShopifyAdsMasterController extends Controller
     public const SUBROW_SEPARATOR = ' · ';
 
     /**
+     * Timezone the history snapshots are stamped in. Pacific
+     * (America/Los_Angeles) auto-switches between PST and PDT, so "today"
+     * always means the current Pacific business day — matching the other
+     * Pacific-based sales windows across the app.
+     */
+    public const SNAPSHOT_TIMEZONE = 'America/Los_Angeles';
+
+    /**
      * Rolled-up Spend + TCOS for the four parent channels the /shopify-ads-master
      * page treats as "all channels" (Google Shopping, Google SERP, Facebook,
      * Instagram — sub-rows excluded so Facebook · G Video etc. don't double count).
@@ -105,7 +113,7 @@ class ShopifyAdsMasterController extends Controller
     public function getAdvertisementMasterChannelRows(): array
     {
         $sep = self::SUBROW_SEPARATOR;
-        $parentMetrics = ['spend' => 0.0, 'clicks' => 0, 'sold' => 0, 'sales' => 0.0];
+        $parentMetrics = ['spend' => 0.0, 'clicks' => 0, 'sold' => 0, 'sales' => 0.0, 'active' => 0];
         $children = [];
 
         $flatChildSources = [
@@ -119,6 +127,7 @@ class ShopifyAdsMasterController extends Controller
             $parentMetrics['clicks'] += (int) ($row['clicks'] ?? 0);
             $parentMetrics['sold'] += (int) ($row['sold'] ?? 0);
             $parentMetrics['sales'] += (float) ($row['sales'] ?? 0);
+            $parentMetrics['active'] += (int) ($row['active'] ?? 0);
 
             $children[] = self::advertisementMasterMetricRow(
                 'Shopify'.$sep.$label,
@@ -133,6 +142,7 @@ class ShopifyAdsMasterController extends Controller
         $parentMetrics['clicks'] += (int) ($facebookMetrics['clicks'] ?? 0);
         $parentMetrics['sold'] += (int) ($facebookMetrics['sold'] ?? 0);
         $parentMetrics['sales'] += (float) ($facebookMetrics['sales'] ?? 0);
+        $parentMetrics['active'] += (int) ($facebookMetrics['active'] ?? 0);
 
         $facebookRow = self::advertisementMasterMetricRow(
             'Shopify'.$sep.'Facebook',
@@ -166,6 +176,7 @@ class ShopifyAdsMasterController extends Controller
         $parentMetrics['clicks'] += (int) ($instagramMetrics['clicks'] ?? 0);
         $parentMetrics['sold'] += (int) ($instagramMetrics['sold'] ?? 0);
         $parentMetrics['sales'] += (float) ($instagramMetrics['sales'] ?? 0);
+        $parentMetrics['active'] += (int) ($instagramMetrics['active'] ?? 0);
 
         $instagramRow = self::advertisementMasterMetricRow(
             'Shopify'.$sep.'Instagram',
@@ -237,42 +248,58 @@ class ShopifyAdsMasterController extends Controller
         // and /google/shopping/google-serp pages). Listing both as channels is symmetric to what
         // those pages show, with no double-counting between them.
         //
-        // Facebook + Instagram each get four typed sub-rows (G Video / G Carousal / P Video /
-        // P Carousal) mirroring the new `/facebook-ads/{type}` and `/instagram-ads/{type}`
-        // child pages. Sub-rows carry `is_sub_row=true` so the rolled-up badges and the
-        // history endpoint skip them — they're slices of the parent, not new channels.
+        // Facebook + Instagram are expandable parent rows (Tabulator data tree, same
+        // UX as /advertisement-master): each carries four typed sub-rows (G Video /
+        // G Carousal / P Video / P Carousal) nested under `_children`, mirroring the
+        // `/facebook-ads/{type}` and `/instagram-ads/{type}` child pages. Children keep
+        // `is_sub_row=true` so the rolled-up badges and history endpoint skip them —
+        // they're slices of the parent, not new channels.
         $sep = self::SUBROW_SEPARATOR;
-        $rows = [
-            $this->googleShoppingMetrics(),
-            $this->googleSerpMetrics(),
-            $this->metaChannelMetrics('Facebook', 'FB'),
+
+        $facebook = $this->metaChannelMetrics('Facebook', 'FB');
+        $facebook['_children'] = [
             $this->metaChannelMetrics('Facebook'.$sep.'G Video',     'FB',    ['GROUP VIDEO'],     true),
             $this->metaChannelMetrics('Facebook'.$sep.'G Carousal',  'FB',    ['GROUP CAROUSAL'],  true),
             $this->metaChannelMetrics('Facebook'.$sep.'P Video',     'FB',    ['PARENT VIDEO'],    true),
             $this->metaChannelMetrics('Facebook'.$sep.'P Carousal',  'FB',    ['PARENT CAROUSAL'], true),
-            $this->metaChannelMetrics('Instagram', 'Insta'),
+        ];
+
+        $instagram = $this->metaChannelMetrics('Instagram', 'Insta');
+        $instagram['_children'] = [
             $this->metaChannelMetrics('Instagram'.$sep.'G Video',    'Insta', ['GROUP VIDEO'],     true),
             $this->metaChannelMetrics('Instagram'.$sep.'G Carousal', 'Insta', ['GROUP CAROUSAL'],  true),
             $this->metaChannelMetrics('Instagram'.$sep.'P Video',    'Insta', ['PARENT VIDEO'],    true),
             $this->metaChannelMetrics('Instagram'.$sep.'P Carousal', 'Insta', ['PARENT CAROUSAL'], true),
         ];
 
+        $rows = [
+            $this->googleShoppingMetrics(),
+            $this->googleSerpMetrics(),
+            $this->googleYoutubeAdsMetrics(),
+            $facebook,
+            $instagram,
+        ];
+
         $netSales = $this->shopifyNetSales();
 
-        // TCOS = channel Spend / S Sales (store net sales), as a %. Computed
-        // here because it needs the store-level net-sales figure.
-        foreach ($rows as &$row) {
-            $spend = (float) ($row['spend'] ?? 0);
-            $row['tcos'] = $netSales > 0
-                ? round(($spend / $netSales) * 100, 0)
-                : ($spend > 0 ? 100 : 0);
-        }
-        unset($row);
+        // TCOS = channel Spend / S Sales (store net sales), as a %. Applied
+        // recursively so nested children get it too.
+        $this->applyTcosToRows($rows, $netSales);
 
-        // Persist today's snapshot so the badge trend chart has history.
-        // Never let a snapshot write break the data feed.
+        // Trend dots: compare each metric against the previous Pacific-day
+        // snapshot (per channel) so the table can show a green (improved) /
+        // red (declined) dot. Read *before* today's snapshot write below so
+        // "previous" never means today. Spend + ACOS are inverted downstream
+        // (a higher value is worse → red).
+        $pacificToday  = Carbon::now(self::SNAPSHOT_TIMEZONE)->toDateString();
+        $prevByChannel = $this->previousSnapshotByChannel($pacificToday);
+        $this->attachTrends($rows, $prevByChannel);
+
+        // Persist today's snapshot so the badge trend chart has history. The
+        // snapshot table is flat (one row per channel), so flatten the tree
+        // first. Never let a snapshot write break the data feed.
         try {
-            $this->snapshotChannels($rows, $netSales);
+            $this->snapshotChannels($this->flattenRows($rows), $netSales);
         } catch (\Throwable $e) {
             \Log::warning('Shopify Ads Master snapshot failed: ' . $e->getMessage());
         }
@@ -285,6 +312,141 @@ class ShopifyAdsMasterController extends Controller
             // /shopify page, surfaced as the "S Sales" badge.
             'shopify_net_sales' => $netSales,
         ]);
+    }
+
+    /**
+     * Apply TCOS (Spend / S Sales) to every row and, recursively, to any
+     * nested `_children` so parent and child rows both carry the figure.
+     *
+     * @param  array<int, array<string, mixed>>  $rows
+     */
+    private function applyTcosToRows(array &$rows, float $netSales): void
+    {
+        foreach ($rows as &$row) {
+            $spend = (float) ($row['spend'] ?? 0);
+            $row['tcos'] = $netSales > 0
+                ? round(($spend / $netSales) * 100, 0)
+                : ($spend > 0 ? 100 : 0);
+
+            if (! empty($row['_children']) && is_array($row['_children'])) {
+                $this->applyTcosToRows($row['_children'], $netSales);
+            }
+        }
+        unset($row);
+    }
+
+    /**
+     * Flatten a nested `_children` tree into a single list (parents first,
+     * then their children) so snapshotting can persist one row per channel.
+     * The `_children` key is stripped from each emitted row.
+     *
+     * @param  array<int, array<string, mixed>>  $rows
+     * @return array<int, array<string, mixed>>
+     */
+    private function flattenRows(array $rows): array
+    {
+        $flat = [];
+        foreach ($rows as $row) {
+            $children = $row['_children'] ?? [];
+            unset($row['_children']);
+            $flat[] = $row;
+            if (! empty($children) && is_array($children)) {
+                $flat = array_merge($flat, $this->flattenRows($children));
+            }
+        }
+
+        return $flat;
+    }
+
+    /**
+     * Most-recent snapshot strictly before $today (per channel), used to work
+     * out each metric's day-over-day direction for the trend dots. Rows are
+     * read ascending so the latest prior date wins per channel.
+     *
+     * @return array<string, array{spend: float, clicks: float, sold: float, sales: float}>
+     */
+    private function previousSnapshotByChannel(string $today): array
+    {
+        $rows = DB::table('shopify_ads_master_metric_snapshots')
+            ->where('snapshot_date', '<', $today)
+            ->orderBy('snapshot_date')
+            ->get(['channel', 'spend', 'clicks', 'sold', 'sales', 'active']);
+
+        $map = [];
+        foreach ($rows as $r) {
+            $map[(string) $r->channel] = [
+                'spend'  => (float) $r->spend,
+                'clicks' => (float) $r->clicks,
+                'sold'   => (float) $r->sold,
+                'sales'  => (float) $r->sales,
+                'active' => (float) ($r->active ?? 0),
+            ];
+        }
+
+        return $map;
+    }
+
+    /**
+     * Tag every row (and nested child) with a `trend` map — one direction per
+     * metric ('up' | 'down' | 'flat') comparing the current value to the
+     * previous Pacific-day snapshot for that channel. Channels with no prior
+     * snapshot get an empty map (no dot shown).
+     *
+     * @param  array<int, array<string, mixed>>  $rows
+     * @param  array<string, array<string, float>>  $prevByChannel
+     */
+    private function attachTrends(array &$rows, array $prevByChannel): void
+    {
+        foreach ($rows as &$row) {
+            $channel = (string) ($row['channel'] ?? '');
+            $row['trend'] = $this->computeTrend($row, $prevByChannel[$channel] ?? null);
+
+            if (! empty($row['_children']) && is_array($row['_children'])) {
+                $this->attachTrends($row['_children'], $prevByChannel);
+            }
+        }
+        unset($row);
+    }
+
+    /**
+     * Direction of each displayed metric vs the previous day. CVR / ACOS are
+     * re-derived from the previous day's raw measures exactly like the current
+     * row so the comparison is apples-to-apples. The colour meaning (which way
+     * is "good") is applied on the frontend, where Spend + ACOS are inverted.
+     *
+     * @param  array<string, mixed>  $row
+     * @param  array<string, float>|null  $prev
+     * @return array<string, string>
+     */
+    private function computeTrend(array $row, ?array $prev): array
+    {
+        if ($prev === null) {
+            return [];
+        }
+
+        $prevSpend  = (float) ($prev['spend'] ?? 0);
+        $prevClicks = (float) ($prev['clicks'] ?? 0);
+        $prevSold   = (float) ($prev['sold'] ?? 0);
+        $prevSales  = (float) ($prev['sales'] ?? 0);
+        $prevActive = (float) ($prev['active'] ?? 0);
+        $prevCvr    = $prevClicks > 0 ? ($prevSold / $prevClicks) * 100 : 0;
+        $prevAcos   = $prevSales > 0
+            ? ($prevSpend / $prevSales) * 100
+            : ($prevSpend > 0 ? 100 : 0);
+
+        $dir = static fn (float $cur, float $was): string => $cur > $was
+            ? 'up'
+            : ($cur < $was ? 'down' : 'flat');
+
+        return [
+            'spend'  => $dir((float) ($row['spend'] ?? 0),  $prevSpend),
+            'clicks' => $dir((float) ($row['clicks'] ?? 0), $prevClicks),
+            'sold'   => $dir((float) ($row['sold'] ?? 0),   $prevSold),
+            'sales'  => $dir((float) ($row['sales'] ?? 0),  $prevSales),
+            'active' => $dir((float) ($row['active'] ?? 0),  $prevActive),
+            'cvr'    => $dir((float) ($row['cvr'] ?? 0),     $prevCvr),
+            'acos'   => $dir((float) ($row['acos'] ?? 0),    $prevAcos),
+        ];
     }
 
     /** Pseudo-channel key used to store the store-level S Sales snapshot. */
@@ -320,42 +482,65 @@ class ShopifyAdsMasterController extends Controller
     }
 
     /**
-     * Upsert one snapshot row per channel for today. Keyed on
-     * (snapshot_date, channel) so repeated page loads simply refresh the
-     * day's value rather than piling up duplicates.
+     * Save (upsert) every channel row into the history table for the current
+     * Pacific (PDT/PST) business day. One row per (snapshot_date, channel),
+     * so repeated page loads within the same Pacific day refresh the day's
+     * value rather than piling up duplicates — giving the badge trend chart a
+     * clean daily history. The store-level S Sales figure is stored under its
+     * own pseudo-channel row.
      *
-     * @param  array<int, array<string, mixed>>  $rows
+     * @param  array<int, array<string, mixed>>  $rows  flattened channel rows
      */
     private function snapshotChannels(array $rows, float $netSales = 0.0): void
     {
-        $today = Carbon::today()->toDateString();
-        $now   = now();
+        $now   = Carbon::now(self::SNAPSHOT_TIMEZONE);
+        $today = $now->toDateString();
 
         foreach ($rows as $row) {
             $channel = (string) ($row['channel'] ?? '');
             if ($channel === '') {
                 continue;
             }
-            DB::table('shopify_ads_master_metric_snapshots')->updateOrInsert(
-                ['snapshot_date' => $today, 'channel' => $channel],
-                [
-                    'spend'      => (float) ($row['spend'] ?? 0),
-                    'clicks'     => (float) ($row['clicks'] ?? 0),
-                    'sold'       => (float) ($row['sold'] ?? 0),
-                    'sales'      => (float) ($row['sales'] ?? 0),
-                    'updated_at' => $now,
-                    'created_at' => $now,
-                ]
-            );
+            $this->saveSnapshotRow($today, $channel, [
+                'spend'  => (float) ($row['spend'] ?? 0),
+                'clicks' => (float) ($row['clicks'] ?? 0),
+                'sold'   => (float) ($row['sold'] ?? 0),
+                'sales'  => (float) ($row['sales'] ?? 0),
+                'active' => (int) ($row['active'] ?? 0),
+            ], $now);
         }
 
         // Store-level S Sales kept as its own pseudo-channel row (the
         // net-sales figure lives in the `sales` column). Excluded from the
         // channel totals in history().
-        DB::table('shopify_ads_master_metric_snapshots')->updateOrInsert(
-            ['snapshot_date' => $today, 'channel' => self::SSALES_CHANNEL],
-            ['sales' => $netSales, 'updated_at' => $now, 'created_at' => $now]
-        );
+        $this->saveSnapshotRow($today, self::SSALES_CHANNEL, ['sales' => $netSales], $now);
+    }
+
+    /**
+     * Upsert a single history row for (snapshot_date, channel). The original
+     * `created_at` is preserved on the first insert; only `updated_at` moves
+     * on subsequent saves the same Pacific day.
+     *
+     * @param  array<string, float>  $measures
+     */
+    private function saveSnapshotRow(string $date, string $channel, array $measures, Carbon $now): void
+    {
+        $query = DB::table('shopify_ads_master_metric_snapshots')
+            ->where('snapshot_date', $date)
+            ->where('channel', $channel);
+
+        if ($query->exists()) {
+            (clone $query)->update(array_merge($measures, ['updated_at' => $now]));
+
+            return;
+        }
+
+        DB::table('shopify_ads_master_metric_snapshots')->insert(array_merge($measures, [
+            'snapshot_date' => $date,
+            'channel'       => $channel,
+            'created_at'    => $now,
+            'updated_at'    => $now,
+        ]));
     }
 
     /**
@@ -369,12 +554,14 @@ class ShopifyAdsMasterController extends Controller
     public function history(Request $request)
     {
         $days = max(1, min(365, (int) $request->query('days', 32)));
-        $from = Carbon::today()->subDays($days - 1)->toDateString();
+        // Anchor the window to the Pacific business day so it lines up with
+        // the timezone the snapshots are stamped in.
+        $from = Carbon::now(self::SNAPSHOT_TIMEZONE)->subDays($days - 1)->toDateString();
 
         $rows = DB::table('shopify_ads_master_metric_snapshots')
             ->where('snapshot_date', '>=', $from)
             ->orderBy('snapshot_date')
-            ->get(['snapshot_date', 'channel', 'spend', 'clicks', 'sold', 'sales']);
+            ->get(['snapshot_date', 'channel', 'spend', 'clicks', 'sold', 'sales', 'active']);
 
         // Group the raw measures by date (totals) and by date+channel.
         // The store-level S Sales pseudo-channel is kept aside so it never
@@ -404,24 +591,26 @@ class ShopifyAdsMasterController extends Controller
                 'clicks' => (float) $r->clicks,
                 'sold'   => (float) $r->sold,
                 'sales'  => (float) $r->sales,
+                'active' => (float) ($r->active ?? 0),
             ];
 
             if ($isSubRow) {
                 continue;
             }
 
-            $byDate[$d] ??= ['spend' => 0.0, 'clicks' => 0.0, 'sold' => 0.0, 'sales' => 0.0];
+            $byDate[$d] ??= ['spend' => 0.0, 'clicks' => 0.0, 'sold' => 0.0, 'sales' => 0.0, 'active' => 0.0];
             $byDate[$d]['spend']  += (float) $r->spend;
             $byDate[$d]['clicks'] += (float) $r->clicks;
             $byDate[$d]['sold']   += (float) $r->sold;
             $byDate[$d]['sales']  += (float) $r->sales;
+            $byDate[$d]['active'] += (float) ($r->active ?? 0);
         }
 
         // Use the union of all dates so an ssales-only day still shows.
         $labels = array_keys($allDates);
         sort($labels);
         foreach ($labels as $d) {
-            $byDate[$d] ??= ['spend' => 0.0, 'clicks' => 0.0, 'sold' => 0.0, 'sales' => 0.0];
+            $byDate[$d] ??= ['spend' => 0.0, 'clicks' => 0.0, 'sold' => 0.0, 'sales' => 0.0, 'active' => 0.0];
         }
 
         $metrics = $this->buildMetricSeries($byDate, $labels, $ssalesByDate);
@@ -447,13 +636,14 @@ class ShopifyAdsMasterController extends Controller
      */
     private function buildMetricSeries(array $byDate, array $labels, array $ssalesByDate = []): array
     {
-        $series = ['spend' => [], 'clicks' => [], 'sold' => [], 'sales' => [], 'cvr' => [], 'acos' => [], 'tcos' => []];
+        $series = ['spend' => [], 'clicks' => [], 'sold' => [], 'sales' => [], 'active' => [], 'cvr' => [], 'acos' => [], 'tcos' => []];
         foreach ($labels as $d) {
             $m = $byDate[$d];
             $series['spend'][]  = round($m['spend'], 2);
             $series['clicks'][] = (int) round($m['clicks']);
             $series['sold'][]   = (int) round($m['sold']);
             $series['sales'][]  = round($m['sales'], 2);
+            $series['active'][] = (int) round($m['active'] ?? 0);
             $series['cvr'][]    = $m['clicks'] > 0 ? round(($m['sold'] / $m['clicks']) * 100, 1) : 0;
             $series['acos'][]   = $m['sales'] > 0
                 ? round(($m['spend'] / $m['sales']) * 100, 0)
@@ -482,7 +672,7 @@ class ShopifyAdsMasterController extends Controller
         foreach ($byChannel as $channel => $perDay) {
             $byDate = [];
             foreach ($labels as $d) {
-                $byDate[$d] = $perDay[$d] ?? ['spend' => 0.0, 'clicks' => 0.0, 'sold' => 0.0, 'sales' => 0.0];
+                $byDate[$d] = $perDay[$d] ?? ['spend' => 0.0, 'clicks' => 0.0, 'sold' => 0.0, 'sales' => 0.0, 'active' => 0.0];
             }
             $out[$channel] = $this->buildMetricSeries($byDate, $labels, $ssalesByDate);
         }
@@ -559,10 +749,50 @@ class ShopifyAdsMasterController extends Controller
                 ->selectRaw('COALESCE(SUM(sales), 0) as sales')
                 ->first();
 
+            if ($row !== null) {
+                $row->active = $this->googleAdsActiveCount($scope, $bounds);
+            }
+
             return $this->metricRow($label, $row);
         } catch (\Throwable) {
             return $this->metricRow($label);
         }
+    }
+
+    /**
+     * Count ACTIVE (campaign_status = ENABLED on the latest date row) Google Ads campaigns
+     * in the same window + name scope as {@see googleAdsChannelMetrics()} — matches the
+     * ACTIVE badge on the /google/shopping/* grids.
+     *
+     * @param  array{start: string, end: string}|null  $bounds
+     */
+    private function googleAdsActiveCount(string $scope, ?array $bounds): int
+    {
+        $latest = DB::table('google_ads_campaigns')
+            ->whereNotNull('campaign_id')
+            ->selectRaw('campaign_id, MAX(`date`) as max_d')
+            ->groupBy('campaign_id');
+
+        if ($bounds !== null) {
+            $latest->whereNotNull('date')->whereBetween('date', [$bounds['start'], $bounds['end']]);
+        }
+        if ($scope === 'shopping') {
+            $latest->whereRaw('UPPER(campaign_name) NOT LIKE ?', ['% SEARCH%'])
+                ->whereRaw('UPPER(campaign_name) NOT LIKE ?', ['% YT']);
+        } elseif ($scope === 'serp') {
+            $latest->whereRaw('UPPER(campaign_name) LIKE ?', ['% SEARCH%']);
+        } elseif ($scope === 'youtube') {
+            $latest->whereRaw('UPPER(campaign_name) LIKE ?', ['% YT']);
+        }
+
+        return (int) DB::table('google_ads_campaigns as g')
+            ->joinSub($latest, 'l', function ($j) {
+                $j->on('g.campaign_id', '=', 'l.campaign_id')
+                    ->on('g.date', '=', 'l.max_d');
+            })
+            ->whereRaw('UPPER(TRIM(COALESCE(g.campaign_status, ""))) = ?', ['ENABLED'])
+            ->distinct()
+            ->count('g.campaign_id');
     }
 
     /**
@@ -591,6 +821,7 @@ class ShopifyAdsMasterController extends Controller
             $clicks = 0.0;
             $sold   = 0.0;
             $sales  = 0.0;
+            $active = 0;
 
             foreach ($ctx['baseCids'] as $cid => $_) {
                 if (($ctx['chMap'][$cid] ?? null) !== $chCode) {
@@ -610,9 +841,12 @@ class ShopifyAdsMasterController extends Controller
                     $sold  += $ctx['salesByCid'][$cid]['sold'];
                     $sales += $ctx['salesByCid'][$cid]['sales'];
                 }
+                if (! empty($ctx['activeCids'][$cid])) {
+                    $active++;
+                }
             }
 
-            return $this->metricRow($label, (object) compact('spend', 'clicks', 'sold', 'sales'), $isSubRow);
+            return $this->metricRow($label, (object) compact('spend', 'clicks', 'sold', 'sales', 'active'), $isSubRow);
         } catch (\Throwable) {
             return $this->metricRow($label, null, $isSubRow);
         }
@@ -645,6 +879,7 @@ class ShopifyAdsMasterController extends Controller
             'adTypeMap'  => [],
             'spendByCid' => [],
             'salesByCid' => [],
+            'activeCids' => [],
         ];
 
         $latestBatches = $this->facebookLatestBatchPerType();
@@ -667,6 +902,7 @@ class ShopifyAdsMasterController extends Controller
         [$baseCids, $nameToCid] = $this->facebookBuildBaseCids($latestBatches[$baseType]);
 
         $spendByCid = [];
+        $activeCids = [];
         if (isset($latestBatches['spend'])) {
             $rows = FacebookAllAdsSheet::query()
                 ->where('import_batch_id', $latestBatches['spend'])
@@ -682,6 +918,12 @@ class ShopifyAdsMasterController extends Controller
                 // round() per-campaign mirrors applyFormatter('usd_int') in getMergedView.
                 $spendByCid[$cid]['spend']  += round($this->parseMetricValue($rd['Amount spent (USD)'] ?? null));
                 $spendByCid[$cid]['clicks'] += $this->parseMetricValue($rd['Clicks (all)'] ?? null);
+
+                // "Campaign delivery" = Active marks a live campaign (Meta Spend export).
+                $delivery = trim((string) ($rd['Campaign delivery'] ?? ''));
+                if (strcasecmp($delivery, 'Active') === 0) {
+                    $activeCids[$cid] = true;
+                }
             }
         }
 
@@ -711,6 +953,7 @@ class ShopifyAdsMasterController extends Controller
             'adTypeMap'  => $this->facebookAdTypeMap(),
             'spendByCid' => $spendByCid,
             'salesByCid' => $salesByCid,
+            'activeCids' => $activeCids,
         ];
     }
 
@@ -972,6 +1215,7 @@ class ShopifyAdsMasterController extends Controller
             // tcos (Spend / S Sales) is filled in by data() once the
             // store-level net-sales figure is known.
             'tcos' => 0,
+            'active' => (int) ($row->active ?? 0),
             // Sub-rows are typed slices of a parent channel (e.g.
             // "Facebook · G Video" is a subset of "Facebook"). Frontend
             // skips them when summing the rolled-up "All channels" badges.
@@ -1001,6 +1245,7 @@ class ShopifyAdsMasterController extends Controller
                 ? round(($spend / $sales) * 100, 0)
                 : ($spend > 0 ? 100 : 0),
             'tcos'        => 0,
+            'active'      => (int) ($row->active ?? 0),
             'is_sub_row'  => $isSubRow,
             'marketplace' => 'shopify',
         ];
