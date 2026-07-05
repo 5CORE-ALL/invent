@@ -3573,7 +3573,7 @@
                 const img    = document.getElementById('wrongSentSkuImage');
                 const cnt    = document.getElementById('issueNotesCharCount');
                 if (skuInp) { skuInp.value = ''; skuInp.readOnly = false; }
-                if (notes) notes.value = '';
+                if (notes) { notes.value = ''; notes.readOnly = false; }
                 if (qtyInp) { qtyInp.value = ''; qtyInp.readOnly = false; }
                 if (outChk) { outChk.checked = false; outChk.disabled = false; }
                 if (whInp) { whInp.value = ''; whInp.disabled = false; }
@@ -4087,21 +4087,29 @@
                             ? String(record.wrong_sent_outgoing_warehouse_id) : '';
                     }
                     toggleWrongSentOutgoingWarehouseVisibility();
-                    // Lock the checkbox AND the outgoing fields (SKU / Qty /
-                    // reason / warehouse) + show the "already processed" notice
-                    // when Shopify has already been decremented, so nothing can
-                    // be changed and a re-save never double-deducts.
-                    if (record.wrong_sent_outgoing_processed_at) {
-                        const cb = document.getElementById('hold_issue_wrong_sent_outgoing_needed');
-                        const notice = document.getElementById('wrongSentOutgoingProcessedNotice');
-                        if (cb) { cb.checked = true; cb.disabled = true; }
+                    // On EDIT the whole Wrong Item Sent Details block is view-only /
+                    // locked — it shouldn't be altered after the issue was created.
+                    // Create/new-entry stays editable (clearWrongItemSubsection()
+                    // unlocks first).
+                    {
                         const wSku = document.getElementById('hold_issue_wrong_sent_sku');
                         const wQty = document.getElementById('hold_issue_wrong_sent_qty');
                         const wReason = document.getElementById('hold_issue_wrong_sent_reason');
+                        const wNotes = document.getElementById('hold_issue_issue_notes');
+                        const wCb = document.getElementById('hold_issue_wrong_sent_outgoing_needed');
                         if (wSku) wSku.readOnly = true;
                         if (wQty) wQty.readOnly = true;
                         if (wReason) wReason.disabled = true;
+                        if (wNotes) wNotes.readOnly = true;
+                        if (wCb) wCb.disabled = true;
                         if (wsWh) wsWh.disabled = true;
+                    }
+                    // Show the "already processed" notice when Shopify was
+                    // decremented for this issue.
+                    if (record.wrong_sent_outgoing_processed_at) {
+                        const cb = document.getElementById('hold_issue_wrong_sent_outgoing_needed');
+                        const notice = document.getElementById('wrongSentOutgoingProcessedNotice');
+                        if (cb) cb.checked = true;
                         if (notice) notice.classList.remove('d-none');
                     }
                 } else if (whKey === 'wrong_qty') {
