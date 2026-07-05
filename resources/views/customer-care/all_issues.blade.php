@@ -4158,18 +4158,27 @@
                         whSel.value = record.outgoing_warehouse_id ? String(record.outgoing_warehouse_id) : '';
                     }
                     toggleOutgoingWarehouseVisibility();
-                    // If outgoing was already processed, lock the checkbox AND the
-                    // outgoing fields (SKU / Qty / warehouse) so nothing can be
-                    // changed — the outgoing is done and a re-save won't re-fire.
-                    if (record.outgoing_processed_at) {
-                        const cb = document.getElementById('hold_issue_outgoing_needed');
-                        const notice = document.getElementById('outgoingProcessedNotice');
-                        if (cb) { cb.checked = true; cb.disabled = true; }
+                    // On EDIT the whole Replacement Details block is view-only /
+                    // locked — a replacement (and its outgoing) shouldn't be
+                    // altered after the issue was created. Create/new-entry stays
+                    // editable because clearReplacementSubsection() unlocks first.
+                    {
                         const rSku = document.getElementById('hold_issue_replacement_sku');
                         const rQty = document.getElementById('hold_issue_replacement_qty_sending');
+                        const rTrk = document.getElementById('hold_issue_replacement_tracking_30');
+                        const rCb  = document.getElementById('hold_issue_outgoing_needed');
                         if (rSku) rSku.readOnly = true;
                         if (rQty) rQty.readOnly = true;
+                        if (rTrk) rTrk.readOnly = true;
+                        if (rCb) rCb.disabled = true;
                         if (whSel) whSel.disabled = true;
+                    }
+                    // Show the "already processed" notice when Shopify was
+                    // decremented for this issue.
+                    if (record.outgoing_processed_at) {
+                        const notice = document.getElementById('outgoingProcessedNotice');
+                        const cb = document.getElementById('hold_issue_outgoing_needed');
+                        if (cb) cb.checked = true;
                         if (notice) notice.classList.remove('d-none');
                     }
                     if (record.replacement_sku) fillReplacementSkuDetails();
