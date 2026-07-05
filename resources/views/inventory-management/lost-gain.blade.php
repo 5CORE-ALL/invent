@@ -1014,7 +1014,9 @@
                         date_to: dateTo,
                         // Include stock sent out (type = 'outgoing') so it reflects
                         // in Lost/Gain alongside manual verification adjustments.
-                        include_outgoing: 1
+                        include_outgoing: 1,
+                        // Show timestamps in US California (Pacific) time.
+                        display_tz: 'America/Los_Angeles'
                     },
                     success: function(res) {
                         const tableBody = $('#lostGainTable tbody');
