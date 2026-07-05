@@ -3270,11 +3270,11 @@
                 const preview = document.getElementById('replacementSkuPreview');
                 const qtyAv = document.getElementById('replacementQtyAvailable');
                 const img = document.getElementById('replacementSkuImage');
-                if (skuInp) skuInp.value = '';
-                if (qtyInp) qtyInp.value = '';
-                if (trkInp) trkInp.value = '';
+                if (skuInp) { skuInp.value = ''; skuInp.readOnly = false; }
+                if (qtyInp) { qtyInp.value = ''; qtyInp.readOnly = false; }
+                if (trkInp) { trkInp.value = ''; trkInp.readOnly = false; }
                 if (outChk) { outChk.checked = false; outChk.disabled = false; }
-                if (whInp) whInp.value = '';
+                if (whInp) { whInp.value = ''; whInp.disabled = false; }
                 if (whWrap) whWrap.classList.add('d-none');
                 if (notice) notice.classList.add('d-none');
                 if (preview) preview.classList.add('d-none');
@@ -3572,14 +3572,14 @@
                 const qtyAv  = document.getElementById('wrongSentQtyAvailable');
                 const img    = document.getElementById('wrongSentSkuImage');
                 const cnt    = document.getElementById('issueNotesCharCount');
-                if (skuInp) skuInp.value = '';
+                if (skuInp) { skuInp.value = ''; skuInp.readOnly = false; }
                 if (notes) notes.value = '';
-                if (qtyInp) qtyInp.value = '';
+                if (qtyInp) { qtyInp.value = ''; qtyInp.readOnly = false; }
                 if (outChk) { outChk.checked = false; outChk.disabled = false; }
-                if (whInp) whInp.value = '';
+                if (whInp) { whInp.value = ''; whInp.disabled = false; }
                 if (whWrap) whWrap.classList.add('d-none');
                 if (notice) notice.classList.add('d-none');
-                if (reason) reason.value = '';
+                if (reason) { reason.value = ''; reason.disabled = false; }
                 if (preview) preview.classList.add('d-none');
                 if (qtyAv) qtyAv.textContent = '—';
                 if (img) img.setAttribute('src', '');
@@ -4087,13 +4087,21 @@
                             ? String(record.wrong_sent_outgoing_warehouse_id) : '';
                     }
                     toggleWrongSentOutgoingWarehouseVisibility();
-                    // Lock the checkbox + show the "already processed" notice when
-                    // Shopify has already been decremented for this issue, so
-                    // re-saves don't double-deduct.
+                    // Lock the checkbox AND the outgoing fields (SKU / Qty /
+                    // reason / warehouse) + show the "already processed" notice
+                    // when Shopify has already been decremented, so nothing can
+                    // be changed and a re-save never double-deducts.
                     if (record.wrong_sent_outgoing_processed_at) {
                         const cb = document.getElementById('hold_issue_wrong_sent_outgoing_needed');
                         const notice = document.getElementById('wrongSentOutgoingProcessedNotice');
                         if (cb) { cb.checked = true; cb.disabled = true; }
+                        const wSku = document.getElementById('hold_issue_wrong_sent_sku');
+                        const wQty = document.getElementById('hold_issue_wrong_sent_qty');
+                        const wReason = document.getElementById('hold_issue_wrong_sent_reason');
+                        if (wSku) wSku.readOnly = true;
+                        if (wQty) wQty.readOnly = true;
+                        if (wReason) wReason.disabled = true;
+                        if (wsWh) wsWh.disabled = true;
                         if (notice) notice.classList.remove('d-none');
                     }
                 } else if (whKey === 'wrong_qty') {
@@ -4150,12 +4158,18 @@
                         whSel.value = record.outgoing_warehouse_id ? String(record.outgoing_warehouse_id) : '';
                     }
                     toggleOutgoingWarehouseVisibility();
-                    // If outgoing was already processed, lock the checkbox so we
-                    // can't accidentally re-trigger and double-decrement Shopify.
+                    // If outgoing was already processed, lock the checkbox AND the
+                    // outgoing fields (SKU / Qty / warehouse) so nothing can be
+                    // changed — the outgoing is done and a re-save won't re-fire.
                     if (record.outgoing_processed_at) {
                         const cb = document.getElementById('hold_issue_outgoing_needed');
                         const notice = document.getElementById('outgoingProcessedNotice');
                         if (cb) { cb.checked = true; cb.disabled = true; }
+                        const rSku = document.getElementById('hold_issue_replacement_sku');
+                        const rQty = document.getElementById('hold_issue_replacement_qty_sending');
+                        if (rSku) rSku.readOnly = true;
+                        if (rQty) rQty.readOnly = true;
+                        if (whSel) whSel.disabled = true;
                         if (notice) notice.classList.remove('d-none');
                     }
                     if (record.replacement_sku) fillReplacementSkuDetails();
