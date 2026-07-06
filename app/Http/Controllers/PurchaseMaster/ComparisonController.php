@@ -37,7 +37,18 @@ class ComparisonController extends Controller
     }
     public function index()
     {
-        return view('purchase-master.comparison.index');
+        return view('purchase-master.comparison.index', ['cdPageSku' => null]);
+    }
+
+    /**
+     * Full-page comparison-sheet editor for a single SKU (reuses the index view in a
+     * dedicated "sheet page" mode instead of the in-list modal).
+     */
+    public function sheetPage(Request $request)
+    {
+        return view('purchase-master.comparison.index', [
+            'cdPageSku' => trim((string) $request->query('sku', '')),
+        ]);
     }
 
     public function getData(Request $request)

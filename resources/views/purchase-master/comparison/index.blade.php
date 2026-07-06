@@ -368,6 +368,36 @@
         max-width: 96vw;
     }
 
+    /* Full-page CD editor mode (opened via /sheet-view or ?cd_only=): render the
+       comparison-sheet editor inline as a real page instead of a centered modal. */
+    body.cd-page-mode {
+        overflow: auto !important;
+        padding-right: 0 !important;
+    }
+    body.cd-page-mode .modal-backdrop {
+        display: none !important;
+    }
+    body.cd-page-mode #comparisonCdModal {
+        position: static !important;
+        display: block !important;
+        overflow: visible !important;
+    }
+    body.cd-page-mode #comparisonCdModal .modal-dialog {
+        max-width: 100% !important;
+        width: 100% !important;
+        margin: 0 !important;
+        height: auto;
+    }
+    body.cd-page-mode #comparisonCdModal .modal-content {
+        border: 0;
+        border-radius: 0;
+        min-height: 100vh;
+        box-shadow: none;
+    }
+    body.cd-page-mode #comparisonCdModal .btn-close {
+        display: none;
+    }
+
     #comparisonCdModal .modal-body {
         min-height: 70vh;
     }
@@ -461,6 +491,22 @@
     .cd-sheet-table .cd-col-header {
         cursor: pointer;
         user-select: none;
+    }
+
+    /* Drag & drop reordering of rows / columns */
+    .cd-sheet-table .cd-row-num,
+    .cd-sheet-table .cd-col-header {
+        cursor: grab;
+    }
+    .cd-sheet-wrap.cd-dnd-active .cd-row-num,
+    .cd-sheet-wrap.cd-dnd-active .cd-col-header {
+        cursor: grabbing;
+    }
+    .cd-sheet-table .cd-dnd-target {
+        outline: 2px dashed #2563eb;
+        outline-offset: -2px;
+        background: #bfdbfe !important;
+        color: #1d4ed8 !important;
     }
 
     .cd-sheet-table .cd-sheet-cell {
@@ -840,8 +886,11 @@
     <div class="modal-dialog modal-fullscreen-lg-down modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header bg-primary text-white">
-                <h5 class="modal-title" id="comparisonCdModalLabel">
-                    <i class="fas fa-balance-scale"></i> Comparison Data
+                <h5 class="modal-title d-flex align-items-center gap-2" id="comparisonCdModalLabel">
+                    <a href="{{ route('comparison.index') }}" class="btn btn-sm btn-light d-none" id="comparison-cd-back-btn" title="Back to comparison list">
+                        <i class="mdi mdi-arrow-left"></i> Back
+                    </a>
+                    <span><i class="fas fa-balance-scale"></i> Comparison Data</span>
                     <span class="badge bg-light text-dark ms-2" id="comparison-cd-modal-sku-badge"></span>
                     <span class="visually-hidden" id="comparison-cd-modal-sku"></span>
                 </h5>
@@ -886,7 +935,7 @@
                                     <input type="text" id="comparison-cd-google-tab" class="form-control form-control-sm" value="Sheet1">
                                 </div>
                                 <button type="button" class="btn btn-sm btn-success" id="comparison-cd-import-btn">
-                                    <i class="fab fa-google"></i> Refresh
+                                    <i class="fab fa-google"></i> C Link Refresh
                                 </button>
                                 <button type="button" class="btn btn-sm btn-info text-white" id="comparison-cd-autopopulate-suppliers-btn" title="Add suppliers into blank columns from column D; update C-link preloaded names when they match supplier.list for this category">
                                     <i class="mdi mdi-account-multiple-plus"></i> Suppliers
@@ -1172,6 +1221,10 @@ document.addEventListener('DOMContentLoaded', function () {
     const linkedSkuRemoveUrl = @json(route('comparison.linked-skus.remove'));
     const comparisonParentsUrl = @json(route('comparison.parents'));
     const comparisonCategorySaveUrl = @json(route('comparison.category.save'));
+    const comparisonIndexUrl = @json(route('comparison.index'));
+    const comparisonSheetPageUrl = @json(route('comparison.sheet.page'));
+    // When set, this page is the dedicated full-page CD editor for one SKU.
+    const COMPARISON_CD_PAGE_SKU = @json($cdPageSku ?? null);
     const cdHoverPreview = document.getElementById('cd-hover-preview');
     const cdModalEl = document.getElementById('comparisonCdModal');
     const cdModal = cdModalEl ? new bootstrap.Modal(cdModalEl) : null;
@@ -2819,7 +2872,7 @@ document.addEventListener('DOMContentLoaded', function () {
             if (c === specCol - 2) headerText = 'Amazon';
             else if (c === specCol - 1) headerText = '5 Core';
             else if (c === specCol) headerText = 'Spec';
-            headHtml += `<th class="cd-col-header cd-select-col${selectedClass}" data-col="${c}" title="Select column ${headerText}">${headerText}</th>`;
+            headHtml += `<th class="cd-col-header cd-select-col${selectedClass}" data-col="${c}" draggable="true" title="Click to select · drag to move column ${headerText}">${headerText}</th>`;
         }
         headHtml += '</tr>';
         head.innerHTML = headHtml;
@@ -2827,7 +2880,7 @@ document.addEventListener('DOMContentLoaded', function () {
         body.innerHTML = currentSheetCells.map((row, r) => {
             const rowSelectedClass = selectedSheetRow === r ? ' cd-axis-selected' : '';
             const commRowClass = isCommRow(r, currentSheetCells) ? ' cd-comm-row' : '';
-            let rowHtml = `<tr class="${selectedSheetRow === r ? 'cd-row-selected' : ''}${commRowClass}"><td class="cd-row-num cd-select-row${rowSelectedClass}" data-row="${r}" title="Select row ${r + 1}">${r + 1}</td>`;
+            let rowHtml = `<tr class="${selectedSheetRow === r ? 'cd-row-selected' : ''}${commRowClass}"><td class="cd-row-num cd-select-row${rowSelectedClass}" data-row="${r}" draggable="true" title="Click to select · drag to move row ${r + 1}">${r + 1}</td>`;
             for (let c = 0; c < colCount; c++) {
                 const value = row[c] ?? '';
                 const isSpec = c === specCol;
@@ -3028,6 +3081,41 @@ document.addEventListener('DOMContentLoaded', function () {
         scheduleAutoSaveComparisonSheet(400);
     }
 
+    // Drag-and-drop reorder: move a row from one position to another (keeps formats aligned).
+    function moveSheetRowTo(from, to) {
+        readCellsFromEditor();
+        if (from == null || to == null || isNaN(from) || isNaN(to) || from === to) return;
+        if (from < 0 || from >= currentSheetCells.length) return;
+        if (to < 0 || to >= currentSheetCells.length) return;
+
+        const moved = currentSheetCells.splice(from, 1)[0];
+        currentSheetCells.splice(to, 0, moved);
+        currentSheetFormats = moveFormatRow(currentSheetFormats, from, to);
+        selectedSheetRow = to;
+        selectedSheetCol = null;
+        selectedSheetCell = null;
+        renderSheetEditor(currentSheetCells);
+        setSheetStatus(`Row moved to position ${to + 1}.`, false);
+        scheduleAutoSaveComparisonSheet(0);
+    }
+
+    // Drag-and-drop reorder: move a column from one position to another (keeps formats aligned).
+    function moveSheetColumnTo(from, to) {
+        readCellsFromEditor();
+        const colCount = currentSheetCells[0]?.length || 0;
+        if (from == null || to == null || isNaN(from) || isNaN(to) || from === to) return;
+        if (from < 0 || from >= colCount || to < 0 || to >= colCount) return;
+
+        currentSheetCells = moveSheetColumnData(currentSheetCells, from, to);
+        currentSheetFormats = moveFormatColumn(currentSheetFormats, from, to);
+        selectedSheetCol = to;
+        selectedSheetRow = null;
+        selectedSheetCell = null;
+        renderSheetEditor(currentSheetCells);
+        setSheetStatus(`Column moved to ${columnLetter(to)}.`, false);
+        scheduleAutoSaveComparisonSheet(0);
+    }
+
     function readCellsFromEditor() {
         const body = document.getElementById('comparison-cd-sheet-body');
         if (!body) return currentSheetCells;
@@ -3153,7 +3241,7 @@ document.addEventListener('DOMContentLoaded', function () {
             }
 
             clearTimeout(tableRefreshTimer);
-            tableRefreshTimer = setTimeout(() => table.replaceData(), 500);
+            tableRefreshTimer = setTimeout(() => { if (table) table.replaceData(); }, 150);
         })
         .catch(err => {
             setSheetStatus(err.message || 'Auto-save failed.', true);
@@ -3227,7 +3315,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 throw new Error(data.message || 'Could not load C link sheet.');
             }
             applySheetPayload(data, row);
-            if (opts.refreshTable) {
+            if (opts.refreshTable && table) {
                 table.replaceData();
             }
             return data;
@@ -4015,9 +4103,12 @@ document.addEventListener('DOMContentLoaded', function () {
         const shipping = parseSheetNumber(row.shipping) ?? 0;
         const sale = parseSheetNumber(row.sale) ?? 0;
 
-        const profit = (sale * ROI_SALE_NET_FACTOR) - shipping - cp - freight;
+        // Shipping is added to the Sale (revenue) rather than treated as a cost, so the
+        // effective sale = Sale + Shipping is used everywhere the calc references sale.
+        const effectiveSale = sale + shipping;
+        const profit = (effectiveSale * ROI_SALE_NET_FACTOR) - cp - freight;
         const hasInputs = sale > 0 || cp > 0 || freight > 0 || shipping > 0;
-        const pPct = sale > 0 ? (profit / sale) * 100 : null;
+        const pPct = effectiveSale > 0 ? (profit / effectiveSale) * 100 : null;
         const roi = (cp + freight) > 0 ? (profit / (cp + freight)) * 100 : null;
 
         return {
@@ -5572,12 +5663,29 @@ document.addEventListener('DOMContentLoaded', function () {
         closeCategoryDropdown();
     });
 
+    function enterCdPageMode() {
+        document.body.classList.add('cd-page-mode');
+        document.getElementById('comparison-main-card')?.classList.add('d-none');
+        const backBtn = document.getElementById('comparison-cd-back-btn');
+        if (backBtn) {
+            backBtn.classList.remove('d-none');
+            backBtn.setAttribute('href', comparisonIndexUrl);
+        }
+    }
+
     loadProductCategories().then(function () {
         const comparisonPageParams = new URLSearchParams(window.location.search);
-        const comparisonCdOnlySku = (comparisonPageParams.get('cd_only') || comparisonPageParams.get('sku') || '').trim();
+        // Dedicated full-page CD editor: driven by the /sheet-view route ($cdPageSku)
+        // or the legacy ?cd_only= URL param.
+        const comparisonCdOnlySku = (
+            (COMPARISON_CD_PAGE_SKU || '')
+            || comparisonPageParams.get('cd_only')
+            || (comparisonPageParams.has('cd_only') ? comparisonPageParams.get('sku') : '')
+            || ''
+        ).trim();
 
-        if (comparisonPageParams.has('cd_only') && comparisonCdOnlySku) {
-            document.getElementById('comparison-main-card')?.classList.add('d-none');
+        if (comparisonCdOnlySku) {
+            enterCdPageMode();
 
             const params = new URLSearchParams({ skus: comparisonCdOnlySku });
             fetch(`${dataUrl}?${params.toString()}`, {
@@ -5843,8 +5951,11 @@ document.addEventListener('DOMContentLoaded', function () {
                 cellClick: function (e, cell) {
                     e.preventDefault();
                     e.stopPropagation();
-                    comparisonBulkEditSkus = null;
-                    openComparisonModal(cell.getRow().getData());
+                    // Open the comparison sheet on its own full page (same tab) instead of a modal.
+                    const sku = String(cell.getRow().getData().sku || '').trim();
+                    if (sku) {
+                        window.location.href = comparisonSheetPageUrl + '?sku=' + encodeURIComponent(sku);
+                    }
                 },
             },
             {
@@ -6198,7 +6309,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
     document.getElementById('comparison-cd-sheet-wrap')?.addEventListener('input', function (e) {
         if (e.target.closest('.cd-sheet-cell[contenteditable="true"]')) {
-            scheduleAutoSaveComparisonSheet(800);
+            // Snappier autosave while typing so changes reflect quickly.
+            scheduleAutoSaveComparisonSheet(350);
         }
     });
 
@@ -6206,13 +6318,14 @@ document.addEventListener('DOMContentLoaded', function () {
         const cell = e.target.closest('.cd-sheet-cell[contenteditable="true"]');
         if (!cell) return;
 
+        // Finishing a cell edit persists immediately so the change is reflected at once.
         if (maybeConvertSheetCellToLink(cell)) {
-            scheduleAutoSaveComparisonSheet(400);
+            scheduleAutoSaveComparisonSheet(0);
             return;
         }
 
         if (maybeRefreshCompanyNameCell(cell)) {
-            scheduleAutoSaveComparisonSheet(400);
+            scheduleAutoSaveComparisonSheet(0);
             return;
         }
 
@@ -6224,8 +6337,77 @@ document.addEventListener('DOMContentLoaded', function () {
             renderSheetEditor(currentSheetCells);
         }
 
-        scheduleAutoSaveComparisonSheet(300);
+        scheduleAutoSaveComparisonSheet(0);
     }, true);
+
+    // ---- Drag & drop to reorder rows (drag the row number) and columns (drag the header) ----
+    (function initCdSheetDragAndDrop() {
+        const wrap = document.getElementById('comparison-cd-sheet-wrap');
+        if (!wrap) return;
+
+        let dragType = null;   // 'row' | 'col'
+        let dragIndex = null;
+
+        function clearDndTargets() {
+            wrap.querySelectorAll('.cd-dnd-target').forEach(el => el.classList.remove('cd-dnd-target'));
+        }
+
+        function endDrag() {
+            clearDndTargets();
+            wrap.classList.remove('cd-dnd-active');
+            dragType = null;
+            dragIndex = null;
+        }
+
+        wrap.addEventListener('dragstart', function (e) {
+            const rowHandle = e.target.closest('.cd-select-row');
+            const colHandle = e.target.closest('.cd-col-header');
+            if (rowHandle) {
+                dragType = 'row';
+                dragIndex = parseInt(rowHandle.dataset.row, 10);
+            } else if (colHandle) {
+                dragType = 'col';
+                dragIndex = parseInt(colHandle.dataset.col, 10);
+            } else {
+                return;
+            }
+            if (e.dataTransfer) {
+                e.dataTransfer.effectAllowed = 'move';
+                try { e.dataTransfer.setData('text/plain', dragType + ':' + dragIndex); } catch (err) {}
+            }
+            wrap.classList.add('cd-dnd-active');
+        });
+
+        wrap.addEventListener('dragover', function (e) {
+            if (dragType === null) return;
+            const target = dragType === 'row'
+                ? e.target.closest('.cd-select-row')
+                : e.target.closest('.cd-col-header');
+            if (!target) return;
+            e.preventDefault();
+            if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+            clearDndTargets();
+            target.classList.add('cd-dnd-target');
+        });
+
+        wrap.addEventListener('drop', function (e) {
+            if (dragType === null) return;
+            e.preventDefault();
+            const target = dragType === 'row'
+                ? e.target.closest('.cd-select-row')
+                : e.target.closest('.cd-col-header');
+            if (target) {
+                const toIndex = parseInt(dragType === 'row' ? target.dataset.row : target.dataset.col, 10);
+                if (!isNaN(toIndex) && !isNaN(dragIndex) && toIndex !== dragIndex) {
+                    if (dragType === 'row') moveSheetRowTo(dragIndex, toIndex);
+                    else moveSheetColumnTo(dragIndex, toIndex);
+                }
+            }
+            endDrag();
+        });
+
+        wrap.addEventListener('dragend', endDrag);
+    })();
 
     let activeCompanyTooltipCell = null;
     document.getElementById('comparison-cd-sheet-wrap')?.addEventListener('mouseover', function (e) {

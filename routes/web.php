@@ -4325,6 +4325,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Comparison
     Route::controller(ComparisonController::class)->prefix('purchase-master/comparison')->group(function () {
         Route::get('/', 'index')->name('comparison.index');
+        Route::get('/sheet-view', 'sheetPage')->name('comparison.sheet.page');
         Route::get('/data', 'getData')->name('comparison.data');
         Route::get('/parents', 'getParents')->name('comparison.parents');
         Route::post('/category/save', 'saveCategory')->name('comparison.category.save');
