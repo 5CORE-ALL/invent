@@ -4,7 +4,7 @@
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" />
-    <link rel="stylesheet" href="{{ asset('css/select-searchable.css') }}">
+    <link rel="stylesheet" href="{{ asset('css/exec-typeahead.css') }}">
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <style>
         /* CD column (comparison data) */
@@ -582,7 +582,7 @@
                         </div>
                         <div class="filter-item">
                             <label class="form-label fw-semibold d-block">👤 Executive</label>
-                            <select id="executive-filter" class="form-select border border-primary select-searchable" title="Filter by assigned executive">
+                            <select id="executive-filter" class="form-select border border-primary exec-typeahead" title="Filter by assigned executive" data-eta-placeholder="Search executive…">
                                 <option value="" selected>All Executives</option>
                                 <option value="__unassigned__">— Unassigned —</option>
                                 @foreach (($execUsers ?? []) as $execName)
@@ -1259,7 +1259,8 @@
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
-    <script src="{{ asset('js/select-searchable.js') }}"></script>
+    <script src="{{ asset('js/exec-typeahead.js') }}"></script>
+    <script src="{{ asset('js/exec-colors.js') }}"></script>
     <script>
         // Add Supplier modal (duplicated from supplier list page) — Select2 + AJAX save
         $(function () {
@@ -2543,10 +2544,10 @@
                                 return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
                             }
                             const value = String(cell.getValue() || "").trim();
-                            const c = TOA_EXEC_COLORS[value] || { bg: '#6b7280', text: '#fff' };
                             if (!value) {
                                 return '<span style="display:inline-block;padding:2px 6px;border-radius:6px;background:#e5e7eb;color:#6b7280;font-size:0.72rem;font-weight:600;cursor:pointer;white-space:nowrap;" title="Click to assign">NA</span>';
                             }
+                            const c = (window.ExecColors ? window.ExecColors.get(value) : { bg: '#6b7280', text: '#fff' });
                             return `<span style="display:inline-block;padding:2px 6px;border-radius:6px;background:${c.bg};color:${c.text};font-size:0.72rem;font-weight:700;cursor:pointer;white-space:nowrap;" title="Click to change">${value}</span>`;
                         },
                     },
@@ -3802,17 +3803,6 @@
                     return { ok: skus.length, skipped: rows.length - skus.length, message: res.message };
                 });
             }
-
-            // Executive pill colours — fixed map matches Forecast Analysis; any other
-            // user name (e.g. dynamic users like "Sruthi PS") falls back to grey.
-            const TOA_EXEC_COLORS = {
-                "Atin":   { bg: "#3b82f6", text: "#fff" },
-                "Jack":   { bg: "#10b981", text: "#fff" },
-                "Nitish": { bg: "#8b5cf6", text: "#fff" },
-                "Ajay":   { bg: "#f59e0b", text: "#fff" },
-                "Candy":  { bg: "#ec4899", text: "#fff" },
-                "Sruti":  { bg: "#14b8a6", text: "#fff" },
-            };
 
             table.on("rowSelectionChanged", function(data, rows) {
                 const modalEl = document.getElementById('toaActionModal');

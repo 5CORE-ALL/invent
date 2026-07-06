@@ -4,6 +4,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <link href="{{ asset('css/select-searchable.css') }}" rel="stylesheet">
+    <link href="{{ asset('css/exec-typeahead.css') }}" rel="stylesheet">
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
     <style>
@@ -815,9 +816,10 @@
                             <input type="text" id="search-supplier" class="form-control form-control-sm border-primary forecast-filter-field" placeholder="Supplier…" autocomplete="off">
 
                             <select id="executive-filter"
-                                    class="form-select form-select-sm border-primary forecast-filter-field select-searchable"
+                                    class="form-select form-select-sm border-primary forecast-filter-field exec-typeahead"
                                     title="Filter by Exec (all executives when unset)"
-                                    aria-label="Exec filter">
+                                    aria-label="Exec filter"
+                                    data-eta-placeholder="Search executive…">
                                 <option value="">Exec</option>
                                 <option value="__unassigned__">NA</option>
                                 @foreach (($execUsers ?? []) as $execName)
@@ -1264,6 +1266,8 @@
 
 @section('script')
     <script src="{{ asset('js/select-searchable.js') }}"></script>
+    <script src="{{ asset('js/exec-typeahead.js') }}"></script>
+    <script src="{{ asset('js/exec-colors.js') }}"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script>
@@ -3563,18 +3567,10 @@
                         const d = cell.getRow().getData() || {};
                         if (d.is_parent || d.isParent) return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
                         const value = String(cell.getValue() || '').trim();
-                        const colorMap = {
-                            Atin:   { bg: '#3b82f6', text: '#fff' },
-                            Jack:   { bg: '#10b981', text: '#fff' },
-                            Nitish: { bg: '#8b5cf6', text: '#fff' },
-                            Ajay:   { bg: '#f59e0b', text: '#fff' },
-                            Candy:  { bg: '#ec4899', text: '#fff' },
-                            Sruti:  { bg: '#14b8a6', text: '#fff' },
-                        };
                         if (!value) {
                             return '<span style="display:inline-block;padding:2px 6px;border-radius:6px;background:#e5e7eb;color:#6b7280;font-size:0.72rem;font-weight:600;cursor:pointer;white-space:nowrap;" title="Click to assign">NA</span>';
                         }
-                        const c = colorMap[value] || { bg: '#6b7280', text: '#fff' };
+                        const c = (window.ExecColors ? window.ExecColors.get(value) : { bg: '#6b7280', text: '#fff' });
                         return `<span style="display:inline-block;padding:2px 6px;border-radius:6px;background:${c.bg};color:${c.text};font-size:0.72rem;font-weight:700;cursor:pointer;white-space:nowrap;" title="Click to change">${value}</span>`;
                     }
                 },
@@ -4236,7 +4232,7 @@
                 if (el) el.value = '';
             });
             const execEl = document.getElementById('executive-filter');
-            if (execEl) execEl.value = '';
+            if (execEl) { execEl.value = ''; execEl.dispatchEvent(new Event('eta:sync')); }
             const sf = document.getElementById('stage-filter');
             if (sf) sf.value = '';
             const sbadge = document.getElementById('stage-filter-badge');

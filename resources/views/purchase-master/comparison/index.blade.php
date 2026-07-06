@@ -762,6 +762,9 @@
                         <span id="comparison-playback-label" class="text-muted small fw-semibold d-none"></span>
                         <input type="text" id="comparison-search-parent" class="form-control form-control-sm" style="max-width: 220px;" placeholder="Search Parent...">
                         <input type="text" id="comparison-search-sku" class="form-control form-control-sm" style="max-width: 220px;" placeholder="Search SKU...">
+                        <span id="comparison-selected-badge" class="badge bg-primary ms-auto d-none" style="font-size:0.8rem;">
+                            <i class="mdi mdi-checkbox-marked-outline me-1"></i><span id="comparison-selected-count">0</span> selected
+                        </span>
                     </div>
                     <div id="comparison-table"></div>
                 </div>
@@ -5071,8 +5074,42 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function addCategoryToRow(row, categoryName) {
+        if (row) {
+            addCategoryToRows([row], categoryName);
+        }
+    }
+
+    // Rows the category action should apply to: when the origin row is part of a
+    // multi-row selection, apply to every selected row (bulk); otherwise just the
+    // origin row. This makes "select 2 rows → add Mfr Category" affect both.
+    function comparisonCategoryTargetRows(originRow) {
+        if (!originRow) {
+            return [];
+        }
+        // Merge the clicked row with the current selection, deduped by SKU — mirrors the
+        // Sku Link bulk behaviour. Clicking the "+" can toggle the clicked row's own
+        // selection off, so getSelectedRows()/isSelected() alone would drop it and the
+        // action would wrongly affect only one row.
+        const rows = [originRow].concat(getSelectedComparisonRows());
+        const seen = new Set();
+        const unique = [];
+        rows.forEach(function (row) {
+            if (!row || typeof row.getData !== 'function') {
+                return;
+            }
+            const sku = String(row.getData().sku || '').trim().toUpperCase();
+            if (!sku || seen.has(sku)) {
+                return;
+            }
+            seen.add(sku);
+            unique.push(row);
+        });
+        return unique;
+    }
+
+    function addCategoryToRows(rows, categoryName) {
         const name = String(categoryName || '').trim();
-        if (!name || !row) {
+        if (!name || !Array.isArray(rows) || rows.length === 0) {
             return;
         }
         resolveProductCategoryId(name).then(function (categoryId) {
@@ -5080,12 +5117,17 @@ document.addEventListener('DOMContentLoaded', function () {
             if (!Number.isInteger(id) || id <= 0) {
                 return;
             }
-            const ids = rowCategoryIds(row.getData());
-            if (ids.includes(id)) {
-                return;
-            }
-            ids.push(id);
-            saveCategoryIdsForRow(row, ids, row.getCell('category')?.getElement());
+            rows.forEach(function (row) {
+                if (!row) {
+                    return;
+                }
+                const ids = rowCategoryIds(row.getData());
+                if (ids.includes(id)) {
+                    return;
+                }
+                ids.push(id);
+                saveCategoryIdsForRow(row, ids, row.getCell('category')?.getElement());
+            });
         });
     }
 
@@ -5124,7 +5166,10 @@ document.addEventListener('DOMContentLoaded', function () {
         const rowData = row.getData();
         const sourceEl = document.getElementById('comparison-category-picker-sku');
         if (sourceEl) {
-            sourceEl.textContent = String(rowData.sku || '').trim();
+            const targets = comparisonCategoryTargetRows(row);
+            sourceEl.textContent = targets.length > 1
+                ? (targets.length + ' selected rows')
+                : String(rowData.sku || '').trim();
         }
         const search = document.getElementById('comparison-category-picker-search');
         if (search) {
@@ -5186,10 +5231,9 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
         const name = String(categoryName || '').trim();
-        const addedNames = (Array.isArray(categoryPickerRow.getData().categories) ? categoryPickerRow.getData().categories : [])
-            .map(function (c) { return String(c.name || '').trim().toLowerCase(); });
-        if (name && !addedNames.includes(name.toLowerCase())) {
-            addCategoryToRow(categoryPickerRow, name);
+        if (name) {
+            // Applies to all selected rows when the picker was opened on a multi-selection.
+            addCategoryToRows(comparisonCategoryTargetRows(categoryPickerRow), name);
         }
         // Keep the modal open so multiple categories can be added; refresh the list
         // shortly after so the newly added one shows as "Added".
@@ -5448,7 +5492,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 clearCategoriesForRow(cell.getRow());
                 return;
             }
-            addCategoryToRow(cell.getRow(), nextName);
+            addCategoryToRows(comparisonCategoryTargetRows(cell.getRow()), nextName);
         };
 
         renderCategoryDropdownResults(results, '', handleSelect);
@@ -5565,9 +5609,7 @@ document.addEventListener('DOMContentLoaded', function () {
         columns: [
             {
                 formatter: 'rowSelection',
-                titleFormatter: function () {
-                    return '';
-                },
+                titleFormatter: 'rowSelection',
                 hozAlign: 'center',
                 headerHozAlign: 'center',
                 headerSort: false,
@@ -5764,6 +5806,19 @@ document.addEventListener('DOMContentLoaded', function () {
     table.on('pageLoaded', function () {
         table.deselectRow();
     });
+
+    function updateComparisonSelectedBadge() {
+        const badge = document.getElementById('comparison-selected-badge');
+        const countEl = document.getElementById('comparison-selected-count');
+        if (!badge || !countEl) {
+            return;
+        }
+        const count = table ? table.getSelectedRows().length : 0;
+        countEl.textContent = count;
+        badge.classList.toggle('d-none', count === 0);
+    }
+
+    table.on('rowSelectionChanged', updateComparisonSelectedBadge);
 
     document.getElementById('comparison-category-picker-search')?.addEventListener('input', function () {
         renderCategoryPickerList(this.value);

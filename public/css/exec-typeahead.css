@@ -1,0 +1,57 @@
+/* Typeahead widget for Executive filters (see exec-typeahead.js) */
+.exec-typeahead-wrap {
+    position: relative;
+    display: block;
+}
+
+.exec-typeahead-input {
+    width: 100%;
+    cursor: text;
+}
+
+.exec-typeahead-panel {
+    position: absolute;
+    z-index: 2000;
+    top: 100%;
+    left: 0;
+    right: 0;
+    margin-top: 2px;
+    background: #fff;
+    border: 1px solid #ced4da;
+    border-radius: 6px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.15);
+    max-height: 260px;
+    overflow-y: auto;
+}
+
+.exec-typeahead-list {
+    list-style: none;
+    margin: 0;
+    padding: 4px 0;
+}
+
+.exec-typeahead-item {
+    padding: 6px 12px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: #212529;
+}
+
+.exec-typeahead-item:hover,
+.exec-typeahead-item.is-active {
+    background: #0d6efd;
+    color: #fff;
+}
+
+.exec-typeahead-item.is-selected {
+    font-weight: 600;
+}
+
+.exec-typeahead-empty {
+    padding: 6px 12px;
+    color: #6c757d;
+    font-size: 0.85rem;
+}

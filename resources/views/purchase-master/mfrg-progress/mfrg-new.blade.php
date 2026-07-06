@@ -3,6 +3,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ asset('css/select-searchable.css') }}">
+    <link rel="stylesheet" href="{{ asset('css/exec-typeahead.css') }}">
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <style>
         .tabulator .tabulator-header {
@@ -272,7 +273,7 @@
                             </div>
 
                             <div class="mip-field">
-                                <select id="mip-exec-filter" class="form-select form-select-sm border-primary mip-filter-field select-searchable" aria-label="Executive filter" title="Executive filter">
+                                <select id="mip-exec-filter" class="form-select form-select-sm border-primary mip-filter-field exec-typeahead" aria-label="Executive filter" title="Executive filter" data-eta-placeholder="Search executive…">
                                     <option value="">Executive</option>
                                     <option value="__un__">Unassigned</option>
                                     @foreach (($execUsers ?? []) as $execName)
@@ -484,6 +485,8 @@
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script src="{{ asset('js/select-searchable.js') }}"></script>
+    <script src="{{ asset('js/exec-typeahead.js') }}"></script>
+    <script src="{{ asset('js/exec-colors.js') }}"></script>
     <script>
         document.addEventListener("DOMContentLoaded", function () {
             document.body.style.zoom = "96%";
@@ -587,15 +590,6 @@
                 });
                 return o;
             })();
-            // Fixed pill colours match Forecast Analysis; any other user name falls back to grey.
-            const EXEC_COLORS = {
-                'Atin':   { bg: '#3b82f6', text: '#fff' },
-                'Jack':   { bg: '#10b981', text: '#fff' },
-                'Nitish': { bg: '#8b5cf6', text: '#fff' },
-                'Ajay':   { bg: '#f59e0b', text: '#fff' },
-                'Candy':  { bg: '#ec4899', text: '#fff' },
-                'Sruti':  { bg: '#14b8a6', text: '#fff' },
-            };
             const STAGE_COLORS = {
                 'appr_req': '#facc15', 'mip': '#2563eb', 'to_order_analysis': '#c2410c',
                 'r2s': '#16a34a', 'all_good': '#22c55e', '': '#94a3b8',
@@ -677,7 +671,7 @@
                 if (!value) {
                     return '<span style="display:inline-block;padding:2px 6px;border-radius:6px;background:#e5e7eb;color:#6b7280;font-size:0.72rem;font-weight:600;cursor:pointer;white-space:nowrap;" title="Click to assign">NA</span>';
                 }
-                const c = EXEC_COLORS[value] || { bg: '#6b7280', text: '#fff' };
+                const c = (window.ExecColors ? window.ExecColors.get(value) : { bg: '#6b7280', text: '#fff' });
                 return '<span style="display:inline-block;padding:2px 6px;border-radius:6px;background:' + c.bg + ';color:' + c.text + ';font-size:0.72rem;font-weight:700;cursor:pointer;white-space:nowrap;" title="Click to change">' + esc(value) + '</span>';
             }
             function stageFormatter(cell) {
