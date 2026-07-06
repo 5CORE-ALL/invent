@@ -1462,15 +1462,21 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function loadComparisonSuppliersForCategory(category) {
-        const normalizedCategory = String(category || '').trim();
-        if (!normalizedCategory || !currentCdRow?.sku) {
+        // Accept a single name, a comma-joined string, or an array of category names,
+        // so suppliers from ALL of a SKU's categories are cached (not just one).
+        let names = Array.isArray(category)
+            ? category.map(function (c) { return String(c || '').trim(); })
+            : String(category || '').split(',').map(function (s) { return s.trim(); });
+        names = names.filter(Boolean);
+        if (!names.length || !currentCdRow?.sku) {
             return Promise.resolve([]);
         }
 
         const params = new URLSearchParams();
         params.set('sku', currentCdRow.sku || '');
-        params.set('category', normalizedCategory);
+        params.set('category', names.join(', '));
         params.set('by_category', '1');
+        names.forEach(function (name) { params.append('categories[]', name); });
 
         return fetch(`${suppliersForSkuUrl}?${params.toString()}`, {
             headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
@@ -1509,9 +1515,9 @@ document.addEventListener('DOMContentLoaded', function () {
         let supplier = comparisonSuppliersByName[normalizeSupplierNameKey(name)] || null;
 
         if (!supplier && name) {
-            const category = String(currentCdRow?.category || '').trim();
-            if (category && Object.keys(comparisonSuppliersByName).length === 0) {
-                loadComparisonSuppliersForCategory(category).then(function () {
+            const categoryNames = comparisonCdRowCategoryNames();
+            if (categoryNames.length && Object.keys(comparisonSuppliersByName).length === 0) {
+                loadComparisonSuppliersForCategory(categoryNames).then(function () {
                     openComparisonCommModal(supplierName);
                 });
                 return;
@@ -3177,8 +3183,12 @@ document.addEventListener('DOMContentLoaded', function () {
         sheetCells = ensureCommRow(sheetCells, specCol).cells;
         renderSheetEditor(sheetCells);
         captureClinkPreloadedSuppliers(currentSheetCells);
-        const category = String(row?.category || currentCdRow?.category || '').trim();
-        loadComparisonSuppliersForCategory(category).then(function () {
+        // Load suppliers for ALL categories on this row so preloaded C-link supplier
+        // names from any category resolve/colour correctly.
+        const categoryNames = (Array.isArray(row?.categories) && row.categories.length)
+            ? row.categories.map(function (c) { return String((c && c.name != null) ? c.name : '').trim(); }).filter(Boolean)
+            : String(row?.category || currentCdRow?.category || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+        loadComparisonSuppliersForCategory(categoryNames).then(function () {
             if (document.getElementById('comparison-cd-sheet-wrap')?.classList.contains('d-none') === false) {
                 renderSheetEditor(currentSheetCells);
             }
@@ -4306,25 +4316,59 @@ document.addEventListener('DOMContentLoaded', function () {
         scheduleAutoSaveComparisonSheet(400);
     }
 
+    // All Mfr Category names for the CD-modal's current row, from its `categories`
+    // array (falling back to the live table row and the comma-joined `category` field).
+    function comparisonCdRowCategoryNames() {
+        function fromCategories(arr) {
+            return (Array.isArray(arr) ? arr : [])
+                .map(function (c) { return String((c && c.name != null) ? c.name : '').trim(); })
+                .filter(Boolean);
+        }
+        function fromCategoryString(str) {
+            return String(str || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+        }
+
+        let cats = fromCategories(currentCdRow && currentCdRow.categories);
+        if (!cats.length && table && currentCdRow && currentCdRow.sku) {
+            const liveRow = table.getRows().find(function (row) { return row.getData().sku === currentCdRow.sku; });
+            if (liveRow) {
+                const ld = liveRow.getData();
+                cats = fromCategories(ld.categories);
+                if (!cats.length) {
+                    cats = fromCategoryString(ld.category);
+                }
+            }
+        }
+        if (!cats.length) {
+            cats = fromCategoryString(currentCdRow && currentCdRow.category);
+        }
+
+        const seen = new Set();
+        const out = [];
+        cats.forEach(function (c) {
+            const key = c.toLowerCase();
+            if (!seen.has(key)) {
+                seen.add(key);
+                out.push(c);
+            }
+        });
+        return out;
+    }
+
     function autopopulateSupplierNamesFromList() {
         if (!currentCdRow) {
             setSheetStatus('Open a comparison row first.', true);
             return;
         }
 
-        // Use row category first; fall back to latest table row if CD modal was opened before category was set.
-        let category = String(currentCdRow.category || '').trim();
-        if (!category && table && currentCdRow.sku) {
-            const liveRow = table.getRows().find(row => row.getData().sku === currentCdRow.sku);
-            if (liveRow) {
-                category = String(liveRow.getData().category || '').trim();
-                currentCdRow.category = category;
-            }
-        }
-        if (!category) {
+        // Gather ALL categories on this row (a SKU can carry several Mfr Categories),
+        // so suppliers from every category are fetched — not just the primary one.
+        const categoryNames = comparisonCdRowCategoryNames();
+        if (!categoryNames.length) {
             setSheetStatus('Set a category on this row before autopopulating suppliers.', true);
             return;
         }
+        const category = categoryNames.join(', ');
 
         readCellsFromEditor();
         const specCol = detectSpecColumnIndex(currentSheetCells);
@@ -4340,12 +4384,13 @@ document.addEventListener('DOMContentLoaded', function () {
 
         const btn = document.getElementById('comparison-cd-autopopulate-suppliers-btn');
         if (btn) btn.disabled = true;
-        setSheetStatus(`Loading suppliers for category "${category}" from supplier.list...`, false);
+        setSheetStatus(`Loading suppliers for ${categoryNames.length > 1 ? categoryNames.length + ' categories' : 'category "' + category + '"'} from supplier.list...`, false);
 
         const params = new URLSearchParams();
         params.set('sku', currentCdRow.sku || '');
         params.set('category', category);
         params.set('by_category', '1');
+        categoryNames.forEach(function (name) { params.append('categories[]', name); });
 
         fetch(`${suppliersForSkuUrl}?${params.toString()}`, {
             headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
@@ -5581,6 +5626,12 @@ document.addEventListener('DOMContentLoaded', function () {
                     query.set('parent', parentTerm);
                 }
             }
+            // Remote sort: send the active sort so the server sorts ALL rows before
+            // paginating (otherwise only the current page would be reordered).
+            if (Array.isArray(params.sort) && params.sort.length > 0) {
+                query.set('sort_field', String(params.sort[0].field || ''));
+                query.set('sort_dir', String(params.sort[0].dir || 'asc'));
+            }
             return `${url}?${query.toString()}`;
         },
         ajaxResponse: function (url, params, response) {
@@ -5595,7 +5646,7 @@ document.addEventListener('DOMContentLoaded', function () {
         pagination: true,
         paginationMode: 'remote',
         filterMode: 'remote',
-        sortMode: 'local',
+        sortMode: 'remote',
         paginationSize: 50,
         paginationSizeSelector: [25, 50, 100, 200],
         paginationInitialPage: 1,
@@ -5733,6 +5784,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 hozAlign: 'center',
                 headerHozAlign: 'center',
                 width: 60,
+                headerSort: false,
                 headerTooltip: 'Comparison link',
                 formatter: clinkFormatter,
                 editor: 'input',
@@ -5746,7 +5798,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 hozAlign: 'center',
                 headerHozAlign: 'center',
                 width: 75,
-                headerSort: true,
+                headerSort: false,
                 headerTooltip: 'Lowest market price and competition product links',
                 formatter: lmpFormatter,
                 cellClick: function (e) {
