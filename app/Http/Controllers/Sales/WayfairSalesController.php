@@ -15,7 +15,48 @@ class WayfairSalesController extends Controller
 {
     public function index()
     {
-        return view('sales.wayfair_daily_sales_data');
+        $y = $this->computeYesterdaySales();
+
+        return view('sales.wayfair_daily_sales_data', [
+            'ySales'     => $y['sales'],
+            'ySalesDate' => $y['date'],
+            'yQuantity'  => $y['quantity'],
+            'yOrders'    => $y['orders'],
+        ]);
+    }
+
+    /**
+     * Yesterday (Y) sales for Wayfair.
+     *
+     * Mirrors ChannelMasterController::computeWayfairYSalesLikeAmazon() so this page's
+     * "Y Sales" badge matches the Wayfair row on /all-marketplace-master: the calendar
+     * day before the latest po_date (Pacific), summing unit_price × quantity.
+     *
+     * @return array{sales: float, date: ?string, quantity: int, orders: int}
+     */
+    private function computeYesterdaySales(): array
+    {
+        $latestRaw = WayfairDailyData::whereNotNull('po_date')->max('po_date');
+        if (!$latestRaw) {
+            return ['sales' => 0.0, 'date' => null, 'quantity' => 0, 'orders' => 0];
+        }
+
+        $latestPacific = \Carbon\Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
+        $yDate = $latestPacific->copy()->subDay()->toDateString();
+
+        $agg = WayfairDailyData::whereDate('po_date', $yDate)
+            ->where('quantity', '>', 0)
+            ->selectRaw('COALESCE(SUM(unit_price * quantity), 0) as revenue')
+            ->selectRaw('COALESCE(SUM(quantity), 0) as qty')
+            ->selectRaw('COUNT(DISTINCT po_number) as orders')
+            ->first();
+
+        return [
+            'sales'    => round((float) ($agg->revenue ?? 0), 2),
+            'date'     => $yDate,
+            'quantity' => (int) ($agg->qty ?? 0),
+            'orders'   => (int) ($agg->orders ?? 0),
+        ];
     }
 
     public function testCalculation(Request $request)

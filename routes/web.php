@@ -181,6 +181,7 @@ use App\Http\Controllers\MarketPlace\MacyLowVisibilityController;
 use App\Http\Controllers\MarketPlace\MacyZeroController;
 use App\Http\Controllers\MarketPlace\MercariWoShipController;
 use App\Http\Controllers\MarketPlace\MercariWShipController;
+use App\Http\Controllers\MarketPlace\FbMarketplaceAnalyticsController;
 use App\Http\Controllers\MarketPlace\Neweggb2cController;
 use App\Http\Controllers\MarketPlace\Neweggb2cLowVisibilityController;
 use App\Http\Controllers\MarketPlace\Neweggb2cZeroController;
@@ -3582,6 +3583,13 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/mercari-without-ship-price-sold/import', [MercariWoShipController::class, 'importMercariWoShipPriceSold'])->name('mercari.woship.price-sold.import');
     Route::get('/mercari-without-ship-price-sold/sample', [MercariWoShipController::class, 'downloadMercariWoShipPriceSoldSample'])->name('mercari.woship.price-sold.sample');
     Route::post('/mercari-without-ship-tabulator/save-status', [MercariWoShipController::class, 'saveMercariWoShipStatus'])->name('mercari.woship.tabulator.save-status');
+
+    // Fb Marketplace Analytics (tabulator)
+    Route::get('/fb-marketplace-tabulator-view', [FbMarketplaceAnalyticsController::class, 'fbMarketplaceTabulatorView'])->name('fb.marketplace.tabulator.view');
+    Route::get('/fb-marketplace-tabulator-data', [FbMarketplaceAnalyticsController::class, 'getFbMarketplaceTabulatorData'])->name('fb.marketplace.tabulator.data');
+    Route::post('/fb-marketplace-price-sold/import', [FbMarketplaceAnalyticsController::class, 'importFbMarketplacePriceSold'])->name('fb.marketplace.price-sold.import');
+    Route::get('/fb-marketplace-price-sold/sample', [FbMarketplaceAnalyticsController::class, 'downloadFbMarketplacePriceSoldSample'])->name('fb.marketplace.price-sold.sample');
+    Route::post('/fb-marketplace-tabulator/save-status', [FbMarketplaceAnalyticsController::class, 'saveFbMarketplaceStatus'])->name('fb.marketplace.tabulator.save-status');
     Route::get('/amazonpricing-cvr-tabular', action: [OverallAmazonController::class, 'amazonPricingCvrTabular'])->name('amazon.pricing.cvr.tabular');
     Route::get('/amazon-column-visibility', [OverallAmazonController::class, 'getAmazonColumnVisibility'])->name('amazon.column.visibility');
     Route::post('/amazon-column-visibility', [OverallAmazonController::class, 'saveAmazonColumnVisibility'])->name('amazon.column.visibility.save');

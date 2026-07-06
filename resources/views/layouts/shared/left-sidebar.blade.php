@@ -2224,6 +2224,9 @@
                 </a>
                 <div class="collapse" id="sidebarFBMarketplace">
                     <ul class="side-nav-third-level">
+                        <li><a href="{{ route('fb.marketplace.tabulator.view') }}">Fb Marketplace - Analytics</a>
+                        </li>
+
                         <li><a href="{{ url('fbmarketplaceAnalysis') }}">FB Marketplace Analytics</a>
                         </li>
 
