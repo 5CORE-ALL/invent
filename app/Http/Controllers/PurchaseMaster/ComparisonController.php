@@ -742,6 +742,11 @@ class ComparisonController extends Controller
 
     private function importSheetFromUrl(string $sku, string $parent, string $url, string $tab, string $historyMessage)
     {
+        // Google Sheets exports can be large (many rows/columns) and the fetch + parse +
+        // normalize pipeline briefly holds several copies in memory. Raise the limit for
+        // this request so a big sheet no longer trips the default 128M cap.
+        @ini_set('memory_limit', '1024M');
+
         $user = Auth::user()?->name ?? 'N/A';
 
         try {

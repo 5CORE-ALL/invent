@@ -3199,7 +3199,12 @@ document.addEventListener('DOMContentLoaded', function () {
     function syncComparisonFromClink(row, options) {
         const opts = options || {};
         const importBtn = document.getElementById('comparison-cd-import-btn');
-        if (importBtn) importBtn.disabled = true;
+        let importBtnOriginalHtml = null;
+        if (importBtn) {
+            importBtn.disabled = true;
+            importBtnOriginalHtml = importBtn.innerHTML;
+            importBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span> Refreshing...';
+        }
         setSheetStatus(opts.message || 'Loading comparison sheet from C link...', false);
 
         return fetch(sheetSyncClinkUrl, {
@@ -3228,7 +3233,12 @@ document.addEventListener('DOMContentLoaded', function () {
             return data;
         })
         .finally(() => {
-            if (importBtn) importBtn.disabled = false;
+            if (importBtn) {
+                importBtn.disabled = false;
+                if (importBtnOriginalHtml !== null) {
+                    importBtn.innerHTML = importBtnOriginalHtml;
+                }
+            }
         });
     }
 
