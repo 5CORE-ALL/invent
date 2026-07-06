@@ -1878,6 +1878,17 @@
             return sku.indexOf('parent') === -1;
         }
 
+        function getForecastCurrentPageRows(tableInstance) {
+            const activeRows = tableInstance.getRows("active");
+            const pageSize = (typeof tableInstance.getPageSize === 'function') ? tableInstance.getPageSize() : 0;
+            const currentPage = (typeof tableInstance.getPage === 'function') ? tableInstance.getPage() : false;
+            if (!pageSize || pageSize <= 0 || !currentPage || currentPage < 1) {
+                return activeRows;
+            }
+            const start = (currentPage - 1) * pageSize;
+            return activeRows.slice(start, start + pageSize);
+        }
+
         let forecastBulkSelectionCache = [];
 
         function dedupeForecastRows(rows) {
@@ -2514,11 +2525,11 @@
                         checkbox.style.cursor = "pointer";
                         checkbox.addEventListener("click", function(e) {
                             e.stopPropagation();
-                            const activeRows = cell.getTable().getRows("active").filter(isSelectableForecastRow);
+                            const pageRows = getForecastCurrentPageRows(cell.getTable()).filter(isSelectableForecastRow);
                             if (checkbox.checked) {
-                                activeRows.forEach(function(row) { row.select(); });
+                                pageRows.forEach(function(row) { row.select(); });
                             } else {
-                                activeRows.forEach(function(row) { row.deselect(); });
+                                pageRows.forEach(function(row) { row.deselect(); });
                             }
                         });
                         return checkbox;

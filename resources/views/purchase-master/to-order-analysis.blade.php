@@ -136,6 +136,11 @@
             background: #e0eaff;
         }
 
+        .tabulator .tabulator-cell.toa-exec-cell {
+            padding-left: 2px !important;
+            padding-right: 2px !important;
+        }
+
         .tabulator-row:hover {
             background-color: #dbeafe !important;
         }
@@ -579,12 +584,9 @@
                             <select id="executive-filter" class="form-select border border-primary" title="Filter by assigned executive">
                                 <option value="" selected>All Executives</option>
                                 <option value="__unassigned__">— Unassigned —</option>
-                                <option value="Atin">Atin</option>
-                                <option value="Jack">Jack</option>
-                                <option value="Nitish">Nitish</option>
-                                <option value="Ajay">Ajay</option>
-                                <option value="Candy">Candy</option>
-                                <option value="Sruti">Sruti</option>
+                                @foreach (($execUsers ?? []) as $execName)
+                                    <option value="{{ $execName }}">{{ $execName }}</option>
+                                @endforeach
                             </select>
                         </div>
                         <div class="filter-item">
@@ -1155,12 +1157,9 @@
                             <select id="toa-action-executive" class="form-select form-select-sm">
                                 <option value="">— Keep current —</option>
                                 <option value="__unassigned__">— Unassigned —</option>
-                                <option value="Atin">Atin</option>
-                                <option value="Jack">Jack</option>
-                                <option value="Nitish">Nitish</option>
-                                <option value="Ajay">Ajay</option>
-                                <option value="Candy">Candy</option>
-                                <option value="Sruti">Sruti</option>
+                                @foreach (($execUsers ?? []) as $execName)
+                                    <option value="{{ $execName }}">{{ $execName }}</option>
+                                @endforeach
                             </select>
                         </div>
                         <div class="col-md-6">
@@ -2399,6 +2398,18 @@
                 });
             }
 
+            // Executive list — dynamic from the users table (server-provided), matching
+            // the Forecast Analysis page. Drives the Exec column list editor.
+            const TOA_EXEC_USERS = @json($execUsers ?? []);
+            const TOA_EXEC_EDITOR_VALUES = (function () {
+                const o = { "": "NA" };
+                (TOA_EXEC_USERS || []).forEach(function (n) {
+                    const v = String(n == null ? '' : n).trim();
+                    if (v) o[v] = v;
+                });
+                return o;
+            })();
+
             const table = new Tabulator("#toOrderAnalysis-table", {
                 ajaxURL: "/to-order-analysis/data",
                 ajaxConfig: {
@@ -2482,31 +2493,54 @@
                         minWidth: 60,
                         headerSort: true,
                         headerTooltip: "Executive assigned",
-                        formatter: function(cell) {
-                            const val = (cell.getValue() || "").trim();
-                            const label = val || "— Unassigned —";
-                            const colors = {
-                                "Atin":   { bg: "#3b82f6", text: "#fff" },
-                                "Jack":   { bg: "#10b981", text: "#fff" },
-                                "Nitish": { bg: "#8b5cf6", text: "#fff" },
-                                "Ajay":   { bg: "#f59e0b", text: "#fff" },
-                                "Candy":  { bg: "#ec4899", text: "#fff" },
-                                "Sruti":  { bg: "#14b8a6", text: "#fff" },
-                            };
-                            const c = colors[val] || { bg: "#e5e7eb", text: "#6b7280" };
-                            const options = ["", "Atin", "Jack", "Nitish", "Ajay", "Candy", "Sruti"]
-                                .map(o => `<option value="${o}"${o === val ? " selected" : ""}>${o || "— Unassigned —"}</option>`)
-                                .join("");
-                            const rowData = cell.getRow().getData();
-                            const sku = (rowData.SKU || "").replace(/"/g, "&quot;");
-                            const rowId = rowData.id || 0;
-                            return `<select class="toa-exec-select"
-                                data-sku="${sku}" data-row-id="${rowId}"
-                                style="width:100%;border:none;border-radius:6px;padding:3px 6px;font-size:0.82rem;font-weight:600;background:${c.bg};color:${c.text};cursor:pointer;outline:none;">
-                                ${options}
-                            </select>`;
+                        cssClass: "toa-exec-cell",
+                        editor: "list",
+                        editorParams: {
+                            values: TOA_EXEC_EDITOR_VALUES,
+                            defaultValue: "",
+                            verticalNavigation: "editor",
                         },
-                        cellClick: function(e) { e.stopPropagation(); },
+                        editable: function(cell) {
+                            return isToaSelectableRow(cell.getRow());
+                        },
+                        cellClick: function(e, cell) {
+                            e.stopPropagation();
+                            if (!isToaSelectableRow(cell.getRow())) return;
+                            cell.edit();
+                        },
+                        cellEditing: function(cell) {
+                            cell._execPrev = cell.getValue();
+                        },
+                        cellEdited: async function(cell) {
+                            const row = cell.getRow();
+                            if (!isToaSelectableRow(row)) return;
+                            const next = String(cell.getValue() || '').trim();
+                            const prev = String(cell._execPrev || '').trim();
+                            delete cell._execPrev;
+                            if (next === prev) return;
+                            const sku = String(row.getData().SKU || '').trim().toUpperCase();
+                            const targets = getToaBulkTargetRows(sku);
+                            if (!targets.length) return;
+                            targets.forEach(function (r) { r.update({ Exec: next || '' }, true); });
+                            try {
+                                await applyExecutiveToRows(targets, next || '__unassigned__');
+                            } catch (err) {
+                                cell.setValue(prev, true);
+                                alert("Could not save executive: " + (err.message || 'Save failed'));
+                                table.replaceData();
+                            }
+                        },
+                        formatter: function(cell) {
+                            if (!isToaSelectableRow(cell.getRow())) {
+                                return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
+                            }
+                            const value = String(cell.getValue() || "").trim();
+                            const c = TOA_EXEC_COLORS[value] || { bg: '#6b7280', text: '#fff' };
+                            if (!value) {
+                                return '<span style="display:inline-block;padding:2px 6px;border-radius:6px;background:#e5e7eb;color:#6b7280;font-size:0.72rem;font-weight:600;cursor:pointer;white-space:nowrap;" title="Click to assign">NA</span>';
+                            }
+                            return `<span style="display:inline-block;padding:2px 6px;border-radius:6px;background:${c.bg};color:${c.text};font-size:0.72rem;font-weight:700;cursor:pointer;white-space:nowrap;" title="Click to change">${value}</span>`;
+                        },
                     },
                     {
                         title: "SKU",
@@ -3761,7 +3795,8 @@
                 });
             }
 
-            // Executive column — save on change + update badge colour live (bulk when rows selected)
+            // Executive pill colours — fixed map matches Forecast Analysis; any other
+            // user name (e.g. dynamic users like "Sruthi PS") falls back to grey.
             const TOA_EXEC_COLORS = {
                 "Atin":   { bg: "#3b82f6", text: "#fff" },
                 "Jack":   { bg: "#10b981", text: "#fff" },
@@ -3770,33 +3805,6 @@
                 "Candy":  { bg: "#ec4899", text: "#fff" },
                 "Sruti":  { bg: "#14b8a6", text: "#fff" },
             };
-
-            document.getElementById("toOrderAnalysis-table").addEventListener("change", async function(e) {
-                const sel = e.target.closest(".toa-exec-select");
-                if (!sel) return;
-                const newVal = sel.value;
-                const sku   = sel.dataset.sku;
-                const targets = getToaBulkTargetRows(sku);
-                if (!targets.length) return;
-
-                targets.forEach(function (row) {
-                    const execSel = row.getElement().querySelector('.toa-exec-select');
-                    if (execSel) {
-                        execSel.value = newVal;
-                        const c = TOA_EXEC_COLORS[newVal] || { bg: "#e5e7eb", text: "#6b7280" };
-                        execSel.style.background = c.bg;
-                        execSel.style.color = c.text;
-                    }
-                    row.update({ Exec: newVal || '' }, true);
-                });
-
-                try {
-                    await applyExecutiveToRows(targets, newVal || '__unassigned__');
-                } catch (err) {
-                    alert("Could not save executive: " + (err.message || 'Save failed'));
-                    table.replaceData();
-                }
-            });
 
             table.on("rowSelectionChanged", function(data, rows) {
                 const modalEl = document.getElementById('toaActionModal');

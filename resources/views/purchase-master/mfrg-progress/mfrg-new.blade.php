@@ -31,8 +31,8 @@
         .mip-new-img-aspect { width: 44px; height: 44px; margin: 0 auto; }
         .mip-new-img-aspect img { width: 100%; height: 100%; object-fit: contain; cursor: pointer; display: block; }
 
-        /* Executive colored select */
-        .toa-exec-select { border: none; border-radius: 6px; padding: 3px 6px; font-size: 0.8rem; font-weight: 600; cursor: pointer; outline: none; width: 100%; }
+        /* Executive pill cell (matches Forecast Analysis) */
+        .tabulator .tabulator-cell.mip-exec-cell { padding-left: 2px !important; padding-right: 2px !important; }
 
         /* Stage dot + invisible select overlay */
         .mip-stage-dot { position: relative; width: 44px; height: 30px; margin: 0 auto; }
@@ -274,12 +274,9 @@
                                 <select id="mip-exec-filter" class="form-select form-select-sm border-primary mip-filter-field" aria-label="Executive filter" title="Executive filter">
                                     <option value="">Executive</option>
                                     <option value="__un__">Unassigned</option>
-                                    <option value="Atin">Atin</option>
-                                    <option value="Jack">Jack</option>
-                                    <option value="Nitish">Nitish</option>
-                                    <option value="Ajay">Ajay</option>
-                                    <option value="Candy">Candy</option>
-                                    <option value="Sruti">Sruti</option>
+                                    @foreach (($execUsers ?? []) as $execName)
+                                        <option value="{{ $execName }}">{{ $execName }}</option>
+                                    @endforeach
                                 </select>
                             </div>
 
@@ -576,7 +573,19 @@
             // searchable Supplier dropdown so every supplier is selectable, not just ones already in the grid.
             const ALL_SUPPLIERS = @json($allSuppliers ?? []);
 
-            const EXEC_OPTIONS = ['Atin', 'Jack', 'Nitish', 'Ajay', 'Candy', 'Sruti'];
+            // Executive list — dynamic from the users table (server-provided), matching
+            // the Forecast Analysis page. Drives the Exec column list editor, the filter
+            // and the bulk-edit modal.
+            const EXEC_OPTIONS = @json($execUsers ?? []);
+            const EXEC_EDITOR_VALUES = (function () {
+                const o = { "": "NA" };
+                (EXEC_OPTIONS || []).forEach(function (n) {
+                    const v = String(n == null ? '' : n).trim();
+                    if (v) o[v] = v;
+                });
+                return o;
+            })();
+            // Fixed pill colours match Forecast Analysis; any other user name falls back to grey.
             const EXEC_COLORS = {
                 'Atin':   { bg: '#3b82f6', text: '#fff' },
                 'Jack':   { bg: '#10b981', text: '#fff' },
@@ -662,12 +671,12 @@
 
             // ---- formatters ----
             function execFormatter(cell) {
-                const row = cell.getRow().getData();
-                const val = (cell.getValue() || '').trim();
-                const c = EXEC_COLORS[val] || { bg: '#e5e7eb', text: '#6b7280' };
-                let opts = '<option value=""' + (val === '' ? ' selected' : '') + '>— Unassigned —</option>';
-                EXEC_OPTIONS.forEach(function (n) { opts += '<option value="' + n + '"' + (n === val ? ' selected' : '') + '>' + n + '</option>'; });
-                return '<select class="toa-exec-select" data-sku="' + esc(row.sku) + '" style="background:' + c.bg + ';color:' + c.text + ';">' + opts + '</select>';
+                const value = (cell.getValue() || '').trim();
+                if (!value) {
+                    return '<span style="display:inline-block;padding:2px 6px;border-radius:6px;background:#e5e7eb;color:#6b7280;font-size:0.72rem;font-weight:600;cursor:pointer;white-space:nowrap;" title="Click to assign">NA</span>';
+                }
+                const c = EXEC_COLORS[value] || { bg: '#6b7280', text: '#fff' };
+                return '<span style="display:inline-block;padding:2px 6px;border-radius:6px;background:' + c.bg + ';color:' + c.text + ';font-size:0.72rem;font-weight:700;cursor:pointer;white-space:nowrap;" title="Click to change">' + esc(value) + '</span>';
             }
             function stageFormatter(cell) {
                 const d = cell.getRow().getData();
@@ -1049,6 +1058,44 @@
                         }
                     },
                     { title: "Executive", field: "exec", width: 120, hozAlign: "center",
+                      cssClass: "mip-exec-cell",
+                      editor: "list",
+                      editorParams: {
+                          values: EXEC_EDITOR_VALUES,
+                          defaultValue: "",
+                          verticalNavigation: "editor",
+                      },
+                      editable: function () { return !showArchived; },
+                      cellClick: function (e, cell) {
+                          e.stopPropagation();
+                          if (showArchived) return;
+                          cell.edit();
+                      },
+                      cellEditing: function (cell) { cell._execPrev = cell.getValue(); },
+                      cellEdited: function (cell) {
+                          const row = cell.getRow();
+                          const d = row.getData();
+                          const next = String(cell.getValue() || '').trim();
+                          const prev = String(cell._execPrev || '').trim();
+                          delete cell._execPrev;
+                          if (next === prev) return;
+                          const sku = d.sku || '';
+                          const prevExec = (d.exec == null) ? null : d.exec;
+                          row.update({ exec: next });
+                          postUpdateLink(sku, 'Exec', next || null)
+                              .then(function (r) {
+                                  if (!r || !r.success) {
+                                      row.update({ exec: prevExec });
+                                      cell.setValue(prev, true);
+                                      alert((r && r.message) || 'Could not save executive.');
+                                  }
+                              })
+                              .catch(function (err) {
+                                  row.update({ exec: prevExec });
+                                  cell.setValue(prev, true);
+                                  alert('Could not save executive: ' + (err && err.message ? err.message : err));
+                              });
+                      },
                       formatter: execFormatter },
                     { title: "Supplier", field: "supplier", width: 140, hozAlign: "center",
                       formatter: supplierFormatter,
@@ -1402,36 +1449,7 @@
                 const sku = d.sku || '';
                 const mipId = d.id || 0;
 
-                if (t.classList.contains('toa-exec-select')) {
-                    const v = t.value;
-                    const prevExec = (d.exec == null) ? null : d.exec;
-                    const c = EXEC_COLORS[v] || { bg: '#e5e7eb', text: '#6b7280' };
-                    t.style.background = c.bg; t.style.color = c.text;
-                    // OPTIMISTIC update: commit the new exec to the row data immediately.
-                    //
-                    // The old code waited for the server response before calling
-                    // row.update({ exec: v }), which left the new value sitting only in
-                    // the raw <select> DOM. If Tabulator re-rendered the cell during the
-                    // async save (page change, filter, another row update, dataLoaded,
-                    // header-checkbox sync, etc.), it regenerated the dropdown from the
-                    // OLD row data — so the user saw their just-picked executive snap
-                    // back to "Unassigned" intermittently.
-                    //
-                    // Now we update the row first; on save failure we roll back and
-                    // alert. This eliminates the visual race entirely.
-                    row.update({ exec: v });
-                    postUpdateLink(sku, 'Exec', v || null)
-                        .then(r => {
-                            if (!r || !r.success) {
-                                row.update({ exec: prevExec });
-                                alert((r && r.message) || 'Could not save executive.');
-                            }
-                        })
-                        .catch(err => {
-                            row.update({ exec: prevExec });
-                            alert('Could not save executive: ' + (err && err.message ? err.message : err));
-                        });
-                } else if (t.classList.contains('editable-stage')) {
+                if (t.classList.contains('editable-stage')) {
                     const v = t.value;
                     postStage(sku, d.parent, v).done(function () {
                         row.update({ stage: v });

@@ -153,7 +153,11 @@
                     <span class="badge bg-secondary fs-6 p-2" id="missing-l-badge" style="color: #fff; font-weight: bold; cursor: pointer;" title="Click to filter: Price = 0 and NR/REQ = REQ">Missing L: 0</span>
                     <span class="badge bg-warning fs-6 p-2" id="revenue-badge" style="color: #000; font-weight: bold;" title="Total sales (Price × L30 sold)">Revenue: $0.00</span>
 
-                    <button type="button" class="btn btn-sm btn-primary ms-auto" data-bs-toggle="modal"
+                    <button type="button" id="export-btn" class="btn btn-sm btn-warning ms-auto"
+                        title="Export current (filtered) rows to CSV">
+                        <i class="fas fa-file-export"></i> Export
+                    </button>
+                    <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal"
                         data-bs-target="#priceSoldUploadModal" title="Upload Price &amp; Sold">
                         <i class="fas fa-upload"></i>
                     </button>
@@ -499,6 +503,16 @@
             if (dilFilterEl) dilFilterEl.addEventListener('change', applyAllFilters);
             const soldFilterEl = document.getElementById('sold-filter');
             if (soldFilterEl) soldFilterEl.addEventListener('change', applyAllFilters);
+
+            // Export current (filtered) rows to CSV
+            const exportBtn = document.getElementById('export-btn');
+            if (exportBtn) {
+                exportBtn.addEventListener('click', function() {
+                    if (typeof table !== 'undefined' && table.download) {
+                        table.download('csv', 'mercari-with-ship.csv');
+                    }
+                });
+            }
 
             // Price % toggle — cycle Off → Decrease → Increase → Same Price → Off
             const priceModeBtn = document.getElementById('price-mode-btn');

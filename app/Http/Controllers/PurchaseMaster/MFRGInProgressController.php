@@ -111,8 +111,22 @@ class MFRGInProgressController extends Controller
             ->unique()
             ->values();
 
+        // Executive list — dynamic from the users table so the Exec column matches
+        // the Forecast Analysis page (same source, same names).
+        $execUsers = \App\Models\User::query()
+            ->whereNotNull('name')
+            ->where('name', '!=', '')
+            ->orderBy('name')
+            ->pluck('name')
+            ->map(fn ($n) => trim((string) $n))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
         return view('purchase-master.mfrg-progress.mfrg-new', [
             'allSuppliers' => $allSuppliers,
+            'execUsers' => $execUsers,
         ]);
     }
 

@@ -225,6 +225,17 @@
 
                         </form>
 
+                        @if($canEditAll)
+                            <div class="row mt-2">
+                                <div class="col-12">
+                                    <button type="button" id="delete-task-btn" class="btn btn-sm btn-outline-danger w-100"
+                                            data-id="{{ $task->id }}">
+                                        <i class="mdi mdi-delete me-1"></i> Delete Task
+                                    </button>
+                                </div>
+                            </div>
+                        @endif
+
                     </div> <!-- end card-body-->
                 </div> <!-- end card-->
             </div> <!-- end col -->
@@ -291,6 +302,33 @@
                     }
                     reader.readAsDataURL(file);
                 }
+            });
+
+            // Delete Task (moved here from the task listing) — creator/admin only
+            $('#delete-task-btn').on('click', function() {
+                if (!confirm('Delete this task? This action cannot be undone.')) {
+                    return;
+                }
+
+                const btn = $(this);
+                const taskId = btn.data('id');
+                btn.prop('disabled', true).html('<i class="mdi mdi-loading mdi-spin me-1"></i> Deleting...');
+
+                $.ajax({
+                    url: '{{ url('/tasks') }}/' + taskId,
+                    type: 'DELETE',
+                    data: { _token: '{{ csrf_token() }}' },
+                    success: function() {
+                        window.location.href = '{{ route('tasks.index') }}';
+                    },
+                    error: function(xhr) {
+                        const msg = (xhr.responseJSON && xhr.responseJSON.message)
+                            ? xhr.responseJSON.message
+                            : 'Failed to delete task. You may not have permission.';
+                        alert('Error: ' + msg);
+                        btn.prop('disabled', false).html('<i class="mdi mdi-delete me-1"></i> Delete Task');
+                    }
+                });
             });
         });
     </script>

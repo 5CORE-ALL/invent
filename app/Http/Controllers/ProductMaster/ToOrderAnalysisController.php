@@ -311,10 +311,24 @@ class ToOrderAnalysisController extends Controller
         $categories = \App\Models\Category::orderBy('name')->get(['id', 'name']);
         $execService = app(PurchasePageExecService::class);
 
+        // Executive list — dynamic from the users table so the Exec column matches
+        // the Forecast Analysis page (same source, same names).
+        $execUsers = \App\Models\User::query()
+            ->whereNotNull('name')
+            ->where('name', '!=', '')
+            ->orderBy('name')
+            ->pluck('name')
+            ->map(fn ($n) => trim((string) $n))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
         return view('purchase-master.to-order-analysis', [
             'allSuppliers' => $allSuppliers,
             'allCategories' => $allCategories,
             'categories' => $categories,
+            'execUsers' => $execUsers,
             'execOptions' => $execService->getOptions(),
             'pageExec' => $execService->getAssignment('to_order') ?? '',
             'execCanEdit' => PurchasePageExecService::userCanEdit(),
