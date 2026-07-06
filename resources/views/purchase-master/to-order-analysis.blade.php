@@ -2311,7 +2311,7 @@
                 }
             }
 
-            const comparisonCdBaseUrl = @json(url('/purchase-master/comparison'));
+            const comparisonCdBaseUrl = @json(route('comparison.sheet.page'));
             const toaCdHoverPreview = document.getElementById('toa-cd-hover-preview');
             const toaCdModalEl = document.getElementById('toaCdModal');
             const toaCdIframe = document.getElementById('toaCdIframe');
@@ -2383,7 +2383,7 @@
 
                 hideToaCdHover();
                 const parent = String(rowData?.Parent || '').trim();
-                const params = new URLSearchParams({ cd_only: '1', sku: sku });
+                const params = new URLSearchParams({ sku: sku });
                 if (parent) {
                     params.set('parent', parent);
                 }

@@ -5812,7 +5812,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 field: 'linked_skus',
                 hozAlign: 'left',
                 headerHozAlign: 'center',
-                width: 150,
+                width: 280,
                 headerSort: false,
                 cssClass: 'linked-sku-col',
                 formatter: linkedSkuFormatter,

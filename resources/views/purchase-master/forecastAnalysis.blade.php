@@ -3319,7 +3319,7 @@
                         const safeSku = sku.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
                         return `<div style="display:flex;align-items:center;justify-content:center;">
                             <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2 forecast-cd-open" data-sku="${safeSku}" title="Open comparison data" aria-label="Open comparison data">
-                                <i class="mdi mdi-scale-balance"></i>
+                                <i class="mdi mdi-magnify"></i>
                             </button>
                         </div>`;
                     },
@@ -6490,16 +6490,11 @@
             instance.show();
         }
 
-        // CD column — open the real comparison CD view for this SKU in an iframe modal.
+        // CD column — open the real comparison CD editor on its own page (not a modal).
         $(document).off('click', '.forecast-cd-open').on('click', '.forecast-cd-open', function() {
             const sku = String($(this).data('sku') || '').trim();
             if (!sku) return;
-            const url = '{{ route('comparison.index') }}?cd_sku=' + encodeURIComponent(sku) + '&embed=1';
-            const iframe = document.getElementById('forecastCdIframe');
-            if (iframe) iframe.src = url;
-            const skuLabel = document.getElementById('forecastCdModalSku');
-            if (skuLabel) skuLabel.textContent = sku;
-            bootstrap.Modal.getOrCreateInstance(document.getElementById('forecastCdModal')).show();
+            window.location.href = '{{ route('comparison.sheet.page') }}?sku=' + encodeURIComponent(sku);
         });
         document.getElementById('forecastCdModal')?.addEventListener('hidden.bs.modal', function() {
             const iframe = document.getElementById('forecastCdIframe');
