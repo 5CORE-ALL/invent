@@ -4,6 +4,7 @@
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" />
+    <link rel="stylesheet" href="{{ asset('css/select-searchable.css') }}">
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <style>
         /* CD column (comparison data) */
@@ -581,7 +582,7 @@
                         </div>
                         <div class="filter-item">
                             <label class="form-label fw-semibold d-block">👤 Executive</label>
-                            <select id="executive-filter" class="form-select border border-primary" title="Filter by assigned executive">
+                            <select id="executive-filter" class="form-select border border-primary select-searchable" title="Filter by assigned executive">
                                 <option value="" selected>All Executives</option>
                                 <option value="__unassigned__">— Unassigned —</option>
                                 @foreach (($execUsers ?? []) as $execName)
@@ -1154,7 +1155,7 @@
                         </div>
                         <div class="col-md-6">
                             <label class="form-label fw-semibold">Executive</label>
-                            <select id="toa-action-executive" class="form-select form-select-sm">
+                            <select id="toa-action-executive" class="form-select form-select-sm toa-action-select2" data-placeholder="— Keep current —">
                                 <option value="">— Keep current —</option>
                                 <option value="__unassigned__">— Unassigned —</option>
                                 @foreach (($execUsers ?? []) as $execName)
@@ -1258,6 +1259,7 @@
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    <script src="{{ asset('js/select-searchable.js') }}"></script>
     <script>
         // Add Supplier modal (duplicated from supplier list page) — Select2 + AJAX save
         $(function () {
@@ -2498,6 +2500,12 @@
                         editorParams: {
                             values: TOA_EXEC_EDITOR_VALUES,
                             defaultValue: "",
+                            autocomplete: true,
+                            listOnEmpty: true,
+                            freetext: false,
+                            allowEmpty: true,
+                            clearable: true,
+                            placeholderEmpty: "No executive found",
                             verticalNavigation: "editor",
                         },
                         editable: function(cell) {

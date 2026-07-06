@@ -200,6 +200,9 @@ class MFRGInProgressController extends Controller
         // to_order_analysis, so RTS rows that aren't in mfrg_progress still show their saved exec.
         self::attachExecBySku($mfrgData);
 
+        // MOQ shown on To Order / Forecast — same source, so all three pages agree.
+        self::attachMoqBySku($mfrgData);
+
         self::attachPreMipChecklists($mfrgData);
 
         if (config('app.debug')) {
@@ -398,6 +401,75 @@ class MFRGInProgressController extends Controller
         foreach ($rows as $row) {
             $key = strtoupper(trim((string) ($row->sku ?? '')));
             $row->exec = $execBySku[$key] ?? null;
+        }
+    }
+
+    /**
+     * Attach the MOQ shown on the To Order Analysis / Forecast pages to each MIP row,
+     * using the SAME source so all three pages agree:
+     *   MOQ = to_order_analysis.approved_qty when set, else the product-master MOQ.
+     * This keeps the MIP "MOQ" column consistent with To Order and Forecast (e.g. 99),
+     * independent of the manufacturing QTY (mfrg_progress.qty).
+     */
+    private static function attachMoqBySku(Collection $rows): void
+    {
+        if ($rows->isEmpty()) {
+            return;
+        }
+
+        $normalizeSku = fn (?string $sku) => self::normalizeMipSku($sku);
+
+        // Approved MOQ from to_order_analysis. Last write per normalized SKU wins
+        // (orderBy id asc + overwrite), matching the To Order Analysis page precedence.
+        $approvedBySku = [];
+        foreach (
+            DB::table('to_order_analysis')
+                ->whereNull('deleted_at')
+                ->orderBy('id', 'asc')
+                ->select('sku', 'approved_qty')
+                ->get() as $r
+        ) {
+            $k = $normalizeSku($r->sku ?? '');
+            if ($k !== '') {
+                $approvedBySku[$k] = $r->approved_qty;
+            }
+        }
+
+        // Product-master MOQ fallback (used when approved_qty is unset), matching forecast + to-order.
+        $candidates = [];
+        foreach ($rows as $r) {
+            $n = $normalizeSku($r->sku ?? '');
+            if ($n !== '') {
+                $candidates[$n] = true;
+            }
+        }
+        $candidates = array_keys($candidates);
+
+        $pmMoqByKey = [];
+        foreach (array_chunk($candidates, 450) as $chunk) {
+            $chunk = array_values(array_filter($chunk, fn ($s) => $s !== ''));
+            if ($chunk === []) {
+                continue;
+            }
+            foreach (DB::table('product_master')->whereIn('sku', $chunk)->select('sku', 'Values')->get() as $item) {
+                $values = json_decode($item->Values ?? '{}', true);
+                $moqRaw = is_array($values) ? ($values['moq'] ?? null) : null;
+                if ($moqRaw === null || $moqRaw === '' || ! is_numeric($moqRaw)) {
+                    continue;
+                }
+                $norm = $normalizeSku($item->sku);
+                if ($norm !== '' && ! isset($pmMoqByKey[$norm])) {
+                    $pmMoqByKey[$norm] = (float) $moqRaw;
+                }
+            }
+        }
+
+        foreach ($rows as $row) {
+            $k = $normalizeSku($row->sku ?? '');
+            $raw = $approvedBySku[$k] ?? null;
+            $row->moq = ($raw !== null && $raw !== '')
+                ? (int) $raw
+                : (int) ($pmMoqByKey[$k] ?? 0);
         }
     }
 

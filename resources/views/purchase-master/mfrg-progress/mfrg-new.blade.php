@@ -2,6 +2,7 @@
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ asset('css/select-searchable.css') }}">
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <style>
         .tabulator .tabulator-header {
@@ -271,7 +272,7 @@
                             </div>
 
                             <div class="mip-field">
-                                <select id="mip-exec-filter" class="form-select form-select-sm border-primary mip-filter-field" aria-label="Executive filter" title="Executive filter">
+                                <select id="mip-exec-filter" class="form-select form-select-sm border-primary mip-filter-field select-searchable" aria-label="Executive filter" title="Executive filter">
                                     <option value="">Executive</option>
                                     <option value="__un__">Unassigned</option>
                                     @foreach (($execUsers ?? []) as $execName)
@@ -482,6 +483,7 @@
 @section('script')
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <script src="{{ asset('js/select-searchable.js') }}"></script>
     <script>
         document.addEventListener("DOMContentLoaded", function () {
             document.body.style.zoom = "96%";
@@ -1063,6 +1065,12 @@
                       editorParams: {
                           values: EXEC_EDITOR_VALUES,
                           defaultValue: "",
+                          autocomplete: true,
+                          listOnEmpty: true,
+                          freetext: false,
+                          allowEmpty: true,
+                          clearable: true,
+                          placeholderEmpty: "No executive found",
                           verticalNavigation: "editor",
                       },
                       editable: function () { return !showArchived; },
@@ -1129,6 +1137,16 @@
                           return '<span class="mip-sku-text">' + esc(v) + '</span>' +
                               '<i class="far fa-copy mip-sku-copy" data-sku="' + esc(v) + '" title="Copy SKU"></i>';
                       } },
+                    { title: "MOQ", field: "moq", width: 70, hozAlign: "center",
+                      headerTooltip: "Minimum Order Quantity — same value as To Order Analysis & Forecast (read-only here)",
+                      formatter: function (cell) {
+                          const v = cell.getValue();
+                          if (v == null || v === '' || Number(v) === 0) {
+                              return '<span class="text-muted">0</span>';
+                          }
+                          return '<span style="font-weight:600;">' + esc(String(v)) + '</span>';
+                      }
+                    },
                     { title: "QTY", field: "qty", width: 90, hozAlign: "center",
                       // Read-only display by default; click to open a number editor.
                       // Previously rendered an always-open <input> so the value looked editable
@@ -1782,7 +1800,7 @@
             const YESNO = [['Yes', 'Yes'], ['No', 'No']];
             const EDIT_FIELDS = [
                 { key: 'sku', label: 'SKU', type: 'text', readonly: true },
-                { key: 'exec', label: 'Executive', type: 'select', options: function () { return [['', '— Unassigned —']].concat(EXEC_OPTIONS.map(function (n) { return [n, n]; })); } },
+                { key: 'exec', label: 'Executive', type: 'select', searchable: true, options: function () { return [['', '— Unassigned —']].concat(EXEC_OPTIONS.map(function (n) { return [n, n]; })); } },
                 { key: 'qty', label: 'QTY', type: 'number' },
                 { key: 'created_at', label: 'O Date', type: 'date' },
                 { key: 'delivery_date', label: 'D Date', type: 'date' },
@@ -1839,7 +1857,7 @@
                         const opts = (f.options ? f.options() : []).map(function (o) {
                             return '<option value="' + esc(o[0]) + '"' + (String(o[0]) === String(val) ? ' selected' : '') + '>' + esc(o[1]) + '</option>';
                         }).join('');
-                        input = '<select class="form-select form-select-sm" id="' + id + '" data-key="' + esc(f.key) + '"' + (f.readonly ? ' disabled' : '') + '>' + opts + '</select>';
+                        input = '<select class="form-select form-select-sm' + (f.searchable ? ' select-searchable' : '') + '" id="' + id + '" data-key="' + esc(f.key) + '"' + (f.readonly ? ' disabled' : '') + '>' + opts + '</select>';
                     } else if (f.type === 'textarea') {
                         input = '<textarea class="form-control form-control-sm" id="' + id + '" data-key="' + esc(f.key) + '" rows="2"' + (f.readonly ? ' readonly' : '') + '>' + esc(val) + '</textarea>';
                     } else {
@@ -1852,7 +1870,9 @@
                         (f.note ? '<div class="text-muted" style="font-size:0.7rem;">' + esc(f.note) + '</div>' : '') +
                         '</div>';
                 });
-                document.getElementById('mip-edit-form').innerHTML = html;
+                const editForm = document.getElementById('mip-edit-form');
+                editForm.innerHTML = html;
+                if (window.SelectSearchable) window.SelectSearchable.init(editForm);
                 new bootstrap.Modal(document.getElementById('mipEditModal')).show();
             }
             document.getElementById('mip-edit-save').addEventListener('click', async function () {

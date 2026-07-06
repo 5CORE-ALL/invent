@@ -522,6 +522,7 @@ class ToOrderAnalysisController extends Controller
                 $packingInstructions = '';
                 $packingCdrPath = '';
                 $cp = 0;
+                $productMasterMoq = 0.0;
                 if (!empty($product?->Values)) {
                     $valuesArray = json_decode($product->Values, true);
                     if (is_array($valuesArray)) {
@@ -529,6 +530,9 @@ class ToOrderAnalysisController extends Controller
                         $imagePath = $valuesArray['image_path'] ?? null;
                         $lp = (float)($valuesArray['lp'] ?? 0);
                         $cp = (float)($valuesArray['cp'] ?? 0);
+                        $productMasterMoq = (isset($valuesArray['moq']) && $valuesArray['moq'] !== '' && is_numeric($valuesArray['moq']))
+                            ? (float) $valuesArray['moq']
+                            : 0.0;
                         $ctnInstructions = isset($valuesArray['ctn_instructions']) ? (string) $valuesArray['ctn_instructions'] : '';
                         $packingInstructions = isset($valuesArray['packing_instructions']) ? trim((string) $valuesArray['packing_instructions']) : '';
                         $packingCdrPath = isset($valuesArray['packing_cdr_path']) ? trim((string) $valuesArray['packing_cdr_path']) : '';
@@ -542,7 +546,15 @@ class ToOrderAnalysisController extends Controller
                 $shopifyImage = $shopifySkus->get($sheetSku)?->image_src ?? null;
                 $finalImage = $shopifyImage ?: $imagePath;
 
-                $approvedQty = (int)($toOrder->approved_qty ?? 0);
+                // MOQ display must match the Forecast Analysis page: use the stored
+                // approved_qty when it's been set (incl. an explicit 0), otherwise fall
+                // back to the product-master MOQ. Forecast does the same, so a SKU that
+                // has never had approved_qty saved shows the product-master MOQ (e.g. 50)
+                // on both pages instead of 0 here.
+                $rawApprovedQty = $toOrder->approved_qty ?? null;
+                $approvedQty = ($rawApprovedQty !== null && $rawApprovedQty !== '')
+                    ? (int) $rawApprovedQty
+                    : (int) $productMasterMoq;
 
                 $reviewKey = strtoupper(trim($sheetSku)) . '|' . strtoupper(trim($parent));
                 $review = $allReviews->get($reviewKey);
@@ -943,7 +955,13 @@ class ToOrderAnalysisController extends Controller
             'id' => null,
             'sku' => $sheetSku,
             'parent' => $forecast?->parent ?? null,
-            'approved_qty' => (int) ($forecast?->approved_qty ?? 0),
+            // Preserve NULL when forecast has no approved_qty so the caller can fall back
+            // to the product-master MOQ (matching the Forecast Analysis page). Forcing 0
+            // here would make an unset MOQ show as 0 on to-order while forecast shows the
+            // product-master MOQ.
+            'approved_qty' => ($forecast && $forecast->approved_qty !== null && $forecast->approved_qty !== '')
+                ? (int) $forecast->approved_qty
+                : null,
             'date_apprvl' => $forecast?->date_apprvl ?? null,
             'rfq_form_link' => $forecast?->rfq_form_link ?? null,
             'sheet_link' => null,
@@ -1384,9 +1402,17 @@ class ToOrderAnalysisController extends Controller
             return response()->json(['success' => false, 'message' => 'No rows selected'], 400);
         }
 
-        $allowed = ['', 'Atin', 'Jack', 'Nitish', 'Ajay', 'Candy', 'Sruti'];
-        if (!in_array($execName, $allowed, true)) {
-            return response()->json(['success' => false, 'message' => 'Invalid executive name'], 400);
+        // Executive names are dynamic (driven by the users table), matching the
+        // Forecast Analysis page. Allow blank (unassign) or any real user name; the
+        // /update-link "Exec" path forecast uses does no name restriction, so this
+        // mirrors that while still guarding against arbitrary values.
+        if ($execName !== '') {
+            $isKnownUser = \App\Models\User::query()
+                ->whereRaw('TRIM(name) = ?', [$execName])
+                ->exists();
+            if (!$isKnownUser) {
+                return response()->json(['success' => false, 'message' => 'Invalid executive name'], 400);
+            }
         }
 
         $skus = array_map(fn($s) => trim(strtoupper((string) $s)), $skus);

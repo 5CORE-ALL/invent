@@ -815,7 +815,7 @@
                             <input type="text" id="search-supplier" class="form-control form-control-sm border-primary forecast-filter-field" placeholder="Supplier…" autocomplete="off">
 
                             <select id="executive-filter"
-                                    class="form-select form-select-sm border-primary forecast-filter-field"
+                                    class="form-select form-select-sm border-primary forecast-filter-field select-searchable"
                                     title="Filter by Exec (all executives when unset)"
                                     aria-label="Exec filter">
                                 <option value="">Exec</option>
@@ -3501,6 +3501,12 @@
                     editorParams: {
                         values: FORECAST_EXEC_EDITOR_VALUES,
                         defaultValue: "",
+                        autocomplete: true,
+                        listOnEmpty: true,
+                        freetext: false,
+                        allowEmpty: true,
+                        clearable: true,
+                        placeholderEmpty: "No executive found",
                         verticalNavigation: "editor",
                     },
                     editable: function(cell) {
