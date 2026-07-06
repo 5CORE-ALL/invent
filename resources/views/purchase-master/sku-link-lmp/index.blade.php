@@ -728,6 +728,64 @@ document.addEventListener('DOMContentLoaded', function () {
             style="height:40px;max-width:60px;border-radius:4px;border:1px solid #ccc;object-fit:contain;">`;
     }
 
+    function skuFormatter(cell) {
+        const sku = String(cell.getValue() || '').trim();
+        if (!sku) {
+            return '<span class="text-muted">—</span>';
+        }
+        return `<div class="d-flex align-items-center justify-content-center gap-1">
+            <span>${escapeHtml(sku)}</span>
+            <button type="button" class="btn btn-sm btn-link p-0 sku-link-lmp-copy-sku" data-sku="${escapeHtmlAttr(sku)}" title="Copy SKU" aria-label="Copy SKU">
+                <i class="fas fa-copy"></i>
+            </button>
+        </div>`;
+    }
+
+    function copySkuToClipboard(sku, btn) {
+        const value = String(sku || '').trim();
+        if (!value) {
+            return;
+        }
+
+        const showCopied = function () {
+            if (!btn) {
+                return;
+            }
+            const icon = btn.querySelector('i');
+            if (!icon) {
+                return;
+            }
+            const originalClass = icon.className;
+            icon.className = 'fas fa-check text-success';
+            setTimeout(function () { icon.className = originalClass; }, 1200);
+        };
+
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(value).then(showCopied).catch(function () {
+                fallbackCopyText(value);
+                showCopied();
+            });
+            return;
+        }
+        fallbackCopyText(value);
+        showCopied();
+    }
+
+    function fallbackCopyText(value) {
+        const textarea = document.createElement('textarea');
+        textarea.value = value;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        try {
+            document.execCommand('copy');
+        } catch (err) {
+            /* no-op */
+        }
+        document.body.removeChild(textarea);
+    }
+
     function resolveMValue(m) {
         const value = (m ?? '1').toString().trim().slice(0, 1);
         return value || '1';
@@ -2403,6 +2461,16 @@ document.addEventListener('DOMContentLoaded', function () {
                 hozAlign: 'center',
                 headerHozAlign: 'center',
                 width: 200,
+                formatter: skuFormatter,
+                cellClick: function (e, cell) {
+                    const btn = e.target.closest('.sku-link-lmp-copy-sku');
+                    if (!btn) {
+                        return;
+                    }
+                    e.preventDefault();
+                    e.stopPropagation();
+                    copySkuToClipboard(btn.dataset.sku || cell.getRow().getData().sku || '', btn);
+                },
             },
             {
                 title: 'E CVR',

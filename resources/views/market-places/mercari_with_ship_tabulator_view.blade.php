@@ -96,6 +96,14 @@
                         </button>
                     </div>
 
+                    {{-- INV filter (0 INV / INV > 0) --}}
+                    <select id="inv-filter" class="form-select form-select-sm" style="width: 120px;"
+                        title="Filter rows by inventory">
+                        <option value="all">All INV</option>
+                        <option value="zero">0 INV</option>
+                        <option value="more">INV &gt; 0</option>
+                    </select>
+
                     {{-- GPFT% slab filter (matches GPFT slabs on other pricing pages: amazon / shopify-b2c / etc.) --}}
                     <select id="gpft-filter" class="form-select form-select-sm" style="width: 120px;"
                         title="Filter rows by PFT% (gross profit margin)">
@@ -218,6 +226,7 @@
                         field: "_select",
                         formatter: "rowSelection",
                         titleFormatter: "rowSelection",
+                        titleFormatterParams: { rowRange: "active" },
                         headerSort: false,
                         hozAlign: "center",
                         width: 40,
@@ -312,6 +321,16 @@
                         }
                     },
                     {
+                        title: "L30",
+                        field: "sold",
+                        hozAlign: "center",
+                        width: 70,
+                        sorter: "number",
+                        formatter: function(cell) {
+                            return Math.round(parseFloat(cell.getValue()) || 0);
+                        }
+                    },
+                    {
                         title: "Price",
                         field: "price",
                         hozAlign: "center",
@@ -337,16 +356,6 @@
                                 return '<span style="color: #dc3545; font-weight: bold; background-color: #ffe6e6; padding: 2px 6px; border-radius: 3px;">M</span>';
                             }
                             return '';
-                        }
-                    },
-                    {
-                        title: "L30",
-                        field: "sold",
-                        hozAlign: "center",
-                        width: 70,
-                        sorter: "number",
-                        formatter: function(cell) {
-                            return Math.round(parseFloat(cell.getValue()) || 0);
                         }
                     },
                     {
@@ -480,6 +489,8 @@
             // GPFT% / ROI% / DIL% / Sold slab dropdown change handlers — all funnel into the
             // single combined applyAllFilters() so the four slab selects stack with
             // the SKU search and the Missing-L badge instead of overwriting each other.
+            const invFilterEl = document.getElementById('inv-filter');
+            if (invFilterEl) invFilterEl.addEventListener('change', applyAllFilters);
             const gpftFilterEl = document.getElementById('gpft-filter');
             if (gpftFilterEl) gpftFilterEl.addEventListener('change', applyAllFilters);
             const roiFilterEl = document.getElementById('roi-filter');
@@ -714,6 +725,9 @@
             const searchEl = document.getElementById('sku-search');
             const skuSearch = (searchEl ? (searchEl.value || '') : '').trim().toLowerCase();
 
+            const invEl = document.getElementById('inv-filter');
+            const invFilter = invEl ? invEl.value : 'all';
+
             const gpftEl = document.getElementById('gpft-filter');
             const gpftFilter = gpftEl ? gpftEl.value : 'all';
 
@@ -737,6 +751,13 @@
                 // Missing L (price = 0 and NR/REQ = REQ)
                 if (missingLFilterActive) {
                     if (!missingLFilter(row)) return false;
+                }
+
+                // INV filter (0 INV / INV > 0)
+                if (invFilter && invFilter !== 'all') {
+                    const inv = parseFloat(row.INV) || 0;
+                    if (invFilter === 'zero' && !(inv === 0)) return false;
+                    if (invFilter === 'more' && !(inv > 0))   return false;
                 }
 
                 // GPFT% (uses the PFT column)

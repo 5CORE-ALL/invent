@@ -96,6 +96,25 @@
                         </button>
                     </div>
 
+                    {{-- INV filter (0 INV / INV > 0) --}}
+                    <select id="inv-filter" class="form-select form-select-sm" style="width: 120px;"
+                        title="Filter rows by inventory">
+                        <option value="all">All INV</option>
+                        <option value="zero">0 INV</option>
+                        <option value="more">INV &gt; 0</option>
+                    </select>
+
+                    {{-- DIL% slab filter — same color thresholds the Dil column already uses
+                         (<16.66 red, 16.66–25 yellow, 25–50 green, ≥50 pink). DIL = L30 / INV × 100. --}}
+                    <select id="dil-filter" class="form-select form-select-sm" style="width: 120px;"
+                        title="Filter rows by Dil% color band (L30 / INV × 100)">
+                        <option value="all">DIL%</option>
+                        <option value="red">Red (&lt;16.7%)</option>
+                        <option value="yellow">Yellow (16.7–25%)</option>
+                        <option value="green">Green (25–50%)</option>
+                        <option value="pink">Pink (50%+)</option>
+                    </select>
+
                     {{-- Sold dropdown (mirrors Amazon tabulator + Mercari w/Ship + every other /pricing page).
                          Backed by the `sold` field (Mercari w/o Ship L30 sold qty — shown in the
                          "L30" column on this page; OV L30 lives in the `L30` field). --}}
@@ -184,6 +203,7 @@
                         field: "_select",
                         formatter: "rowSelection",
                         titleFormatter: "rowSelection",
+                        titleFormatterParams: { rowRange: "active" },
                         headerSort: false,
                         hozAlign: "center",
                         width: 40,
@@ -278,6 +298,16 @@
                         }
                     },
                     {
+                        title: "L30",
+                        field: "sold",
+                        hozAlign: "center",
+                        width: 70,
+                        sorter: "number",
+                        formatter: function(cell) {
+                            return Math.round(parseFloat(cell.getValue()) || 0);
+                        }
+                    },
+                    {
                         title: "Price",
                         field: "price",
                         hozAlign: "center",
@@ -303,16 +333,6 @@
                                 return '<span style="color: #dc3545; font-weight: bold; background-color: #ffe6e6; padding: 2px 6px; border-radius: 3px;">M</span>';
                             }
                             return '';
-                        }
-                    },
-                    {
-                        title: "L30",
-                        field: "sold",
-                        hozAlign: "center",
-                        width: 70,
-                        sorter: "number",
-                        formatter: function(cell) {
-                            return Math.round(parseFloat(cell.getValue()) || 0);
                         }
                     },
                     {
@@ -441,6 +461,14 @@
                 // badge and the Sold dropdown (used to overwrite them with setFilter).
                 searchInput.addEventListener('keyup', applyAllFilters);
             }
+
+            // INV dropdown change — same funnel, stacks with the other filters.
+            const invFilterEl = document.getElementById('inv-filter');
+            if (invFilterEl) invFilterEl.addEventListener('change', applyAllFilters);
+
+            // DIL% dropdown change — same funnel, stacks with the other filters.
+            const dilFilterEl = document.getElementById('dil-filter');
+            if (dilFilterEl) dilFilterEl.addEventListener('change', applyAllFilters);
 
             // Sold dropdown change — same funnel, stacks with the other two filters.
             const soldFilterEl = document.getElementById('sold-filter');
@@ -765,6 +793,12 @@
             const searchEl = document.getElementById('sku-search');
             const skuSearch = (searchEl ? (searchEl.value || '') : '').trim().toLowerCase();
 
+            const invEl = document.getElementById('inv-filter');
+            const invFilter = invEl ? invEl.value : 'all';
+
+            const dilEl = document.getElementById('dil-filter');
+            const dilFilter = dilEl ? dilEl.value : 'all';
+
             const soldEl = document.getElementById('sold-filter');
             const soldFilter = soldEl ? soldEl.value : 'all';
 
@@ -778,6 +812,24 @@
 
                 // Missing L (price = 0 and NR/REQ = REQ) — only when the badge is toggled on
                 if (missingLFilterActive && !missingLFilter(row)) return false;
+
+                // INV filter (0 INV / INV > 0)
+                if (invFilter && invFilter !== 'all') {
+                    const inv = parseFloat(row.INV) || 0;
+                    if (invFilter === 'zero' && !(inv === 0)) return false;
+                    if (invFilter === 'more' && !(inv > 0))   return false;
+                }
+
+                // DIL% (computed: L30 / INV * 100, same buckets as Dil column formatter)
+                if (dilFilter && dilFilter !== 'all') {
+                    const inv = parseFloat(row.INV) || 0;
+                    const l30 = parseFloat(row.L30) || 0;
+                    const dil = inv === 0 ? 0 : (l30 / inv) * 100;
+                    if (dilFilter === 'red'    && !(dil < 16.66))              return false;
+                    if (dilFilter === 'yellow' && !(dil >= 16.66 && dil < 25)) return false;
+                    if (dilFilter === 'green'  && !(dil >= 25 && dil < 50))    return false;
+                    if (dilFilter === 'pink'   && !(dil >= 50))                return false;
+                }
 
                 // Sold filter (Mercari w/o Ship L30 sold qty — `sold` field).
                 if (soldFilter && soldFilter !== 'all') {
