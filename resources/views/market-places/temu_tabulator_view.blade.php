@@ -108,6 +108,9 @@
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
                     <h6 class="mb-3">Summary Statistics</h6>
                     <div class="d-flex flex-wrap gap-2">
+                        <span class="badge fs-6 p-2" id="y-sales-badge"
+                            style="background-color: #6f42c1; color: white; font-weight: bold;"
+                            title="Yesterday's Temu sales (freight-inclusive) — same source as the Temu row on /all-marketplace-master.">Y Sales: ${{ number_format((float) ($temuYSales ?? 0), 2) }}</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-orders-badge" style="color: white; font-weight: bold;">Total Orders: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: white; font-weight: bold;">Total Quantity: 0</span>
                         <span class="badge bg-info fs-6 p-2" id="total-revenue-badge" style="color: white; font-weight: bold;">Total Revenue: $0.00</span>
@@ -141,6 +144,9 @@
 <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
 <script>
     const COLUMN_VIS_KEY = "temu_tabulator_column_visibility";
+    // Temu margin from marketplace_percentages (same source as getOrdersTableRows /
+    // getTemuChannelData) so PFT / GPFT% / ROI match the Temu row on /all-marketplace-master.
+    const TEMU_MARGIN = {{ (float) ($temuMargin ?? 0.96) }};
     let table = null;
     
     // Toast notification function
@@ -402,7 +408,7 @@
                         const fbPrice = temuFbPrice(basePrice, quantity);
                         const lp = parseFloat(data.lp) || 0;
                         const temuShip = parseFloat(data.temu_ship) || 0;
-                        const pftDecimal = fbPrice > 0 ? (fbPrice * 0.96 - lp - temuShip) / fbPrice : 0;
+                        const pftDecimal = fbPrice > 0 ? (fbPrice * TEMU_MARGIN - lp - temuShip) / fbPrice : 0;
                         return (pftDecimal * fbPrice * quantity).toFixed(2);
                     }
                 },
@@ -530,7 +536,10 @@
                 const temuShip = parseFloat(row.temu_ship) || 0;
                 
                 totalQuantity += quantity;
-                totalRevenue += fbPrice * quantity;
+                // Total Revenue must mirror Temu's "Base price sales" tile = base price × qty.
+                // Do NOT use fbPrice here: the +$2.99/unit FB freight uplift is a profit-side
+                // adjustment and would inflate revenue above Temu's actual reported sales.
+                totalRevenue += basePrice * quantity;
                 
                 if (quantity > 0 && basePrice > 0) {
                     totalWeightedPrice += basePrice * quantity;
@@ -539,7 +548,9 @@
                 
                 const hasSales = quantity > 0 && basePrice > 0;
                 if (hasSales) {
-                    const pftDecimal = fbPrice > 0 ? (fbPrice * 0.96 - lp - temuShip) / fbPrice : 0;
+                    // Same formula + margin source as getTemuChannelData on /all-marketplace-master:
+                    // GPFT% = ΣPFT ÷ Σ(FB sales), ROI% = ΣPFT ÷ ΣCOGS. Margin from marketplace_percentages.
+                    const pftDecimal = fbPrice > 0 ? (fbPrice * TEMU_MARGIN - lp - temuShip) / fbPrice : 0;
                     totalPft += pftDecimal * fbPrice * quantity;
                     totalL30Sales += quantity * fbPrice;
                     totalCogs += lp * quantity;

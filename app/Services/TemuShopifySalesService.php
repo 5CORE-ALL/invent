@@ -7,41 +7,16 @@ use App\Models\ProductMaster;
 use App\Models\TemuOrder;
 use App\Models\TemuPricing;
 use Carbon\Carbon;
-use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\DB;
 
 /**
- * Temu L30/L60 sales from apicentral.shopify_order_items — same identification as /shopify-orders.
- * Numeric source_name rows are tagged "Temu" (or "Temu Orders", etc.); direct source_name "TEMU" also matches.
+ * Temu L30/L60/L7/Y sales sourced from the `temu_orders` table (Temu API order-wise data,
+ * populated by `app:fetch-temu-orders`). Line price comes from temu_pricing (base_price);
+ * LP / Temu ship from product_master. (No longer reads apicentral.shopify_order_items.)
  */
 class TemuShopifySalesService
 {
     public const PST = 'America/Los_Angeles';
-
-    /** Apply Temu identification (mirrors ShopifyOrdersController tag / source mapping). */
-    public static function applyIdentification(Builder $query): Builder
-    {
-        return $query->where(function ($q) {
-            $q->whereRaw('LOWER(source_name) LIKE ?', ['%temu%'])
-                ->orWhere('tags', 'LIKE', '%Temu%');
-        });
-    }
-
-    /** Same rolling window as /shopify-orders getData (last 30 days from PST). */
-    public static function shopifyOrdersL30Start(): Carbon
-    {
-        return Carbon::now(self::PST)->subDays(30)->startOfDay();
-    }
-
-    /** L30 window for tabulator + all-marketplace-master Temu row (matches /shopify-orders). */
-    public static function tabulatorL30Window(): array
-    {
-        return [
-            self::shopifyOrdersL30Start(),
-            Carbon::now(self::PST)->endOfDay(),
-        ];
-    }
 
     /** L30 window aligned with Faire / Purchasing Power on all-marketplace-master (30 inclusive days). */
     public static function channelMasterL30Window(): array
@@ -99,190 +74,7 @@ class TemuShopifySalesService
     }
 
     /**
-     * @return array{sales: float, orders: int, qty: int, pft: float, cogs: float}
-     */
-    public static function computeMetrics(Carbon $startDate, Carbon $endDate): array
-    {
-        $rows = self::applyIdentification(
-            DB::connection('apicentral')->table('shopify_order_items')
-        )
-            ->whereBetween('order_date', [$startDate, $endDate])
-            ->get(['order_number', 'sku', 'quantity', 'price']);
-
-        if ($rows->isEmpty()) {
-            return ['sales' => 0.0, 'orders' => 0, 'qty' => 0, 'pft' => 0.0, 'cogs' => 0.0];
-        }
-
-        $margin = self::temuMarginDecimal();
-        $productMasters = self::productMastersForSkus($rows->pluck('sku'));
-
-        $totalSales = 0.0;
-        $totalQty = 0;
-        $totalPft = 0.0;
-        $totalCogs = 0.0;
-        $orderSet = [];
-
-        foreach ($rows as $r) {
-            $price = (float) ($r->price ?? 0);
-            $quantity = (int) ($r->quantity ?? 0);
-            if ($quantity <= 0 || $price <= 0) {
-                continue;
-            }
-
-            [$lp, $temuShip] = self::lpAndTemuShip($productMasters, $r->sku);
-
-            $fbPrice = self::computeFbPrice($price, $quantity);
-            $lineSales = self::lineSales($price, $quantity);
-            $totalSales += $lineSales;
-            $totalQty += $quantity;
-            $totalCogs += $lp * $quantity;
-            $pftDecimal = $fbPrice > 0 ? (($fbPrice * $margin) - $lp - $temuShip) / $fbPrice : 0;
-            $totalPft += $pftDecimal * $fbPrice * $quantity;
-
-            if (! empty($r->order_number)) {
-                $orderSet[$r->order_number] = true;
-            }
-        }
-
-        return [
-            'sales' => round($totalSales, 2),
-            'orders' => count($orderSet),
-            'qty' => $totalQty,
-            'pft' => round($totalPft, 2),
-            'cogs' => round($totalCogs, 2),
-        ];
-    }
-
-    /**
-     * Row shape for /temu-tabulator (compatible with existing column fields).
-     */
-    public static function getDailyDataRows(Carbon $startDate, Carbon $endDate): array
-    {
-        $rows = self::applyIdentification(
-            DB::connection('apicentral')->table('shopify_order_items')
-        )
-            ->whereBetween('order_date', [$startDate, $endDate])
-            ->orderBy('order_date', 'desc')
-            ->orderBy('id', 'desc')
-            ->get();
-
-        if ($rows->isEmpty()) {
-            return [];
-        }
-
-        $margin = self::temuMarginDecimal();
-        $productMasters = self::productMastersForSkus($rows->pluck('sku'));
-        $result = [];
-
-        foreach ($rows as $item) {
-            $sku = $item->sku ?? '';
-            $pm = ($sku !== '' && isset($productMasters[$sku])) ? $productMasters[$sku] : null;
-            [$lp, $temuShip] = self::lpAndTemuShip($productMasters, $sku);
-            $parent = $pm ? ($pm->parent ?? '') : '';
-
-            $price = (float) ($item->price ?? 0);
-            $quantity = (int) ($item->quantity ?? 0);
-            $fbPrice = self::computeFbPrice($price, $quantity);
-            $pftDecimal = $fbPrice > 0 ? (($fbPrice * $margin) - $lp - $temuShip) / $fbPrice : 0;
-            $pft = $pftDecimal * $fbPrice * $quantity;
-
-            $result[] = [
-                'Parent' => $parent,
-                'contribution_sku' => $sku,
-                'order_id' => $item->order_number ?? '',
-                'product_name_by_customer_order' => $item->product_title ?? '',
-                'variation' => '',
-                'quantity_purchased' => $quantity,
-                'quantity_shipped' => 0,
-                'quantity_to_ship' => 0,
-                'base_price_total' => round($price, 2),
-                'fb_price' => round($fbPrice, 2),
-                'lp' => $lp,
-                'temu_ship' => $temuShip,
-                'pft' => round($pft, 2),
-                'order_status' => $item->financial_status ?: ($item->fulfillment_status ?? ''),
-                'fulfillment_mode' => '',
-                'tracking_number' => $item->tracking_number ?? '',
-                'carrier' => $item->tracking_company ?? '',
-                'created_at' => $item->order_date
-                    ? Carbon::parse($item->order_date)->format('Y-m-d H:i:s')
-                    : null,
-            ];
-        }
-
-        return $result;
-    }
-
-    /**
-     * Y Sales: revenue on the Pacific calendar day before the latest Temu shopify order_date.
-     */
-    public static function computeYSales(): ?float
-    {
-        $latestRaw = self::applyIdentification(
-            DB::connection('apicentral')->table('shopify_order_items')
-        )
-            ->whereNotNull('order_date')
-            ->max('order_date');
-
-        if (! $latestRaw) {
-            return null;
-        }
-
-        $latestPacific = Carbon::parse($latestRaw)->timezone(self::PST);
-        $yStart = $latestPacific->copy()->subDay()->startOfDay();
-        $yEnd = $latestPacific->copy()->subDay()->endOfDay();
-
-        $rows = self::applyIdentification(
-            DB::connection('apicentral')->table('shopify_order_items')
-        )
-            ->whereBetween('order_date', [$yStart, $yEnd])
-            ->where('quantity', '>', 0)
-            ->get(['price', 'quantity']);
-
-        $sum = 0.0;
-        foreach ($rows as $r) {
-            $sum += self::lineSales((float) ($r->price ?? 0), (int) ($r->quantity ?? 0));
-        }
-
-        return round($sum, 2);
-    }
-
-    /**
-     * L7 Sales: seven Pacific days ending on Y-Sales "yesterday".
-     */
-    public static function computeL7Sales(): ?float
-    {
-        $latestRaw = self::applyIdentification(
-            DB::connection('apicentral')->table('shopify_order_items')
-        )
-            ->whereNotNull('order_date')
-            ->max('order_date');
-
-        if (! $latestRaw) {
-            return null;
-        }
-
-        $latestPacific = Carbon::parse($latestRaw)->timezone(self::PST);
-        $end = $latestPacific->copy()->subDay()->endOfDay();
-        $start = $latestPacific->copy()->subDay()->subDays(6)->startOfDay();
-
-        $rows = self::applyIdentification(
-            DB::connection('apicentral')->table('shopify_order_items')
-        )
-            ->whereBetween('order_date', [$start, $end])
-            ->where('quantity', '>', 0)
-            ->get(['price', 'quantity']);
-
-        $sum = 0.0;
-        foreach ($rows as $r) {
-            $sum += self::lineSales((float) ($r->price ?? 0), (int) ($r->quantity ?? 0));
-        }
-
-        return round($sum, 2);
-    }
-
-    /**
-     * Sales/orders/qty/pft/cogs from the temu_orders table (mirror of computeMetrics for the API source).
+     * Sales/orders/qty/pft/cogs from the temu_orders table (Temu API order-wise data).
      *
      * @return array{sales: float, orders: int, qty: int, pft: float, cogs: float}
      */
@@ -291,10 +83,11 @@ class TemuShopifySalesService
         $rows = self::getOrdersTableRows($startDate, $endDate);
 
         if (empty($rows)) {
-            return ['sales' => 0.0, 'orders' => 0, 'qty' => 0, 'pft' => 0.0, 'cogs' => 0.0];
+            return ['sales' => 0.0, 'base_sales' => 0.0, 'orders' => 0, 'qty' => 0, 'pft' => 0.0, 'cogs' => 0.0];
         }
 
         $totalSales = 0.0;
+        $totalBaseSales = 0.0;
         $totalQty = 0;
         $totalPft = 0.0;
         $totalCogs = 0.0;
@@ -308,7 +101,12 @@ class TemuShopifySalesService
             }
 
             $fbPrice = self::computeFbPrice($base, $qty);
+            // `sales` keeps the FB-adjusted figure (base + $2.99/unit freight recovery) used
+            // for margin math (GPFT%, ROI) so it stays consistent with /temu-decrease and the
+            // /temu-tabulator profit columns. `base_sales` is the raw base price × qty, which
+            // mirrors Temu Seller Central's "Base price sales" tile — use it for reported sales.
             $totalSales += $fbPrice * $qty;
+            $totalBaseSales += $base * $qty;
             $totalQty += $qty;
             $totalCogs += ((float) ($r['lp'] ?? 0)) * $qty;
             $totalPft += (float) ($r['pft'] ?? 0);
@@ -321,6 +119,7 @@ class TemuShopifySalesService
 
         return [
             'sales' => round($totalSales, 2),
+            'base_sales' => round($totalBaseSales, 2),
             'orders' => count($orderSet),
             'qty' => $totalQty,
             'pft' => round($totalPft, 2),
@@ -328,34 +127,41 @@ class TemuShopifySalesService
         ];
     }
 
-    /** Y Sales from temu_orders: revenue on the Pacific day before the latest order. */
+    /** Y Sales from temu_orders: base-price revenue on *yesterday* (wall-clock Pacific). */
     public static function computeYSalesFromOrders(): ?float
     {
-        $latest = TemuOrder::whereNotNull('parent_order_time')->max('parent_order_time');
-        if (! $latest) {
+        if (! TemuOrder::whereNotNull('parent_order_time')->exists()) {
             return null;
         }
 
-        $latestPacific = Carbon::parse($latest)->timezone(self::PST);
-        $start = $latestPacific->copy()->subDay()->startOfDay();
-        $end = $latestPacific->copy()->subDay()->endOfDay();
+        // Anchor to wall-clock *yesterday* Pacific (same as Amazon Y Sales), NOT (latest
+        // order − 1). With temu_orders sync lag the latest-order anchor slipped Y Sales back
+        // a day or two (e.g. showing Jul 04 instead of Jul 05), which also poisoned the saved
+        // daily snapshots the Y Sales trend graph reads.
+        $yesterday = Carbon::now(self::PST)->subDay();
+        $start = $yesterday->copy()->startOfDay();
+        $end = $yesterday->copy()->endOfDay();
 
+        // Y Sales uses the FB-adjusted price (base + $2.99/unit freight) to match Temu's
+        // daily sales tile, which is freight-inclusive. (L7/L30 use base_sales to match
+        // Temu's "Base price sales" 7-/30-day tiles.)
         return (float) self::computeMetricsFromOrders($start, $end)['sales'];
     }
 
-    /** L7 Sales from temu_orders: seven Pacific days ending on Y-Sales "yesterday". */
+    /** L7 Sales from temu_orders: seven wall-clock Pacific days ending yesterday. */
     public static function computeL7SalesFromOrders(): ?float
     {
-        $latest = TemuOrder::whereNotNull('parent_order_time')->max('parent_order_time');
-        if (! $latest) {
+        if (! TemuOrder::whereNotNull('parent_order_time')->exists()) {
             return null;
         }
 
-        $latestPacific = Carbon::parse($latest)->timezone(self::PST);
+        // Wall-clock Pacific window ending yesterday (matches Y Sales anchoring above).
+        $latestPacific = Carbon::now(self::PST);
         $end = $latestPacific->copy()->subDay()->endOfDay();
         $start = $latestPacific->copy()->subDay()->subDays(6)->startOfDay();
 
-        return (float) self::computeMetricsFromOrders($start, $end)['sales'];
+        // Reported base-price sales (matches Temu Seller Central + /temu-tabulator revenue).
+        return (float) self::computeMetricsFromOrders($start, $end)['base_sales'];
     }
 
     /**

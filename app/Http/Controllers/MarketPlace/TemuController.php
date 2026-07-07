@@ -2035,7 +2035,19 @@ class TemuController extends Controller
      */
     public function temuTabulatorView()
     {
-        return view('market-places.temu_tabulator_view');
+        // Y Sales — same source/definition as the Temu row on /all-marketplace-master:
+        // freight-inclusive (FB price) revenue for wall-clock yesterday (Pacific).
+        $temuYSales = TemuShopifySalesService::computeYSalesFromOrders();
+
+        // Margin from marketplace_percentages (Temu), same source getOrdersTableRows /
+        // getTemuChannelData use — so /temu-tabulator GPFT%/ROI match /all-marketplace-master
+        // instead of a hardcoded 0.96.
+        $temuMargin = TemuShopifySalesService::temuMarginDecimal();
+
+        return view('market-places.temu_tabulator_view', [
+            'temuYSales' => $temuYSales,
+            'temuMargin' => $temuMargin,
+        ]);
     }
 
     /**

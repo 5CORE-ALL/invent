@@ -559,7 +559,10 @@ class ChannelMasterController extends Controller
                 return [
                     'total_orders' => $m['orders'],
                     'total_quantity' => $m['qty'],
-                    'total_revenue' => $m['sales'],
+                    // Reported sales = base price × qty (Temu "Base price sales"), NOT the
+                    // FB-adjusted figure, so /all-marketplace-master matches the /temu-tabulator
+                    // Total Revenue badge and Temu Seller Central.
+                    'total_revenue' => $m['base_sales'],
                 ];
             } catch (\Throwable $e) {
                 Log::warning('Temu orders live sales summary failed: '.$e->getMessage());
@@ -727,7 +730,8 @@ class ChannelMasterController extends Controller
                 $m = TemuShopifySalesService::computeMetricsFromOrders($start, $end);
 
                 return [
-                    'sales' => (float) $m['sales'],
+                    // Base-price sales for the displayed L-60 figure (matches L30 reporting).
+                    'sales' => (float) $m['base_sales'],
                     'orders' => (int) $m['orders'],
                 ];
             } catch (\Throwable $e) {
@@ -7985,6 +7989,10 @@ class ChannelMasterController extends Controller
         $l30 = TemuShopifySalesService::computeMetricsFromOrders($l30Start, $l30End);
         $l60 = TemuShopifySalesService::computeMetricsFromOrders($l60Start, $l60End);
 
+        // Margin math (GPFT%, ROI, TACOS%) stays on the FB-adjusted `sales` so it matches
+        // /temu-decrease and the /temu-tabulator profit columns. The *displayed* L30/L60
+        // Sales use `base_sales` (base price × qty) so the row mirrors Temu Seller Central's
+        // "Base price sales" — the +$2.99/unit freight uplift was overstating reported sales.
         $l30Sales = $l30['sales'];
         $l30Orders = $l30['orders'];
         $totalQuantity = $l30['qty'];
@@ -7992,6 +8000,10 @@ class ChannelMasterController extends Controller
         $totalCogs = $l30['cogs'];
         $l60Sales = $l60['sales'];
         $l60Orders = $l60['orders'];
+
+        // Reported (base-price) sales for display + growth.
+        $l30SalesReported = $l30['base_sales'];
+        $l60SalesReported = $l60['base_sales'];
 
         $gProfitPct = $l30Sales > 0 ? round(($totalProfit / $l30Sales) * 100, 2) : 0.0;
         $gRoi = $totalCogs > 0 ? round(($totalProfit / $totalCogs) * 100, 2) : 0.0;
@@ -8008,15 +8020,15 @@ class ChannelMasterController extends Controller
         $netProfit = $totalProfit - $totalAdSpend;
         $nRoi = $totalCogs > 0 ? round(($netProfit / $totalCogs) * 100, 2) : 0.0;
 
-        $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
+        $growth = $l60SalesReported > 0 ? (($l30SalesReported - $l60SalesReported) / $l60SalesReported) * 100 : 0;
 
         $channelData = ChannelMaster::where('channel', 'Temu')->first();
         $mapMissCounts = $this->getTemuLiveMapMissNMapFromDecreaseData(false);
 
         $result[] = [
             'Channel '   => 'Temu',
-            'L-60 Sales' => intval($l60Sales),
-            'L30 Sales'  => intval($l30Sales),
+            'L-60 Sales' => intval($l60SalesReported),
+            'L30 Sales'  => intval($l30SalesReported),
             'Growth'     => round($growth, 2) . '%',
             'L60 Orders' => $l60Orders,
             'L30 Orders' => $l30Orders,
