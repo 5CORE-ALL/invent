@@ -201,7 +201,7 @@
                 <span class="amazon-ads-stat-label">Sales</span>
                 <span class="amazon-ads-stat-value tabular-nums" id="amazonAdsSalesBadgeValue"></span>
             </div>
-            <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsBgtRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsBgtRuleModal" title="Edit ACOS boundaries and SBGT tier amounts used for suggested budgets">BGT RULE</button>
+            <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsBgtRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsBgtRuleModal" title="Edit ACOS % → SBGT bands (From/To ranges) used for suggested budgets">BGT RULE</button>
             <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsSbidRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsSbidRuleModal" title="Edit U2%/U1% thresholds and CPC multipliers for suggested SBID (grid and bid jobs)">SBID RULE</button>
             <a href="{{ route('amazon-ads.push-logs.index') }}" class="btn btn-sm btn-outline-danger" title="View campaigns that failed to update (skipped/failed bids & budgets)">
                 <i class="mdi mdi-alert-circle-outline"></i> Failed Campaigns
@@ -398,61 +398,39 @@
     <div class="modal fade" id="amazonAdsBgtRuleModal" tabindex="-1" aria-labelledby="amazonAdsBgtRuleModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-lg modal-dialog-scrollable">
             <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="amazonAdsBgtRuleModalLabel">BGT rule — ACOS → SBGT</h5>
+                <div class="modal-header py-2">
+                    <h5 class="modal-title" id="amazonAdsBgtRuleModalLabel">SBGT rule — ACOS % → Suggested Budget</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
                     <p class="small text-muted mb-3">
-                        <strong>Pink</strong> if L30 ACOS ≤ E1; <strong>green</strong> if &gt; E1 and ≤ E2; <strong>blue</strong> if &gt; E2 and ≤ E3;
-                        <strong>yellow</strong> if &gt; E3 and &lt; E4; <strong>red</strong> if ACOS ≥ E4. Require <strong>E1 &lt; E2 &lt; E3 &lt; E4</strong> (all %).
-                        SBGT values are the suggested daily budget <strong>tiers</strong> ($) used in the grid and SBGT push.
+                        Each row is an inclusive <strong>ACOS % range</strong> (From → To).
+                        Rows are checked <strong>top to bottom</strong>; the first range that
+                        contains the campaign's ACOS gets its SBGT. Use <code>9999</code> on
+                        <em>To</em> for the catch-all highest band.
                     </p>
-                    <div class="row g-2 mb-2">
-                        <div class="col-6 col-md-3">
-                            <label class="form-label small mb-0" for="amazonAdsBgtRuleE1">E1 (pink max ACOS %)</label>
-                            <input type="number" step="0.01" class="form-control form-control-sm" id="amazonAdsBgtRuleE1" name="e1" required>
-                        </div>
-                        <div class="col-6 col-md-3">
-                            <label class="form-label small mb-0" for="amazonAdsBgtRuleE2">E2 (green max)</label>
-                            <input type="number" step="0.01" class="form-control form-control-sm" id="amazonAdsBgtRuleE2" name="e2" required>
-                        </div>
-                        <div class="col-6 col-md-3">
-                            <label class="form-label small mb-0" for="amazonAdsBgtRuleE3">E3 (blue max)</label>
-                            <input type="number" step="0.01" class="form-control form-control-sm" id="amazonAdsBgtRuleE3" name="e3" required>
-                        </div>
-                        <div class="col-6 col-md-3">
-                            <label class="form-label small mb-0" for="amazonAdsBgtRuleE4">E4 (red min ACOS %)</label>
-                            <input type="number" step="0.01" class="form-control form-control-sm" id="amazonAdsBgtRuleE4" name="e4" required>
-                        </div>
-                    </div>
-                    <div class="row g-2">
-                        <div class="col-6 col-md">
-                            <label class="form-label small mb-0" for="amazonAdsBgtRuleSbgtPink">SBGT pink ($)</label>
-                            <input type="number" step="1" min="1" class="form-control form-control-sm" id="amazonAdsBgtRuleSbgtPink" name="sbgt_pink" required>
-                        </div>
-                        <div class="col-6 col-md">
-                            <label class="form-label small mb-0" for="amazonAdsBgtRuleSbgtGreen">SBGT green ($)</label>
-                            <input type="number" step="1" min="1" class="form-control form-control-sm" id="amazonAdsBgtRuleSbgtGreen" name="sbgt_green" required>
-                        </div>
-                        <div class="col-6 col-md">
-                            <label class="form-label small mb-0" for="amazonAdsBgtRuleSbgtBlue">SBGT blue ($)</label>
-                            <input type="number" step="1" min="1" class="form-control form-control-sm" id="amazonAdsBgtRuleSbgtBlue" name="sbgt_blue" required>
-                        </div>
-                        <div class="col-6 col-md">
-                            <label class="form-label small mb-0" for="amazonAdsBgtRuleSbgtYellow">SBGT yellow ($)</label>
-                            <input type="number" step="1" min="1" class="form-control form-control-sm" id="amazonAdsBgtRuleSbgtYellow" name="sbgt_yellow" required>
-                        </div>
-                        <div class="col-6 col-md">
-                            <label class="form-label small mb-0" for="amazonAdsBgtRuleSbgtRed">SBGT red ($)</label>
-                            <input type="number" step="1" min="1" class="form-control form-control-sm" id="amazonAdsBgtRuleSbgtRed" name="sbgt_red" required>
-                        </div>
-                    </div>
-                    <p class="small text-danger mb-0 mt-3 d-none" id="amazonAdsBgtRuleModalError" role="alert"></p>
+                    <table class="table table-sm table-bordered align-middle mb-0" id="amazonAdsBgtRuleTable">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width:40px;">#</th>
+                                <th>Label</th>
+                                <th style="width:140px;">Color</th>
+                                <th style="width:110px;">From (%)</th>
+                                <th style="width:110px;">To (%)</th>
+                                <th style="width:120px;">SBGT</th>
+                                <th style="width:50px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="amazonAdsBgtRuleBandsBody"></tbody>
+                    </table>
+                    <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="amazonAdsBgtRuleAddBandBtn">
+                        <i class="fas fa-plus me-1"></i>Add band
+                    </button>
+                    <p class="small text-danger mb-0 mt-2 d-none" id="amazonAdsBgtRuleModalError" role="alert"></p>
                 </div>
-                <div class="modal-footer">
+                <div class="modal-footer py-2">
                     <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-sm btn-primary" id="amazonAdsBgtRuleSaveBtn">Save rule &amp; refresh grid</button>
+                    <button type="button" class="btn btn-sm btn-primary" id="amazonAdsBgtRuleSaveBtn">Save &amp; refresh grid</button>
                 </div>
             </div>
         </div>
@@ -461,7 +439,7 @@
     <div class="modal fade" id="amazonAdsSbidRuleModal" tabindex="-1" aria-labelledby="amazonAdsSbidRuleModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-lg modal-dialog-scrollable">
             <div class="modal-content">
-                <div class="modal-header">
+                <div class="modal-header py-2">
                     <h5 class="modal-title" id="amazonAdsSbidRuleModalLabel">SBID rule — U2% / U1% → suggested bid</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -507,11 +485,11 @@
                             <input type="number" step="0.01" class="form-control form-control-sm" id="amazonAdsSbidRuleHighMultL1" name="both_high_mult_l1" required>
                         </div>
                     </div>
-                    <p class="small text-danger mb-0 mt-3 d-none" id="amazonAdsSbidRuleModalError" role="alert"></p>
+                    <p class="small text-danger mb-0 mt-2 d-none" id="amazonAdsSbidRuleModalError" role="alert"></p>
                 </div>
-                <div class="modal-footer">
+                <div class="modal-footer py-2">
                     <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-sm btn-primary" id="amazonAdsSbidRuleSaveBtn">Save rule &amp; refresh grid</button>
+                    <button type="button" class="btn btn-sm btn-primary" id="amazonAdsSbidRuleSaveBtn">Save &amp; refresh grid</button>
                 </div>
             </div>
         </div>
@@ -1550,63 +1528,61 @@
                 return s;
             }
 
-            /**
-             * ACOS % tier colors — uses {@see window.amazonAdsBgtRule} (same as server AmazonAcosSbgtRule).
-             */
-            function amazonAdsAcosTierColor(acos) {
+            /** Current ACOS → SBGT bands (from {@see window.amazonAdsBgtRule}). */
+            function amazonAdsBgtRuleBands() {
                 var r = window.amazonAdsBgtRule || {};
-                var e1 = parseFloat(r.e1);
-                var e2 = parseFloat(r.e2);
-                var e3 = parseFloat(r.e3);
-                var e4 = parseFloat(r.e4);
-                var a = typeof acos === 'number' ? acos : parseFloat(String(acos));
-                if (isNaN(a) || isNaN(e1) || isNaN(e2) || isNaN(e3) || isNaN(e4)) {
-                    return '#6b7280';
-                }
-                if (a >= e4) {
-                    return '#dc2626';
-                }
-                if (a > e3) {
-                    return '#ca8a04';
-                }
-                if (a > e2) {
-                    return '#2563eb';
-                }
-                if (a > e1) {
-                    return '#16a34a';
-                }
-                return '#db2777';
+                var bands = (r && Array.isArray(r.bands)) ? r.bands : [];
+                return bands;
             }
 
-            /** SBGT display color by tier value (matches semantic tier from BGT rule). */
+            /** First band whose From ≤ ACOS ≤ To (checked top-to-bottom), else null. */
+            function amazonAdsBandForAcos(acos) {
+                var a = typeof acos === 'number' ? acos : parseFloat(String(acos));
+                if (isNaN(a)) {
+                    return null;
+                }
+                var bands = amazonAdsBgtRuleBands();
+                for (var i = 0; i < bands.length; i++) {
+                    var from = parseFloat(bands[i].acos_from);
+                    var to = parseFloat(bands[i].acos_to);
+                    if (isNaN(from)) { from = 0; }
+                    if (isNaN(to)) { to = 9999; }
+                    if (a >= from && a <= to) {
+                        return bands[i];
+                    }
+                }
+                return null;
+            }
+
+            /**
+             * ACOS % tier colors — uses {@see window.amazonAdsBgtRule} bands (same as server AmazonAcosSbgtRule).
+             */
+            function amazonAdsAcosTierColor(acos) {
+                var band = amazonAdsBandForAcos(acos);
+                return (band && band.color) ? band.color : '#6b7280';
+            }
+
+            /** SBGT display color by tier value (first band with matching SBGT). */
             function amazonAdsSbgtTierColor(sbgt) {
                 var s = parseInt(sbgt, 10);
-                var r = window.amazonAdsBgtRule || {};
-                if (s === parseInt(r.sbgt_red, 10)) {
-                    return '#dc2626';
+                if (isNaN(s)) {
+                    return '#6b7280';
                 }
-                if (s === parseInt(r.sbgt_yellow, 10)) {
-                    return '#ca8a04';
-                }
-                if (s === parseInt(r.sbgt_blue, 10)) {
-                    return '#2563eb';
-                }
-                if (s === parseInt(r.sbgt_green, 10)) {
-                    return '#16a34a';
-                }
-                if (s === parseInt(r.sbgt_pink, 10)) {
-                    return '#db2777';
+                var bands = amazonAdsBgtRuleBands();
+                for (var i = 0; i < bands.length; i++) {
+                    if (parseInt(bands[i].sbgt, 10) === s && bands[i].color) {
+                        return bands[i].color;
+                    }
                 }
                 return '#6b7280';
             }
 
             function amazonAdsAllowedSbgtTiersFromRule() {
-                var r = window.amazonAdsBgtRule || {};
-                var raw = [r.sbgt_red, r.sbgt_yellow, r.sbgt_blue, r.sbgt_green, r.sbgt_pink];
+                var bands = amazonAdsBgtRuleBands();
                 var out = [];
-                for (var i = 0; i < raw.length; i++) {
-                    var t = parseInt(raw[i], 10);
-                    if (!isNaN(t) && out.indexOf(t) === -1) {
+                for (var i = 0; i < bands.length; i++) {
+                    var t = parseInt(bands[i].sbgt, 10);
+                    if (!isNaN(t) && t > 0 && out.indexOf(t) === -1) {
                         out.push(t);
                     }
                 }
@@ -2341,55 +2317,112 @@
                         });
                     }
 
-                    function amazonAdsFillBgtRuleForm(r) {
-                        if (!r) {
+                    var amazonAdsCurrentBgtBands = [];
+
+                    function amazonAdsRenderBgtBands(bands) {
+                        var tbody = document.getElementById('amazonAdsBgtRuleBandsBody');
+                        if (!tbody) {
                             return;
                         }
-                        var map = [
-                            ['amazonAdsBgtRuleE1', 'e1'],
-                            ['amazonAdsBgtRuleE2', 'e2'],
-                            ['amazonAdsBgtRuleE3', 'e3'],
-                            ['amazonAdsBgtRuleE4', 'e4'],
-                            ['amazonAdsBgtRuleSbgtPink', 'sbgt_pink'],
-                            ['amazonAdsBgtRuleSbgtGreen', 'sbgt_green'],
-                            ['amazonAdsBgtRuleSbgtBlue', 'sbgt_blue'],
-                            ['amazonAdsBgtRuleSbgtYellow', 'sbgt_yellow'],
-                            ['amazonAdsBgtRuleSbgtRed', 'sbgt_red']
-                        ];
-                        for (var i = 0; i < map.length; i++) {
-                            var el = document.getElementById(map[i][0]);
-                            if (el && r[map[i][1]] != null) {
-                                el.value = String(r[map[i][1]]);
-                            }
-                        }
+                        tbody.innerHTML = '';
+                        bands.forEach(function (band, i) {
+                            var tr = document.createElement('tr');
+                            tr.innerHTML = ''
+                                + '<td class="text-muted small">' + (i + 1) + '</td>'
+                                + '<td><input type="text" class="form-control form-control-sm"'
+                                + ' value="' + String(band.label == null ? '' : band.label).replace(/"/g, '&quot;') + '"'
+                                + ' data-idx="' + i + '" data-field="label"></td>'
+                                + '<td><div class="d-flex align-items-center gap-2">'
+                                + '<input type="color" class="form-control form-control-color form-control-sm"'
+                                + ' value="' + (band.color || '#6c757d') + '" data-idx="' + i + '" data-field="color">'
+                                + '<span class="badge" style="background:' + (band.color || '#6c757d') + ';color:#fff;">'
+                                + (band.label || '—') + '</span></div></td>'
+                                + '<td><input type="number" step="0.1" min="0" class="form-control form-control-sm"'
+                                + ' value="' + (band.acos_from == null ? '' : band.acos_from) + '" data-idx="' + i + '" data-field="acos_from"'
+                                + ' placeholder="0"></td>'
+                                + '<td><input type="number" step="0.1" min="0" class="form-control form-control-sm"'
+                                + ' value="' + (band.acos_to == null ? '' : band.acos_to) + '" data-idx="' + i + '" data-field="acos_to"'
+                                + ' placeholder="9999"></td>'
+                                + '<td><input type="number" step="1" min="1" class="form-control form-control-sm"'
+                                + ' value="' + (band.sbgt == null ? '' : band.sbgt) + '" data-idx="' + i + '" data-field="sbgt"></td>'
+                                + '<td class="text-center">'
+                                + '<button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Remove band">'
+                                + '<i class="fas fa-trash"></i></button></td>';
+                            tbody.appendChild(tr);
+                        });
+
+                        tbody.querySelectorAll('input[data-idx]').forEach(function (inp) {
+                            inp.addEventListener('input', function () {
+                                var idx = +this.dataset.idx;
+                                var fld = this.dataset.field;
+                                if (!amazonAdsCurrentBgtBands[idx]) {
+                                    return;
+                                }
+                                amazonAdsCurrentBgtBands[idx][fld] = (fld === 'sbgt')
+                                    ? (this.value === '' ? '' : parseInt(this.value, 10))
+                                    : (fld === 'acos_from' || fld === 'acos_to')
+                                        ? (this.value === '' ? '' : parseFloat(this.value))
+                                        : this.value;
+                                if (fld === 'label' || fld === 'color') {
+                                    var row = this.closest('tr');
+                                    var chip = row ? row.querySelector('.badge') : null;
+                                    var band = amazonAdsCurrentBgtBands[idx];
+                                    if (chip) {
+                                        chip.style.background = band.color || '#6c757d';
+                                        chip.textContent = band.label || '—';
+                                    }
+                                }
+                            });
+                        });
+
+                        tbody.querySelectorAll('[data-remove-idx]').forEach(function (btn) {
+                            btn.addEventListener('click', function () {
+                                amazonAdsCurrentBgtBands.splice(+this.dataset.removeIdx, 1);
+                                amazonAdsRenderBgtBands(amazonAdsCurrentBgtBands);
+                            });
+                        });
                     }
 
-                    function amazonAdsCollectBgtRuleFromForm() {
-                        function num(id) {
-                            var el = document.getElementById(id);
-                            if (!el) {
-                                return NaN;
-                            }
-                            return parseFloat(String(el.value).trim());
-                        }
-                        function intn(id) {
-                            var el = document.getElementById(id);
-                            if (!el) {
-                                return NaN;
-                            }
-                            return parseInt(String(el.value).trim(), 10);
-                        }
-                        return {
-                            e1: num('amazonAdsBgtRuleE1'),
-                            e2: num('amazonAdsBgtRuleE2'),
-                            e3: num('amazonAdsBgtRuleE3'),
-                            e4: num('amazonAdsBgtRuleE4'),
-                            sbgt_pink: intn('amazonAdsBgtRuleSbgtPink'),
-                            sbgt_green: intn('amazonAdsBgtRuleSbgtGreen'),
-                            sbgt_blue: intn('amazonAdsBgtRuleSbgtBlue'),
-                            sbgt_yellow: intn('amazonAdsBgtRuleSbgtYellow'),
-                            sbgt_red: intn('amazonAdsBgtRuleSbgtRed')
-                        };
+                    function amazonAdsLoadBgtBandsFromRule(rule) {
+                        var bands = (rule && Array.isArray(rule.bands)) ? rule.bands : [];
+                        amazonAdsCurrentBgtBands = bands.map(function (b) {
+                            return {
+                                acos_from: (b.acos_from == null ? 0 : Number(b.acos_from)),
+                                acos_to: (b.acos_to == null ? 9999 : Number(b.acos_to)),
+                                sbgt: b.sbgt,
+                                label: b.label == null ? '' : b.label,
+                                color: b.color || '#6c757d'
+                            };
+                        });
+                        amazonAdsRenderBgtBands(amazonAdsCurrentBgtBands);
+                    }
+
+                    function amazonAdsCollectBgtBandsPayload() {
+                        return (amazonAdsCurrentBgtBands || []).map(function (b) {
+                            return {
+                                acos_from: (b.acos_from === '' || b.acos_from == null) ? NaN : parseFloat(b.acos_from),
+                                acos_to: (b.acos_to === '' || b.acos_to == null) ? NaN : parseFloat(b.acos_to),
+                                sbgt: (b.sbgt === '' || b.sbgt == null) ? NaN : parseInt(b.sbgt, 10),
+                                label: (b.label || '').toString(),
+                                color: (b.color || '#6c757d').toString()
+                            };
+                        });
+                    }
+
+                    var bgtRuleAddBandBtn = document.getElementById('amazonAdsBgtRuleAddBandBtn');
+                    if (bgtRuleAddBandBtn) {
+                        bgtRuleAddBandBtn.addEventListener('click', function () {
+                            var bands = amazonAdsCurrentBgtBands || [];
+                            var lastTo = bands.length ? Number(bands[bands.length - 1].acos_to || 0) : 0;
+                            amazonAdsCurrentBgtBands.push({
+                                acos_from: lastTo,
+                                acos_to: 9999,
+                                sbgt: 1,
+                                label: 'New band',
+                                color: '#6c757d'
+                            });
+                            amazonAdsRenderBgtBands(amazonAdsCurrentBgtBands);
+                        });
                     }
 
                     var bgtRuleModalEl = document.getElementById('amazonAdsBgtRuleModal');
@@ -2416,11 +2449,11 @@
                                 .then(function (out) {
                                     if (out.ok && out.body && out.body.rule) {
                                         window.amazonAdsBgtRule = out.body.rule;
-                                        amazonAdsFillBgtRuleForm(out.body.rule);
                                     }
+                                    amazonAdsLoadBgtBandsFromRule(window.amazonAdsBgtRule || {});
                                 })
                                 .catch(function () {
-                                    amazonAdsFillBgtRuleForm(window.amazonAdsBgtRule || {});
+                                    amazonAdsLoadBgtBandsFromRule(window.amazonAdsBgtRule || {});
                                 });
                         });
                     }
@@ -2433,7 +2466,32 @@
                                 errEl.classList.add('d-none');
                                 errEl.textContent = '';
                             }
-                            var payload = amazonAdsCollectBgtRuleFromForm();
+                            var cleaned = amazonAdsCollectBgtBandsPayload();
+                            if (!cleaned.length) {
+                                if (errEl) {
+                                    errEl.textContent = 'Add at least one band before saving.';
+                                    errEl.classList.remove('d-none');
+                                }
+                                return;
+                            }
+                            for (var i = 0; i < cleaned.length; i++) {
+                                var b = cleaned[i];
+                                if (!isFinite(b.acos_from) || !isFinite(b.acos_to) || !isFinite(b.sbgt)) {
+                                    if (errEl) {
+                                        errEl.textContent = 'Every band needs numeric From, To, and SBGT values.';
+                                        errEl.classList.remove('d-none');
+                                    }
+                                    return;
+                                }
+                                if (b.acos_from > b.acos_to) {
+                                    if (errEl) {
+                                        errEl.textContent = 'Each band needs From ≤ To.';
+                                        errEl.classList.remove('d-none');
+                                    }
+                                    return;
+                                }
+                            }
+                            var payload = { bands: cleaned };
                             var token = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
                             bgtRuleSaveBtn.disabled = true;
                             fetch(bgtRuleSaveUrl, {
