@@ -309,6 +309,15 @@ class AmazonAdsController extends Controller
             }
         }
 
+        // Cvr (%) = Sold ÷ Clicks × 100 — computed from the displayed Sold (L30 purchases) and Clicks columns.
+        if (in_array('Prchase', $ordered, true) && in_array('clicks', $ordered, true)) {
+            $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'Cvr'));
+            $idxPrchaseForCvr = array_search('Prchase', $ordered, true);
+            if ($idxPrchaseForCvr !== false) {
+                array_splice($ordered, $idxPrchaseForCvr + 1, 0, ['Cvr']);
+            }
+        }
+
         if ($table === 'amazon_sp_campaign_reports' || $table === 'amazon_sb_campaign_reports') {
             $ordered = array_values(array_filter(
                 $ordered,
@@ -1447,6 +1456,18 @@ class AmazonAdsController extends Controller
             } elseif (in_array('id', $dbColumns, true)) {
                 $query->orderBy('id', 'desc');
             }
+        } elseif ($requested === 'Cvr'
+            && in_array('clicks', $dbColumns, true)
+            && (in_array('purchases30d', $dbColumns, true) || in_array('purchases', $dbColumns, true))) {
+            $purchSub = self::correlatedL30SummaryPurchases30dScalarSubquerySql($table, $dbColumns);
+            if ($purchSub !== null) {
+                $purchExpr = in_array('purchases30d', $dbColumns, true)
+                    ? 'COALESCE(('.$purchSub.'), purchases30d)'
+                    : 'COALESCE(('.$purchSub.'), purchases)';
+            } else {
+                $purchExpr = in_array('purchases30d', $dbColumns, true) ? 'purchases30d' : 'purchases';
+            }
+            $query->orderByRaw('CASE WHEN COALESCE(clicks, 0) > 0 THEN ('.$purchExpr.') / NULLIF(clicks, 0) ELSE NULL END '.$dir);
         } elseif ($requested === 'sbid' && in_array('last_sbid', $dbColumns, true) && in_array('sbid', $dbColumns, true)) {
             $query->orderByRaw('COALESCE(last_sbid, sbid, 0) '.$dir);
         } elseif ($requested === 'costPerClick'
@@ -2408,6 +2429,13 @@ class AmazonAdsController extends Controller
             $defaultReportRangeDates[$param] = self::latestAvailableReportDayYmd($table);
         }
 
+        // Virtual "All" source: SP + SB combined (shares the SP display column set).
+        $rawSources['all_reports'] = [
+            'table' => 'amazon_sp_campaign_reports',
+            'columns' => self::displayColumnsForTable('amazon_sp_campaign_reports'),
+        ];
+        $defaultReportRangeDates['all_reports'] = self::latestAvailableReportDayYmd('amazon_sp_campaign_reports');
+
         return view('amazon_ads.all', [
             'rawSources' => $rawSources,
             'defaultReportRangeDates' => $defaultReportRangeDates,
@@ -2719,31 +2747,48 @@ class AmazonAdsController extends Controller
      */
     public function rawData(Request $request, string $source)
     {
+        if ($source === 'all_reports') {
+            return response()->json($this->rawDataAllReportsPayload($request));
+        }
+
         if (! isset(self::RAW_TABLE_SOURCES[$source])) {
             abort(404);
         }
 
         $table = self::RAW_TABLE_SOURCES[$source];
 
+        return response()->json($this->rawDataSingleSourcePayload($request, $table));
+    }
+
+    /**
+     * DataTables payload for a single raw table source (SP / SB / SD / bid caps / FBM).
+     *
+     * When $forceStart / $forceLength are supplied (used by the combined "All" view), they override
+     * the request's paging window so a wider slice can be fetched for cross-source merging.
+     *
+     * @return array<string, mixed>
+     */
+    private function rawDataSingleSourcePayload(Request $request, string $table, ?int $forceStart = null, ?int $forceLength = null): array
+    {
         if (! Schema::hasTable($table)) {
-            return response()->json([
+            return [
                 'draw' => (int) $request->input('draw', 0),
                 'recordsTotal' => 0,
                 'recordsFiltered' => 0,
                 'data' => [],
                 'error' => 'Table does not exist: '.$table,
-            ]);
+            ];
         }
 
         $dbColumns = self::orderedColumnsForTable($table);
         $columns = self::displayColumnsForTable($table);
         if ($columns === [] || $dbColumns === []) {
-            return response()->json([
+            return [
                 'draw' => (int) $request->input('draw', 0),
                 'recordsTotal' => 0,
                 'recordsFiltered' => 0,
                 'data' => [],
-            ]);
+            ];
         }
 
         $draw = (int) $request->input('draw', 1);
@@ -2753,6 +2798,12 @@ class AmazonAdsController extends Controller
             $length = 25;
         }
         $length = min($length, 500);
+        if ($forceStart !== null) {
+            $start = max(0, $forceStart);
+        }
+        if ($forceLength !== null) {
+            $length = max(1, min($forceLength, 20000));
+        }
 
         $search = trim((string) $request->input('search.value', ''));
 
@@ -3034,6 +3085,15 @@ class AmazonAdsController extends Controller
                 }
                 $arr['sbgt'] = self::computedSbgtFromReportRow($sbgtRow, $dbColumns);
             }
+            if (in_array('Cvr', $columns, true)) {
+                $soldForCvr = $arr['Prchase'] ?? null;
+                $clicksForCvr = $arr['clicks'] ?? null;
+                $scv = is_numeric($soldForCvr) ? (float) $soldForCvr : null;
+                $ccv = is_numeric($clicksForCvr) ? (float) $clicksForCvr : null;
+                $arr['Cvr'] = ($scv !== null && $ccv !== null && $ccv > 0)
+                    ? round(($scv / $ccv) * 100, 2)
+                    : null;
+            }
             self::roundAmazonAdsDisplayNumericFields($arr, $columns);
             unset($arr['pink_dil_paused_at'], $arr['campaignBudgetCurrencyCode']);
             $data[] = $arr;
@@ -3067,7 +3127,178 @@ class AmazonAdsController extends Controller
             $payload['salesTotal'] = $salesTotal;
         }
 
-        return response()->json($payload);
+        return $payload;
+    }
+
+    /**
+     * Combined "All" DataTables payload: union of SP + SB campaign reports. Both share the SP display
+     * column set, so each source is fetched, enriched and sorted through the existing single-table
+     * pipeline; the two result sets are then merged, globally re-sorted by the requested column and
+     * sliced to the current page. Summary badges (SPL30 / ACOS / Spend / Clicks / Sold / Sales) are
+     * aggregated across both sources.
+     *
+     * Note: rows are merged from two independently sorted result sets, so the combined ordering is
+     * exact for the first ~20k rows of the filtered union; deeper pages are capped by $fetchLen.
+     *
+     * @return array<string, mixed>
+     */
+    private function rawDataAllReportsPayload(Request $request): array
+    {
+        $draw = (int) $request->input('draw', 1);
+        $start = max(0, (int) $request->input('start', 0));
+        $length = (int) $request->input('length', 25);
+        if ($length < 1) {
+            $length = 25;
+        }
+        $length = min($length, 500);
+
+        $displayColumns = self::displayColumnsForTable('amazon_sp_campaign_reports');
+        $orderColumnIndex = (int) $request->input('order.0.column', 0);
+        $orderDir = strtolower((string) $request->input('order.0.dir', 'desc')) === 'asc' ? 'asc' : 'desc';
+        $orderKey = ($orderColumnIndex >= 0 && $orderColumnIndex < count($displayColumns))
+            ? $displayColumns[$orderColumnIndex]
+            : ($displayColumns[0] ?? 'id');
+
+        // Fetch enough top rows from each source that the merged slice for this page is exact.
+        $fetchLen = min($start + $length, 20000);
+
+        $sources = ['amazon_sp_campaign_reports', 'amazon_sb_campaign_reports'];
+        $rows = [];
+        $recordsTotal = 0;
+        $recordsFiltered = 0;
+        $distinctCampaignCount = 0;
+        $costSum = 0.0;
+        $salesSum = 0.0;
+        $spendSum = 0.0;
+        $clicksSum = 0;
+        $soldSum = 0;
+        $haveDistinct = false;
+        $haveCost = false;
+        $haveSales = false;
+        $haveSpend = false;
+        $haveClicks = false;
+        $haveSold = false;
+
+        foreach ($sources as $table) {
+            $part = $this->rawDataSingleSourcePayload($request, $table, 0, $fetchLen);
+            if (isset($part['data']) && is_array($part['data'])) {
+                foreach ($part['data'] as $r) {
+                    $rows[] = $r;
+                }
+            }
+            $recordsTotal += (int) ($part['recordsTotal'] ?? 0);
+            $recordsFiltered += (int) ($part['recordsFiltered'] ?? 0);
+            if (isset($part['distinctCampaignCount'])) {
+                $distinctCampaignCount += (int) $part['distinctCampaignCount'];
+                $haveDistinct = true;
+            }
+            if (isset($part['spl30Total'])) {
+                $costSum += (float) $part['spl30Total'];
+                $haveCost = true;
+            }
+            if (isset($part['salesTotal'])) {
+                $salesSum += (float) $part['salesTotal'];
+                $haveSales = true;
+            }
+            if (isset($part['spendTotal'])) {
+                $spendSum += (float) $part['spendTotal'];
+                $haveSpend = true;
+            }
+            if (isset($part['clicksTotal'])) {
+                $clicksSum += (int) $part['clicksTotal'];
+                $haveClicks = true;
+            }
+            if (isset($part['soldTotal'])) {
+                $soldSum += (int) $part['soldTotal'];
+                $haveSold = true;
+            }
+        }
+
+        usort($rows, static function ($a, $b) use ($orderKey, $orderDir) {
+            $cmp = self::compareAmazonAdsRowValues($a[$orderKey] ?? null, $b[$orderKey] ?? null);
+
+            return $orderDir === 'asc' ? $cmp : -$cmp;
+        });
+
+        $pageRows = array_slice($rows, $start, $length);
+
+        $payload = [
+            'draw' => $draw,
+            'recordsTotal' => $recordsTotal,
+            'recordsFiltered' => $recordsFiltered,
+            'data' => array_values($pageRows),
+        ];
+        if ($haveDistinct) {
+            $payload['distinctCampaignCount'] = $distinctCampaignCount;
+        }
+        if ($haveCost) {
+            $payload['spl30Total'] = round($costSum, 2);
+        }
+        if ($haveSpend) {
+            $payload['spendTotal'] = round($spendSum, 2);
+        }
+        if ($haveClicks) {
+            $payload['clicksTotal'] = $clicksSum;
+        }
+        if ($haveSold) {
+            $payload['soldTotal'] = $soldSum;
+        }
+        if ($haveSales) {
+            $payload['salesTotal'] = round($salesSum, 2);
+        }
+        if ($haveCost && $haveSales) {
+            $payload['overallAcosPercent'] = self::overallAcosPercentFromAggregatedSums($costSum, $salesSum);
+        }
+
+        return $payload;
+    }
+
+    /**
+     * Compare two raw display-cell values for the combined "All" sort: numeric when both parse as
+     * numbers (percent / money strings included), otherwise a case-insensitive string compare.
+     * Values that parse as numbers are treated as ranking after plain strings so text tie-breaks stay stable.
+     */
+    private static function compareAmazonAdsRowValues(mixed $a, mixed $b): int
+    {
+        $na = self::amazonAdsSortableNumber($a);
+        $nb = self::amazonAdsSortableNumber($b);
+        if ($na !== null && $nb !== null) {
+            return $na <=> $nb;
+        }
+        if ($na !== null) {
+            return 1;
+        }
+        if ($nb !== null) {
+            return -1;
+        }
+
+        $sa = $a === null ? '' : strtolower((string) $a);
+        $sb = $b === null ? '' : strtolower((string) $b);
+
+        return strcmp($sa, $sb);
+    }
+
+    /**
+     * Parse a display value to a sortable float (stripping %, $, commas); null when not numeric.
+     */
+    private static function amazonAdsSortableNumber(mixed $v): ?float
+    {
+        if ($v === null || $v === '') {
+            return null;
+        }
+        if (is_int($v) || is_float($v)) {
+            return (float) $v;
+        }
+        if (is_string($v)) {
+            $s = str_replace([',', '%', '$', ' '], '', trim($v));
+            if ($s === '' || ! is_numeric($s)) {
+                return null;
+            }
+
+            return (float) $s;
+        }
+
+        return null;
     }
 
     /**

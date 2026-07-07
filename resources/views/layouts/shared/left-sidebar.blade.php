@@ -1386,6 +1386,15 @@
                                                 <li>
                                                     <a href="{{ route('amazon.ads.all') }}">Amazon Ads All</a>
                                                 </li>
+                                                <li>
+                                                    <a href="{{ route('amazon.ads.audit') }}">Amazon Ads Audit</a>
+                                                </li>
+                                                <li>
+                                                    <a href="{{ route('amazon.ads.missing') }}">Amazon Ads Missing</a>
+                                                </li>
+                                                <li>
+                                                    <a href="{{ route('amazon.ads.categories') }}">Ads Categories</a>
+                                                </li>
                                                 {{-- <li>
                                                     <a href=" {{ route('amazon-sp.amz-utilized-bgt-kw') }} "> >
                                                         UTILIZED BGT KW</a>

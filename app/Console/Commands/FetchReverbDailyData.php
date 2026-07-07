@@ -125,9 +125,10 @@ class FetchReverbDailyData extends Command
         $orderDate = $paidAt ?? $createdAt;
         if (!$orderDate) return null;
 
-        // Calculate period based on order date (using California timezone)
-        $orderDateCarbon = Carbon::parse($orderDate, 'America/Los_Angeles');
-        $today = Carbon::now('America/Los_Angeles')->startOfDay();
+        // Calculate period based on order date (in UTC — matches Reverb's dashboard,
+        // which groups orders by UTC date). Use setTimezone() to normalize any offset.
+        $orderDateCarbon = Carbon::parse($orderDate)->setTimezone('UTC');
+        $today = Carbon::now('UTC')->startOfDay();
         $daysDiff = $today->diffInDays($orderDateCarbon);
         $period = $daysDiff <= 30 ? 'l30' : 'l60';
 
@@ -167,7 +168,9 @@ class FetchReverbDailyData extends Command
 
         return [
             'order_number' => $order['order_number'] ?? null,
-            'order_date' => Carbon::parse($orderDate)->toDateString(),
+            // Store the UTC calendar date so L30/L60/Yesterday windows line up with
+            // Reverb's dashboard, which groups orders by UTC date.
+            'order_date' => Carbon::parse($orderDate)->setTimezone('UTC')->toDateString(),
             'period' => $period,
             'status' => $order['status'] ?? null,
             'sku' => $order['sku'] ?? null,

@@ -33,17 +33,12 @@ class ReverbSalesController extends Controller
                 return response()->json(['error' => 'Reverb daily data table not found'], 404);
             }
 
-            // Calculate L30 date range using Pacific time (matching ChannelMasterController)
-            $latestRaw = DB::table('reverb_daily_data')->whereNotNull('order_date')->max('order_date');
-            if ($latestRaw) {
-                $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
-                $l30EndDate = $latestPacific->copy()->subDay()->toDateString();
-                $l30StartDate = $latestPacific->copy()->subDay()->subDays(29)->toDateString();
-            } else {
-                // Fallback to simple 30 days if no data
-                $l30EndDate = Carbon::now()->toDateString();
-                $l30StartDate = Carbon::now()->subDays(30)->toDateString();
-            }
+            // Last 31 days in UTC (inclusive of today) to line up with Reverb's dashboard,
+            // which groups orders by UTC date. order_date is stored as a UTC date, so we
+            // anchor on UTC "today" and do NOT run a timezone conversion on the date column.
+            $nowUtc = Carbon::now('UTC');
+            $l30EndDate = $nowUtc->toDateString();
+            $l30StartDate = $nowUtc->copy()->subDays(30)->toDateString();
 
             // Fetch L30 data only (last 30 days based on Pacific windows)
             $reverbData = DB::table('reverb_daily_data')
@@ -214,17 +209,12 @@ class ReverbSalesController extends Controller
                 ], 404);
             }
 
-            // Calculate L60 date range using Pacific time
-            $latestRaw = DB::table('reverb_daily_data')->whereNotNull('order_date')->max('order_date');
-            if ($latestRaw) {
-                $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
-                $l60EndDate = $latestPacific->copy()->subDay()->toDateString();
-                $l60StartDate = $latestPacific->copy()->subDay()->subDays(59)->toDateString();
-            } else {
-                // Fallback if no data
-                $l60EndDate = Carbon::now()->toDateString();
-                $l60StartDate = Carbon::now()->subDays(60)->toDateString();
-            }
+            // Last 60 days in UTC, matching Reverb's dashboard. Reverb's "last N days"
+            // spans today + N previous days, so we use subDays(60) (same +1-day convention
+            // as the L30 window). order_date is a UTC date; no timezone conversion needed.
+            $nowUtc = Carbon::now('UTC');
+            $l60EndDate = $nowUtc->toDateString();
+            $l60StartDate = $nowUtc->copy()->subDays(60)->toDateString();
 
             // Fetch L60 data
             $reverbData = DB::table('reverb_daily_data')
@@ -278,9 +268,13 @@ class ReverbSalesController extends Controller
                 $quantity = (int) ($item->quantity ?? 0);
                 $totalQuantity += $quantity;
 
-                // Revenue: product_subtotal (fallback to amount)
+                // Displayed Sales = Reverb order total (product + shipping + tax) to match
+                // Reverb's dashboard. Shipping is usually FREE; tax is included in `amount`.
+                $totalSalesLine = (float) ($item->amount ?? $item->product_subtotal ?? 0);
+                $totalSales += $totalSalesLine;
+
+                // Profit-side revenue = product_subtotal (margin applies to the item price)
                 $revenue = (float) ($item->product_subtotal ?? $item->amount ?? 0);
-                $totalSales += $revenue;
 
                 // Get LP and Ship for profit calculation
                 $lp = 0;

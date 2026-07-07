@@ -135,31 +135,49 @@
     <div class="toast-container"></div>
     <div class="row">
         <div class="card shadow-sm">
-            <div class="card-body py-3">
-                <div class="d-flex align-items-center flex-wrap gap-2">
-                    <select id="inventory-filter" class="form-select form-select-sm"
-                        style="width: 130px;">
+            <div class="card-body py-2">
+                <!-- Summary Stats -->
+                <div id="summary-stats" class="mb-2 p-2 bg-light rounded">
+                    <div class="d-flex flex-wrap align-items-center gap-2">
+                        <span class="badge fs-6 p-2 flex-shrink-0" id="rd-sum-qty-amount-badge" style="background-color: #5dade2; color: #111; font-weight: bold;" title="Total Sales from full reverb_daily_data table: SUM(quantity × amount), rounded to whole dollars">Total Sales: $0</span>
+                        <span class="badge fs-6 p-2 flex-shrink-0" id="rd-ads-percent-badge" style="background-color: #e83e8c; color: white; font-weight: bold;" title="Ads% = Reverb Bump fees ÷ Sales (L30) × 100">Ads%: 0%</span>
+                        <span class="badge bg-dark fs-6 p-2 flex-shrink-0" id="rd-daily-overview-badge" style="font-weight: bold;" title="Total units: SUM(quantity) across all reverb_daily_data order rows">Orders: —</span>
+                        <span class="badge bg-info fs-6 p-2 flex-shrink-0" id="gpft-list-badge" style="color: black; font-weight: bold;" title="Weighted GPFT% = Σ[sold_qty×(RV Price×take%−LP−Ship)] ÷ Σ(sold_qty×RV Price) — same method as /temu-decrease, using normal ship">GPFT: 0%</span>
+                        <span class="badge fs-6 p-2 flex-shrink-0" id="groi-badge" style="background-color: #6f42c1; color: white; font-weight: bold;" title="Weighted GROI% = Σ[sold_qty×(RV Price×take%−LP−Ship)] ÷ Σ(sold_qty×LP) — same method as /temu-decrease, using normal ship">GROI: 0%</span>
+                        <span class="badge fs-6 p-2 flex-shrink-0" id="npft-badge" style="background-color: #0d6efd; color: white; font-weight: bold;" title="NPFT% = GPFT% − Ads%">NPFT: 0%</span>
+                        <span class="badge fs-6 p-2 flex-shrink-0" id="nroi-badge" style="background-color: #6610f2; color: white; font-weight: bold;" title="NROI% = GROI% − Ads%">NROI: 0%</span>
+                        <span class="badge bg-danger fs-6 p-2 flex-shrink-0" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="SKUs with reverb_daily_qty = 0">0 Sold: 0</span>
+                        <span class="badge fs-6 p-2 flex-shrink-0" id="more-sold-count-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="SKUs with reverb_daily_qty &gt; 0">&gt; 0 Sold: 0</span>
+                        <span class="badge bg-danger fs-6 p-2 flex-shrink-0" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amazon">&lt; Amz: 0</span>
+                        <span class="badge fs-6 p-2 flex-shrink-0" id="more-amz-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices greater than Amazon">&gt; Amz: 0</span>
+                        <span class="badge bg-danger fs-6 p-2 flex-shrink-0" id="missing-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter missing listings (REQ + INV&gt;0 + RV Price = 0)">Missing L: 0</span>
+                        <span class="badge bg-danger fs-6 p-2 flex-shrink-0" id="inv-r-stock-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter stock mismatch (REQ + INV&gt;0 + |INV − R Stock| &gt; 3)">N Map: 0</span>
+                    </div>
+                </div>
+                <div class="d-flex align-items-center flex-wrap gap-1">
+                    <select id="inventory-filter" class="form-select form-select-sm flex-shrink-0"
+                        style="width: 110px;">
                         <option value="all">All Inventory</option>
                         <option value="zero">0 Inventory</option>
                         <option value="more" selected>More than 0</option>
                     </select>
 
-                    <select id="reverb-stock-filter" class="form-select form-select-sm"
-                        style="width: 130px;">
+                    <select id="reverb-stock-filter" class="form-select form-select-sm flex-shrink-0"
+                        style="width: 110px;">
                         <option value="all">R Stock</option>
                         <option value="zero">0 R Stock</option>
                         <option value="more">More than 0</option>
                     </select>
 
-                    <select id="nrl-filter" class="form-select form-select-sm"
-                        style="width: 130px;">
+                    <select id="nrl-filter" class="form-select form-select-sm flex-shrink-0"
+                        style="width: 110px;">
                         <option value="all">All Status</option>
                         <option value="REQ" selected>REQ Only</option>
                         <option value="NR">NR Only</option>
                     </select>
 
-                    <div class="d-flex flex-column gap-1" style="width: 130px;">
-                        <select id="gpft-filter" class="form-select form-select-sm">
+                    <div class="d-flex gap-1 flex-shrink-0">
+                        <select id="gpft-filter" class="form-select form-select-sm flex-shrink-0" style="width: 110px;">
                             <option value="all">GPFT%</option>
                             <option value="negative">Negative</option>
                             <option value="0-10">0-10%</option>
@@ -169,8 +187,8 @@
                             <option value="40-50">40-50%</option>
                             <option value="50plus">Above 50%</option>
                         </select>
-                        <select id="cvr-filter" class="form-select form-select-sm">
-                            <option value="all">All CVR%</option>
+                        <select id="cvr-filter" class="form-select form-select-sm flex-shrink-0" style="width: 110px;">
+                            <option value="all">CVR%</option>
                             <option value="0-0">0%</option>
                             <option value="0-3">0-3%</option>
                             <option value="3-7">3-7%</option>
@@ -187,14 +205,14 @@
                          Single source of truth. The #zero-sold-count-badge / #more-sold-count-badge
                          click handlers (and the ?badge=zero_sold|more_sold URL deep-link) all
                          drive this dropdown value, so badges + dropdown + URL stay in sync. --}}
-                    <select id="sold-filter" class="form-select form-select-sm" style="width: 130px;"
+                    <select id="sold-filter" class="form-select form-select-sm flex-shrink-0" style="width: 110px;"
                             title="Filter by Reverb L30 sold quantity (reverb_daily_qty)">
                         <option value="all">Sold</option>
                         <option value="sold">Sold &gt; 0</option>
                         <option value="zero">0 Sold</option>
                     </select>
 
-                    <select id="roi-filter" class="form-select form-select-sm" style="width: 130px;">
+                    <select id="roi-filter" class="form-select form-select-sm flex-shrink-0" style="width: 110px;">
                         <option value="all">ROI%</option>
                         <option value="lt40">&lt; 40%</option>
                         <option value="40-75">40–75%</option>
@@ -203,7 +221,7 @@
                     </select>
 
                     <!-- DIL Filter (Walmart-style dropdown) -->
-                    <div class="dropdown manual-dropdown-container">
+                    <div class="dropdown manual-dropdown-container flex-shrink-0">
                         <button class="btn btn-light dropdown-toggle" type="button" id="dilFilterDropdown">
                             <span class="status-circle default"></span> DIL%
                         </button>
@@ -211,114 +229,85 @@
                             <li><a class="dropdown-item column-filter active" href="#" data-column="dil_percent" data-color="all">
                                     <span class="status-circle default"></span> All DIL</a></li>
                             <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="red">
-                                    <span class="status-circle red"></span> Red (&lt;16.7%)</a></li>
-                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="yellow">
-                                    <span class="status-circle yellow"></span> Yellow (16.7-25%)</a></li>
+                                    <span class="status-circle red"></span> Red (&lt;25%)</a></li>
                             <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="green">
-                                    <span class="status-circle green"></span> Green (25-50%)</a></li>
+                                    <span class="status-circle green"></span> Green (25&ndash;50%)</a></li>
                             <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="pink">
                                     <span class="status-circle pink"></span> Pink (50%+)</a></li>
                         </ul>
                     </div>
 
                     <!-- Column Visibility Dropdown -->
-                    <div class="dropdown d-inline-block">
-                        <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
-                            id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="fa fa-eye"></i> Columns
+                    <div class="dropdown d-inline-block flex-shrink-0">
+                        <button class="btn btn-sm btn-secondary" type="button"
+                            id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false" title="Columns">
+                            <i class="fa fa-eye"></i>
                         </button>
                         <ul class="dropdown-menu" aria-labelledby="columnVisibilityDropdown" id="column-dropdown-menu"
                             style="max-height: 400px; overflow-y: auto;">
-                            <!-- Columns will be populated by JavaScript -->
+                            <li><a class="dropdown-item fw-bold" href="#" id="show-all-columns-btn">
+                                    <i class="fa fa-eye"></i> Show All Columns</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <!-- Column toggles populated by JavaScript below this divider -->
                         </ul>
                     </div>
-                    <button id="show-all-columns-btn" class="btn btn-sm btn-outline-secondary">
-                        <i class="fa fa-eye"></i> Show All
+
+                    <button id="export-btn" class="btn btn-sm btn-info flex-shrink-0" title="Export CSV">
+                        <i class="fas fa-file-excel"></i>
                     </button>
 
-                    <a href="{{ route('all.marketplace.master') }}" class="btn btn-sm btn-outline-primary"
-                        title="Channel overview — Reverb Map / Miss / NMap use the same live rules as this page">
-                        <i class="fas fa-th-large"></i> All Marketplace Master
-                    </a>
-
-                    <button id="export-btn" class="btn btn-sm btn-info">
-                        <i class="fas fa-file-excel"></i> Export CSV
+                    <button id="bulk-mode-btn" class="btn btn-sm btn-primary flex-shrink-0 text-nowrap" title="Toggle bulk price editing — reveal checkboxes, then choose Decrease / Increase / Same Price">
+                        <i class="fas fa-sliders-h"></i> Bulk Mode
                     </button>
-
-                    <button id="decrease-btn" class="btn btn-sm btn-warning">
-                        <i class="fas fa-arrow-down"></i> Decrease Mode
-                    </button>
-                    
-                    <button id="increase-btn" class="btn btn-sm btn-success">
-                        <i class="fas fa-arrow-up"></i> Increase Mode
-                    </button>
-                    <button id="same-price-btn" class="btn btn-sm btn-info" title="Apply ONE price (entered in the box) to every selected SKU">
-                        <i class="fas fa-equals"></i> Same Price Mode
-                    </button>
-                    <button id="show-ads-column-btn" class="btn btn-sm btn-outline-primary" title="First click: ads columns only. Second click: show all columns.">
-                        <i class="fa fa-bullhorn"></i> Show Ads Column
-                    </button>
-
                     {{-- Target ROI% bulk control — back-solves S PRC for selected rows so SROI = Target ROI%.
                          Formula: sprice = (LP × (1 + ROI%/100) + Ship) / margin   (margin = row.percentage, default 0.85) --}}
-                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
+                    <div class="d-inline-flex align-items-center gap-1 p-1 border rounded bg-light flex-shrink-0"
                         id="target-roi-controls"
                         title="Target ROI% — sets S PRC = (LP × (1 + Target ROI%/100) + Ship) / margin on every selected row (back-solves so SROI column equals the target)">
                         <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
-                            Target ROI%:
+                            &#127919; ROI%:
                         </label>
                         <input type="number" id="target-roi-input" class="form-control form-control-sm text-end"
-                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
-                            title="Target ROI% applied to all selected rows when you click 'Apply S PRC'">
-                        <button id="apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
+                            placeholder="30" step="0.1" style="width: 60px;"
+                            title="Target ROI% applied to all selected rows when you click Apply">
+                        <button id="apply-target-roi-btn" class="btn btn-sm btn-primary" type="button"
                             title="Compute & save S PRC = (LP × (1 + Target ROI%/100) + Ship) / margin for every selected row">
-                            <i class="fas fa-calculator"></i> Apply S PRC
+                            <i class="fas fa-calculator"></i>
                         </button>
                     </div>
 
                     {{-- Target GPFT% bulk control — back-solves S PRC for selected rows so SGPFT = Target GPFT%.
                          Formula: sprice = (LP + Ship) / (margin − GPFT%/100). Target GPFT% must be < margin*100. --}}
-                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
+                    <div class="d-inline-flex align-items-center gap-1 p-1 border rounded bg-light flex-shrink-0"
                         id="target-gpft-controls"
                         title="Target GPFT% — sets S PRC = (LP + Ship) / (margin − Target GPFT%/100) on every selected row (back-solves so SGPFT column equals the target)">
                         <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
-                            Target GPFT%:
+                            &#127919; GPFT%:
                         </label>
                         <input type="number" id="target-gpft-input" class="form-control form-control-sm text-end"
-                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
-                            title="Target GPFT% applied to all selected rows when you click 'Apply S PRC'. Must be less than the Reverb take-home margin (typically < 85%).">
-                        <button id="apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
+                            placeholder="30" step="0.1" style="width: 60px;"
+                            title="Target GPFT% applied to all selected rows when you click Apply. Must be less than the Reverb take-home margin (typically < 85%).">
+                        <button id="apply-target-gpft-btn" class="btn btn-sm btn-primary" type="button"
                             title="Compute & save S PRC = (LP + Ship) / (margin − Target GPFT%/100) for every selected row">
-                            <i class="fas fa-calculator"></i> Apply S PRC
+                            <i class="fas fa-calculator"></i>
                         </button>
                     </div>
+
+                    <input type="text" id="sku-search" class="form-control form-control-sm flex-shrink-0" placeholder="Search SKU..." style="max-width: 160px;">
+                    <input type="text" id="parent-search" class="form-control form-control-sm flex-shrink-0" placeholder="Search Parent..." style="max-width: 160px;">
                 </div>
 
-                <!-- Summary Stats -->
-                <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
-                    <h6 class="mb-3">Summary (85% Margin)</h6>
-                    <div class="d-flex flex-wrap gap-2">
-                        <span class="badge fs-6 p-2" id="rd-sum-qty-amount-badge" style="background-color: #5dade2; color: #111; font-weight: bold;" title="Total Sales from full reverb_daily_data table: SUM(quantity × amount), rounded to whole dollars">Total Sales: $0</span>
-                        <span class="badge bg-dark fs-6 p-2" id="rd-daily-overview-badge" style="font-weight: bold;" title="Total units: SUM(quantity) across all reverb_daily_data order rows">Orders: —</span>
-                        <span class="badge bg-info fs-6 p-2" id="gpft-list-badge" style="color: black; font-weight: bold;" title="Filtered rows: Σ[rd_qty×(RV Price×take%−LP−ship)] ÷ Σ(rd_qty×RV Price); take% from row; falls back to avg row GPFT% when no RD qty×price revenue">GPFT list: 0%</span>
-                        <span class="badge bg-primary fs-6 p-2" id="gpft-ord-badge" style="color: white; font-weight: bold;" title="Filtered rows: (Σ RD sales − Σ COGS) ÷ Σ RD sales using reverb_daily Σ(qty×amount) per SKU; COGS = (LP+ship)×rd_qty; falls back to avg row GPFT% when no RD sales">GPFT ord: 0%</span>
-                        <span class="badge bg-success fs-6 p-2" id="total-l30-badge" style="color: black; font-weight: bold;" title="Σ reverb_daily_qty on filtered rows">Units (orders): 0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="SKUs with reverb_daily_qty = 0">0 Sold: 0</span>
-                        <span class="badge fs-6 p-2" id="more-sold-count-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="SKUs with reverb_daily_qty &gt; 0">&gt; 0 Sold: 0</span>
-                        <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: black; font-weight: bold;" title="Order dollars: (Σ RD sales − Σ COGS) ÷ Σ COGS; RD sales = per-SKU reverb_daily qty×amount">ROI (orders): 0%</span>
-                        <span class="badge bg-danger fs-6 p-2" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amazon">&lt; Amz: 0</span>
-                        <span class="badge fs-6 p-2" id="more-amz-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices greater than Amazon">&gt; Amz: 0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="missing-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter missing listings (REQ + INV&gt;0 + RV Price = 0)">Missing L: 0</span>
-                        <span class="badge fs-6 p-2" id="map-count-badge" style="background-color: #198754; color: white; font-weight: bold; cursor: pointer;" title="Click to filter mapped stock (REQ + INV&gt;0 + |INV − R Stock| ≤ 3)">Map: 0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="inv-r-stock-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter stock mismatch (REQ + INV&gt;0 + |INV − R Stock| &gt; 3)">N Map: 0</span>
-                    </div>
-                </div>
             </div>
             <div class="card-body" style="padding: 0;">
                 <!-- Discount Input Box (shown when SKUs are selected) -->
                 <div id="discount-input-container" class="p-2 bg-light border-bottom" style="display: none;">
                     <div class="d-flex align-items-center gap-2 flex-wrap">
                         <span id="selected-skus-count" class="fw-bold"></span>
+                        <select id="bulk-op-select" class="form-select form-select-sm" style="width: 150px;" title="Choose how the entered value is applied to selected SKUs">
+                            <option value="decrease">&#8595; Decrease</option>
+                            <option value="increase">&#8593; Increase</option>
+                            <option value="same">&#61; Same Price</option>
+                        </select>
                         <span id="discount-input-label" class="text-muted small d-none">Same Price ($):</span>
                         <span id="discount-type-select-wrap">
                         <select id="discount-type-select" class="form-select form-select-sm" style="width: 120px;">
@@ -338,11 +327,6 @@
                     </div>
                 </div>
                 <div id="reverb-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
-                    <!-- SKU & Parent Search -->
-                    <div class="p-2 bg-light border-bottom d-flex flex-wrap gap-2 align-items-center">
-                        <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU..." style="max-width: 220px;">
-                        <input type="text" id="parent-search" class="form-control form-control-sm" placeholder="Search Parent..." style="max-width: 220px;">
-                    </div>
                     <!-- Table body -->
                     <div id="reverb-table" style="flex: 1;"></div>
                 </div>
@@ -383,8 +367,14 @@
 @section('script-bottom')
 <script>
     const COLUMN_VIS_KEY = "reverb_tabulator_column_visibility";
+    /** Stored in DB table channel_tabulator_column_settings (shared across all users — same pattern as amazon/ebay/temu tabulators). */
+    const TABULATOR_COLUMN_CHANNEL = 'reverb_tabulator';
+    const TABULATOR_COLUMN_VISIBILITY_URL = '/tabulator-column-visibility';
     const REVERB_DAILY_TOTALS_URL = @json(url('reverb-daily-data-totals-json'));
     let table = null;
+    // Reverb Ads% (Bump fees ÷ Sales) — loaded from the daily totals endpoint; used by
+    // updateSummary() to derive NPFT = GPFT − Ads% and NROI = GROI − Ads%.
+    let reverbAdsPct = 0;
     let decreaseModeActive = false;
     let increaseModeActive = false;
     let samePriceModeActive = false;
@@ -410,19 +400,24 @@
         toast.addEventListener('hidden.bs.toast', () => toast.remove());
     }
 
-    // Mode button visual resets — keep each in their idle styling.
-    function resetDecreaseBtn() {
-        $('#decrease-btn').removeClass('btn-danger').addClass('btn-warning')
-            .html('<i class="fas fa-arrow-down"></i> Decrease Mode');
+    // Bulk mode active state (single merged button).
+    let bulkModeActive = false;
+
+    // Reflect the chosen operation (decrease / increase / same) onto the legacy
+    // mode flags so applyDiscount() and Target ROI/GPFT keep working unchanged.
+    function applyBulkOpSelection() {
+        const op = $('#bulk-op-select').val();
+        decreaseModeActive = bulkModeActive && op === 'decrease';
+        increaseModeActive = bulkModeActive && op === 'increase';
+        samePriceModeActive = bulkModeActive && op === 'same';
+        syncDiscountInputUi();
     }
-    function resetIncreaseBtn() {
-        $('#increase-btn').removeClass('btn-danger').addClass('btn-success')
-            .html('<i class="fas fa-arrow-up"></i> Increase Mode');
+
+    function resetBulkModeBtn() {
+        $('#bulk-mode-btn').removeClass('btn-danger').addClass('btn-primary')
+            .html('<i class="fas fa-sliders-h"></i> Bulk Mode');
     }
-    function resetSamePriceBtn() {
-        $('#same-price-btn').removeClass('btn-danger').addClass('btn-info')
-            .html('<i class="fas fa-equals"></i> Same Price Mode');
-    }
+
     // Swap the discount-input panel between %/$ and Same Price modes.
     function syncDiscountInputUi() {
         const $input = $('#discount-percentage-input');
@@ -442,69 +437,25 @@
 
     $(document).ready(function() {
         $('#discount-type-select').on('change', function() { syncDiscountInputUi(); });
+        $('#bulk-op-select').on('change', function() { applyBulkOpSelection(); });
 
-        // Decrease Mode Toggle
-        $('#decrease-btn').on('click', function() {
-            decreaseModeActive = !decreaseModeActive;
-            increaseModeActive = false;
-            samePriceModeActive = false;
+        // Bulk Price Mode Toggle — reveals checkboxes; operation chosen via #bulk-op-select.
+        $('#bulk-mode-btn').on('click', function() {
+            bulkModeActive = !bulkModeActive;
             const selectColumn = table.getColumn('_select');
 
-            resetIncreaseBtn();
-            resetSamePriceBtn();
-            if (decreaseModeActive) {
-                $(this).removeClass('btn-warning').addClass('btn-danger')
-                    .html('<i class="fas fa-arrow-down"></i> Decrease ON');
+            if (bulkModeActive) {
+                $(this).removeClass('btn-primary').addClass('btn-danger')
+                    .html('<i class="fas fa-sliders-h"></i> Bulk Mode ON');
                 selectColumn.show();
+                $('#discount-input-container').show();
+                applyBulkOpSelection();
             } else {
-                resetDecreaseBtn();
+                resetBulkModeBtn();
                 selectColumn.hide();
                 selectedSkus.clear();
                 updateSelectedCount();
-            }
-            syncDiscountInputUi();
-        });
-
-        // Increase Mode Toggle
-        $('#increase-btn').on('click', function() {
-            increaseModeActive = !increaseModeActive;
-            decreaseModeActive = false;
-            samePriceModeActive = false;
-            const selectColumn = table.getColumn('_select');
-
-            resetDecreaseBtn();
-            resetSamePriceBtn();
-            if (increaseModeActive) {
-                $(this).removeClass('btn-success').addClass('btn-danger')
-                    .html('<i class="fas fa-arrow-up"></i> Increase ON');
-                selectColumn.show();
-            } else {
-                resetIncreaseBtn();
-                selectColumn.hide();
-                selectedSkus.clear();
-                updateSelectedCount();
-            }
-            syncDiscountInputUi();
-        });
-
-        // Same Price Mode Toggle — entered price applies to ALL selected SKUs.
-        $('#same-price-btn').on('click', function() {
-            samePriceModeActive = !samePriceModeActive;
-            decreaseModeActive = false;
-            increaseModeActive = false;
-            const selectColumn = table.getColumn('_select');
-
-            resetDecreaseBtn();
-            resetIncreaseBtn();
-            if (samePriceModeActive) {
-                $(this).removeClass('btn-info').addClass('btn-danger')
-                    .html('<i class="fas fa-equals"></i> Same Price ON');
-                selectColumn.show();
-            } else {
-                resetSamePriceBtn();
-                selectColumn.hide();
-                selectedSkus.clear();
-                updateSelectedCount();
+                applyBulkOpSelection();
             }
             syncDiscountInputUi();
         });
@@ -577,7 +528,7 @@
                 return;
             }
             if (selectedSkus.size === 0) {
-                showToast('Please select at least one SKU first (turn on Decrease / Increase / Same Price to reveal checkboxes)', 'error');
+                showToast('Please select at least one SKU first (turn on Bulk Price Mode to reveal checkboxes)', 'error');
                 return;
             }
 
@@ -646,7 +597,7 @@
                 return;
             }
             if (selectedSkus.size === 0) {
-                showToast('Please select at least one SKU first (turn on Decrease / Increase / Same Price to reveal checkboxes)', 'error');
+                showToast('Please select at least one SKU first (turn on Bulk Price Mode to reveal checkboxes)', 'error');
                 return;
             }
 
@@ -891,7 +842,8 @@
         function updateSelectedCount() {
             const count = selectedSkus.size;
             $('#selected-skus-count').text(`${count} SKU${count !== 1 ? 's' : ''} selected`);
-            $('#discount-input-container').toggle(count > 0);
+            // Keep the bulk panel visible whenever Bulk Price Mode is on (even with 0 selected).
+            $('#discount-input-container').toggle(bulkModeActive || count > 0);
         }
 
         // Update select all checkbox state
@@ -928,7 +880,7 @@
             const discountValue = parseFloat($('#discount-percentage-input').val());
 
             if (!decreaseModeActive && !increaseModeActive && !samePriceModeActive) {
-                showToast('Turn on Decrease, Increase, or Same Price mode first', 'error');
+                showToast('Turn on Bulk Price Mode first', 'error');
                 return;
             }
             if (isNaN(discountValue) || discountValue <= 0) {
@@ -1373,8 +1325,7 @@
                         const dil = (OVL30 / INV) * 100;
                         let color = '';
                         
-                        if (dil < 16.66) color = '#a00211';
-                        else if (dil >= 16.66 && dil < 25) color = '#ffc107';
+                        if (dil < 25) color = '#a00211';
                         else if (dil >= 25 && dil < 50) color = '#28a745';
                         else color = '#e83e8c';
                         
@@ -1839,6 +1790,46 @@
                         return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                     },
                     width: 50
+                },
+                {
+                    title: "Push",
+                    field: "push_price",
+                    hozAlign: "center",
+                    headerSort: false,
+                    width: 70,
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const sku = rowData['(Child) sku'];
+                        const sprice = parseFloat(rowData.SPRICE || 0);
+                        const status = rowData.SPRICE_STATUS;
+                        const pushedValue = rowData.SPRICE_PUSHED_VALUE;
+                        const updatedAt = rowData.SPRICE_STATUS_UPDATED_AT;
+                        const pushedBy = rowData.SPRICE_PUSHED_BY;
+
+                        if (!sku || sprice <= 0) {
+                            return `<span class="text-muted" style="font-size:11px;">-</span>`;
+                        }
+
+                        let btnClass = 'btn-primary';
+                        let icon = 'fa-upload';
+                        let title = `Push $${sprice.toFixed(2)} to Reverb`;
+
+                        if (status === 'pushed' || status === 'applied') {
+                            btnClass = 'btn-success';
+                            icon = 'fa-check';
+                        } else if (status === 'error') {
+                            btnClass = 'btn-danger';
+                            icon = 'fa-exclamation-triangle';
+                        }
+
+                        const tipParts = [];
+                        if (pushedValue !== null && pushedValue !== undefined) tipParts.push(`Pushed: $${parseFloat(pushedValue).toFixed(2)}`);
+                        if (updatedAt) tipParts.push(updatedAt);
+                        if (pushedBy) tipParts.push(`by ${pushedBy}`);
+                        if (tipParts.length) title = tipParts.join(' | ');
+
+                        return `<button type="button" class="btn btn-sm ${btnClass} reverb-push-price-btn" data-sku="${sku}" title="${title}" style="padding:2px 8px; font-size:12px;"><i class="fas ${icon}"></i></button>`;
+                    }
                 }
             ]
         });
@@ -1991,6 +1982,72 @@
             });
         });
 
+        // Push SPRICE to Reverb (uses existing /cvr-master-push-price endpoint, marketplace=reverb)
+        $(document).on('click', '.reverb-push-price-btn', function(e) {
+            e.stopPropagation();
+            const $btn = $(this);
+            const sku = $btn.data('sku');
+            const $rowEl = $btn.closest('.tabulator-row');
+            const row = table.getRow($rowEl[0]);
+            if (!row) return;
+            const rowData = row.getData();
+            const price = parseFloat(rowData.SPRICE || 0);
+
+            if (!price || price <= 0) {
+                showToast('Set a valid SPRICE (> 0) before pushing', 'error');
+                return;
+            }
+
+            if (!confirm(`Push price $${price.toFixed(2)} to REVERB for SKU: ${sku}?`)) {
+                return;
+            }
+
+            const originalHtml = $btn.html();
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
+
+            $.ajax({
+                url: '/cvr-master-push-price',
+                method: 'POST',
+                data: {
+                    sku: sku,
+                    price: price,
+                    marketplace: 'reverb',
+                    _token: '{{ csrf_token() }}'
+                },
+                success: function(response) {
+                    if (response && response.success) {
+                        showToast(response.message || `Price pushed to Reverb for ${sku}`, 'success');
+                        row.update({
+                            SPRICE_STATUS: 'pushed',
+                            SPRICE_STATUS_UPDATED_AT: new Date().toLocaleString(),
+                            SPRICE_PUSHED_VALUE: price
+                        }).then(function() { row.reformat(); }).catch(function() { row.reformat(); });
+                    } else {
+                        const msg = (response && response.message) ? response.message : 'Failed to push price';
+                        showToast(msg, 'error');
+                        row.update({ SPRICE_STATUS: 'error', SPRICE_STATUS_UPDATED_AT: new Date().toLocaleString() })
+                            .then(function() { row.reformat(); }).catch(function() { row.reformat(); });
+                    }
+                },
+                error: function(xhr) {
+                    let errorMsg = 'Failed to push price to Reverb';
+                    if (xhr.responseJSON && xhr.responseJSON.message) {
+                        errorMsg = xhr.responseJSON.message;
+                    }
+                    showToast(errorMsg, 'error');
+                    row.update({ SPRICE_STATUS: 'error', SPRICE_STATUS_UPDATED_AT: new Date().toLocaleString() })
+                        .then(function() { row.reformat(); }).catch(function() { row.reformat(); });
+                },
+                complete: function() {
+                    $btn.prop('disabled', false);
+                    // reformat above will re-render the button with the new status; restore just in case
+                    if ($btn.html().indexOf('fa-spinner') !== -1) {
+                        $btn.html(originalHtml);
+                    }
+                }
+            });
+        });
+
         // Apply filters
         function applyFilters() {
             const inventoryFilter = $('#inventory-filter').val();
@@ -2075,8 +2132,7 @@
                     const l30 = parseFloat(data['L30']) || 0;
                     const dil = inv === 0 ? 0 : (l30 / inv) * 100;
                     
-                    if (dilFilter === 'red') return dil < 16.66;
-                    if (dilFilter === 'yellow') return dil >= 16.66 && dil < 25;
+                    if (dilFilter === 'red') return dil < 25;
                     if (dilFilter === 'green') return dil >= 25 && dil < 50;
                     if (dilFilter === 'pink') return dil >= 50;
                     return true;
@@ -2157,10 +2213,18 @@
                     if (!d || d.error) {
                         return;
                     }
+                    const totalSales = parseFloat(d.sum_quantity_x_amount) || 0;
                     $('#rd-sum-qty-amount-badge').text(
-                        'Total Sales: $' + Math.round(parseFloat(d.sum_quantity_x_amount) || 0).toLocaleString()
+                        'Total Sales: $' + Math.round(totalSales).toLocaleString()
                     );
                     $('#rd-daily-overview-badge').text('Orders: ' + (d.sum_quantity || 0));
+                    // Ads% (Reverb) = Bump fees ÷ Sales (L30)
+                    const bumpFees = parseFloat(d.sum_bump_fee) || 0;
+                    const adsPct = totalSales > 0 ? (bumpFees / totalSales) * 100 : 0;
+                    reverbAdsPct = adsPct;
+                    $('#rd-ads-percent-badge').text('Ads%: ' + adsPct.toFixed(1) + '%');
+                    // Refresh NPFT / NROI which depend on Ads%
+                    updateSummary();
                 })
                 .fail(function(xhr) {
                     console.warn('reverb-daily-data-totals-json failed', xhr && xhr.status);
@@ -2199,31 +2263,33 @@
         function updateSummary() {
             const data = getFilteredSummaryRows();
 
-            let totalGpft = 0;
+            let totalGpft = 0, totalRoi = 0;
             let zeroSoldCount = 0, moreSoldCount = 0;
             let lessAmzCount = 0, moreAmzCount = 0;
-            let totalRdQty = 0, totalRdCogs = 0, totalRdSales = 0;
-            let totalRevenueQtyPrice = 0;
-            let totalProfitLive = 0;
+            let totalRdQty = 0;
+            // Sold-quantity-weighted totals (same method as /temu-decrease, using normal ship)
+            let totalRevenueQtyPrice = 0; // Σ(sold_qty × RV Price)
+            let totalProfitLive = 0;      // Σ(sold_qty × (RV Price × take% − LP − Ship))
+            let totalLpSold = 0;          // Σ(sold_qty × LP)  → GROI denominator
 
             data.forEach(row => {
                 totalGpft += parseFloat(row['GPFT%']) || 0;
-                
+                totalRoi += parseFloat(row['ROI%']) || 0;
+
                 const rdQty = parseInt(row.reverb_daily_qty, 10) || 0;
-                const rdSales = parseFloat(row.reverb_daily_qty_x_amount) || 0;
                 const lp = parseFloat(row['LP_productmaster']) || 0;
-                const ship = parseFloat(row['Ship_productmaster']) || 0;
+                const ship = parseFloat(row['Ship_productmaster']) || 0; // normal ship
                 const rvPrice = parseFloat(row['RV Price']) || 0;
                 const pct = parseFloat(row.percentage);
                 const takeRate = !isNaN(pct) && pct > 0 && pct <= 1 ? pct : 0.85;
 
                 totalRdQty += rdQty;
-                totalRdCogs += (lp + ship) * rdQty;
-                totalRdSales += rdSales;
 
-                if (rdQty > 0) {
+                // Only rows with actual sales + a live price contribute (matches /temu-decrease hasSales)
+                if (rdQty > 0 && rvPrice > 0) {
                     totalProfitLive += rdQty * (rvPrice * takeRate - lp - ship);
                     totalRevenueQtyPrice += rdQty * rvPrice;
+                    totalLpSold += rdQty * lp;
                 }
 
                 if (rdQty === 0) {
@@ -2247,35 +2313,24 @@
             });
 
             const avgGpftListing = data.length > 0 ? totalGpft / data.length : 0;
+            const avgRoiListing = data.length > 0 ? totalRoi / data.length : 0;
 
-            const gpftListPct = totalRevenueQtyPrice > 0
+            // GPFT% = Total Profit ÷ Total Revenue (weighted); fallback to simple avg GPFT%
+            const gpftPct = totalRevenueQtyPrice > 0
                 ? (totalProfitLive / totalRevenueQtyPrice) * 100
-                : null;
-            const gpftOrdPct = totalRdSales > 0
-                ? ((totalRdSales - totalRdCogs) / totalRdSales) * 100
-                : null;
-            const roiOrdersPct = totalRdCogs > 0
-                ? ((totalRdSales - totalRdCogs) / totalRdCogs) * 100
-                : null;
+                : avgGpftListing;
+            // GROI% = Total Profit ÷ Total LP (weighted); fallback to simple avg ROI%
+            const groiPct = totalLpSold > 0
+                ? (totalProfitLive / totalLpSold) * 100
+                : avgRoiListing;
 
-            $('#gpft-list-badge').text(
-                gpftListPct !== null
-                    ? `GPFT list: ${Math.round(gpftListPct)}%`
-                    : `GPFT list: ${Math.round(avgGpftListing)}% (list)`
-            );
-            $('#gpft-ord-badge').text(
-                gpftOrdPct !== null
-                    ? `GPFT ord: ${Math.round(gpftOrdPct)}%`
-                    : `GPFT ord: ${Math.round(avgGpftListing)}% (list)`
-            );
-            $('#total-l30-badge').text(`Units (orders): ${totalRdQty.toLocaleString()}`);
+            $('#gpft-list-badge').text(`GPFT: ${Math.round(gpftPct)}%`);
+            $('#groi-badge').text(`GROI: ${Math.round(groiPct)}%`);
+            // NPFT = GPFT − Ads%, NROI = GROI − Ads% (Ads% from daily totals endpoint)
+            $('#npft-badge').text(`NPFT: ${Math.round(gpftPct - reverbAdsPct)}%`);
+            $('#nroi-badge').text(`NROI: ${Math.round(groiPct - reverbAdsPct)}%`);
             $('#zero-sold-count-badge').text(`0 Sold: ${zeroSoldCount}`);
             $('#more-sold-count-badge').text(`> 0 Sold: ${moreSoldCount}`);
-            $('#roi-percent-badge').text(
-                roiOrdersPct !== null
-                    ? `ROI (orders): ${roiOrdersPct.toFixed(1)}%`
-                    : 'ROI (orders): —'
-            );
             $('#less-amz-badge').text(`< Amz: ${lessAmzCount}`);
             $('#more-amz-badge').text(`> Amz: ${moreAmzCount}`);
         }
@@ -2283,7 +2338,10 @@
         // Build Column Visibility Dropdown
         function buildColumnDropdown() {
             const columns = table.getColumns();
-            let html = '';
+            // Keep the merged "Show All Columns" action pinned at the top.
+            let html = `<li><a class="dropdown-item fw-bold" href="#" id="show-all-columns-btn">
+                            <i class="fa fa-eye"></i> Show All Columns</a></li>
+                        <li><hr class="dropdown-divider"></li>`;
             
             columns.forEach(col => {
                 const field = col.getField();
@@ -2310,42 +2368,50 @@
                     visibility[field] = col.isVisible();
                 }
             });
-            
-            $.ajax({
-                url: '/reverb-pricing-column-visibility',
+
+            fetch(TABULATOR_COLUMN_VISIBILITY_URL, {
                 method: 'POST',
-                data: {
-                    visibility: visibility,
-                    _token: '{{ csrf_token() }}'
-                }
-            });
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                },
+                body: JSON.stringify({
+                    channel: TABULATOR_COLUMN_CHANNEL,
+                    visibility: visibility
+                })
+            }).catch(err => console.error('Error saving column visibility:', err));
         }
 
         function applyColumnVisibilityFromServer() {
-            $.ajax({
-                url: '/reverb-pricing-column-visibility',
+            fetch(TABULATOR_COLUMN_VISIBILITY_URL + '?channel=' + encodeURIComponent(TABULATOR_COLUMN_CHANNEL), {
                 method: 'GET',
-                success: function(visibility) {
-                    if (visibility && Object.keys(visibility).length > 0) {
-                        Object.keys(visibility).forEach(field => {
-                            const col = table.getColumn(field);
-                            if (col) {
-                                if (visibility[field]) {
-                                    col.show();
-                                } else {
-                                    col.hide();
-                                }
-                            }
-                        });
-                    }
-                    // Parent + ads-only columns: always hidden by default (never show from server)
-                    ['Parent', 'Missing_Ad', 'bump_req', 'Bump', 'RE_BID'].forEach(function(field) {
-                        const col = table.getColumn(field);
-                        if (col) col.hide();
-                    });
-                    buildColumnDropdown();
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
                 }
-            });
+            })
+            .then(response => response.json())
+            .then(function(visibility) {
+                if (visibility && Object.keys(visibility).length > 0) {
+                    Object.keys(visibility).forEach(field => {
+                        const col = table.getColumn(field);
+                        if (col) {
+                            if (visibility[field]) {
+                                col.show();
+                            } else {
+                                col.hide();
+                            }
+                        }
+                    });
+                }
+                // Parent + ads-only columns: always hidden by default (never show from server)
+                ['Parent', 'Missing_Ad', 'bump_req', 'Bump', 'RE_BID'].forEach(function(field) {
+                    const col = table.getColumn(field);
+                    if (col) col.hide();
+                });
+                buildColumnDropdown();
+            })
+            .catch(err => console.error('Error applying column visibility:', err));
         }
 
         // Wait for table to be built
@@ -2386,8 +2452,10 @@
             }
         });
 
-        // Show All Columns button (Parent + ads-only columns never shown)
-        document.getElementById("show-all-columns-btn").addEventListener("click", function() {
+        // Show All Columns (merged into the Columns dropdown; delegated because the
+        // menu is rebuilt by buildColumnDropdown). Parent + ads-only columns never shown.
+        $('#column-dropdown-menu').on('click', '#show-all-columns-btn', function(e) {
+            e.preventDefault();
             table.getColumns().forEach(col => {
                 const field = col.getField();
                 if (field === '_select') return;
@@ -2401,40 +2469,8 @@
             saveColumnVisibilityToServer();
         });
 
-        // Show Ads Column: these columns show only when "Show Ads Column" is clicked; hidden when "Show All"
-        const adsColumnFields = ['image_path', '(Child) sku', 'INV', 'L30', 'RV L30', 'R Stock', 'Missing_Ad', 'bump_req', 'Bump', 'RE_BID'];
+        // Columns that stay hidden even when "Show All Columns" is used.
         const adsOnlyColumnFields = ['Parent', 'Missing_Ad', 'bump_req', 'Bump', 'RE_BID'];
-        let adsColumnModeActive = false;
-        const showAdsColumnBtn = document.getElementById("show-ads-column-btn");
-        showAdsColumnBtn.addEventListener("click", function() {
-            if (adsColumnModeActive) {
-                // Second click: show all columns (Parent + ads-only columns hidden)
-                table.getColumns().forEach(col => {
-                    const field = col.getField();
-                    if (field === '_select') return;
-                    if (adsOnlyColumnFields.indexOf(field) !== -1) col.hide();
-                    else col.show();
-                });
-                adsColumnModeActive = false;
-                showAdsColumnBtn.classList.remove('btn-primary');
-                showAdsColumnBtn.classList.add('btn-outline-primary');
-                showAdsColumnBtn.innerHTML = '<i class="fa fa-bullhorn"></i> Show Ads Column';
-            } else {
-                // First click: only image, sku, inv, ov l30, rv l30, r stock
-                table.getColumns().forEach(col => {
-                    const field = col.getField();
-                    if (field === '_select') return;
-                    if (adsColumnFields.indexOf(field) !== -1) col.show();
-                    else col.hide();
-                });
-                adsColumnModeActive = true;
-                showAdsColumnBtn.classList.remove('btn-outline-primary');
-                showAdsColumnBtn.classList.add('btn-primary');
-                showAdsColumnBtn.innerHTML = '<i class="fa fa-eye"></i> Show All Columns';
-            }
-            buildColumnDropdown();
-            saveColumnVisibilityToServer();
-        });
 
         // Export CSV button
         $('#export-btn').on('click', function() {

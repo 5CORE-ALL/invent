@@ -2982,6 +2982,27 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/amazon-ads/sbid-rule', [AmazonAdsController::class, 'getSbidRule'])->name('amazon.ads.sbid-rule');
     Route::post('/amazon-ads/sbid-rule', [AmazonAdsController::class, 'saveSbidRule'])->name('amazon.ads.sbid-rule.save');
 
+    // Amazon Ads Audit page (campaign audit log with red/green dot + history)
+    Route::get('/amazon-ads/audit', [\App\Http\Controllers\AmazonAdsAuditController::class, 'index'])->name('amazon.ads.audit');
+    Route::get('/amazon-ads/audit/data', [\App\Http\Controllers\AmazonAdsAuditController::class, 'data'])->name('amazon.ads.audit.data');
+    Route::post('/amazon-ads/audit/save', [\App\Http\Controllers\AmazonAdsAuditController::class, 'save'])->name('amazon.ads.audit.save');
+
+    // Amazon Ads Missing page (product_master parent/sku tabulator)
+    Route::get('/amazon-ads/missing', [\App\Http\Controllers\AmazonAdsMissingController::class, 'index'])->name('amazon.ads.missing');
+    Route::get('/amazon-ads/missing/data', [\App\Http\Controllers\AmazonAdsMissingController::class, 'data'])->name('amazon.ads.missing.data');
+    Route::get('/amazon-ads/missing/campaigns', [\App\Http\Controllers\AmazonAdsMissingController::class, 'campaigns'])->name('amazon.ads.missing.campaigns');
+    Route::post('/amazon-ads/missing/link', [\App\Http\Controllers\AmazonAdsMissingController::class, 'link'])->name('amazon.ads.missing.link');
+    Route::post('/amazon-ads/missing/unlink', [\App\Http\Controllers\AmazonAdsMissingController::class, 'unlink'])->name('amazon.ads.missing.unlink');
+
+    // Ads Categories page (tabulator scaffold)
+    Route::get('/amazon-ads/categories', [\App\Http\Controllers\AdsCategoriesController::class, 'index'])->name('amazon.ads.categories');
+    Route::get('/amazon-ads/categories/data', [\App\Http\Controllers\AdsCategoriesController::class, 'data'])->name('amazon.ads.categories.data');
+    Route::post('/amazon-ads/categories/store', [\App\Http\Controllers\AdsCategoriesController::class, 'store'])->name('amazon.ads.categories.store');
+    Route::get('/amazon-ads/categories/template', [\App\Http\Controllers\AdsCategoriesController::class, 'template'])->name('amazon.ads.categories.template');
+    Route::post('/amazon-ads/categories/bulk', [\App\Http\Controllers\AdsCategoriesController::class, 'bulkUpload'])->name('amazon.ads.categories.bulk');
+    Route::post('/amazon-ads/categories/{id}/update', [\App\Http\Controllers\AdsCategoriesController::class, 'update'])->name('amazon.ads.categories.update');
+    Route::post('/amazon-ads/categories/{id}/delete', [\App\Http\Controllers\AdsCategoriesController::class, 'destroy'])->name('amazon.ads.categories.destroy');
+
     // Amazon Ads Push Logs - Failed Campaigns Tracker
     Route::prefix('amazon-ads/push-logs')->name('amazon-ads.push-logs.')->group(function () {
         Route::get('/', [AmazonAdsPushLogController::class, 'index'])->name('index');
