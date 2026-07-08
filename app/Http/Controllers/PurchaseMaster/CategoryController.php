@@ -554,6 +554,13 @@ class CategoryController extends Controller
             ->get()
             ->keyBy('product_master_id');
 
+        // Product IDs that have at least one change-history record (for the History dot).
+        $productIdsWithHistory = ShippingMasterHistory::query()
+            ->whereIn('product_id', $products->pluck('id'))
+            ->distinct()
+            ->pluck('product_id')
+            ->flip();
+
         // Supplier per SKU — same source as Forecast Analysis (mfrg_progress.supplier → mfrg_supplier column)
         $normalizeDimWtSku = static function (?string $sku): string {
             if ($sku === null || $sku === '') {
@@ -661,6 +668,8 @@ class CategoryController extends Controller
             } else {
                 $row['image_path'] = null;
             }
+
+            $row['has_history'] = $productIdsWithHistory->has($product->id);
 
             $pkg = $instructionsPkgByProductId->get($product->id);
             $row['instructions_item_pkg'] = $pkg && $pkg->instructions !== null ? (string) $pkg->instructions : '';

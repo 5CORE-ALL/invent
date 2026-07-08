@@ -44,7 +44,7 @@
         /* Header label - horizontal (no rotation), allows <br> for two lines */
         .table-responsive thead th .th-vertical-label {
             display: block;
-            font-size: 10px;
+            font-size: 12px !important;
             font-weight: 700;
             color: #000;
             margin-bottom: 2px;
@@ -56,7 +56,7 @@
         .table-responsive thead th .th-horizontal-label {
             display: block;
             white-space: nowrap;
-            font-size: 10px;
+            font-size: 13px !important;
             font-weight: 700;
             color: #000;
             text-align: center;
@@ -170,8 +170,9 @@
         .table-responsive tbody td {
             padding: 6px 8px;
             border-bottom: 1px solid #edf2f9;
-            font-size: 11px;
-            color: #495057;
+            font-size: 13px;
+            color: #000;
+            text-align: center;
             transition: all 0.2s ease;
             white-space: nowrap;
             text-overflow: ellipsis;
@@ -190,6 +191,15 @@
 
         .table-responsive tbody tr:hover td {
             color: #000;
+        }
+
+        /* Parent SKU rows – light yellow background */
+        .table-responsive tbody tr.parent-row,
+        .table-responsive tbody tr.parent-row:nth-child(even) {
+            background-color: #fef9c3 !important;
+        }
+        .table-responsive tbody tr.parent-row:hover {
+            background-color: #fdf3a8 !important;
         }
 
         .table-responsive .text-center {
@@ -223,14 +233,15 @@
             table-layout: auto;
         }
 
-        /* Verified column – red/green dot dropdown */
+        /* Verified column – red/green dot (no outer ring) */
         .verified-data-dropdown {
             width: 28px;
             height: 28px;
             min-width: 28px;
             padding: 0;
-            border-radius: 50%;
-            border: 2px solid rgba(0,0,0,0.15);
+            border: none;
+            border-radius: 0;
+            background-color: transparent;
             font-size: 14px;
             line-height: 1;
             cursor: pointer;
@@ -243,22 +254,10 @@
             background-position: center;
         }
         .verified-data-dropdown.not-verified {
-            background-color: #fff;
-            border-color: #dc3545;
             color: #dc3545;
         }
-        .verified-data-dropdown.not-verified:hover {
-            background-color: rgba(220, 53, 69, 0.1);
-            box-shadow: 0 0 0 2px rgba(220, 53, 69, 0.3);
-        }
         .verified-data-dropdown.verified {
-            background-color: #fff;
-            border-color: #28a745;
             color: #28a745;
-        }
-        .verified-data-dropdown.verified:hover {
-            background-color: rgba(40, 167, 69, 0.1);
-            box-shadow: 0 0 0 2px rgba(40, 167, 69, 0.3);
         }
         .verified-data-dropdown option[value="0"] { color: #dc3545; }
         .verified-data-dropdown option[value="1"] { color: #28a745; }
@@ -381,11 +380,6 @@
             height: 18px;
             cursor: pointer;
             accent-color: #1a56b7;
-        }
-
-        #pushDataBtn:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
         }
 
         .d-flex.gap-2 > button {
@@ -524,74 +518,64 @@
         <div class="col-12">
             <div class="card">
                 <div class="card-body">
-                    <div class="row mb-3">
-                        <div class="col-md-6">
-                            <div class="d-flex align-items-center gap-3 flex-wrap">
-                                <div class="btn-group time-navigation-group" role="group" aria-label="Parent navigation">
-                                    <button type="button" id="play-backward" class="btn btn-light rounded-circle" title="Previous parent">
-                                        <i class="fas fa-step-backward"></i>
-                                    </button>
-                                    <button type="button" id="play-pause" class="btn btn-light rounded-circle" title="Show all"
-                                        style="display: none;">
-                                        <i class="fas fa-pause"></i>
-                                    </button>
-                                    <button type="button" id="play-auto" class="btn btn-light rounded-circle" title="Start parent navigation">
-                                        <i class="fas fa-play"></i>
-                                    </button>
-                                    <button type="button" id="play-forward" class="btn btn-light rounded-circle" title="Next parent">
-                                        <i class="fas fa-step-forward"></i>
-                                    </button>
+                    <div class="row mb-2">
+                        <div class="col-12">
+                            <div class="d-flex align-items-center flex-wrap gap-2 justify-content-between">
+                                <div class="d-flex align-items-center flex-wrap gap-2">
+                                    <div class="btn-group time-navigation-group" role="group" aria-label="Parent navigation">
+                                        <button type="button" id="play-backward" class="btn btn-light rounded-circle" title="Previous parent">
+                                            <i class="fas fa-step-backward"></i>
+                                        </button>
+                                        <button type="button" id="play-pause" class="btn btn-light rounded-circle" title="Show all"
+                                            style="display: none;">
+                                            <i class="fas fa-pause"></i>
+                                        </button>
+                                        <button type="button" id="play-auto" class="btn btn-light rounded-circle" title="Start parent navigation">
+                                            <i class="fas fa-play"></i>
+                                        </button>
+                                        <button type="button" id="play-forward" class="btn btn-light rounded-circle" title="Next parent">
+                                            <i class="fas fa-step-forward"></i>
+                                        </button>
+                                    </div>
+                                    <div class="d-flex align-items-center gap-1">
+                                        <label class="form-label mb-0 small">Section:</label>
+                                        <select id="dimWtSectionFilter" class="form-select form-select-sm" style="width: auto; min-width: 120px;">
+                                            <option value="item_data">Item Data</option>
+                                            <option value="carton_data">Carton Data</option>
+                                        </select>
+                                    </div>
+                                    <div class="d-flex align-items-center gap-1">
+                                        <label for="parentSearch" class="form-label mb-0 small fw-bold">Parent</label>
+                                        <input type="text" id="parentSearch" class="form-control form-control-sm" placeholder="Search parent" style="width: 150px;">
+                                    </div>
+                                    <div class="d-flex align-items-center gap-1">
+                                        <label for="skuSearch" class="form-label mb-0 small fw-bold">SKU</label>
+                                        <input type="text" id="skuSearch" class="form-control form-control-sm" placeholder="Search SKU" style="width: 150px;">
+                                    </div>
                                 </div>
-                                <div class="d-flex align-items-center gap-2">
-                                    <label class="form-label mb-0">Section:</label>
-                                    <select id="dimWtSectionFilter" class="form-select form-select-sm" style="width: auto; min-width: 140px;">
-                                        <option value="item_data">Item Data</option>
-                                        <option value="carton_data">Carton Data</option>
-                                    </select>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="d-flex justify-content-end flex-wrap gap-2">
-                                <button type="button" class="btn btn-primary" id="pushDataBtn" disabled>
-                                    <i class="fas fa-cloud-upload-alt me-1"></i> Push Data
-                                </button>
-                                <button type="button" class="btn btn-warning" id="bulkEditBtn" disabled title="Edit selected SKUs in bulk">
-                                    <i class="fas fa-edit me-1"></i> Bulk Edit
-                                </button>
                                 <div class="btn-group" role="group">
-                                    <button type="button" class="btn btn-outline-success dropdown-toggle" id="bulkVerifiedBtn" data-bs-toggle="dropdown" aria-expanded="false" disabled title="Set verified status for selected SKUs in bulk">
-                                        <i class="fas fa-check-circle me-1"></i> Bulk Verified
+                                    <button type="button" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                                        <i class="fas fa-bolt me-1"></i> Actions
                                     </button>
                                     <ul class="dropdown-menu dropdown-menu-end">
                                         <li>
-                                            <button type="button" class="dropdown-item" id="bulkVerifiedYes">
-                                                <span style="color:#28a745;">🟢</span> Mark as Verified
+                                            <button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#importExcelModal">
+                                                <i class="fas fa-file-upload me-2 text-info"></i> Import
                                             </button>
                                         </li>
                                         <li>
-                                            <button type="button" class="dropdown-item" id="bulkVerifiedNo">
-                                                <span style="color:#dc3545;">🔴</span> Mark as Not Verified
+                                            <button type="button" class="dropdown-item" id="exportSkusBtn" data-bs-toggle="modal" data-bs-target="#skuExportModal" title="Export SKU list only">
+                                                <i class="fas fa-list me-2 text-secondary"></i> SKU Export
+                                            </button>
+                                        </li>
+                                        <li>
+                                            <button type="button" class="dropdown-item" id="downloadExcel">
+                                                <i class="fas fa-file-excel me-2 text-success"></i> Download
                                             </button>
                                         </li>
                                     </ul>
                                 </div>
-                                <button type="button" class="btn btn-info" data-bs-toggle="modal" data-bs-target="#importExcelModal">
-                                    <i class="fas fa-file-upload me-1"></i> Import
-                                </button>
-                                <button type="button" class="btn btn-secondary" id="exportSkusBtn" data-bs-toggle="modal" data-bs-target="#skuExportModal" title="Export SKU list only">
-                                    <i class="fas fa-list me-1"></i> SKU Export
-                                </button>
-                                <button type="button" class="btn btn-success" id="downloadExcel">
-                                    <i class="fas fa-file-excel me-1"></i> Download
-                                </button>
                             </div>
-                        </div>
-                    </div>
-
-                    <div class="row mb-2">
-                        <div class="col-12">
-                            <div id="statusBadgesBar" class="status-badges-full d-flex align-items-center justify-content-between gap-2"></div>
                         </div>
                     </div>
 
@@ -603,70 +587,30 @@
                                         <input type="checkbox" id="selectAll" title="Select All" style="width: 16px; height: 16px;">
                                     </th>
                                     <th><span class="th-vertical-label">Img</span></th>
-                                    <th class="th-has-filter th-parent-sku-col">
-                                        <div class="th-horizontal-label" style="font-size: 9px;">Parent</div>
-                                        <input type="text" id="parentSearch" class="form-control-sm header-search-120"
-                                            placeholder="Search" style="font-size: 9px; padding: 2px 4px;">
+                                    <th class="th-parent-sku-col">
+                                        <div class="th-horizontal-label" style="font-size: 11px;">Parent</div>
                                     </th>
-                                    <th class="th-has-filter th-parent-sku-col">
-                                        <div class="th-horizontal-label" style="font-size: 9px;">SKU</div>
-                                        <input type="text" id="skuSearch" class="form-control-sm header-search-120"
-                                            placeholder="Search" style="font-size: 9px; padding: 2px 4px;">
+                                    <th class="th-parent-sku-col">
+                                        <div class="th-horizontal-label" style="font-size: 20px !important;">SKU</div>
                                     </th>
-                                    <th class="th-has-filter">
-                                        <div class="th-vertical-label" style="font-size: 9px;">STATUS</div>
-                                        <select id="filterSTATUS" class="form-control form-control-sm mt-1 missing-data-filter" style="font-size: 9px; padding: 2px 4px;" data-column="STATUS">
-                                            <option value="all">All</option>
-                                            <option value="missing">Missing</option>
-                                            <option value="active">🟢 Active</option>
-                                            <option value="inactive">🔴 Inactive</option>
-                                            <option value="DC">🔴 DC</option>
-                                            <option value="upcoming">🟡 Upcoming</option>
-                                            <option value="2BDC">🔵 2BDC</option>
-                                        </select>
+                                    <th>
+                                        <span class="th-vertical-label" style="font-size: 9px;">STATUS</span>
                                     </th>
                                     <th><span class="th-vertical-label">INV</span></th>
-                                    <th class="th-has-filter item-dim-header hide-item-wt-act">
-                                        <div class="th-vertical-label" style="font-size: 9px;">Item Weight ACT<br>(Kg)</div>
-                                        <select id="filterWtActKg" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px;">
-                                            <option value="all">All</option>
-                                            <option value="missing">Missing</option>
-                                        </select>
+                                    <th class="item-dim-header hide-item-wt-act">
+                                        <span class="th-vertical-label" style="font-size: 9px;">Item Weight ACT<br>(Kg)</span>
                                     </th>
-                                    <th class="th-has-filter item-dim-header">
-                                        <div class="th-vertical-label" style="font-size: 9px;">Itm wt<br>GW</div>
-                                        <select id="filterWtAct" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px;">
-                                            <option value="all">All</option>
-                                            <option value="missing">Missing</option>
-                                        </select>
+                                    <th class="item-dim-header">
+                                        <span class="th-vertical-label" style="font-size: 9px;">Itm wt GW</span>
                                     </th>
-                                    <th class="th-has-filter item-dim-header">
-                                        <div class="th-vertical-label" style="font-size: 9px;">Item WT DECL<br>(LB)</div>
-                                        <select id="filterWtDecl" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px;">
-                                            <option value="all">All</option>
-                                            <option value="missing">Missing</option>
-                                        </select>
+                                    <th class="item-dim-header">
+                                        <span class="th-vertical-label" style="font-size: 9px;">Item L IN</span>
                                     </th>
-                                    <th class="th-has-filter item-dim-header">
-                                        <div class="th-vertical-label" style="font-size: 9px;">Item Length<br>(inch)</div>
-                                        <select id="filterL" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px;">
-                                            <option value="all">All</option>
-                                            <option value="missing">Missing</option>
-                                        </select>
+                                    <th class="item-dim-header">
+                                        <span class="th-vertical-label" style="font-size: 9px;">Item W IN</span>
                                     </th>
-                                    <th class="th-has-filter item-dim-header">
-                                        <div class="th-vertical-label" style="font-size: 9px;">Item Width<br>(inch)</div>
-                                        <select id="filterW" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px;">
-                                            <option value="all">All</option>
-                                            <option value="missing">Missing</option>
-                                        </select>
-                                    </th>
-                                    <th class="th-has-filter item-dim-header">
-                                        <div class="th-vertical-label" style="font-size: 9px;">Item Height<br>(Inch)</div>
-                                        <select id="filterH" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px;">
-                                            <option value="all">All</option>
-                                            <option value="missing">Missing</option>
-                                        </select>
+                                    <th class="item-dim-header">
+                                        <span class="th-vertical-label" style="font-size: 9px;">Item H IN</span>
                                     </th>
                                     <th class="item-cm-col"><span class="th-vertical-label">Item Length<br>(CM)</span></th>
                                     <th class="item-cm-col"><span class="th-vertical-label">Item Width<br>(CM)</span></th>
@@ -677,7 +621,7 @@
                                     <th><span class="th-vertical-label">Carton<br>CBM</span></th>
                                     <th><span class="th-vertical-label">CTN<br>QTY</span></th>
                                     <th><span class="th-vertical-label">Carton CBM<br>each</span></th>
-                                    <th class="col-instructions-item-pkg"><span class="th-vertical-label" style="font-size: 9px;">Instructions<br>item PKG</span></th>
+                                    <th class="col-instructions-item-pkg"><span class="th-vertical-label" style="font-size: 9px;">item PKG</span></th>
                                     <th class="text-center"><span class="th-vertical-label">Verified</span></th>
                                     <th><span class="th-vertical-label">Action</span></th>
                                 </tr>
@@ -799,6 +743,21 @@
                                 <label for="editInstructionsItemPkg" class="form-label">Instructions</label>
                                 <textarea class="form-control" id="editInstructionsItemPkg" name="instructions_item_pkg" rows="3" maxlength="2000" placeholder="Packaging instructions (saved separately from dimensions)"></textarea>
                                 <small class="text-muted">Max 2000 characters. Leave blank to clear. Not saved for PARENT rows.</small>
+                            </div>
+                        </div>
+
+                        <div class="row mb-1">
+                            <div class="col-12">
+                                <small class="text-secondary fw-semibold">Verified</small>
+                            </div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="editVerified" class="form-label">Verified status</label>
+                                <select class="form-select" id="editVerified" name="verified_data">
+                                    <option value="0">🔴 Not Verified</option>
+                                    <option value="1">🟢 Verified</option>
+                                </select>
                             </div>
                         </div>
                     </form>
@@ -996,29 +955,6 @@
         </div>
     </div>
 
-    <!-- Push Data Success Modal -->
-    <div class="modal fade" id="pushDataSuccessModal" tabindex="-1" aria-labelledby="pushDataSuccessModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white;">
-                    <h5 class="modal-title" id="pushDataSuccessModalLabel">
-                        <i class="fas fa-check-circle me-2"></i>Push Data Success
-                    </h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <div id="pushDataSuccessMessage" style="font-size: 15px; line-height: 1.6;">
-                        <!-- Message will be inserted here -->
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-success" id="pushDataOkBtn" data-bs-dismiss="modal">
-                        <i class="fas fa-check me-2"></i>OK
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
 @endsection
 
 @section('script')
@@ -1038,11 +974,11 @@
             const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
 
             // Change History is restricted to Ritu mam (inventory mail) and President sir only.
-            const canViewDimWtHistory = @json(in_array(
-                strtolower(trim((string) (auth()->user()->email ?? ''))),
-                ['inventory@5core.com', 'ritu.kaur013@gmail.com', 'president@5core.com'],
-                true
-            ));
+            @php
+                $__dimWtHistoryEmails = ['inventory@5core.com', 'ritu.kaur013@gmail.com', 'president@5core.com'];
+                $__canViewDimWtHistory = in_array(strtolower(trim((string) (auth()->user()->email ?? ''))), $__dimWtHistoryEmails, true);
+            @endphp
+            const canViewDimWtHistory = @json($__canViewDimWtHistory);
 
             // Show loader immediately
             document.getElementById('rainbow-loader').style.display = 'block';
@@ -1134,7 +1070,6 @@
                             filteredData = [...tableData];
                             renderTable(filteredData);
                             updateCounts();
-                            updateStatusBadgesBar();
                             refreshProductPlaybackState();
                         } else {
                             console.error('Invalid data format received from server');
@@ -1153,28 +1088,31 @@
                 tbody.innerHTML = '';
 
                 if (data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="24" class="text-center">No data found</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="23" class="text-center">No data found</td></tr>';
                     return;
                 }
 
                 data.forEach(item => {
                     const row = document.createElement('tr');
                     const isParentRow = item.SKU && String(item.SKU).toUpperCase().includes('PARENT');
+                    if (isParentRow) row.classList.add('parent-row');
                     const cellVal = (val, decimals) => isParentRow ? '--' : formatNumber(val || 0, decimals);
 
-                    // Checkbox column
+                    // Checkbox column (not shown for parent rows)
                     const checkboxCell = document.createElement('td');
                     checkboxCell.className = 'text-center';
-                    const checkbox = document.createElement('input');
-                    checkbox.type = 'checkbox';
-                    checkbox.className = 'row-checkbox';
-                    checkbox.value = escapeHtml(item.SKU);
-                    checkbox.setAttribute('data-sku', escapeHtml(item.SKU));
-                    checkbox.setAttribute('data-id', escapeHtml(item.id));
-                    checkbox.addEventListener('change', function() {
-                        updatePushButtonState();
-                    });
-                    checkboxCell.appendChild(checkbox);
+                    if (!isParentRow) {
+                        const checkbox = document.createElement('input');
+                        checkbox.type = 'checkbox';
+                        checkbox.className = 'row-checkbox';
+                        checkbox.value = escapeHtml(item.SKU);
+                        checkbox.setAttribute('data-sku', escapeHtml(item.SKU));
+                        checkbox.setAttribute('data-id', escapeHtml(item.id));
+                        checkbox.addEventListener('change', function() {
+                            updatePushButtonState();
+                        });
+                        checkboxCell.appendChild(checkbox);
+                    }
                     row.appendChild(checkboxCell);
 
                     // Image column
@@ -1201,10 +1139,10 @@
                     skuCell.textContent = skuDisplay ? escapeHtml(skuDisplay) : '-';
                     row.appendChild(skuCell);
 
-                    // Status column – colored dot (same as product master)
+                    // Status column – colored dot (not shown for parent rows)
                     const statusCell = document.createElement('td');
                     statusCell.className = 'text-center';
-                    statusCell.innerHTML = getStatusDot(item.status);
+                    statusCell.innerHTML = isParentRow ? '--' : getStatusDot(item.status);
                     row.appendChild(statusCell);
 
                     // INV column
@@ -1231,12 +1169,6 @@
                     wtActCell.className = 'text-center';
                     wtActCell.textContent = cellVal(item.wt_act, 1);
                     row.appendChild(wtActCell);
-
-                    // WT DECL column
-                    const wtDeclCell = document.createElement('td');
-                    wtDeclCell.className = 'text-center';
-                    wtDeclCell.textContent = cellVal(item.wt_decl, 1);
-                    row.appendChild(wtDeclCell);
 
                     // L column (inch) - round to whole number
                     const lCell = document.createElement('td');
@@ -1325,15 +1257,15 @@
                     // Instructions item PKG (from instructions_item_pkg table)
                     const pkgCell = document.createElement('td');
                     pkgCell.className = 'col-instructions-item-pkg';
+                    pkgCell.classList.add('text-center');
                     if (isParentRow) {
                         pkgCell.textContent = '--';
                     } else {
                         const rawPkg = item.instructions_item_pkg != null ? String(item.instructions_item_pkg).trim() : '';
-                        if (!rawPkg) {
-                            pkgCell.textContent = '-';
-                        } else {
-                            pkgCell.textContent = rawPkg;
-                        }
+                        const hasPkg = rawPkg !== '';
+                        const iconColor = hasPkg ? '#28a745' : '#dc3545';
+                        const iconTitle = hasPkg ? rawPkg : 'No instructions available';
+                        pkgCell.innerHTML = `<i class="fas fa-search" style="color:${iconColor}; font-size:14px; cursor:pointer;" title="${escapeHtml(iconTitle)}"></i>`;
                     }
                     row.appendChild(pkgCell);
 
@@ -1344,7 +1276,7 @@
                     const verifiedValue = isVerified ? '1' : '0';
                     const verifiedCell = document.createElement('td');
                     verifiedCell.className = 'text-center';
-                    verifiedCell.innerHTML = `
+                    verifiedCell.innerHTML = isParentRow ? '--' : `
                         <select class="verified-data-dropdown ${verifiedClass}"
                             data-sku="${escapeHtml(item.SKU)}" data-id="${escapeHtml(item.id)}"
                             title="${isVerified ? 'Verified' : 'Not verified'}">
@@ -1357,33 +1289,49 @@
                     // Action column
                     const actionCell = document.createElement('td');
                     actionCell.className = 'text-center';
-                    const historyBtnHtml = canViewDimWtHistory
-                        ? `<button class="btn btn-sm btn-outline-info history-btn" data-id="${item.id != null ? escapeHtml(item.id) : ''}" data-sku="${escapeHtml(item.SKU)}" title="History — see who changed what">
-                                <i class="bi bi-clock-history"></i>
+                    const hasHistory = item.has_history === true || item.has_history === 1;
+                    const historyDotColor = hasHistory ? '#28a745' : '#dc3545';
+                    const historyDotTitle = hasHistory ? 'History available — click to view' : 'No history yet — click to view';
+                    const historyBtnHtml = (canViewDimWtHistory && !isParentRow)
+                        ? `<button class="btn btn-sm btn-link p-0 border-0 history-btn" data-id="${item.id != null ? escapeHtml(item.id) : ''}" data-sku="${escapeHtml(item.SKU)}" title="${historyDotTitle}" style="line-height:1;">
+                                <span style="display:inline-block; width:12px; height:12px; border-radius:50%; background:${historyDotColor};"></span>
                             </button>`
                         : '';
+                    const editBtnHtml = isParentRow
+                        ? ''
+                        : `<button class="btn btn-sm edit-btn p-0 border-0 bg-transparent" data-sku="${escapeHtml(item.SKU)}" title="Edit" style="color:#000;">
+                                <i class="bi bi-pencil-square"></i>
+                            </button>`;
                     actionCell.innerHTML = `
                         <div class="d-inline-flex gap-1">
-                            <button class="btn btn-sm btn-outline-warning edit-btn" data-sku="${escapeHtml(item.SKU)}" title="Edit">
-                                <i class="bi bi-pencil-square"></i>
-                            </button>
+                            ${editBtnHtml}
                             ${historyBtnHtml}
-                            <button class="btn btn-sm btn-outline-danger delete-btn" data-id="${escapeHtml(item.id)}" data-sku="${escapeHtml(item.SKU)}" title="Delete">
-                                <i class="bi bi-archive"></i>
-                            </button>
                         </div>
                     `;
                     row.appendChild(actionCell);
                     
                     // Add event listener for edit button
                     const editBtn = actionCell.querySelector('.edit-btn');
-                    editBtn.addEventListener('click', function() {
+                    if (editBtn) editBtn.addEventListener('click', function() {
                         const sku = this.getAttribute('data-sku');
                         const product = tableData.find(d => d.SKU === sku);
-                        if (product) {
-                            bulkEditList = null;
-                            editDimWt(product);
-                        }
+                        if (!product) return;
+
+                        // Collect currently selected (non-parent) rows
+                        const selected = [];
+                        document.querySelectorAll('.row-checkbox:checked').forEach(cb => {
+                            const rowEl = cb.closest('tr');
+                            if (!rowEl || rowEl.offsetParent === null) return; // visible/filtered only
+                            const cbSku = cb.getAttribute('data-sku');
+                            if (!cbSku || String(cbSku).toUpperCase().includes('PARENT')) return;
+                            const it = tableData.find(d => d.SKU === cbSku);
+                            if (it) selected.push(it);
+                        });
+
+                        // Apply to all selected rows when more than one is selected;
+                        // otherwise only the row whose Edit button was clicked.
+                        bulkEditList = selected.length > 1 ? selected : null;
+                        editDimWt(product);
                     });
 
                     // Add event listener for history button
@@ -1488,35 +1436,6 @@
                 setHeaderCount('hMissingCount', hMissingCount);
             }
 
-            function updateStatusBadgesBar() {
-                const bar = document.getElementById('statusBadgesBar');
-                if (!bar) return;
-                const statusCounts = { active: 0, inactive: 0, DC: 0, upcoming: 0, '2BDC': 0 };
-                (tableData || []).forEach(item => {
-                    const sku = String(item.SKU || item.sku || '').toUpperCase();
-                    if (sku.includes('PARENT')) return;
-                    let raw = item.status;
-                    if ((raw == null || raw === '') && item.Values) {
-                        const V = typeof item.Values === 'string' ? (function(){ try { return JSON.parse(item.Values); } catch(e) { return {}; } })() : item.Values;
-                        raw = V && V.status;
-                    }
-                    const s = String(raw || '').trim();
-                    const lower = s.toLowerCase();
-                    if (lower === 'active') statusCounts.active++;
-                    else if (lower === 'inactive') statusCounts.inactive++;
-                    else if (s.toUpperCase() === 'DC') statusCounts.DC++;
-                    else if (lower === 'upcoming') statusCounts.upcoming++;
-                    else if (s.toUpperCase() === '2BDC') statusCounts['2BDC']++;
-                });
-                bar.innerHTML = `
-                    <span class="status-badge-item bg-active">Active ${statusCounts.active}</span>
-                    <span class="status-badge-item bg-inactive">Inactive ${statusCounts.inactive}</span>
-                    <span class="status-badge-item bg-dc">DC ${statusCounts.DC}</span>
-                    <span class="status-badge-item bg-upcoming">Upcoming ${statusCounts.upcoming}</span>
-                    <span class="status-badge-item bg-2bdc">2BDC ${statusCounts['2BDC']}</span>
-                `;
-            }
-
             function refreshProductPlaybackState() {
                 productUniqueParents = [...new Set((tableData || []).map(item => item.Parent).filter(Boolean))];
                 updateProductButtonStates();
@@ -1603,71 +1522,12 @@
 
             // Apply all filters
             function applyFilters() {
-                const filterSTATUS = document.getElementById('filterSTATUS');
-                const filterStatusValue = filterSTATUS ? filterSTATUS.value : 'all';
-                const filterWtActKg = document.getElementById('filterWtActKg').value;
-                const filterWtAct = document.getElementById('filterWtAct').value;
-                const filterWtDecl = document.getElementById('filterWtDecl').value;
-                const filterL = document.getElementById('filterL').value;
-                const filterW = document.getElementById('filterW').value;
-                const filterH = document.getElementById('filterH').value;
-                const hasMissingDataFilter = filterStatusValue === 'missing' || filterWtActKg === 'missing' || filterWtAct === 'missing' || filterWtDecl === 'missing' ||
-                                            filterL === 'missing' || filterW === 'missing' ||
-                                            filterH === 'missing';
-
                 const parentSearchVal = (document.getElementById('parentSearch')?.value || '').toLowerCase();
                 const skuSearchVal = (document.getElementById('skuSearch')?.value || '').toLowerCase();
 
                 filteredData = tableData.filter(item => {
-                    // Exclude parent SKUs when any missing data filter is active
-                    if (hasMissingDataFilter) {
-                        const isParentSku = item.SKU && String(item.SKU).toUpperCase().includes('PARENT');
-                        if (isParentSku) return false;
-                    }
-
                     if (parentSearchVal && !(item.Parent || '').toLowerCase().includes(parentSearchVal)) return false;
                     if (skuSearchVal && !(item.SKU || '').toLowerCase().includes(skuSearchVal)) return false;
-
-                    // STATUS filter (same as product master: by value or missing)
-                    if (filterStatusValue && filterStatusValue !== 'all') {
-                        const statusVal = (item.status != null ? item.status : (item.Values && item.Values.status));
-                        const raw = String(statusVal ?? '').trim();
-                        if (filterStatusValue === 'missing') {
-                            if (raw !== '') return false;
-                        } else {
-                            if (raw.toLowerCase() !== String(filterStatusValue).toLowerCase()) return false;
-                        }
-                    }
-
-                    // Weight ACT (Kg) filter
-                    if (filterWtActKg === 'missing' && !isMissing(item.wt_act_kg)) {
-                        return false;
-                    }
-
-                    // WT ACT filter
-                    if (filterWtAct === 'missing' && !isMissing(item.wt_act)) {
-                        return false;
-                    }
-
-                    // WT DECL filter
-                    if (filterWtDecl === 'missing' && !isMissing(item.wt_decl)) {
-                        return false;
-                    }
-
-                    // L filter
-                    if (filterL === 'missing' && !isMissing(item.l)) {
-                        return false;
-                    }
-
-                    // W filter
-                    if (filterW === 'missing' && !isMissing(item.w)) {
-                        return false;
-                    }
-
-                    // H filter
-                    if (filterH === 'missing' && !isMissing(item.h)) {
-                        return false;
-                    }
 
                     return true;
                 });
@@ -1683,6 +1543,79 @@
                 };
             }
 
+            // Click-to-sort on table headers (no sort icons shown)
+            let currentSortKey = null;
+            let currentSortDir = 1; // 1 = asc, -1 = desc
+            function setupSort() {
+                const table = document.getElementById('dim-wt-master-datatable');
+                if (!table) return;
+                const ths = table.querySelectorAll('thead th');
+                // Column index -> { key, type }. null = not sortable.
+                const sortMap = {
+                    2: { key: 'Parent', type: 'text' },
+                    3: { key: 'SKU', type: 'text' },
+                    4: { key: 'status', type: 'text' },
+                    5: { key: 'shopify_inv', type: 'num' },
+                    6: { key: 'wt_act_kg', type: 'num' },
+                    7: { key: 'wt_act', type: 'num' },
+                    8: { key: 'l', type: 'num' },
+                    9: { key: 'w', type: 'num' },
+                    10: { key: 'h', type: 'num' },
+                    11: { key: 'l_cm', type: 'num' },
+                    12: { key: 'w_cm', type: 'num' },
+                    13: { key: 'h_cm', type: 'num' },
+                    14: { key: 'ctn_l', type: 'num' },
+                    15: { key: 'ctn_w', type: 'num' },
+                    16: { key: 'ctn_h', type: 'num' },
+                    17: { key: 'ctn_cbm', type: 'num' },
+                    18: { key: 'ctn_qty', type: 'num' },
+                    19: { key: 'ctn_cbm_each', type: 'num' },
+                    20: { key: 'instructions_item_pkg', type: 'text' },
+                    21: { key: 'verified_data', type: 'num' },
+                };
+
+                const getVal = (item, key) => {
+                    if (key === 'status') {
+                        const s = (item.status != null && item.status !== '') ? item.status : (item.Values && item.Values.status);
+                        return String(s || '');
+                    }
+                    if (key === 'verified_data') {
+                        let v = item.verified_data;
+                        if ((v == null) && item.Values) v = item.Values.verified_data;
+                        return (v === 1 || v === true) ? 1 : 0;
+                    }
+                    return item[key];
+                };
+
+                ths.forEach((th, idx) => {
+                    const cfg = sortMap[idx];
+                    if (!cfg) return;
+                    th.style.cursor = 'pointer';
+                    th.addEventListener('click', function() {
+                        if (currentSortKey === cfg.key) {
+                            currentSortDir = -currentSortDir;
+                        } else {
+                            currentSortKey = cfg.key;
+                            currentSortDir = 1;
+                        }
+                        filteredData.sort((a, b) => {
+                            let av = getVal(a, cfg.key);
+                            let bv = getVal(b, cfg.key);
+                            if (cfg.type === 'num') {
+                                av = parseFloat(av); bv = parseFloat(bv);
+                                if (isNaN(av)) av = -Infinity;
+                                if (isNaN(bv)) bv = -Infinity;
+                                return (av - bv) * currentSortDir;
+                            }
+                            av = String(av || '').toLowerCase();
+                            bv = String(bv || '').toLowerCase();
+                            return av.localeCompare(bv) * currentSortDir;
+                        });
+                        renderTable(filteredData);
+                    });
+                });
+            }
+
             // Setup search and filter listeners (called once at init)
             function setupSearch() {
                 const parentSearch = document.getElementById('parentSearch');
@@ -1690,14 +1623,6 @@
                 const applyFiltersDebounced = debounce(applyFilters, 180);
                 if (parentSearch) parentSearch.addEventListener('input', applyFiltersDebounced);
                 if (skuSearch) skuSearch.addEventListener('input', applyFiltersDebounced);
-
-                const filterSTATUSEl = document.getElementById('filterSTATUS');
-                if (filterSTATUSEl) filterSTATUSEl.addEventListener('change', applyFilters);
-                const filterIds = ['filterWtActKg', 'filterWtAct', 'filterWtDecl', 'filterL', 'filterW', 'filterH'];
-                filterIds.forEach(id => {
-                    const el = document.getElementById(id);
-                    if (el) el.addEventListener('change', applyFilters);
-                });
                 const sectionFilterEl = document.getElementById('dimWtSectionFilter');
                 if (sectionFilterEl) sectionFilterEl.addEventListener('change', applyDimWtSectionFilter);
             }
@@ -2277,321 +2202,19 @@
                 selectAllCheckbox.addEventListener('change', function() {
                     const checkboxes = document.querySelectorAll('.row-checkbox');
                     checkboxes.forEach(checkbox => {
-                        checkbox.checked = selectAllCheckbox.checked;
+                        const rowEl = checkbox.closest('tr');
+                        // Only (de)select checkboxes for currently visible (filtered) rows
+                        const isVisible = rowEl && rowEl.offsetParent !== null;
+                        if (isVisible) {
+                            checkbox.checked = selectAllCheckbox.checked;
+                        }
                     });
                     updatePushButtonState();
                 });
             }
 
-            // Update Push Button State and Bulk Edit button
-            function updatePushButtonState() {
-                const checkedBoxes = document.querySelectorAll('.row-checkbox:checked');
-                const pushBtn = document.getElementById('pushDataBtn');
-                const bulkEditBtn = document.getElementById('bulkEditBtn');
-                // Count non-parent selected (parent SKUs excluded from bulk edit)
-                let nonParentCount = 0;
-                checkedBoxes.forEach(cb => {
-                    const sku = (cb.getAttribute('data-sku') || '').toUpperCase();
-                    if (sku && !sku.includes('PARENT')) nonParentCount++;
-                });
-                if (checkedBoxes.length > 0) {
-                    pushBtn.disabled = false;
-                    pushBtn.innerHTML = `<i class="fas fa-cloud-upload-alt me-1"></i> Push Data (${checkedBoxes.length})`;
-                } else {
-                    pushBtn.disabled = true;
-                    pushBtn.innerHTML = '<i class="fas fa-cloud-upload-alt me-1"></i> Push Data';
-                }
-                const bulkVerifiedBtn = document.getElementById('bulkVerifiedBtn');
-                if (nonParentCount > 0) {
-                    if (bulkEditBtn) {
-                        bulkEditBtn.disabled = false;
-                        bulkEditBtn.innerHTML = nonParentCount > 1
-                            ? `<i class="fas fa-edit me-1"></i> Bulk Edit (${nonParentCount})`
-                            : '<i class="fas fa-edit me-1"></i> Bulk Edit';
-                    }
-                    if (bulkVerifiedBtn) {
-                        bulkVerifiedBtn.disabled = false;
-                        bulkVerifiedBtn.innerHTML = nonParentCount > 1
-                            ? `<i class="fas fa-check-circle me-1"></i> Bulk Verified (${nonParentCount})`
-                            : '<i class="fas fa-check-circle me-1"></i> Bulk Verified';
-                    }
-                } else {
-                    if (bulkEditBtn) {
-                        bulkEditBtn.disabled = true;
-                        bulkEditBtn.innerHTML = '<i class="fas fa-edit me-1"></i> Bulk Edit';
-                    }
-                    if (bulkVerifiedBtn) {
-                        bulkVerifiedBtn.disabled = true;
-                        bulkVerifiedBtn.innerHTML = '<i class="fas fa-check-circle me-1"></i> Bulk Verified';
-                    }
-                }
-            }
-
-            // Bulk Edit: open edit modal with first selected item; save updates all selected
-            function setupBulkEdit() {
-                const bulkEditBtn = document.getElementById('bulkEditBtn');
-                if (!bulkEditBtn) return;
-                bulkEditBtn.addEventListener('click', function() {
-                    const checkedBoxes = document.querySelectorAll('.row-checkbox:checked');
-                    const selected = [];
-                    checkedBoxes.forEach(checkbox => {
-                        const sku = checkbox.getAttribute('data-sku');
-                        if (!sku || String(sku).toUpperCase().includes('PARENT')) return;
-                        const item = tableData.find(d => d.SKU === sku);
-                        if (item) selected.push(item);
-                    });
-                    if (selected.length === 0) {
-                        showToast('warning', 'Please select at least one non-parent SKU to bulk edit');
-                        return;
-                    }
-                    bulkEditList = selected;
-                    editDimWt(selected[0]);
-                });
-            }
-
-            // Bulk Verified: set verified status for all selected (non-parent) SKUs at once
-            function setupBulkVerified() {
-                const yesBtn = document.getElementById('bulkVerifiedYes');
-                const noBtn = document.getElementById('bulkVerifiedNo');
-
-                async function applyBulkVerified(verifiedValue) {
-                    const checkedBoxes = document.querySelectorAll('.row-checkbox:checked');
-                    const skus = [];
-                    checkedBoxes.forEach(checkbox => {
-                        const sku = checkbox.getAttribute('data-sku');
-                        if (!sku || String(sku).toUpperCase().includes('PARENT')) return;
-                        skus.push(sku);
-                    });
-
-                    if (skus.length === 0) {
-                        showToast('warning', 'Please select at least one non-parent SKU to update');
-                        return;
-                    }
-
-                    const label = verifiedValue === 1 ? 'Verified 🟢' : 'Not Verified 🔴';
-                    if (!confirm(`Mark ${skus.length} selected SKU(s) as ${label}?`)) {
-                        return;
-                    }
-
-                    const bulkVerifiedBtn = document.getElementById('bulkVerifiedBtn');
-                    const originalHtml = bulkVerifiedBtn ? bulkVerifiedBtn.innerHTML : '';
-                    if (bulkVerifiedBtn) {
-                        bulkVerifiedBtn.disabled = true;
-                        bulkVerifiedBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Updating…';
-                    }
-
-                    try {
-                        const response = await makeRequest('/product_master/update-verified-bulk', 'POST', {
-                            skus: skus,
-                            verified_data: verifiedValue
-                        });
-                        const data = await response.json();
-
-                        if (!response.ok || !data.success) {
-                            throw new Error(data.message || 'Failed to update verified status');
-                        }
-
-                        // Update in-memory data and the on-screen dropdowns for affected SKUs
-                        const skuSet = new Set(skus);
-                        [tableData, filteredData].forEach(list => {
-                            if (!Array.isArray(list)) return;
-                            list.forEach(product => {
-                                if (skuSet.has(product.SKU)) {
-                                    product.verified_data = verifiedValue;
-                                    if (!product.Values) product.Values = {};
-                                    product.Values.verified_data = verifiedValue;
-                                }
-                            });
-                        });
-                        document.querySelectorAll('.verified-data-dropdown').forEach(dd => {
-                            if (skuSet.has(dd.getAttribute('data-sku'))) {
-                                dd.value = verifiedValue === 1 ? '1' : '0';
-                                dd.classList.toggle('verified', verifiedValue === 1);
-                                dd.classList.toggle('not-verified', verifiedValue !== 1);
-                                dd.title = verifiedValue === 1 ? 'Verified' : 'Not verified';
-                            }
-                        });
-
-                        showToast('success', data.message || `Updated ${skus.length} SKU(s).`);
-                    } catch (error) {
-                        console.error('Bulk verified error:', error);
-                        showToast('danger', error.message || 'Failed to update verified status');
-                    } finally {
-                        if (bulkVerifiedBtn) {
-                            bulkVerifiedBtn.innerHTML = originalHtml || '<i class="fas fa-check-circle me-1"></i> Bulk Verified';
-                            bulkVerifiedBtn.disabled = false;
-                        }
-                        updatePushButtonState();
-                    }
-                }
-
-                if (yesBtn) yesBtn.addEventListener('click', () => applyBulkVerified(1));
-                if (noBtn) noBtn.addEventListener('click', () => applyBulkVerified(0));
-            }
-
-            // Push Data functionality
-            function setupPushData() {
-                document.getElementById('pushDataBtn').addEventListener('click', async function() {
-                    const checkedBoxes = document.querySelectorAll('.row-checkbox:checked');
-                    
-                    if (checkedBoxes.length === 0) {
-                        showToast('warning', 'Please select at least one SKU to push data');
-                        return;
-                    }
-
-                    // Get selected SKUs and their data
-                    const selectedSkus = [];
-                    checkedBoxes.forEach(checkbox => {
-                        const sku = checkbox.getAttribute('data-sku');
-                        const row = checkbox.closest('tr');
-                        if (row && sku) {
-                            // Get dimensions and weight from the row data
-                            const item = tableData.find(d => d.SKU === sku);
-                            if (item) {
-                                selectedSkus.push({
-                                    sku: sku,
-                                    id: item.id,
-                                    wt_act_kg: item.wt_act_kg || null,
-                                    wt_act: item.wt_act || null,
-                                    wt_decl: item.wt_decl || null,
-                                    l: item.l || null,
-                                    w: item.w || null,
-                                    h: item.h || null,
-                                    l_cm: item.l_cm || null,
-                                    w_cm: item.w_cm || null,
-                                    h_cm: item.h_cm || null,
-                                    cbm: item.cbm || null
-                                });
-                            }
-                        }
-                    });
-
-                    if (selectedSkus.length === 0) {
-                        showToast('warning', 'No valid SKUs found to push');
-                        return;
-                    }
-
-                    // Confirm action with details
-                    const skuList = selectedSkus.map(s => s.sku).join(', ');
-                    const confirmMessage = `Are you sure you want to push dimensions & weight data for ${selectedSkus.length} SKU(s) to ALL marketplaces?\n\n` +
-                        `Selected SKUs: ${skuList.substring(0, 100)}${skuList.length > 100 ? '...' : ''}\n\n` +
-                        `Data to be updated:\n` +
-                        `- Weight (Weight ACT (Kg), Itm wt GW, WT DECL (LB))\n` +
-                        `- Dimensions (Length/Width/Height in inch and CM)\n\n` +
-                        `This will update the data in: Amazon, eBay, Shopify, Walmart, Doba, Temu, and all other connected marketplaces.`;
-                    
-                    if (!confirm(confirmMessage)) {
-                        return;
-                    }
-
-                    const pushBtn = document.getElementById('pushDataBtn');
-                    const originalText = pushBtn.innerHTML;
-                    
-                    try {
-                        pushBtn.disabled = true;
-                        pushBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Pushing...';
-                        
-                        const response = await makeRequest('/dim-wt-master/push-data', 'POST', {
-                            skus: selectedSkus
-                        });
-
-                        const data = await response.json();
-                        
-                        if (!response.ok) {
-                            throw new Error(data.message || 'Failed to push data');
-                        }
-
-                        // Build detailed success message
-                        let messageHtml = `<div class="mb-3">`;
-                        messageHtml += `<p class="mb-2"><strong><i class="fas fa-database text-info me-2"></i>Data saved to database for ${selectedSkus.length} SKU(s).</strong></p>`;
-                        
-                        if (data.results) {
-                            const implementedPlatforms = ['amazon', 'shopify', 'ebay', 'ebay2', 'ebay3', 'walmart'];
-                            const hasSuccess = Object.values(data.results).some(r => r.success > 0);
-                            const hasFailures = Object.values(data.results).some(r => r.failed > 0);
-                            
-                            messageHtml += `<div class="mt-3">`;
-                            messageHtml += `<p class="mb-2"><strong>Platform Update Results:</strong></p>`;
-                            messageHtml += `<ul class="list-unstyled mb-0">`;
-                            
-                            Object.entries(data.results).forEach(([platform, result]) => {
-                                const platformName = platform.charAt(0).toUpperCase() + platform.slice(1).replace(/_/g, ' ');
-                                const isImplemented = implementedPlatforms.includes(platform.toLowerCase());
-                                
-                                if (result.success > 0) {
-                                    messageHtml += `<li class="mb-1">`;
-                                    messageHtml += `<i class="fas fa-check-circle text-success me-2"></i>`;
-                                    messageHtml += `<strong>${platformName}:</strong> `;
-                                    messageHtml += `<span class="text-success">${result.success} updated successfully</span>`;
-                                    if (result.failed > 0) {
-                                        messageHtml += `, <span class="text-danger">${result.failed} failed</span>`;
-                                    }
-                                    messageHtml += `</li>`;
-                                } else if (result.failed > 0) {
-                                    messageHtml += `<li class="mb-1">`;
-                                    messageHtml += `<i class="fas fa-times-circle text-danger me-2"></i>`;
-                                    messageHtml += `<strong>${platformName}:</strong> `;
-                                    messageHtml += `<span class="text-danger">${result.failed} failed</span>`;
-                                    messageHtml += `</li>`;
-                                } else if (!isImplemented) {
-                                    messageHtml += `<li class="mb-1 text-muted">`;
-                                    messageHtml += `<i class="fas fa-clock me-2"></i>`;
-                                    messageHtml += `<strong>${platformName}:</strong> API integration pending`;
-                                    messageHtml += `</li>`;
-                                }
-                            });
-                            
-                            messageHtml += `</ul>`;
-                            
-                            if (hasSuccess) {
-                                messageHtml += `<div class="alert alert-success mt-3 mb-0">`;
-                                messageHtml += `<i class="fas fa-check-circle me-2"></i>`;
-                                messageHtml += `<strong>Success!</strong> Dimensions and weight data have been updated on the marketplace platforms above.`;
-                                messageHtml += `</div>`;
-                            }
-                            
-                            if (data.errors && data.errors.length > 0) {
-                                messageHtml += `<div class="alert alert-warning mt-2 mb-0">`;
-                                messageHtml += `<i class="fas fa-exclamation-triangle me-2"></i>`;
-                                messageHtml += `<strong>Some errors occurred:</strong>`;
-                                messageHtml += `<ul class="mb-0 mt-2 small">`;
-                                data.errors.slice(0, 5).forEach(error => {
-                                    messageHtml += `<li>${error}</li>`;
-                                });
-                                if (data.errors.length > 5) {
-                                    messageHtml += `<li><em>... and ${data.errors.length - 5} more errors</em></li>`;
-                                }
-                                messageHtml += `</ul>`;
-                                messageHtml += `</div>`;
-                            }
-                            
-                            messageHtml += `</div>`;
-                        }
-                        messageHtml += `</div>`;
-
-                        // Show success modal
-                        const successModal = document.getElementById('pushDataSuccessModal');
-                        const messageDiv = document.getElementById('pushDataSuccessMessage');
-                        messageDiv.innerHTML = messageHtml;
-                        
-                        const modal = new bootstrap.Modal(successModal);
-                        modal.show();
-                        
-                        // Uncheck all checkboxes
-                        document.querySelectorAll('.row-checkbox').forEach(cb => cb.checked = false);
-                        document.getElementById('selectAll').checked = false;
-                        updatePushButtonState();
-                        
-                    } catch (error) {
-                        console.error('Error pushing data:', error);
-                        showToast('danger', error.message || 'Failed to push data to platforms');
-                    } finally {
-                        pushBtn.innerHTML = originalText;
-                        pushBtn.disabled = false;
-                        updatePushButtonState();
-                    }
-                });
-            }
+            // Selection helper retained for row checkboxes (no bulk toolbar actions currently)
+            function updatePushButtonState() {}
 
             // Calculate CTN (CBM) = CTN L (CM) × CTN W (CM) × CTN H (CM) / 1000000
             function calculateCtnCbm(ctnL, ctnW, ctnH) {
@@ -2685,6 +2308,15 @@
                     pkgEl.disabled = false;
                     pkgEl.value = product.instructions_item_pkg != null ? String(product.instructions_item_pkg) : '';
                 }
+
+                // Verified status
+                const verifiedEl = document.getElementById('editVerified');
+                if (verifiedEl) {
+                    const isVerified = product.verified_data === 1 || product.verified_data === true ||
+                        (product.Values && (product.Values.verified_data === 1 || product.Values.verified_data === true));
+                    verifiedEl.value = isVerified ? '1' : '0';
+                    verifiedEl.disabled = isParentSkuString(skuStr);
+                }
                 
                 // Setup save button handler
                 const saveBtn = document.getElementById('saveDimWtBtn');
@@ -2738,6 +2370,8 @@
                         let failCount = 0;
                         let pkgFailCount = 0;
                         const pkgText = document.getElementById('editInstructionsItemPkg').value;
+                        const verifiedEl = document.getElementById('editVerified');
+                        const bulkVerifiedValue = verifiedEl && verifiedEl.value === '1' ? 1 : 0;
                         for (const product of bulkEditList) {
                             const formData = {
                                 ...baseFormData,
@@ -2762,6 +2396,17 @@
                                     } catch (pkgErr) {
                                         pkgFailCount++;
                                         console.error(pkgErr);
+                                    }
+                                    try {
+                                        await makeRequest('/product_master/update-verified', 'POST', {
+                                            sku: product.SKU,
+                                            verified_data: bulkVerifiedValue
+                                        });
+                                        product.verified_data = bulkVerifiedValue;
+                                        if (!product.Values) product.Values = {};
+                                        product.Values.verified_data = bulkVerifiedValue;
+                                    } catch (verErr) {
+                                        console.error('Verified save error:', verErr);
                                     }
                                 } else {
                                     failCount++;
@@ -2822,6 +2467,24 @@
                             modal.hide();
                             loadData();
                             return;
+                        }
+
+                        // Save verified status (non-parent SKUs only)
+                        try {
+                            const verifiedEl = document.getElementById('editVerified');
+                            const verifiedValue = verifiedEl && verifiedEl.value === '1' ? 1 : 0;
+                            await makeRequest('/product_master/update-verified', 'POST', {
+                                sku: singleSku,
+                                verified_data: verifiedValue
+                            });
+                            const product = tableData.find(d => d.SKU === singleSku);
+                            if (product) {
+                                product.verified_data = verifiedValue;
+                                if (!product.Values) product.Values = {};
+                                product.Values.verified_data = verifiedValue;
+                            }
+                        } catch (verErr) {
+                            console.error('Verified save error:', verErr);
                         }
                     }
                     
@@ -2995,15 +2658,13 @@
 
             // Initialize (search and playback listeners once to avoid duplicates on reload)
             setupSearch();
+            setupSort();
             setupProductPlaybackListeners();
             loadData();
             setupExcelExport();
             setupImport();
             setupSkuExport();
             setupSelectAll();
-            setupBulkEdit();
-            setupBulkVerified();
-            setupPushData();
             // Reset bulk edit state when edit modal is closed (e.g. without saving)
             document.getElementById('editDimWtModal').addEventListener('hidden.bs.modal', function() {
                 bulkEditList = null;
