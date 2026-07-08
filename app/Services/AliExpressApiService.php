@@ -1024,9 +1024,7 @@ class AliExpressApiService
             'page_size' => $pageSize,
         ], $query);
 
-        $raw = $this->callRestGateway('aliexpress.solution.order.get', [
-            'param0' => $this->encodeRequestPayload($orderQuery),
-        ]);
+        $raw = $this->callRestGateway('aliexpress.solution.order.get', $orderQuery);
 
         if (empty($raw['success'])) {
             return $raw;
