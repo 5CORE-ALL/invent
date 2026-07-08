@@ -33,6 +33,11 @@ use App\Services\WalmartService;
 use App\Services\FaireService;
 use App\Services\SheinApiService;
 use App\Services\AliExpressApiService;
+use App\Services\AlibabaApiService;
+use App\Services\NeweggApiService;
+use App\Services\PurchasingPowerApiService;
+use App\Services\TikTokShopService;
+use App\Services\TopDawgApiService;
 use App\Services\TemuApiService;
 use App\Services\Temu2ApiService;
 use Illuminate\Http\Request;
@@ -873,6 +878,8 @@ class ImageMasterController extends Controller
                     return app(ShopifyApiService::class)->updateImages($sku, $imageUrls, $mode);
                 case 'shopify_pls':
                     return app(ShopifyPLSApiService::class)->updateImages($sku, $imageUrls, $mode);
+                case 'shopify_b5c':
+                    return app(ShopifyPLSApiService::class)->updateImages($sku, $imageUrls, $mode);
                 case 'macy':
                     return app(MacysApiService::class)->updateImages($sku, $imageUrls);
                 case 'reverb':
@@ -887,6 +894,17 @@ class ImageMasterController extends Controller
                     return app(SheinApiService::class)->updateImages($sku, $imageUrls, $mode);
                 case 'aliexpress':
                     return app(AliExpressApiService::class)->updateImages($sku, $imageUrls, $mode);
+                case 'alibaba':
+                    return app(AlibabaApiService::class)->updateImages($sku, $imageUrls, $mode);
+                case 'purchasing_power':
+                    return app(PurchasingPowerApiService::class)->updateImages($sku, $imageUrls);
+                case 'newegg':
+                    return app(NeweggApiService::class)->updateImages($sku, $imageUrls, $mode);
+                case 'topdawg':
+                    return app(TopDawgApiService::class)->updateImages($sku, $imageUrls, $mode);
+                case 'tiktok':
+                case 'tiktok2':
+                    return app(TikTokShopService::class)->updateImages($sku, $imageUrls, $mode);
                 default:
                     return [
                         'success' => false,

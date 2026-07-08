@@ -170,6 +170,95 @@ class DescriptionWithImagesFormatter
         return trim($stripped);
     }
 
+    /**
+     * Description Master fetch: strip bullet-point blocks only (Highlighted Features / About Item / 【…】).
+     * Keeps Product Description, EXTRA USPs, specifications, package, brand, images, and all other sections.
+     */
+    public static function stripBulletPointsFromFetchedBody(string $body): string
+    {
+        $body = trim(str_replace("\xc2\xa0", ' ', $body));
+        if ($body === '') {
+            return '';
+        }
+
+        if (preg_match('/<[^>]+>/', $body)) {
+            $body = ShopifyBulletPointsFormatter::stripLegacyBulletBlocksForMarketplace($body);
+        }
+
+        $body = self::stripBracketBulletsBeforeProductDescription($body);
+        $body = self::stripLeadingBracketBulletRuns($body);
+
+        return trim($body);
+    }
+
+    /**
+     * eBay / Macy's / Reverb: drop 【 bracket bullets (and similar) that appear before the first
+     * "Product Description" marker. Keeps that heading and everything after it.
+     */
+    private static function stripBracketBulletsBeforeProductDescription(string $body): string
+    {
+        $plain = html_entity_decode(
+            strip_tags(preg_replace('/<br\s*\/?>/i', "\n", $body) ?? $body),
+            ENT_QUOTES | ENT_HTML5,
+            'UTF-8'
+        );
+        $plain = preg_replace('/\s+/u', ' ', $plain) ?? $plain;
+
+        $descPos = mb_stripos($plain, 'Product Description');
+        if ($descPos === false || $descPos === 0) {
+            return $body;
+        }
+
+        $prefix = mb_substr($plain, 0, $descPos);
+        $hasBulletPrefix = str_contains($prefix, '【')
+            || preg_match('/\b(?:Highlighted\s+Features|About\s+Item|Key\s+Features)\b/iu', $prefix);
+
+        if (! $hasBulletPrefix) {
+            return $body;
+        }
+
+        $replaced = preg_replace('/^[\s\S]*?(?=Product\s+Description\b)/iu', '', $body, 1);
+
+        return is_string($replaced) && trim($replaced) !== '' ? trim($replaced) : trim($body);
+    }
+
+    /**
+     * Remove any remaining leading 【…】 bullet lines/paragraphs (eBay3 often uses these without a heading).
+     */
+    private static function stripLeadingBracketBulletRuns(string $body): string
+    {
+        if (preg_match('/<[^>]+>/', $body)) {
+            for ($i = 0; $i < 6; $i++) {
+                $before = $body;
+                $body = preg_replace(
+                    '/^\s*(?:<(?:p|div|span|font|li|td|tr|table|tbody)[^>]*>\s*)*(?:<[^>]+>\s*)*【[\s\S]*?(?:<\/(?:p|div|span|font|li|td|tr|table|tbody)>\s*)?/iu',
+                    '',
+                    $body,
+                    1
+                ) ?? $body;
+                if ($body === $before) {
+                    break;
+                }
+            }
+
+            return trim($body);
+        }
+
+        $stripped = preg_replace('/^(?:\s*【[^】]*】\s*[^\n【]*){1,8}/u', '', $body);
+
+        return is_string($stripped) ? trim($stripped) : trim($body);
+    }
+
+    /**
+     * @deprecated Merged into stripBulletPointsFromFetchedBody()
+     */
+    private static function stripPlainTextBulletBlockOnly(string $text): string
+    {
+        return self::stripLeadingBracketBulletRuns(
+            self::stripBracketBulletsBeforeProductDescription($text)
+        );
+    }
+
     private static function sanitizeEditorHtml(string $html): string
     {
         $html = preg_replace('/<script\b[^>]*>.*?<\/script>/is', '', $html) ?? $html;

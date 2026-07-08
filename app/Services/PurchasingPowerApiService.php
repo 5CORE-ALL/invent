@@ -11,4 +11,19 @@ class PurchasingPowerApiService extends BestBuyApiService
     {
         return 'purchasingpower';
     }
+
+    protected function miraklMcmConfigKey(): string
+    {
+        return 'purchasingpower';
+    }
+
+    protected function miraklMcmMarketplaceLabel(): string
+    {
+        return 'Purchasing Power';
+    }
+
+    protected function miraklMcmHierarchyTable(): ?string
+    {
+        return null;
+    }
 }

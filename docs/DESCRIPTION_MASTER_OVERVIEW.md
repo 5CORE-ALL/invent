@@ -284,5 +284,6 @@ DM2 does **not** share the DM1 marketplace tile table or metrics `description_ma
 - **Empty PM tiers block push** — unlike bullets, description cannot push from an empty master.
 - Blank metrics rows (no `description_master`) do **not** block push when PM tiers have content; metrics fill in after push.
 - Shopify push combines **Bullet Points Master** text + description tier in `body_html`.
+- Reverb description push resolves **one** listing via `getListingIdBySku()` (primary when duplicates exist). Bullet push updates **all** SKU matches — see `docs/BULLET_POINTS_OVERVIEW.md`.
 - DM2 and DM1 are separate; changes in one do not automatically sync to the other.
 - Pagination means bulk push only affects **the current page**, not the full catalog.

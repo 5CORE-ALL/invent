@@ -426,6 +426,40 @@
             padding: 6px 4px !important;
             cursor: help;
         }
+        #title-master-table thead th.title-master-mp-grouped-th,
+        #title-master-table tbody td.title-master-mp-grouped-td {
+            vertical-align: middle !important;
+            padding: 6px 8px !important;
+            min-width: 280px;
+        }
+        #title-master-table thead th.tm-mp-tier-col-th {
+            text-align: center;
+            vertical-align: top !important;
+            padding: 4px 6px !important;
+            font-size: 9px;
+            font-weight: 700;
+        }
+        #title-master-table thead th.tm-mp-tier-col-th--150 { min-width: 200px; }
+        #title-master-table thead th.tm-mp-tier-col-th--100 { min-width: 110px; }
+        #title-master-table thead th.tm-mp-tier-col-th--80 { min-width: 96px; }
+        #title-master-table thead th.tm-mp-tier-col-th--60 { min-width: 72px; }
+        #title-master-table thead th.title-master-mp-group-th {
+            text-align: center;
+            vertical-align: middle !important;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: .04em;
+            text-transform: uppercase;
+        }
+        #title-master-table tbody td.tm-mp-tier-col-td {
+            vertical-align: middle !important;
+            padding: 6px 6px !important;
+            text-align: center;
+        }
+        #title-master-table tbody td.tm-mp-tier-col-td .bp-mp-inline {
+            justify-content: center;
+            gap: 6px;
+        }
         .title-master-title-dot {
             display: inline-block;
             width: 10px;
@@ -485,9 +519,10 @@
         .bp-mp-stack { display:flex; flex-direction:column; align-items:center; gap:3px; border:none; background:transparent; padding:0; cursor:pointer; }
         .bp-mp-stack:hover .marketplace-btn:not(:disabled) { transform:translateY(-1px); box-shadow:0 2px 6px rgba(0,0,0,.18); }
         .bp-mp-stack:disabled { cursor:not-allowed; }
-        .bp-mp-dot { width:10px; height:10px; border-radius:50%; border:2px solid #94a3b8; background:transparent; flex-shrink:0; }
+        .bp-mp-dot { width:10px; height:10px; border-radius:50%; border:2px solid #94a3b8; background:transparent; flex-shrink:0; transition:background .15s,border-color .15s; }
         .bp-mp-dot.pushed { background:#22c55e; border-color:#22c55e; }
         .bp-mp-dot.failed { background:#ef4444; border-color:#ef4444; }
+        .toast-container { z-index:1100; }
         .bp-mp-inline { display:flex; flex-wrap:wrap; gap:8px; align-items:flex-start; justify-content:center; }
         #title-master-table .marketplaces-cell { vertical-align:middle !important; padding:6px 8px !important; min-width:120px; overflow:visible; }
 
@@ -816,6 +851,14 @@
 @section('content')
     @php
         $tmMpConfig = app(\App\Services\Support\AllMarketplaceChannelRegistry::class)->jsConfig('title');
+        $tmTierPills = ['150' => [], '100' => [], '80' => [], '60' => []];
+        $tmTierLabels = ['150' => '170', '100' => '100', '80' => '80', '60' => '60'];
+        foreach ($tmMpConfig['titleMeta'] ?? [] as $mpKey => $meta) {
+            $tier = (string) ($meta['type'] ?? '150');
+            if (array_key_exists($tier, $tmTierPills)) {
+                $tmTierPills[$tier][] = $mpKey;
+            }
+        }
     @endphp
     <meta name="csrf-token" content="{{ csrf_token() }}">
 
@@ -866,11 +909,11 @@
                         <table id="title-master-table" class="table dt-responsive nowrap w-100">
                             <thead>
                                 <tr>
-                                    <th>
+                                    <th rowspan="2">
                                         <input type="checkbox" id="selectAll" title="Select All">
                                     </th>
-                                    <th>Images</th>
-                                    <th>
+                                    <th rowspan="2">Images</th>
+                                    <th rowspan="2">
                                         <div style="display: flex; align-items: center; gap: 10px;">
                                             <span>Parent</span>
                                             <span id="parentCount">(0)</span>
@@ -878,7 +921,7 @@
                                         <input type="text" id="parentSearch" class="form-control-sm"
                                             placeholder="Search Parent">
                                     </th>
-                                    <th>
+                                    <th rowspan="2">
                                         <div style="display: flex; align-items: center; gap: 10px;">
                                             <span>SKU</span>
                                             <span id="skuCount">(0)</span>
@@ -886,25 +929,25 @@
                                         <input type="text" id="skuSearch" class="form-control-sm"
                                             placeholder="Search SKU">
                                     </th>
-                                    <th class="title-master-bs-th"
+                                    <th rowspan="2" class="title-master-bs-th"
                                         title="Buyer / Seller links from amazon_data_view (same as Amazon FBM tabulator Links: B Link = buyer, S Link = seller).">
                                         B/S
                                     </th>
-                                    <th class="title-master-pmcvr-th title-master-sortable" data-tm-sort="inv"
+                                    <th rowspan="2" class="title-master-pmcvr-th title-master-sortable" data-tm-sort="inv"
                                         title="INV from latest Pricing Master CVR snapshot (and Shopify fallbacks). Click to sort.">
                                         <div class="title-master-pmcvr-th-wrap">
                                             <span class="title-master-pmcvr-th-inner">INV</span>
                                             <i class="fas fa-sort title-master-sort-icon" aria-hidden="true"></i>
                                         </div>
                                     </th>
-                                    <th class="title-master-pmcvr-th title-master-sortable" data-tm-sort="dil"
+                                    <th rowspan="2" class="title-master-pmcvr-th title-master-sortable" data-tm-sort="dil"
                                         title="Dil % from snapshot / Shopify. Click to sort.">
                                         <div class="title-master-pmcvr-th-wrap">
                                             <span class="title-master-pmcvr-th-inner">Dil %</span>
                                             <i class="fas fa-sort title-master-sort-icon" aria-hidden="true"></i>
                                         </div>
                                     </th>
-                                    <th class="title-master-pmcvr-th title-master-sortable @if (! \Illuminate\Support\Facades\Schema::hasTable('pricing_master_daily_snapshots_sku')) title-master-sort-disabled @endif" data-tm-sort="cvr"
+                                    <th rowspan="2" class="title-master-pmcvr-th title-master-sortable @if (! \Illuminate\Support\Facades\Schema::hasTable('pricing_master_daily_snapshots_sku')) title-master-sort-disabled @endif" data-tm-sort="cvr"
                                         title="{{ \Illuminate\Support\Facades\Schema::hasTable('pricing_master_daily_snapshots_sku') ? 'CVR % from latest Pricing Master CVR snapshot. Click to sort.' : 'CVR % sorting needs the pricing_master_daily_snapshots_sku table (open /pricing-master-cvr).' }}">
                                         <div class="title-master-pmcvr-th-wrap">
                                             <span class="title-master-pmcvr-th-inner">CVR %</span>
@@ -913,11 +956,11 @@
                                             @endif
                                         </div>
                                     </th>
-                                    <th class="title-master-pmcvr-th"
+                                    <th rowspan="2" class="title-master-pmcvr-th"
                                         title="Listing Quality Score from Jungle Scout (junglescout_product_data JSON listing_quality_score). Latest row by SKU, else by Parent.">
                                         <span class="title-master-pmcvr-th-inner">LQS</span>
                                     </th>
-                                    <th class="title-master-title-dot-th">
+                                    <th rowspan="2" class="title-master-title-dot-th">
                                         <div style="display: flex; align-items: center; justify-content: center; gap: 3px; flex-wrap: wrap;">
                                             <span style="font-size: 9px;">170</span>
                                             <span id="title150MissingCount" class="text-warning" style="font-weight: bold; font-size: 9px;">(0)</span>
@@ -929,59 +972,53 @@
                                             <option value="exceeds">Exceeds</option>
                                         </select>
                                     </th>
-                                    <th class="title-master-title-dot-th">
+                                    <th rowspan="2" class="title-master-title-dot-th">
                                         <div style="font-size: 9px;">100 <span id="title100MissingCount" class="text-warning" style="font-weight: bold;">(0)</span></div>
                                         <select id="filterTitle100" class="form-control form-control-sm mt-1">
                                             <option value="all">All</option>
                                             <option value="missing">Missing</option>
                                         </select>
                                     </th>
-                                    <th class="title-master-title-dot-th">
+                                    <th rowspan="2" class="title-master-title-dot-th">
                                         <div style="font-size: 9px;">80 <span id="title80MissingCount" class="text-warning" style="font-weight: bold;">(0)</span></div>
                                         <select id="filterTitle80" class="form-control form-control-sm mt-1">
                                             <option value="all">All</option>
                                             <option value="missing">Missing</option>
                                         </select>
                                     </th>
-                                    <th class="title-master-title-dot-th">
+                                    <th rowspan="2" class="title-master-title-dot-th">
                                         <div style="font-size: 9px;">60 <span id="title60MissingCount" class="text-warning" style="font-weight: bold;">(0)</span></div>
                                         <select id="filterTitle60" class="form-control form-control-sm mt-1">
                                             <option value="all">All</option>
                                             <option value="missing">Missing</option>
                                         </select>
                                     </th>
-                                    <th class="title-master-action-th" scope="col" title="View title details">
+                                    <th rowspan="2" class="title-master-action-th" scope="col" title="View title details">
                                         <i class="fas fa-eye" aria-hidden="true"></i>
                                         <span class="visually-hidden">View</span>
                                     </th>
-                                    <th title="All marketplace title push buttons (tier per channel)">
-                                        <div class="bp-mp-th-title">MARKET PLACES</div>
-                                        <div class="bp-mp-th-icons">
-                                            @foreach ($tmMpConfig['groups']['gChannels'] ?? [] as $mpKey)
-                                                @php $tile = $tmMpConfig['tiles'][$mpKey] ?? null; @endphp
-                                                @if ($tile)
-                                                    <span class="bp-mp-th-pill {{ $tile['cls'] }}">{{ $tile['short'] }}</span>
-                                                @endif
-                                            @endforeach
-                                        </div>
-                                    </th>
-                                    <th title="Shopify stores title push">
-                                        <div class="bp-mp-th-title">SHOPIFY</div>
-                                        <div class="bp-mp-th-icons">
-                                            @foreach ($tmMpConfig['groups']['gShopify'] ?? [] as $mpKey)
-                                                @php $tile = $tmMpConfig['tiles'][$mpKey] ?? null; @endphp
-                                                @if ($tile)
-                                                    <span class="bp-mp-th-pill {{ $tile['cls'] }}">{{ $tile['short'] }}</span>
-                                                @endif
-                                            @endforeach
-                                        </div>
-                                    </th>
-                                    <th class="push-to-all-th" title="Push Title 170 to Amazon, Temu, Reverb">
+                                    <th colspan="4" class="title-master-mp-group-th">Market Places</th>
+                                    <th rowspan="2" class="push-to-all-th" title="Push Title 170 to all Title-150 marketplaces">
                                         <div class="push-all-th-inner">
                                             <img src="{{ asset('images/title-master/distribute-all-icon.png') }}" alt="" class="tm-push-all-icon" width="20" height="20">
                                             <span>PUSH</span>
                                         </div>
                                     </th>
+                                </tr>
+                                <tr>
+                                    @foreach ($tmTierLabels as $tierType => $tierLabel)
+                                        <th class="tm-mp-tier-col-th tm-mp-tier-col-th--{{ $tierType }}" title="Push Title {{ $tierLabel }} marketplaces">
+                                            <div>{{ $tierLabel }}</div>
+                                            <div class="bp-mp-th-icons">
+                                                @foreach ($tmTierPills[$tierType] ?? [] as $mpKey)
+                                                    @php $tile = $tmMpConfig['tiles'][$mpKey] ?? null; @endphp
+                                                    @if ($tile)
+                                                        <span class="bp-mp-th-pill {{ $tile['cls'] }}" title="{{ $tmMpConfig['labels'][$mpKey] ?? $mpKey }}">{{ $tile['short'] }}</span>
+                                                    @endif
+                                                @endforeach
+                                            </div>
+                                        </th>
+                                    @endforeach
                                 </tr>
                             </thead>
                             <tbody id="table-body"></tbody>
@@ -1706,6 +1743,8 @@
         </div>
     </div>
 
+    <div class="toast-container position-fixed top-0 end-0 p-3" id="toastContainer"></div>
+
     <!-- Distribute to All Markets progress modal -->
     <div class="modal fade" id="pushProgressModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
         <div class="modal-dialog modal-dialog-centered">
@@ -1739,6 +1778,53 @@
     <script>
         @verbatim
         const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+
+        function titleMasterEscHtml(s) {
+            if (s == null) return '';
+            return String(s).replace(/[&<>"']/g, function (c) {
+                return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[c];
+            });
+        }
+
+        /** Toast notifications (type: success | error | info | warning). */
+        function showToast(type, message, durationMs) {
+            const msg = message != null ? String(message) : '';
+            if (!window.bootstrap || !bootstrap.Toast) {
+                alert(msg);
+                return;
+            }
+            const bgMap = {
+                success: 'text-bg-success',
+                error: 'text-bg-danger',
+                info: 'text-bg-info',
+                warning: 'text-bg-warning',
+            };
+            const cls = bgMap[type] || 'text-bg-secondary';
+            const container = document.getElementById('toastContainer');
+            if (!container) {
+                alert(msg);
+                return;
+            }
+            if (type === 'success' || type === 'error') {
+                container.querySelectorAll('.toast').forEach(function (t) {
+                    const inst = bootstrap.Toast.getInstance(t);
+                    if (inst) inst.hide();
+                });
+            }
+            const id = 'tm-toast-' + Date.now();
+            container.insertAdjacentHTML('beforeend',
+                '<div id="' + id + '" class="toast align-items-center ' + cls + ' border-0" role="alert">'
+                + '<div class="d-flex"><div class="toast-body">' + titleMasterEscHtml(msg) + '</div>'
+                + '<button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>'
+                + '</div></div>');
+            const el = document.getElementById(id);
+            const delay = durationMs === 0 ? 60000 : (durationMs || 3200);
+            const toast = new bootstrap.Toast(el, { delay: delay });
+            toast.show();
+            el.addEventListener('hidden.bs.toast', function () { el.remove(); });
+        }
+        window.showToast = showToast;
+
         const TM_PUSH_ALL_ICON_URL = typeof window.titleMasterPushAllIconUrl === 'string' ? window.titleMasterPushAllIconUrl : '';
         const __tmMp = window.__ALL_MP__ || {};
         const TM_GROUPS = __tmMp.groups || { gChannels: [], gShopify: [] };
@@ -1794,12 +1880,45 @@
             else if (status === 'failed') dot.classList.add('failed');
         }
 
+        function tmRegistryKeysForTitleType(type) {
+            const keys = [];
+            Object.keys(TM_TITLE_META).forEach(function (regKey) {
+                if (TM_TITLE_META[regKey].type === type && TM_ENABLED.includes(regKey)) {
+                    keys.push(regKey);
+                }
+            });
+            return keys;
+        }
+
+        const TM_TIER_GROUPS = [
+            { type: '150', label: '170' },
+            { type: '100', label: '100' },
+            { type: '80', label: '80' },
+            { type: '60', label: '60' },
+        ];
+
+        function tmTierMpButtonsHtml(sku, item, titleType) {
+            return tmRegistryKeysForTitleType(titleType)
+                .map(function (mp) { return tmMpStackHtml(sku, mp, item); })
+                .join('');
+        }
+
+        function tmTierColumnCellInner(sku, item, titleType) {
+            const buttons = tmTierMpButtonsHtml(sku, item, titleType);
+            return buttons
+                ? '<div class="bp-mp-inline">' + buttons + '</div>'
+                : '<span class="text-muted">—</span>';
+        }
+
         function tmMpStackHtml(sku, mp, item) {
             const pushKey = tmPushKey(mp);
             const titleType = tmTitleType(mp);
             const hasContent = tmTitleText(item, mp) !== '';
             const tile = TM_TILES[mp] || { cls: 'btn-secondary', short: '?' };
             const implemented = TM_ENABLED.includes(mp);
+            const pushStatuses = (item && item.title_push_statuses) ? item.title_push_statuses : {};
+            const dotState = pushStatuses[pushKey] || pushStatuses[mp] || '';
+            const dotClass = dotState === 'success' ? ' pushed' : (dotState === 'failed' ? ' failed' : '');
             const st = mpPushTileState(pushKey, {
                 label: TM_LABELS[mp] || mp,
                 implemented: implemented,
@@ -1807,9 +1926,16 @@
             });
             const disabled = (!hasContent || st.disabled) ? 'disabled' : '';
             return '<button type="button" class="bp-mp-stack tm-mp-push-btn' + st.noApiClass + '" data-mp="' + escapeHtml(mp) + '" data-push-key="' + escapeHtml(pushKey) + '" data-title-type="' + escapeHtml(titleType) + '" data-sku="' + escapeHtml(sku) + '" title="' + escapeHtml(st.title) + '" ' + disabled + '>'
-                + '<span class="bp-mp-dot" aria-hidden="true"></span>'
+                + '<span class="bp-mp-dot' + dotClass + '" aria-hidden="true"></span>'
                 + '<span class="marketplace-btn ' + tile.cls + '">' + escapeHtml(tile.short) + '</span>'
                 + '</button>';
+        }
+
+        function tmRememberTitlePushStatus(sku, pushKey, status) {
+            const idx = (typeof tableData !== 'undefined' && tableData) ? tableData.findIndex(function (x) { return x.SKU === sku; }) : -1;
+            if (idx === -1) return;
+            tableData[idx].title_push_statuses = tableData[idx].title_push_statuses || {};
+            tableData[idx].title_push_statuses[pushKey] = status;
         }
 
         function tmGroupCellInner(groupKey, sku, item) {
@@ -2025,6 +2151,7 @@
             setupCheckboxHandlers();
             setupPlatformModalHandlers();
             setupPlatformCheckboxes();
+            setupIndividualMarketplaceButtons();
         });
 
         function setupButtonHandlers() {
@@ -2039,10 +2166,10 @@
                 pushAllBtn.addEventListener('click', function() {
                     const items = (tableData || []).filter(function(item) {
                         if (item.SKU && item.SKU.toUpperCase().includes('PARENT')) return false;
-                        const t = (item.amazon_title || item.title150 || '').toString().trim();
+                        const t = titleMasterGetTitle170Text(item).trim();
                         return t.length > 0;
                     }).map(function(item) {
-                        return { sku: item.SKU, title: (item.amazon_title || item.title150 || '').toString().trim() };
+                        return { sku: item.SKU, title: titleMasterGetTitle170Text(item).trim() };
                     });
                     if (items.length === 0) {
                         alert('No titles to distribute. Ensure rows have Title 170 data.');
@@ -2067,7 +2194,7 @@
                     const skus = Array.from(checkedBoxes).map(function(cb) { return cb.getAttribute('data-sku'); });
                     const items = skus.map(function(sku) {
                         const item = tableData.find(function(d) { return d.SKU === sku; });
-                        const t = item ? (item.amazon_title || item.title150 || '').toString().trim() : '';
+                        const t = item ? titleMasterGetTitle170Text(item).trim() : '';
                         return { sku: sku, title: t };
                     }).filter(function(x) { return x.title.length > 0; });
                     if (items.length === 0) {
@@ -2381,7 +2508,12 @@
             const val = (x) => (x != null ? String(x) : '');
             ['title150', 'title100', 'title80', 'title60'].forEach(field => {
                 const el = document.getElementById(field);
-                if (el) el.value = item ? val(item[field]) : '';
+                if (!el) return;
+                if (field === 'title150') {
+                    el.value = item ? titleMasterGetTitle170Text(item) : '';
+                } else {
+                    el.value = item ? val(item[field]) : '';
+                }
                 updateModalCounter(field);
             });
         }
@@ -3310,12 +3442,13 @@
             initMarketplaceTooltips(wrapper100);
         }
 
+        /** Saved Title 170 (product_master.title150) wins over synced Amazon listing title. */
         function titleMasterGetTitle170Text(item) {
             if (!item) return '';
-            const a = item.amazon_title;
-            if (a != null && String(a).trim() !== '') return String(a);
             const t = item.title150;
             if (t != null && String(t).trim() !== '') return String(t);
+            const a = item.amazon_title;
+            if (a != null && String(a).trim() !== '') return String(a);
             return '';
         }
 
@@ -3413,89 +3546,96 @@
             return html;
         }
 
+        let tmMpPushDelegated = false;
+
         function setupIndividualMarketplaceButtons() {
-            document.querySelectorAll('.tm-mp-push-btn:not(:disabled)').forEach(btn => {
-                btn.addEventListener('click', function (e) {
-                    e.preventDefault();
-                    const button = this;
-                    const sku = button.getAttribute('data-sku');
-                    const mp = button.getAttribute('data-mp');
-                    const marketplace = button.getAttribute('data-push-key');
-                    const titleType = button.getAttribute('data-title-type');
-                    const marketplaceName = TM_LABELS[mp] || marketplace.toUpperCase();
-                    const item = tableData.find(x => x.SKU === sku);
-                    const title = tmTitleText(item, mp);
+            if (tmMpPushDelegated) return;
+            const table = document.getElementById('title-master-table');
+            if (!table) return;
+            tmMpPushDelegated = true;
 
-                    if (!title) {
-                        if (typeof showToast === 'function') {
-                            showToast('error', 'No Title ' + titleType + ' available for SKU ' + sku + '.');
-                        } else {
-                            alert('No Title ' + titleType + ' available for SKU ' + sku + '.');
-                        }
-                        return;
-                    }
+            table.addEventListener('click', function (e) {
+                const button = e.target.closest('.tm-mp-push-btn:not(:disabled)');
+                if (!button) return;
+                e.preventDefault();
 
-                    if (marketplace === 'ebay3' && !confirm('Warning! This is a Variation Platform, ARE YOU SURE?')) {
-                        return;
-                    }
+                const sku = button.getAttribute('data-sku');
+                const mp = button.getAttribute('data-mp');
+                const marketplace = button.getAttribute('data-push-key');
+                const titleType = button.getAttribute('data-title-type');
+                const marketplaceName = TM_LABELS[mp] || marketplace.toUpperCase();
+                const item = tableData.find(function (x) { return x.SKU === sku; });
+                const title = tmTitleText(item, mp);
 
-                    const originalHtml = button.innerHTML;
-                    button.disabled = true;
-                    button.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>';
+                if (!title) {
+                    showToast('error', 'No Title ' + titleType + ' available for SKU ' + sku + '.');
+                    return;
+                }
 
-                    if (typeof showToast === 'function') {
-                        showToast('info', 'Pushing Title ' + titleType + ' to ' + marketplaceName + '...', 0);
-                    }
+                if (marketplace === 'ebay3' && !confirm('Warning! This is a Variation Platform, ARE YOU SURE?')) {
+                    return;
+                }
 
-                    fetch('/api/marketplaces/push-single', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRF-TOKEN': csrfToken
-                        },
-                        body: JSON.stringify({
-                            sku: sku,
-                            marketplace: marketplace,
-                            title_type: titleType,
-                            title: title
-                        })
+                let originalHtml = button.innerHTML;
+                button.disabled = true;
+                button.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>';
+
+                showToast('info', 'Pushing Title ' + titleType + ' to ' + marketplaceName + '...', 0);
+
+                fetch('/api/marketplaces/push-single', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken
+                    },
+                    body: JSON.stringify({
+                        sku: sku,
+                        marketplace: marketplace,
+                        title_type: titleType,
+                        title: title
                     })
-                        .then(response => response.json())
-                        .then(data => {
-                            if (data.success) {
-                                if (typeof showToast === 'function') {
-                                    showToast('success', marketplaceName + ' (Title ' + titleType + ') updated for ' + sku);
-                                }
-                                const log = data.statuses && data.statuses[marketplace] ? data.statuses[marketplace].status : 'success';
-                                tmUpdateMpDot(button, log);
-                            } else {
-                                const msg = data.message || 'Unknown error';
-                                if (typeof showToast === 'function') {
-                                    showToast('error', marketplaceName + ' (Title ' + titleType + ') failed: ' + msg);
-                                }
-                                tmUpdateMpDot(button, 'failed');
-                            }
-                        })
-                        .catch(error => {
-                            if (typeof showToast === 'function') {
-                                showToast('error', marketplaceName + ' push error: ' + error.message);
-                            }
-                            tmUpdateMpDot(button, 'failed');
-                        })
-                        .finally(() => {
-                            const itemAfter = tableData.find(x => x.SKU === sku);
-                            const stillHasTitle = tmTitleText(itemAfter, mp) !== '';
-                            const pushKey = tmPushKey(mp);
-                            const implemented = TM_ENABLED.includes(mp);
-                            const st = mpPushTileState(pushKey, {
-                                label: TM_LABELS[mp] || mp,
-                                implemented: implemented,
-                                statusHint: stillHasTitle ? ('Title ' + titleType) : ('No Title ' + titleType),
-                            });
-                            button.disabled = !stillHasTitle || st.disabled;
+                })
+                    .then(function (response) { return response.json(); })
+                    .then(function (data) {
+                        if (data.success) {
+                            const log = data.statuses && data.statuses[marketplace] ? data.statuses[marketplace].status : 'success';
+                            const dotStatus = (log === 'failed') ? 'failed' : 'success';
+                            tmRememberTitlePushStatus(sku, marketplace, dotStatus);
                             button.innerHTML = originalHtml;
+                            tmUpdateMpDot(button, dotStatus);
+                            button.title = marketplaceName + '. Pushed. Click to push.';
+                            originalHtml = button.innerHTML;
+                            showToast('success', marketplaceName + ' (Title ' + titleType + ') updated for ' + sku);
+                        } else {
+                            const msg = data.message || 'Unknown error';
+                            tmRememberTitlePushStatus(sku, marketplace, 'failed');
+                            button.innerHTML = originalHtml;
+                            tmUpdateMpDot(button, 'failed');
+                            button.title = marketplaceName + '. Push failed. Click to push.';
+                            originalHtml = button.innerHTML;
+                            showToast('error', marketplaceName + ' (Title ' + titleType + ') failed: ' + msg);
+                        }
+                    })
+                    .catch(function (error) {
+                        tmRememberTitlePushStatus(sku, marketplace, 'failed');
+                        button.innerHTML = originalHtml;
+                        tmUpdateMpDot(button, 'failed');
+                        originalHtml = button.innerHTML;
+                        showToast('error', marketplaceName + ' push error: ' + error.message);
+                    })
+                    .finally(function () {
+                        const itemAfter = tableData.find(function (x) { return x.SKU === sku; });
+                        const stillHasTitle = tmTitleText(itemAfter, mp) !== '';
+                        const pushKey = tmPushKey(mp);
+                        const implemented = TM_ENABLED.includes(mp);
+                        const st = mpPushTileState(pushKey, {
+                            label: TM_LABELS[mp] || mp,
+                            implemented: implemented,
+                            statusHint: stillHasTitle ? ('Title ' + titleType) : ('No Title ' + titleType),
                         });
-                });
+                        button.disabled = !stillHasTitle || st.disabled;
+                        if (originalHtml) button.innerHTML = originalHtml;
+                    });
             });
         }
 
@@ -3504,7 +3644,7 @@
             const frag = document.createDocumentFragment();
 
             if (data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="17" class="text-center">No products found</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="19" class="text-center">No products found</td></tr>';
                 return;
             }
 
@@ -3514,7 +3654,7 @@
             });
 
             if (filteredData.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="17" class="text-center">No products found</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="19" class="text-center">No products found</td></tr>';
                 return;
             }
 
@@ -3601,17 +3741,13 @@
                     '</div>';
                 row.appendChild(actionCell);
 
-                // Marketplace push columns (all channels — same layout as other masters)
-                const skuEscaped = escapeHtml(item.SKU);
-                const mpChannelsCell = document.createElement('td');
-                mpChannelsCell.className = 'marketplaces-cell';
-                mpChannelsCell.innerHTML = tmGroupCellInner('gChannels', skuEscaped, item);
-                row.appendChild(mpChannelsCell);
-
-                const mpShopifyCell = document.createElement('td');
-                mpShopifyCell.className = 'marketplaces-cell';
-                mpShopifyCell.innerHTML = tmGroupCellInner('gShopify', skuEscaped, item);
-                row.appendChild(mpShopifyCell);
+                TM_TIER_GROUPS.forEach(function (tier) {
+                    const mpTierCell = document.createElement('td');
+                    mpTierCell.className = 'tm-mp-tier-col-td marketplaces-cell';
+                    mpTierCell.setAttribute('data-title-tier', tier.type);
+                    mpTierCell.innerHTML = tmTierColumnCellInner(item.SKU, item, tier.type);
+                    row.appendChild(mpTierCell);
+                });
 
                 // Distribute to all markets column
                 const pushCell = document.createElement('td');
@@ -3648,12 +3784,7 @@
         }
 
         function getTitleMasterTitle150ForAiStack(item) {
-            if (!item) return '';
-            const a = item.amazon_title;
-            if (a != null && String(a).trim() !== '') return String(a);
-            const t = item.title150;
-            if (t != null && String(t).trim() !== '') return String(t);
-            return '';
+            return titleMasterGetTitle170Text(item);
         }
 
         function openTmAiStackModal(sku) {
@@ -3797,20 +3928,28 @@
         function patchTitleMasterGridRowTitlesFromTableData(sku) {
             var item = (typeof tableData !== 'undefined' && tableData) ? tableData.find(function(x) { return x.SKU === sku; }) : null;
             var row = document.querySelector('#title-master-table tbody tr[data-sku="' + titleMasterEscapeSkuForSelector(sku) + '"]');
-            if (!item || !row || !row.cells || row.cells.length < 14) return;
+            if (!item || !row || !row.cells || row.cells.length < 18) return;
             var tds = row.cells;
             var t170p = titleMasterGetTitle170Text(item);
-            var c170 = tds[10];
+            var c170 = tds[9];
             if (c170) titleMasterFillTitleDotCell(c170, t170p.trim() !== '', 'No Title 170', t170p);
             var t100p = item.title100 != null ? String(item.title100) : '';
-            var c100 = tds[11];
+            var c100 = tds[10];
             if (c100) titleMasterFillTitleDotCell(c100, t100p.trim() !== '', 'No Title 100', t100p);
             var t80p = item.title80 != null ? String(item.title80) : '';
-            var c80 = tds[12];
+            var c80 = tds[11];
             if (c80) titleMasterFillTitleDotCell(c80, t80p.trim() !== '', 'No Title 80', t80p);
             var t60p = item.title60 != null ? String(item.title60) : '';
-            var c60 = tds[13];
+            var c60 = tds[12];
             if (c60) titleMasterFillTitleDotCell(c60, t60p.trim() !== '', 'No Title 60', t60p);
+            TM_TIER_GROUPS.forEach(function (tier, idx) {
+                var mpCell = tds[14 + idx];
+                if (mpCell) {
+                    mpCell.className = 'tm-mp-tier-col-td marketplaces-cell';
+                    mpCell.setAttribute('data-title-tier', tier.type);
+                    mpCell.innerHTML = tmTierColumnCellInner(sku, item, tier.type);
+                }
+            });
             row.querySelectorAll('.tm-mp-push-btn').forEach(function(btn) {
                 const mp = btn.getAttribute('data-mp');
                 if (!mp) return;
@@ -4077,7 +4216,7 @@
                     }
                     if (!title) {
                         const item = tableData.find(d => d.SKU === sku);
-                        title = item ? (item.amazon_title || item.title150 || '').toString().trim() : '';
+                        title = item ? titleMasterGetTitle170Text(item).trim() : '';
                     }
                     if (!title) {
                         alert('No title to distribute. Set Title 170 (Add Title or AI workspace) first.');
@@ -4115,34 +4254,25 @@
             .then(response => response.json())
             .then(data => {
                 if (data.success && data.results) {
-                    if (row) updateMarketplaceDotsInRow(row, data.results);
                     const r = data.results;
                     const keys150 = tmTitlePushKeysForType('150');
+                    keys150.forEach(function (mpKey) {
+                        if (r[mpKey] && r[mpKey].status === 'success') {
+                            tmRememberTitlePushStatus(sku, mpKey, 'success');
+                        } else if (r[mpKey] && r[mpKey].status === 'failed') {
+                            tmRememberTitlePushStatus(sku, mpKey, 'failed');
+                        }
+                    });
+                    patchTitleMasterGridRowTitlesFromTableData(sku);
                     const ok = keys150.filter(function (mp) { return r[mp] && r[mp].status === 'success'; }).length;
                     const fail = keys150.filter(function (mp) { return r[mp] && r[mp].status === 'failed'; }).length;
-                    alert('Distribute completed for ' + sku + ': ' + ok + ' succeeded, ' + fail + ' failed.');
+                    showToast(fail ? 'warning' : 'success', 'Distribute completed for ' + sku + ': ' + ok + ' succeeded, ' + fail + ' failed.');
                 } else {
-                    if (row) {
-                        const cell = row.querySelector('.marketplaces-150-cell');
-                        const wrap = cell ? cell.querySelector('.marketplaces-dots-wrapper') : null;
-                        if (wrap) {
-                            wrap.innerHTML = renderMarketplaceDots(sku, null);
-                            initMarketplaceTooltips(wrap);
-                        }
-                    }
-                    alert('Failed: ' + (data.message || 'Unknown error'));
+                    showToast('error', 'Failed: ' + (data.message || 'Unknown error'));
                 }
             })
             .catch(err => {
-                if (row) {
-                    const cell = row.querySelector('.marketplaces-150-cell');
-                    const wrap = cell ? cell.querySelector('.marketplaces-dots-wrapper') : null;
-                    if (wrap) {
-                        wrap.innerHTML = renderMarketplaceDots(sku, null);
-                        initMarketplaceTooltips(wrap);
-                    }
-                }
-                alert('Error: ' + err.message);
+                showToast('error', 'Error: ' + err.message);
             })
             .finally(() => {
                 btn.disabled = false;
@@ -4233,7 +4363,7 @@
 
             document.getElementById('viewSku').textContent = escapeHtml(item.SKU) || '-';
             document.getElementById('viewParent').textContent = escapeHtml(item.Parent) || '-';
-            document.getElementById('viewTitle150').textContent = (item.amazon_title != null && item.amazon_title !== '') ? item.amazon_title : (item.title150 || '-');
+            document.getElementById('viewTitle150').textContent = titleMasterGetTitle170Text(item) || '-';
             document.getElementById('viewTitle100').textContent = item.title100 || '-';
             document.getElementById('viewTitle80').textContent = item.title80 || '-';
             document.getElementById('viewTitle60').textContent = item.title60 || '-';
@@ -4267,7 +4397,7 @@
             document.getElementById('editSkuLabel').textContent = sku;
             document.getElementById('editSku').value = sku;
 
-            // Pre-fill: Title 170 from the effective current title (Amazon title, else saved Title 170),
+            // Pre-fill: Title 170 from saved product_master.title150 (fallback: synced Amazon title).
             // the rest from their saved values — so editing one never blanks the others.
             const v = (x) => (x != null ? String(x) : '');
             document.getElementById('title150').value = titleMasterGetTitle170Text(item);
@@ -4447,7 +4577,6 @@
                     const index = tableData.findIndex(item => item.SKU === sku);
                     if (index !== -1) {
                         tableData[index].title150 = title150;
-                        tableData[index].amazon_title = title150;
                         tableData[index].title100 = title100;
                         tableData[index].title80 = title80;
                         tableData[index].title60 = title60;
@@ -4510,7 +4639,7 @@
                                 'Dil %': item.pricing_cvr_dil_percent != null ? item.pricing_cvr_dil_percent : '',
                                 'CVR %': item.pricing_cvr_avg_cvr != null ? Math.round(Number(item.pricing_cvr_avg_cvr)) : '',
                                 'LQS': item.lqs != null ? item.lqs : '',
-                                'Title 170': (item.amazon_title != null && item.amazon_title !== '') ? item.amazon_title : (item.title150 || ''),
+                                'Title 170': titleMasterGetTitle170Text(item),
                                 'Title 100': item.title100 || '',
                                 'Title 80': item.title80 || '',
                                 'Title 60': item.title60 || ''

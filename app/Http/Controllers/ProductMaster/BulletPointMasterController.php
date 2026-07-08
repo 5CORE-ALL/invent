@@ -137,12 +137,21 @@ class BulletPointMasterController extends Controller
                     'using_master_bullets' => $requestText === '' && $masterText !== null,
                 ]);
 
-                $serviceResult = $this->invokeMarketplacePushWithRetries(
-                    fn () => $this->callMarketplaceService($marketplace, $sku, $text),
-                    'BulletPointMaster',
-                    $marketplace,
-                    $sku
-                );
+                $pushOperation = fn () => $this->callMarketplaceService($marketplace, $sku, $text);
+                $serviceResult = $marketplace === 'macy'
+                    ? $this->invokeMarketplacePushWithCustomBackoff(
+                        $pushOperation,
+                        'BulletPointMaster',
+                        $marketplace,
+                        $sku,
+                        [60]
+                    )
+                    : $this->invokeMarketplacePushWithRetries(
+                        $pushOperation,
+                        'BulletPointMaster',
+                        $marketplace,
+                        $sku
+                    );
 
                 $success = (bool) ($serviceResult['success'] ?? false);
                 $tableSaved = $success

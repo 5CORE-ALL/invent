@@ -1,6 +1,6 @@
 # Marketplace API Integration
 
-Last updated: 2026-07-04  
+Last updated: 2026-07-05  
 Reference implementation: `App\Services\ShopifyApiService` (rate limits, structured logging, `array{success,message}` responses).
 
 ## Architecture
@@ -108,6 +108,13 @@ Channels without Product Master API: Depop, Instagram Shop, Mercari, FB Marketpl
 ### TikTok Shop
 - `TikTokShopService` — bullets via `updateBulletPoints`; product resolved by SKU catalog scan or numeric `product_id`
 - Metrics: `tiktok_metrics` (shared by `tiktok` and `tiktok2`)
+
+### Reverb
+- Listing content via PUT `/api/listings/{id}` (`description`, `plain_text_description`, title, price, images, videos).
+- **Bullets:** `ReverbApiService::updateBulletPoints()` strips legacy bullet HTML (shared `ShopifyBulletPointsFormatter::stripLegacyBulletBlocksForMarketplace()`), prepends a `Highlighted Features` block, and verifies via PUT + GET read-back.
+- **Duplicate listings:** `getAllListingIdsBySku()` matches normalized SKU (trim, collapse whitespace, case-insensitive) across `my/listings?state=all`. Bullet push updates **every** matching listing; title/description/image/video still resolve one primary listing via `getListingIdBySku()`.
+- **Sold-out:** Brand New / Mint listings with zero inventory still accept description updates; used sold listings may be API-locked.
+- Lookup: `reverb_products.reverb_listing_id` + API `my/listings?sku=&state=all` (always use `state=all` for drafts/sold copies).
 
 ### Channels without API push
 Depop, Instagram Shop, Mercari, FB Marketplace/Shop, Tiendamia, Shopify B2B (sheet/manual), Vinted (credentials missing).

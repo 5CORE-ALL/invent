@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use App\Services\Support\DescriptionWithImagesFormatter;
 use App\Services\Support\Concerns\MiraklConnectProductUpsert;
+use App\Services\Support\Concerns\MiraklMcmBulletImport;
 use App\Services\Support\SavesMarketplaceVideoMetrics;
 use App\Services\Support\VideoMasterMarketplaceMethods;
 use App\Models\ProductStockMapping;
@@ -18,6 +19,7 @@ use App\Models\ProductStockMapping;
 class BestBuyApiService
 {
     use MiraklConnectProductUpsert;
+    use MiraklMcmBulletImport;
     use SavesMarketplaceVideoMetrics;
     use VideoMasterMarketplaceMethods;
     protected function miraklChannelCode(): string
@@ -145,53 +147,28 @@ class BestBuyApiService
 
     public function updateBulletPoints(string $sku, string $bulletPoints): array
     {
+        $sku = trim($sku);
         $bulletPoints = trim($bulletPoints);
-        if ($bulletPoints === '') {
-            return ['success' => false, 'message' => 'Bullet points are required.'];
+        if ($sku === '' || $bulletPoints === '') {
+            return ['success' => false, 'message' => 'SKU and bullet points are required.'];
         }
 
-        $lines = $this->miraklConnectBulletLines($bulletPoints);
-        $channel = $this->miraklChannelCode();
-        $product = $this->miraklConnectFetchProductBySku($sku, $channel, $channel);
-        $currentDescription = '';
-        foreach (($product['descriptions'] ?? []) as $row) {
-            if (($row['locale'] ?? '') === 'en_US' && trim((string) ($row['value'] ?? '')) !== '') {
-                $currentDescription = trim((string) $row['value']);
-                break;
-            }
-        }
+        return $this->pushBulletPointsViaMiraklMcm($sku, $bulletPoints);
+    }
 
-        $aboutItem = $this->miraklConnectAboutItemText($bulletPoints);
-        $descriptions = null;
-        if ($aboutItem !== '') {
-            $body = $currentDescription;
-            if ($body !== '' && ! str_starts_with(mb_strtolower($body), 'about item')) {
-                $body = trim($aboutItem.' '.$body);
-            } elseif ($body === '') {
-                $body = $aboutItem;
-            } else {
-                $body = $aboutItem;
-            }
-            $descriptions = [['locale' => 'en_US', 'value' => $body]];
-        }
+    protected function miraklMcmConfigKey(): string
+    {
+        return 'bestbuy';
+    }
 
-        $result = $this->miraklUpsertAttributes($sku, [
-            'bulletPoints' => implode("\n", array_slice($lines, 0, 5)),
-        ], $descriptions);
+    protected function miraklMcmMarketplaceLabel(): string
+    {
+        return 'Best Buy';
+    }
 
-        if (! ($result['success'] ?? false)) {
-            return $result;
-        }
-
-        $verify = $this->miraklConnectVerifyBulletAttribute($sku, $channel, $channel, $bulletPoints);
-
-        return [
-            'success' => $verify['success'],
-            'message' => $verify['success']
-                ? 'Best Buy Connect catalog updated. '.$verify['message']
-                : ($verify['message'] ?? 'Best Buy bullet verify failed.'),
-            'connect_verified' => $verify['connect_verified'] ?? false,
-        ];
+    protected function miraklMcmHierarchyTable(): ?string
+    {
+        return 'bestbuy_price_data';
     }
 
     /**

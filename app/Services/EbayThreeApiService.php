@@ -1477,10 +1477,22 @@ class EbayThreeApiService
             return ['success' => false, 'message' => 'SKU is required.'];
         }
 
-        $row = $this->findMetricRowBySkuOrAlternateIds('ebay_3_metrics', $identifier, ['item_id']);
-        $itemId = $row && isset($row->item_id) ? trim((string) $row->item_id) : '';
-        if ($itemId === '') {
-            return ['success' => false, 'message' => 'Product not found in ebay_3_metrics (eBay item_id required).'];
+        try {
+            $token = $this->generateBearerToken();
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+
+        $resolved = $this->resolveEbayItemIdForPush(
+            'ebay_3_metrics',
+            $identifier,
+            $token,
+            $this->endpoint,
+            $this->tradingApiHeadersBase()
+        );
+        $itemId = $resolved['item_id'] ?? null;
+        if (! $itemId) {
+            return ['success' => false, 'message' => 'No eBay3 listing found for this SKU (check ebay_3_metrics or seller inventory).'];
         }
 
         $resp = null;
@@ -1535,15 +1547,24 @@ class EbayThreeApiService
         }
 
         $row = $this->findMetricRowBySkuOrAlternateIds('ebay_3_metrics', $identifier, ['item_id']);
-        $itemId = $row->item_id ?? null;
-        if (! $itemId) {
-            return ['success' => false, 'message' => 'Product not found in ebay_3_metrics (try SKU or eBay item_id).'];
-        }
 
         try {
             $token = $this->generateBearerToken();
         } catch (\Throwable $e) {
             return ['success' => false, 'message' => $e->getMessage()];
+        }
+
+        $resolved = $this->resolveEbayItemIdForPush(
+            'ebay_3_metrics',
+            $identifier,
+            $token,
+            $this->endpoint,
+            $this->tradingApiHeadersBase()
+        );
+        $itemId = $resolved['item_id'];
+        $row = $resolved['row'] ?? $row;
+        if (! $itemId) {
+            return ['success' => false, 'message' => 'No eBay3 listing found for this SKU or item_id.'];
         }
 
         $html = '<div class="product-description">'.

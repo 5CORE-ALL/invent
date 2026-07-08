@@ -25,6 +25,88 @@ return [
         'client_id' => env('MACY_CLIENT_ID'),
         'client_secret' => env('MACY_CLIENT_SECRET'),
         'company_id' => env('MACY_COMPANY_ID'),
+        /** Macy MCM Seller API (PM11/P41/P42) — Shop API Key from macysus-prod.mirakl.net */
+        'mcm_api_key' => env('MACY_MCM_API_KEY'),
+        'mcm_base_url' => env('MACY_MCM_BASE_URL', 'https://macysus-prod.mirakl.net'),
+        'shop_id' => env('MACY_SHOP_ID'),
+        /** P41 import CSV column for seller SKU (operator format). */
+        'mcm_sku_column' => env('MACY_MCM_SKU_COLUMN', 'shopSku'),
+        'mcm_category_column' => env('MACY_MCM_CATEGORY_COLUMN', 'categoryCode'),
+        'mcm_import_poll_attempts' => (int) env('MACY_MCM_IMPORT_POLL_ATTEMPTS', 60),
+        'mcm_import_poll_delay_seconds' => (int) env('MACY_MCM_IMPORT_POLL_DELAY_SECONDS', 2),
+        /**
+         * Also push bullets to Macy MCM seller portal (P41) when MACY_MCM_API_KEY is set.
+         * Connect upsert runs first; MCM P41 updates Specifications / fnb* in macysus-prod.
+         */
+        'mcm_bullet_push' => filter_var(env('MACY_MCM_BULLET_PUSH', true), FILTER_VALIDATE_BOOL),
+        /** Also push title to Macy MCM seller portal (P41 productName) when MACY_MCM_API_KEY is set. */
+        'mcm_title_push' => filter_var(env('MACY_MCM_TITLE_PUSH', true), FILTER_VALIDATE_BOOL),
+        /** Also push description to Macy MCM seller portal (P41 productLongDescription) when MACY_MCM_API_KEY is set. */
+        'mcm_description_push' => filter_var(env('MACY_MCM_DESCRIPTION_PUSH', true), FILTER_VALIDATE_BOOL),
+        /** Also push images to Macy MCM seller portal (P41 mainImage/secondImage/thirdImage) when MACY_MCM_API_KEY is set. */
+        'mcm_image_push' => filter_var(env('MACY_MCM_IMAGE_PUSH', true), FILTER_VALIDATE_BOOL),
+        /** Request P41 to override MCM protected (manually edited) values — needed for mainImage when locked in seller portal. */
+        'mcm_allow_locked_override' => filter_var(env('MACY_MCM_ALLOW_LOCKED_OVERRIDE', false), FILTER_VALIDATE_BOOL),
+        'mcm_image_allow_locked_override' => filter_var(env('MACY_MCM_IMAGE_ALLOW_LOCKED_OVERRIDE', true), FILTER_VALIDATE_BOOL),
+        /** Null-clear Connect images[] before pushing replacements (avoids PATCH merge leaving stale main image). */
+        'connect_image_clear_before_push' => filter_var(env('MACY_CONNECT_IMAGE_CLEAR_BEFORE_PUSH', true), FILTER_VALIDATE_BOOL),
+        /** Build P41 rows with PM11 REQUIRED fields + offer/macys_price_data (not bullets-only). */
+        'mcm_p41_enriched_row' => filter_var(env('MACY_MCM_P41_ENRICHED_ROW', true), FILTER_VALIDATE_BOOL),
+        /**
+         * Optional map Connect category id/label → Macy MCM PM11 hierarchy (categoryCode).
+         * Live Macy offer/product category takes priority when available.
+         */
+        'connect_category_to_mcm_hierarchy' => [
+            'Microphone Stands' => 'Home Entertainment Accessories',
+            '1286' => 'Home Entertainment Accessories',
+            'Music Benches & Stools' => 'Home Entertainment Accessories',
+            '591' => 'Home Entertainment Accessories',
+            'Guitar Stool' => 'Home Entertainment Accessories',
+            'Guitar Stools' => 'Home Entertainment Accessories',
+        ],
+        /** Connect category → Macy taxCode-electronics (avoid Headphones code on passive accessories). */
+        'connect_category_to_tax_code' => [
+            'Microphone Stands' => '78232',
+            '1286' => '78232',
+            'Music Benches & Stools' => '78232',
+            '591' => '78232',
+            'Guitar Stool' => '78232',
+            'Guitar Stools' => '78232',
+        ],
+        /** Defaults for PM11 LIST attributes when not on offer / DB (override in .env). */
+        'mcm_p41_defaults' => [
+            'warranty' => env('MACY_MCM_DEFAULT_WARRANTY', 'Y'),
+            'legalWarnings' => env('MACY_MCM_DEFAULT_LEGAL_WARNINGS', 'None'),
+            'origin' => env('MACY_MCM_DEFAULT_ORIGIN', 'Imported'),
+            'nrfSizeCode' => env('MACY_MCM_DEFAULT_NRF_SIZE_CODE', '10009'),
+            'nrfColorCode' => env('MACY_MCM_DEFAULT_NRF_COLOR_CODE', '001'),
+            'taxCode-electronics' => env('MACY_MCM_DEFAULT_TAX_CODE', '78232'),
+            'fnb20-117' => env('MACY_MCM_DEFAULT_FNB20_117', 'Home Theater Accessories'),
+            'Shipping Dimensions-Length' => env('MACY_MCM_DEFAULT_SHIP_LENGTH', '12'),
+            'Shipping Dimensions-Width' => env('MACY_MCM_DEFAULT_SHIP_WIDTH', '8'),
+            'Shipping Dimensions-Height' => env('MACY_MCM_DEFAULT_SHIP_HEIGHT', '6'),
+            'Shipping Weight' => env('MACY_MCM_DEFAULT_SHIP_WEIGHT', '20'),
+        ],
+        /** Hierarchy-specific PM11 fallbacks when operator master API returns sparse attributes. */
+        'mcm_p41_hierarchy_defaults' => [
+            'Computer Accessories' => [
+                'taxCode-electronics' => '78232',
+                'fnb20-90' => 'Outlet Adapters',
+            ],
+            'Home Entertainment Accessories' => [
+                'taxCode-electronics' => '78232',
+                'fnb20-117' => 'Home Theater Accessories',
+            ],
+        ],
+        /** Macy MCM Features and Benefits per-bullet field limit (Specifications tab). */
+        'features_benefits_max_length' => (int) env('MACY_FEATURES_BENEFITS_MAX_LENGTH', 254),
+        'features_benefits_verify_attempts' => (int) env('MACY_FEATURES_BENEFITS_VERIFY_ATTEMPTS', 4),
+        'features_benefits_verify_delay_seconds' => (int) env('MACY_FEATURES_BENEFITS_VERIFY_DELAY_SECONDS', 2),
+        /** Mirakl Connect upsertProducts: max once per minute (Catalog API). 0 = disable wait. */
+        'upsert_min_interval_seconds' => (int) env('MACY_UPSERT_MIN_INTERVAL_SECONDS', 60),
+        /** Optional: null-clear F&B attrs before re-upsert to force MCM sync (2 API calls). */
+        'features_benefits_null_clear_on_sync' => filter_var(env('MACY_FB_NULL_CLEAR_ON_SYNC', false), FILTER_VALIDATE_BOOL),
+        'features_benefits_null_clear_delay_seconds' => (int) env('MACY_FB_NULL_CLEAR_DELAY_SECONDS', 3),
     ],
 
     'postmark' => [
@@ -142,12 +224,6 @@ return [
         'redirect' => env('GOOGLE_REDIRECT_URI'),
     ],
 
-    'macy' => [
-        'client_id' => env('MACY_CLIENT_ID'),
-        'client_secret' => env('MACY_CLIENT_SECRET'),
-        'company_id' => env('MACY_COMPANY_ID'),
-    ],
-
     'google_ads' => [
         'developer_token' => env('GOOGLE_ADS_DEVELOPER_TOKEN'),
         'client_id' => env('GOOGLE_ADS_CLIENT_ID'),
@@ -206,9 +282,34 @@ return [
         'token' => env('TOPDAWG_API_TOKEN'),
     ],
 
+    'bestbuy' => [
+        /** Best Buy MCM Seller API (PM11/P41/P42) — Shop API Key from bestbuyus-prod.mirakl.net */
+        'mcm_api_key' => env('BESTBUY_MCM_API_KEY'),
+        'mcm_base_url' => env('BESTBUY_MCM_BASE_URL', 'https://bestbuyus-prod.mirakl.net'),
+        'shop_id' => env('BESTBUY_SHOP_ID'),
+        'mcm_sku_column' => env('BESTBUY_MCM_SKU_COLUMN', 'shop-sku'),
+        'mcm_import_poll_attempts' => (int) env('BESTBUY_MCM_IMPORT_POLL_ATTEMPTS', 60),
+        'mcm_import_poll_delay_seconds' => (int) env('BESTBUY_MCM_IMPORT_POLL_DELAY_SECONDS', 2),
+        'mcm_bullet_fallback_codes' => ['bulletPoints'],
+        'features_benefits_max_length' => (int) env('BESTBUY_BULLET_MAX_LENGTH', 500),
+        'features_benefits_verify_attempts' => (int) env('BESTBUY_BULLET_VERIFY_ATTEMPTS', 4),
+        'features_benefits_verify_delay_seconds' => (int) env('BESTBUY_BULLET_VERIFY_DELAY_SECONDS', 2),
+    ],
+
     'purchasingpower' => [
         'api_key' => env('PURCHASING_POWER_API_KEY'),
         'api_base' => env('PURCHASING_POWER_API_BASE', 'https://api.purchasingpower.com'),
+        /** Purchasing Power MCM Seller API (PM11/P41/P42) */
+        'mcm_api_key' => env('PURCHASING_POWER_MCM_API_KEY', env('PURCHASING_POWER_API_KEY')),
+        'mcm_base_url' => env('PURCHASING_POWER_MCM_BASE_URL', 'https://purchasingpower-prod.mirakl.net'),
+        'shop_id' => env('PURCHASING_POWER_SHOP_ID'),
+        'mcm_sku_column' => env('PURCHASING_POWER_MCM_SKU_COLUMN', 'shop-sku'),
+        'mcm_import_poll_attempts' => (int) env('PURCHASING_POWER_MCM_IMPORT_POLL_ATTEMPTS', 60),
+        'mcm_import_poll_delay_seconds' => (int) env('PURCHASING_POWER_MCM_IMPORT_POLL_DELAY_SECONDS', 2),
+        'mcm_bullet_fallback_codes' => ['bulletPoints'],
+        'features_benefits_max_length' => (int) env('PURCHASING_POWER_BULLET_MAX_LENGTH', 500),
+        'features_benefits_verify_attempts' => (int) env('PURCHASING_POWER_BULLET_VERIFY_ATTEMPTS', 4),
+        'features_benefits_verify_delay_seconds' => (int) env('PURCHASING_POWER_BULLET_VERIFY_DELAY_SECONDS', 2),
     ],
 
     /*

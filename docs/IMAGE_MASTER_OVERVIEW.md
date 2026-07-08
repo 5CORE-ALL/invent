@@ -97,6 +97,7 @@ php artisan queue:work --queue=shopify-image-pull --sleep=3 --tries=1 --timeout=
 
 - `ReverbApiService::replaceReverbListingImages` rebuilds the gallery in the correct **display order** (Reverb has no position field; oldest-uploaded photo = main). Reverb won't allow removing all photos on a live listing, so it uploads the new main first, deletes the anchor, then uploads the rest cumulatively, and verifies the final **display** count (`reverbDisplayPhotoCount` / `waitForReverbDisplayCount`). If the gallery already matches the last push it skips the rebuild (fast path).
 - Note: Reverb's `/images/` endpoint is ID-sorted, **not** display order — use `listing.photos[]` for true order.
+- Listing lookup uses `getListingIdBySku()` (one primary listing). If a SKU has duplicate Reverb listings, image/title/description pushes target the primary ID only; **bullet push** updates all SKU matches (see `docs/BULLET_POINTS_OVERVIEW.md`).
 
 ## Delete-on-Save (removed images)
 

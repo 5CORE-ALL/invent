@@ -108,6 +108,76 @@ final class ShopifyBulletPointsFormatter
         return trim($html);
     }
 
+    /**
+     * Strip legacy bullet blocks from external marketplace HTML (Reverb, etc.) using the same
+     * detection rules as {@see replaceAboutItemBlock()} / {@see removeAboutItemBlock()}.
+     * Does not insert a replacement block — callers prepend their own marketplace format.
+     */
+    public static function stripLegacyBulletBlocksForMarketplace(string $bodyHtml): string
+    {
+        $html = self::removeAboutItemBlock($bodyHtml);
+        if ($html === '') {
+            return '';
+        }
+
+        $patterns = [
+            // Top symbol/number bullet paragraphs without a heading.
+            '/^\s*(?:<p\b[^>]*>\s*(?:<[^>]+>\s*)*(?:•|\*|-|\d+[.)])[\s\S]*?<\/p>\s*){2,8}/is',
+            // Top simple bullet list before long-form description.
+            '/^\s*<(?:ul|ol)\b[^>]*>[\s\S]*?<\/(?:ul|ol)>\s*/is',
+            // Top About Item + bold-label bullets where the separator is outside <strong>.
+            '/^\s*(?:<p\b[^>]*>\s*(?:<[^>]+>\s*)*About\s+Item:?\s*(?:<\/[^>]+>\s*)*<\/p>\s*)?(?:<(?:p|h[1-6])\b[^>]*>\s*(?:<[^>]+>\s*)*<strong\b[^>]*>[^<]{2,120}<\/strong>\s*(?:-|:|–|—)\s*[\s\S]*?<\/(?:p|h[1-6])>\s*){1,8}/is',
+            // Top bold-label bullet paragraphs/headings without a heading.
+            '/^\s*(?:<(?:p|h[1-6])\b[^>]*>\s*(?:<[^>]+>\s*)*<strong\b[^>]*>[^<]{2,120}(?:-|:|–|—)\s*<\/strong>[\s\S]*?<\/(?:p|h[1-6])>\s*){1,8}/is',
+            // Top bold-label where dash is inside <strong>: <p><strong>Label -</strong> text</p>
+            '/^\s*(?:<p\b[^>]*>\s*<strong\b[^>]*>[^<]{2,120}(?:-|:|–|—)\s*<\/strong>[\s\S]*?<\/p>\s*){1,8}/is',
+            // Single paragraph containing one or more 【 bracket bullets (common Reverb import format).
+            '/^\s*<p\b[^>]*>(?=[\s\S]*?【)[\s\S]*?<\/p>\s*/is',
+            // Amazon A+ style block with About Item + bracket bullets.
+            '/<div\b[^>]*class=(["\'])(?=[^"\']*\baplus-3p-center-content\b)[^"\']*\1[^>]*>(?=[\s\S]*?About\s+Item:)(?=[\s\S]*?【)[\s\S]*?<\/div>\s*/is',
+            // About Item label paragraph followed by bracket bullet paragraphs.
+            '/<p\b[^>]*>\s*(?:<[^>]+>\s*)*About\s+Item:?\s*(?:<\/[^>]+>\s*)*<\/p>\s*(?:<(?:p|h[1-6])\b[^>]*>\s*<strong\b[^>]*>\s*【.*?<\/(?:p|h[1-6])>\s*)+/is',
+            // Highlighted Features heading + bracket bullet paragraphs/headings.
+            '/<h[1-6]\b[^>]*>(?=[\s\S]*?Highlighted\s+Features)[\s\S]*?<\/h[1-6]>\s*(?:<(?:p|h[1-6])\b[^>]*>(?:(?!<\/(?:p|h[1-6])>)[\s\S])*?【(?:(?!<\/(?:p|h[1-6])>)[\s\S])*?<\/(?:p|h[1-6])>\s*){1,8}/is',
+            // Other legacy heading names followed by obvious bullet paragraphs/lists.
+            '/<h[1-6]\b[^>]*>(?=[\s\S]*?(?:Key\s+Benefits|Product\s+Highlights|Main\s+Features|Bullet\s+Points))[\s\S]*?<\/h[1-6]>\s*(?:(?:<(?:p|h[1-6])\b[^>]*>(?:(?!<\/(?:p|h[1-6])>)[\s\S])*?(?:【|•|\*|-|\d+[.)])(?:(?!<\/(?:p|h[1-6])>)[\s\S])*?<\/(?:p|h[1-6])>\s*){1,8}|<(?:ul|ol)\b[^>]*>[\s\S]*?<\/(?:ul|ol)>)/is',
+            // Highlighted Features paragraph + following <br> bullet paragraphs.
+            '/<p\b[^>]*>\s*(?:<[^>]+>\s*)*Highlighted\s+Features\s*(?:<\/[^>]+>\s*)*<\/p>\s*(?:<p\b[^>]*>(?:(?!<\/p>)[\s\S])*?<br\s*\/?>\s*<\/p>\s*){1,6}/is',
+            // Highlighted Features / About Item paragraph + bold-label bullet paragraphs.
+            '/<p\b[^>]*>\s*(?:<strong\b[^>]*>\s*)?(?:Highlighted\s+Features|About\s+Item):?\s*(?:<\/strong>)?\s*(?:<b>\s*<\/b>)?\s*<\/p>\s*(?:<p\b[^>]*>\s*<strong\b[^>]*>.*?<\/p>\s*){1,5}/is',
+            // Heading-based Highlighted Features / About Item sections.
+            '/<h[1-6]\b[^>]*>\s*(?:Highlighted\s+Features|About\s+Item):?\s*<\/h[1-6]>\s*(?:<p\b[^>]*>.*?<\/p>\s*){1,5}/is',
+            // Leading bracket-bullet paragraphs/headings at document start.
+            '/^\s*(?:<(?:p|h[1-6])\b[^>]*>(?:(?!<\/(?:p|h[1-6])>)[\s\S])*?【(?:(?!<\/(?:p|h[1-6])>)[\s\S])*?<\/(?:p|h[1-6])>\s*){1,8}/is',
+            // Google-docs style lists with bracket bullets at top.
+            '/^\s*<(?:ol|ul)\b[^>]*>(?=[\s\S]*?【)[\s\S]*?<\/(?:ol|ul)>\s*/is',
+            // Empty list shells left behind after cleanup.
+            '/<(?:ol|ul)\b[^>]*>\s*<\/(?:ol|ul)>\s*/is',
+            // Plain-text or whitespace-only "About Item" label before HTML bullets.
+            '/^\s*(?:&nbsp;|\s|About\s+Item)+/iu',
+            // Standalone About Item label paragraph.
+            '/^\s*<p\b[^>]*>\s*(?:<[^>]+>\s*)*About\s+Item:?\s*(?:<\/[^>]+>\s*)*<\/p>\s*/is',
+        ];
+
+        $passes = 0;
+        while ($passes < 10) {
+            $passes++;
+            $before = $html;
+            foreach ($patterns as $pattern) {
+                $updated = preg_replace($pattern, '', $html, 1, $count);
+                if ($count > 0 && is_string($updated)) {
+                    $html = trim($updated);
+                    break;
+                }
+            }
+            if ($html === $before) {
+                break;
+            }
+        }
+
+        return trim($html);
+    }
+
     public static function formatAboutItemBlock(string $bulletPoints): string
     {
         $aboutHtml = DescriptionWithImagesFormatter::formatAboutItemHtml($bulletPoints);

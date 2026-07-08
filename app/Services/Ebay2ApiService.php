@@ -342,10 +342,22 @@ class Ebay2ApiService
             return ['success' => false, 'message' => 'SKU is required.'];
         }
 
-        $row = $this->findMetricRowBySkuOrAlternateIds('ebay_2_metrics', $identifier, ['item_id']);
-        $itemId = $row && isset($row->item_id) ? trim((string) $row->item_id) : '';
-        if ($itemId === '') {
-            return ['success' => false, 'message' => 'Product not found in ebay_2_metrics (eBay item_id required).'];
+        try {
+            $token = $this->generateBearerToken();
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+
+        $resolved = $this->resolveEbayItemIdForPush(
+            'ebay_2_metrics',
+            $identifier,
+            $token,
+            $this->endpoint,
+            $this->tradingApiHeadersBase()
+        );
+        $itemId = $resolved['item_id'] ?? null;
+        if (! $itemId) {
+            return ['success' => false, 'message' => 'No eBay2 listing found for this SKU (check ebay_2_metrics or seller inventory).'];
         }
 
         $resp = null;

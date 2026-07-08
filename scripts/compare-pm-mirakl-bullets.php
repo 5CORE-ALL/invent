@@ -54,9 +54,24 @@ foreach ($channels as $label => $cfg) {
 
     $connectLines = [];
     foreach (($found['attributes'] ?? []) as $attr) {
-        if (is_array($attr) && strtolower((string) ($attr['id'] ?? '')) === 'bulletpoints') {
+        if (! is_array($attr)) {
+            continue;
+        }
+        $id = strtolower((string) ($attr['id'] ?? ''));
+        if ($id === 'bulletpoints') {
             $connectLines = array_values(array_filter(array_map('trim', preg_split('/\r\n|\r|\n/', (string) ($attr['value'] ?? '')) ?: [])));
-            break;
+        }
+    }
+    if ($connectLines === [] && $label === 'macy') {
+        for ($i = 1; $i <= 5; $i++) {
+            foreach (($found['attributes'] ?? []) as $attr) {
+                if (is_array($attr) && strtolower((string) ($attr['id'] ?? '')) === "features_and_benefits_bullet_{$i}") {
+                    $val = trim((string) ($attr['value'] ?? ''));
+                    if ($val !== '') {
+                        $connectLines[] = $val;
+                    }
+                }
+            }
         }
     }
     $connectText = implode("\n", $connectLines);

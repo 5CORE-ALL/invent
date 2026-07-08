@@ -5,7 +5,6 @@ namespace App\Services;
 use App\Models\TopDawgProduct;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Schema;
 use App\Services\Support\SavesMarketplaceVideoMetrics;
 use App\Services\Support\VideoMasterMarketplaceMethods;
 
@@ -278,7 +277,8 @@ class TopDawgApiService
     }
 
     /**
-     * TopDawg product_code (often tdid) — may differ from internal PM SKU.
+     * TopDawg `POST /SupplierProduct/update` keys on seller SKU as `product_code`
+     * (e.g. "GSTOOL BLK"), not tdid — tdid returns 404 on update.
      */
     protected function resolveProductCode(string $sku): ?string
     {
@@ -287,32 +287,15 @@ class TopDawgApiService
             return null;
         }
 
-        if (Schema::hasTable('topdawg_metrics')) {
-            $fromMetrics = \Illuminate\Support\Facades\DB::table('topdawg_metrics')
-                ->where(function ($q) use ($sku) {
-                    $q->where('sku', $sku)
-                        ->orWhere('sku', strtoupper($sku))
-                        ->orWhere('sku', strtolower($sku));
-                })
-                ->whereNotNull('product_id')
-                ->where('product_id', '!=', '')
-                ->value('product_id');
-            if ($fromMetrics !== null && trim((string) $fromMetrics) !== '') {
-                return trim((string) $fromMetrics);
-            }
-        }
-
         $product = TopDawgProduct::query()
             ->where('sku', $sku)
             ->orWhere('sku', strtoupper($sku))
             ->orWhere('sku', strtolower($sku))
             ->first();
         if ($product) {
-            foreach (['tdid', 'topdawg_listing_id'] as $column) {
-                $code = trim((string) ($product->{$column} ?? ''));
-                if ($code !== '') {
-                    return $code;
-                }
+            $canonical = trim((string) ($product->sku ?? ''));
+            if ($canonical !== '') {
+                return $canonical;
             }
         }
 
@@ -342,9 +325,7 @@ class TopDawgApiService
         $url = $this->baseUrl.'/SupplierProduct/update';
         $attempts = [
             array_merge(['product_code' => $productCode], $fields),
-            array_merge(['product_code' => $sku], $fields),
             array_merge(['sku' => $productCode], $fields),
-            array_merge(['sku' => $sku], $fields),
         ];
 
         $lastMessage = 'TopDawg product update failed.';
