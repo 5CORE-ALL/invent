@@ -7157,11 +7157,57 @@ PROMPT;
                     }
                 }
 
+                // Snapshot of the OLD Values (before save) for change tracking.
+                $oldValues = is_array($product->getOriginal('Values'))
+                    ? $product->getOriginal('Values')
+                    : (is_string($product->getOriginal('Values')) ? json_decode($product->getOriginal('Values'), true) : []);
+                if (! is_array($oldValues)) {
+                    $oldValues = [];
+                }
+
                 // Save the updated Values
                 $product->Values = $values;
                 $product->save();
                 $updated++;
                 $imported++;
+
+                // Record every changed value so sheet uploads are auditable in the
+                // History modal (who uploaded, what changed, old → new value).
+                try {
+                    $historyUser = (Auth::user()?->name ?? 'N/A').' (sheet upload)';
+                    $historyNow = Carbon::now();
+                    $trackedImportFields = [
+                        'wt_act', 'wt_act_kg', 'wt_decl',
+                        'l', 'w', 'h', 'l_cm', 'w_cm', 'h_cm',
+                        'cbm', 'cbm_e', 'ctn_gwt',
+                        'ctn_l', 'ctn_w', 'ctn_h', 'ctn_cbm', 'ctn_qty', 'ctn_cbm_each',
+                        'ctn_weight_kg', 'ctn_weight_lb', 'ctn_instructions',
+                        'ship', 'ship_bb', 'tt_ship', 'temu_ship', 'ebay2_ship', 'shein_ship',
+                        'gofo', 'temu_gofo', 'fedex', 'ups', 'usps', 'uni',
+                    ];
+                    $importHistoryRows = [];
+                    foreach ($trackedImportFields as $historyField) {
+                        $oldFieldValue = $oldValues[$historyField] ?? null;
+                        $newFieldValue = $values[$historyField] ?? null;
+                        if ($this->shippingHistoryValuesEqual($oldFieldValue, $newFieldValue)) {
+                            continue;
+                        }
+                        $importHistoryRows[] = [
+                            'product_id' => $product->id,
+                            'sku' => $product->sku,
+                            'field' => $historyField,
+                            'old_value' => $this->shippingHistoryStringify($oldFieldValue),
+                            'new_value' => $this->shippingHistoryStringify($newFieldValue),
+                            'updated_by' => $historyUser,
+                            'updated_at' => $historyNow,
+                        ];
+                    }
+                    if (! empty($importHistoryRows)) {
+                        ShippingMasterHistory::insert($importHistoryRows);
+                    }
+                } catch (\Throwable $historyError) {
+                    Log::warning('Failed to record dim-wt import history: '.$historyError->getMessage());
+                }
             }
 
             $message = "Successfully imported {$imported} records.";

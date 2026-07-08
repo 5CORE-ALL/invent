@@ -4468,6 +4468,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/product_master/duplicate', [ProductMasterController::class, 'duplicateSku'])->name('product_master.duplicate');
     Route::post('/product_master/update-field', [ProductMasterController::class, 'updateField'])->name('product_master.update-field');
     Route::post('/product_master/update-verified', [ProductMasterController::class, 'updateVerified'])->name('product_master.update-verified');
+    Route::post('/product_master/update-verified-bulk', [ProductMasterController::class, 'updateVerifiedBulk'])->name('product_master.update-verified-bulk');
     Route::post('/product-master/import', [ProductMasterController::class, 'import'])->name('product_master.import');
     Route::post('/product-master/bulk-update-all', [ProductMasterController::class, 'bulkUpdateAll'])->name('product_master.bulk_update_all');
     Route::post('/product-master/restore-bulk-update', [ProductMasterController::class, 'restoreBulkUpdate'])->name('product_master.restore_bulk_update');

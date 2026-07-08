@@ -442,6 +442,73 @@
                 min-width: 0;
             }
         }
+
+        /* ── Dim & Wt Master change-history modal (compact) ── */
+        .shipping-history-table { font-size: 12px; }
+        .shipping-history-table th,
+        .shipping-history-table td {
+            padding: 4px 8px !important;
+            vertical-align: middle;
+        }
+        .shipping-history-table .shm-field-cell {
+            font-weight: 600;
+            color: #0a3d91;
+            white-space: nowrap;
+        }
+        .shipping-history-table .shm-field-cell .shm-field-icon {
+            color: #6c8fc4;
+            margin-right: 4px;
+        }
+        .shipping-history-table tr.shm-field-first td {
+            border-top: 1px solid #c7dbff;
+        }
+        .shipping-history-table tr.shm-field-cont .shm-field-cell {
+            color: #b9c4d6;
+            font-weight: 500;
+            font-size: 11px;
+        }
+        .shipping-history-table .shm-when {
+            white-space: nowrap;
+            color: #6c757d;
+            font-size: 11px;
+        }
+        .shipping-history-table .shm-who .badge {
+            font-size: 10px;
+            font-weight: 600;
+            padding: 3px 7px;
+        }
+        .shipping-history-table .shm-old {
+            color: #6c757d;
+            text-decoration: line-through;
+            text-decoration-color: rgba(220, 53, 69, 0.55);
+        }
+        .shipping-history-table .shm-arrow {
+            color: #adb5bd;
+            margin: 0 6px;
+        }
+        .shipping-history-table .shm-new {
+            background: #0d6efd;
+            color: #ffffff;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 4px;
+            display: inline-block;
+        }
+        .shipping-history-table .shm-empty {
+            font-style: italic;
+            opacity: 0.85;
+        }
+        .shipping-history-table .shm-latest-dot {
+            display: inline-block;
+            width: 6px; height: 6px;
+            border-radius: 50%;
+            background: #28a745;
+            margin-right: 4px;
+            vertical-align: middle;
+        }
+        .shipping-history-table tbody tr:hover {
+            background: #f8fbff;
+        }
     </style>
 @endsection
 
@@ -492,6 +559,23 @@
                                 <button type="button" class="btn btn-warning" id="bulkEditBtn" disabled title="Edit selected SKUs in bulk">
                                     <i class="fas fa-edit me-1"></i> Bulk Edit
                                 </button>
+                                <div class="btn-group" role="group">
+                                    <button type="button" class="btn btn-outline-success dropdown-toggle" id="bulkVerifiedBtn" data-bs-toggle="dropdown" aria-expanded="false" disabled title="Set verified status for selected SKUs in bulk">
+                                        <i class="fas fa-check-circle me-1"></i> Bulk Verified
+                                    </button>
+                                    <ul class="dropdown-menu dropdown-menu-end">
+                                        <li>
+                                            <button type="button" class="dropdown-item" id="bulkVerifiedYes">
+                                                <span style="color:#28a745;">🟢</span> Mark as Verified
+                                            </button>
+                                        </li>
+                                        <li>
+                                            <button type="button" class="dropdown-item" id="bulkVerifiedNo">
+                                                <span style="color:#dc3545;">🔴</span> Mark as Not Verified
+                                            </button>
+                                        </li>
+                                    </ul>
+                                </div>
                                 <button type="button" class="btn btn-info" data-bs-toggle="modal" data-bs-target="#importExcelModal">
                                     <i class="fas fa-file-upload me-1"></i> Import
                                 </button>
@@ -779,6 +863,46 @@
         </div>
     </div>
 
+    <!-- Dim & Wt Master History Modal -->
+    <div class="modal fade" id="dimWtHistoryModal" tabindex="-1" aria-labelledby="dimWtHistoryModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-xl">
+            <div class="modal-content">
+                <div class="modal-header" style="background: linear-gradient(135deg, #17a2b8 0%, #138496 100%); color: white;">
+                    <h5 class="modal-title" id="dimWtHistoryModalLabel">
+                        <i class="bi bi-clock-history me-2"></i>Change History — <span id="dimWtHistorySku" class="fw-bold"></span>
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="dimWtHistoryLoading" class="text-center py-4" style="display:none;">
+                        <div class="spinner-border text-info" role="status"></div>
+                        <p class="mt-2 text-muted small mb-0">Loading history…</p>
+                    </div>
+                    <div id="dimWtHistoryEmpty" class="alert alert-info mb-0" style="display:none;">
+                        <i class="fas fa-info-circle me-2"></i> No edits recorded for this SKU yet. Changes made from now on (manual edits and sheet uploads) will be tracked here.
+                    </div>
+                    <div id="dimWtHistoryError" class="alert alert-danger mb-0" style="display:none;"></div>
+                    <div class="table-responsive" id="dimWtHistoryTableWrap" style="display:none; max-height: 65vh;">
+                        <table class="table table-sm table-hover mb-0 align-middle shipping-history-table">
+                            <thead class="table-light" style="position: sticky; top: 0; z-index: 1;">
+                                <tr>
+                                    <th style="white-space:nowrap; width: 24%;">Field</th>
+                                    <th style="white-space:nowrap; width: 16%;">When</th>
+                                    <th style="white-space:nowrap; width: 16%;">Who</th>
+                                    <th>Change (old → new)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="dimWtHistoryTbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- SKU Export Modal -->
     <div class="modal fade" id="skuExportModal" tabindex="-1" aria-labelledby="skuExportModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
@@ -912,6 +1036,13 @@
 
             // Get CSRF token from meta tag
             const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+
+            // Change History is restricted to Ritu mam (inventory mail) and President sir only.
+            const canViewDimWtHistory = @json(in_array(
+                strtolower(trim((string) (auth()->user()->email ?? ''))),
+                ['inventory@5core.com', 'ritu.kaur013@gmail.com', 'president@5core.com'],
+                true
+            ));
 
             // Show loader immediately
             document.getElementById('rainbow-loader').style.display = 'block';
@@ -1226,11 +1357,17 @@
                     // Action column
                     const actionCell = document.createElement('td');
                     actionCell.className = 'text-center';
+                    const historyBtnHtml = canViewDimWtHistory
+                        ? `<button class="btn btn-sm btn-outline-info history-btn" data-id="${item.id != null ? escapeHtml(item.id) : ''}" data-sku="${escapeHtml(item.SKU)}" title="History — see who changed what">
+                                <i class="bi bi-clock-history"></i>
+                            </button>`
+                        : '';
                     actionCell.innerHTML = `
                         <div class="d-inline-flex gap-1">
                             <button class="btn btn-sm btn-outline-warning edit-btn" data-sku="${escapeHtml(item.SKU)}" title="Edit">
                                 <i class="bi bi-pencil-square"></i>
                             </button>
+                            ${historyBtnHtml}
                             <button class="btn btn-sm btn-outline-danger delete-btn" data-id="${escapeHtml(item.id)}" data-sku="${escapeHtml(item.SKU)}" title="Delete">
                                 <i class="bi bi-archive"></i>
                             </button>
@@ -1248,6 +1385,16 @@
                             editDimWt(product);
                         }
                     });
+
+                    // Add event listener for history button
+                    const historyBtn = actionCell.querySelector('.history-btn');
+                    if (historyBtn) {
+                        historyBtn.addEventListener('click', function() {
+                            const id = this.getAttribute('data-id');
+                            const sku = this.getAttribute('data-sku');
+                            openDimWtHistoryModal(id, sku);
+                        });
+                    }
 
                     tbody.appendChild(row);
                 });
@@ -2154,6 +2301,7 @@
                     pushBtn.disabled = true;
                     pushBtn.innerHTML = '<i class="fas fa-cloud-upload-alt me-1"></i> Push Data';
                 }
+                const bulkVerifiedBtn = document.getElementById('bulkVerifiedBtn');
                 if (nonParentCount > 0) {
                     if (bulkEditBtn) {
                         bulkEditBtn.disabled = false;
@@ -2161,10 +2309,20 @@
                             ? `<i class="fas fa-edit me-1"></i> Bulk Edit (${nonParentCount})`
                             : '<i class="fas fa-edit me-1"></i> Bulk Edit';
                     }
+                    if (bulkVerifiedBtn) {
+                        bulkVerifiedBtn.disabled = false;
+                        bulkVerifiedBtn.innerHTML = nonParentCount > 1
+                            ? `<i class="fas fa-check-circle me-1"></i> Bulk Verified (${nonParentCount})`
+                            : '<i class="fas fa-check-circle me-1"></i> Bulk Verified';
+                    }
                 } else {
                     if (bulkEditBtn) {
                         bulkEditBtn.disabled = true;
                         bulkEditBtn.innerHTML = '<i class="fas fa-edit me-1"></i> Bulk Edit';
+                    }
+                    if (bulkVerifiedBtn) {
+                        bulkVerifiedBtn.disabled = true;
+                        bulkVerifiedBtn.innerHTML = '<i class="fas fa-check-circle me-1"></i> Bulk Verified';
                     }
                 }
             }
@@ -2189,6 +2347,86 @@
                     bulkEditList = selected;
                     editDimWt(selected[0]);
                 });
+            }
+
+            // Bulk Verified: set verified status for all selected (non-parent) SKUs at once
+            function setupBulkVerified() {
+                const yesBtn = document.getElementById('bulkVerifiedYes');
+                const noBtn = document.getElementById('bulkVerifiedNo');
+
+                async function applyBulkVerified(verifiedValue) {
+                    const checkedBoxes = document.querySelectorAll('.row-checkbox:checked');
+                    const skus = [];
+                    checkedBoxes.forEach(checkbox => {
+                        const sku = checkbox.getAttribute('data-sku');
+                        if (!sku || String(sku).toUpperCase().includes('PARENT')) return;
+                        skus.push(sku);
+                    });
+
+                    if (skus.length === 0) {
+                        showToast('warning', 'Please select at least one non-parent SKU to update');
+                        return;
+                    }
+
+                    const label = verifiedValue === 1 ? 'Verified 🟢' : 'Not Verified 🔴';
+                    if (!confirm(`Mark ${skus.length} selected SKU(s) as ${label}?`)) {
+                        return;
+                    }
+
+                    const bulkVerifiedBtn = document.getElementById('bulkVerifiedBtn');
+                    const originalHtml = bulkVerifiedBtn ? bulkVerifiedBtn.innerHTML : '';
+                    if (bulkVerifiedBtn) {
+                        bulkVerifiedBtn.disabled = true;
+                        bulkVerifiedBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Updating…';
+                    }
+
+                    try {
+                        const response = await makeRequest('/product_master/update-verified-bulk', 'POST', {
+                            skus: skus,
+                            verified_data: verifiedValue
+                        });
+                        const data = await response.json();
+
+                        if (!response.ok || !data.success) {
+                            throw new Error(data.message || 'Failed to update verified status');
+                        }
+
+                        // Update in-memory data and the on-screen dropdowns for affected SKUs
+                        const skuSet = new Set(skus);
+                        [tableData, filteredData].forEach(list => {
+                            if (!Array.isArray(list)) return;
+                            list.forEach(product => {
+                                if (skuSet.has(product.SKU)) {
+                                    product.verified_data = verifiedValue;
+                                    if (!product.Values) product.Values = {};
+                                    product.Values.verified_data = verifiedValue;
+                                }
+                            });
+                        });
+                        document.querySelectorAll('.verified-data-dropdown').forEach(dd => {
+                            if (skuSet.has(dd.getAttribute('data-sku'))) {
+                                dd.value = verifiedValue === 1 ? '1' : '0';
+                                dd.classList.toggle('verified', verifiedValue === 1);
+                                dd.classList.toggle('not-verified', verifiedValue !== 1);
+                                dd.title = verifiedValue === 1 ? 'Verified' : 'Not verified';
+                            }
+                        });
+
+                        showToast('success', data.message || `Updated ${skus.length} SKU(s).`);
+                    } catch (error) {
+                        console.error('Bulk verified error:', error);
+                        showToast('danger', error.message || 'Failed to update verified status');
+                    } finally {
+                        if (bulkVerifiedBtn) {
+                            bulkVerifiedBtn.innerHTML = originalHtml || '<i class="fas fa-check-circle me-1"></i> Bulk Verified';
+                            bulkVerifiedBtn.disabled = false;
+                        }
+                        updatePushButtonState();
+                    }
+                }
+
+                if (yesBtn) yesBtn.addEventListener('click', () => applyBulkVerified(1));
+                if (noBtn) noBtn.addEventListener('click', () => applyBulkVerified(0));
             }
 
             // Push Data functionality
@@ -2602,6 +2840,120 @@
                 }
             }
 
+            /*
+             * ============================================================================
+             * Dim & Wt Master change history
+             * ----------------------------------------------------------------------------
+             * GET /shipping-master/history/{id} returns the per-field edit log written on
+             * every manual update AND every sheet upload (import). The History button in
+             * the Action column opens openDimWtHistoryModal().
+             * ============================================================================
+             */
+            function dimWtHistoryFmtValue(v) {
+                if (v === null || v === undefined || v === '') {
+                    return '<span class="shm-empty">empty</span>';
+                }
+                return escapeHtml(String(v));
+            }
+
+            async function openDimWtHistoryModal(productId, sku) {
+                if (!canViewDimWtHistory) return;
+                const modalEl = document.getElementById('dimWtHistoryModal');
+                if (!modalEl) return;
+                const skuLabel = document.getElementById('dimWtHistorySku');
+                const loadingEl = document.getElementById('dimWtHistoryLoading');
+                const emptyEl = document.getElementById('dimWtHistoryEmpty');
+                const errorEl = document.getElementById('dimWtHistoryError');
+                const tableWrap = document.getElementById('dimWtHistoryTableWrap');
+                const tbody = document.getElementById('dimWtHistoryTbody');
+
+                if (skuLabel) skuLabel.textContent = sku || '';
+                if (loadingEl) loadingEl.style.display = 'block';
+                if (emptyEl) emptyEl.style.display = 'none';
+                if (errorEl) { errorEl.style.display = 'none'; errorEl.textContent = ''; }
+                if (tableWrap) tableWrap.style.display = 'none';
+                if (tbody) tbody.innerHTML = '';
+
+                const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+                modal.show();
+
+                if (productId == null || productId === '') {
+                    if (loadingEl) loadingEl.style.display = 'none';
+                    if (errorEl) {
+                        errorEl.textContent = 'This row does not have an internal id, so history cannot be loaded.';
+                        errorEl.style.display = 'block';
+                    }
+                    return;
+                }
+
+                try {
+                    const response = await fetch(`/shipping-master/history/${encodeURIComponent(productId)}`, {
+                        method: 'GET',
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken,
+                            'X-Requested-With': 'XMLHttpRequest'
+                        }
+                    });
+                    const data = await response.json().catch(() => ({}));
+                    if (!response.ok || !data.success) {
+                        throw new Error(data.message || 'Failed to load history.');
+                    }
+
+                    const rows = Array.isArray(data.history) ? data.history : [];
+                    if (rows.length === 0) {
+                        if (emptyEl) emptyEl.style.display = 'block';
+                        return;
+                    }
+
+                    // Group rows by field; the field name only appears on the first
+                    // row of each group, subsequent edits show "↳".
+                    const groups = new Map();
+                    rows.forEach(r => {
+                        const key = r.field || '';
+                        if (!groups.has(key)) {
+                            groups.set(key, { label: r.field_label || r.field || '', items: [] });
+                        }
+                        groups.get(key).items.push(r);
+                    });
+
+                    const parts = [];
+                    groups.forEach((group, fieldKey) => {
+                        group.items.forEach((r, idx) => {
+                            const isFirst = idx === 0;
+                            const isLatest = idx === 0;
+                            const rowClass = isFirst ? 'shm-field-first' : 'shm-field-cont';
+                            const fieldCell = isFirst
+                                ? `<i class="bi bi-tag-fill shm-field-icon"></i>${escapeHtml(group.label)}`
+                                : `<span style="padding-left:14px;">↳</span>`;
+                            parts.push(`
+                                <tr class="${rowClass}" data-field="${escapeHtml(fieldKey)}">
+                                    <td class="shm-field-cell">${fieldCell}</td>
+                                    <td class="shm-when">${isLatest ? '<span class="shm-latest-dot" title="latest"></span>' : ''}${escapeHtml(r.updated_at || '')}</td>
+                                    <td class="shm-who"><span class="badge bg-secondary">${escapeHtml(r.updated_by || 'N/A')}</span></td>
+                                    <td>
+                                        <span class="shm-old">${dimWtHistoryFmtValue(r.old_value)}</span>
+                                        <i class="bi bi-arrow-right shm-arrow"></i>
+                                        <span class="shm-new">${dimWtHistoryFmtValue(r.new_value)}</span>
+                                    </td>
+                                </tr>
+                            `);
+                        });
+                    });
+
+                    tbody.innerHTML = parts.join('');
+                    if (tableWrap) tableWrap.style.display = 'block';
+                } catch (err) {
+                    console.error('Dim & Wt history load error:', err);
+                    if (errorEl) {
+                        errorEl.textContent = err.message || 'Failed to load history.';
+                        errorEl.style.display = 'block';
+                    }
+                } finally {
+                    if (loadingEl) loadingEl.style.display = 'none';
+                }
+            }
+
             // Verified column – red/green dot toggle (event delegation)
             function setupVerifiedDropdowns() {
                 document.addEventListener('change', function(e) {
@@ -2650,6 +3002,7 @@
             setupSkuExport();
             setupSelectAll();
             setupBulkEdit();
+            setupBulkVerified();
             setupPushData();
             // Reset bulk edit state when edit modal is closed (e.g. without saving)
             document.getElementById('editDimWtModal').addEventListener('hidden.bs.modal', function() {
