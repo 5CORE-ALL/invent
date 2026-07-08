@@ -97,6 +97,8 @@
         .vam-count-badge--parent { background: #16a34a; }
         .vam-count-badge--group  { background: #ea580c; }
         .vam-count-badge--total  { background: #6b7280; }
+        .vam-count-badge--links  { background: #0ea5e9; }
+        .vam-count-badge--missing { background: #dc2626; }
 
         /* Icon-only button — a fixed 32×32 square showing only the icon.
            Bootstrap's default padding is overridden so the button stays
@@ -123,8 +125,43 @@
            look "editable". */
         #video-ads-master-table .tabulator-cell { cursor: text; }
         #video-ads-master-table .tabulator-cell[tabulator-field="id"],
+        #video-ads-master-table .tabulator-cell[tabulator-field="_check"],
         #video-ads-master-table .tabulator-cell[tabulator-field="_actions"] { cursor: default; }
         #video-ads-master-table .tabulator-cell.tabulator-editing { background: #fff8d6 !important; }
+
+        /* CHECK column — checkbox + who/when meta + history button. */
+        .vam-check-wrap {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 2px;
+            line-height: 1.15;
+        }
+        .vam-check-top {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .vam-check-box {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+        .vam-check-history {
+            color: #6b7280;
+            font-size: 13px;
+            cursor: pointer;
+            text-decoration: none;
+        }
+        .vam-check-history:hover { color: #2c6ed5; }
+        .vam-check-meta {
+            font-size: 10px;
+            color: #6b7280;
+            text-align: center;
+            white-space: nowrap;
+        }
+        .vam-check-meta .vam-check-user { font-weight: 700; color: #16a34a; }
     </style>
 @endsection
 
@@ -168,8 +205,14 @@
                     <span class="vam-count-badge vam-count-badge--group"  title="Rows targeting a Group">
                         Group: <span id="vamGroupCount">0</span>
                     </span>
-                    <span class="vam-count-badge vam-count-badge--total"  title="Total visible rows">
-                        Total: <span id="vamRowCount">0</span>
+                    <span class="vam-count-badge vam-count-badge--total"  title="Total required rows">
+                        Required: <span id="vamRowCount">0</span>
+                    </span>
+                    <span class="vam-count-badge vam-count-badge--links"  title="Rows that have a link available">
+                        Links: <span id="vamLinkCount">0</span>
+                    </span>
+                    <span class="vam-count-badge vam-count-badge--missing" title="Rows still missing a link (Required − Links)">
+                        Missing: <span id="vamMissingCount">0</span>
                     </span>
                 </div>
             </div>
@@ -298,6 +341,27 @@
             </div>
         </div>
     </div>
+
+    {{-- Modal: check/uncheck audit trail for a single row. Populated on
+         demand from GET /video-ads-master/{id}/check-history. --}}
+    <div class="modal fade" id="vamCheckHistoryModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-clock-rotate-left me-2"></i>Check History</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="vamCheckHistoryBody">
+                        <div class="text-muted text-center py-3">Loading…</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script')
@@ -313,6 +377,7 @@
             let hookOptions        = [];
             let rowModal           = null;   // bootstrap.Modal — Add / Edit form
             let addHookModal       = null;   // bootstrap.Modal — "+ Add hook" sub-modal
+            let checkHistoryModal  = null;   // bootstrap.Modal — per-row check audit trail
             let editingId          = null;   // id of the row currently in the form (null = add mode)
 
             // ── Helpers ────────────────────────────────────────────────────────
@@ -382,6 +447,42 @@
                 const url = normalizeUrl(v);
                 if (!isLikelyUrl(url)) return '<span class="vam-dash">—</span>';
                 return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="vam-link-icon" title="Open link"><i class="fas fa-link"></i></a>`;
+            }
+
+            // Human-friendly datetime. Server sends ISO 8601 (datetime cast);
+            // fall back to the raw string if it can't be parsed.
+            function formatDateTime(v) {
+                if (!v) return '';
+                const d = new Date(v);
+                if (isNaN(d.getTime())) return String(v);
+                return d.toLocaleString();
+            }
+
+            // CHECK column — a checkbox reflecting is_checked, the user + time
+            // stamp of the last check, and a history button. Clicks are wired
+            // in the column's cellClick handler (see initTable).
+            function checkFormatter(cell) {
+                const row     = cell.getRow().getData();
+                const checked = !!row.is_checked;
+                const by      = row.checked_by ? escapeHtml(row.checked_by) : '';
+                const at      = row.checked_at ? escapeHtml(formatDateTime(row.checked_at)) : '';
+
+                let meta = '';
+                if (checked && (by || at)) {
+                    meta = `<div class="vam-check-meta" title="${by}${at ? ' • ' + at : ''}">`
+                         + (by ? `<span class="vam-check-user">${by}</span>` : '')
+                         + (at ? `<br>${at}` : '')
+                         + `</div>`;
+                }
+
+                return `
+                    <div class="vam-check-wrap">
+                        <div class="vam-check-top">
+                            <input type="checkbox" class="vam-check-box form-check-input" ${checked ? 'checked' : ''} title="Mark row as checked / unchecked">
+                            <a href="#" class="vam-check-history" title="View check history"><i class="fas fa-clock-rotate-left"></i></a>
+                        </div>
+                        ${meta}
+                    </div>`;
             }
 
             // ── Inline editors ─────────────────────────────────────────────────
@@ -729,8 +830,9 @@
 
             // ── Boot ───────────────────────────────────────────────────────────
             document.addEventListener('DOMContentLoaded', function () {
-                rowModal     = new bootstrap.Modal(document.getElementById('vamRowModal'));
-                addHookModal = new bootstrap.Modal(document.getElementById('vamAddHookModal'));
+                rowModal          = new bootstrap.Modal(document.getElementById('vamRowModal'));
+                addHookModal      = new bootstrap.Modal(document.getElementById('vamAddHookModal'));
+                checkHistoryModal = new bootstrap.Modal(document.getElementById('vamCheckHistoryModal'));
 
                 fetch('/video-ads-master/data', { headers: { 'Accept': 'application/json' } })
                     .then(r => r.json())
@@ -871,6 +973,24 @@
                             cellEdited: persistCell,
                         },
                         {
+                            title: 'CHECK', field: '_check', width: 130, hozAlign: 'center',
+                            headerSort: false,
+                            formatter: checkFormatter,
+                            cellClick: (e, cell) => {
+                                if (e.target.closest('.vam-check-history')) {
+                                    e.preventDefault();
+                                    showCheckHistory(cell.getRow());
+                                    return;
+                                }
+                                const box = e.target.closest('.vam-check-box');
+                                if (box) {
+                                    // The browser has already flipped the box;
+                                    // box.checked is the desired new state.
+                                    toggleCheck(cell.getRow(), box.checked);
+                                }
+                            },
+                        },
+                        {
                             title: '',
                             field: '_actions',
                             width: 150,
@@ -916,17 +1036,20 @@
                 }
                 rows = rows || [];
 
-                let sku = 0, parent = 0, group = 0;
+                let sku = 0, parent = 0, group = 0, links = 0;
                 rows.forEach(r => {
                     const t = String(r.target_type || '').toLowerCase();
                     if (t === 'sku')         sku++;
                     else if (t === 'parent') parent++;
                     else if (t === 'group')  group++;
+                    if (isLikelyUrl(normalizeUrl(r.link))) links++;
                 });
                 document.getElementById('vamRowCount').textContent    = rows.length;
                 document.getElementById('vamSkuCount').textContent    = sku;
                 document.getElementById('vamParentCount').textContent = parent;
                 document.getElementById('vamGroupCount').textContent  = group;
+                document.getElementById('vamLinkCount').textContent   = links;
+                document.getElementById('vamMissingCount').textContent = rows.length - links;
             }
 
             function applySearch() {
@@ -1071,6 +1194,85 @@
                     showToast('Row duplicated', 'success');
                 })
                 .catch(e => { console.error(e); showToast('Network error while copying', 'error'); });
+            }
+
+            // Toggle a row's CHECK state. Persists the new state to the
+            // server (which stamps user + time and logs history), then
+            // mirrors the returned values back onto the row.
+            function toggleCheck(row, desired) {
+                const data = row.getData();
+                if (!data.id) return;
+
+                fetch(`/video-ads-master/${data.id}/check`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken,
+                    },
+                    body: JSON.stringify({ is_checked: !!desired }),
+                })
+                .then(r => r.json().then(j => ({ ok: r.ok, j })))
+                .then(({ ok, j }) => {
+                    if (!ok || !j.success) {
+                        showToast((j && j.message) || 'Failed to update check', 'error');
+                        row.reformat(); // revert the visual toggle
+                        return;
+                    }
+                    row.update({
+                        is_checked: j.row.is_checked,
+                        checked_by: j.row.checked_by,
+                        checked_at: j.row.checked_at,
+                    });
+                    row.reformat();
+                    showToast(j.row.is_checked ? 'Marked as checked' : 'Marked as unchecked', 'success');
+                })
+                .catch(e => { console.error(e); showToast('Network error while updating check', 'error'); row.reformat(); });
+            }
+
+            // Fetch and render the check/uncheck audit trail for a row.
+            function showCheckHistory(row) {
+                const data = row.getData();
+                if (!data.id) return;
+
+                const body = document.getElementById('vamCheckHistoryBody');
+                body.innerHTML = '<div class="text-muted text-center py-3">Loading…</div>';
+                checkHistoryModal.show();
+
+                fetch(`/video-ads-master/${data.id}/check-history`, { headers: { 'Accept': 'application/json' } })
+                    .then(r => r.json())
+                    .then(j => {
+                        if (!j.success) { body.innerHTML = '<div class="text-danger text-center py-3">Failed to load history.</div>'; return; }
+                        const items = j.history || [];
+                        if (items.length === 0) {
+                            body.innerHTML = '<div class="text-muted text-center py-3">No check activity yet.</div>';
+                            return;
+                        }
+                        const rowsHtml = items.map(h => {
+                            const isChecked = !!h.is_checked;
+                            const badge = isChecked
+                                ? '<span class="badge bg-success">Checked</span>'
+                                : '<span class="badge bg-secondary">Unchecked</span>';
+                            return `
+                                <tr>
+                                    <td>${badge}</td>
+                                    <td>${escapeHtml(h.username || '—')}</td>
+                                    <td>${escapeHtml(formatDateTime(h.created_at))}</td>
+                                </tr>`;
+                        }).join('');
+                        body.innerHTML = `
+                            <table class="table table-sm table-striped mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Action</th>
+                                        <th>User</th>
+                                        <th>When</th>
+                                    </tr>
+                                </thead>
+                                <tbody>${rowsHtml}</tbody>
+                            </table>`;
+                    })
+                    .catch(e => { console.error(e); body.innerHTML = '<div class="text-danger text-center py-3">Network error.</div>'; });
             }
 
             // Save a brand-new HOOK NAME from the "+ Add hook" sub-modal

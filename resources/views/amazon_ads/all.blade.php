@@ -1,254 +1,145 @@
-@extends('layouts.vertical', ['title' => 'Amazon Ads All', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => 'Amazon Ads All'])
 
 @section('css')
-    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.7/css/dataTables.bootstrap5.min.css">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <style>
-        .amazon-ads-all .table thead th {
-            background-color: #f8f9fa;
-            font-weight: 600;
-            font-size: 0.75rem;
-            white-space: nowrap;
+        #amz-ads-raw-wrap .tabulator {
+            border: 1px solid #dee2e6; border-radius: 8px; font-size: 13px;
         }
-        .amazon-ads-all .source-pill {
-            font-size: 0.7rem;
-            font-weight: 600;
+        #amz-ads-raw-wrap .tabulator .tabulator-header {
+            background: #f8f9fa; border-bottom: 1px solid #dee2e6;
         }
-        .amazon-ads-all .utilized-kw-note {
-            font-size: 0.85rem;
+        #amz-ads-raw-wrap .tabulator-col .tabulator-col-sorter { display: none !important; }
+        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-content-holder,
+        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-title-holder {
+            writing-mode: horizontal-tb !important; text-orientation: mixed !important;
+            transform: none !important; white-space: normal !important;
         }
-        /* Full width grid: avoid clipping wide raw tables (all DB columns, incl. yes_sbid / last_sbid; sbid_m hidden from grid) */
-        .amazon-ads-all .amazon-raw-table-wrap {
-            overflow-x: auto;
-            -webkit-overflow-scrolling: touch;
-            max-width: 100%;
+        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
+            writing-mode: horizontal-tb !important; text-orientation: mixed !important; transform: none !important;
+            white-space: normal !important; height: auto !important; min-height: 0 !important;             display: block;
+            align-items: unset; justify-content: unset; font-size: 12.5px; font-weight: 600; line-height: 1.25;
+            padding: 5px 2px; text-align: center;
         }
-        .amazon-ads-all .amazon-raw-table-wrap .dataTables_wrapper {
-            width: 100%;
+        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content { height: auto !important; min-height: 34px; padding: 0; }
+        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col { height: auto !important; min-height: 34px; vertical-align: middle; }
+        #amz-ads-raw-wrap .tabulator .tabulator-row { min-height: 32px; }
+        #amz-ads-raw-wrap .tabulator .tabulator-row .tabulator-cell { padding: 3px 2px !important; }
+        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content-holder { padding-left: 2px !important; padding-right: 2px !important; }
+        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="campaignStatus"] .tabulator-col-title { white-space: nowrap !important; }
+        #amz-ads-raw-wrap .tabulator .tabulator-cell .amz-raw-status-cell { white-space: nowrap; }
+        /* Pagination footer */
+        #amz-ads-raw-wrap .tabulator .tabulator-footer {
+            background: #f8fafc !important; border-top: 1px solid #e2e8f0 !important; padding: 10px 16px !important;
         }
-        .amazon-ads-all .amazon-raw-table-wrap table.dataTable thead th,
-        .amazon-ads-all .amazon-raw-table-wrap table.dataTable tbody td {
-            text-align: center;
-            vertical-align: middle;
+        #amz-ads-raw-wrap .tabulator .tabulator-footer .tabulator-paginator {
+            display: flex; align-items: center; justify-content: center; gap: 4px; flex-wrap: wrap;
         }
-        .amazon-ads-all .amazon-ads-toolbar {
-            margin-bottom: 0.35rem;
+        #amz-ads-raw-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page {
+            font-size: 14px !important; font-weight: 500 !important; min-width: 36px !important; height: 36px !important;
+            line-height: 36px !important; padding: 0 10px !important; border-radius: 8px !important;
+            border: 1px solid #e2e8f0 !important; background: #fff !important; color: #475569 !important;
+            cursor: pointer; transition: all 0.15s ease !important; text-align: center !important;
         }
-        .amazon-ads-all .amazon-ads-filters {
-            padding: 0.45rem 0.55rem !important;
+        #amz-ads-raw-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page:hover { background: #f1f5f9 !important; border-color: #cbd5e1 !important; color: #1e293b !important; }
+        #amz-ads-raw-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page.active {
+            background: #4361ee !important; border-color: #4361ee !important; color: #fff !important; font-weight: 600 !important;
+            box-shadow: 0 2px 6px rgba(67,97,238,0.3) !important;
         }
-        .amazon-ads-all .amazon-ads-filters .form-label {
-            font-size: 0.65rem;
-            font-weight: 600;
-            margin-bottom: 0.08rem;
-            line-height: 1.1;
-            white-space: nowrap;
+        #amz-ads-raw-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page[disabled] { opacity: 0.4 !important; cursor: not-allowed !important; }
+        #amz-ads-raw-wrap .tabulator .tabulator-footer .tabulator-page-counter { margin: 0 0.5rem; font-size: 12px; color: #334155; }
+        #amz-ads-raw-wrap { overflow-x: auto; overflow-y: visible; }
+        /* U% utilization colors */
+        #amz-ads-raw-wrap .tabulator .tabulator-cell.green-bg { color: #16a34a !important; font-weight: 600; }
+        #amz-ads-raw-wrap .tabulator .tabulator-cell.pink-bg { color: #db2777 !important; font-weight: 600; }
+        #amz-ads-raw-wrap .tabulator .tabulator-cell.red-bg { color: #dc2626 !important; font-weight: 600; }
+        /* Filter bar */
+        #amz-raw-filter-bar { background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px; }
+        #amz-raw-filter-bar .amz-raw-filter-label {
+            display: block; font-size: 0.75rem; font-weight: 600; color: #475569; margin-bottom: 4px; letter-spacing: 0.01em;
         }
-        .amazon-ads-all .amazon-ads-filters .form-select-sm,
-        .amazon-ads-all .amazon-ads-filters .form-control-sm {
-            padding-top: 0.2rem;
-            padding-bottom: 0.2rem;
-            font-size: 0.76rem;
+        #amz-raw-filter-bar .amz-raw-filter-select { min-width: 120px; border-radius: 6px; border: 1px solid #cbd5e1; background: #fff; color: #64748b; font-size: 0.8125rem; padding-top: 0.35rem; padding-bottom: 0.35rem; }
+        #amz-raw-filter-bar .amz-raw-date-input { border-radius: 6px; border: 1px solid #cbd5e1; background: #fff; color: #334155; font-size: 0.8125rem; padding: 0.35rem 0.4rem; }
+        /* Stat badges */
+        .amz-stat-badge {
+            display: inline-flex; align-items: center; flex-shrink: 0; color: #fff; font-size: 15px; font-weight: 700;
+            padding: 9px 16px; border-radius: 8px; white-space: nowrap; line-height: 1.25; letter-spacing: 0.2px;
         }
-        /* Single-line toolbar: scroll horizontally on narrow viewports */
-        .amazon-ads-all .amazon-ads-filters-toolbar {
-            display: flex;
-            align-items: flex-end;
-            flex-wrap: nowrap;
-            gap: 0.35rem 0.5rem;
-            overflow-x: auto;
-            -webkit-overflow-scrolling: touch;
-            scrollbar-width: thin;
-        }
-        .amazon-ads-all .amazon-ads-filter-field {
-            flex: 0 0 auto;
-            min-width: 0;
-        }
-        .amazon-ads-all .amazon-ads-filter-field--table {
-            width: 7.25rem;
-            min-width: 6.5rem;
-        }
-        .amazon-ads-all .amazon-ads-filter-field--range {
-            width: 5.75rem;
-            min-width: 5.25rem;
-        }
-        .amazon-ads-all .amazon-ads-filter-field--date {
-            width: 8.75rem;
-            min-width: 8.25rem;
-        }
-        .amazon-ads-all .amazon-ads-filter-field--util {
-            width: 5.25rem;
-            min-width: 4.75rem;
-        }
-        /* U7 pie opens in a modal; toolbar shows a single launch button */
-        .amazon-ads-all .amazon-u7-pie-launch.amazon-ads-toolbar-pie {
-            flex-shrink: 0;
-            margin-right: 0.1rem;
-            padding-right: 0.35rem;
-            border-right: 1px solid rgba(0, 0, 0, 0.08);
-        }
-        .amazon-ads-all #amazonAdsU7PieModal .amazon-u7-pie-modal-chart {
-            min-height: 400px;
-            width: 100%;
-        }
-        /* Stat badges (SPl30 / ACOS / Spend): rounded-rectangle label:value chips with light backgrounds */
-        .amazon-ads-all .amazon-ads-stat-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.3rem;
-            flex-shrink: 0;
-            border-radius: 8px;
-            padding: 0.3rem 0.65rem;
-            font-size: 0.8rem;
-            font-weight: 700;
-            line-height: 1.2;
-            white-space: nowrap;
-        }
-        .amazon-ads-all .amazon-ads-stat-badge .amazon-ads-stat-label {
-            font-weight: 700;
-            opacity: 0.85;
-        }
-        .amazon-ads-all .amazon-ads-stat-badge .amazon-ads-stat-value {
-            font-weight: 700;
-        }
-        .amazon-ads-all .amazon-ads-stat-badge--spl30 {
-            background-color: #343a40;
-            color: #fff;
-        }
-        .amazon-ads-all .amazon-ads-stat-badge--acos {
-            background-color: #e8590c;
-            color: #fff;
-        }
-        .amazon-ads-all .amazon-ads-stat-badge--spend {
-            background-color: #e2665b;
-            color: #fff;
-        }
-        .amazon-ads-all .amazon-ads-stat-badge--clicks {
-            background-color: #d97706;
-            color: #fff;
-        }
-        .amazon-ads-all .amazon-ads-stat-badge--sold {
-            background-color: #6f42c1;
-            color: #fff;
-        }
-        .amazon-ads-all .amazon-ads-stat-badge--sales {
-            background-color: #2f9e44;
-            color: #fff;
-        }
-        .amazon-ads-all .amazon-ads-stat-badge .amazon-ads-stat-value {
-            color: #fff;
-        }
-        .amazon-ads-all .amazon-sbid-push-panel {
-            border-left: 2px solid #0d6efd;
-            padding-left: 0.45rem;
-            margin-top: 0.25rem !important;
-            padding-top: 0.3rem !important;
-        }
-        .amazon-ads-all .amazon-source-pane > p.text-muted {
-            margin-bottom: 0.25rem !important;
-            font-size: 0.72rem;
-        }
-        /* DataTables Bootstrap 5: hide sort arrows on all headers (ordering still works if enabled). */
-        .amazon-ads-all table.dataTable thead > tr > th.sorting:before,
-        .amazon-ads-all table.dataTable thead > tr > th.sorting:after,
-        .amazon-ads-all table.dataTable thead > tr > th.sorting_asc:before,
-        .amazon-ads-all table.dataTable thead > tr > th.sorting_asc:after,
-        .amazon-ads-all table.dataTable thead > tr > th.sorting_desc:before,
-        .amazon-ads-all table.dataTable thead > tr > th.sorting_desc:after,
-        .amazon-ads-all table.dataTable thead > tr > th.sorting_asc_disabled:before,
-        .amazon-ads-all table.dataTable thead > tr > th.sorting_asc_disabled:after,
-        .amazon-ads-all table.dataTable thead > tr > th.sorting_desc_disabled:before,
-        .amazon-ads-all table.dataTable thead > tr > th.sorting_desc_disabled:after {
-            display: none !important;
-            content: none !important;
-        }
-        .amazon-ads-all table.dataTable thead > tr > th.sorting,
-        .amazon-ads-all table.dataTable thead > tr > th.sorting_asc,
-        .amazon-ads-all table.dataTable thead > tr > th.sorting_desc,
-        .amazon-ads-all table.dataTable thead > tr > th.sorting_asc_disabled,
-        .amazon-ads-all table.dataTable thead > tr > th.sorting_desc_disabled {
-            background-image: none !important;
-            padding-right: 0.75rem !important;
-        }
+        .amz-stat-badge > span { margin-left: 4px; font-size: 16px; font-weight: 800; }
+        .amz-raw-icon-btn { width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center; line-height: 1; }
+        .amz-raw-icon-btn > i { font-size: 14px; }
+        .amz-toolbar-title { font-size: 1rem; flex-shrink: 0; }
+        .amz-stat-badge--campaign { background: #4c7ed8; }
+        .amz-stat-badge--acos     { background: #ea580c; }
+        .amz-stat-badge--spend    { background: #ef4444; }
+        .amz-stat-badge--clicks   { background: #f59e0b; }
+        .amz-stat-badge--sold     { background: #8b5cf6; }
+        .amz-stat-badge--cvr      { background: #16a34a; }
+        .amz-stat-badge--cpc      { background: #0891b2; }
+        .amz-stat-badge--sales    { background: #16a34a; }
+        #amz-ads-raw-wrap #amazonAdsU7Pie { width: 100%; min-height: 400px; }
     </style>
 @endsection
 
 @section('content')
     @include('layouts.shared/page-title', ['sub_title' => 'Amazon Ads', 'page_title' => 'Amazon Ads All'])
 
-    <div class="row amazon-ads-all amazon-ads-toolbar">
-        <div class="col-12 d-flex flex-wrap justify-content-end align-items-center gap-1">
-            <div class="amazon-ads-stat-badge amazon-ads-stat-badge--spl30" id="amazonAdsSpl30BadgeWrap" hidden title="Total SPL30: sum of L30 spend per distinct campaign (+ ad type) for current filters (same logic as the grid; all matching rows, not only this page).">
-                <span class="amazon-ads-stat-label">SPl30</span>
-                <span class="amazon-ads-stat-value tabular-nums" id="amazonAdsSpl30BadgeValue"></span>
-            </div>
-            <div class="amazon-ads-stat-badge amazon-ads-stat-badge--acos" id="amazonAdsOverallAcosBadgeWrap" hidden title="Overall ACOS: (sum of L30 SPL30 spend ÷ sum of L30 sales) × 100 for distinct campaign (+ ad type) in current filters — same L30 overlays as the grid (SP/SB only).">
-                <span class="amazon-ads-stat-label">ACOS</span>
-                <span class="amazon-ads-stat-value tabular-nums" id="amazonAdsOverallAcosBadgeValue"></span>
-            </div>
-            <div class="amazon-ads-stat-badge amazon-ads-stat-badge--spend" id="amazonAdsSpendBadgeWrap" hidden title="Spend: sum of the spend column across all rows matching the current filters (not only this page).">
-                <span class="amazon-ads-stat-label">Spend</span>
-                <span class="amazon-ads-stat-value tabular-nums" id="amazonAdsSpendBadgeValue"></span>
-            </div>
-            <div class="amazon-ads-stat-badge amazon-ads-stat-badge--clicks" id="amazonAdsClicksBadgeWrap" hidden title="Clicks: sum of the clicks column across all rows matching the current filters (not only this page).">
-                <span class="amazon-ads-stat-label">Clicks</span>
-                <span class="amazon-ads-stat-value tabular-nums" id="amazonAdsClicksBadgeValue"></span>
-            </div>
-            <div class="amazon-ads-stat-badge amazon-ads-stat-badge--sold" id="amazonAdsSoldBadgeWrap" hidden title="Sold: sum of purchases across all rows matching the current filters (not only this page).">
-                <span class="amazon-ads-stat-label">Sold</span>
-                <span class="amazon-ads-stat-value tabular-nums" id="amazonAdsSoldBadgeValue"></span>
-            </div>
-            <div class="amazon-ads-stat-badge amazon-ads-stat-badge--sales" id="amazonAdsSalesBadgeWrap" hidden title="Sales: sum of the sales column across all rows matching the current filters (not only this page).">
-                <span class="amazon-ads-stat-label">Sales</span>
-                <span class="amazon-ads-stat-value tabular-nums" id="amazonAdsSalesBadgeValue"></span>
-            </div>
-            <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsBgtRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsBgtRuleModal" title="Edit ACOS boundaries and SBGT tier amounts used for suggested budgets">BGT RULE</button>
-            <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsSbidRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsSbidRuleModal" title="Edit U2%/U1% thresholds and CPC multipliers for suggested SBID (grid and bid jobs)">SBID RULE</button>
-            <a href="{{ route('amazon-ads.push-logs.index') }}" class="btn btn-sm btn-outline-danger" title="View campaigns that failed to update (skipped/failed bids & budgets)">
-                <i class="mdi mdi-alert-circle-outline"></i> Failed Campaigns
-            </a>
-            <span class="text-muted small d-none d-md-inline" title="Fetches every row matching your filters (500 per request); same sort and search as the grid.">Export all filtered rows (CSV).</span>
-            <button type="button" class="btn btn-sm btn-primary" id="amazonAdsSectionExportBtn" title="Download all rows matching current filters and DataTables search (max 50k)">Export view</button>
-        </div>
-    </div>
-
-    <div class="row amazon-ads-all mb-3 d-none">
-        <div class="col-12">
-            <div class="alert alert-secondary mb-0 utilized-kw-note">
-                <strong>Utilized KW</strong>
-                (<code>/amazon/utilized/kw/ads/data</code>) loads merged rows in
-                <code>AmazonSpBudgetController::getAmazonUtilizedAdsData</code>, mainly from
-                <code>amazon_sp_campaign_reports</code> and <code>amazon_sb_campaign_reports</code>,
-                plus <code>amazon_acos_action_history</code>, <code>amazon_datsheets</code>, <code>product_master</code>, etc.
-                The grid counts <strong>report table rows</strong> (one campaign can have many: daily, L7, L30, …). Amazon&rsquo;s <strong>campaign</strong> total in Campaign Manager is unique campaigns &mdash; compare to <strong>Distinct campaign_id</strong> below the table for the same filters, not the row <em>of N entries</em> alone.
-                Choose the dataset from <strong>Table</strong> below: <strong>SP</strong>, <strong>SB</strong>, and <strong>SD</strong> load <strong>every column</strong> from
-                <code>amazon_sp_campaign_reports</code>, <code>amazon_sb_campaign_reports</code>, and <code>amazon_sd_campaign_reports</code> (server-side paging; use length menu up to 500 rows per request to walk the full table). Bid columns include <code>last_sbid</code> and computed <strong>SBID</strong> when shown (<code>yes_sbid</code> and <code>sbid_m</code> are not listed on All for SP/SB but remain in row JSON for SBID push). Also available: <code>amazon_bid_caps</code>, <code>amazon_fbm_targeting_checks</code>.
-            </div>
-        </div>
-    </div>
-
-    <div class="row amazon-ads-all">
+    <div class="row">
         <div class="col-12">
             <div class="card">
-                <div class="card-body py-2 px-2">
-                    <div class="amazon-ads-filters border rounded bg-light mb-2">
-                        <div class="amazon-ads-filters-toolbar" role="toolbar" aria-label="Amazon Ads filters and summary">
-                            <div class="amazon-u7-pie-launch amazon-ads-toolbar-pie d-flex align-items-center">
-                                <button type="button" class="btn btn-sm btn-outline-secondary" id="amazonAdsU7PieOpenBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsU7PieModal" title="Row counts by U7% band (U7 filter ignored). Opens chart; click a slice for last 30 days.">U7% mix</button>
-                            </div>
-                            <div class="amazon-ads-filter-field amazon-ads-filter-field--table">
-                                <label class="form-label" for="amazonAdsFilterReportType" title="Dataset">Table</label>
-                                <select id="amazonAdsFilterReportType" class="form-select form-select-sm" title="amazon_sp_campaign_reports, etc.">
-                                    <option value="sp_reports">SP reports</option>
+                <div class="card-body">
+                    <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                        <div class="d-flex align-items-center flex-wrap gap-2 py-1">
+                            <span id="amazonAdsCampaignBadgeWrap" class="amz-stat-badge amz-stat-badge--campaign" title="Distinct campaigns matching current filters">CAMPAIGN:<span id="amazonAdsCampaignBadgeValue">0</span></span>
+                            <span id="amazonAdsOverallAcosBadgeWrap" class="amz-stat-badge amz-stat-badge--acos" title="Overall ACOS (L30) for the filtered set">ACOS:<span id="amazonAdsOverallAcosBadgeValue">0%</span></span>
+                            <span id="amazonAdsSpendBadgeWrap" class="amz-stat-badge amz-stat-badge--spend" title="Spend (L30) total">SPEND:<span id="amazonAdsSpendBadgeValue">$0</span></span>
+                            <span id="amazonAdsClicksBadgeWrap" class="amz-stat-badge amz-stat-badge--clicks" title="Clicks (L30) total">CLICKS:<span id="amazonAdsClicksBadgeValue">0</span></span>
+                            <span id="amazonAdsSoldBadgeWrap" class="amz-stat-badge amz-stat-badge--sold" title="Sold (L30) total">SOLD:<span id="amazonAdsSoldBadgeValue">0</span></span>
+                            <span id="amazonAdsCvrBadgeWrap" class="amz-stat-badge amz-stat-badge--cvr" title="CVR = Sold / Clicks">CVR:<span id="amazonAdsCvrBadgeValue">0%</span></span>
+                            <span id="amazonAdsCpcBadgeWrap" class="amz-stat-badge amz-stat-badge--cpc" title="CPC = Spend / Clicks">CPC:<span id="amazonAdsCpcBadgeValue">$0</span></span>
+                            <span id="amazonAdsSalesBadgeWrap" class="amz-stat-badge amz-stat-badge--sales" title="Sales (L30) total">SALES:<span id="amazonAdsSalesBadgeValue">$0</span></span>
+                        </div>
+
+                        <span id="amz-raw-total" class="badge bg-secondary">Total: —</span>
+                        <span id="amz-raw-page-info" class="badge bg-light text-dark border">Page: —</span>
+                        <button type="button" id="amz-raw-refresh" class="btn btn-sm btn-outline-primary amz-raw-icon-btn" title="Refresh grid" aria-label="Refresh grid">
+                            <i class="fa fa-refresh"></i>
+                        </button>
+                        <button type="button" id="amazonAdsSectionExportBtn" class="btn btn-sm btn-success amz-raw-icon-btn" title="Export current page as CSV" aria-label="Export current page as CSV">
+                            <i class="fas fa-file-csv"></i>
+                        </button>
+                        <a href="{{ route('amazon-ads.push-logs.index') }}" class="btn btn-sm btn-outline-secondary" title="Failed / skipped bid & budget pushes">Fail Cpg</a>
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsBgtRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsBgtRuleModal" title="Edit ACOS band thresholds and SBGT tier values">BGT RULE</button>
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsSbidRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsSbidRuleModal" title="Edit U2%/U1% thresholds and CPC multipliers for suggested SBID">SBID RULE</button>
+                        <span class="vr align-self-center d-none d-md-inline-block mx-1"></span>
+                        <button type="button" class="btn btn-sm btn-warning text-dark" id="amazonAdsPushSbgtBtn" title="Push SBGT tier as daily budget for the rows on this page (SP/SB only).">
+                            <i class="fa fa-cloud-upload-alt"></i> SBGT
+                        </button>
+                        <button type="button" class="btn btn-sm btn-warning text-dark" id="amazonAdsPushSbidBtn" title="Push the SBID shown on this page for each row (SP/SB only).">
+                            <i class="fa fa-cloud-upload-alt"></i> SBID
+                        </button>
+                    </div>
+
+                    <div id="amz-raw-filter-bar" class="mb-3">
+                        <div class="d-flex flex-wrap align-items-end gap-3 gap-md-4">
+                            <div>
+                                <label class="amz-raw-filter-label mb-0" for="amazonAdsFilterReportType">Table</label>
+                                <select id="amazonAdsFilterReportType" class="form-select form-select-sm amz-raw-filter-select">
+                                    <option value="all_reports">All (SP + SB)</option>
+                                    <option value="sp_reports" selected>SP reports</option>
                                     <option value="sb_reports">SB reports</option>
                                     <option value="sd_reports">SD reports</option>
                                     <option value="bid_caps">Bid caps</option>
                                     <option value="fbm_targeting">FBM targeting</option>
                                 </select>
                             </div>
-                            <div class="amazon-ads-filter-field amazon-ads-filter-field--range">
-                                <label class="form-label" for="amazonAdsFilterSummaryRange" title="Summary label L7/L30 or calendar dates">Range</label>
-                                <select id="amazonAdsFilterSummaryRange" class="form-select form-select-sm">
-                                    <option value="">Calendar</option>
+                            <div>
+                                <label class="amz-raw-filter-label mb-0" for="amazonAdsFilterSummaryRange">Range</label>
+                                <select id="amazonAdsFilterSummaryRange" class="form-select form-select-sm amz-raw-filter-select">
+                                    <option value="" selected>Calendar</option>
                                     <option value="L1">L1</option>
                                     <option value="L7">L7</option>
                                     <option value="L14">L14</option>
@@ -257,261 +148,70 @@
                                     <option value="L60">L60</option>
                                 </select>
                             </div>
-                            <div class="amazon-ads-filter-field amazon-ads-filter-field--date">
-                                <label class="form-label" for="amazonAdsFilterDateFrom">From</label>
-                                <input type="date" id="amazonAdsFilterDateFrom" class="form-control form-control-sm">
+                            <div>
+                                <label class="amz-raw-filter-label mb-0" for="amazonAdsFilterDateFrom">From</label>
+                                <input type="date" id="amazonAdsFilterDateFrom" class="form-control form-control-sm amz-raw-date-input">
                             </div>
-                            <div class="amazon-ads-filter-field amazon-ads-filter-field--date">
-                                <label class="form-label" for="amazonAdsFilterDateTo">To</label>
-                                <input type="date" id="amazonAdsFilterDateTo" class="form-control form-control-sm">
+                            <div>
+                                <label class="amz-raw-filter-label mb-0" for="amazonAdsFilterDateTo">To</label>
+                                <input type="date" id="amazonAdsFilterDateTo" class="form-control form-control-sm amz-raw-date-input">
                             </div>
-                            <div class="amazon-ads-filter-field amazon-ads-filter-field--util">
-                                <label class="form-label" for="amazonAdsFilterU7" title="L7 spend ÷ (budget×7)">U7%</label>
-                                <select id="amazonAdsFilterU7" class="form-select form-select-sm" title="L7 SP ÷ (budget × 7)">
-                                    <option value="">All</option>
+                            <div>
+                                <label class="amz-raw-filter-label mb-0" for="amazonAdsFilterU7">U7%</label>
+                                <select id="amazonAdsFilterU7" class="form-select form-select-sm amz-raw-filter-select">
+                                    <option value="" selected>All</option>
                                     <option value="lt66">&lt; 66%</option>
-                                    <option value="66_99">66–99%</option>
+                                    <option value="66_99">66 – 99%</option>
                                     <option value="gt99">&gt; 99%</option>
                                 </select>
                             </div>
-                            <div class="amazon-ads-filter-field amazon-ads-filter-field--util">
-                                <label class="form-label" for="amazonAdsFilterU2" title="L2 spend ÷ (budget×2)">U2%</label>
-                                <select id="amazonAdsFilterU2" class="form-select form-select-sm" title="L2 SP ÷ (budget × 2)">
-                                    <option value="">All</option>
+                            <div>
+                                <label class="amz-raw-filter-label mb-0" for="amazonAdsFilterU2">U2%</label>
+                                <select id="amazonAdsFilterU2" class="form-select form-select-sm amz-raw-filter-select">
+                                    <option value="" selected>All</option>
                                     <option value="lt66">&lt; 66%</option>
-                                    <option value="66_99">66–99%</option>
+                                    <option value="66_99">66 – 99%</option>
                                     <option value="gt99">&gt; 99%</option>
                                 </select>
                             </div>
-                            <div class="amazon-ads-filter-field amazon-ads-filter-field--util">
-                                <label class="form-label" for="amazonAdsFilterU1" title="L1 spend ÷ budget">U1%</label>
-                                <select id="amazonAdsFilterU1" class="form-select form-select-sm" title="L1 SP ÷ (budget × 1)">
-                                    <option value="">All</option>
+                            <div>
+                                <label class="amz-raw-filter-label mb-0" for="amazonAdsFilterU1">U1%</label>
+                                <select id="amazonAdsFilterU1" class="form-select form-select-sm amz-raw-filter-select">
+                                    <option value="" selected>All</option>
                                     <option value="lt66">&lt; 66%</option>
-                                    <option value="66_99">66–99%</option>
+                                    <option value="66_99">66 – 99%</option>
                                     <option value="gt99">&gt; 99%</option>
                                 </select>
                             </div>
-                            <div class="amazon-ads-filter-field amazon-ads-filter-field--util">
-                                <label class="form-label" for="amazonAdsFilterCampaignStatus">Stat</label>
-                                <select id="amazonAdsFilterCampaignStatus" class="form-select form-select-sm" title="campaignStatus">
-                                    <option value="">All</option>
-                                    <option value="ENABLED">ON</option>
+                            <div>
+                                <label class="amz-raw-filter-label mb-0" for="amazonAdsFilterCampaignStatus">Stat</label>
+                                <select id="amazonAdsFilterCampaignStatus" class="form-select form-select-sm amz-raw-filter-select">
+                                    <option value="" selected>All</option>
+                                    <option value="ENABLED">Enabled</option>
                                     <option value="PAUSED">Paused</option>
-                                    <option value="ARCHIVED">Arch</option>
+                                    <option value="ARCHIVED">Archived</option>
                                 </select>
                             </div>
-                            <div class="d-flex gap-1 flex-shrink-0 align-items-end pb-0 ms-auto">
-                                <button type="button" class="btn btn-sm btn-primary py-0" id="amazonAdsFilterApply">Apply</button>
-                                <button type="button" class="btn btn-sm btn-outline-secondary py-0" id="amazonAdsFilterClear">Clear</button>
+                            <div class="d-flex align-items-end gap-2">
+                                <button type="button" class="btn btn-sm btn-primary" id="amazonAdsFilterApply">Apply</button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="amazonAdsFilterClear">Clear</button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="amazonAdsU7PieOpenBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsU7PieModal" title="Row counts by U7% band (U7 filter ignored). Click a slice for last 30 days.">U7% mix</button>
                             </div>
-                        </div>
-
-                        <div class="border-top amazon-sbid-push-panel d-flex flex-wrap align-items-center gap-1 gap-sm-2">
-                            <span class="small text-muted flex-shrink-0" title="SP or SB reports table, current page, max 100 campaigns per call">Push SP / SB</span>
-                            <button type="button" class="btn btn-sm btn-success py-0" id="amazonAdsPushSbidBtn" disabled title="Push SBID to Amazon (current page, max 100)">SBID</button>
-                            <span class="text-muted small flex-grow-1" style="min-width:4rem;font-size:0.7rem;" id="amazonAdsSbidPushStatus" aria-live="polite"></span>
-                            <button type="button" class="btn btn-sm btn-outline-success py-0" id="amazonAdsPushSbgtBtn" disabled title="Push SBGT as daily budget (SP or SB, current page)">
-                                <i class="mdi mdi-cloud-upload" aria-hidden="true"></i><span class="d-none d-sm-inline ms-1">SBGT</span>
-                            </button>
-                            <span class="text-muted small" style="font-size:0.7rem;" id="amazonAdsSbgtPushStatus" aria-live="polite"></span>
                         </div>
                     </div>
 
-                    <div id="amazonAdsSourcePanels">
-                        <div class="amazon-source-pane mb-0" data-pane-for="sp_reports">
-                            <p class="text-muted small mb-1">
-                                <span class="badge bg-success source-pill">SP</span>
-                                <code class="ms-1">amazon_sp_campaign_reports</code>
-                            </p>
-                            <div class="amazon-raw-table-wrap">
-                                <table id="amazonAdsSpReportsTable"
-                                       class="table table-hover table-striped table-bordered nowrap w-100"
-                                       data-raw-source="sp_reports">
-                                    <thead><tr></tr></thead>
-                                    <tbody></tbody>
-                                </table>
-                            </div>
-                        </div>
-                        <div class="amazon-source-pane mb-0 d-none" data-pane-for="sb_reports">
-                            <p class="text-muted small mb-1">
-                                <span class="badge bg-primary source-pill">SB</span>
-                                <code class="ms-1">amazon_sb_campaign_reports</code>
-                            </p>
-                            <div class="amazon-raw-table-wrap">
-                                <table id="amazonAdsSbReportsTable"
-                                       class="table table-hover table-striped table-bordered nowrap w-100"
-                                       data-raw-source="sb_reports">
-                                    <thead><tr></tr></thead>
-                                    <tbody></tbody>
-                                </table>
-                            </div>
-                        </div>
-                        <div class="amazon-source-pane mb-0 d-none" data-pane-for="sd_reports">
-                            <p class="text-muted small mb-1">
-                                <span class="badge bg-info source-pill">SD</span>
-                                <code class="ms-1">amazon_sd_campaign_reports</code>
-                            </p>
-                            <div class="amazon-raw-table-wrap">
-                                <table id="amazonAdsSdReportsTable"
-                                       class="table table-hover table-striped table-bordered nowrap w-100"
-                                       data-raw-source="sd_reports">
-                                    <thead><tr></tr></thead>
-                                    <tbody></tbody>
-                                </table>
-                            </div>
-                        </div>
-                        <div class="amazon-source-pane mb-0 d-none" data-pane-for="bid_caps">
-                            <p class="text-muted small mb-1">
-                                <span class="badge bg-secondary source-pill">Bid caps</span>
-                                <code class="ms-1">amazon_bid_caps</code>
-                            </p>
-                            <div class="amazon-raw-table-wrap">
-                                <table id="amazonAdsBidCapsTable"
-                                       class="table table-hover table-striped table-bordered nowrap w-100"
-                                       data-raw-source="bid_caps">
-                                    <thead><tr></tr></thead>
-                                    <tbody></tbody>
-                                </table>
-                            </div>
-                        </div>
-                        <div class="amazon-source-pane mb-0 d-none" data-pane-for="fbm_targeting">
-                            <p class="text-muted small mb-1">
-                                <span class="badge bg-secondary source-pill">FBM</span>
-                                <code class="ms-1">amazon_fbm_targeting_checks</code>
-                            </p>
-                            <div class="amazon-raw-table-wrap">
-                                <table id="amazonAdsFbmTargetingTable"
-                                       class="table table-hover table-striped table-bordered nowrap w-100"
-                                       data-raw-source="fbm_targeting">
-                                    <thead><tr></tr></thead>
-                                    <tbody></tbody>
-                                </table>
-                            </div>
-                        </div>
+                    <div id="amz-raw-push-result" class="alert alert-secondary small d-none mt-2 mb-2 py-2" role="status" aria-live="polite">
+                        <div class="fw-semibold mb-1" id="amz-raw-push-result-title"></div>
+                        <pre id="amz-raw-push-result-pre" class="mb-0 small bg-white border rounded p-2" style="white-space:pre-wrap;max-height:280px;overflow:auto;"></pre>
                     </div>
-                </div>
-            </div>
-        </div>
-    </div>
 
-    <div class="modal fade" id="amazonAdsBgtRuleModal" tabindex="-1" aria-labelledby="amazonAdsBgtRuleModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-scrollable">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="amazonAdsBgtRuleModalLabel">BGT rule — ACOS → SBGT</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <p class="small text-muted mb-3">
-                        <strong>Pink</strong> if L30 ACOS ≤ E1; <strong>green</strong> if &gt; E1 and ≤ E2; <strong>blue</strong> if &gt; E2 and ≤ E3;
-                        <strong>yellow</strong> if &gt; E3 and &lt; E4; <strong>red</strong> if ACOS ≥ E4. Require <strong>E1 &lt; E2 &lt; E3 &lt; E4</strong> (all %).
-                        SBGT values are the suggested daily budget <strong>tiers</strong> ($) used in the grid and SBGT push.
-                    </p>
-                    <div class="row g-2 mb-2">
-                        <div class="col-6 col-md-3">
-                            <label class="form-label small mb-0" for="amazonAdsBgtRuleE1">E1 (pink max ACOS %)</label>
-                            <input type="number" step="0.01" class="form-control form-control-sm" id="amazonAdsBgtRuleE1" name="e1" required>
+                    <div id="amz-ads-raw-wrap">
+                        <div class="p-2 bg-light border rounded-top d-flex align-items-center gap-2">
+                            <input type="search" id="amz-filter-search" class="form-control" placeholder="Search Campaign..." autocomplete="off" aria-label="Search by campaign name" maxlength="100">
+                            <span id="amz-raw-source-label" class="badge bg-dark text-nowrap"></span>
                         </div>
-                        <div class="col-6 col-md-3">
-                            <label class="form-label small mb-0" for="amazonAdsBgtRuleE2">E2 (green max)</label>
-                            <input type="number" step="0.01" class="form-control form-control-sm" id="amazonAdsBgtRuleE2" name="e2" required>
-                        </div>
-                        <div class="col-6 col-md-3">
-                            <label class="form-label small mb-0" for="amazonAdsBgtRuleE3">E3 (blue max)</label>
-                            <input type="number" step="0.01" class="form-control form-control-sm" id="amazonAdsBgtRuleE3" name="e3" required>
-                        </div>
-                        <div class="col-6 col-md-3">
-                            <label class="form-label small mb-0" for="amazonAdsBgtRuleE4">E4 (red min ACOS %)</label>
-                            <input type="number" step="0.01" class="form-control form-control-sm" id="amazonAdsBgtRuleE4" name="e4" required>
-                        </div>
+                        <div id="amz-ads-raw-table"></div>
                     </div>
-                    <div class="row g-2">
-                        <div class="col-6 col-md">
-                            <label class="form-label small mb-0" for="amazonAdsBgtRuleSbgtPink">SBGT pink ($)</label>
-                            <input type="number" step="1" min="1" class="form-control form-control-sm" id="amazonAdsBgtRuleSbgtPink" name="sbgt_pink" required>
-                        </div>
-                        <div class="col-6 col-md">
-                            <label class="form-label small mb-0" for="amazonAdsBgtRuleSbgtGreen">SBGT green ($)</label>
-                            <input type="number" step="1" min="1" class="form-control form-control-sm" id="amazonAdsBgtRuleSbgtGreen" name="sbgt_green" required>
-                        </div>
-                        <div class="col-6 col-md">
-                            <label class="form-label small mb-0" for="amazonAdsBgtRuleSbgtBlue">SBGT blue ($)</label>
-                            <input type="number" step="1" min="1" class="form-control form-control-sm" id="amazonAdsBgtRuleSbgtBlue" name="sbgt_blue" required>
-                        </div>
-                        <div class="col-6 col-md">
-                            <label class="form-label small mb-0" for="amazonAdsBgtRuleSbgtYellow">SBGT yellow ($)</label>
-                            <input type="number" step="1" min="1" class="form-control form-control-sm" id="amazonAdsBgtRuleSbgtYellow" name="sbgt_yellow" required>
-                        </div>
-                        <div class="col-6 col-md">
-                            <label class="form-label small mb-0" for="amazonAdsBgtRuleSbgtRed">SBGT red ($)</label>
-                            <input type="number" step="1" min="1" class="form-control form-control-sm" id="amazonAdsBgtRuleSbgtRed" name="sbgt_red" required>
-                        </div>
-                    </div>
-                    <p class="small text-danger mb-0 mt-3 d-none" id="amazonAdsBgtRuleModalError" role="alert"></p>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-sm btn-primary" id="amazonAdsBgtRuleSaveBtn">Save rule &amp; refresh grid</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="modal fade" id="amazonAdsSbidRuleModal" tabindex="-1" aria-labelledby="amazonAdsSbidRuleModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-scrollable">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="amazonAdsSbidRuleModalLabel">SBID rule — U2% / U1% → suggested bid</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <p class="small text-muted mb-3">
-                        When <strong>both</strong> U2% and U1% are <strong>below</strong> the low threshold, SBID uses L1 → L2 → L7 CPC multiplied by the matching factor (first positive CPC wins).
-                        When <strong>both</strong> are <strong>above</strong> the high threshold, SBID uses L1 CPC × the high-band multiplier (no L1 CPC → no SBID).
-                        Otherwise the grid shows &ldquo;--&rdquo;. Same logic runs in automated bid commands.
-                    </p>
-                    <div class="row g-2 mb-2">
-                        <div class="col-6 col-md-4">
-                            <label class="form-label small mb-0" for="amazonAdsSbidRuleUtilLow">Low threshold (%)</label>
-                            <input type="number" step="0.1" class="form-control form-control-sm" id="amazonAdsSbidRuleUtilLow" name="util_low" required>
-                        </div>
-                        <div class="col-6 col-md-4">
-                            <label class="form-label small mb-0" for="amazonAdsSbidRuleUtilHigh">High threshold (%)</label>
-                            <input type="number" step="0.1" class="form-control form-control-sm" id="amazonAdsSbidRuleUtilHigh" name="util_high" required>
-                        </div>
-                        <div class="col-6 col-md-4">
-                            <label class="form-label small mb-0" for="amazonAdsSbidRuleBothLowFallback">Fallback SBID (no CPC)</label>
-                            <input type="number" step="0.01" class="form-control form-control-sm" id="amazonAdsSbidRuleBothLowFallback" name="both_low_fallback" required>
-                        </div>
-                    </div>
-                    <p class="small fw-semibold mb-1">Both below low threshold — CPC multipliers</p>
-                    <div class="row g-2 mb-3">
-                        <div class="col-4">
-                            <label class="form-label small mb-0" for="amazonAdsSbidRuleLowMultL1">× L1 CPC</label>
-                            <input type="number" step="0.01" class="form-control form-control-sm" id="amazonAdsSbidRuleLowMultL1" name="both_low_mult_l1" required>
-                        </div>
-                        <div class="col-4">
-                            <label class="form-label small mb-0" for="amazonAdsSbidRuleLowMultL2">× L2 CPC</label>
-                            <input type="number" step="0.01" class="form-control form-control-sm" id="amazonAdsSbidRuleLowMultL2" name="both_low_mult_l2" required>
-                        </div>
-                        <div class="col-4">
-                            <label class="form-label small mb-0" for="amazonAdsSbidRuleLowMultL7">× L7 CPC</label>
-                            <input type="number" step="0.01" class="form-control form-control-sm" id="amazonAdsSbidRuleLowMultL7" name="both_low_mult_l7" required>
-                        </div>
-                    </div>
-                    <p class="small fw-semibold mb-1">Both above high threshold</p>
-                    <div class="row g-2">
-                        <div class="col-6 col-md-4">
-                            <label class="form-label small mb-0" for="amazonAdsSbidRuleHighMultL1">× L1 CPC</label>
-                            <input type="number" step="0.01" class="form-control form-control-sm" id="amazonAdsSbidRuleHighMultL1" name="both_high_mult_l1" required>
-                        </div>
-                    </div>
-                    <p class="small text-danger mb-0 mt-3 d-none" id="amazonAdsSbidRuleModalError" role="alert"></p>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-sm btn-primary" id="amazonAdsSbidRuleSaveBtn">Save rule &amp; refresh grid</button>
                 </div>
             </div>
         </div>
@@ -526,7 +226,7 @@
                 </div>
                 <div class="modal-body py-3">
                     <p class="small text-muted mb-2">Row counts by U7% band (U7 grid filter ignored). Click a slice for the last 30 days.</p>
-                    <div id="amazonAdsU7Pie" class="amazon-u7-pie-modal-chart" role="img" aria-label="U7 percent distribution pie chart"></div>
+                    <div id="amazonAdsU7Pie" role="img" aria-label="U7 percent distribution pie chart"></div>
                 </div>
                 <div class="modal-footer py-2">
                     <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
@@ -543,7 +243,7 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body py-2">
-                    <p class="small text-muted mb-2" id="amazonAdsU7HistoryModalSub">Last 30 calendar days (same U2/U1/Status filters as the grid; date range ignored).</p>
+                    <p class="small text-muted mb-2" id="amazonAdsU7HistoryModalSub">Last 30 calendar days. Same U2/U1/Stat filters as the grid; U7 filter ignored.</p>
                     <div id="amazonAdsU7HistoryModalLoading" class="small text-muted">Loading…</div>
                     <p class="small text-danger mb-0 d-none" id="amazonAdsU7HistoryModalError" role="alert"></p>
                     <div class="table-responsive" style="max-height: 60vh;">
@@ -568,11 +268,107 @@
             </div>
         </div>
     </div>
+
+    <div class="modal fade" id="amazonAdsBgtRuleModal" tabindex="-1" aria-labelledby="amazonAdsBgtRuleModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title" id="amazonAdsBgtRuleModalLabel">BGT rule — ACOS % → Suggested Budget (SBGT)</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted mb-3">
+                        Each row is an inclusive <strong>ACOS % range</strong> (From → To). Rows are checked
+                        <strong>top to bottom</strong>; the first range that contains the campaign's ACOS gets its SBGT.
+                        Use <code>9999</code> on <em>To</em> for the catch-all highest band.
+                    </p>
+                    <table class="table table-sm table-bordered align-middle mb-0" id="amazonAdsBgtRuleTable">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width:40px;">#</th>
+                                <th>Label</th>
+                                <th style="width:140px;">Color</th>
+                                <th style="width:110px;">From (%)</th>
+                                <th style="width:110px;">To (%)</th>
+                                <th style="width:120px;">SBGT</th>
+                                <th style="width:50px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="amazonAdsBgtRuleBandsBody"></tbody>
+                    </table>
+                    <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="amazonAdsBgtRuleAddBandBtn">
+                        <i class="fas fa-plus me-1"></i>Add band
+                    </button>
+                    <p class="small text-danger mb-0 mt-2 d-none" id="amazonAdsBgtRuleModalError" role="alert"></p>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-sm btn-primary" id="amazonAdsBgtRuleSaveBtn">Save &amp; refresh grid</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="amazonAdsSbidRuleModal" tabindex="-1" aria-labelledby="amazonAdsSbidRuleModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title" id="amazonAdsSbidRuleModalLabel">SBID rule — U2% / U1% → suggested bid</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted mb-2">When <strong>both</strong> U2% and U1% are <strong>below</strong> the low threshold, SBID = CPC × under multipliers (or fallback when no CPC). When <strong>both</strong> are <strong>above</strong> the high threshold, SBID = L1 CPC × over multiplier. Otherwise SBID shows —.</p>
+                    <div class="row g-2 mb-2">
+                        <div class="col-4">
+                            <label class="form-label small mb-0" for="amazonAdsSbidRuleUtilLow">Low threshold (%)</label>
+                            <input type="number" step="0.1" class="form-control form-control-sm" id="amazonAdsSbidRuleUtilLow" name="util_low" required>
+                        </div>
+                        <div class="col-4">
+                            <label class="form-label small mb-0" for="amazonAdsSbidRuleUtilHigh">High threshold (%)</label>
+                            <input type="number" step="0.1" class="form-control form-control-sm" id="amazonAdsSbidRuleUtilHigh" name="util_high" required>
+                        </div>
+                        <div class="col-4">
+                            <label class="form-label small mb-0" for="amazonAdsSbidRuleBothLowFallback">Fallback (no CPC)</label>
+                            <input type="number" step="0.01" class="form-control form-control-sm" id="amazonAdsSbidRuleBothLowFallback" name="both_low_fallback" required>
+                        </div>
+                    </div>
+                    <p class="small fw-semibold mb-1">Both below low — CPC multipliers</p>
+                    <div class="row g-2 mb-3">
+                        <div class="col-4">
+                            <label class="form-label small mb-0" for="amazonAdsSbidRuleLowMultL1">× L1 CPC</label>
+                            <input type="number" step="0.01" class="form-control form-control-sm" id="amazonAdsSbidRuleLowMultL1" name="both_low_mult_l1" required>
+                        </div>
+                        <div class="col-4">
+                            <label class="form-label small mb-0" for="amazonAdsSbidRuleLowMultL2">× L2 CPC</label>
+                            <input type="number" step="0.01" class="form-control form-control-sm" id="amazonAdsSbidRuleLowMultL2" name="both_low_mult_l2" required>
+                        </div>
+                        <div class="col-4">
+                            <label class="form-label small mb-0" for="amazonAdsSbidRuleLowMultL7">× L7 CPC</label>
+                            <input type="number" step="0.01" class="form-control form-control-sm" id="amazonAdsSbidRuleLowMultL7" name="both_low_mult_l7" required>
+                        </div>
+                    </div>
+                    <p class="small fw-semibold mb-1">Both above high</p>
+                    <div class="row g-2">
+                        <div class="col-4">
+                            <label class="form-label small mb-0" for="amazonAdsSbidRuleHighMultL1">× L1 CPC</label>
+                            <input type="number" step="0.01" class="form-control form-control-sm" id="amazonAdsSbidRuleHighMultL1" name="both_high_mult_l1" required>
+                        </div>
+                    </div>
+                    <p class="small text-danger mb-0 mt-2 d-none" id="amazonAdsSbidRuleModalError" role="alert"></p>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-sm btn-primary" id="amazonAdsSbidRuleSaveBtn">Save &amp; refresh grid</button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script')
+    <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script>
-        (function () {
+        document.addEventListener('DOMContentLoaded', function () {
             var rawSources = @json($rawSources ?? []);
             var amazonAdsDefaultReportDates = @json($defaultReportRangeDates ?? (object) []);
             var dataUrlTemplate = @json(url('/amazon-ads/raw-data')) + '/';
@@ -584,66 +380,732 @@
             var bgtRuleSaveUrl = @json(route('amazon.ads.bgt-rule.save'));
             var sbidRuleGetUrl = @json(route('amazon.ads.sbid-rule'));
             var sbidRuleSaveUrl = @json(route('amazon.ads.sbid-rule.save'));
-            window.amazonAdsBgtRule = @json($amazonAdsBgtRule ?? null);
-            window.amazonAdsSbidRule = @json($amazonAdsSbidRule ?? null);
             var u7PieDistribUrl = @json(url('/amazon-ads/u7-distribution')) + '/';
             var u7PieHistoryUrl = @json(url('/amazon-ads/u7-distribution-history')) + '/';
-            var amazonAdsU7PieChart = null;
-            var u7PieRefreshTimer = null;
-            /** Pie chart height inside the U7 mix modal (width follows modal). */
-            var U7_PIE_MODAL_CHART_H = 400;
+            window.amazonAdsBgtRule = @json($amazonAdsBgtRule ?? null);
+            window.amazonAdsSbidRule = @json($amazonAdsSbidRule ?? null);
 
-            function amazonAdsU7PieModalIsOpen() {
+            var csrfToken = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+            var table = null;
+            var activeRawSourceKey = 'sp_reports';
+            var amzDrawCounter = 0;
+            var amzU7PieChart = null;
+            var amzU7PieRefreshTimer = null;
+
+            var HIDDEN_COLUMNS = ['id', 'profile_id', 'campaign_id', 'report_date_range', 'ad_type', 'date', 'startDate', 'endDate'];
+            var NON_ORDERABLE_COLUMNS = ['U7%', 'U2%', 'U1%', 'CPC3', 'CPC2', 'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks', 'INV'];
+            var PIE_SOURCES = ['sp_reports', 'sb_reports', 'sd_reports'];
+
+            // ---- number helpers ----
+            function amzFiniteNumber(data) {
+                if (data === null || data === undefined || data === '') return NaN;
+                var n = typeof data === 'number' ? data : parseFloat(String(data).replace(/,/g, ''));
+                return (typeof n === 'number' && isFinite(n)) ? n : NaN;
+            }
+            function amzRawNumberText(data) {
+                var n = amzFiniteNumber(data);
+                return isNaN(n) ? '' : String(n);
+            }
+            function amzDash() { return '<span class="text-muted">--</span>'; }
+            function amzEsc(s) {
+                return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+            }
+
+            // ---- rule helpers (ACOS bands / SBGT tiers) ----
+            function amzBgtRuleBands() {
+                var r = window.amazonAdsBgtRule || {};
+                return (r && Array.isArray(r.bands)) ? r.bands : [];
+            }
+            function amzBandForAcos(acos) {
+                var a = typeof acos === 'number' ? acos : parseFloat(String(acos));
+                if (isNaN(a)) return null;
+                var bands = amzBgtRuleBands();
+                for (var i = 0; i < bands.length; i++) {
+                    var from = parseFloat(bands[i].acos_from);
+                    var to = parseFloat(bands[i].acos_to);
+                    if (isNaN(from)) from = 0;
+                    if (isNaN(to)) to = 9999;
+                    if (a >= from && a <= to) return bands[i];
+                }
+                return null;
+            }
+            function amzAcosTierColor(acos) {
+                var band = amzBandForAcos(acos);
+                return (band && band.color) ? band.color : '#6b7280';
+            }
+            function amzSbgtTierColor(sbgt) {
+                var s = parseInt(sbgt, 10);
+                if (isNaN(s)) return '#6b7280';
+                var bands = amzBgtRuleBands();
+                for (var i = 0; i < bands.length; i++) {
+                    if (parseInt(bands[i].sbgt, 10) === s && bands[i].color) return bands[i].color;
+                }
+                return '#6b7280';
+            }
+            function amzAllowedSbgtTiers() {
+                var bands = amzBgtRuleBands();
+                var out = [];
+                for (var i = 0; i < bands.length; i++) {
+                    var t = parseInt(bands[i].sbgt, 10);
+                    if (!isNaN(t) && t > 0 && out.indexOf(t) === -1) out.push(t);
+                }
+                out.sort(function (x, y) { return x - y; });
+                return out;
+            }
+
+            // ---- Tabulator formatters ----
+            function fmtDashNumberRaw(cell) {
+                var v = cell.getValue();
+                var n = amzFiniteNumber(v);
+                if (isNaN(n)) return amzDash();
+                return '<span class="fw-semibold">' + amzEsc(amzRawNumberText(v)) + '</span>';
+            }
+            function fmtDashRounded(cell) {
+                var n = amzFiniteNumber(cell.getValue());
+                if (isNaN(n)) return amzDash();
+                return '<span class="fw-semibold">' + Math.round(n).toLocaleString() + '</span>';
+            }
+            function fmtDashInt(cell) {
+                var v = cell.getValue();
+                if (v === null || v === undefined || v === '') return amzDash();
+                var n = parseInt(v, 10);
+                if (isNaN(n)) return amzDash();
+                return '<span class="fw-semibold">' + n.toLocaleString() + '</span>';
+            }
+            function fmt2dec(cell) {
+                var v = cell.getValue();
+                if (v === null || v === undefined || v === '') return amzDash();
+                var n = typeof v === 'number' ? v : parseFloat(v);
+                if (isNaN(n)) return amzDash();
+                return n.toFixed(2);
+            }
+            function fmtSbid(cell) {
+                var v = cell.getValue();
+                if (v === null || v === undefined || v === '') return amzDash();
+                var n = typeof v === 'number' ? v : parseFloat(String(v).replace(/,/g, ''));
+                if (isNaN(n)) return amzDash();
+                return '<span class="fw-semibold">' + n.toFixed(2) + '</span>';
+            }
+            function fmtCvr(cell) {
+                var n = amzFiniteNumber(cell.getValue());
+                if (isNaN(n)) return amzDash();
+                return '<span class="fw-semibold">' + Math.round(n) + '%</span>';
+            }
+            function fmtAcos(cell) {
+                var v = cell.getValue();
+                if (v === null || v === undefined || v === '') return amzDash();
+                var n = typeof v === 'number' ? v : parseFloat(v);
+                if (isNaN(n)) return amzDash();
+                var r = Math.round(n);
+                return '<span class="fw-semibold" style="color:' + amzAcosTierColor(r) + ';">' + r + '%</span>';
+            }
+            function fmtSbgt(cell) {
+                var v = cell.getValue();
+                if (v === null || v === undefined || v === '') return amzDash();
+                var t = parseInt(v, 10);
+                if (isNaN(t)) return amzDash();
+                return '<span class="fw-semibold" style="color:' + amzSbgtTierColor(t) + ';">' + t + '</span>';
+            }
+            function fmtUtilPercent(cell) {
+                var td = cell.getElement();
+                if (td) td.classList.remove('green-bg', 'pink-bg', 'red-bg');
+                var v = cell.getValue();
+                if (v === null || v === undefined || v === '') return amzDash();
+                var n = typeof v === 'number' ? v : parseFloat(v);
+                if (isNaN(n)) return amzDash();
+                if (td) {
+                    if (n >= 66 && n <= 99) td.classList.add('green-bg');
+                    else if (n > 99) td.classList.add('pink-bg');
+                    else td.classList.add('red-bg');
+                }
+                return Math.round(n) + '%';
+            }
+            function fmtCampaignStatus(cell) {
+                var v = cell.getValue();
+                var raw = (v === null || v === undefined) ? '' : String(v).trim();
+                if (raw === '') return '<span class="amz-raw-status-cell text-muted" title="—">—</span>';
+                var enabled = raw.toUpperCase() === 'ENABLED';
+                var color = enabled ? '#16a34a' : '#dc2626';
+                var tip = amzEsc(raw);
+                return '<span class="amz-raw-status-cell" title="' + tip + '" style="display:inline-flex;align-items:center;justify-content:center;">'
+                     + '<span class="d-inline-block rounded-circle" style="width:10px;height:10px;background-color:' + color + ';"></span></span>';
+            }
+            function fmtAdType(cell) {
+                var v = cell.getValue();
+                if (v === null || v === undefined) return '';
+                var u = String(v).trim().toUpperCase();
+                if (u === 'SPONSORED_PRODUCTS') return 'SP';
+                if (u === 'SPONSORED_BRANDS') return 'SB';
+                return amzEsc(String(v).trim());
+            }
+            function fmtCampaignName(cell) {
+                var v = cell.getValue();
+                var s = (v === null || v === undefined) ? '' : String(v);
+                var esc = amzEsc(s);
+                var attr = esc.replace(/'/g, '&#39;');
+                var copy = '<i class="fas fa-copy amz-copy-name" role="button" tabindex="0" title="Copy campaign name"'
+                         + ' data-copy="' + attr + '" style="margin-left:6px;color:#94a3b8;cursor:pointer;flex-shrink:0;"></i>';
+                return '<span style="display:inline-flex;align-items:center;gap:2px;max-width:100%;">'
+                     + '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc + '</span>' + copy + '</span>';
+            }
+
+            // Map a source display-column name to Tabulator column def extras.
+            function amzApplyColFormat(col, c) {
+                if (c === 'campaignName') { col.formatter = fmtCampaignName; col.minWidth = 200; col.widthGrow = 4; col.hozAlign = 'left'; return; }
+                if (c === 'campaignStatus') { col.title = 'Stat'; col.formatter = fmtCampaignStatus; col.width = 48; col.minWidth = 44; return; }
+                if (c === 'ad_type') { col.formatter = fmtAdType; return; }
+                if (c === 'impressions') { col.title = 'Impr'; col.formatter = fmtDashInt; return; }
+                if (c === 'last_sbid') { col.title = 'Lbid'; col.formatter = fmtSbid; return; }
+                if (c === 'sbid') { col.title = 'SBID'; col.formatter = fmtSbid; return; }
+                if (c === 'bgt') { col.title = 'BGT'; col.formatter = fmtDashNumberRaw; return; }
+                if (c === 'sbgt') { col.title = 'SBGT'; col.formatter = fmtSbgt; return; }
+                if (c === 'INV') { col.title = 'INV'; col.formatter = fmtDashInt; return; }
+                if (c === 'Prchase') { col.title = 'Sold'; col.formatter = fmtDashInt; return; }
+                if (c === 'Cvr') { col.title = 'Cvr'; col.formatter = fmtCvr; return; }
+                if (c === 'ACOS') { col.title = 'ACOS'; col.formatter = fmtAcos; return; }
+                if (c === 'sales') { col.title = 'Sales'; col.formatter = fmtDashNumberRaw; return; }
+                if (c === 'cost') { col.title = 'SPL30'; col.formatter = fmtDashRounded; return; }
+                if (c === 'L7spend') { col.title = 'L7SP'; col.formatter = fmtDashNumberRaw; return; }
+                if (c === 'L2spend') { col.title = 'L2SP'; col.formatter = fmtDashNumberRaw; return; }
+                if (c === 'L1spend') { col.title = 'L1SP'; col.formatter = fmtDashNumberRaw; return; }
+                if (c === 'L1cost') { col.title = 'L1Cost'; col.formatter = fmtDashRounded; return; }
+                if (c === 'L1clicks') { col.title = 'L1Clk'; col.formatter = fmtDashInt; return; }
+                if (c === 'U7%' || c === 'U2%' || c === 'U1%') { col.formatter = fmtUtilPercent; return; }
+                if (c === 'CPC3') { col.title = 'CPC3'; col.formatter = fmt2dec; return; }
+                if (c === 'CPC2') { col.title = 'CPC2'; col.formatter = fmt2dec; return; }
+                if (c === 'costPerClick') { col.title = 'CPC1'; col.formatter = fmt2dec; return; }
+                if (c === 'sales30d') { col.title = 'SL 30'; col.formatter = fmtDashRounded; return; }
+                if (c === 'clicks') { col.title = 'Click'; col.formatter = fmtDashInt; return; }
+            }
+
+            function amzBuildColumns(source) {
+                var cols = (rawSources[source] && rawSources[source].columns) ? rawSources[source].columns : [];
+                var defs = [{
+                    title: '', field: '__sel', formatter: 'rowSelection', titleFormatter: 'rowSelection',
+                    headerSort: false, hozAlign: 'center', headerHozAlign: 'center', width: 40, minWidth: 40
+                }];
+                cols.forEach(function (c) {
+                    var col = { field: c, title: c, hozAlign: 'center', headerHozAlign: 'center', minWidth: 56, widthGrow: 0 };
+                    col.headerSort = NON_ORDERABLE_COLUMNS.indexOf(c) === -1;
+                    if (HIDDEN_COLUMNS.indexOf(c) !== -1) col.visible = false;
+                    amzApplyColFormat(col, c);
+                    defs.push(col);
+                });
+                return defs;
+            }
+
+            // ---- filter payload ----
+            function amzSearchQueryVal() {
+                var el = document.getElementById('amz-filter-search');
+                if (!el) return '';
+                var v = String(el.value || '').replace(/\s+/g, ' ').trim();
+                return v.length > 100 ? v.slice(0, 100) : v;
+            }
+            function amzFilterPayload() {
+                var g = function (id) { var e = document.getElementById(id); return e ? (e.value || '') : ''; };
+                return {
+                    date_from: g('amazonAdsFilterDateFrom'),
+                    date_to: g('amazonAdsFilterDateTo'),
+                    summary_report_range: g('amazonAdsFilterSummaryRange'),
+                    filter_u7: g('amazonAdsFilterU7'),
+                    filter_u2: g('amazonAdsFilterU2'),
+                    filter_u1: g('amazonAdsFilterU1'),
+                    filter_campaign_status: g('amazonAdsFilterCampaignStatus')
+                };
+            }
+
+            // ---- badges ----
+            function amzSetText(id, txt) { var e = document.getElementById(id); if (e) e.textContent = txt; }
+            function amzUpdateBadges(json) {
+                var camp = (json && typeof json.distinctCampaignCount === 'number' && isFinite(json.distinctCampaignCount)) ? json.distinctCampaignCount : null;
+                var acos = (json && typeof json.overallAcosPercent === 'number' && isFinite(json.overallAcosPercent)) ? json.overallAcosPercent : null;
+                var spend = (json && typeof json.spendTotal === 'number' && isFinite(json.spendTotal)) ? json.spendTotal : null;
+                var clicks = (json && typeof json.clicksTotal === 'number' && isFinite(json.clicksTotal)) ? json.clicksTotal : null;
+                var sold = (json && typeof json.soldTotal === 'number' && isFinite(json.soldTotal)) ? json.soldTotal : null;
+                var sales = (json && typeof json.salesTotal === 'number' && isFinite(json.salesTotal)) ? json.salesTotal : null;
+
+                amzSetText('amazonAdsCampaignBadgeValue', camp === null ? '0' : Number(camp).toLocaleString('en-US'));
+                amzSetText('amazonAdsOverallAcosBadgeValue', acos === null ? '—' : (Math.round(acos) + '%'));
+                amzSetText('amazonAdsSpendBadgeValue', spend === null ? '$0' : ('$' + Number(spend).toLocaleString('en-US', { maximumFractionDigits: 0 })));
+                amzSetText('amazonAdsClicksBadgeValue', clicks === null ? '0' : Number(clicks).toLocaleString('en-US'));
+                amzSetText('amazonAdsSoldBadgeValue', sold === null ? '0' : Number(sold).toLocaleString('en-US'));
+                amzSetText('amazonAdsSalesBadgeValue', sales === null ? '$0' : ('$' + Number(sales).toLocaleString('en-US', { maximumFractionDigits: 0 })));
+                amzSetText('amazonAdsCvrBadgeValue', (sold !== null && clicks && clicks > 0) ? ((sold / clicks * 100).toFixed(2) + '%') : '—');
+                amzSetText('amazonAdsCpcBadgeValue', (spend !== null && clicks && clicks > 0) ? ('$' + (spend / clicks).toFixed(2)) : '$0');
+            }
+            function amzClearBadges() { amzUpdateBadges({}); }
+
+            function amzUpdateTotalBadge(n) {
+                var el = document.getElementById('amz-raw-total');
+                if (el) el.textContent = 'Total: ' + (isFinite(n) ? Number(n).toLocaleString() : '—');
+            }
+            function amzUpdatePageInfoBadge() {
+                var el = document.getElementById('amz-raw-page-info');
+                if (!el || !table) return;
+                try { el.textContent = 'Page: ' + table.getPage() + ' / ' + table.getPageMax(); }
+                catch (e) { el.textContent = 'Page: —'; }
+            }
+            function amzUpdateSourceLabel() {
+                var el = document.getElementById('amz-raw-source-label');
+                if (!el) return;
+                var tbl = (rawSources[activeRawSourceKey] && rawSources[activeRawSourceKey].table) ? rawSources[activeRawSourceKey].table : activeRawSourceKey;
+                el.textContent = tbl;
+            }
+            function amzRefreshUiSoon() {
+                setTimeout(function () { amzUpdatePageInfoBadge(); }, 0);
+            }
+
+            // ---- AJAX bridge: translate Tabulator remote params -> DataTables protocol ----
+            function amzAjaxRequestFunc(url, config, params) {
+                var source = activeRawSourceKey || 'sp_reports';
+                var cols = (rawSources[source] && rawSources[source].columns) ? rawSources[source].columns : [];
+                var size = parseInt(params.size, 10) || 100;
+                var page = parseInt(params.page, 10) || 1;
+                var body = new URLSearchParams();
+                body.set('draw', String(++amzDrawCounter));
+                body.set('start', String((page - 1) * size));
+                body.set('length', String(size));
+                body.set('search[value]', amzSearchQueryVal());
+                body.set('search[regex]', 'false');
+                var sorters = params.sort || [];
+                if (sorters.length) {
+                    var idx = cols.indexOf(sorters[0].field);
+                    if (idx < 0) idx = 0;
+                    body.set('order[0][column]', String(idx));
+                    body.set('order[0][dir]', sorters[0].dir === 'asc' ? 'asc' : 'desc');
+                }
+                var f = amzFilterPayload();
+                Object.keys(f).forEach(function (k) { body.set(k, f[k]); });
+                body.set('_token', csrfToken);
+                return fetch(dataUrlTemplate + encodeURIComponent(source), {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': csrfToken,
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+                    },
+                    credentials: 'same-origin',
+                    body: body.toString()
+                }).then(function (res) { return res.json(); });
+            }
+
+            table = new Tabulator('#amz-ads-raw-table', {
+                columns: amzBuildColumns('sp_reports'),
+                ajaxURL: dataUrlTemplate + 'sp_reports',
+                ajaxRequestFunc: amzAjaxRequestFunc,
+                height: '650px',
+                layout: 'fitColumns',
+                layoutColumnsOnNewData: true,
+                pagination: true,
+                paginationMode: 'remote',
+                paginationSize: 100,
+                paginationSizeSelector: [25, 50, 100, 250, 500],
+                paginationCounter: 'rows',
+                paginationButtonCount: 10,
+                paginationInitialPage: 1,
+                sortMode: 'remote',
+                placeholder: 'No rows for this source.',
+                selectableRows: true,
+                ajaxResponse: function (url, params, response) {
+                    if (!response || typeof response !== 'object') {
+                        amzUpdateTotalBadge(0);
+                        amzClearBadges();
+                        return { last_page: 1, data: [] };
+                    }
+                    var size = parseInt(params.size, 10) || 100;
+                    var filtered = Number(response.recordsFiltered);
+                    if (!isFinite(filtered) || filtered < 0) filtered = 0;
+                    var lastPage = Math.max(1, Math.ceil(filtered / size));
+                    amzUpdateBadges(response);
+                    amzUpdateTotalBadge(filtered);
+                    amzRefreshUiSoon();
+                    amzRefreshU7PieDebounced();
+                    return { last_page: lastPage, data: Array.isArray(response.data) ? response.data : [] };
+                }
+            });
+
+            table.on('pageLoaded', amzRefreshUiSoon);
+            table.on('dataLoaded', amzRefreshUiSoon);
+            table.on('dataLoadError', function (error) {
+                console.error('amazon-ads raw data load error', error);
+                amzUpdateTotalBadge(NaN);
+            });
+
+            // ---- reload / source switching ----
+            function amzReloadGrid() {
+                if (!table) return;
+                Promise.resolve(table.setData()).catch(function () {});
+            }
+            function amzReloadGridForFilters() {
+                if (!table) return;
+                var p = 1;
+                try { p = table.getPage(); } catch (e) {}
+                if (p && p !== 1) { table.setPage(1); } else { table.setData(); }
+                amzRefreshU7PieDebounced();
+            }
+
+            function amzSetDatesToLatestForSource(sourceKey) {
+                var d = amazonAdsDefaultReportDates[sourceKey];
+                var fromEl = document.getElementById('amazonAdsFilterDateFrom');
+                var toEl = document.getElementById('amazonAdsFilterDateTo');
+                if (!fromEl || !toEl) return;
+                if (d && typeof d === 'string') { fromEl.value = d; toEl.value = d; }
+                else { fromEl.value = ''; toEl.value = ''; }
+            }
+
+            function amzUpdatePushButtons() {
+                var sbidBtn = document.getElementById('amazonAdsPushSbidBtn');
+                var sbgtBtn = document.getElementById('amazonAdsPushSbgtBtn');
+                var isSp = activeRawSourceKey === 'sp_reports';
+                var isSb = activeRawSourceKey === 'sb_reports';
+                var ok = isSp || isSb;
+                if (sbidBtn) {
+                    sbidBtn.disabled = !ok;
+                    sbidBtn.title = ok ? ('Pushes the SBID shown on this page for each row (' + (isSp ? 'SP keywords/targets' : 'SB keywords') + ' API)') : 'Switch to SP or SB reports to push SBID';
+                }
+                if (sbgtBtn) {
+                    sbgtBtn.disabled = !ok;
+                    sbgtBtn.title = ok ? ('Sets ' + (isSp ? 'SP' : 'SB') + ' daily budget on Amazon to each row SBGT tier as dollars') : 'Switch to SP or SB reports to push SBGT';
+                }
+            }
+            function amzUpdatePieButton() {
+                var btn = document.getElementById('amazonAdsU7PieOpenBtn');
+                if (!btn) return;
+                var ok = PIE_SOURCES.indexOf(activeRawSourceKey) !== -1;
+                btn.disabled = !ok;
+                btn.title = ok ? 'Row counts by U7% band (U7 filter ignored).' : 'U7% mix is available for SP / SB / SD reports only';
+            }
+
+            function amzSwitchSource(sourceKey) {
+                if (!sourceKey || !rawSources[sourceKey]) sourceKey = 'sp_reports';
+                activeRawSourceKey = sourceKey;
+                amzSetDatesToLatestForSource(sourceKey);
+                amzClearBadges();
+                amzUpdatePushButtons();
+                amzUpdatePieButton();
+                amzUpdateSourceLabel();
+                if (table) {
+                    table.setColumns(amzBuildColumns(sourceKey));
+                    Promise.resolve(table.setData()).catch(function () {});
+                }
+            }
+
+            var reportTypeEl = document.getElementById('amazonAdsFilterReportType');
+            if (reportTypeEl) {
+                reportTypeEl.addEventListener('change', function () { amzSwitchSource(this.value); });
+            }
+
+            // Auto-reload filters
+            ['amazonAdsFilterSummaryRange', 'amazonAdsFilterU7', 'amazonAdsFilterU2', 'amazonAdsFilterU1', 'amazonAdsFilterCampaignStatus'].forEach(function (id) {
+                var el = document.getElementById(id);
+                if (el) el.addEventListener('change', amzReloadGridForFilters);
+            });
+            // Apply / Clear (dates need Apply)
+            var applyBtn = document.getElementById('amazonAdsFilterApply');
+            if (applyBtn) applyBtn.addEventListener('click', amzReloadGridForFilters);
+            var clearBtn = document.getElementById('amazonAdsFilterClear');
+            if (clearBtn) {
+                clearBtn.addEventListener('click', function () {
+                    ['amazonAdsFilterSummaryRange', 'amazonAdsFilterU7', 'amazonAdsFilterU2', 'amazonAdsFilterU1', 'amazonAdsFilterCampaignStatus'].forEach(function (id) {
+                        var el = document.getElementById(id); if (el) el.value = '';
+                    });
+                    amzSetDatesToLatestForSource(activeRawSourceKey);
+                    var s = document.getElementById('amz-filter-search'); if (s) s.value = '';
+                    amzReloadGridForFilters();
+                });
+            }
+
+            // Search box (debounced)
+            var searchEl = document.getElementById('amz-filter-search');
+            if (searchEl) {
+                var searchTimer = null;
+                var lastSearch = amzSearchQueryVal();
+                var schedule = function (immediate) {
+                    if (searchTimer) { clearTimeout(searchTimer); searchTimer = null; }
+                    var run = function () {
+                        var v = amzSearchQueryVal();
+                        if (v === lastSearch) return;
+                        lastSearch = v;
+                        amzReloadGridForFilters();
+                    };
+                    if (immediate) run(); else searchTimer = setTimeout(run, 300);
+                };
+                searchEl.addEventListener('input', function () { schedule(false); });
+                searchEl.addEventListener('search', function () { schedule(true); });
+                searchEl.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); schedule(true); } });
+            }
+
+            document.getElementById('amz-raw-refresh').addEventListener('click', function () {
+                Promise.resolve(table.setData()).finally(amzRefreshUiSoon);
+            });
+            document.getElementById('amazonAdsSectionExportBtn').addEventListener('click', function () {
+                var tbl = (rawSources[activeRawSourceKey] && rawSources[activeRawSourceKey].table) ? rawSources[activeRawSourceKey].table : 'export';
+                var d = new Date().toISOString().slice(0, 10);
+                table.download('csv', 'Amazon_' + tbl + '_Export_' + d + '.csv');
+            });
+
+            // Copy-to-clipboard for campaign name icon
+            document.addEventListener('click', function (e) {
+                var icon = e.target.closest ? e.target.closest('.amz-copy-name') : null;
+                if (!icon) return;
+                e.stopPropagation();
+                e.preventDefault();
+                var tmp = document.createElement('textarea');
+                tmp.innerHTML = icon.getAttribute('data-copy') || '';
+                var text = tmp.value;
+                var done = function () {
+                    var prev = icon.className;
+                    icon.className = 'fas fa-check amz-copy-name';
+                    icon.style.color = '#22c55e';
+                    setTimeout(function () { icon.className = prev; icon.style.color = '#94a3b8'; }, 1000);
+                };
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(text).then(done).catch(function () {});
+                } else {
+                    try {
+                        var ta = document.createElement('textarea'); ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+                        document.body.appendChild(ta); ta.focus(); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); done();
+                    } catch (err) {}
+                }
+            });
+
+            // ---- push result panel ----
+            function amzShowPushResult(title, body, variant) {
+                var wrap = document.getElementById('amz-raw-push-result');
+                var tEl = document.getElementById('amz-raw-push-result-title');
+                var pre = document.getElementById('amz-raw-push-result-pre');
+                if (!wrap || !tEl || !pre) return;
+                wrap.classList.remove('d-none', 'alert-success', 'alert-danger', 'alert-secondary', 'alert-info');
+                wrap.classList.add(variant === 'error' ? 'alert-danger' : (variant === 'loading' ? 'alert-info' : 'alert-success'));
+                if (variant === 'loading') {
+                    tEl.innerHTML = '<i class="fa fa-spinner fa-spin me-1"></i>' + amzEsc(title);
+                } else {
+                    tEl.textContent = title;
+                }
+                pre.textContent = body || '(no output)';
+                wrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+
+            // ---- push rows builders ----
+            function amzPickBidFromRow(row) {
+                var s = parseFloat(row.sbid);
+                if (!isNaN(s) && s > 0) return s;
+                var l = parseFloat(row.last_sbid);
+                if (!isNaN(l) && l > 0) return l;
+                return null;
+            }
+            function amzPickSbgtTierFromRow(row) {
+                var t = parseInt(row.sbgt, 10);
+                if (isNaN(t)) return null;
+                return amzAllowedSbgtTiers().indexOf(t) !== -1 ? t : null;
+            }
+            function amzCurrentPushRows() {
+                if (!table) return [];
+                var selected = table.getSelectedData();
+                return (selected && selected.length > 0) ? selected : table.getData('active');
+            }
+            function amzCollectSbidRows() {
+                var out = [];
+                amzCurrentPushRows().forEach(function (row) {
+                    if (!row) return;
+                    var cid = row.campaign_id;
+                    if (cid === null || cid === undefined || String(cid).trim() === '') return;
+                    var bid = amzPickBidFromRow(row);
+                    if (bid === null) return;
+                    out.push({ campaign_id: String(cid).trim(), bid: bid, campaignName: row.campaignName != null ? String(row.campaignName) : '' });
+                });
+                return out;
+            }
+            function amzCollectSbgtRows() {
+                var out = [];
+                amzCurrentPushRows().forEach(function (row) {
+                    if (!row) return;
+                    var cid = row.campaign_id;
+                    if (cid === null || cid === undefined || String(cid).trim() === '') return;
+                    var tier = amzPickSbgtTierFromRow(row);
+                    if (tier === null) return;
+                    out.push({ campaign_id: String(cid).trim(), sbgt: tier });
+                });
+                return out;
+            }
+            function amzRunPush(opts) {
+                if (!opts.rows.length) {
+                    window.alert('No eligible rows to push on this page.');
+                    return;
+                }
+                if (!window.confirm(opts.confirmMsg)) return;
+                var btn = opts.btn;
+                var origHtml = btn.innerHTML;
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Pushing…';
+                amzShowPushResult(opts.loadingTitle, opts.loadingDetail, 'loading');
+                fetch(opts.url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken,
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ rows: opts.rows })
+                })
+                    .then(function (res) { return res.json().then(function (body) { return { ok: res.ok, status: res.status, body: body }; }); })
+                    .then(function (out) {
+                        var b = out.body || {};
+                        var success = out.ok && b.ok !== false && b.status !== 422 && b.status !== 500;
+                        var title = opts.label + ' — ' + (success ? 'finished' : 'failed');
+                        var text = (b.message ? b.message + '\n\n' : '') + JSON.stringify(b, null, 2);
+                        amzShowPushResult(title, text, success ? 'success' : 'error');
+                        if (success && table) Promise.resolve(table.setData()).finally(amzRefreshUiSoon);
+                    })
+                    .catch(function (err) { amzShowPushResult('Request failed', String(err && err.message ? err.message : err), 'error'); })
+                    .finally(function () { btn.innerHTML = origHtml; btn.disabled = false; });
+            }
+
+            var pushSbidBtn = document.getElementById('amazonAdsPushSbidBtn');
+            if (pushSbidBtn) {
+                pushSbidBtn.addEventListener('click', function () {
+                    var isSp = activeRawSourceKey === 'sp_reports';
+                    var rows = amzCollectSbidRows();
+                    var nSel = table && table.getSelectedData ? table.getSelectedData().length : 0;
+                    var scope = nSel > 0 ? ('the ' + rows.length + ' checked row(s)') : ('all ' + rows.length + ' eligible row(s) on this page');
+                    amzRunPush({
+                        url: isSp ? pushSpSbidsUrl : pushSbSbidsUrl,
+                        btn: pushSbidBtn,
+                        rows: rows,
+                        label: 'SBID push',
+                        confirmMsg: 'Push SBID to ' + scope + '? Each row uses the SBID shown in the grid (Lbid fallback).',
+                        loadingTitle: 'Pushing SBID…',
+                        loadingDetail: 'Updating SBIDs for ' + rows.length + ' row(s). Waiting for Amazon Ads API — do not close this tab.'
+                    });
+                });
+            }
+            var pushSbgtBtn = document.getElementById('amazonAdsPushSbgtBtn');
+            if (pushSbgtBtn) {
+                pushSbgtBtn.addEventListener('click', function () {
+                    var isSp = activeRawSourceKey === 'sp_reports';
+                    var rows = amzCollectSbgtRows();
+                    var nSel = table && table.getSelectedData ? table.getSelectedData().length : 0;
+                    var scope = nSel > 0 ? ('the ' + rows.length + ' checked row(s)') : ('all ' + rows.length + ' eligible row(s) on this page');
+                    amzRunPush({
+                        url: isSp ? pushSpSbgtsUrl : pushSbSbgtsUrl,
+                        btn: pushSbgtBtn,
+                        rows: rows,
+                        label: 'SBGT push',
+                        confirmMsg: 'Push SBGT to ' + scope + '? Each row sets the daily budget to its SBGT tier (in dollars).',
+                        loadingTitle: 'Pushing SBGT…',
+                        loadingDetail: 'Updating budgets for ' + rows.length + ' row(s). Waiting for Amazon Ads API — do not close this tab.'
+                    });
+                });
+            }
+
+            // ---- U7% pie + history (Highcharts) ----
+            function amzPieSource() {
+                return PIE_SOURCES.indexOf(activeRawSourceKey) !== -1 ? activeRawSourceKey : null;
+            }
+            function amzU7PieModalIsOpen() {
                 var m = document.getElementById('amazonAdsU7PieModal');
                 return !!(m && m.classList.contains('show'));
             }
-
-            function amazonAdsOpenU7HistoryModal(bucketKey, sliceLabel) {
+            function amzRefreshU7PieDebounced() {
+                if (amzU7PieRefreshTimer) clearTimeout(amzU7PieRefreshTimer);
+                amzU7PieRefreshTimer = setTimeout(function () { if (amzU7PieModalIsOpen()) amzRefreshU7Pie(); }, 280);
+            }
+            function amzPieFilterData() {
+                var f = amzFilterPayload();
+                return {
+                    _token: csrfToken,
+                    date_from: f.date_from,
+                    date_to: f.date_to,
+                    summary_report_range: f.summary_report_range,
+                    filter_u2: f.filter_u2,
+                    filter_u1: f.filter_u1,
+                    filter_campaign_status: f.filter_campaign_status
+                };
+            }
+            function amzRefreshU7Pie() {
+                var box = document.getElementById('amazonAdsU7Pie');
+                if (!box || !amzU7PieModalIsOpen()) return;
+                var src = amzPieSource();
+                if (!src) { box.innerHTML = '<p class="small text-muted mb-0">U7% mix is available for SP / SB / SD reports only.</p>'; return; }
+                if (typeof Highcharts === 'undefined') { box.innerHTML = '<p class="small text-muted mb-0">—</p>'; return; }
+                jQuery.ajax({
+                    url: u7PieDistribUrl + encodeURIComponent(src),
+                    type: 'POST',
+                    data: amzPieFilterData(),
+                    success: function (res) {
+                        if (amzU7PieChart) { try { amzU7PieChart.destroy(); } catch (e) {} amzU7PieChart = null; }
+                        if (!amzU7PieModalIsOpen()) return;
+                        if (!res || !res.ok) { box.innerHTML = '<p class="small text-muted mb-0 px-1">No chart</p>'; return; }
+                        box.innerHTML = '';
+                        var b = res.buckets || {};
+                        var seriesData = [];
+                        if ((b.lt66 || 0) > 0) seriesData.push({ name: '< 66%', y: b.lt66, color: '#dc2626', bucket: 'lt66' });
+                        if ((b['66_99'] || 0) > 0) seriesData.push({ name: '66–99%', y: b['66_99'], color: '#16a34a', bucket: '66_99' });
+                        if ((b.gt99 || 0) > 0) seriesData.push({ name: '> 99%', y: b.gt99, color: '#db2777', bucket: 'gt99' });
+                        if ((b.na || 0) > 0) seriesData.push({ name: 'N/A', y: b.na, color: '#9ca3af', bucket: 'na' });
+                        if (!seriesData.length || (res.total || 0) < 1) { box.innerHTML = '<p class="small text-muted mb-0">No rows</p>'; return; }
+                        amzU7PieChart = Highcharts.chart('amazonAdsU7Pie', {
+                            chart: { type: 'pie', backgroundColor: 'transparent', height: 400, spacing: [12, 12, 12, 12] },
+                            credits: { enabled: false }, exporting: { enabled: false }, title: { text: null },
+                            tooltip: {
+                                useHTML: true,
+                                formatter: function () {
+                                    return '<span style="color:' + this.point.color + '">\u25cf</span> <b>' + this.point.name + '</b><br/>'
+                                        + 'Rows: <b>' + Math.round(this.point.y) + '</b> (' + Math.round(this.percentage) + '%)<br/><span style="font-size:11px;color:#6b7280">Click for 30-day history</span>';
+                                }
+                            },
+                            plotOptions: {
+                                pie: {
+                                    allowPointSelect: true, cursor: 'pointer', size: '100%',
+                                    borderWidth: 1, borderColor: 'rgba(255,255,255,0.85)',
+                                    point: { events: { click: function () { if (this.options.bucket) amzOpenU7History(this.options.bucket, this.name); } } },
+                                    dataLabels: {
+                                        enabled: true, useHTML: true, distance: -120, allowOverlap: true, crop: false, overflow: 'allow',
+                                        formatter: function () {
+                                            var rp = Math.round(this.percentage);
+                                            return '<span style="color:#fff;text-shadow:0 0 5px rgba(0,0,0,0.9);font-size:' + (rp < 4 ? '34px' : '46px') + ';font-weight:800">' + rp + '%</span>';
+                                        }
+                                    }
+                                }
+                            },
+                            series: [{ type: 'pie', name: 'Rows', data: seriesData }]
+                        });
+                        setTimeout(function () { if (amzU7PieChart && amzU7PieChart.reflow) amzU7PieChart.reflow(); }, 50);
+                    },
+                    error: function () {
+                        if (amzU7PieChart) { try { amzU7PieChart.destroy(); } catch (e) {} amzU7PieChart = null; }
+                        if (amzU7PieModalIsOpen() && box) box.innerHTML = '<p class="small text-danger mb-0">Error</p>';
+                    }
+                });
+            }
+            function amzOpenU7History(bucketKey, sliceLabel) {
+                var src = amzPieSource();
+                if (!src) return;
                 var modalEl = document.getElementById('amazonAdsU7HistoryModal');
                 var titleEl = document.getElementById('amazonAdsU7HistoryModalLabel');
-                var subEl = document.getElementById('amazonAdsU7HistoryModalSub');
                 var loadEl = document.getElementById('amazonAdsU7HistoryModalLoading');
                 var errEl = document.getElementById('amazonAdsU7HistoryModalError');
                 var tbl = document.getElementById('amazonAdsU7HistoryTable');
                 var tbody = document.getElementById('amazonAdsU7HistoryTableBody');
-                if (!modalEl || !tbody) {
-                    return;
-                }
-                if (titleEl) {
-                    titleEl.textContent = 'U7% — ' + (sliceLabel || bucketKey) + ' — last 30 days';
-                }
-                if (subEl) {
-                    subEl.textContent = 'Daily row counts for the selected band. Same U2/U1/Status filters as the grid; grid date range and U7 filter are ignored.';
-                }
-                errEl.classList.add('d-none');
-                errEl.textContent = '';
-                tbl.classList.add('d-none');
-                tbody.innerHTML = '';
-                loadEl.classList.remove('d-none');
-                loadEl.textContent = 'Loading…';
+                if (!modalEl || !tbody) return;
+                if (titleEl) titleEl.textContent = 'U7% — ' + (sliceLabel || bucketKey) + ' — last 30 days';
+                errEl.classList.add('d-none'); errEl.textContent = '';
+                tbl.classList.add('d-none'); tbody.innerHTML = '';
+                loadEl.classList.remove('d-none'); loadEl.textContent = 'Loading…';
                 document.querySelectorAll('#amazonAdsU7HistoryTable thead [data-u7-bucket-col]').forEach(function (th) {
-                    th.classList.remove('table-secondary');
-                    if (th.getAttribute('data-u7-bucket-col') === bucketKey) {
-                        th.classList.add('table-secondary');
-                    }
+                    th.classList.toggle('table-secondary', th.getAttribute('data-u7-bucket-col') === bucketKey);
                 });
-                if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
-                    bootstrap.Modal.getOrCreateInstance(modalEl).show();
-                }
-                var sk = activeRawSourceKey || 'sp_reports';
-                var p = amazonAdsFilterPayload();
-                var tok = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+                if (typeof bootstrap !== 'undefined' && bootstrap.Modal) bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                var data = amzPieFilterData();
+                data.days = 30;
+                data.bucket = bucketKey;
                 jQuery.ajax({
-                    url: u7PieHistoryUrl + encodeURIComponent(sk),
+                    url: u7PieHistoryUrl + encodeURIComponent(src),
                     type: 'POST',
-                    data: {
-                        _token: tok,
-                        days: 30,
-                        bucket: bucketKey,
-                        filter_u2: p.filter_u2,
-                        filter_u1: p.filter_u1,
-                        filter_campaign_status: p.filter_campaign_status
-                    },
+                    data: data,
                     success: function (res) {
                         loadEl.classList.add('d-none');
                         if (!res || !res.ok || !res.days || !res.days.length) {
@@ -655,2013 +1117,216 @@
                         var frag = document.createDocumentFragment();
                         res.days.forEach(function (row) {
                             var tr = document.createElement('tr');
-                            var td0 = document.createElement('td');
-                            td0.textContent = row.date || '';
-                            tr.appendChild(td0);
+                            var td0 = document.createElement('td'); td0.textContent = row.date || ''; tr.appendChild(td0);
                             ['lt66', '66_99', 'gt99', 'na', 'total'].forEach(function (k) {
                                 var td = document.createElement('td');
                                 td.textContent = String(row[k] != null ? row[k] : '');
-                                if (k === bucketKey) {
-                                    td.classList.add('fw-semibold');
-                                }
+                                if (k === bucketKey) td.classList.add('fw-semibold');
                                 tr.appendChild(td);
                             });
                             frag.appendChild(tr);
                         });
                         tbody.appendChild(frag);
                     },
-                    error: function () {
-                        loadEl.classList.add('d-none');
-                        errEl.textContent = 'Request failed.';
-                        errEl.classList.remove('d-none');
-                    }
+                    error: function () { loadEl.classList.add('d-none'); errEl.textContent = 'Request failed.'; errEl.classList.remove('d-none'); }
+                });
+            }
+            var u7PieModalEl = document.getElementById('amazonAdsU7PieModal');
+            if (u7PieModalEl) {
+                u7PieModalEl.addEventListener('shown.bs.modal', amzRefreshU7Pie);
+                u7PieModalEl.addEventListener('hidden.bs.modal', function () {
+                    if (amzU7PieChart) { try { amzU7PieChart.destroy(); } catch (e) {} amzU7PieChart = null; }
+                    var box = document.getElementById('amazonAdsU7Pie'); if (box) box.innerHTML = '';
                 });
             }
 
-            function amazonAdsRefreshU7PieChartDebounced() {
-                if (u7PieRefreshTimer) {
-                    clearTimeout(u7PieRefreshTimer);
-                }
-                u7PieRefreshTimer = setTimeout(function () {
-                    if (amazonAdsU7PieModalIsOpen()) {
-                        amazonAdsRefreshU7PieChart();
-                    }
-                }, 280);
+            // ---- BGT rule modal (ACOS bands -> SBGT) ----
+            var amzCurrentBands = [];
+            function amzRenderBands(bands) {
+                var tbody = document.getElementById('amazonAdsBgtRuleBandsBody');
+                if (!tbody) return;
+                tbody.innerHTML = '';
+                bands.forEach(function (band, i) {
+                    var tr = document.createElement('tr');
+                    tr.innerHTML = ''
+                        + '<td class="text-muted small">' + (i + 1) + '</td>'
+                        + '<td><input type="text" class="form-control form-control-sm" value="' + String(band.label != null ? band.label : '').replace(/"/g, '&quot;') + '" data-idx="' + i + '" data-field="label"></td>'
+                        + '<td><div class="d-flex align-items-center gap-2">'
+                        + '<input type="color" class="form-control form-control-color form-control-sm" value="' + (band.color || '#6c757d') + '" data-idx="' + i + '" data-field="color">'
+                        + '<span class="badge" style="background:' + (band.color || '#6c757d') + ';color:#fff;">' + (band.label || '—') + '</span></div></td>'
+                        + '<td><input type="number" step="0.1" min="0" class="form-control form-control-sm" value="' + (band.acos_from != null ? band.acos_from : '') + '" data-idx="' + i + '" data-field="acos_from" placeholder="0"></td>'
+                        + '<td><input type="number" step="0.1" min="0" class="form-control form-control-sm" value="' + (band.acos_to != null ? band.acos_to : '') + '" data-idx="' + i + '" data-field="acos_to" placeholder="9999"></td>'
+                        + '<td><input type="number" step="1" min="1" class="form-control form-control-sm" value="' + (band.sbgt != null ? band.sbgt : '') + '" data-idx="' + i + '" data-field="sbgt"></td>'
+                        + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Remove band"><i class="fas fa-trash"></i></button></td>';
+                    tbody.appendChild(tr);
+                });
+                tbody.querySelectorAll('input[data-idx]').forEach(function (inp) {
+                    inp.addEventListener('input', function () {
+                        var idx = +this.dataset.idx, fld = this.dataset.field;
+                        if (!amzCurrentBands[idx]) return;
+                        amzCurrentBands[idx][fld] = (fld === 'sbgt') ? (this.value === '' ? '' : parseInt(this.value, 10))
+                            : (fld === 'acos_from' || fld === 'acos_to') ? (this.value === '' ? '' : parseFloat(this.value))
+                            : this.value;
+                        if (fld === 'label' || fld === 'color') {
+                            var chip = this.closest('tr').querySelector('.badge');
+                            var band = amzCurrentBands[idx];
+                            if (chip) { chip.style.background = band.color || '#6c757d'; chip.textContent = band.label || '—'; }
+                        }
+                    });
+                });
+                tbody.querySelectorAll('[data-remove-idx]').forEach(function (btn) {
+                    btn.addEventListener('click', function () { amzCurrentBands.splice(+this.dataset.removeIdx, 1); amzRenderBands(amzCurrentBands); });
+                });
             }
-
-            function amazonAdsU7PieDataLabelFormatter() {
-                var rp = Math.round(this.percentage);
-                var fs = rp < 4 ? '34px' : '46px';
-                return '<span style="color:#fff;text-shadow:0 0 5px rgba(0,0,0,0.9);font-size:' + fs + ';font-weight:800">' + rp + '%</span>';
+            function amzLoadBandsFromRule(rule) {
+                var bands = (rule && Array.isArray(rule.bands)) ? rule.bands : [];
+                amzCurrentBands = bands.map(function (b) {
+                    return { acos_from: Number(b.acos_from != null ? b.acos_from : 0), acos_to: Number(b.acos_to != null ? b.acos_to : 9999), sbgt: b.sbgt, label: b.label != null ? b.label : '', color: b.color || '#6c757d' };
+                });
+                amzRenderBands(amzCurrentBands);
             }
-
-            function amazonAdsRefreshU7PieChart() {
-                var box = document.getElementById('amazonAdsU7Pie');
-                if (!box) {
-                    return;
-                }
-                if (!amazonAdsU7PieModalIsOpen()) {
-                    return;
-                }
-                if (typeof Highcharts === 'undefined') {
-                    box.innerHTML = '<p class="small text-muted mb-0">—</p>';
-                    return;
-                }
-                var sk = activeRawSourceKey || 'sp_reports';
-                var p = amazonAdsFilterPayload();
-                var tok = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
-                jQuery.ajax({
-                    url: u7PieDistribUrl + encodeURIComponent(sk),
-                    type: 'POST',
-                    data: {
-                        _token: tok,
-                        date_from: p.date_from,
-                        date_to: p.date_to,
-                        summary_report_range: p.summary_report_range,
-                        filter_u2: p.filter_u2,
-                        filter_u1: p.filter_u1,
-                        filter_campaign_status: p.filter_campaign_status
-                    },
-                    success: function (res) {
-                        if (amazonAdsU7PieChart) {
-                            try {
-                                amazonAdsU7PieChart.destroy();
-                            } catch (e0) {}
-                            amazonAdsU7PieChart = null;
-                        }
-                        if (!amazonAdsU7PieModalIsOpen()) {
-                            return;
-                        }
-                        if (!res || !res.ok) {
-                            box.innerHTML = '<p class="small text-muted mb-0 px-1">No chart</p>';
-                            return;
-                        }
-                        box.innerHTML = '';
-                        var b = res.buckets || {};
-                        var lt = b.lt66 || 0;
-                        var mid = b['66_99'] || 0;
-                        var gt = b.gt99 || 0;
-                        var na = b.na || 0;
-                        var seriesData = [];
-                        if (lt > 0) {
-                            seriesData.push({ name: '< 66%', y: lt, color: '#dc2626', bucket: 'lt66' });
-                        }
-                        if (mid > 0) {
-                            seriesData.push({ name: '66–99%', y: mid, color: '#16a34a', bucket: '66_99' });
-                        }
-                        if (gt > 0) {
-                            seriesData.push({ name: '> 99%', y: gt, color: '#db2777', bucket: 'gt99' });
-                        }
-                        if (na > 0) {
-                            seriesData.push({ name: 'N/A', y: na, color: '#9ca3af', bucket: 'na' });
-                        }
-                        var tot = res.total || 0;
-                        if (!seriesData.length || tot < 1) {
-                            box.innerHTML = '<p class="small text-muted mb-0">No rows</p>';
-                            return;
-                        }
-                        if (!amazonAdsU7PieModalIsOpen()) {
-                            return;
-                        }
-                        amazonAdsU7PieChart = Highcharts.chart('amazonAdsU7Pie', {
-                            chart: { type: 'pie', backgroundColor: 'transparent', height: U7_PIE_MODAL_CHART_H, spacing: [12, 12, 12, 12] },
-                            credits: { enabled: false },
-                            exporting: { enabled: false },
-                            title: { text: null },
-                            tooltip: {
-                                useHTML: true,
-                                outside: false,
-                                formatter: function () {
-                                    var rn = Math.round(this.point.y);
-                                    var rp = Math.round(this.percentage);
-                                    return '<span style="color:' + this.point.color + '">\u25cf</span> <b>' + this.point.name + '</b><br/>'
-                                        + 'Rows: <b>' + rn + '</b> (' + rp + '%)<br/><span style="font-size:11px;color:#6b7280">Click for 30-day history</span>';
-                                }
-                            },
-                            plotOptions: {
-                                pie: {
-                                    allowPointSelect: true,
-                                    cursor: 'pointer',
-                                    size: '100%',
-                                    borderWidth: 1,
-                                    borderColor: 'rgba(255,255,255,0.85)',
-                                    states: {
-                                        hover: {
-                                            brightness: 0.08,
-                                            halo: { size: 0 }
-                                        }
-                                    },
-                                    point: {
-                                        events: {
-                                            click: function () {
-                                                var b = this.options.bucket;
-                                                if (b) {
-                                                    amazonAdsOpenU7HistoryModal(b, this.name);
-                                                }
-                                            }
-                                        }
-                                    },
-                                    dataLabels: {
-                                        enabled: true,
-                                        useHTML: true,
-                                        distance: -120,
-                                        connectorWidth: 0,
-                                        allowOverlap: true,
-                                        crop: false,
-                                        overflow: 'allow',
-                                        style: {
-                                            fontSize: '38px',
-                                            fontWeight: '700',
-                                            textOutline: 'none'
-                                        },
-                                        formatter: amazonAdsU7PieDataLabelFormatter
-                                    }
-                                }
-                            },
-                            series: [{ type: 'pie', name: 'Rows', data: seriesData }]
-                        });
-                        setTimeout(function () {
-                            if (amazonAdsU7PieChart && typeof amazonAdsU7PieChart.reflow === 'function') {
-                                amazonAdsU7PieChart.reflow();
-                            }
-                        }, 50);
-                    },
-                    error: function () {
-                        if (amazonAdsU7PieChart) {
-                            try {
-                                amazonAdsU7PieChart.destroy();
-                            } catch (e1) {}
-                            amazonAdsU7PieChart = null;
-                        }
-                        if (amazonAdsU7PieModalIsOpen() && box) {
-                            box.innerHTML = '<p class="small text-danger mb-0">Error</p>';
-                        }
+            function amzRefreshBgtRuleFromServer(cb) {
+                fetch(bgtRuleGetUrl, { method: 'GET', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
+                    .then(function (r) { return r.json(); })
+                    .then(function (body) { if (body && body.rule) window.amazonAdsBgtRule = body.rule; if (cb) cb(); })
+                    .catch(function () { if (cb) cb(); });
+            }
+            var bgtModalEl = document.getElementById('amazonAdsBgtRuleModal');
+            if (bgtModalEl) {
+                bgtModalEl.addEventListener('show.bs.modal', function () {
+                    var err = document.getElementById('amazonAdsBgtRuleModalError');
+                    if (err) { err.classList.add('d-none'); err.textContent = ''; }
+                    amzRefreshBgtRuleFromServer(function () { amzLoadBandsFromRule(window.amazonAdsBgtRule || {}); });
+                });
+            }
+            var bgtAddBtn = document.getElementById('amazonAdsBgtRuleAddBandBtn');
+            if (bgtAddBtn) {
+                bgtAddBtn.addEventListener('click', function () {
+                    var lastTo = amzCurrentBands.length ? Number(amzCurrentBands[amzCurrentBands.length - 1].acos_to || 0) : 0;
+                    amzCurrentBands.push({ acos_from: lastTo, acos_to: 9999, sbgt: 1, label: 'New band', color: '#6c757d' });
+                    amzRenderBands(amzCurrentBands);
+                });
+            }
+            var bgtSaveBtn = document.getElementById('amazonAdsBgtRuleSaveBtn');
+            if (bgtSaveBtn) {
+                bgtSaveBtn.addEventListener('click', function () {
+                    var err = document.getElementById('amazonAdsBgtRuleModalError');
+                    if (err) { err.classList.add('d-none'); err.textContent = ''; }
+                    var cleaned = (amzCurrentBands || []).map(function (b) {
+                        return {
+                            acos_from: (b.acos_from === '' || b.acos_from == null) ? NaN : parseFloat(b.acos_from),
+                            acos_to: (b.acos_to === '' || b.acos_to == null) ? NaN : parseFloat(b.acos_to),
+                            sbgt: (b.sbgt === '' || b.sbgt == null) ? NaN : parseInt(b.sbgt, 10),
+                            label: (b.label || '').toString(), color: (b.color || '#6c757d').toString()
+                        };
+                    });
+                    if (!cleaned.length) { if (err) { err.textContent = 'Add at least one band before saving.'; err.classList.remove('d-none'); } return; }
+                    for (var i = 0; i < cleaned.length; i++) {
+                        var b = cleaned[i];
+                        if (!isFinite(b.acos_from) || !isFinite(b.acos_to) || !isFinite(b.sbgt)) { if (err) { err.textContent = 'Every band needs numeric From, To, and SBGT values.'; err.classList.remove('d-none'); } return; }
+                        if (b.acos_from > b.acos_to) { if (err) { err.textContent = 'Each band needs From ≤ To.'; err.classList.remove('d-none'); } return; }
                     }
+                    bgtSaveBtn.disabled = true;
+                    fetch(bgtRuleSaveUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrfToken, 'X-Requested-With': 'XMLHttpRequest' },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({ bands: cleaned })
+                    })
+                        .then(function (res) { return res.json().then(function (body) { return { ok: res.ok, body: body }; }); })
+                        .then(function (out) {
+                            var b = out.body || {};
+                            if (!out.ok || b.status === 422 || b.status === 500) { if (err) { err.textContent = b.message || b.error || 'Save failed.'; err.classList.remove('d-none'); } return; }
+                            window.amazonAdsBgtRule = b.rule || window.amazonAdsBgtRule;
+                            if (typeof bootstrap !== 'undefined') { var inst = bootstrap.Modal.getInstance(bgtModalEl); if (inst) inst.hide(); }
+                            amzUpdatePushButtons();
+                            return Promise.resolve(table.setData());
+                        })
+                        .then(function () { amzRefreshUiSoon(); })
+                        .catch(function () { if (err) { err.textContent = 'Network or server error.'; err.classList.remove('d-none'); } })
+                        .finally(function () { bgtSaveBtn.disabled = false; });
                 });
             }
 
-            var scripts = [
-                'https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js',
-                'https://cdn.datatables.net/1.13.7/js/dataTables.bootstrap5.min.js'
+            // ---- SBID rule modal ----
+            var SBID_FIELDS = [
+                ['amazonAdsSbidRuleUtilLow', 'util_low'],
+                ['amazonAdsSbidRuleUtilHigh', 'util_high'],
+                ['amazonAdsSbidRuleBothLowFallback', 'both_low_fallback'],
+                ['amazonAdsSbidRuleLowMultL1', 'both_low_mult_l1'],
+                ['amazonAdsSbidRuleLowMultL2', 'both_low_mult_l2'],
+                ['amazonAdsSbidRuleLowMultL7', 'both_low_mult_l7'],
+                ['amazonAdsSbidRuleHighMultL1', 'both_high_mult_l1']
             ];
-
-            function loadScript(src, cb) {
-                var s = document.createElement('script');
-                s.src = src;
-                s.async = false;
-                s.onload = cb;
-                s.onerror = function () { cb(); };
-                document.head.appendChild(s);
-            }
-
-            function loadScriptsSequentially(i, done) {
-                if (i >= scripts.length) {
-                    done();
-                    return;
-                }
-                loadScript(scripts[i], function () { loadScriptsSequentially(i + 1, done); });
-            }
-
-            var initialized = {};
-            var amazonAdsDataTables = {};
-            /** Column defs from buildColumns(), keyed by DataTable id (for client CSV like amazon_tabulator_view). */
-            var amazonAdsColumnDefsByTable = {};
-            var activeAdsTableId = null;
-            var activeRawSourceKey = 'sp_reports';
-
-            /** Same CSV escaping as amazon_tabulator_view (#section-export-btn). */
-            function amazonAdsCsvEscapeField(val) {
-                if (val === null || val === undefined) {
-                    return '';
-                }
-                var s = String(val);
-                s = s.replace(/"/g, '""');
-                if (/[",\n\r]/.test(s)) {
-                    return '"' + s + '"';
-                }
-                return s;
-            }
-
-            var AMAZON_ADS_EXPORT_CHUNK = 500;
-            var AMAZON_ADS_EXPORT_MAX_ROWS = 50000;
-
-            /** POST body matching server-side DataTables so /amazon-ads/raw-data accepts it. */
-            function amazonAdsBuildRawDataAjaxPayload(draw, start, length, searchVal, orderCol, orderDir, colsMetaFull, p, token) {
-                var o = {
-                    draw: draw,
-                    start: start,
-                    length: length,
-                    date_from: p.date_from || '',
-                    date_to: p.date_to || '',
-                    summary_report_range: p.summary_report_range || '',
-                    filter_u7: p.filter_u7 || '',
-                    filter_u2: p.filter_u2 || '',
-                    filter_u1: p.filter_u1 || '',
-                    filter_campaign_status: p.filter_campaign_status || '',
-                    _token: token
-                };
-                o['search[value]'] = searchVal || '';
-                o['search[regex]'] = 'false';
-                o['order[0][column]'] = orderCol;
-                o['order[0][dir]'] = orderDir || 'desc';
-                for (var i = 0; i < colsMetaFull.length; i++) {
-                    var col = colsMetaFull[i];
-                    var prefix = 'columns[' + i + ']';
-                    o[prefix + '[data]'] = col.data;
-                    o[prefix + '[name]'] = '';
-                    o[prefix + '[searchable]'] = 'true';
-                    o[prefix + '[orderable]'] = col.orderable === false ? 'false' : 'true';
-                    o[prefix + '[search][value]'] = '';
-                    o[prefix + '[search][regex]'] = 'false';
-                }
-                return o;
-            }
-
-            function amazonAdsBuildCsvFromRows(rows, exportCols) {
-                var headerLine = exportCols.map(function (c) {
-                    return amazonAdsCsvEscapeField(c.title != null ? String(c.title) : String(c.data));
-                }).join(',');
-                var bodyLines = rows.map(function (row) {
-                    return exportCols.map(function (c) {
-                        var raw = row[c.data];
-                        var cell;
-                        if (typeof c.render === 'function') {
-                            try {
-                                cell = c.render(raw, 'export', row, {});
-                            } catch (e1) {
-                                cell = raw;
-                            }
-                        } else {
-                            cell = raw;
-                        }
-                        if (cell !== null && cell !== undefined && typeof cell === 'object') {
-                            try {
-                                cell = JSON.stringify(cell);
-                            } catch (e2) {
-                                cell = String(cell);
-                            }
-                        }
-                        return amazonAdsCsvEscapeField(cell);
-                    }).join(',');
+            function amzFillSbidForm(rule) {
+                if (!rule) return;
+                SBID_FIELDS.forEach(function (pair) {
+                    var el = document.getElementById(pair[0]);
+                    if (el && rule[pair[1]] != null) el.value = String(rule[pair[1]]);
                 });
-                return '\uFEFF' + headerLine + '\n' + bodyLines.join('\n') + '\n';
             }
-
-            function amazonAdsClientExportViewCsv() {
-                var tid = activeAdsTableId;
-                var dt = tid ? amazonAdsDataTables[tid] : null;
-                if (!dt || typeof dt.rows !== 'function') {
-                    window.alert('Table not loaded');
-                    return;
-                }
-                var colsMetaFull = amazonAdsColumnDefsByTable[tid];
-                if (!colsMetaFull || !colsMetaFull.length) {
-                    window.alert('No columns');
-                    return;
-                }
-                var omit = ['id', 'profile_id', 'startDate', 'endDate'];
-                var exportCols = colsMetaFull.filter(function (c) {
-                    return c && c.data && omit.indexOf(c.data) === -1;
+            function amzRefreshSbidRuleFromServer(cb) {
+                fetch(sbidRuleGetUrl, { method: 'GET', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
+                    .then(function (r) { return r.json(); })
+                    .then(function (body) { if (body && body.rule) window.amazonAdsSbidRule = body.rule; if (cb) cb(); })
+                    .catch(function () { if (cb) cb(); });
+            }
+            var sbidModalEl = document.getElementById('amazonAdsSbidRuleModal');
+            if (sbidModalEl) {
+                sbidModalEl.addEventListener('show.bs.modal', function () {
+                    var err = document.getElementById('amazonAdsSbidRuleModalError');
+                    if (err) { err.classList.add('d-none'); err.textContent = ''; }
+                    amzRefreshSbidRuleFromServer(function () { amzFillSbidForm(window.amazonAdsSbidRule || {}); });
                 });
-                var info = dt.page.info();
-                // Server-side: JSON uses recordsFiltered; page.info() exposes that count as recordsDisplay.
-                var rawTotal = info.recordsDisplay != null ? info.recordsDisplay : info.recordsFiltered;
-                var totalFiltered = parseInt(rawTotal, 10);
-                if (!isFinite(totalFiltered) || totalFiltered <= 0) {
-                    window.alert('No data to export');
-                    return;
-                }
-                if (totalFiltered > AMAZON_ADS_EXPORT_MAX_ROWS) {
-                    window.alert('Too many rows (' + totalFiltered + '). Narrow filters (max ' + AMAZON_ADS_EXPORT_MAX_ROWS + ' per export).');
-                    return;
-                }
-                var token = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
-                var p = amazonAdsFilterPayload();
-                var searchVal = typeof dt.search === 'function' ? String(dt.search() || '') : '';
-                var ord = dt.order();
-                var orderCol = ord && ord.length ? ord[0][0] : 0;
-                var orderDir = ord && ord.length ? ord[0][1] : 'desc';
-                var exportBtn = document.getElementById('amazonAdsSectionExportBtn');
-                if (exportBtn) {
-                    exportBtn.disabled = true;
-                }
-                var allRows = [];
-                var start = 0;
-                var draw = 1;
-                var url = dataUrlTemplate + encodeURIComponent(activeRawSourceKey);
-
-                function step() {
-                    var len = Math.min(AMAZON_ADS_EXPORT_CHUNK, totalFiltered - start);
-                    if (len <= 0) {
-                        finish();
-                        return;
-                    }
-                    var payload = amazonAdsBuildRawDataAjaxPayload(draw, start, len, searchVal, orderCol, orderDir, colsMetaFull, p, token);
-                    jQuery.ajax({
-                        url: url,
-                        type: 'POST',
-                        headers: { 'X-CSRF-TOKEN': token },
-                        data: payload
-                    }).done(function (json) {
-                        if (json && json.error) {
-                            window.alert(String(json.error));
-                            if (exportBtn) {
-                                exportBtn.disabled = false;
-                            }
-                            return;
-                        }
-                        var chunk = (json && json.data) ? json.data : [];
-                        if (!chunk.length) {
-                            if (allRows.length < totalFiltered) {
-                                window.alert('Export stopped: server returned no rows while ' + totalFiltered + ' were expected.');
-                            }
-                            if (exportBtn) {
-                                exportBtn.disabled = false;
-                            }
-                            return;
-                        }
-                        chunk.forEach(function (r) {
-                            allRows.push(r);
-                        });
-                        start += chunk.length;
-                        draw += 1;
-                        if (allRows.length >= totalFiltered || chunk.length < len) {
-                            finish();
-                            return;
-                        }
-                        step();
-                    }).fail(function (xhr) {
-                        window.alert('Export failed (HTTP ' + (xhr && xhr.status) + ').');
-                        if (exportBtn) {
-                            exportBtn.disabled = false;
-                        }
+            }
+            var sbidSaveBtn = document.getElementById('amazonAdsSbidRuleSaveBtn');
+            if (sbidSaveBtn) {
+                sbidSaveBtn.addEventListener('click', function () {
+                    var err = document.getElementById('amazonAdsSbidRuleModalError');
+                    if (err) { err.classList.add('d-none'); err.textContent = ''; }
+                    var payload = {};
+                    var invalid = false;
+                    SBID_FIELDS.forEach(function (pair) {
+                        var el = document.getElementById(pair[0]);
+                        var n = el ? parseFloat(String(el.value).trim()) : NaN;
+                        if (!isFinite(n)) invalid = true;
+                        payload[pair[1]] = n;
                     });
-                }
-
-                function finish() {
-                    if (exportBtn) {
-                        exportBtn.disabled = false;
-                    }
-                    if (!allRows.length) {
-                        window.alert('No rows returned.');
-                        return;
-                    }
-                    var csv = amazonAdsBuildCsvFromRows(allRows, exportCols);
-                    var blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-                    var blobUrl = window.URL.createObjectURL(blob);
-                    var a = document.createElement('a');
-                    a.href = blobUrl;
-                    var tbl = (rawSources[activeRawSourceKey] && rawSources[activeRawSourceKey].table) ? rawSources[activeRawSourceKey].table : 'export';
-                    var day = new Date().toISOString().split('T')[0];
-                    a.download = 'Amazon_' + tbl + '_Export_' + day + '.csv';
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    window.URL.revokeObjectURL(blobUrl);
-                    if (window.toastr && typeof window.toastr.success === 'function') {
-                        window.toastr.success('Exported ' + allRows.length + ' row(s) matching filters.');
-                    }
-                }
-
-                step();
-            }
-
-            function amazonAdsPickBidFromRow(row) {
-                if (!row || typeof row !== 'object') {
-                    return null;
-                }
-                // Push exactly what the grid shows: the visible SBID column (`row.sbid`, the
-                // freshly computed suggestion). The hidden `sbid_m` / `yes_sbid` values are
-                // intentionally NOT used, so the pushed bid always matches the number on screen
-                // in every range (Calendar, L30, etc.).
-                var s = parseFloat(row.sbid);
-                if (!isNaN(s) && s > 0) {
-                    return s;
-                }
-                // Lbid fallback — when a low-traffic day has no fresh sbid recommendation, the
-                // grid still shows the most recent non-zero recommendation in `last_sbid` (the
-                // visible "Lbid" column). Honour that so the row isn't silently skipped on push.
-                var l = parseFloat(row.last_sbid);
-                if (!isNaN(l) && l > 0) {
-                    return l;
-                }
-                return null;
-            }
-
-            function amazonAdsCollectSpSbidPushRows() {
-                var dt = amazonAdsDataTables['amazonAdsSpReportsTable'];
-                if (!dt || typeof dt.rows !== 'function') {
-                    return [];
-                }
-                var data = dt.rows({ page: 'current' }).data();
-                var list = [];
-                if (!data || typeof data.toArray !== 'function') {
-                    return list;
-                }
-                data.toArray().forEach(function (row) {
-                    if (!row) {
-                        return;
-                    }
-                    var cid = row.campaign_id;
-                    if (cid === null || cid === undefined || String(cid).trim() === '') {
-                        return;
-                    }
-                    var bid = amazonAdsPickBidFromRow(row);
-                    if (bid === null) {
-                        return;
-                    }
-                    var name = row.campaignName != null ? String(row.campaignName) : '';
-                    list.push({
-                        campaign_id: String(cid).trim(),
-                        bid: bid,
-                        campaignName: name
-                    });
-                });
-                return list;
-            }
-
-            function amazonAdsCollectSbSbidPushRows() {
-                var dt = amazonAdsDataTables['amazonAdsSbReportsTable'];
-                if (!dt || typeof dt.rows !== 'function') {
-                    return [];
-                }
-                var data = dt.rows({ page: 'current' }).data();
-                var list = [];
-                if (!data || typeof data.toArray !== 'function') {
-                    return list;
-                }
-                data.toArray().forEach(function (row) {
-                    if (!row) {
-                        return;
-                    }
-                    var cid = row.campaign_id;
-                    if (cid === null || cid === undefined || String(cid).trim() === '') {
-                        return;
-                    }
-                    var bid = amazonAdsPickBidFromRow(row);
-                    if (bid === null) {
-                        return;
-                    }
-                    var name = row.campaignName != null ? String(row.campaignName) : '';
-                    list.push({
-                        campaign_id: String(cid).trim(),
-                        bid: bid,
-                        campaignName: name
-                    });
-                });
-                return list;
-            }
-
-            function amazonAdsCollectSbSbgtPushRows() {
-                var dt = amazonAdsDataTables['amazonAdsSbReportsTable'];
-                if (!dt || typeof dt.rows !== 'function') {
-                    return [];
-                }
-                var data = dt.rows({ page: 'current' }).data();
-                var list = [];
-                if (!data || typeof data.toArray !== 'function') {
-                    return list;
-                }
-                data.toArray().forEach(function (row) {
-                    if (!row) {
-                        return;
-                    }
-                    var cid = row.campaign_id;
-                    if (cid === null || cid === undefined || String(cid).trim() === '') {
-                        return;
-                    }
-                    var tier = amazonAdsPickSbgtTierFromRow(row);
-                    if (tier === null) {
-                        return;
-                    }
-                    list.push({
-                        campaign_id: String(cid).trim(),
-                        sbgt: tier
-                    });
-                });
-                return list;
-            }
-
-            /** SBGT tier from row if it matches one of the configured rule tier values. */
-            function amazonAdsPickSbgtTierFromRow(row) {
-                if (!row || typeof row !== 'object') {
-                    return null;
-                }
-                var t = parseInt(row.sbgt, 10);
-                if (isNaN(t)) {
-                    return null;
-                }
-                var allowed = amazonAdsAllowedSbgtTiersFromRule();
-                if (allowed.indexOf(t) !== -1) {
-                    return t;
-                }
-                return null;
-            }
-
-            function amazonAdsCollectSpSbgtPushRows() {
-                var dt = amazonAdsDataTables['amazonAdsSpReportsTable'];
-                if (!dt || typeof dt.rows !== 'function') {
-                    return [];
-                }
-                var data = dt.rows({ page: 'current' }).data();
-                var list = [];
-                if (!data || typeof data.toArray !== 'function') {
-                    return list;
-                }
-                data.toArray().forEach(function (row) {
-                    if (!row) {
-                        return;
-                    }
-                    var cid = row.campaign_id;
-                    if (cid === null || cid === undefined || String(cid).trim() === '') {
-                        return;
-                    }
-                    var tier = amazonAdsPickSbgtTierFromRow(row);
-                    if (tier === null) {
-                        return;
-                    }
-                    list.push({
-                        campaign_id: String(cid).trim(),
-                        sbgt: tier
-                    });
-                });
-                return list;
-            }
-
-            function amazonAdsUpdateSbidPushButton() {
-                var btn = document.getElementById('amazonAdsPushSbidBtn');
-                var sbgtBtn = document.getElementById('amazonAdsPushSbgtBtn');
-                var isSp = activeRawSourceKey === 'sp_reports';
-                var isSb = activeRawSourceKey === 'sb_reports';
-                var sbidOk = isSp || isSb;
-                if (btn) {
-                    btn.disabled = !sbidOk;
-                    btn.title = sbidOk
-                        ? 'Pushes the SBID shown on this page (Lbid fallback) for each row (' + (isSp ? 'SP keywords/targets' : 'SB keywords') + ' API)'
-                        : 'Switch to SP or SB reports to push SBID';
-                }
-                if (sbgtBtn) {
-                    var tiers = amazonAdsAllowedSbgtTiersFromRule();
-                    var sbgtOk = isSp || isSb;
-                    sbgtBtn.disabled = !sbgtOk;
-                    sbgtBtn.title = sbgtOk
-                        ? 'Sets ' + (isSp ? 'SP' : 'SB') + ' daily budget on Amazon to each row SBGT tier as dollars ($' + tiers.join(', $') + ')'
-                        : 'Switch to SP or SB reports to push SBGT';
-                }
-            }
-
-            /** Single-day window: latest day available for this source (server-computed). */
-            function amazonAdsSetDateFiltersToLatestForSource(sourceKey) {
-                var d = amazonAdsDefaultReportDates[sourceKey];
-                var fromEl = document.getElementById('amazonAdsFilterDateFrom');
-                var toEl = document.getElementById('amazonAdsFilterDateTo');
-                if (!fromEl || !toEl) {
-                    return;
-                }
-                if (d && typeof d === 'string') {
-                    fromEl.value = d;
-                    toEl.value = d;
-                } else {
-                    fromEl.value = '';
-                    toEl.value = '';
-                }
-            }
-
-            function amazonAdsFilterPayload() {
-                var sumEl = document.getElementById('amazonAdsFilterSummaryRange');
-                var u7 = document.getElementById('amazonAdsFilterU7');
-                var u2 = document.getElementById('amazonAdsFilterU2');
-                var u1 = document.getElementById('amazonAdsFilterU1');
-                var st = document.getElementById('amazonAdsFilterCampaignStatus');
-                return {
-                    date_from: (document.getElementById('amazonAdsFilterDateFrom') || {}).value || '',
-                    date_to: (document.getElementById('amazonAdsFilterDateTo') || {}).value || '',
-                    summary_report_range: sumEl ? (sumEl.value || '') : '',
-                    filter_u7: u7 ? (u7.value || '') : '',
-                    filter_u2: u2 ? (u2.value || '') : '',
-                    filter_u1: u1 ? (u1.value || '') : '',
-                    filter_campaign_status: st ? (st.value || '') : ''
-                };
-            }
-
-            function amazonAdsReloadActiveGrid() {
-                if (activeAdsTableId && amazonAdsDataTables[activeAdsTableId]) {
-                    try {
-                        amazonAdsDataTables[activeAdsTableId].ajax.reload();
-                    } catch (e) {}
-                }
-            }
-
-            function amazonAdsShowSource(sourceKey) {
-                var panels = document.querySelectorAll('#amazonAdsSourcePanels .amazon-source-pane');
-                panels.forEach(function (pane) {
-                    var match = pane.getAttribute('data-pane-for') === sourceKey;
-                    pane.classList.toggle('d-none', !match);
-                });
-                var pane = document.querySelector('#amazonAdsSourcePanels .amazon-source-pane[data-pane-for="' + sourceKey + '"]');
-                if (!pane) {
-                    return;
-                }
-                var table = pane.querySelector('table[data-raw-source]');
-                if (!table || !table.id) {
-                    return;
-                }
-                activeAdsTableId = table.id;
-                activeRawSourceKey = table.getAttribute('data-raw-source') || 'sp_reports';
-                amazonAdsUpdateSpl30BadgeFromJson({}, sourceKey);
-                amazonAdsUpdateOverallAcosBadgeFromJson({}, sourceKey);
-                amazonAdsUpdateSpendBadgeFromJson({}, sourceKey);
-                amazonAdsUpdateClicksBadgeFromJson({}, sourceKey);
-                amazonAdsUpdateSoldBadgeFromJson({}, sourceKey);
-                amazonAdsUpdateSalesBadgeFromJson({}, sourceKey);
-                amazonAdsUpdateSbidPushButton();
-                initTable(table.id, table.getAttribute('data-raw-source'));
-            }
-
-            /** Short labels for Amazon ad_type values in the grid (display only; sort/filter use raw). */
-            /** U7%/U2%/U1%: L7 SP÷(BGT×7), L2 SP÷(BGT×2), L1 SP÷(BGT×1); red below 66, green 66–99, pink above 99 (bands use rounded %). */
-            function renderUtilPercentColumn(data, type) {
-                if (data === null || data === undefined || data === '') {
-                    if (type === 'display') {
-                        return '<span class="text-muted">-</span>';
-                    }
-                    if (type === 'sort' || type === 'type') {
-                        return -1;
-                    }
-                    return '';
-                }
-                var n = typeof data === 'number' ? data : parseFloat(data, 10);
-                if (isNaN(n)) {
-                    if (type === 'display') {
-                        return '<span class="text-muted">-</span>';
-                    }
-                    if (type === 'sort' || type === 'type') {
-                        return -1;
-                    }
-                    return '';
-                }
-                var rounded = Math.round(n);
-                if (type === 'sort' || type === 'type') {
-                    return rounded;
-                }
-                if (type === 'export' || type === 'excel' || type === 'pdf') {
-                    return String(rounded) + '%';
-                }
-                var color;
-                if (rounded > 99) {
-                    color = '#db2777';
-                } else if (rounded >= 66) {
-                    color = '#16a34a';
-                } else {
-                    color = '#dc2626';
-                }
-                return '<span style="color:' + color + ';font-weight:600;">' + rounded + '%</span>';
-            }
-
-            /** Money / totals columns: no integer rounding; sort and export use numeric precision. */
-            function amazonAdsParseFiniteNumber(data) {
-                if (data === null || data === undefined || data === '') {
-                    return NaN;
-                }
-                var n = typeof data === 'number' ? data : parseFloat(String(data).replace(/,/g, ''));
-                return typeof n === 'number' && isFinite(n) ? n : NaN;
-            }
-
-            function amazonAdsRawNumberText(data) {
-                var n = amazonAdsParseFiniteNumber(data);
-                if (isNaN(n)) {
-                    return '';
-                }
-                return String(n);
-            }
-
-            /** SPL30 total from raw-data JSON when the grid exposes `cost` (SPL30). */
-            function amazonAdsUpdateSpl30BadgeFromJson(json, responseSourceKey) {
-                if (responseSourceKey && responseSourceKey !== activeRawSourceKey) {
-                    return;
-                }
-                var wrap = document.getElementById('amazonAdsSpl30BadgeWrap');
-                var valEl = document.getElementById('amazonAdsSpl30BadgeValue');
-                if (!wrap || !valEl) {
-                    return;
-                }
-                if (json && typeof json.spl30Total === 'number' && isFinite(json.spl30Total)) {
-                    wrap.hidden = false;
-                    valEl.textContent = Number(json.spl30Total).toFixed(2);
-                } else {
-                    wrap.hidden = true;
-                    valEl.textContent = '';
-                }
-            }
-
-            /** Portfolio ACOS from raw-data (SP/SB): sum L30 cost ÷ sum L30 sales, same convention as per-row ACOS. */
-            function amazonAdsUpdateOverallAcosBadgeFromJson(json, responseSourceKey) {
-                if (responseSourceKey && responseSourceKey !== activeRawSourceKey) {
-                    return;
-                }
-                var wrap = document.getElementById('amazonAdsOverallAcosBadgeWrap');
-                var valEl = document.getElementById('amazonAdsOverallAcosBadgeValue');
-                if (!wrap || !valEl) {
-                    return;
-                }
-                if (json && typeof json.overallAcosPercent === 'number' && isFinite(json.overallAcosPercent)) {
-                    wrap.hidden = false;
-                    var p = Number(json.overallAcosPercent);
-                    valEl.textContent = p.toFixed(0) + '%';
-                    valEl.style.color = '';
-                } else {
-                    wrap.hidden = true;
-                    valEl.textContent = '';
-                    valEl.style.color = '';
-                }
-            }
-
-            /** Spend total from raw-data JSON: sum of the `spend` column across all filtered rows. */
-            function amazonAdsUpdateSpendBadgeFromJson(json, responseSourceKey) {
-                if (responseSourceKey && responseSourceKey !== activeRawSourceKey) {
-                    return;
-                }
-                var wrap = document.getElementById('amazonAdsSpendBadgeWrap');
-                var valEl = document.getElementById('amazonAdsSpendBadgeValue');
-                if (!wrap || !valEl) {
-                    return;
-                }
-                if (json && typeof json.spendTotal === 'number' && isFinite(json.spendTotal)) {
-                    wrap.hidden = false;
-                    valEl.textContent = '$' + Number(json.spendTotal).toLocaleString('en-US', { maximumFractionDigits: 0 });
-                } else {
-                    wrap.hidden = true;
-                    valEl.textContent = '';
-                }
-            }
-
-            /** Clicks total from raw-data JSON: sum of the `clicks` column across all filtered rows. */
-            function amazonAdsUpdateClicksBadgeFromJson(json, responseSourceKey) {
-                if (responseSourceKey && responseSourceKey !== activeRawSourceKey) {
-                    return;
-                }
-                var wrap = document.getElementById('amazonAdsClicksBadgeWrap');
-                var valEl = document.getElementById('amazonAdsClicksBadgeValue');
-                if (!wrap || !valEl) {
-                    return;
-                }
-                if (json && typeof json.clicksTotal === 'number' && isFinite(json.clicksTotal)) {
-                    wrap.hidden = false;
-                    valEl.textContent = Number(json.clicksTotal).toLocaleString('en-US');
-                } else {
-                    wrap.hidden = true;
-                    valEl.textContent = '';
-                }
-            }
-
-            /** Sold total from raw-data JSON: sum of purchases across all filtered rows. */
-            function amazonAdsUpdateSoldBadgeFromJson(json, responseSourceKey) {
-                if (responseSourceKey && responseSourceKey !== activeRawSourceKey) {
-                    return;
-                }
-                var wrap = document.getElementById('amazonAdsSoldBadgeWrap');
-                var valEl = document.getElementById('amazonAdsSoldBadgeValue');
-                if (!wrap || !valEl) {
-                    return;
-                }
-                if (json && typeof json.soldTotal === 'number' && isFinite(json.soldTotal)) {
-                    wrap.hidden = false;
-                    valEl.textContent = Number(json.soldTotal).toLocaleString('en-US');
-                } else {
-                    wrap.hidden = true;
-                    valEl.textContent = '';
-                }
-            }
-
-            /** Sales total from raw-data JSON: sum of the `sales` column across all filtered rows. */
-            function amazonAdsUpdateSalesBadgeFromJson(json, responseSourceKey) {
-                if (responseSourceKey && responseSourceKey !== activeRawSourceKey) {
-                    return;
-                }
-                var wrap = document.getElementById('amazonAdsSalesBadgeWrap');
-                var valEl = document.getElementById('amazonAdsSalesBadgeValue');
-                if (!wrap || !valEl) {
-                    return;
-                }
-                if (json && typeof json.salesTotal === 'number' && isFinite(json.salesTotal)) {
-                    wrap.hidden = false;
-                    valEl.textContent = '$' + Number(json.salesTotal).toLocaleString('en-US', { maximumFractionDigits: 0 });
-                } else {
-                    wrap.hidden = true;
-                    valEl.textContent = '';
-                }
-            }
-
-            /** SBID from server when U2/U1 both red or both pink; otherwise null → -- */
-            function renderSbidColumn(data, type) {
-                if (type === 'sort' || type === 'type') {
-                    var n = typeof data === 'number' ? data : parseFloat(String(data).replace(/,/g, ''));
-                    return isNaN(n) ? -1 : n;
-                }
-                if (type === 'export' || type === 'excel' || type === 'pdf') {
-                    if (data === null || data === undefined || data === '') {
-                        return '';
-                    }
-                    var x = typeof data === 'number' ? data : parseFloat(String(data).replace(/,/g, ''));
-                    return isNaN(x) ? '' : String(x);
-                }
-                if (type !== 'display') {
-                    return data;
-                }
-                if (data === null || data === undefined || data === '') {
-                    return '<span class="text-muted">--</span>';
-                }
-                var num = typeof data === 'number' ? data : parseFloat(String(data).replace(/,/g, ''));
-                if (isNaN(num)) {
-                    return '<span class="text-muted">--</span>';
-                }
-                return '<span class="fw-semibold">' + num.toFixed(2) + '</span>';
-            }
-
-            function formatAdTypeDisplay(data, type) {
-                if (type === 'export' || type === 'excel' || type === 'pdf') {
-                    if (data === null || data === undefined) {
-                        return '';
-                    }
-                    var se = String(data).trim();
-                    var ue = se.toUpperCase();
-                    if (ue === 'SPONSORED_PRODUCTS') {
-                        return 'SP';
-                    }
-                    if (ue === 'SPONSORED_BRANDS') {
-                        return 'SB';
-                    }
-                    return se;
-                }
-                if (type !== 'display') {
-                    return data;
-                }
-                if (data === null || data === undefined) {
-                    return '';
-                }
-                var s = String(data).trim();
-                var u = s.toUpperCase();
-                if (u === 'SPONSORED_PRODUCTS') {
-                    return 'SP';
-                }
-                if (u === 'SPONSORED_BRANDS') {
-                    return 'SB';
-                }
-                return s;
-            }
-
-            /**
-             * ACOS % tier colors — uses {@see window.amazonAdsBgtRule} (same as server AmazonAcosSbgtRule).
-             */
-            function amazonAdsAcosTierColor(acos) {
-                var r = window.amazonAdsBgtRule || {};
-                var e1 = parseFloat(r.e1);
-                var e2 = parseFloat(r.e2);
-                var e3 = parseFloat(r.e3);
-                var e4 = parseFloat(r.e4);
-                var a = typeof acos === 'number' ? acos : parseFloat(String(acos));
-                if (isNaN(a) || isNaN(e1) || isNaN(e2) || isNaN(e3) || isNaN(e4)) {
-                    return '#6b7280';
-                }
-                if (a >= e4) {
-                    return '#dc2626';
-                }
-                if (a > e3) {
-                    return '#ca8a04';
-                }
-                if (a > e2) {
-                    return '#2563eb';
-                }
-                if (a > e1) {
-                    return '#16a34a';
-                }
-                return '#db2777';
-            }
-
-            /** SBGT display color by tier value (matches semantic tier from BGT rule). */
-            function amazonAdsSbgtTierColor(sbgt) {
-                var s = parseInt(sbgt, 10);
-                var r = window.amazonAdsBgtRule || {};
-                if (s === parseInt(r.sbgt_red, 10)) {
-                    return '#dc2626';
-                }
-                if (s === parseInt(r.sbgt_yellow, 10)) {
-                    return '#ca8a04';
-                }
-                if (s === parseInt(r.sbgt_blue, 10)) {
-                    return '#2563eb';
-                }
-                if (s === parseInt(r.sbgt_green, 10)) {
-                    return '#16a34a';
-                }
-                if (s === parseInt(r.sbgt_pink, 10)) {
-                    return '#db2777';
-                }
-                return '#6b7280';
-            }
-
-            function amazonAdsAllowedSbgtTiersFromRule() {
-                var r = window.amazonAdsBgtRule || {};
-                var raw = [r.sbgt_red, r.sbgt_yellow, r.sbgt_blue, r.sbgt_green, r.sbgt_pink];
-                var out = [];
-                for (var i = 0; i < raw.length; i++) {
-                    var t = parseInt(raw[i], 10);
-                    if (!isNaN(t) && out.indexOf(t) === -1) {
-                        out.push(t);
-                    }
-                }
-                out.sort(function (x, y) { return x - y; });
-                return out;
-            }
-
-            function buildColumns(sourceKey) {
-                return rawSources[sourceKey].columns.map(function (c) {
-                    var col = { data: c, title: c, defaultContent: '' };
-                    if (c === 'ad_type') {
-                        col.render = function (data, type) {
-                            return formatAdTypeDisplay(data, type);
-                        };
-                    }
-                    if (c === 'impressions') {
-                        col.title = 'Impr';
-                    }
-                    if (c === 'campaignStatus') {
-                        col.title = 'Stat';
-                        col.render = function (data, type) {
-                            var raw = data === null || data === undefined ? '' : String(data).trim();
-                            var enabled = raw.toUpperCase() === 'ENABLED';
-                            if (type === 'sort' || type === 'type') {
-                                return enabled ? 1 : 0;
-                            }
-                            if (type === 'export' || type === 'excel' || type === 'pdf') {
-                                return raw;
-                            }
-                            if (type !== 'display') {
-                                return data;
-                            }
-                            var color = enabled ? '#16a34a' : '#dc2626';
-                            var titleEsc = raw.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
-                            var label = raw === '' ? 'Unknown' : raw;
-                            var labelEsc = label.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
-                            return '<span class="d-inline-block align-middle rounded-circle" style="width:10px;height:10px;background-color:' + color + ';" title="' + titleEsc + '" role="img" aria-label="' + labelEsc + '"></span>';
-                        };
-                    }
-                    if (c === 'last_sbid') {
-                        col.title = 'Lbid';
-                        col.render = function (data, type) {
-                            return renderSbidColumn(data, type);
-                        };
-                    }
-                    if (c === 'bgt') {
-                        col.title = 'BGT';
-                        col.render = function (data, type) {
-                            if (type === 'sort' || type === 'type') {
-                                var nb = amazonAdsParseFiniteNumber(data);
-                                return isNaN(nb) ? -1 : nb;
-                            }
-                            if (type === 'export' || type === 'excel' || type === 'pdf') {
-                                return amazonAdsRawNumberText(data);
-                            }
-                            if (type !== 'display') {
-                                return data;
-                            }
-                            if (data === null || data === undefined || data === '') {
-                                return '<span class="text-muted">--</span>';
-                            }
-                            var num = amazonAdsParseFiniteNumber(data);
-                            if (isNaN(num)) {
-                                return '<span class="text-muted">--</span>';
-                            }
-                            return '<span class="fw-semibold">' + amazonAdsRawNumberText(data) + '</span>';
-                        };
-                    }
-                    if (c === 'sbgt') {
-                        col.title = 'SBGT';
-                        col.render = function (data, type) {
-                            if (type === 'sort' || type === 'type') {
-                                var ns = parseInt(data, 10);
-                                return isNaN(ns) ? -1 : ns;
-                            }
-                            if (type === 'export' || type === 'excel' || type === 'pdf') {
-                                if (data === null || data === undefined || data === '') {
-                                    return '';
-                                }
-                                var xs = parseInt(data, 10);
-                                return isNaN(xs) ? '' : String(xs);
-                            }
-                            if (type !== 'display') {
-                                return data;
-                            }
-                            if (data === null || data === undefined || data === '') {
-                                return '<span class="text-muted">--</span>';
-                            }
-                            var ti = parseInt(data, 10);
-                            if (isNaN(ti)) {
-                                return '<span class="text-muted">--</span>';
-                            }
-                            var cs = amazonAdsSbgtTierColor(ti);
-                            return '<span class="fw-semibold" style="color:' + cs + ';">' + String(ti) + '</span>';
-                        };
-                    }
-                    if (c === 'INV') {
-                        col.title = 'INV';
-                        col.render = function (data, type) {
-                            if (type === 'sort' || type === 'type') {
-                                var ni = typeof data === 'number' ? data : parseInt(data, 10);
-                                return isNaN(ni) ? -1 : ni;
-                            }
-                            if (type === 'export' || type === 'excel' || type === 'pdf') {
-                                if (data === null || data === undefined || data === '') {
-                                    return '';
-                                }
-                                var xi = parseInt(data, 10);
-                                return isNaN(xi) ? '' : String(xi);
-                            }
-                            if (type !== 'display') {
-                                return data;
-                            }
-                            if (data === null || data === undefined || data === '') {
-                                return '<span class="text-muted">--</span>';
-                            }
-                            var vi = parseInt(data, 10);
-                            if (isNaN(vi)) {
-                                return '<span class="text-muted">--</span>';
-                            }
-                            return '<span class="fw-semibold">' + String(vi) + '</span>';
-                        };
-                    }
-                    if (c === 'Prchase') {
-                        col.title = 'Sold';
-                        col.render = function (data, type) {
-                            if (type === 'sort' || type === 'type') {
-                                var np = typeof data === 'number' ? data : parseInt(data, 10);
-                                return isNaN(np) ? -1 : np;
-                            }
-                            if (type === 'export' || type === 'excel' || type === 'pdf') {
-                                if (data === null || data === undefined || data === '') {
-                                    return '';
-                                }
-                                var xp = parseInt(data, 10);
-                                return isNaN(xp) ? '' : String(xp);
-                            }
-                            if (type !== 'display') {
-                                return data;
-                            }
-                            if (data === null || data === undefined || data === '') {
-                                return '<span class="text-muted">--</span>';
-                            }
-                            var ip = parseInt(data, 10);
-                            if (isNaN(ip)) {
-                                return '<span class="text-muted">--</span>';
-                            }
-                            return '<span class="fw-semibold">' + String(ip) + '</span>';
-                        };
-                    }
-                    if (c === 'ACOS') {
-                        col.title = 'ACOS';
-                        col.render = function (data, type) {
-                            var na = typeof data === 'number' ? data : parseFloat(data, 10);
-                            if (type === 'sort' || type === 'type') {
-                                return isNaN(na) ? -1 : Math.round(na);
-                            }
-                            if (type === 'export' || type === 'excel' || type === 'pdf') {
-                                if (data === null || data === undefined || data === '') {
-                                    return '';
-                                }
-                                var xa = typeof data === 'number' ? data : parseFloat(data, 10);
-                                return isNaN(xa) ? '' : String(Math.round(xa));
-                            }
-                            if (type !== 'display') {
-                                return data;
-                            }
-                            if (data === null || data === undefined || data === '') {
-                                return '<span class="text-muted">--</span>';
-                            }
-                            var pa = typeof data === 'number' ? data : parseFloat(data, 10);
-                            if (isNaN(pa)) {
-                                return '<span class="text-muted">--</span>';
-                            }
-                            var rpa = Math.round(pa);
-                            var ca = amazonAdsAcosTierColor(rpa);
-                            return '<span class="fw-semibold" style="color:' + ca + ';">' + String(rpa) + '%</span>';
-                        };
-                    }
-                    if (c === 'sales') {
-                        col.title = 'Sales';
-                        col.render = function (data, type) {
-                            if (type === 'sort' || type === 'type') {
-                                var nsl = amazonAdsParseFiniteNumber(data);
-                                return isNaN(nsl) ? -1 : nsl;
-                            }
-                            if (type === 'export' || type === 'excel' || type === 'pdf') {
-                                return amazonAdsRawNumberText(data);
-                            }
-                            if (type !== 'display') {
-                                return data;
-                            }
-                            if (data === null || data === undefined || data === '') {
-                                return '<span class="text-muted">--</span>';
-                            }
-                            var fsl = amazonAdsParseFiniteNumber(data);
-                            if (isNaN(fsl)) {
-                                return '<span class="text-muted">--</span>';
-                            }
-                            return '<span class="fw-semibold">' + amazonAdsRawNumberText(data) + '</span>';
-                        };
-                    }
-                    if (c === 'cost') {
-                        col.title = 'SPL30';
-                        col.render = function (data, type) {
-                            var ncst = amazonAdsParseFiniteNumber(data);
-                            if (type === 'sort' || type === 'type') {
-                                return isNaN(ncst) ? -1 : Math.round(ncst);
-                            }
-                            if (type === 'export' || type === 'excel' || type === 'pdf') {
-                                if (data === null || data === undefined || data === '') {
-                                    return '';
-                                }
-                                var xcst = amazonAdsParseFiniteNumber(data);
-                                return isNaN(xcst) ? '' : String(Math.round(xcst));
-                            }
-                            if (type !== 'display') {
-                                return data;
-                            }
-                            if (data === null || data === undefined || data === '') {
-                                return '<span class="text-muted">--</span>';
-                            }
-                            var fcst = amazonAdsParseFiniteNumber(data);
-                            if (isNaN(fcst)) {
-                                return '<span class="text-muted">--</span>';
-                            }
-                            return '<span class="fw-semibold">' + String(Math.round(fcst)) + '</span>';
-                        };
-                    }
-                    if (c === 'L7spend' || c === 'L2spend' || c === 'L1spend' || c === 'L1cost' || c === 'L1clicks') {
-                        if (c === 'L7spend') {
-                            col.title = 'L7SP';
-                        } else if (c === 'L2spend') {
-                            col.title = 'L2SP';
-                        } else if (c === 'L1spend') {
-                            col.title = 'L1SP';
-                        } else if (c === 'L1cost') {
-                            col.title = 'L1Cost';
-                        } else {
-                            col.title = 'L1Clk';
-                        }
-                        col.orderable = false;
-                        col.render = function (data, type) {
-                            if (c === 'L1clicks') {
-                                if (type === 'sort' || type === 'type') {
-                                    var nclk = typeof data === 'number' ? data : parseInt(data, 10);
-                                    return isNaN(nclk) ? -1 : nclk;
-                                }
-                                if (type === 'export' || type === 'excel' || type === 'pdf') {
-                                    if (data === null || data === undefined || data === '') {
-                                        return '';
-                                    }
-                                    var xclk = parseInt(data, 10);
-                                    return isNaN(xclk) ? '' : String(xclk);
-                                }
-                                if (type !== 'display') {
-                                    return data;
-                                }
-                                if (data === null || data === undefined || data === '') {
-                                    return '<span class="text-muted">--</span>';
-                                }
-                                var iclk = parseInt(data, 10);
-                                if (isNaN(iclk)) {
-                                    return '<span class="text-muted">--</span>';
-                                }
-                                return '<span class="fw-semibold">' + String(iclk) + '</span>';
-                            }
-                            if (type === 'sort' || type === 'type') {
-                                var nl = amazonAdsParseFiniteNumber(data);
-                                return isNaN(nl) ? -1 : nl;
-                            }
-                            if (type === 'export' || type === 'excel' || type === 'pdf') {
-                                if (c === 'L1cost') {
-                                    if (data === null || data === undefined || data === '') {
-                                        return '';
-                                    }
-                                    var xlc = amazonAdsParseFiniteNumber(data);
-                                    return isNaN(xlc) ? '' : String(Math.round(xlc));
-                                }
-                                return amazonAdsRawNumberText(data);
-                            }
-                            if (type !== 'display') {
-                                return data;
-                            }
-                            if (data === null || data === undefined || data === '') {
-                                return '<span class="text-muted">--</span>';
-                            }
-                            var nld = amazonAdsParseFiniteNumber(data);
-                            if (isNaN(nld)) {
-                                return '<span class="text-muted">--</span>';
-                            }
-                            if (c === 'L1cost') {
-                                return '<span class="fw-semibold">' + String(Math.round(nld)) + '</span>';
-                            }
-                            return '<span class="fw-semibold">' + amazonAdsRawNumberText(data) + '</span>';
-                        };
-                    }
-                    if (c === 'U7%' || c === 'U2%' || c === 'U1%') {
-                        col.render = function (data, type) {
-                            return renderUtilPercentColumn(data, type);
-                        };
-                    }
-                    if (c === 'CPC3') {
-                        col.title = 'CPC3';
-                        col.render = function (data, type) {
-                            if (type === 'sort' || type === 'type') {
-                                var n3 = typeof data === 'number' ? data : parseFloat(data, 10);
-                                return isNaN(n3) ? -1 : n3;
-                            }
-                            if (type === 'export' || type === 'excel' || type === 'pdf') {
-                                if (data === null || data === undefined || data === '') {
-                                    return '';
-                                }
-                                var x3 = typeof data === 'number' ? data : parseFloat(data, 10);
-                                if (isNaN(x3)) {
-                                    return '';
-                                }
-                                return x3.toFixed(2);
-                            }
-                            if (type !== 'display') {
-                                return data;
-                            }
-                            if (data === null || data === undefined || data === '') {
-                                return '<span class="text-muted">--</span>';
-                            }
-                            var n3d = typeof data === 'number' ? data : parseFloat(data, 10);
-                            if (isNaN(n3d)) {
-                                return '<span class="text-muted">--</span>';
-                            }
-                            return n3d.toFixed(2);
-                        };
-                    }
-                    if (c === 'CPC2') {
-                        col.title = 'CPC2';
-                        col.render = function (data, type) {
-                            if (type === 'sort' || type === 'type') {
-                                var n2 = typeof data === 'number' ? data : parseFloat(data, 10);
-                                return isNaN(n2) ? -1 : n2;
-                            }
-                            if (type === 'export' || type === 'excel' || type === 'pdf') {
-                                if (data === null || data === undefined || data === '') {
-                                    return '';
-                                }
-                                var x2 = typeof data === 'number' ? data : parseFloat(data, 10);
-                                if (isNaN(x2)) {
-                                    return '';
-                                }
-                                return x2.toFixed(2);
-                            }
-                            if (type !== 'display') {
-                                return data;
-                            }
-                            if (data === null || data === undefined || data === '') {
-                                return '<span class="text-muted">--</span>';
-                            }
-                            var n2d = typeof data === 'number' ? data : parseFloat(data, 10);
-                            if (isNaN(n2d)) {
-                                return '<span class="text-muted">--</span>';
-                            }
-                            return n2d.toFixed(2);
-                        };
-                    }
-                    if (c === 'costPerClick') {
-                        col.title = 'CPC1';
-                        col.render = function (data, type) {
-                            if (type === 'sort' || type === 'type') {
-                                var ns = typeof data === 'number' ? data : parseFloat(data, 10);
-                                return isNaN(ns) ? -1 : ns;
-                            }
-                            if (type === 'export' || type === 'excel' || type === 'pdf') {
-                                if (data === null || data === undefined || data === '') {
-                                    return '';
-                                }
-                                var xe = typeof data === 'number' ? data : parseFloat(data, 10);
-                                if (isNaN(xe)) {
-                                    return '';
-                                }
-                                return xe.toFixed(2);
-                            }
-                            if (type !== 'display') {
-                                return data;
-                            }
-                            if (data === null || data === undefined || data === '') {
-                                return '<span class="text-muted">--</span>';
-                            }
-                            var nc = typeof data === 'number' ? data : parseFloat(data, 10);
-                            if (isNaN(nc)) {
-                                return '<span class="text-muted">--</span>';
-                            }
-                            return nc.toFixed(2);
-                        };
-                    }
-                    if (c === 'sales30d') {
-                        col.title = 'SL 30';
-                        col.render = function (data, type) {
-                            var nsa = amazonAdsParseFiniteNumber(data);
-                            if (type === 'sort' || type === 'type') {
-                                return isNaN(nsa) ? -1 : Math.round(nsa);
-                            }
-                            if (type === 'export' || type === 'excel' || type === 'pdf') {
-                                if (data === null || data === undefined || data === '') {
-                                    return '';
-                                }
-                                var xsa = amazonAdsParseFiniteNumber(data);
-                                return isNaN(xsa) ? '' : String(Math.round(xsa));
-                            }
-                            if (type !== 'display') {
-                                return data;
-                            }
-                            if (data === null || data === undefined || data === '') {
-                                return '<span class="text-muted">--</span>';
-                            }
-                            var nca = amazonAdsParseFiniteNumber(data);
-                            if (isNaN(nca)) {
-                                return '<span class="text-muted">--</span>';
-                            }
-                            return '<span class="fw-semibold">' + String(Math.round(nca)) + '</span>';
-                        };
-                    }
-                    if (c === 'sbid') {
-                        col.title = 'SBID';
-                        col.render = function (data, type) {
-                            return renderSbidColumn(data, type);
-                        };
-                    }
-                    return col;
+                    if (invalid) { if (err) { err.textContent = 'All SBID rule fields must be numeric.'; err.classList.remove('d-none'); } return; }
+                    sbidSaveBtn.disabled = true;
+                    fetch(sbidRuleSaveUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrfToken, 'X-Requested-With': 'XMLHttpRequest' },
+                        credentials: 'same-origin',
+                        body: JSON.stringify(payload)
+                    })
+                        .then(function (res) { return res.json().then(function (body) { return { ok: res.ok, body: body }; }); })
+                        .then(function (out) {
+                            var b = out.body || {};
+                            if (!out.ok || b.status === 422 || b.status === 500) { if (err) { err.textContent = b.message || b.error || 'Save failed.'; err.classList.remove('d-none'); } return; }
+                            window.amazonAdsSbidRule = b.rule || window.amazonAdsSbidRule;
+                            if (typeof bootstrap !== 'undefined') { var inst = bootstrap.Modal.getInstance(sbidModalEl); if (inst) inst.hide(); }
+                            return Promise.resolve(table.setData());
+                        })
+                        .then(function () { amzRefreshUiSoon(); })
+                        .catch(function () { if (err) { err.textContent = 'Network or server error.'; err.classList.remove('d-none'); } })
+                        .finally(function () { sbidSaveBtn.disabled = false; });
                 });
             }
 
-            function initTable(tableId, sourceKey) {
-                if (initialized[tableId]) {
-                    return;
+            // ---- initial state ----
+            (function () {
+                var params = new URLSearchParams(window.location.search);
+                var deepSearch = params.get('search');
+                if (deepSearch) {
+                    var s = document.getElementById('amz-filter-search');
+                    if (s) s.value = deepSearch;
                 }
-                if (typeof jQuery === 'undefined' || !jQuery.fn.DataTable) {
-                    return;
-                }
-                var $ = jQuery;
-                var $t = $('#' + tableId);
-                if (!$t.length) {
-                    return;
-                }
-
-                var meta = rawSources[sourceKey];
-                if (!meta || !meta.columns || !meta.columns.length) {
-                    initialized[tableId] = true;
-                    var tbl = meta && meta.table ? meta.table : sourceKey;
-                    $t.closest('.amazon-raw-table-wrap').html(
-                        '<p class="text-muted mb-0">No columns available (table missing or empty schema): <code>' + tbl + '</code></p>'
-                    );
-                    return;
-                }
-
-                var cols = buildColumns(sourceKey);
-                amazonAdsColumnDefsByTable[tableId] = cols;
-                initialized[tableId] = true;
-
-                var hiddenRawColumnKeys = ['id', 'profile_id', 'campaign_id', 'report_date_range', 'ad_type', 'date', 'startDate', 'endDate'];
-                var hiddenColumnDefs = [];
-                hiddenRawColumnKeys.forEach(function (key) {
-                    for (var ci = 0; ci < cols.length; ci++) {
-                        if (cols[ci].data === key) {
-                            hiddenColumnDefs.push({ targets: ci, visible: false });
-                            break;
-                        }
-                    }
-                });
-                ['U7%', 'U2%', 'U1%', 'CPC3', 'CPC2', 'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks', 'INV'].forEach(function (key) {
-                    for (var uj = 0; uj < cols.length; uj++) {
-                        if (cols[uj].data === key) {
-                            hiddenColumnDefs.push({ targets: uj, orderable: false, searchable: false });
-                            break;
-                        }
-                    }
-                });
-
-                var dt = $t.DataTable({
-                    processing: true,
-                    serverSide: true,
-                    responsive: false,
-                    autoWidth: false,
-                    searching: true,
-                    pageLength: 25,
-                    lengthMenu: [[25, 50, 100, 250, 500], [25, 50, 100, 250, 500]],
-                    order: [[0, 'desc']],
-                    scrollX: true,
-                    scrollCollapse: true,
-                    columnDefs: hiddenColumnDefs,
-                    ajax: {
-                        url: dataUrlTemplate + encodeURIComponent(sourceKey),
-                        type: 'POST',
-                        headers: {
-                            'X-CSRF-TOKEN': (document.querySelector('meta[name="csrf-token"]') || {}).content || ''
-                        },
-                        data: function (d) {
-                            var p = amazonAdsFilterPayload();
-                            d.date_from = p.date_from;
-                            d.date_to = p.date_to;
-                            d.summary_report_range = p.summary_report_range;
-                            d.filter_u7 = p.filter_u7;
-                            d.filter_u2 = p.filter_u2;
-                            d.filter_u1 = p.filter_u1;
-                            d.filter_campaign_status = p.filter_campaign_status;
-                            d._token = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
-                        },
-                        dataSrc: function (json) {
-                            amazonAdsUpdateSpl30BadgeFromJson(json, sourceKey);
-                            amazonAdsUpdateOverallAcosBadgeFromJson(json, sourceKey);
-                            amazonAdsUpdateSpendBadgeFromJson(json, sourceKey);
-                            amazonAdsUpdateClicksBadgeFromJson(json, sourceKey);
-                            amazonAdsUpdateSoldBadgeFromJson(json, sourceKey);
-                            amazonAdsUpdateSalesBadgeFromJson(json, sourceKey);
-                            return json && json.data ? json.data : [];
-                        },
-                        error: function (xhr) {
-                            console.error('Amazon Ads raw DataTable error', xhr.status, xhr.responseText);
-                        }
-                    },
-                    columns: cols
-                });
-                amazonAdsDataTables[tableId] = dt;
-                dt.on('xhr.dt', function () {
-                    amazonAdsRefreshU7PieChartDebounced();
-                });
-            }
-
-            loadScriptsSequentially(0, function () {
-                if (typeof jQuery === 'undefined') {
-                    console.error('jQuery is required for DataTables');
-                    return;
-                }
-                jQuery(function () {
-                    var typeSel = document.getElementById('amazonAdsFilterReportType');
-                    var initialSource = (typeSel && typeSel.value) ? typeSel.value : 'sp_reports';
-                    activeRawSourceKey = initialSource;
-                    amazonAdsSetDateFiltersToLatestForSource(initialSource);
-                    amazonAdsUpdateSbidPushButton();
-                    amazonAdsShowSource(initialSource);
-
-                    var u7PieModalEl = document.getElementById('amazonAdsU7PieModal');
-                    if (u7PieModalEl) {
-                        u7PieModalEl.addEventListener('shown.bs.modal', function () {
-                            amazonAdsRefreshU7PieChart();
-                        });
-                        u7PieModalEl.addEventListener('hidden.bs.modal', function () {
-                            if (amazonAdsU7PieChart) {
-                                try {
-                                    amazonAdsU7PieChart.destroy();
-                                } catch (ePieHide) {}
-                                amazonAdsU7PieChart = null;
-                            }
-                            var pieBox = document.getElementById('amazonAdsU7Pie');
-                            if (pieBox) {
-                                pieBox.innerHTML = '';
-                            }
-                        });
-                    }
-
-                    if (typeSel) {
-                        typeSel.addEventListener('change', function () {
-                            var sk = this.value;
-                            var pane = document.querySelector('#amazonAdsSourcePanels .amazon-source-pane[data-pane-for="' + sk + '"]');
-                            var tblEl = pane && pane.querySelector('table[data-raw-source]');
-                            var tid = tblEl && tblEl.id;
-                            var alreadyInited = tid && initialized[tid];
-                            activeRawSourceKey = sk;
-                            amazonAdsSetDateFiltersToLatestForSource(sk);
-                            amazonAdsUpdateSbidPushButton();
-                            amazonAdsShowSource(sk);
-                            if (alreadyInited) {
-                                amazonAdsReloadActiveGrid();
-                            }
-                        });
-                    }
-
-                    var pushBtn = document.getElementById('amazonAdsPushSbidBtn');
-                    if (pushBtn) {
-                        pushBtn.addEventListener('click', function () {
-                            var statusEl = document.getElementById('amazonAdsSbidPushStatus');
-                            var isSp = activeRawSourceKey === 'sp_reports';
-                            var isSb = activeRawSourceKey === 'sb_reports';
-                            if (!isSp && !isSb) {
-                                if (statusEl) {
-                                    statusEl.textContent = 'Switch to SP or SB reports first.';
-                                }
-                                return;
-                            }
-                            var rows = isSp ? amazonAdsCollectSpSbidPushRows() : amazonAdsCollectSbSbidPushRows();
-                            if (!rows.length) {
-                                if (statusEl) {
-                                    statusEl.textContent = 'No rows on this page with campaign_id and a positive SBID (or Lbid).';
-                                }
-                                return;
-                            }
-                            var uniq = {};
-                            rows.forEach(function (r) {
-                                uniq[r.campaign_id] = r;
-                            });
-                            var deduped = Object.keys(uniq).map(function (k) {
-                                return uniq[k];
-                            });
-                            if (deduped.length > 100) {
-                                if (statusEl) {
-                                    statusEl.textContent = 'Too many distinct campaigns on this page (' + deduped.length + '). Narrow filters or page size (max 100).';
-                                }
-
-                                return;
-                            }
-                            var productLabel = isSp ? 'SP' : 'SB';
-                            if (!window.confirm('Push SBID to Amazon for ' + deduped.length + ' ' + productLabel + ' campaign(s) on this page?')) {
-                                return;
-                            }
-                            pushBtn.disabled = true;
-                            if (statusEl) {
-                                statusEl.textContent = 'Pushing…';
-                            }
-                            var token = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
-                            var pushUrl = isSp ? pushSpSbidsUrl : pushSbSbidsUrl;
-                            fetch(pushUrl, {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    'Accept': 'application/json',
-                                    'X-CSRF-TOKEN': token,
-                                    'X-Requested-With': 'XMLHttpRequest'
-                                },
-                                body: JSON.stringify({ rows: deduped })
-                            })
-                                .then(function (res) {
-                                    return res.json().then(function (body) {
-                                        return { ok: res.ok, status: res.status, body: body };
-                                    });
-                                })
-                                .then(function (out) {
-                                    var b = out.body || {};
-                                    var parts = [];
-                                    if (b.keyword_http_status != null) {
-                                        parts.push('keywords HTTP ' + b.keyword_http_status);
-                                    }
-                                    if (b.target_http_status != null) {
-                                        parts.push('targets HTTP ' + b.target_http_status);
-                                    }
-                                    var msg = (b.message || (out.ok ? 'Done.' : 'Request failed.')) + (parts.length ? ' (' + parts.join(', ') + ')' : '');
-                                    if (statusEl) {
-                                        statusEl.textContent = msg;
-                                    }
-                                })
-                                .catch(function (err) {
-                                    console.error(err);
-                                    if (statusEl) {
-                                        statusEl.textContent = 'Network or server error.';
-                                    }
-                                })
-                                .finally(function () {
-                                    amazonAdsUpdateSbidPushButton();
-                                });
-                        });
-                    }
-
-                    var pushSbgtBtn = document.getElementById('amazonAdsPushSbgtBtn');
-                    if (pushSbgtBtn) {
-                        pushSbgtBtn.addEventListener('click', function () {
-                            var statusEl = document.getElementById('amazonAdsSbgtPushStatus');
-                            var isSp = activeRawSourceKey === 'sp_reports';
-                            var isSb = activeRawSourceKey === 'sb_reports';
-                            if (!isSp && !isSb) {
-                                if (statusEl) {
-                                    statusEl.textContent = 'Switch to SP or SB reports first.';
-                                }
-                                return;
-                            }
-                            var rows = isSp ? amazonAdsCollectSpSbgtPushRows() : amazonAdsCollectSbSbgtPushRows();
-                            if (!rows.length) {
-                                if (statusEl) {
-                                    statusEl.textContent = 'No rows on this page with campaign_id and a valid SBGT tier (' + amazonAdsAllowedSbgtTiersFromRule().join(', ') + ').';
-                                }
-                                return;
-                            }
-                            var uniq = {};
-                            rows.forEach(function (r) {
-                                uniq[r.campaign_id] = r;
-                            });
-                            var deduped = Object.keys(uniq).map(function (k) {
-                                return uniq[k];
-                            });
-                            if (deduped.length > 100) {
-                                if (statusEl) {
-                                    statusEl.textContent = 'Too many distinct campaigns on this page (' + deduped.length + '). Narrow filters or page size (max 100).';
-                                }
-                                return;
-                            }
-                            var productLabel = isSp ? 'SP' : 'SB';
-                            if (!window.confirm('Push SBGT to Amazon as daily budget ($' + amazonAdsAllowedSbgtTiersFromRule().join(', $') + ') for ' + deduped.length + ' ' + productLabel + ' campaign(s) on this page?')) {
-                                return;
-                            }
-                            pushSbgtBtn.disabled = true;
-                            if (statusEl) {
-                                statusEl.textContent = 'Pushing…';
-                            }
-                            var token = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
-                            var sbgtsUrl = isSp ? pushSpSbgtsUrl : pushSbSbgtsUrl;
-                            fetch(sbgtsUrl, {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    'Accept': 'application/json',
-                                    'X-CSRF-TOKEN': token,
-                                    'X-Requested-With': 'XMLHttpRequest'
-                                },
-                                body: JSON.stringify({ rows: deduped })
-                            })
-                                .then(function (res) {
-                                    return res.json().then(function (body) {
-                                        return { ok: res.ok, status: res.status, body: body };
-                                    });
-                                })
-                                .then(function (out) {
-                                    var b = out.body || {};
-                                    var msg = b.message || (out.ok ? 'Done.' : 'Request failed.');
-                                    if (statusEl) {
-                                        statusEl.textContent = msg;
-                                    }
-                                })
-                                .catch(function (err) {
-                                    console.error(err);
-                                    if (statusEl) {
-                                        statusEl.textContent = 'Network or server error.';
-                                    }
-                                })
-                                .finally(function () {
-                                    amazonAdsUpdateSbidPushButton();
-                                });
-                        });
-                    }
-
-                    function amazonAdsFillBgtRuleForm(r) {
-                        if (!r) {
-                            return;
-                        }
-                        var map = [
-                            ['amazonAdsBgtRuleE1', 'e1'],
-                            ['amazonAdsBgtRuleE2', 'e2'],
-                            ['amazonAdsBgtRuleE3', 'e3'],
-                            ['amazonAdsBgtRuleE4', 'e4'],
-                            ['amazonAdsBgtRuleSbgtPink', 'sbgt_pink'],
-                            ['amazonAdsBgtRuleSbgtGreen', 'sbgt_green'],
-                            ['amazonAdsBgtRuleSbgtBlue', 'sbgt_blue'],
-                            ['amazonAdsBgtRuleSbgtYellow', 'sbgt_yellow'],
-                            ['amazonAdsBgtRuleSbgtRed', 'sbgt_red']
-                        ];
-                        for (var i = 0; i < map.length; i++) {
-                            var el = document.getElementById(map[i][0]);
-                            if (el && r[map[i][1]] != null) {
-                                el.value = String(r[map[i][1]]);
-                            }
-                        }
-                    }
-
-                    function amazonAdsCollectBgtRuleFromForm() {
-                        function num(id) {
-                            var el = document.getElementById(id);
-                            if (!el) {
-                                return NaN;
-                            }
-                            return parseFloat(String(el.value).trim());
-                        }
-                        function intn(id) {
-                            var el = document.getElementById(id);
-                            if (!el) {
-                                return NaN;
-                            }
-                            return parseInt(String(el.value).trim(), 10);
-                        }
-                        return {
-                            e1: num('amazonAdsBgtRuleE1'),
-                            e2: num('amazonAdsBgtRuleE2'),
-                            e3: num('amazonAdsBgtRuleE3'),
-                            e4: num('amazonAdsBgtRuleE4'),
-                            sbgt_pink: intn('amazonAdsBgtRuleSbgtPink'),
-                            sbgt_green: intn('amazonAdsBgtRuleSbgtGreen'),
-                            sbgt_blue: intn('amazonAdsBgtRuleSbgtBlue'),
-                            sbgt_yellow: intn('amazonAdsBgtRuleSbgtYellow'),
-                            sbgt_red: intn('amazonAdsBgtRuleSbgtRed')
-                        };
-                    }
-
-                    var bgtRuleModalEl = document.getElementById('amazonAdsBgtRuleModal');
-                    if (bgtRuleModalEl) {
-                        bgtRuleModalEl.addEventListener('show.bs.modal', function () {
-                            var errEl = document.getElementById('amazonAdsBgtRuleModalError');
-                            if (errEl) {
-                                errEl.classList.add('d-none');
-                                errEl.textContent = '';
-                            }
-                            fetch(bgtRuleGetUrl, {
-                                method: 'GET',
-                                headers: {
-                                    Accept: 'application/json',
-                                    'X-Requested-With': 'XMLHttpRequest'
-                                },
-                                credentials: 'same-origin'
-                            })
-                                .then(function (res) {
-                                    return res.json().then(function (body) {
-                                        return { ok: res.ok, body: body };
-                                    });
-                                })
-                                .then(function (out) {
-                                    if (out.ok && out.body && out.body.rule) {
-                                        window.amazonAdsBgtRule = out.body.rule;
-                                        amazonAdsFillBgtRuleForm(out.body.rule);
-                                    }
-                                })
-                                .catch(function () {
-                                    amazonAdsFillBgtRuleForm(window.amazonAdsBgtRule || {});
-                                });
-                        });
-                    }
-
-                    var bgtRuleSaveBtn = document.getElementById('amazonAdsBgtRuleSaveBtn');
-                    if (bgtRuleSaveBtn) {
-                        bgtRuleSaveBtn.addEventListener('click', function () {
-                            var errEl = document.getElementById('amazonAdsBgtRuleModalError');
-                            if (errEl) {
-                                errEl.classList.add('d-none');
-                                errEl.textContent = '';
-                            }
-                            var payload = amazonAdsCollectBgtRuleFromForm();
-                            var token = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
-                            bgtRuleSaveBtn.disabled = true;
-                            fetch(bgtRuleSaveUrl, {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    Accept: 'application/json',
-                                    'X-CSRF-TOKEN': token,
-                                    'X-Requested-With': 'XMLHttpRequest'
-                                },
-                                credentials: 'same-origin',
-                                body: JSON.stringify(payload)
-                            })
-                                .then(function (res) {
-                                    return res.json().then(function (body) {
-                                        return { ok: res.ok, status: res.status, body: body };
-                                    });
-                                })
-                                .then(function (out) {
-                                    var b = out.body || {};
-                                    if (!out.ok) {
-                                        if (errEl) {
-                                            errEl.textContent = b.message || b.error || 'Save failed.';
-                                            errEl.classList.remove('d-none');
-                                        }
-                                        return;
-                                    }
-                                    window.amazonAdsBgtRule = b.rule || window.amazonAdsBgtRule;
-                                    if (typeof bootstrap !== 'undefined' && bgtRuleModalEl) {
-                                        var inst = bootstrap.Modal.getInstance(bgtRuleModalEl);
-                                        if (inst) {
-                                            inst.hide();
-                                        }
-                                    }
-                                    amazonAdsReloadActiveGrid();
-                                })
-                                .catch(function () {
-                                    if (errEl) {
-                                        errEl.textContent = 'Network or server error.';
-                                        errEl.classList.remove('d-none');
-                                    }
-                                })
-                                .finally(function () {
-                                    bgtRuleSaveBtn.disabled = false;
-                                });
-                        });
-                    }
-
-                    function amazonAdsFillSbidRuleForm(r) {
-                        if (!r) {
-                            return;
-                        }
-                        var map = [
-                            ['amazonAdsSbidRuleUtilLow', 'util_low'],
-                            ['amazonAdsSbidRuleUtilHigh', 'util_high'],
-                            ['amazonAdsSbidRuleBothLowFallback', 'both_low_fallback'],
-                            ['amazonAdsSbidRuleLowMultL1', 'both_low_mult_l1'],
-                            ['amazonAdsSbidRuleLowMultL2', 'both_low_mult_l2'],
-                            ['amazonAdsSbidRuleLowMultL7', 'both_low_mult_l7'],
-                            ['amazonAdsSbidRuleHighMultL1', 'both_high_mult_l1']
-                        ];
-                        for (var si = 0; si < map.length; si++) {
-                            var el = document.getElementById(map[si][0]);
-                            if (el && r[map[si][1]] != null) {
-                                el.value = String(r[map[si][1]]);
-                            }
-                        }
-                    }
-
-                    function amazonAdsCollectSbidRuleFromForm() {
-                        function n2(id) {
-                            var el = document.getElementById(id);
-                            if (!el) {
-                                return NaN;
-                            }
-                            return parseFloat(String(el.value).trim());
-                        }
-                        return {
-                            util_low: n2('amazonAdsSbidRuleUtilLow'),
-                            util_high: n2('amazonAdsSbidRuleUtilHigh'),
-                            both_low_fallback: n2('amazonAdsSbidRuleBothLowFallback'),
-                            both_low_mult_l1: n2('amazonAdsSbidRuleLowMultL1'),
-                            both_low_mult_l2: n2('amazonAdsSbidRuleLowMultL2'),
-                            both_low_mult_l7: n2('amazonAdsSbidRuleLowMultL7'),
-                            both_high_mult_l1: n2('amazonAdsSbidRuleHighMultL1')
-                        };
-                    }
-
-                    var sbidRuleModalEl = document.getElementById('amazonAdsSbidRuleModal');
-                    if (sbidRuleModalEl) {
-                        sbidRuleModalEl.addEventListener('show.bs.modal', function () {
-                            var sErr = document.getElementById('amazonAdsSbidRuleModalError');
-                            if (sErr) {
-                                sErr.classList.add('d-none');
-                                sErr.textContent = '';
-                            }
-                            fetch(sbidRuleGetUrl, {
-                                method: 'GET',
-                                headers: {
-                                    Accept: 'application/json',
-                                    'X-Requested-With': 'XMLHttpRequest'
-                                },
-                                credentials: 'same-origin'
-                            })
-                                .then(function (res) {
-                                    return res.json().then(function (body) {
-                                        return { ok: res.ok, body: body };
-                                    });
-                                })
-                                .then(function (out) {
-                                    if (out.ok && out.body && out.body.rule) {
-                                        window.amazonAdsSbidRule = out.body.rule;
-                                        amazonAdsFillSbidRuleForm(out.body.rule);
-                                    }
-                                })
-                                .catch(function () {
-                                    amazonAdsFillSbidRuleForm(window.amazonAdsSbidRule || {});
-                                });
-                        });
-                    }
-
-                    var sbidRuleSaveBtn = document.getElementById('amazonAdsSbidRuleSaveBtn');
-                    if (sbidRuleSaveBtn) {
-                        sbidRuleSaveBtn.addEventListener('click', function () {
-                            var sErr = document.getElementById('amazonAdsSbidRuleModalError');
-                            if (sErr) {
-                                sErr.classList.add('d-none');
-                                sErr.textContent = '';
-                            }
-                            var sPayload = amazonAdsCollectSbidRuleFromForm();
-                            var sToken = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
-                            sbidRuleSaveBtn.disabled = true;
-                            fetch(sbidRuleSaveUrl, {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    Accept: 'application/json',
-                                    'X-CSRF-TOKEN': sToken,
-                                    'X-Requested-With': 'XMLHttpRequest'
-                                },
-                                credentials: 'same-origin',
-                                body: JSON.stringify(sPayload)
-                            })
-                                .then(function (res) {
-                                    return res.json().then(function (body) {
-                                        return { ok: res.ok, status: res.status, body: body };
-                                    });
-                                })
-                                .then(function (out) {
-                                    var sb = out.body || {};
-                                    if (!out.ok) {
-                                        if (sErr) {
-                                            sErr.textContent = sb.message || sb.error || 'Save failed.';
-                                            sErr.classList.remove('d-none');
-                                        }
-                                        return;
-                                    }
-                                    window.amazonAdsSbidRule = sb.rule || window.amazonAdsSbidRule;
-                                    if (typeof bootstrap !== 'undefined' && sbidRuleModalEl) {
-                                        var sInst = bootstrap.Modal.getInstance(sbidRuleModalEl);
-                                        if (sInst) {
-                                            sInst.hide();
-                                        }
-                                    }
-                                    amazonAdsReloadActiveGrid();
-                                })
-                                .catch(function () {
-                                    if (sErr) {
-                                        sErr.textContent = 'Network or server error.';
-                                        sErr.classList.remove('d-none');
-                                    }
-                                })
-                                .finally(function () {
-                                    sbidRuleSaveBtn.disabled = false;
-                                });
-                        });
-                    }
-
-                    var summarySel = document.getElementById('amazonAdsFilterSummaryRange');
-                    if (summarySel) {
-                        summarySel.addEventListener('change', function () {
-                            amazonAdsReloadActiveGrid();
-                        });
-                    }
-                    ['amazonAdsFilterU7', 'amazonAdsFilterU2', 'amazonAdsFilterU1', 'amazonAdsFilterCampaignStatus'].forEach(function (id) {
-                        var el = document.getElementById(id);
-                        if (el) {
-                            el.addEventListener('change', function () {
-                                amazonAdsReloadActiveGrid();
-                            });
-                        }
-                    });
-
-                    var applyBtn = document.getElementById('amazonAdsFilterApply');
-                    if (applyBtn) {
-                        applyBtn.addEventListener('click', function () {
-                            amazonAdsReloadActiveGrid();
-                        });
-                    }
-                    var exportViewBtn = document.getElementById('amazonAdsSectionExportBtn');
-                    if (exportViewBtn) {
-                        exportViewBtn.addEventListener('click', function () {
-                            amazonAdsClientExportViewCsv();
-                        });
-                    }
-
-                    var clearBtn = document.getElementById('amazonAdsFilterClear');
-                    if (clearBtn) {
-                        clearBtn.addEventListener('click', function () {
-                            var a = document.getElementById('amazonAdsFilterDateFrom');
-                            var b = document.getElementById('amazonAdsFilterDateTo');
-                            var s = document.getElementById('amazonAdsFilterSummaryRange');
-                            var u7 = document.getElementById('amazonAdsFilterU7');
-                            var u2 = document.getElementById('amazonAdsFilterU2');
-                            var u1 = document.getElementById('amazonAdsFilterU1');
-                            var st = document.getElementById('amazonAdsFilterCampaignStatus');
-                            if (a) { a.value = ''; }
-                            if (b) { b.value = ''; }
-                            if (s) { s.value = ''; }
-                            if (u7) { u7.value = ''; }
-                            if (u2) { u2.value = ''; }
-                            if (u1) { u1.value = ''; }
-                            if (st) { st.value = ''; }
-                            amazonAdsReloadActiveGrid();
-                        });
-                    }
-                });
-            });
-        })();
+                amzSetDatesToLatestForSource('sp_reports');
+                amzUpdatePushButtons();
+                amzUpdatePieButton();
+                amzUpdateSourceLabel();
+            })();
+        });
     </script>
 @endsection

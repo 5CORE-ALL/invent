@@ -9,6 +9,48 @@
         .tabulator-col .tabulator-col-sorter {
             display: none !important;
         }
+
+        /* Toolbar: compact controls, wrap to next row if needed (matches ebay2 tabulator). */
+        .ebay2-toolbar-row {
+            row-gap: 4px;
+        }
+        .ebay2-toolbar-row > .form-select,
+        .ebay2-toolbar-row > .btn,
+        .ebay2-toolbar-row > .dropdown > .btn {
+            padding: 3px 10px;
+            font-size: 0.8125rem;
+            line-height: 1.3;
+            min-height: 30px;
+        }
+        .ebay2-toolbar-row .form-select {
+            padding-right: 24px;
+            background-position: right 6px center;
+        }
+
+        /* Summary badges: one row only; share width; text scales to fit; thin scroll if needed */
+        #summary-stats .ebay2-summary-badge-row {
+            display: flex;
+            flex-wrap: nowrap;
+            align-items: stretch;
+            gap: clamp(0.2rem, 0.5vw, 0.45rem);
+            width: 100%;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: thin;
+        }
+        #summary-stats .ebay2-summary-badge-row > .badge {
+            flex: 1 1 0;
+            min-width: 0;
+            font-size: clamp(0.6rem, 0.35rem + 0.7vw, 0.9rem);
+            padding: clamp(0.15rem, 0.3vw, 0.3rem) clamp(0.2rem, 0.5vw, 0.5rem);
+            font-weight: bold;
+            box-sizing: border-box;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            white-space: nowrap;
+        }
     </style>
 @endsection
 
@@ -25,7 +67,7 @@
     <div class="toast-container"></div>
     <div class="row">
         <div class="card shadow-sm">
-            <div class="card-body py-3">
+            <div class="card-body py-2">
                 @if (session('success'))
                     <div class="alert alert-success alert-dismissible fade show" role="alert">
                         {{ session('success') }}
@@ -39,7 +81,59 @@
                     </div>
                 @endif
 
-                <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
+                <div class="d-flex align-items-center flex-wrap gap-2 ebay2-toolbar-row">
+                    {{-- INV filter (0 INV / INV > 0) --}}
+                    <select id="inv-filter" class="form-select form-select-sm" style="width: 120px;"
+                        title="Filter rows by inventory">
+                        <option value="all">All INV</option>
+                        <option value="zero">0 INV</option>
+                        <option value="more">INV &gt; 0</option>
+                    </select>
+
+                    {{-- GPFT% slab filter (matches GPFT slabs on other pricing pages: amazon / shopify-b2c / etc.) --}}
+                    <select id="gpft-filter" class="form-select form-select-sm" style="width: 120px;"
+                        title="Filter rows by PFT% (gross profit margin)">
+                        <option value="all">GPFT%</option>
+                        <option value="negative">Negative (&lt;0%)</option>
+                        <option value="0-10">0-10%</option>
+                        <option value="10-20">10-20%</option>
+                        <option value="20-30">20-30%</option>
+                        <option value="30-40">30-40%</option>
+                        <option value="40-50">40-50%</option>
+                        <option value="50plus">Above 50%</option>
+                    </select>
+
+                    {{-- ROI% slab filter (matches ROI slabs on other pricing pages) --}}
+                    <select id="roi-filter" class="form-select form-select-sm" style="width: 120px;"
+                        title="Filter rows by ROI%">
+                        <option value="all">ROI%</option>
+                        <option value="lt40">&lt; 40%</option>
+                        <option value="40-75">40–75%</option>
+                        <option value="75-125">75–125%</option>
+                        <option value="gt125">125%+</option>
+                    </select>
+
+                    {{-- DIL% slab filter — same color thresholds the Dil column already uses
+                         (<16.66 red, 16.66–25 yellow, 25–50 green, ≥50 pink). DIL = L30 / INV × 100. --}}
+                    <select id="dil-filter" class="form-select form-select-sm" style="width: 120px;"
+                        title="Filter rows by Dil% color band (L30 / INV × 100)">
+                        <option value="all">DIL%</option>
+                        <option value="red">Red (&lt;16.7%)</option>
+                        <option value="yellow">Yellow (16.7–25%)</option>
+                        <option value="green">Green (25–50%)</option>
+                        <option value="pink">Pink (50%+)</option>
+                    </select>
+
+                    {{-- Sold dropdown (mirrors Amazon tabulator + every other /pricing page).
+                         Backed by the `sold` field (Mercari w/Ship L30 sold qty — shown in the
+                         "L30" column on this page; OV L30 lives in the `L30` field). --}}
+                    <select id="sold-filter" class="form-select form-select-sm" style="width: 120px;"
+                            title="Filter by Mercari L30 sold quantity">
+                        <option value="all">Sold</option>
+                        <option value="sold">Sold &gt; 0</option>
+                        <option value="zero">0 Sold</option>
+                    </select>
+
                     <!-- Increase / Decrease / Same Price S Price controls -->
                     <button id="price-mode-btn" type="button" class="btn btn-sm btn-secondary"
                         title="Cycle: Off → Decrease → Increase → Same Price → Off">
@@ -96,59 +190,24 @@
                         </button>
                     </div>
 
-                    {{-- GPFT% slab filter (matches GPFT slabs on other pricing pages: amazon / shopify-b2c / etc.) --}}
-                    <select id="gpft-filter" class="form-select form-select-sm" style="width: 120px;"
-                        title="Filter rows by PFT% (gross profit margin)">
-                        <option value="all">GPFT%</option>
-                        <option value="negative">Negative (&lt;0%)</option>
-                        <option value="0-10">0-10%</option>
-                        <option value="10-20">10-20%</option>
-                        <option value="20-30">20-30%</option>
-                        <option value="30-40">30-40%</option>
-                        <option value="40-50">40-50%</option>
-                        <option value="50plus">Above 50%</option>
-                    </select>
-
-                    {{-- ROI% slab filter (matches ROI slabs on other pricing pages) --}}
-                    <select id="roi-filter" class="form-select form-select-sm" style="width: 120px;"
-                        title="Filter rows by ROI%">
-                        <option value="all">ROI%</option>
-                        <option value="lt40">&lt; 40%</option>
-                        <option value="40-75">40–75%</option>
-                        <option value="75-125">75–125%</option>
-                        <option value="gt125">125%+</option>
-                    </select>
-
-                    {{-- DIL% slab filter — same color thresholds the Dil column already uses
-                         (<16.66 red, 16.66–25 yellow, 25–50 green, ≥50 pink). DIL = L30 / INV × 100. --}}
-                    <select id="dil-filter" class="form-select form-select-sm" style="width: 120px;"
-                        title="Filter rows by Dil% color band (L30 / INV × 100)">
-                        <option value="all">DIL%</option>
-                        <option value="red">Red (&lt;16.7%)</option>
-                        <option value="yellow">Yellow (16.7–25%)</option>
-                        <option value="green">Green (25–50%)</option>
-                        <option value="pink">Pink (50%+)</option>
-                    </select>
-
-                    {{-- Sold dropdown (mirrors Amazon tabulator + every other /pricing page).
-                         Backed by the `sold` field (Mercari w/Ship L30 sold qty — shown in the
-                         "L30" column on this page; OV L30 lives in the `L30` field). --}}
-                    <select id="sold-filter" class="form-select form-select-sm" style="width: 120px;"
-                            title="Filter by Mercari L30 sold quantity">
-                        <option value="all">Sold</option>
-                        <option value="sold">Sold &gt; 0</option>
-                        <option value="zero">0 Sold</option>
-                    </select>
-
-                    <span class="badge bg-success fs-6 p-2" id="avg-pft-badge" style="color: #fff; font-weight: bold;">PFT: 0%</span>
-                    <span class="badge bg-primary fs-6 p-2" id="avg-roi-badge" style="color: #fff; font-weight: bold;">ROI: 0%</span>
-                    <span class="badge bg-secondary fs-6 p-2" id="missing-l-badge" style="color: #fff; font-weight: bold; cursor: pointer;" title="Click to filter: Price = 0 and NR/REQ = REQ">Missing L: 0</span>
-                    <span class="badge bg-warning fs-6 p-2" id="revenue-badge" style="color: #000; font-weight: bold;" title="Total sales (Price × L30 sold)">Revenue: $0.00</span>
-
-                    <button type="button" class="btn btn-sm btn-primary ms-auto" data-bs-toggle="modal"
+                    <button type="button" id="export-btn" class="btn btn-sm btn-warning ms-auto"
+                        title="Export current (filtered) rows to CSV">
+                        <i class="fas fa-file-export"></i> Export
+                    </button>
+                    <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal"
                         data-bs-target="#priceSoldUploadModal" title="Upload Price &amp; Sold">
                         <i class="fas fa-upload"></i>
                     </button>
+                </div>
+
+                <!-- Summary Stats -->
+                <div id="summary-stats" class="mt-1 p-2 bg-light rounded">
+                    <div class="ebay2-summary-badge-row">
+                        <span class="badge bg-success fs-6 p-2" id="avg-pft-badge" style="color: #fff; font-weight: bold;">PFT: 0%</span>
+                        <span class="badge bg-primary fs-6 p-2" id="avg-roi-badge" style="color: #fff; font-weight: bold;">ROI: 0%</span>
+                        <span class="badge bg-secondary fs-6 p-2" id="missing-l-badge" style="color: #fff; font-weight: bold; cursor: pointer;" title="Click to filter: Price = 0 and NR/REQ = REQ">Missing L: 0</span>
+                        <span class="badge bg-warning fs-6 p-2" id="revenue-badge" style="color: #000; font-weight: bold;" title="Total sales (Price × L30 sold)">Revenue: $0.00</span>
+                    </div>
                 </div>
 
                 <!-- Price & Sold Upload Modal -->
@@ -185,7 +244,7 @@
                     </div>
                 </div>
 
-                <input type="text" id="sku-search" class="form-control mb-3"
+                <input type="text" id="sku-search" class="form-control form-control-sm mt-2 mb-2"
                     placeholder="Search by Parent or SKU..." style="width: 100%;">
 
                 <div id="mercari-with-ship-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
@@ -218,11 +277,12 @@
                         field: "_select",
                         formatter: "rowSelection",
                         titleFormatter: "rowSelection",
+                        titleFormatterParams: { rowRange: "active" },
                         headerSort: false,
                         hozAlign: "center",
                         width: 40,
                         frozen: true,
-                        visible: false
+                        visible: true
                     },
                     {
                         title: "Parent",
@@ -256,8 +316,6 @@
                     {
                         title: "SKU",
                         field: "sku",
-                        headerFilter: "input",
-                        headerFilterPlaceholder: "Search SKU...",
                         frozen: true,
                         width: 250
                     },
@@ -312,6 +370,16 @@
                         }
                     },
                     {
+                        title: "L30",
+                        field: "sold",
+                        hozAlign: "center",
+                        width: 70,
+                        sorter: "number",
+                        formatter: function(cell) {
+                            return Math.round(parseFloat(cell.getValue()) || 0);
+                        }
+                    },
+                    {
                         title: "Price",
                         field: "price",
                         hozAlign: "center",
@@ -337,16 +405,6 @@
                                 return '<span style="color: #dc3545; font-weight: bold; background-color: #ffe6e6; padding: 2px 6px; border-radius: 3px;">M</span>';
                             }
                             return '';
-                        }
-                    },
-                    {
-                        title: "L30",
-                        field: "sold",
-                        hozAlign: "center",
-                        width: 70,
-                        sorter: "number",
-                        formatter: function(cell) {
-                            return Math.round(parseFloat(cell.getValue()) || 0);
                         }
                     },
                     {
@@ -396,6 +454,30 @@
                             const spft = sprice > 0 ? ((sprice * factor - lp - ship) / sprice) * 100 : 0;
                             const sroi = lp > 0 ? ((sprice * factor - lp - ship) / lp) * 100 : 0;
                             row.update({ SPFT: Math.round(spft * 100) / 100, SROI: Math.round(sroi * 100) / 100 });
+                        }
+                    },
+                    {
+                        title: "Status",
+                        field: "approved",
+                        hozAlign: "center",
+                        headerSort: false,
+                        width: 80,
+                        formatter: function(cell) {
+                            const v = cell.getValue();
+                            // Default (null/undefined) is "checked" (approved). Only an explicit 0 means rejected.
+                            const isNo = v === 0 || v === '0' || v === false;
+                            return isNo
+                                ? `<i class="fas fa-times mc-toggle" title="Rejected — click to approve" style="cursor:pointer;font-size:16px;color:#dc3545;"></i>`
+                                : `<i class="fas fa-check mc-toggle" title="Approved — click to reject" style="cursor:pointer;font-size:16px;color:#28a745;"></i>`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (!e.target.classList.contains('mc-toggle')) return;
+                            const row = cell.getRow();
+                            const d = row.getData();
+                            const isNo = d.approved === 0 || d.approved === '0' || d.approved === false;
+                            const newVal = isNo ? 1 : 0;
+                            row.update({ approved: newVal });
+                            saveMercariStatus(d.sku, { approved: newVal });
                         }
                     },
                     {
@@ -480,6 +562,8 @@
             // GPFT% / ROI% / DIL% / Sold slab dropdown change handlers — all funnel into the
             // single combined applyAllFilters() so the four slab selects stack with
             // the SKU search and the Missing-L badge instead of overwriting each other.
+            const invFilterEl = document.getElementById('inv-filter');
+            if (invFilterEl) invFilterEl.addEventListener('change', applyAllFilters);
             const gpftFilterEl = document.getElementById('gpft-filter');
             if (gpftFilterEl) gpftFilterEl.addEventListener('change', applyAllFilters);
             const roiFilterEl = document.getElementById('roi-filter');
@@ -488,6 +572,16 @@
             if (dilFilterEl) dilFilterEl.addEventListener('change', applyAllFilters);
             const soldFilterEl = document.getElementById('sold-filter');
             if (soldFilterEl) soldFilterEl.addEventListener('change', applyAllFilters);
+
+            // Export current (filtered) rows to CSV
+            const exportBtn = document.getElementById('export-btn');
+            if (exportBtn) {
+                exportBtn.addEventListener('click', function() {
+                    if (typeof table !== 'undefined' && table.download) {
+                        table.download('csv', 'mercari-with-ship.csv');
+                    }
+                });
+            }
 
             // Price % toggle — cycle Off → Decrease → Increase → Same Price → Off
             const priceModeBtn = document.getElementById('price-mode-btn');
@@ -714,6 +808,9 @@
             const searchEl = document.getElementById('sku-search');
             const skuSearch = (searchEl ? (searchEl.value || '') : '').trim().toLowerCase();
 
+            const invEl = document.getElementById('inv-filter');
+            const invFilter = invEl ? invEl.value : 'all';
+
             const gpftEl = document.getElementById('gpft-filter');
             const gpftFilter = gpftEl ? gpftEl.value : 'all';
 
@@ -737,6 +834,13 @@
                 // Missing L (price = 0 and NR/REQ = REQ)
                 if (missingLFilterActive) {
                     if (!missingLFilter(row)) return false;
+                }
+
+                // INV filter (0 INV / INV > 0)
+                if (invFilter && invFilter !== 'all') {
+                    const inv = parseFloat(row.INV) || 0;
+                    if (invFilter === 'zero' && !(inv === 0)) return false;
+                    if (invFilter === 'more' && !(inv > 0))   return false;
                 }
 
                 // GPFT% (uses the PFT column)
@@ -865,8 +969,8 @@
             } else {
                 btn.classList.add('btn-secondary');
                 btn.innerHTML = '<i class="fas fa-exchange-alt"></i> Price %';
-                if (selectCol) selectCol.hide();
-                if (typeof table !== 'undefined' && table.deselectRow) table.deselectRow();
+                // Keep the selection checkbox column always visible (do not hide or clear selection).
+                if (selectCol) selectCol.show();
             }
             syncAdjustInputUi();
             updateAdjustPanel();

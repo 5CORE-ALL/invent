@@ -63,6 +63,11 @@ class GoogleYoutubeAdsCampaignsController extends GoogleShoppingCampaignsControl
         }
     }
 
+    protected function channelKey(): string
+    {
+        return 'youtube';
+    }
+
     protected function pushSbgtCommandLabel(): string
     {
         return 'push-sbgt-youtube';
@@ -71,5 +76,15 @@ class GoogleYoutubeAdsCampaignsController extends GoogleShoppingCampaignsControl
     protected function pushSbidCommandLabel(): string
     {
         return 'push-sbid-youtube';
+    }
+
+    protected function auditView(): string
+    {
+        return 'campaign.google-youtube-ads-audit';
+    }
+
+    protected function auditGridRouteName(): string
+    {
+        return 'google.youtube.ads.campaigns';
     }
 }

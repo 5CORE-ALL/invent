@@ -4,6 +4,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <link href="{{ asset('css/select-searchable.css') }}" rel="stylesheet">
+    <link href="{{ asset('css/exec-typeahead.css') }}" rel="stylesheet">
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
     <style>
@@ -815,9 +816,10 @@
                             <input type="text" id="search-supplier" class="form-control form-control-sm border-primary forecast-filter-field" placeholder="Supplier…" autocomplete="off">
 
                             <select id="executive-filter"
-                                    class="form-select form-select-sm border-primary forecast-filter-field"
+                                    class="form-select form-select-sm border-primary forecast-filter-field exec-typeahead"
                                     title="Filter by Exec (all executives when unset)"
-                                    aria-label="Exec filter">
+                                    aria-label="Exec filter"
+                                    data-eta-placeholder="Search executive…">
                                 <option value="">Exec</option>
                                 <option value="__unassigned__">NA</option>
                                 @foreach (($execUsers ?? []) as $execName)
@@ -1254,7 +1256,7 @@
                 <div class="modal-footer py-2">
                     <button type="button" class="btn btn-sm btn-outline-secondary" id="columnShowAllBtn">Show All</button>
                     <button type="button" class="btn btn-sm btn-outline-danger" id="columnHideAllBtn">Hide All</button>
-                    <button type="button" class="btn btn-sm btn-primary" data-bs-dismiss="modal">Done</button>
+                    <button type="button" class="btn btn-sm btn-primary" id="columnSaveBtn" data-bs-dismiss="modal">Save</button>
                         </div>
             </div>
         </div>
@@ -1264,6 +1266,8 @@
 
 @section('script')
     <script src="{{ asset('js/select-searchable.js') }}"></script>
+    <script src="{{ asset('js/exec-typeahead.js') }}"></script>
+    <script src="{{ asset('js/exec-colors.js') }}"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script>
@@ -1876,6 +1880,17 @@
             const data = (typeof row.getData === 'function') ? row.getData() : (row || {});
             const sku = (data.SKU || '').toString().toLowerCase();
             return sku.indexOf('parent') === -1;
+        }
+
+        function getForecastCurrentPageRows(tableInstance) {
+            const activeRows = tableInstance.getRows("active");
+            const pageSize = (typeof tableInstance.getPageSize === 'function') ? tableInstance.getPageSize() : 0;
+            const currentPage = (typeof tableInstance.getPage === 'function') ? tableInstance.getPage() : false;
+            if (!pageSize || pageSize <= 0 || !currentPage || currentPage < 1) {
+                return activeRows;
+            }
+            const start = (currentPage - 1) * pageSize;
+            return activeRows.slice(start, start + pageSize);
         }
 
         let forecastBulkSelectionCache = [];
@@ -2514,11 +2529,11 @@
                         checkbox.style.cursor = "pointer";
                         checkbox.addEventListener("click", function(e) {
                             e.stopPropagation();
-                            const activeRows = cell.getTable().getRows("active").filter(isSelectableForecastRow);
+                            const pageRows = getForecastCurrentPageRows(cell.getTable()).filter(isSelectableForecastRow);
                             if (checkbox.checked) {
-                                activeRows.forEach(function(row) { row.select(); });
+                                pageRows.forEach(function(row) { row.select(); });
                             } else {
-                                activeRows.forEach(function(row) { row.deselect(); });
+                                pageRows.forEach(function(row) { row.deselect(); });
                             }
                         });
                         return checkbox;
@@ -3276,9 +3291,9 @@
                         if (!url) {
                             return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
                         }
-                        const sku = String(d.SKU || '').trim().replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+                        const safeUrl = url.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
                         return `<div style="display:flex;align-items:center;justify-content:center;">
-                            <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2 forecast-cd-open" data-sku="${sku}" title="Open comparison" aria-label="Open comparison">
+                            <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2 forecast-clink-open" data-url="${safeUrl}" title="Open C link" aria-label="Open C link">
                                 <i class="mdi mdi-link"></i>
                             </button>
                         </div>`;
@@ -3304,7 +3319,7 @@
                         const safeSku = sku.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
                         return `<div style="display:flex;align-items:center;justify-content:center;">
                             <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2 forecast-cd-open" data-sku="${safeSku}" title="Open comparison data" aria-label="Open comparison data">
-                                <i class="mdi mdi-scale-balance"></i>
+                                <i class="mdi mdi-magnify"></i>
                             </button>
                         </div>`;
                     },
@@ -3490,6 +3505,12 @@
                     editorParams: {
                         values: FORECAST_EXEC_EDITOR_VALUES,
                         defaultValue: "",
+                        autocomplete: true,
+                        listOnEmpty: true,
+                        freetext: false,
+                        allowEmpty: true,
+                        clearable: true,
+                        placeholderEmpty: "No executive found",
                         verticalNavigation: "editor",
                     },
                     editable: function(cell) {
@@ -3546,18 +3567,10 @@
                         const d = cell.getRow().getData() || {};
                         if (d.is_parent || d.isParent) return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
                         const value = String(cell.getValue() || '').trim();
-                        const colorMap = {
-                            Atin:   { bg: '#3b82f6', text: '#fff' },
-                            Jack:   { bg: '#10b981', text: '#fff' },
-                            Nitish: { bg: '#8b5cf6', text: '#fff' },
-                            Ajay:   { bg: '#f59e0b', text: '#fff' },
-                            Candy:  { bg: '#ec4899', text: '#fff' },
-                            Sruti:  { bg: '#14b8a6', text: '#fff' },
-                        };
                         if (!value) {
                             return '<span style="display:inline-block;padding:2px 6px;border-radius:6px;background:#e5e7eb;color:#6b7280;font-size:0.72rem;font-weight:600;cursor:pointer;white-space:nowrap;" title="Click to assign">NA</span>';
                         }
-                        const c = colorMap[value] || { bg: '#6b7280', text: '#fff' };
+                        const c = (window.ExecColors ? window.ExecColors.get(value) : { bg: '#6b7280', text: '#fff' });
                         return `<span style="display:inline-block;padding:2px 6px;border-radius:6px;background:${c.bg};color:${c.text};font-size:0.72rem;font-weight:700;cursor:pointer;white-space:nowrap;" title="Click to change">${value}</span>`;
                     }
                 },
@@ -3997,6 +4010,10 @@
                     requestAnimationFrame(() => {
                         setCombinedFilters();
                         table.setSort([{ column: "mfrg_order_date", dir: "asc" }]);
+                        // Re-apply saved column visibility LAST: updateColumnDefinition()
+                        // above rebuilds several core columns and resets their visibility,
+                        // so this must run after those mutations to remain authoritative.
+                        if (typeof restoreColumnVisibilityFromLocalStorage === 'function') restoreColumnVisibilityFromLocalStorage();
                     });
                 });
                 return sorted;
@@ -4023,7 +4040,8 @@
             }
             window.addEventListener('resize', function() { requestAnimationFrame(applyForecastTableHeight); });
             table.on('tableBuilt', function() {
-                if (typeof restoreColumnVisibilityFromLocalStorage === 'function') restoreColumnVisibilityFromLocalStorage();
+                if (typeof loadColumnVisibilityFromServer === 'function') loadColumnVisibilityFromServer();
+                else if (typeof restoreColumnVisibilityFromLocalStorage === 'function') restoreColumnVisibilityFromLocalStorage();
                 requestAnimationFrame(applyForecastTableHeight);
             });
             table.on('dataLoaded', function() {
@@ -4219,7 +4237,7 @@
                 if (el) el.value = '';
             });
             const execEl = document.getElementById('executive-filter');
-            if (execEl) execEl.value = '';
+            if (execEl) { execEl.value = ''; execEl.dispatchEvent(new Event('eta:sync')); }
             const sf = document.getElementById('stage-filter');
             if (sf) sf.value = '';
             const sbadge = document.getElementById('stage-filter-badge');
@@ -5485,7 +5503,14 @@
             modal.show();
         }
 
-        const COLUMN_VIS_KEY = "tabulator_column_visibility_forecast";
+        // Column show/hide state persists server-side in the shared DB table
+        // `channel_tabulator_column_settings` (same mechanism as the amazon/ebay tabulators),
+        // under channel = 'forecast_analysis_tabulator', so the selection becomes the default
+        // for everyone on this page across sessions and devices.
+        const FORECAST_COLUMN_VIS_URL = '{{ route('tabulator.column.visibility.get') }}';
+        const FORECAST_COLUMN_VIS_SAVE_URL = '{{ route('tabulator.column.visibility.set') }}';
+        const FORECAST_COLUMN_CHANNEL = 'forecast_analysis_tabulator';
+        let forecastColumnVisibilityCache = null;
 
         function initColumnModal() {
             const trigger = document.getElementById("hide-column-dropdown");
@@ -5572,30 +5597,58 @@
                 saveColumnVisibilityToLocalStorage();
                 buildCheckboxList();
             });
+
+            // Save the current selection as the default for next use, then close.
+            document.getElementById("columnSaveBtn")?.addEventListener("click", function() {
+                saveColumnVisibilityToLocalStorage();
+            });
         }
 
-        // Persist the user's Show/Hide column choices across refreshes.
+        // Persist the user's Show/Hide column choices to the shared server store so they
+        // become the default the next time this page (or anyone) opens it.
         function saveColumnVisibilityToLocalStorage() {
+            if (typeof table === 'undefined' || !table) return;
+            const map = {};
+            table.getColumns().forEach(function(col) {
+                const f = col.getField();
+                if (!f) return;
+                const def = col.getDefinition() || {};
+                if (def.hideFromColumnPicker) return; // only user-toggleable columns
+                map[f] = col.isVisible();
+            });
+            forecastColumnVisibilityCache = map;
             try {
-                if (typeof table === 'undefined' || !table) return;
-                const map = {};
-                table.getColumns().forEach(function(col) {
-                    const f = col.getField();
-                    if (!f) return;
-                    const def = col.getDefinition() || {};
-                    if (def.hideFromColumnPicker) return; // only user-toggleable columns
-                    map[f] = col.isVisible();
-                });
-                localStorage.setItem(COLUMN_VIS_KEY, JSON.stringify(map));
+                fetch(FORECAST_COLUMN_VIS_SAVE_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                    },
+                    body: JSON.stringify({ channel: FORECAST_COLUMN_CHANNEL, visibility: map })
+                }).catch(function(e) { console.error('Error saving column visibility:', e); });
             } catch (e) {}
         }
 
+        // Fetch the saved visibility map once, cache it, and apply it to the table.
+        function loadColumnVisibilityFromServer() {
+            return fetch(FORECAST_COLUMN_VIS_URL + '?channel=' + encodeURIComponent(FORECAST_COLUMN_CHANNEL), {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                    }
+                })
+                .then(function(res) { return res.json(); })
+                .then(function(saved) {
+                    forecastColumnVisibilityCache = (saved && typeof saved === 'object') ? saved : {};
+                    restoreColumnVisibilityFromLocalStorage();
+                    return forecastColumnVisibilityCache;
+                })
+                .catch(function(e) { console.error('Error loading column visibility:', e); });
+        }
+
         function restoreColumnVisibilityFromLocalStorage() {
-            let map = null;
-            try {
-                const raw = localStorage.getItem(COLUMN_VIS_KEY);
-                if (raw) map = JSON.parse(raw);
-            } catch (e) { map = null; }
+            const map = forecastColumnVisibilityCache;
             if (!map || typeof map !== 'object' || typeof table === 'undefined' || !table) return;
             table.getColumns().forEach(function(col) {
                 const f = col.getField();
@@ -6477,16 +6530,19 @@
             instance.show();
         }
 
-        // CD column — open the real comparison CD view for this SKU in an iframe modal.
+        // CD column — open the real comparison CD editor on its own page (not a modal).
         $(document).off('click', '.forecast-cd-open').on('click', '.forecast-cd-open', function() {
             const sku = String($(this).data('sku') || '').trim();
             if (!sku) return;
-            const url = '{{ route('comparison.index') }}?cd_sku=' + encodeURIComponent(sku) + '&embed=1';
-            const iframe = document.getElementById('forecastCdIframe');
-            if (iframe) iframe.src = url;
-            const skuLabel = document.getElementById('forecastCdModalSku');
-            if (skuLabel) skuLabel.textContent = sku;
-            bootstrap.Modal.getOrCreateInstance(document.getElementById('forecastCdModal')).show();
+            const url = '{{ route('comparison.sheet.page') }}?sku=' + encodeURIComponent(sku);
+            window.open(url, '_blank', 'noopener');
+        });
+
+        // C link button opens the actual comparison link URL (not the internal CD page).
+        $(document).off('click', '.forecast-clink-open').on('click', '.forecast-clink-open', function() {
+            const url = String($(this).attr('data-url') || '').trim();
+            if (!url) return;
+            window.open(url, '_blank', 'noopener');
         });
         document.getElementById('forecastCdModal')?.addEventListener('hidden.bs.modal', function() {
             const iframe = document.getElementById('forecastCdIframe');

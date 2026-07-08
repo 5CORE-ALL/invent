@@ -9,6 +9,7 @@ use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 class GoogleShoppingCampaignsController extends Controller
@@ -44,6 +45,152 @@ class GoogleShoppingCampaignsController extends Controller
     {
         $query->whereRaw("UPPER({$columnExpression}) NOT LIKE ?", ['% SEARCH%'])
             ->whereRaw("UPPER({$columnExpression}) NOT LIKE ?", ['% YT']);
+    }
+
+    /**
+     * Short channel key stored alongside each SBGT snapshot so the three grids
+     * (which share google_ads_campaigns) stay distinguishable. Subclasses override.
+     */
+    protected function channelKey(): string
+    {
+        return 'shopping';
+    }
+
+    /**
+     * The audit page view for this channel. Subclasses (YouTube) override with their own view.
+     */
+    protected function auditView(): string
+    {
+        return 'campaign.google-shopping-audit';
+    }
+
+    /**
+     * The route name of this channel's grid page (used for the audit "Link" column).
+     */
+    protected function auditGridRouteName(): string
+    {
+        return 'google.shopping.campaigns';
+    }
+
+    /**
+     * Amazon-style audit page (Fixed? + details, red/green 30-day dot + history) for this channel.
+     */
+    public function auditPage()
+    {
+        return view($this->auditView());
+    }
+
+    /**
+     * One row per campaign with Cvr / CTR / ACOS, its audit history and dot status.
+     * Sorted oldest-audited (or never audited) first — same shape as /amazon-ads/audit.
+     */
+    public function auditPageData(\Illuminate\Http\Request $request): \Illuminate\Http\JsonResponse
+    {
+        $rows = [];
+        $page = 1;
+        do {
+            $req = \Illuminate\Http\Request::create('', 'GET', ['size' => 1000, 'page' => $page]);
+            $j = json_decode($this->data($req)->getContent(), true);
+            foreach (($j['data'] ?? []) as $r) {
+                $rows[] = $r;
+            }
+            $lastPage = (int) ($j['last_page'] ?? 1);
+            $page++;
+        } while ($page <= $lastPage && $page <= 20);
+
+        $histByCid = \App\Models\GoogleAdsAuditHistory::where('channel', $this->channelKey())
+            ->orderBy('created_at')
+            ->get()
+            ->groupBy(fn ($h) => (string) $h->campaign_id);
+
+        $now = \Illuminate\Support\Carbon::now();
+        $greenDays = 30;
+        $link = route($this->auditGridRouteName());
+        $data = [];
+        $seen = [];
+        foreach ($rows as $r) {
+            $cid = trim((string) ($r['campaign_id'] ?? ''));
+            if ($cid === '' || isset($seen[$cid])) {
+                continue;
+            }
+            $seen[$cid] = true;
+
+            $cvr = isset($r['cvr_l30']) && is_numeric($r['cvr_l30']) ? round((float) $r['cvr_l30'], 2) : null;
+            $ctr = isset($r['ctr_l30']) && is_numeric($r['ctr_l30']) ? round((float) $r['ctr_l30'], 2) : null;
+            $acos = isset($r['acos_l30']) && is_numeric($r['acos_l30']) ? round((float) $r['acos_l30'], 2) : null;
+
+            $hist = $histByCid->get($cid, collect());
+            $historyArr = [];
+            foreach ($hist as $h) {
+                $historyArr[] = [
+                    'fixed' => (bool) $h->fixed,
+                    'details' => (string) $h->details,
+                    'created_at' => optional($h->created_at)->format('Y-m-d H:i'),
+                ];
+            }
+            $latest = $hist->last();
+            $latestAt = $latest && $latest->created_at ? $latest->created_at : null;
+            $isGreen = $latestAt !== null && $latestAt->gt($now->copy()->subDays($greenDays));
+
+            $data[] = [
+                'campaign_id' => $cid,
+                'campaign_name' => (string) ($r['campaign_name'] ?? ''),
+                'cvr' => $cvr,
+                'ctr' => $ctr,
+                'acos' => $acos,
+                'link' => $link,
+                'dot' => $isGreen ? 'green' : 'red',
+                'latest_audit_at' => $latestAt ? $latestAt->format('Y-m-d H:i') : null,
+                'latest_audit_ts' => $latestAt ? $latestAt->getTimestamp() : 0,
+                'history' => $historyArr,
+            ];
+        }
+
+        usort($data, fn ($a, $b) => $a['latest_audit_ts'] <=> $b['latest_audit_ts']);
+
+        return response()->json(['data' => $data]);
+    }
+
+    /**
+     * Record an audit submission for a campaign in this channel (both fields mandatory).
+     */
+    public function auditPageSave(\Illuminate\Http\Request $request): \Illuminate\Http\JsonResponse
+    {
+        $validated = $request->validate([
+            'campaign_id' => ['required', 'string', 'max:255'],
+            'campaign_name' => ['nullable', 'string', 'max:255'],
+            'fixed' => ['required', 'boolean'],
+            'details' => ['required', 'string'],
+        ]);
+
+        \App\Models\GoogleAdsAuditHistory::create([
+            'channel' => $this->channelKey(),
+            'campaign_id' => $validated['campaign_id'],
+            'campaign_name' => $validated['campaign_name'] ?? null,
+            'fixed' => (bool) $validated['fixed'],
+            'details' => $validated['details'],
+            'user_id' => auth()->id(),
+            'created_at' => \Illuminate\Support\Carbon::now(),
+        ]);
+
+        $hist = \App\Models\GoogleAdsAuditHistory::where('channel', $this->channelKey())
+            ->where('campaign_id', $validated['campaign_id'])
+            ->orderBy('created_at')->get();
+        $historyArr = $hist->map(fn ($h) => [
+            'fixed' => (bool) $h->fixed,
+            'details' => (string) $h->details,
+            'created_at' => optional($h->created_at)->format('Y-m-d H:i'),
+        ])->all();
+        $latest = $hist->last();
+        $latestAt = $latest && $latest->created_at ? $latest->created_at : null;
+        $isGreen = $latestAt !== null && $latestAt->gt(\Illuminate\Support\Carbon::now()->subDays(30));
+
+        return response()->json([
+            'ok' => true,
+            'dot' => $isGreen ? 'green' : 'red',
+            'latest_audit_at' => $latestAt ? $latestAt->format('Y-m-d H:i') : null,
+            'history' => $historyArr,
+        ]);
     }
 
     /**
@@ -504,7 +651,26 @@ class GoogleShoppingCampaignsController extends Controller
 
         $rawRule = GoogleShoppingCampaignsRawRule::resolvedRule();
 
-        $rows = $paginator->getCollection()->map(function ($row) use ($rawRule) {
+        // Persist today's SBGT for every campaign in scope (once per day per channel)
+        // so the SBGT column can show a day-over-day trend dot. Best-effort — never
+        // let snapshotting break the grid response.
+        try {
+            $this->snapshotSbgtForToday($rawRule);
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        $collection = $paginator->getCollection();
+        $pageCampaignIds = $collection
+            ->pluck('campaign_id')
+            ->filter(fn ($v) => $v !== null && $v !== '')
+            ->map(fn ($v) => (string) $v)
+            ->unique()
+            ->values()
+            ->all();
+        $prevSbgtMap = $this->previousSbgtMap($pageCampaignIds);
+
+        $rows = $collection->map(function ($row) use ($rawRule, $prevSbgtMap) {
             $arr = json_decode(json_encode($row), true);
             if (isset($arr['spend_window_micros'])) {
                 $arr['metrics_cost_micros'] = (int) $arr['spend_window_micros'];
@@ -513,6 +679,7 @@ class GoogleShoppingCampaignsController extends Controller
 
             self::enrichRawRowGoogleShoppingStyle($arr, $rawRule);
             $this->applyRowChannelOverrides($arr);
+            $this->attachSbgtTrend($arr, $prevSbgtMap);
 
             return self::prepareRawRowForTabulator($arr);
         })->values();
@@ -526,6 +693,174 @@ class GoogleShoppingCampaignsController extends Controller
             'data' => $rows,
             'total' => $total,
             'summary' => $summary,
+        ]);
+    }
+
+    /**
+     * Upsert today's computed SBGT for every campaign in this channel's scope into
+     * google_ads_sbgt_snapshots. Gated to run at most once per calendar day per channel
+     * (cache lock) so paging/filtering the grid doesn't recompute the whole set on every
+     * request. Enriches the full (unpaginated, unfiltered) base query so the trend covers
+     * every campaign, not just the current page.
+     *
+     * @param  array{sbgt: array<string, float|int>, sbid: array<string, float>}  $rawRule
+     */
+    protected function snapshotSbgtForToday(array $rawRule): void
+    {
+        $today = Carbon::now(config('app.timezone'))->toDateString();
+        $channel = $this->channelKey();
+        $lockKey = "gads_sbgt_snap:{$channel}:{$today}";
+
+        // Cache::add is atomic — only the first caller today for this channel proceeds.
+        if (! Cache::add($lockKey, 1, now()->addDay())) {
+            return;
+        }
+
+        $now = now();
+        foreach ($this->buildRawGridBaseQuery()->get() as $row) {
+            $arr = json_decode(json_encode($row), true);
+            if (isset($arr['spend_window_micros'])) {
+                $arr['metrics_cost_micros'] = (int) $arr['spend_window_micros'];
+                unset($arr['spend_window_micros']);
+            }
+            self::enrichRawRowGoogleShoppingStyle($arr, $rawRule);
+
+            $cid = (string) ($arr['campaign_id'] ?? '');
+            if ($cid === '') {
+                continue;
+            }
+
+            DB::table('google_ads_sbgt_snapshots')->updateOrInsert(
+                ['campaign_id' => $cid, 'snapshot_date' => $today],
+                [
+                    'channel' => $channel,
+                    'sbgt' => (float) ($arr['sbgt'] ?? 0),
+                    'acos' => round((float) ($arr['acos_l30'] ?? 0), 2),
+                    'updated_at' => $now,
+                    'created_at' => $now,
+                ]
+            );
+        }
+    }
+
+    /**
+     * Most recent SBGT snapshot strictly before today, per campaign id.
+     *
+     * @param  list<string>  $campaignIds
+     * @return array<string, array{sbgt: float, date: string}>
+     */
+    protected function previousSbgtMap(array $campaignIds): array
+    {
+        if ($campaignIds === []) {
+            return [];
+        }
+
+        $today = Carbon::now(config('app.timezone'))->toDateString();
+
+        $latest = DB::table('google_ads_sbgt_snapshots')
+            ->select('campaign_id', DB::raw('MAX(snapshot_date) as md'))
+            ->whereIn('campaign_id', $campaignIds)
+            ->where('snapshot_date', '<', $today)
+            ->groupBy('campaign_id');
+
+        $rows = DB::table('google_ads_sbgt_snapshots as s')
+            ->joinSub($latest, 'l', function ($join) {
+                $join->on('s.campaign_id', '=', 'l.campaign_id')
+                    ->on('s.snapshot_date', '=', 'l.md');
+            })
+            ->get(['s.campaign_id', 's.sbgt', 's.snapshot_date']);
+
+        $map = [];
+        foreach ($rows as $r) {
+            $map[(string) $r->campaign_id] = [
+                'sbgt' => (float) $r->sbgt,
+                'date' => (string) $r->snapshot_date,
+            ];
+        }
+
+        return $map;
+    }
+
+    /**
+     * Attach the previous-day SBGT + a trend token ('up' | 'down' | 'flat' | 'na') to a
+     * grid row so the view can render the coloured dot without any client-side math.
+     *
+     * @param  array<string, mixed>  $arr
+     * @param  array<string, array{sbgt: float, date: string}>  $prevMap
+     */
+    protected function attachSbgtTrend(array &$arr, array $prevMap): void
+    {
+        $cid = (string) ($arr['campaign_id'] ?? '');
+        $prev = $prevMap[$cid] ?? null;
+        $current = (float) ($arr['sbgt'] ?? 0);
+
+        if ($prev === null) {
+            $arr['sbgt_prev'] = null;
+            $arr['sbgt_prev_date'] = null;
+            $arr['sbgt_trend'] = 'na';
+
+            return;
+        }
+
+        $prevSbgt = (float) $prev['sbgt'];
+        $arr['sbgt_prev'] = $prevSbgt;
+        $arr['sbgt_prev_date'] = $prev['date'];
+
+        if ($current > $prevSbgt) {
+            $arr['sbgt_trend'] = 'up';
+        } elseif ($current < $prevSbgt) {
+            $arr['sbgt_trend'] = 'down';
+        } else {
+            $arr['sbgt_trend'] = 'flat';
+        }
+    }
+
+    /**
+     * Daily SBGT history for a single campaign (for the SBGT dot's popup).
+     * GET ?campaign_id=123&days=30 — newest first.
+     */
+    public function sbgtHistory(Request $request): JsonResponse
+    {
+        $cid = preg_replace('/\D/', '', (string) $request->input('campaign_id', ''));
+        if ($cid === '' || strlen($cid) > 32) {
+            return response()->json(['ok' => false, 'data' => [], 'message' => 'Invalid campaign_id.'], 422);
+        }
+
+        $days = (int) $request->input('days', 30);
+        $days = max(1, min(180, $days));
+        $start = Carbon::now(config('app.timezone'))->subDays($days - 1)->toDateString();
+
+        $rows = DB::table('google_ads_sbgt_snapshots')
+            ->where('campaign_id', $cid)
+            ->where('snapshot_date', '>=', $start)
+            ->orderBy('snapshot_date')
+            ->get(['snapshot_date', 'sbgt', 'acos']);
+
+        $out = [];
+        $prev = null;
+        foreach ($rows as $r) {
+            $sbgt = (float) $r->sbgt;
+            $trend = 'na';
+            if ($prev !== null) {
+                $trend = $sbgt > $prev ? 'up' : ($sbgt < $prev ? 'down' : 'flat');
+            }
+            $out[] = [
+                'date' => (string) $r->snapshot_date,
+                'sbgt' => $sbgt,
+                'acos' => $r->acos !== null ? (float) $r->acos : null,
+                'trend' => $trend,
+            ];
+            $prev = $sbgt;
+        }
+
+        // Newest first for display.
+        $out = array_reverse($out);
+
+        return response()->json([
+            'ok' => true,
+            'campaign_id' => $cid,
+            'days' => $days,
+            'data' => $out,
         ]);
     }
 
@@ -782,7 +1117,7 @@ class GoogleShoppingCampaignsController extends Controller
         $applyBounds($clicks30Sub);
         $this->applyCampaignNameScope($clicks30Sub);
         $clicks30Sub->whereNotNull('campaign_id')
-            ->selectRaw('campaign_id, SUM(metrics_clicks) as sum_clicks_30, SUM(metrics_video_views) as sum_views_30')
+            ->selectRaw('campaign_id, SUM(metrics_clicks) as sum_clicks_30, SUM(metrics_video_views) as sum_views_30, SUM(metrics_impressions) as sum_impr_30')
             ->groupBy('campaign_id');
 
         $clicksL7Sub = DB::table('google_ads_campaigns');
@@ -863,6 +1198,7 @@ class GoogleShoppingCampaignsController extends Controller
             ->addSelect(DB::raw('COALESCE(cSpendL2.sum_micros_l2, 0) / 1000000 as l2_spend'))
             ->addSelect(DB::raw('COALESCE(cSpendL1.sum_micros_l1, 0) / 1000000 as l1_spend'))
             ->addSelect(DB::raw('COALESCE(cClicks30.sum_clicks_30, 0) as clicks_sum_30'))
+            ->addSelect(DB::raw('COALESCE(cClicks30.sum_impr_30, 0) as impr_sum_30'))
             ->addSelect(DB::raw('COALESCE(cClicksL7.sum_clicks_l7, 0) as clicks_sum_l7'))
             ->addSelect(DB::raw('COALESCE(cClicksL2.sum_clicks_l2, 0) as clicks_sum_l2'))
             ->addSelect(DB::raw('COALESCE(cClicksL1.sum_clicks_l1, 0) as clicks_sum_l1'))
@@ -892,6 +1228,11 @@ class GoogleShoppingCampaignsController extends Controller
         $stat = $this->normalizeStatFilter($request->input('filter_stat'));
         $searchQ = $this->normalizeCampaignSearchQuery($request->input('q'));
 
+        $ctrMin = $this->normalizeRangeFilterValue($request->input('filter_ctr_min'));
+        $ctrMax = $this->normalizeRangeFilterValue($request->input('filter_ctr_max'));
+        $cvrMin = $this->normalizeRangeFilterValue($request->input('filter_cvr_min'));
+        $cvrMax = $this->normalizeRangeFilterValue($request->input('filter_cvr_max'));
+
         if ($searchQ !== '') {
             $like = '%'.str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], strtoupper($searchQ)).'%';
             $query->whereRaw('UPPER(g.campaign_name) LIKE ? ESCAPE \'\\\\\'', [$like]);
@@ -908,6 +1249,13 @@ class GoogleShoppingCampaignsController extends Controller
         $this->whereUbColorBand($query, $ub1Expr, $ub1);
         $this->whereAcosColorBand($query, $acos);
 
+        // CTR / CVR min-max range filters. Expressions mirror ctr_l30 / cvr_l30 so the
+        // filtered rows match the displayed (and colour-flagged) values to the percent.
+        $ctrExpr = '(CASE WHEN COALESCE(cClicks30.sum_impr_30, 0) > 0 THEN (COALESCE(cClicks30.sum_clicks_30, 0) / COALESCE(cClicks30.sum_impr_30, 0)) * 100.0 ELSE 0 END)';
+        $cvrExpr = '(CASE WHEN COALESCE(cClicks30.sum_clicks_30, 0) > 0 THEN (COALESCE(cGa30.sum_ga4_actual_sold, 0) / COALESCE(cClicks30.sum_clicks_30, 0)) * 100.0 ELSE 0 END)';
+        $this->whereRangeBand($query, $ctrExpr, $ctrMin, $ctrMax);
+        $this->whereRangeBand($query, $cvrExpr, $cvrMin, $cvrMax);
+
         if ($stat === 'ENABLED') {
             $query->whereRaw('UPPER(TRIM(COALESCE(g.campaign_status, ""))) = ?', ['ENABLED']);
         } elseif ($stat === 'NOT_ENABLED') {
@@ -923,6 +1271,43 @@ class GoogleShoppingCampaignsController extends Controller
         $v = is_string($value) ? strtolower(trim($value)) : 'all';
 
         return in_array($v, ['green', 'pink', 'red'], true) ? $v : 'all';
+    }
+
+    /**
+     * Parse a numeric range-filter box (CTR/CVR min or max). Returns a non-negative float,
+     * or null when the input is blank / non-numeric so the bound is simply not applied.
+     */
+    private function normalizeRangeFilterValue(mixed $value): ?float
+    {
+        if ($value === null) {
+            return null;
+        }
+        $s = trim((string) $value);
+        if ($s === '' || ! is_numeric($s)) {
+            return null;
+        }
+        $f = (float) $s;
+        if (! is_finite($f) || $f < 0) {
+            return null;
+        }
+
+        return $f;
+    }
+
+    /**
+     * Apply `>= $min` and/or `<= $max` bounds on a computed SQL expression. Either bound
+     * may be null (not applied). Used by the CTR / CVR min-max grid filters.
+     *
+     * @param  \Illuminate\Database\Query\Builder|\Illuminate\Database\Eloquent\Builder  $query
+     */
+    private function whereRangeBand($query, string $sqlExpr, ?float $min, ?float $max): void
+    {
+        if ($min !== null) {
+            $query->whereRaw("({$sqlExpr}) >= ?", [$min]);
+        }
+        if ($max !== null) {
+            $query->whereRaw("({$sqlExpr}) <= ?", [$max]);
+        }
     }
 
     /**
@@ -957,6 +1342,7 @@ class GoogleShoppingCampaignsController extends Controller
         $sales = static::salesL30SqlExpression();
         $sold = 'COALESCE(cGa30.sum_ga4_actual_sold, 0)';
         $clicks = 'COALESCE(cClicks30.sum_clicks_30, 0)';
+        $impr = 'COALESCE(cClicks30.sum_impr_30, 0)';
         $acosExpr = "(CASE "
             ."WHEN ROUND({$sales}) >= 1 THEN (ROUND({$spend}) / ROUND({$sales})) * 100.0 "
             ."WHEN ROUND({$spend}) > 0 THEN 100.0 "
@@ -964,6 +1350,8 @@ class GoogleShoppingCampaignsController extends Controller
         // CVR sort SQL — mirrors the per-row PHP formula in enrichRawRowGoogleShoppingStyle()
         // so that ORDER BY cvr_l30 matches the displayed grid value to the percent.
         $cvrExpr = "(CASE WHEN {$clicks} > 0 THEN ({$sold} / {$clicks}) * 100.0 ELSE 0 END)";
+        // CTR sort SQL — mirrors ctr_l30 = (clicks / impressions) * 100.
+        $ctrExpr = "(CASE WHEN {$impr} > 0 THEN ({$clicks} / {$impr}) * 100.0 ELSE 0 END)";
 
         $sortMap = [
             'campaign_name' => 'g.campaign_name',
@@ -976,6 +1364,7 @@ class GoogleShoppingCampaignsController extends Controller
             'ad_sales_L30' => $sales,
             'acos_l30' => $acosExpr,
             'cvr_l30' => $cvrExpr,
+            'ctr_l30' => $ctrExpr,
             'bgt' => 'COALESCE(g.budget_amount_micros, 0)',
             'ub7' => '(CASE WHEN COALESCE(g.budget_amount_micros, 0) > 0 THEN (COALESCE(cSpendL7.sum_micros_l7, 0) / 1000000.0) / ((g.budget_amount_micros / 1000000.0) * 7.0) * 100.0 ELSE 0 END)',
             'ub2' => '(CASE WHEN COALESCE(g.budget_amount_micros, 0) > 0 THEN (COALESCE(cSpendL2.sum_micros_l2, 0) / 1000000.0) / ((g.budget_amount_micros / 1000000.0) * 2.0) * 100.0 ELSE 0 END)',
@@ -1170,7 +1559,11 @@ class GoogleShoppingCampaignsController extends Controller
             $sql = $summaryQuery->toSql();
             $bindings = $summaryQuery->getBindings();
             $row = DB::selectOne(
-                'SELECT COUNT(*) AS row_count, COALESCE(SUM(subq.spend), 0) AS sum_spend, COALESCE(SUM(subq.sales_l30_agg), 0) AS sum_sales FROM ('.$sql.') AS subq',
+                'SELECT COUNT(*) AS row_count, COALESCE(SUM(subq.spend), 0) AS sum_spend, COALESCE(SUM(subq.sales_l30_agg), 0) AS sum_sales, '.
+                'COALESCE(SUM(subq.clicks_sum_30), 0) AS sum_clicks, COALESCE(SUM(subq.impr_sum_30), 0) AS sum_impr, '.
+                'COALESCE(SUM(subq.sum_ga4_actual_sold), 0) AS sum_sold, '.
+                'SUM(CASE WHEN UPPER(TRIM(COALESCE(subq.campaign_status, ""))) = "ENABLED" THEN 1 ELSE 0 END) AS active_count '.
+                'FROM ('.$sql.') AS subq',
                 $bindings
             );
         } catch (\Throwable) {
@@ -1178,6 +1571,9 @@ class GoogleShoppingCampaignsController extends Controller
                 'spi30' => null,
                 'acos_pct' => null,
                 'filtered_row_count' => 0,
+                'active_count' => null,
+                'avg_ctr' => null,
+                'avg_cvr' => null,
             ];
         }
 
@@ -1190,10 +1586,22 @@ class GoogleShoppingCampaignsController extends Controller
             $acos = 100.0;
         }
 
+        // Weighted averages over the full filtered set — mirror the toolbar CVR badge
+        // (soldSum / clicksSum) and add the same style for CTR (clicksSum / imprSum). These
+        // drive the CTR/CVR flag colours: red < avg*0.80, magenta > avg*1.20, green in between.
+        $sumClicks = (float) ($row->sum_clicks ?? 0);
+        $sumImpr = (float) ($row->sum_impr ?? 0);
+        $sumSold = (float) ($row->sum_sold ?? 0);
+        $avgCtr = $sumImpr > 0 ? ($sumClicks / $sumImpr) * 100.0 : 0.0;
+        $avgCvr = $sumClicks > 0 ? ($sumSold / $sumClicks) * 100.0 : 0.0;
+
         return [
             'spi30' => round($sumSales, 2),
             'acos_pct' => (int) round($acos),
             'filtered_row_count' => (int) ($row->row_count ?? 0),
+            'active_count' => (int) ($row->active_count ?? 0),
+            'avg_ctr' => round($avgCtr, 2),
+            'avg_cvr' => round($avgCvr, 2),
         ];
     }
 
@@ -1261,6 +1669,11 @@ class GoogleShoppingCampaignsController extends Controller
         $clicksL1 = (int) ($arr['clicks_sum_l1'] ?? 0);
         unset($arr['clicks_sum_30'], $arr['clicks_sum_l7'], $arr['clicks_sum_l2'], $arr['clicks_sum_l1']);
 
+        // Impressions (30d) drive CTR L30 = (clicks / impressions) * 100. Kept in the same
+        // 30-day window as Clicks so the column, the flag colour, and the SQL sort/filter agree.
+        $impr30 = (int) ($arr['impr_sum_30'] ?? 0);
+        unset($arr['impr_sum_30']);
+
         // TrueView views per window (video campaigns are billed per view, not per click).
         $views30 = (int) ($arr['views_sum_30'] ?? 0);
         $viewsL7 = (int) ($arr['views_sum_l7'] ?? 0);
@@ -1270,6 +1683,8 @@ class GoogleShoppingCampaignsController extends Controller
 
         // Show/sum L30 clicks in the grid; g.metrics_clicks is only the latest date row.
         $arr['metrics_clicks'] = $clicks30;
+        // CTR L30 — (clicks / impressions) * 100, 2 dp. 0 when there are no impressions.
+        $arr['ctr_l30'] = $impr30 > 0 ? round(($clicks30 / $impr30) * 100.0, 2) : 0.0;
         $arr['cpc_L30'] = $clicks30 > 0 ? round($spend / $clicks30, 6) : 0.0;
         $arr['cpc_L7'] = $clicksL7 > 0 ? round($l7Spend / $clicksL7, 6) : 0.0;
         $arr['cpc_L2'] = $clicksL2 > 0 ? round($l2Spend / $clicksL2, 6) : 0.0;
@@ -1381,6 +1796,7 @@ class GoogleShoppingCampaignsController extends Controller
             'l2_spend',
             'l1_spend',
             'metrics_clicks',
+            'ctr_l30',
             'cpc_L30',
             'cpc_L7',
             'cpc_L2',
@@ -1394,6 +1810,9 @@ class GoogleShoppingCampaignsController extends Controller
             'ub1',
             'bgt',
             'sbgt',
+            'sbgt_prev',
+            'sbgt_prev_date',
+            'sbgt_trend',
             'sbid',
         ];
     }

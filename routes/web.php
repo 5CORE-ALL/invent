@@ -181,6 +181,7 @@ use App\Http\Controllers\MarketPlace\MacyLowVisibilityController;
 use App\Http\Controllers\MarketPlace\MacyZeroController;
 use App\Http\Controllers\MarketPlace\MercariWoShipController;
 use App\Http\Controllers\MarketPlace\MercariWShipController;
+use App\Http\Controllers\MarketPlace\FbMarketplaceAnalyticsController;
 use App\Http\Controllers\MarketPlace\Neweggb2cController;
 use App\Http\Controllers\MarketPlace\Neweggb2cLowVisibilityController;
 use App\Http\Controllers\MarketPlace\Neweggb2cZeroController;
@@ -2981,6 +2982,27 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/amazon-ads/sbid-rule', [AmazonAdsController::class, 'getSbidRule'])->name('amazon.ads.sbid-rule');
     Route::post('/amazon-ads/sbid-rule', [AmazonAdsController::class, 'saveSbidRule'])->name('amazon.ads.sbid-rule.save');
 
+    // Amazon Ads Audit page (campaign audit log with red/green dot + history)
+    Route::get('/amazon-ads/audit', [\App\Http\Controllers\AmazonAdsAuditController::class, 'index'])->name('amazon.ads.audit');
+    Route::get('/amazon-ads/audit/data', [\App\Http\Controllers\AmazonAdsAuditController::class, 'data'])->name('amazon.ads.audit.data');
+    Route::post('/amazon-ads/audit/save', [\App\Http\Controllers\AmazonAdsAuditController::class, 'save'])->name('amazon.ads.audit.save');
+
+    // Amazon Ads Missing page (product_master parent/sku tabulator)
+    Route::get('/amazon-ads/missing', [\App\Http\Controllers\AmazonAdsMissingController::class, 'index'])->name('amazon.ads.missing');
+    Route::get('/amazon-ads/missing/data', [\App\Http\Controllers\AmazonAdsMissingController::class, 'data'])->name('amazon.ads.missing.data');
+    Route::get('/amazon-ads/missing/campaigns', [\App\Http\Controllers\AmazonAdsMissingController::class, 'campaigns'])->name('amazon.ads.missing.campaigns');
+    Route::post('/amazon-ads/missing/link', [\App\Http\Controllers\AmazonAdsMissingController::class, 'link'])->name('amazon.ads.missing.link');
+    Route::post('/amazon-ads/missing/unlink', [\App\Http\Controllers\AmazonAdsMissingController::class, 'unlink'])->name('amazon.ads.missing.unlink');
+
+    // Ads Categories page (tabulator scaffold)
+    Route::get('/amazon-ads/categories', [\App\Http\Controllers\AdsCategoriesController::class, 'index'])->name('amazon.ads.categories');
+    Route::get('/amazon-ads/categories/data', [\App\Http\Controllers\AdsCategoriesController::class, 'data'])->name('amazon.ads.categories.data');
+    Route::post('/amazon-ads/categories/store', [\App\Http\Controllers\AdsCategoriesController::class, 'store'])->name('amazon.ads.categories.store');
+    Route::get('/amazon-ads/categories/template', [\App\Http\Controllers\AdsCategoriesController::class, 'template'])->name('amazon.ads.categories.template');
+    Route::post('/amazon-ads/categories/bulk', [\App\Http\Controllers\AdsCategoriesController::class, 'bulkUpload'])->name('amazon.ads.categories.bulk');
+    Route::post('/amazon-ads/categories/{id}/update', [\App\Http\Controllers\AdsCategoriesController::class, 'update'])->name('amazon.ads.categories.update');
+    Route::post('/amazon-ads/categories/{id}/delete', [\App\Http\Controllers\AdsCategoriesController::class, 'destroy'])->name('amazon.ads.categories.destroy');
+
     // Amazon Ads Push Logs - Failed Campaigns Tracker
     Route::prefix('amazon-ads/push-logs')->name('amazon-ads.push-logs.')->group(function () {
         Route::get('/', [AmazonAdsPushLogController::class, 'index'])->name('index');
@@ -3429,6 +3451,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::put('/video-ads-master/{id}',                  [\App\Http\Controllers\VideoAdsMasterController::class, 'update'])->whereNumber('id')->name('video.ads.master.update');
     Route::delete('/video-ads-master/{id}',               [\App\Http\Controllers\VideoAdsMasterController::class, 'destroy'])->whereNumber('id')->name('video.ads.master.destroy');
     Route::post('/video-ads-master/{id}/copy',            [\App\Http\Controllers\VideoAdsMasterController::class, 'copy'])->whereNumber('id')->name('video.ads.master.copy');
+    Route::put('/video-ads-master/{id}/check',            [\App\Http\Controllers\VideoAdsMasterController::class, 'toggleCheck'])->whereNumber('id')->name('video.ads.master.check');
+    Route::get('/video-ads-master/{id}/check-history',    [\App\Http\Controllers\VideoAdsMasterController::class, 'checkHistory'])->whereNumber('id')->name('video.ads.master.check.history');
     Route::post('/video-ads-master/hook-options',         [\App\Http\Controllers\VideoAdsMasterController::class, 'storeHookOption'])->name('video.ads.master.hook.options.store');
     Route::get('/video-ads-master/sample-csv',            [\App\Http\Controllers\VideoAdsMasterController::class, 'sampleCsv'])->name('video.ads.master.sample.csv');
     Route::get('/video-ads-master/export',                [\App\Http\Controllers\VideoAdsMasterController::class, 'export'])->name('video.ads.master.export');
@@ -3469,6 +3493,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/facebook-all-ads-sheet/audit',            [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'getAudit'])->name('facebook.all.ads.sheet.audit.get');
     Route::post('/facebook-all-ads-sheet/audit',           [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'saveAudit'])->name('facebook.all.ads.sheet.audit.save');
 
+    // Facebook Ads Audit page (amazon-style: Fixed? + details, red/green 30-day dot + history)
+    Route::get('/facebook-ads/audit',                      [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'auditPage'])->name('facebook.ads.audit');
+    Route::get('/facebook-ads/audit/data',                 [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'auditPageData'])->name('facebook.ads.audit.data');
+    Route::post('/facebook-ads/audit/save',                [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'auditPageSave'])->name('facebook.ads.audit.save');
+
     // Type-filtered variants (Video / Carousal). Reuse the same controller
     // and view; only `pageType` and the ad_type filter differ.
     Route::get('/facebook-video-ads-sheet',                [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'videoIndex'])->name('facebook.video.ads.sheet');
@@ -3490,6 +3519,13 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/instagram-ads/group-carousal',            [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'instagramGroupCarousalIndex'])->name('instagram.ads.channel.group.carousal');
     Route::get('/instagram-ads/parent-video',              [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'instagramParentVideoIndex'])->name('instagram.ads.channel.parent.video');
     Route::get('/instagram-ads/parent-carousal',           [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'instagramParentCarousalIndex'])->name('instagram.ads.channel.parent.carousal');
+
+    // ── Music Store / Music School — same Meta dataset as /facebook-all-ads-sheet,
+    // lensed to ad_type = MUSIC STORE / MUSIC SCHOOL. They reuse the Facebook
+    // blade + all /facebook-all-ads-sheet/* data & action endpoints; only the
+    // ad_type filter differs (just like the G Video / P Carousal child pages).
+    Route::get('/music-store-ads-sheet',                   [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'musicStoreIndex'])->name('music.store.ads.sheet');
+    Route::get('/music-school-ads-sheet',                  [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'musicSchoolIndex'])->name('music.school.ads.sheet');
 
     // ── TikTok Video Ads — fully independent module (own tables, own
     // controller). Same page layout / filters as the Meta sheet but a
@@ -3573,6 +3609,13 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/mercari-without-ship-price-sold/import', [MercariWoShipController::class, 'importMercariWoShipPriceSold'])->name('mercari.woship.price-sold.import');
     Route::get('/mercari-without-ship-price-sold/sample', [MercariWoShipController::class, 'downloadMercariWoShipPriceSoldSample'])->name('mercari.woship.price-sold.sample');
     Route::post('/mercari-without-ship-tabulator/save-status', [MercariWoShipController::class, 'saveMercariWoShipStatus'])->name('mercari.woship.tabulator.save-status');
+
+    // Fb Marketplace Analytics (tabulator)
+    Route::get('/fb-marketplace-tabulator-view', [FbMarketplaceAnalyticsController::class, 'fbMarketplaceTabulatorView'])->name('fb.marketplace.tabulator.view');
+    Route::get('/fb-marketplace-tabulator-data', [FbMarketplaceAnalyticsController::class, 'getFbMarketplaceTabulatorData'])->name('fb.marketplace.tabulator.data');
+    Route::post('/fb-marketplace-price-sold/import', [FbMarketplaceAnalyticsController::class, 'importFbMarketplacePriceSold'])->name('fb.marketplace.price-sold.import');
+    Route::get('/fb-marketplace-price-sold/sample', [FbMarketplaceAnalyticsController::class, 'downloadFbMarketplacePriceSoldSample'])->name('fb.marketplace.price-sold.sample');
+    Route::post('/fb-marketplace-tabulator/save-status', [FbMarketplaceAnalyticsController::class, 'saveFbMarketplaceStatus'])->name('fb.marketplace.tabulator.save-status');
     Route::get('/amazonpricing-cvr-tabular', action: [OverallAmazonController::class, 'amazonPricingCvrTabular'])->name('amazon.pricing.cvr.tabular');
     Route::get('/amazon-column-visibility', [OverallAmazonController::class, 'getAmazonColumnVisibility'])->name('amazon.column.visibility');
     Route::post('/amazon-column-visibility', [OverallAmazonController::class, 'saveAmazonColumnVisibility'])->name('amazon.column.visibility.save');
@@ -4017,6 +4060,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Advertisement Master view routes
     Route::get('/advertisement-master', [AdvertisementMasterController::class, 'index'])->name('advertisement.master');
     Route::get('/advertisement-master/data', [AdvertisementMasterController::class, 'data'])->name('advertisement.master.data');
+    Route::get('/advertisement-master/history', [AdvertisementMasterController::class, 'history'])->name('advertisement.master.history');
     Route::get('/kw-amazon', [KwAmazonController::class, 'Amazon'])->name('advertisment.kw.amazon');
     Route::post('/update-checkbox-flag', [KwAmazonController::class, 'updateCheckboxes']);
     Route::get('/kw-ebay', [KwEbayController::class, 'Ebay'])->name('advertisment.kw.eBay');
@@ -4315,6 +4359,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Comparison
     Route::controller(ComparisonController::class)->prefix('purchase-master/comparison')->group(function () {
         Route::get('/', 'index')->name('comparison.index');
+        Route::get('/sheet-view', 'sheetPage')->name('comparison.sheet.page');
         Route::get('/data', 'getData')->name('comparison.data');
         Route::get('/parents', 'getParents')->name('comparison.parents');
         Route::post('/category/save', 'saveCategory')->name('comparison.category.save');
@@ -4423,6 +4468,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/product_master/duplicate', [ProductMasterController::class, 'duplicateSku'])->name('product_master.duplicate');
     Route::post('/product_master/update-field', [ProductMasterController::class, 'updateField'])->name('product_master.update-field');
     Route::post('/product_master/update-verified', [ProductMasterController::class, 'updateVerified'])->name('product_master.update-verified');
+    Route::post('/product_master/update-verified-bulk', [ProductMasterController::class, 'updateVerifiedBulk'])->name('product_master.update-verified-bulk');
     Route::post('/product-master/import', [ProductMasterController::class, 'import'])->name('product_master.import');
     Route::post('/product-master/bulk-update-all', [ProductMasterController::class, 'bulkUpdateAll'])->name('product_master.bulk_update_all');
     Route::post('/product-master/restore-bulk-update', [ProductMasterController::class, 'restoreBulkUpdate'])->name('product_master.restore_bulk_update');
@@ -5683,8 +5729,14 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/google/shopping/google-shopping/push-sbid', 'pushSbidShopping')->name('google.shopping.campaigns.push.sbid');
         Route::post('/google/shopping/google-shopping/pull-data', 'pullData')->name('google.shopping.campaigns.pull.data');
         Route::get('/google/shopping/google-shopping/badge-history', 'badgeHistory')->name('google.shopping.campaigns.badge.history');
+        Route::get('/google/shopping/google-shopping/sbgt-history', 'sbgtHistory')->name('google.shopping.campaigns.sbgt.history');
         Route::post('/google/shopping/google-shopping/u7-distribution', 'u7Distribution')->name('google.shopping.campaigns.u7.distribution');
         Route::post('/google/shopping/google-shopping/u7-distribution-history', 'u7DistributionHistory')->name('google.shopping.campaigns.u7.history');
+
+        // Google Shopping Ads Audit page (amazon-style: Fixed? + details, red/green 30-day dot + history)
+        Route::get('/google/shopping/google-shopping/audit', 'auditPage')->name('google.shopping.audit');
+        Route::get('/google/shopping/google-shopping/audit/data', 'auditPageData')->name('google.shopping.audit.data');
+        Route::post('/google/shopping/google-shopping/audit/save', 'auditPageSave')->name('google.shopping.audit.save');
     });
 
     // Google SERP campaigns — same grid + rule storage as Google Shopping above, but filtered to
@@ -5697,8 +5749,14 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/google/shopping/google-serp/push-sbgt', 'pushSbgtShoppingBudgets')->name('google.serp.campaigns.push.sbgt');
         Route::post('/google/shopping/google-serp/push-sbid', 'pushSbidShopping')->name('google.serp.campaigns.push.sbid');
         Route::get('/google/shopping/google-serp/badge-history', 'badgeHistory')->name('google.serp.campaigns.badge.history');
+        Route::get('/google/shopping/google-serp/sbgt-history', 'sbgtHistory')->name('google.serp.campaigns.sbgt.history');
         Route::post('/google/shopping/google-serp/u7-distribution', 'u7Distribution')->name('google.serp.campaigns.u7.distribution');
         Route::post('/google/shopping/google-serp/u7-distribution-history', 'u7DistributionHistory')->name('google.serp.campaigns.u7.history');
+
+        // Google SERP Ads Audit page (amazon-style: Fixed? + details, red/green 30-day dot + history)
+        Route::get('/google/shopping/google-serp/audit', 'auditPage')->name('google.serp.audit');
+        Route::get('/google/shopping/google-serp/audit/data', 'auditPageData')->name('google.serp.audit.data');
+        Route::post('/google/shopping/google-serp/audit/save', 'auditPageSave')->name('google.serp.audit.save');
     });
 
     // YouTube Ads — same grid + rule storage as Google Shopping above, but filtered to
@@ -5711,8 +5769,14 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/google/shopping/youtube-ads/push-sbgt', 'pushSbgtShoppingBudgets')->name('google.youtube.ads.campaigns.push.sbgt');
         Route::post('/google/shopping/youtube-ads/push-sbid', 'pushSbidShopping')->name('google.youtube.ads.campaigns.push.sbid');
         Route::get('/google/shopping/youtube-ads/badge-history', 'badgeHistory')->name('google.youtube.ads.campaigns.badge.history');
+        Route::get('/google/shopping/youtube-ads/sbgt-history', 'sbgtHistory')->name('google.youtube.ads.campaigns.sbgt.history');
         Route::post('/google/shopping/youtube-ads/u7-distribution', 'u7Distribution')->name('google.youtube.ads.campaigns.u7.distribution');
         Route::post('/google/shopping/youtube-ads/u7-distribution-history', 'u7DistributionHistory')->name('google.youtube.ads.campaigns.u7.history');
+
+        // YouTube Ads Audit page (amazon-style: Fixed? + details, red/green 30-day dot + history)
+        Route::get('/google/shopping/youtube-ads/audit', 'auditPage')->name('google.youtube.ads.audit');
+        Route::get('/google/shopping/youtube-ads/audit/data', 'auditPageData')->name('google.youtube.ads.audit.data');
+        Route::post('/google/shopping/youtube-ads/audit/save', 'auditPageSave')->name('google.youtube.ads.audit.save');
     });
 
     Route::controller(GoogleAdsController::class)->group(function () {

@@ -1645,7 +1645,20 @@ class VerificationAdjustmentController extends Controller
 
     public function getVerifiedStockActivityLog(Request $request)
     {
-        $query = Inventory::where('type', null)->where('is_approved', true);
+        // By default only manual verification adjustments (type = null) are
+        // returned — this endpoint is shared by several inventory pages.
+        // The Lost/Gain page opts in with `include_outgoing=1` so that stock
+        // sent out (type = 'outgoing', e.g. All Issues Replacement / Wrong-Item
+        // and /outgoing-view) is also reflected there.
+        $includeOutgoing = $request->boolean('include_outgoing');
+
+        $query = Inventory::where('is_approved', true)
+            ->where(function ($q) use ($includeOutgoing) {
+                $q->whereNull('type');
+                if ($includeOutgoing) {
+                    $q->orWhere('type', 'outgoing');
+                }
+            });
         
         // Apply reason filter - handle comma-separated values
         if ($request->filled('reason')) {
@@ -1708,12 +1721,25 @@ class VerificationAdjustmentController extends Controller
             }
         }
         
+        // Display timezone. `approved_at` is stored as America/New_York
+        // wall-clock (all writers use Carbon::now('America/New_York')), so it
+        // MUST be parsed with that source zone before converting — parsing it
+        // as the app zone (Asia/Kolkata) was double-shifting and showing the
+        // wrong time. `updated_at`/`created_at` are Eloquent timestamps stored
+        // in the app zone, so they parse with the default zone.
+        // Timestamps are shown in US California (Pacific) time by default.
+        $allowedTz = ['America/New_York', 'America/Los_Angeles'];
+        $displayTz = $request->input('display_tz', 'America/Los_Angeles');
+        if (! in_array($displayTz, $allowedTz, true)) {
+            $displayTz = 'America/Los_Angeles';
+        }
+
         // Order: latest update/approval first (approved_at then updated_at)
         $activityLogs = $query->orderByDesc('approved_at')
             ->orderByDesc('updated_at')
             ->orderByDesc('created_at')
             ->get()
-            ->map(function ($item) {
+            ->map(function ($item) use ($displayTz) {
                 return [
                     'id' => $item->id,
                     'sku' => $item->sku,
@@ -1724,10 +1750,10 @@ class VerificationAdjustmentController extends Controller
                     'remarks' => $item->remarks,
                     'approved_by' => $item->approved_by,
                     'approved_at' => $item->approved_at
-                        ? Carbon::parse($item->approved_at)->timezone('America/New_York')->format('d M Y, h:i A')
+                        ? Carbon::parse($item->approved_at, 'America/New_York')->timezone($displayTz)->format('d M Y, h:i A T')
                         : '-',
                     'updated_at' => $item->updated_at
-                        ? Carbon::parse($item->updated_at)->timezone('America/New_York')->format('d M Y, h:i A')
+                        ? Carbon::parse($item->updated_at)->timezone($displayTz)->format('d M Y, h:i A T')
                         : '-',
                     'is_ia' => (bool) $item->is_ia,
                 ];

@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => $pageTitle ?? 'Orders On Hold', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => $pageTitle ?? 'on hold / Mapping', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -131,6 +131,32 @@
 
         .what-happened-dot-damaged {
             background-color: #b8860b;
+        }
+
+        .what-happened-dot-mapping {
+            background-color: #0d6efd;
+        }
+
+        .what-happened-dot-notes {
+            background-color: #6c757d;
+        }
+
+        /* The issue modal wraps its body/footer in a <form>, which breaks
+           Bootstrap's modal-dialog-scrollable layout. Restore the flex chain
+           so the modal body scrolls instead of overflowing the viewport. */
+        #ordersOnHoldIssueModal .modal-content {
+            overflow: hidden;
+        }
+
+        #ordersOnHoldIssueForm {
+            display: flex;
+            flex-direction: column;
+            flex: 1 1 auto;
+            min-height: 0;
+        }
+
+        #ordersOnHoldIssueForm .modal-body {
+            overflow-y: auto;
         }
 
         .sku-image-preview {
@@ -424,7 +450,7 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => $pageTitle ?? 'Orders On Hold',
+        'page_title' => $pageTitle ?? 'on hold / Mapping',
         'sub_title' => 'Customer Care',
     ])
 
@@ -852,6 +878,8 @@
                                     <option value="">Select</option>
                                     <option value="0 Stock">0 Stock</option>
                                     <option value="Damaged">Damaged</option>
+                                    <option value="Mapping">Mapping</option>
+                                    <option value="Notes">Notes</option>
                                 </select>
                             </div>
 
@@ -926,10 +954,23 @@
                             </div>
 
                             <div class="col-md-6">
-                                <label for="hold_issue_department" class="form-label">Department <span
+                                <label for="hold_issue_department_toggle" class="form-label">Department <span
                                         class="text-danger">*</span></label>
-                                <select class="form-select" id="hold_issue_department" name="department[]" multiple
-                                    size="5" required>
+                                <div class="dropdown" id="hold_issue_department_dropdown">
+                                    <button class="form-select text-start d-flex align-items-center justify-content-between"
+                                        type="button" id="hold_issue_department_toggle" data-bs-toggle="dropdown"
+                                        data-bs-auto-close="outside" aria-expanded="false">
+                                        <span id="hold_issue_department_label" class="text-truncate">Select department(s)</span>
+                                    </button>
+                                    <div class="dropdown-menu w-100 p-2" id="hold_issue_department_menu"
+                                        aria-labelledby="hold_issue_department_toggle"
+                                        style="max-height: 260px; overflow-y: auto;">
+                                        {{-- Checkbox items are generated from the hidden select below. --}}
+                                    </div>
+                                </div>
+                                {{-- Hidden backing field; the dropdown checkboxes sync their state here so
+                                     all existing save/load/validation logic keeps working unchanged. --}}
+                                <select class="d-none" id="hold_issue_department" name="department[]" multiple required>
                                     <option value="Dispatch">Dispatch</option>
                                     <option value="Shipping">Shipping</option>
                                     <option value="Listing">Listing</option>
@@ -942,8 +983,7 @@
                                     <option value="Packaging">Packaging</option>
                                     <option value="Orders on Hold">Orders on Hold</option>
                                 </select>
-                                <div class="form-text">Select one or more. Hold <kbd>Ctrl</kbd> (Windows) or
-                                    <kbd>⌘</kbd> (Mac) for multiple.</div>
+                                <div class="form-text">Select one or more.</div>
                             </div>
 
                         </div>
@@ -1184,6 +1224,7 @@
                 Array.from(departmentInput.options).forEach(o => {
                     o.selected = depts.includes(o.value);
                 });
+                syncDepartmentDropdownFromSelect();
             }
 
             function clearDepartmentMultiSelect() {
@@ -1191,7 +1232,62 @@
                 Array.from(departmentInput.options).forEach(o => {
                     o.selected = false;
                 });
+                syncDepartmentDropdownFromSelect();
             }
+
+            // ── Department dropdown (checkbox menu backed by the hidden <select>) ──
+            const departmentMenu = document.getElementById('hold_issue_department_menu');
+            const departmentLabel = document.getElementById('hold_issue_department_label');
+
+            function updateDepartmentLabel() {
+                if (!departmentLabel || !departmentInput) return;
+                const selected = Array.from(departmentInput.selectedOptions || [])
+                    .map(o => o.textContent.trim())
+                    .filter(Boolean);
+                departmentLabel.textContent = selected.length
+                    ? selected.join(', ')
+                    : 'Select department(s)';
+            }
+
+            function buildDepartmentDropdown() {
+                if (!departmentMenu || !departmentInput) return;
+                departmentMenu.innerHTML = '';
+                Array.from(departmentInput.options).forEach((opt, idx) => {
+                    const id = 'hold_issue_dept_opt_' + idx;
+                    const wrap = document.createElement('div');
+                    wrap.className = 'form-check';
+                    const input = document.createElement('input');
+                    input.className = 'form-check-input';
+                    input.type = 'checkbox';
+                    input.id = id;
+                    input.value = opt.value;
+                    input.checked = opt.selected;
+                    input.addEventListener('change', () => {
+                        opt.selected = input.checked;
+                        updateDepartmentLabel();
+                    });
+                    const label = document.createElement('label');
+                    label.className = 'form-check-label w-100';
+                    label.setAttribute('for', id);
+                    label.textContent = opt.textContent;
+                    wrap.appendChild(input);
+                    wrap.appendChild(label);
+                    departmentMenu.appendChild(wrap);
+                });
+                updateDepartmentLabel();
+            }
+
+            function syncDepartmentDropdownFromSelect() {
+                if (!departmentMenu || !departmentInput) return;
+                const checkboxes = departmentMenu.querySelectorAll('input[type="checkbox"]');
+                checkboxes.forEach((cb, idx) => {
+                    const opt = departmentInput.options[idx];
+                    if (opt) cb.checked = opt.selected;
+                });
+                updateDepartmentLabel();
+            }
+
+            buildDepartmentDropdown();
 
             function rowMatchesActiveDeptFilter(r) {
                 if (!activeDeptFilter) return true;
@@ -1296,6 +1392,12 @@
                 }
                 if (text.toLowerCase() === 'damaged') {
                     return '<span class="what-happened-dot what-happened-dot-damaged" title="Damaged"></span>';
+                }
+                if (text.toLowerCase() === 'mapping') {
+                    return '<span class="what-happened-dot what-happened-dot-mapping" title="Mapping"></span>';
+                }
+                if (text.toLowerCase() === 'notes') {
+                    return '<span class="what-happened-dot what-happened-dot-notes" title="Notes"></span>';
                 }
                 return '—';
             }
@@ -1831,7 +1933,8 @@
                 }
                 if (getDepartmentPayload().length === 0) {
                     showAlert('Please select at least one Department.');
-                    if (departmentInput) departmentInput.focus();
+                    const deptToggle = document.getElementById('hold_issue_department_toggle');
+                    if (deptToggle) deptToggle.focus();
                     return;
                 }
 

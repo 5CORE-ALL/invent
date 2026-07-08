@@ -74,7 +74,12 @@ final class GoogleShoppingCampaignsRawRule
         $rule = $row->rule;
 
         return Cache::remember($cacheKey, 86400, static function () use ($rule): array {
-            return self::normalizeRule(array_replace_recursive(self::defaults(), $rule));
+            // NOTE: do NOT array_replace_recursive() the stored rule over the defaults:
+            // that merges the bands list element-by-element, so deleting a band (leaving
+            // fewer than the default count) re-introduces the default bands at the tail.
+            // normalizeRule() already fills defaults for any missing keys and replaces
+            // the bands array wholesale, so pass the stored rule through directly.
+            return self::normalizeRule($rule);
         });
     }
 

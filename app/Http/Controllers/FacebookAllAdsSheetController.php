@@ -34,6 +34,11 @@ class FacebookAllAdsSheetController extends Controller
         'group-carousal'  => ['GROUP CAROUSAL'],
         'parent-video'    => ['PARENT VIDEO'],
         'parent-carousal' => ['PARENT CAROUSAL'],
+        // Music Store / Music School — same Meta dataset, lensed to a single
+        // ad_type. These back the /music-store-ads-sheet + /music-school-ads-sheet
+        // pages under the Facebook menu.
+        'music-store'     => ['MUSIC STORE'],
+        'music-school'    => ['MUSIC SCHOOL'],
     ];
 
     /** All-ads page (no ad_type filter, full dropdown). */
@@ -152,6 +157,30 @@ class FacebookAllAdsSheetController extends Controller
     public function instagramParentCarousalIndex(): \Illuminate\View\View
     {
         return $this->renderTypedChannelChild('Insta', 'parent-carousal', 'P Carousal');
+    }
+
+    /** Music Store page — Meta dataset lensed to ad_type = MUSIC STORE. */
+    public function musicStoreIndex()
+    {
+        return view('facebook-all-ads-sheet', [
+            'pageType'       => 'music-store',
+            'pageTitle'      => 'Music Store',
+            'pageSubtitle'   => 'Meta campaigns tagged Type = MUSIC STORE',
+            'allowedAdTypes' => FacebookAllAdsSheet::AD_TYPES,
+            'chOptions'      => FacebookAllAdsSheet::CH_OPTIONS,
+        ]);
+    }
+
+    /** Music School page — Meta dataset lensed to ad_type = MUSIC SCHOOL. */
+    public function musicSchoolIndex()
+    {
+        return view('facebook-all-ads-sheet', [
+            'pageType'       => 'music-school',
+            'pageTitle'      => 'Music School',
+            'pageSubtitle'   => 'Meta campaigns tagged Type = MUSIC SCHOOL',
+            'allowedAdTypes' => FacebookAllAdsSheet::AD_TYPES,
+            'chOptions'      => FacebookAllAdsSheet::CH_OPTIONS,
+        ]);
     }
 
     /** Carousal-only page — shows GROUP CAROUSAL + PARENT CAROUSAL rows. */
@@ -282,6 +311,135 @@ class FacebookAllAdsSheetController extends Controller
     }
 
     /**
+     * Amazon-style audit page for Facebook campaigns (Fixed? + details, red/green 30-day dot + history).
+     */
+    public function auditPage()
+    {
+        return view('facebook-ads-audit');
+    }
+
+    /**
+     * One row per Facebook campaign (from the merged view) with Cvr / CPC, its audit history and
+     * dot status. Sorted oldest-audited (or never audited) first — same shape as /amazon-ads/audit.
+     */
+    public function auditPageData(): \Illuminate\Http\JsonResponse
+    {
+        $merged = $this->getMergedView(null, null);
+        $rows = $merged['data'] ?? [];
+
+        $histByCid = \App\Models\FacebookAdsAuditHistory::orderBy('created_at')
+            ->get()
+            ->groupBy(fn ($h) => (string) $h->campaign_id);
+
+        $now = \Illuminate\Support\Carbon::now();
+        $greenDays = 30;
+        $data = [];
+        $seen = [];
+        foreach ($rows as $r) {
+            $cid = trim((string) ($r['CAMPAIGN ID'] ?? ''));
+            if ($cid === '' || isset($seen[$cid])) {
+                continue;
+            }
+            $seen[$cid] = true;
+
+            $clk = $this->parseNumeric($r['CLK'] ?? null);
+            $spend = $this->parseNumeric($r['SPEND'] ?? null);
+            $sold = $this->parseNumeric($r['SOLD'] ?? null);
+            $impr = $this->parseNumeric($r['IMPR'] ?? null);
+            $sales = $this->parseNumeric($r['SALES'] ?? null);
+            $cvr = ($clk !== null && $clk > 0 && $sold !== null) ? round(($sold / $clk) * 100, 2) : null;
+            $cpc = ($clk !== null && $clk > 0 && $spend !== null) ? round($spend / $clk, 2) : null;
+            $ctr = ($impr !== null && $impr > 0 && $clk !== null) ? round(($clk / $impr) * 100, 2) : null;
+            // ACOS = spend / sales * 100 (spend without sales = 100%, no spend = 0%).
+            if ($spend === null) {
+                $acos = null;
+            } elseif ($spend <= 0) {
+                $acos = 0.0;
+            } elseif ($sales === null || $sales <= 0) {
+                $acos = 100.0;
+            } else {
+                $acos = round(($spend / $sales) * 100, 2);
+            }
+
+            $link = trim((string) ($r['Link'] ?? ''));
+            if ($link === '') {
+                $link = route('facebook.all.ads.sheet');
+            }
+
+            $hist = $histByCid->get($cid, collect());
+            $historyArr = [];
+            foreach ($hist as $h) {
+                $historyArr[] = [
+                    'fixed' => (bool) $h->fixed,
+                    'details' => (string) $h->details,
+                    'created_at' => optional($h->created_at)->format('Y-m-d H:i'),
+                ];
+            }
+            $latest = $hist->last();
+            $latestAt = $latest && $latest->created_at ? $latest->created_at : null;
+            $isGreen = $latestAt !== null && $latestAt->gt($now->copy()->subDays($greenDays));
+
+            $data[] = [
+                'campaign_id' => $cid,
+                'campaign_name' => (string) ($r['Campaign name'] ?? ''),
+                'cvr' => $cvr,
+                'ctr' => $ctr,
+                'acos' => $acos,
+                'cpc' => $cpc,
+                'link' => $link,
+                'dot' => $isGreen ? 'green' : 'red',
+                'latest_audit_at' => $latestAt ? $latestAt->format('Y-m-d H:i') : null,
+                'latest_audit_ts' => $latestAt ? $latestAt->getTimestamp() : 0,
+                'history' => $historyArr,
+            ];
+        }
+
+        usort($data, fn ($a, $b) => $a['latest_audit_ts'] <=> $b['latest_audit_ts']);
+
+        return response()->json(['data' => $data]);
+    }
+
+    /**
+     * Record an audit submission for a Facebook campaign (both fields mandatory).
+     */
+    public function auditPageSave(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $validated = $request->validate([
+            'campaign_id' => ['required', 'string', 'max:255'],
+            'campaign_name' => ['nullable', 'string', 'max:255'],
+            'fixed' => ['required', 'boolean'],
+            'details' => ['required', 'string'],
+        ]);
+
+        \App\Models\FacebookAdsAuditHistory::create([
+            'campaign_id' => $validated['campaign_id'],
+            'campaign_name' => $validated['campaign_name'] ?? null,
+            'fixed' => (bool) $validated['fixed'],
+            'details' => $validated['details'],
+            'user_id' => auth()->id(),
+            'created_at' => \Illuminate\Support\Carbon::now(),
+        ]);
+
+        $hist = \App\Models\FacebookAdsAuditHistory::where('campaign_id', $validated['campaign_id'])
+            ->orderBy('created_at')->get();
+        $historyArr = $hist->map(fn ($h) => [
+            'fixed' => (bool) $h->fixed,
+            'details' => (string) $h->details,
+            'created_at' => optional($h->created_at)->format('Y-m-d H:i'),
+        ])->all();
+        $latest = $hist->last();
+        $latestAt = $latest && $latest->created_at ? $latest->created_at : null;
+        $isGreen = $latestAt !== null && $latestAt->gt(\Illuminate\Support\Carbon::now()->subDays(30));
+
+        return response()->json([
+            'ok' => true,
+            'dot' => $isGreen ? 'green' : 'red',
+            'latest_audit_at' => $latestAt ? $latestAt->format('Y-m-d H:i') : null,
+            'history' => $historyArr,
+        ]);
+    }
+
+    /**
      * Build a merged row set: latest Campaign upload joined with latest
      * Spend upload by `Campaign ID`. Returns an associative array shaped
      * like {success, columns, data, batch} ready to JSON-encode, or null
@@ -290,7 +448,7 @@ class FacebookAllAdsSheetController extends Controller
      * Type filtering (`$typeList` from /facebook-{video|carousal}-… pages)
      * is applied to the merged set just like it is to individual batches.
      */
-    private function getMergedView(?array $typeList, ?string $chFilter = null): ?array
+    public function getMergedView(?array $typeList, ?string $chFilter = null): ?array
     {
         $latestByType = $this->latestBatchPerType();
         if (empty($latestByType)) {

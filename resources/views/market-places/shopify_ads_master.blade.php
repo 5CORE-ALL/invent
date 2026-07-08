@@ -31,6 +31,7 @@
         .sam-stat-badge--acos   { background: #ea580c; }
         .sam-stat-badge--tcos   { background: #7c3aed; }
         .sam-stat-badge--ssales { background: #0d9488; }
+        .sam-stat-badge--active { background: #059669; }
 
         #shopify-ads-master-wrap {
             overflow-x: auto;
@@ -111,6 +112,51 @@
             background: #e0f7fa;
         }
 
+        /* Data-tree expand/collapse control (+ / −) for parent channels, same
+           look as /advertisement-master. */
+        #shopify-ads-master-wrap .tabulator .tabulator-data-tree-control {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 18px;
+            height: 18px;
+            margin-right: 4px;
+            border: 1px solid #cbd5e1;
+            border-radius: 4px;
+            background: #fff;
+            color: #334155;
+            cursor: pointer;
+            vertical-align: middle;
+            flex-shrink: 0;
+        }
+
+        #shopify-ads-master-wrap .tabulator .tabulator-data-tree-control:hover {
+            background: #f1f5f9;
+            border-color: #94a3b8;
+        }
+
+        #shopify-ads-master-wrap .tabulator .tabulator-data-tree-control-expand::after {
+            content: '+';
+            font-size: 13px;
+            font-weight: 700;
+            line-height: 1;
+        }
+
+        #shopify-ads-master-wrap .tabulator .tabulator-data-tree-control-collapse::after {
+            content: '−';
+            font-size: 13px;
+            font-weight: 700;
+            line-height: 1;
+        }
+
+        #shopify-ads-master-wrap .tabulator-row.sam-child-row .tabulator-cell {
+            background: #f8fafc;
+        }
+
+        #shopify-ads-master-wrap .tabulator-row.sam-child-row:hover .tabulator-cell {
+            background: #f1f5f9;
+        }
+
         /* ── Badge trend chart modal — full screen width, pinned to top
            (same look & sizing as /all-marketplace-master adBreakdownChartModal).
            Theme uses --tz-modal-* CSS variables, so we override those *and*
@@ -146,7 +192,8 @@
                 <div class="card-body">
                     {{-- Badge strip + Search + Refresh --}}
                     <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
-                        <div class="d-flex align-items-center flex-nowrap gap-2 flex-grow-1 overflow-x-auto py-1" style="min-width:0;">
+                        <div class="d-flex align-items-center flex-wrap gap-2 flex-grow-1 py-1" style="min-width:0;">
+                            <span class="sam-stat-badge sam-stat-badge--active" title="Active (running / enabled) campaigns across all channels">ACTIVE: <span id="sam-badge-active">0</span></span>
                             <span class="sam-stat-badge sam-stat-badge--spend sam-badge-link" data-metric="spend" data-label="Spend" title="Click for trend">SPEND: <span id="sam-badge-spend">$0</span></span>
                             <span class="sam-stat-badge sam-stat-badge--clicks sam-badge-link" data-metric="clicks" data-label="Clicks" title="Click for trend">CLICKS: <span id="sam-badge-clicks">0</span></span>
                             <span class="sam-stat-badge sam-stat-badge--sold sam-badge-link" data-metric="sold" data-label="Sold" title="Click for trend">SOLD: <span id="sam-badge-sold">0</span></span>
@@ -154,7 +201,7 @@
                             <span class="sam-stat-badge sam-stat-badge--cvr sam-badge-link" data-metric="cvr" data-label="CVR" title="Click for trend">CVR: <span id="sam-badge-cvr">0%</span></span>
                             <span class="sam-stat-badge sam-stat-badge--acos sam-badge-link" data-metric="acos" data-label="ACOS" title="Click for trend">ACOS: <span id="sam-badge-acos">0%</span></span>
                             <span class="sam-stat-badge sam-stat-badge--tcos sam-badge-link" data-metric="tcos" data-label="Tcos" title="Click for trend">TCOS: <span id="sam-badge-tcos">0%</span></span>
-                            <span class="sam-stat-badge sam-stat-badge--ssales sam-badge-link" data-metric="ssales" data-label="S Sales" title="Net Sales (gross − discounts) from /shopify — click for trend">S SALES: <span id="sam-badge-ssales">$0</span></span>
+                            <span class="sam-stat-badge sam-stat-badge--ssales sam-badge-link" data-metric="ssales" data-label="Shopify Sales" title="Net Sales (gross − discounts) from /shopify — click for trend">SHOPIFY SALES: <span id="sam-badge-ssales">$0</span></span>
                         </div>
                         <input type="text" id="sam-search" class="form-control form-control-sm"
                             placeholder="Search channel…" style="width:180px; flex-shrink:0;">
@@ -193,6 +240,7 @@
                             <option value="__total__">All channels</option>
                             <option value="Google Shopping">Google Shopping</option>
                             <option value="Google SERP">Google SERP</option>
+                            <option value="Youtube ads">Youtube ads</option>
                             <option value="Facebook">Facebook</option>
                             <option value="Facebook · G Video">Facebook · G Video</option>
                             <option value="Facebook · G Carousal">Facebook · G Carousal</option>
@@ -246,14 +294,40 @@
         document.addEventListener('DOMContentLoaded', function () {
             let samSSales = 0;   // latest /shopify Net Sales (for TCOS + S Sales badge)
 
+            // Metrics where a HIGHER value is worse (cost side): an up move
+            // reads red, a down move green — the opposite of clicks/sold/etc.
+            const SAM_INVERTED_METRICS = { spend: true, acos: true, tcos: true };
+
+            // Day-over-day trend dot for a metric cell. Green = improvement,
+            // red = decline, grey = no change; nothing when there's no prior
+            // day to compare against. Direction ('up'|'down'|'flat') is
+            // supplied per-row by the backend in `row.trend`.
+            function samTrendDot(cell) {
+                const field = cell.getField();
+                const data  = cell.getRow().getData() || {};
+                const dir   = (data.trend || {})[field];
+                if (!dir) return '';
+
+                let color;
+                if (dir === 'flat') {
+                    color = '#9ca3af';
+                } else {
+                    const inverted = !!SAM_INVERTED_METRICS[field];
+                    const improved = inverted ? (dir === 'down') : (dir === 'up');
+                    color = improved ? '#28a745' : '#dc3545';
+                }
+                return '<span title="vs previous day" style="display:inline-block;width:8px;height:8px;'
+                    + 'border-radius:50%;background:' + color + ';margin-left:5px;vertical-align:middle;"></span>';
+            }
+
             function wholeMoneyFormatter(cell) {
                 const value = Number(cell.getValue() || 0);
-                return '$' + Math.round(value).toLocaleString();
+                return '$' + Math.round(value).toLocaleString() + samTrendDot(cell);
             }
 
             function intFormatter(cell) {
                 const value = Number(cell.getValue() || 0);
-                return Math.round(value).toLocaleString();
+                return Math.round(value).toLocaleString() + samTrendDot(cell);
             }
 
             function percentFormatter(cell) {
@@ -261,26 +335,29 @@
                 return value.toLocaleString(undefined, {
                     minimumFractionDigits: 0,
                     maximumFractionDigits: 1,
-                }) + '%';
+                }) + '%' + samTrendDot(cell);
             }
 
             function updateBadges(rows) {
                 // Skip "sub-row" channels (Facebook · G Video, etc.) when summing — they're
                 // typed slices of the parent Facebook / Instagram rows, not separate channels,
                 // so including them would double-count the rolled-up totals.
-                let spend = 0, clicks = 0, sold = 0, sales = 0;
+                let spend = 0, clicks = 0, sold = 0, sales = 0, active = 0;
                 rows.forEach(function (r) {
                     if (r && r.is_sub_row) return;
                     spend  += Number(r.spend  || 0);
                     clicks += Number(r.clicks || 0);
                     sold   += Number(r.sold   || 0);
                     sales  += Number(r.sales  || 0);
+                    active += Number(r.active || 0);
                 });
                 const cvr  = clicks > 0 ? (sold  / clicks) * 100 : 0;
                 const acos = sales  > 0 ? (spend / sales)  * 100 : (spend > 0 ? 100 : 0);
                 // TCOS = Spend / S Sales (store net sales).
                 const tcos = samSSales > 0 ? (spend / samSSales) * 100 : (spend > 0 ? 100 : 0);
 
+                const samActiveEl = document.getElementById('sam-badge-active');
+                if (samActiveEl) samActiveEl.textContent = Math.round(active).toLocaleString();
                 document.getElementById('sam-badge-spend').textContent  = '$' + Math.round(spend).toLocaleString();
                 document.getElementById('sam-badge-clicks').textContent = Math.round(clicks).toLocaleString();
                 document.getElementById('sam-badge-sold').textContent   = Math.round(sold).toLocaleString();
@@ -309,15 +386,16 @@
             function channelFormatter(cell) {
                 const name = cell.getValue() || '';
                 const url  = channelLinks[name];
-                const row  = cell.getRow().getData() || {};
-                // Sub-rows ("Facebook · G Video", etc.) indent + lighten so they read
-                // visually as children of the parent channel above them in the table.
-                const indent = row.is_sub_row ? 'padding-left:18px;color:#475569;' : '';
-                const weight = row.is_sub_row ? 'font-weight:500;' : 'font-weight:600;';
+                // Child rows ("Facebook · G Video", etc.) are nested under their parent
+                // via the Tabulator data tree, which supplies the indent. Lighten them
+                // so they read visually as children of the parent channel above them.
+                const isChild = !!cell.getRow().getTreeParent();
+                const weight = isChild ? 'font-weight:500;' : 'font-weight:600;';
+                const color = isChild ? 'color:#475569;' : '';
                 if (url) {
-                    return '<a href="' + url + '" target="_blank" style="color:inherit;text-decoration:underline;' + weight + indent + '">' + name + '</a>';
+                    return '<a href="' + url + '" target="_blank" style="color:inherit;text-decoration:underline;' + weight + color + '">' + name + '</a>';
                 }
-                return '<span style="' + weight + indent + '">' + name + '</span>';
+                return '<span style="' + weight + color + '">' + name + '</span>';
             }
 
             const dataUrl = "{{ route('shopify.ads.master.data') }}";
@@ -343,8 +421,18 @@
                 layout: 'fitColumns',
                 headerSort: true,
                 initialSort: [],
+                dataTree: true,
+                dataTreeStartExpanded: false,
+                dataTreeChildField: '_children',
+                dataTreeFilter: true,
+                rowFormatter: function (row) {
+                    if (row.getTreeParent()) {
+                        row.getElement().classList.add('sam-child-row');
+                    }
+                },
                 columns: [
                     { title: 'Channel', field: 'channel', minWidth: 150, headerSort: true, formatter: channelFormatter },
+                    { title: 'ACTIVE',  field: 'active',  hozAlign: 'center', formatter: intFormatter,        headerSort: true, cssClass: 'sam-metric-cell', cellClick: samCellChart },
                     { title: 'SPEND',   field: 'spend',   hozAlign: 'center', formatter: wholeMoneyFormatter, headerSort: true, cssClass: 'sam-metric-cell', cellClick: samCellChart },
                     { title: 'CLICKS',  field: 'clicks',  hozAlign: 'center', formatter: intFormatter,        headerSort: true, cssClass: 'sam-metric-cell', cellClick: samCellChart },
                     { title: 'SOLD',    field: 'sold',    hozAlign: 'center', formatter: intFormatter,        headerSort: true, cssClass: 'sam-metric-cell', cellClick: samCellChart },
@@ -353,10 +441,10 @@
                     { title: 'ACOS',    field: 'acos',    hozAlign: 'center', formatter: percentFormatter,    headerSort: true, cssClass: 'sam-metric-cell', cellClick: samCellChart },
                 ],
             });
-
+ 
             // Clicking a metric cell opens the trend chart lensed to that
             // row's channel + the clicked metric.
-            const SAM_METRIC_LABELS = { spend: 'Spend', clicks: 'Clicks', sold: 'Sold', sales: 'Ads Sales', cvr: 'CVR', acos: 'ACOS', tcos: 'Tcos', ssales: 'S Sales' };
+            const SAM_METRIC_LABELS = { spend: 'Spend', clicks: 'Clicks', sold: 'Sold', sales: 'Ads Sales', active: 'Active', cvr: 'CVR', acos: 'ACOS', tcos: 'Tcos', ssales: 'Shopify Sales' };
             function samCellChart(e, cell) {
                 const metric  = cell.getField();
                 const channel = (cell.getRow().getData() || {}).channel || '__total__';
@@ -431,6 +519,53 @@
             });
             document.getElementById('sam-trend-days')?.addEventListener('change', loadSamHistory);
 
+            // Show/hide the trend modal. Uses Bootstrap's JS API when it's
+            // available, otherwise falls back to toggling the classes manually
+            // so the graph still opens even if `window.bootstrap` isn't ready
+            // (the previous guard silently did nothing in that case).
+            function samShowModal() {
+                const modalEl = document.getElementById('samTrendsModal');
+                if (!modalEl) return;
+                if (window.bootstrap && bootstrap.Modal) {
+                    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                } else {
+                    modalEl.classList.add('show');
+                    modalEl.style.display = 'block';
+                    modalEl.removeAttribute('aria-hidden');
+                    modalEl.setAttribute('aria-modal', 'true');
+                    document.body.classList.add('modal-open');
+                    if (!document.getElementById('sam-modal-backdrop')) {
+                        const bd = document.createElement('div');
+                        bd.id = 'sam-modal-backdrop';
+                        bd.className = 'modal-backdrop fade show';
+                        document.body.appendChild(bd);
+                        bd.addEventListener('click', samHideModal);
+                    }
+                }
+                setTimeout(function () { if (samTrendChart) samTrendChart.resize(); }, 200);
+            }
+
+            function samHideModal() {
+                const modalEl = document.getElementById('samTrendsModal');
+                if (!modalEl) return;
+                if (window.bootstrap && bootstrap.Modal) {
+                    const inst = bootstrap.Modal.getInstance(modalEl);
+                    if (inst) { inst.hide(); return; }
+                }
+                modalEl.classList.remove('show');
+                modalEl.style.display = 'none';
+                modalEl.setAttribute('aria-hidden', 'true');
+                modalEl.removeAttribute('aria-modal');
+                document.body.classList.remove('modal-open');
+                const bd = document.getElementById('sam-modal-backdrop');
+                if (bd) bd.remove();
+            }
+
+            // Manual close buttons (work with or without the Bootstrap JS API).
+            document.querySelectorAll('#samTrendsModal [data-bs-dismiss="modal"]').forEach(function (btn) {
+                btn.addEventListener('click', samHideModal);
+            });
+
             function openSamChart(metric, label, channel) {
                 samTrendMetric = metric;
                 samTrendLabel  = label;
@@ -443,10 +578,7 @@
                 }
                 samSetTrendTitle();
 
-                const modalEl = document.getElementById('samTrendsModal');
-                if (window.bootstrap && bootstrap.Modal) {
-                    bootstrap.Modal.getOrCreateInstance(modalEl).show();
-                }
+                samShowModal();
                 loadSamHistory();
             }
 
@@ -489,6 +621,12 @@
                     emptyEl?.classList.remove('d-none');
                     return;
                 }
+                if (typeof Chart === 'undefined') {
+                    canvas.style.display = 'none';
+                    if (emptyEl) { emptyEl.textContent = 'Chart library failed to load. Check your connection and refresh.'; emptyEl.classList.remove('d-none'); }
+                    return;
+                }
+
                 canvas.style.display = '';
                 emptyEl?.classList.add('d-none');
 

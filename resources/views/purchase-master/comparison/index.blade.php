@@ -368,6 +368,36 @@
         max-width: 96vw;
     }
 
+    /* Full-page CD editor mode (opened via /sheet-view or ?cd_only=): render the
+       comparison-sheet editor inline as a real page instead of a centered modal. */
+    body.cd-page-mode {
+        overflow: auto !important;
+        padding-right: 0 !important;
+    }
+    body.cd-page-mode .modal-backdrop {
+        display: none !important;
+    }
+    body.cd-page-mode #comparisonCdModal {
+        position: static !important;
+        display: block !important;
+        overflow: visible !important;
+    }
+    body.cd-page-mode #comparisonCdModal .modal-dialog {
+        max-width: 100% !important;
+        width: 100% !important;
+        margin: 0 !important;
+        height: auto;
+    }
+    body.cd-page-mode #comparisonCdModal .modal-content {
+        border: 0;
+        border-radius: 0;
+        min-height: 100vh;
+        box-shadow: none;
+    }
+    body.cd-page-mode #comparisonCdModal .btn-close {
+        display: none;
+    }
+
     #comparisonCdModal .modal-body {
         min-height: 70vh;
     }
@@ -461,6 +491,22 @@
     .cd-sheet-table .cd-col-header {
         cursor: pointer;
         user-select: none;
+    }
+
+    /* Drag & drop reordering of rows / columns */
+    .cd-sheet-table .cd-row-num,
+    .cd-sheet-table .cd-col-header {
+        cursor: grab;
+    }
+    .cd-sheet-wrap.cd-dnd-active .cd-row-num,
+    .cd-sheet-wrap.cd-dnd-active .cd-col-header {
+        cursor: grabbing;
+    }
+    .cd-sheet-table .cd-dnd-target {
+        outline: 2px dashed #2563eb;
+        outline-offset: -2px;
+        background: #bfdbfe !important;
+        color: #1d4ed8 !important;
     }
 
     .cd-sheet-table .cd-sheet-cell {
@@ -762,6 +808,9 @@
                         <span id="comparison-playback-label" class="text-muted small fw-semibold d-none"></span>
                         <input type="text" id="comparison-search-parent" class="form-control form-control-sm" style="max-width: 220px;" placeholder="Search Parent...">
                         <input type="text" id="comparison-search-sku" class="form-control form-control-sm" style="max-width: 220px;" placeholder="Search SKU...">
+                        <span id="comparison-selected-badge" class="badge bg-primary ms-auto d-none" style="font-size:0.8rem;">
+                            <i class="mdi mdi-checkbox-marked-outline me-1"></i><span id="comparison-selected-count">0</span> selected
+                        </span>
                     </div>
                     <div id="comparison-table"></div>
                 </div>
@@ -837,8 +886,11 @@
     <div class="modal-dialog modal-fullscreen-lg-down modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header bg-primary text-white">
-                <h5 class="modal-title" id="comparisonCdModalLabel">
-                    <i class="fas fa-balance-scale"></i> Comparison Data
+                <h5 class="modal-title d-flex align-items-center gap-2" id="comparisonCdModalLabel">
+                    <a href="{{ route('comparison.index') }}" class="btn btn-sm btn-light d-none" id="comparison-cd-back-btn" title="Back to comparison list">
+                        <i class="mdi mdi-arrow-left"></i> Back
+                    </a>
+                    <span><i class="fas fa-balance-scale"></i> Comparison Data</span>
                     <span class="badge bg-light text-dark ms-2" id="comparison-cd-modal-sku-badge"></span>
                     <span class="visually-hidden" id="comparison-cd-modal-sku"></span>
                 </h5>
@@ -883,7 +935,7 @@
                                     <input type="text" id="comparison-cd-google-tab" class="form-control form-control-sm" value="Sheet1">
                                 </div>
                                 <button type="button" class="btn btn-sm btn-success" id="comparison-cd-import-btn">
-                                    <i class="fab fa-google"></i> Refresh
+                                    <i class="fab fa-google"></i> C Link Refresh
                                 </button>
                                 <button type="button" class="btn btn-sm btn-info text-white" id="comparison-cd-autopopulate-suppliers-btn" title="Add suppliers into blank columns from column D; update C-link preloaded names when they match supplier.list for this category">
                                     <i class="mdi mdi-account-multiple-plus"></i> Suppliers
@@ -1169,6 +1221,10 @@ document.addEventListener('DOMContentLoaded', function () {
     const linkedSkuRemoveUrl = @json(route('comparison.linked-skus.remove'));
     const comparisonParentsUrl = @json(route('comparison.parents'));
     const comparisonCategorySaveUrl = @json(route('comparison.category.save'));
+    const comparisonIndexUrl = @json(route('comparison.index'));
+    const comparisonSheetPageUrl = @json(route('comparison.sheet.page'));
+    // When set, this page is the dedicated full-page CD editor for one SKU.
+    const COMPARISON_CD_PAGE_SKU = @json($cdPageSku ?? null);
     const cdHoverPreview = document.getElementById('cd-hover-preview');
     const cdModalEl = document.getElementById('comparisonCdModal');
     const cdModal = cdModalEl ? new bootstrap.Modal(cdModalEl) : null;
@@ -1459,15 +1515,21 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function loadComparisonSuppliersForCategory(category) {
-        const normalizedCategory = String(category || '').trim();
-        if (!normalizedCategory || !currentCdRow?.sku) {
+        // Accept a single name, a comma-joined string, or an array of category names,
+        // so suppliers from ALL of a SKU's categories are cached (not just one).
+        let names = Array.isArray(category)
+            ? category.map(function (c) { return String(c || '').trim(); })
+            : String(category || '').split(',').map(function (s) { return s.trim(); });
+        names = names.filter(Boolean);
+        if (!names.length || !currentCdRow?.sku) {
             return Promise.resolve([]);
         }
 
         const params = new URLSearchParams();
         params.set('sku', currentCdRow.sku || '');
-        params.set('category', normalizedCategory);
+        params.set('category', names.join(', '));
         params.set('by_category', '1');
+        names.forEach(function (name) { params.append('categories[]', name); });
 
         return fetch(`${suppliersForSkuUrl}?${params.toString()}`, {
             headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
@@ -1506,9 +1568,9 @@ document.addEventListener('DOMContentLoaded', function () {
         let supplier = comparisonSuppliersByName[normalizeSupplierNameKey(name)] || null;
 
         if (!supplier && name) {
-            const category = String(currentCdRow?.category || '').trim();
-            if (category && Object.keys(comparisonSuppliersByName).length === 0) {
-                loadComparisonSuppliersForCategory(category).then(function () {
+            const categoryNames = comparisonCdRowCategoryNames();
+            if (categoryNames.length && Object.keys(comparisonSuppliersByName).length === 0) {
+                loadComparisonSuppliersForCategory(categoryNames).then(function () {
                     openComparisonCommModal(supplierName);
                 });
                 return;
@@ -2341,6 +2403,91 @@ document.addEventListener('DOMContentLoaded', function () {
         };
     }
 
+    // Order ALL supplier columns (everything after Spec) by PRICE USD ascending, keeping
+    // equal prices side-by-side in their original order (stable). Columns without a price
+    // stay after the priced ones, in their original order.
+    function sortSupplierColumnsByPrice(cells) {
+        cells = (cells || []).map(row => Array.isArray(row) ? row.slice() : [String(row || '')]);
+        const specCol = detectSpecColumnIndex(cells);
+        const firstSupplierCol = specCol + 1;
+        const colCount = Math.max(...cells.map(row => row.length), 0);
+        if (firstSupplierCol >= colCount) {
+            return { cells, mapping: null };
+        }
+
+        let priceRow = findRowIndexByLabel(cells, 'usd', specCol);
+        if (priceRow === null) {
+            priceRow = findRowIndexByLabel(cells, 'rmb', specCol);
+        }
+        if (priceRow === null) {
+            return { cells, mapping: null };
+        }
+
+        const supplierCols = [];
+        for (let c = firstSupplierCol; c < colCount; c++) {
+            const price = parseSheetNumber((cells[priceRow] || [])[c]);
+            supplierCols.push({ index: c, price: price, order: c });
+        }
+
+        supplierCols.sort((a, b) => {
+            if (a.price === null && b.price === null) return a.order - b.order;
+            if (a.price === null) return 1;
+            if (b.price === null) return -1;
+            if (a.price === b.price) return a.order - b.order;
+            return a.price - b.price;
+        });
+
+        const newOrder = supplierCols.map(x => x.index);
+
+        let changed = false;
+        for (let i = 0; i < newOrder.length; i++) {
+            if (newOrder[i] !== firstSupplierCol + i) { changed = true; break; }
+        }
+        if (!changed) {
+            return { cells, mapping: null };
+        }
+
+        const mapping = {};
+        for (let c = 0; c <= specCol; c++) mapping[c] = c;
+        newOrder.forEach((origCol, k) => { mapping[origCol] = firstSupplierCol + k; });
+
+        const newCells = cells.map(row => {
+            const head = row.slice(0, specCol + 1);
+            const tail = newOrder.map(origCol => (row[origCol] !== undefined ? row[origCol] : ''));
+            return head.concat(tail);
+        });
+
+        return { cells: newCells, mapping };
+    }
+
+    // Remap format keys (cols + cells "row:col") through an old→new column mapping.
+    function remapFormatColumns(formats, mapping) {
+        formats = normalizeSheetFormats(formats);
+        if (!mapping) {
+            return formats;
+        }
+
+        const cols = {};
+        Object.keys(formats.cols).forEach(key => {
+            const oldC = parseInt(key, 10);
+            if (Number.isNaN(oldC)) return;
+            const newC = mapping.hasOwnProperty(oldC) ? mapping[oldC] : oldC;
+            cols[String(newC)] = formats.cols[key];
+        });
+
+        const cells = {};
+        Object.keys(formats.cells).forEach(key => {
+            const parts = key.split(':');
+            const rowIndex = parseInt(parts[0], 10);
+            const oldC = parseInt(parts[1], 10);
+            if (Number.isNaN(rowIndex) || Number.isNaN(oldC)) return;
+            const newC = mapping.hasOwnProperty(oldC) ? mapping[oldC] : oldC;
+            cells[`${rowIndex}:${newC}`] = formats.cells[key];
+        });
+
+        return { cells, rows: { ...formats.rows }, cols };
+    }
+
     function computeAutoSheetFormats(cells) {
         const formats = { cells: {}, rows: {}, cols: {} };
         if (!cells.length) {
@@ -2785,10 +2932,10 @@ document.addEventListener('DOMContentLoaded', function () {
             return row.slice(0, colCountBeforeMove);
         });
 
-        const lowestMove = moveLowestPriceSupplierAfterSpec(currentSheetCells);
-        currentSheetCells = lowestMove.cells;
-        if (lowestMove.moved && lowestMove.from !== null && lowestMove.from !== lowestMove.to) {
-            currentSheetFormats = moveFormatColumn(currentSheetFormats, lowestMove.from, lowestMove.to);
+        const priceSort = sortSupplierColumnsByPrice(currentSheetCells);
+        currentSheetCells = priceSort.cells;
+        if (priceSort.mapping) {
+            currentSheetFormats = remapFormatColumns(currentSheetFormats, priceSort.mapping);
         }
 
         const colCount = Math.max(...currentSheetCells.map(row => row.length), 1);
@@ -2810,7 +2957,7 @@ document.addEventListener('DOMContentLoaded', function () {
             if (c === specCol - 2) headerText = 'Amazon';
             else if (c === specCol - 1) headerText = '5 Core';
             else if (c === specCol) headerText = 'Spec';
-            headHtml += `<th class="cd-col-header cd-select-col${selectedClass}" data-col="${c}" title="Select column ${headerText}">${headerText}</th>`;
+            headHtml += `<th class="cd-col-header cd-select-col${selectedClass}" data-col="${c}" draggable="true" title="Click to select · drag to move column ${headerText}">${headerText}</th>`;
         }
         headHtml += '</tr>';
         head.innerHTML = headHtml;
@@ -2818,7 +2965,7 @@ document.addEventListener('DOMContentLoaded', function () {
         body.innerHTML = currentSheetCells.map((row, r) => {
             const rowSelectedClass = selectedSheetRow === r ? ' cd-axis-selected' : '';
             const commRowClass = isCommRow(r, currentSheetCells) ? ' cd-comm-row' : '';
-            let rowHtml = `<tr class="${selectedSheetRow === r ? 'cd-row-selected' : ''}${commRowClass}"><td class="cd-row-num cd-select-row${rowSelectedClass}" data-row="${r}" title="Select row ${r + 1}">${r + 1}</td>`;
+            let rowHtml = `<tr class="${selectedSheetRow === r ? 'cd-row-selected' : ''}${commRowClass}"><td class="cd-row-num cd-select-row${rowSelectedClass}" data-row="${r}" draggable="true" title="Click to select · drag to move row ${r + 1}">${r + 1}</td>`;
             for (let c = 0; c < colCount; c++) {
                 const value = row[c] ?? '';
                 const isSpec = c === specCol;
@@ -3019,6 +3166,41 @@ document.addEventListener('DOMContentLoaded', function () {
         scheduleAutoSaveComparisonSheet(400);
     }
 
+    // Drag-and-drop reorder: move a row from one position to another (keeps formats aligned).
+    function moveSheetRowTo(from, to) {
+        readCellsFromEditor();
+        if (from == null || to == null || isNaN(from) || isNaN(to) || from === to) return;
+        if (from < 0 || from >= currentSheetCells.length) return;
+        if (to < 0 || to >= currentSheetCells.length) return;
+
+        const moved = currentSheetCells.splice(from, 1)[0];
+        currentSheetCells.splice(to, 0, moved);
+        currentSheetFormats = moveFormatRow(currentSheetFormats, from, to);
+        selectedSheetRow = to;
+        selectedSheetCol = null;
+        selectedSheetCell = null;
+        renderSheetEditor(currentSheetCells);
+        setSheetStatus(`Row moved to position ${to + 1}.`, false);
+        scheduleAutoSaveComparisonSheet(0);
+    }
+
+    // Drag-and-drop reorder: move a column from one position to another (keeps formats aligned).
+    function moveSheetColumnTo(from, to) {
+        readCellsFromEditor();
+        const colCount = currentSheetCells[0]?.length || 0;
+        if (from == null || to == null || isNaN(from) || isNaN(to) || from === to) return;
+        if (from < 0 || from >= colCount || to < 0 || to >= colCount) return;
+
+        currentSheetCells = moveSheetColumnData(currentSheetCells, from, to);
+        currentSheetFormats = moveFormatColumn(currentSheetFormats, from, to);
+        selectedSheetCol = to;
+        selectedSheetRow = null;
+        selectedSheetCell = null;
+        renderSheetEditor(currentSheetCells);
+        setSheetStatus(`Column moved to ${columnLetter(to)}.`, false);
+        scheduleAutoSaveComparisonSheet(0);
+    }
+
     function readCellsFromEditor() {
         const body = document.getElementById('comparison-cd-sheet-body');
         if (!body) return currentSheetCells;
@@ -3144,7 +3326,7 @@ document.addEventListener('DOMContentLoaded', function () {
             }
 
             clearTimeout(tableRefreshTimer);
-            tableRefreshTimer = setTimeout(() => table.replaceData(), 500);
+            tableRefreshTimer = setTimeout(() => { if (table) table.replaceData(); }, 150);
         })
         .catch(err => {
             setSheetStatus(err.message || 'Auto-save failed.', true);
@@ -3174,8 +3356,12 @@ document.addEventListener('DOMContentLoaded', function () {
         sheetCells = ensureCommRow(sheetCells, specCol).cells;
         renderSheetEditor(sheetCells);
         captureClinkPreloadedSuppliers(currentSheetCells);
-        const category = String(row?.category || currentCdRow?.category || '').trim();
-        loadComparisonSuppliersForCategory(category).then(function () {
+        // Load suppliers for ALL categories on this row so preloaded C-link supplier
+        // names from any category resolve/colour correctly.
+        const categoryNames = (Array.isArray(row?.categories) && row.categories.length)
+            ? row.categories.map(function (c) { return String((c && c.name != null) ? c.name : '').trim(); }).filter(Boolean)
+            : String(row?.category || currentCdRow?.category || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+        loadComparisonSuppliersForCategory(categoryNames).then(function () {
             if (document.getElementById('comparison-cd-sheet-wrap')?.classList.contains('d-none') === false) {
                 renderSheetEditor(currentSheetCells);
             }
@@ -3186,7 +3372,12 @@ document.addEventListener('DOMContentLoaded', function () {
     function syncComparisonFromClink(row, options) {
         const opts = options || {};
         const importBtn = document.getElementById('comparison-cd-import-btn');
-        if (importBtn) importBtn.disabled = true;
+        let importBtnOriginalHtml = null;
+        if (importBtn) {
+            importBtn.disabled = true;
+            importBtnOriginalHtml = importBtn.innerHTML;
+            importBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span> Refreshing...';
+        }
         setSheetStatus(opts.message || 'Loading comparison sheet from C link...', false);
 
         return fetch(sheetSyncClinkUrl, {
@@ -3209,13 +3400,18 @@ document.addEventListener('DOMContentLoaded', function () {
                 throw new Error(data.message || 'Could not load C link sheet.');
             }
             applySheetPayload(data, row);
-            if (opts.refreshTable) {
+            if (opts.refreshTable && table) {
                 table.replaceData();
             }
             return data;
         })
         .finally(() => {
-            if (importBtn) importBtn.disabled = false;
+            if (importBtn) {
+                importBtn.disabled = false;
+                if (importBtnOriginalHtml !== null) {
+                    importBtn.innerHTML = importBtnOriginalHtml;
+                }
+            }
         });
     }
 
@@ -3992,9 +4188,12 @@ document.addEventListener('DOMContentLoaded', function () {
         const shipping = parseSheetNumber(row.shipping) ?? 0;
         const sale = parseSheetNumber(row.sale) ?? 0;
 
-        const profit = (sale * ROI_SALE_NET_FACTOR) - shipping - cp - freight;
+        // Shipping is added to the Sale (revenue) rather than treated as a cost, so the
+        // effective sale = Sale + Shipping is used everywhere the calc references sale.
+        const effectiveSale = sale + shipping;
+        const profit = (effectiveSale * ROI_SALE_NET_FACTOR) - cp - freight;
         const hasInputs = sale > 0 || cp > 0 || freight > 0 || shipping > 0;
-        const pPct = sale > 0 ? (profit / sale) * 100 : null;
+        const pPct = effectiveSale > 0 ? (profit / effectiveSale) * 100 : null;
         const roi = (cp + freight) > 0 ? (profit / (cp + freight)) * 100 : null;
 
         return {
@@ -4303,25 +4502,59 @@ document.addEventListener('DOMContentLoaded', function () {
         scheduleAutoSaveComparisonSheet(400);
     }
 
+    // All Mfr Category names for the CD-modal's current row, from its `categories`
+    // array (falling back to the live table row and the comma-joined `category` field).
+    function comparisonCdRowCategoryNames() {
+        function fromCategories(arr) {
+            return (Array.isArray(arr) ? arr : [])
+                .map(function (c) { return String((c && c.name != null) ? c.name : '').trim(); })
+                .filter(Boolean);
+        }
+        function fromCategoryString(str) {
+            return String(str || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+        }
+
+        let cats = fromCategories(currentCdRow && currentCdRow.categories);
+        if (!cats.length && table && currentCdRow && currentCdRow.sku) {
+            const liveRow = table.getRows().find(function (row) { return row.getData().sku === currentCdRow.sku; });
+            if (liveRow) {
+                const ld = liveRow.getData();
+                cats = fromCategories(ld.categories);
+                if (!cats.length) {
+                    cats = fromCategoryString(ld.category);
+                }
+            }
+        }
+        if (!cats.length) {
+            cats = fromCategoryString(currentCdRow && currentCdRow.category);
+        }
+
+        const seen = new Set();
+        const out = [];
+        cats.forEach(function (c) {
+            const key = c.toLowerCase();
+            if (!seen.has(key)) {
+                seen.add(key);
+                out.push(c);
+            }
+        });
+        return out;
+    }
+
     function autopopulateSupplierNamesFromList() {
         if (!currentCdRow) {
             setSheetStatus('Open a comparison row first.', true);
             return;
         }
 
-        // Use row category first; fall back to latest table row if CD modal was opened before category was set.
-        let category = String(currentCdRow.category || '').trim();
-        if (!category && table && currentCdRow.sku) {
-            const liveRow = table.getRows().find(row => row.getData().sku === currentCdRow.sku);
-            if (liveRow) {
-                category = String(liveRow.getData().category || '').trim();
-                currentCdRow.category = category;
-            }
-        }
-        if (!category) {
+        // Gather ALL categories on this row (a SKU can carry several Mfr Categories),
+        // so suppliers from every category are fetched — not just the primary one.
+        const categoryNames = comparisonCdRowCategoryNames();
+        if (!categoryNames.length) {
             setSheetStatus('Set a category on this row before autopopulating suppliers.', true);
             return;
         }
+        const category = categoryNames.join(', ');
 
         readCellsFromEditor();
         const specCol = detectSpecColumnIndex(currentSheetCells);
@@ -4337,12 +4570,13 @@ document.addEventListener('DOMContentLoaded', function () {
 
         const btn = document.getElementById('comparison-cd-autopopulate-suppliers-btn');
         if (btn) btn.disabled = true;
-        setSheetStatus(`Loading suppliers for category "${category}" from supplier.list...`, false);
+        setSheetStatus(`Loading suppliers for ${categoryNames.length > 1 ? categoryNames.length + ' categories' : 'category "' + category + '"'} from supplier.list...`, false);
 
         const params = new URLSearchParams();
         params.set('sku', currentCdRow.sku || '');
         params.set('category', category);
         params.set('by_category', '1');
+        categoryNames.forEach(function (name) { params.append('categories[]', name); });
 
         fetch(`${suppliersForSkuUrl}?${params.toString()}`, {
             headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
@@ -5071,8 +5305,42 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function addCategoryToRow(row, categoryName) {
+        if (row) {
+            addCategoryToRows([row], categoryName);
+        }
+    }
+
+    // Rows the category action should apply to: when the origin row is part of a
+    // multi-row selection, apply to every selected row (bulk); otherwise just the
+    // origin row. This makes "select 2 rows → add Mfr Category" affect both.
+    function comparisonCategoryTargetRows(originRow) {
+        if (!originRow) {
+            return [];
+        }
+        // Merge the clicked row with the current selection, deduped by SKU — mirrors the
+        // Sku Link bulk behaviour. Clicking the "+" can toggle the clicked row's own
+        // selection off, so getSelectedRows()/isSelected() alone would drop it and the
+        // action would wrongly affect only one row.
+        const rows = [originRow].concat(getSelectedComparisonRows());
+        const seen = new Set();
+        const unique = [];
+        rows.forEach(function (row) {
+            if (!row || typeof row.getData !== 'function') {
+                return;
+            }
+            const sku = String(row.getData().sku || '').trim().toUpperCase();
+            if (!sku || seen.has(sku)) {
+                return;
+            }
+            seen.add(sku);
+            unique.push(row);
+        });
+        return unique;
+    }
+
+    function addCategoryToRows(rows, categoryName) {
         const name = String(categoryName || '').trim();
-        if (!name || !row) {
+        if (!name || !Array.isArray(rows) || rows.length === 0) {
             return;
         }
         resolveProductCategoryId(name).then(function (categoryId) {
@@ -5080,12 +5348,17 @@ document.addEventListener('DOMContentLoaded', function () {
             if (!Number.isInteger(id) || id <= 0) {
                 return;
             }
-            const ids = rowCategoryIds(row.getData());
-            if (ids.includes(id)) {
-                return;
-            }
-            ids.push(id);
-            saveCategoryIdsForRow(row, ids, row.getCell('category')?.getElement());
+            rows.forEach(function (row) {
+                if (!row) {
+                    return;
+                }
+                const ids = rowCategoryIds(row.getData());
+                if (ids.includes(id)) {
+                    return;
+                }
+                ids.push(id);
+                saveCategoryIdsForRow(row, ids, row.getCell('category')?.getElement());
+            });
         });
     }
 
@@ -5124,7 +5397,10 @@ document.addEventListener('DOMContentLoaded', function () {
         const rowData = row.getData();
         const sourceEl = document.getElementById('comparison-category-picker-sku');
         if (sourceEl) {
-            sourceEl.textContent = String(rowData.sku || '').trim();
+            const targets = comparisonCategoryTargetRows(row);
+            sourceEl.textContent = targets.length > 1
+                ? (targets.length + ' selected rows')
+                : String(rowData.sku || '').trim();
         }
         const search = document.getElementById('comparison-category-picker-search');
         if (search) {
@@ -5186,10 +5462,9 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
         const name = String(categoryName || '').trim();
-        const addedNames = (Array.isArray(categoryPickerRow.getData().categories) ? categoryPickerRow.getData().categories : [])
-            .map(function (c) { return String(c.name || '').trim().toLowerCase(); });
-        if (name && !addedNames.includes(name.toLowerCase())) {
-            addCategoryToRow(categoryPickerRow, name);
+        if (name) {
+            // Applies to all selected rows when the picker was opened on a multi-selection.
+            addCategoryToRows(comparisonCategoryTargetRows(categoryPickerRow), name);
         }
         // Keep the modal open so multiple categories can be added; refresh the list
         // shortly after so the newly added one shows as "Added".
@@ -5448,7 +5723,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 clearCategoriesForRow(cell.getRow());
                 return;
             }
-            addCategoryToRow(cell.getRow(), nextName);
+            addCategoryToRows(comparisonCategoryTargetRows(cell.getRow()), nextName);
         };
 
         renderCategoryDropdownResults(results, '', handleSelect);
@@ -5473,12 +5748,29 @@ document.addEventListener('DOMContentLoaded', function () {
         closeCategoryDropdown();
     });
 
+    function enterCdPageMode() {
+        document.body.classList.add('cd-page-mode');
+        document.getElementById('comparison-main-card')?.classList.add('d-none');
+        const backBtn = document.getElementById('comparison-cd-back-btn');
+        if (backBtn) {
+            backBtn.classList.remove('d-none');
+            backBtn.setAttribute('href', comparisonIndexUrl);
+        }
+    }
+
     loadProductCategories().then(function () {
         const comparisonPageParams = new URLSearchParams(window.location.search);
-        const comparisonCdOnlySku = (comparisonPageParams.get('cd_only') || comparisonPageParams.get('sku') || '').trim();
+        // Dedicated full-page CD editor: driven by the /sheet-view route ($cdPageSku)
+        // or the legacy ?cd_only= URL param.
+        const comparisonCdOnlySku = (
+            (COMPARISON_CD_PAGE_SKU || '')
+            || comparisonPageParams.get('cd_only')
+            || (comparisonPageParams.has('cd_only') ? comparisonPageParams.get('sku') : '')
+            || ''
+        ).trim();
 
-        if (comparisonPageParams.has('cd_only') && comparisonCdOnlySku) {
-            document.getElementById('comparison-main-card')?.classList.add('d-none');
+        if (comparisonCdOnlySku) {
+            enterCdPageMode();
 
             const params = new URLSearchParams({ skus: comparisonCdOnlySku });
             fetch(`${dataUrl}?${params.toString()}`, {
@@ -5537,6 +5829,12 @@ document.addEventListener('DOMContentLoaded', function () {
                     query.set('parent', parentTerm);
                 }
             }
+            // Remote sort: send the active sort so the server sorts ALL rows before
+            // paginating (otherwise only the current page would be reordered).
+            if (Array.isArray(params.sort) && params.sort.length > 0) {
+                query.set('sort_field', String(params.sort[0].field || ''));
+                query.set('sort_dir', String(params.sort[0].dir || 'asc'));
+            }
             return `${url}?${query.toString()}`;
         },
         ajaxResponse: function (url, params, response) {
@@ -5551,7 +5849,7 @@ document.addEventListener('DOMContentLoaded', function () {
         pagination: true,
         paginationMode: 'remote',
         filterMode: 'remote',
-        sortMode: 'local',
+        sortMode: 'remote',
         paginationSize: 50,
         paginationSizeSelector: [25, 50, 100, 200],
         paginationInitialPage: 1,
@@ -5565,9 +5863,7 @@ document.addEventListener('DOMContentLoaded', function () {
         columns: [
             {
                 formatter: 'rowSelection',
-                titleFormatter: function () {
-                    return '';
-                },
+                titleFormatter: 'rowSelection',
                 hozAlign: 'center',
                 headerHozAlign: 'center',
                 headerSort: false,
@@ -5601,7 +5897,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 field: 'linked_skus',
                 hozAlign: 'left',
                 headerHozAlign: 'center',
-                width: 150,
+                width: 280,
                 headerSort: false,
                 cssClass: 'linked-sku-col',
                 formatter: linkedSkuFormatter,
@@ -5691,6 +5987,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 hozAlign: 'center',
                 headerHozAlign: 'center',
                 width: 60,
+                headerSort: false,
                 headerTooltip: 'Comparison link',
                 formatter: clinkFormatter,
                 editor: 'input',
@@ -5704,7 +6001,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 hozAlign: 'center',
                 headerHozAlign: 'center',
                 width: 75,
-                headerSort: true,
+                headerSort: false,
                 headerTooltip: 'Lowest market price and competition product links',
                 formatter: lmpFormatter,
                 cellClick: function (e) {
@@ -5739,8 +6036,11 @@ document.addEventListener('DOMContentLoaded', function () {
                 cellClick: function (e, cell) {
                     e.preventDefault();
                     e.stopPropagation();
-                    comparisonBulkEditSkus = null;
-                    openComparisonModal(cell.getRow().getData());
+                    // Open the comparison sheet on its own full page (same tab) instead of a modal.
+                    const sku = String(cell.getRow().getData().sku || '').trim();
+                    if (sku) {
+                        window.location.href = comparisonSheetPageUrl + '?sku=' + encodeURIComponent(sku);
+                    }
                 },
             },
             {
@@ -5764,6 +6064,19 @@ document.addEventListener('DOMContentLoaded', function () {
     table.on('pageLoaded', function () {
         table.deselectRow();
     });
+
+    function updateComparisonSelectedBadge() {
+        const badge = document.getElementById('comparison-selected-badge');
+        const countEl = document.getElementById('comparison-selected-count');
+        if (!badge || !countEl) {
+            return;
+        }
+        const count = table ? table.getSelectedRows().length : 0;
+        countEl.textContent = count;
+        badge.classList.toggle('d-none', count === 0);
+    }
+
+    table.on('rowSelectionChanged', updateComparisonSelectedBadge);
 
     document.getElementById('comparison-category-picker-search')?.addEventListener('input', function () {
         renderCategoryPickerList(this.value);
@@ -6081,7 +6394,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
     document.getElementById('comparison-cd-sheet-wrap')?.addEventListener('input', function (e) {
         if (e.target.closest('.cd-sheet-cell[contenteditable="true"]')) {
-            scheduleAutoSaveComparisonSheet(800);
+            // Snappier autosave while typing so changes reflect quickly.
+            scheduleAutoSaveComparisonSheet(350);
         }
     });
 
@@ -6089,13 +6403,14 @@ document.addEventListener('DOMContentLoaded', function () {
         const cell = e.target.closest('.cd-sheet-cell[contenteditable="true"]');
         if (!cell) return;
 
+        // Finishing a cell edit persists immediately so the change is reflected at once.
         if (maybeConvertSheetCellToLink(cell)) {
-            scheduleAutoSaveComparisonSheet(400);
+            scheduleAutoSaveComparisonSheet(0);
             return;
         }
 
         if (maybeRefreshCompanyNameCell(cell)) {
-            scheduleAutoSaveComparisonSheet(400);
+            scheduleAutoSaveComparisonSheet(0);
             return;
         }
 
@@ -6107,8 +6422,77 @@ document.addEventListener('DOMContentLoaded', function () {
             renderSheetEditor(currentSheetCells);
         }
 
-        scheduleAutoSaveComparisonSheet(300);
+        scheduleAutoSaveComparisonSheet(0);
     }, true);
+
+    // ---- Drag & drop to reorder rows (drag the row number) and columns (drag the header) ----
+    (function initCdSheetDragAndDrop() {
+        const wrap = document.getElementById('comparison-cd-sheet-wrap');
+        if (!wrap) return;
+
+        let dragType = null;   // 'row' | 'col'
+        let dragIndex = null;
+
+        function clearDndTargets() {
+            wrap.querySelectorAll('.cd-dnd-target').forEach(el => el.classList.remove('cd-dnd-target'));
+        }
+
+        function endDrag() {
+            clearDndTargets();
+            wrap.classList.remove('cd-dnd-active');
+            dragType = null;
+            dragIndex = null;
+        }
+
+        wrap.addEventListener('dragstart', function (e) {
+            const rowHandle = e.target.closest('.cd-select-row');
+            const colHandle = e.target.closest('.cd-col-header');
+            if (rowHandle) {
+                dragType = 'row';
+                dragIndex = parseInt(rowHandle.dataset.row, 10);
+            } else if (colHandle) {
+                dragType = 'col';
+                dragIndex = parseInt(colHandle.dataset.col, 10);
+            } else {
+                return;
+            }
+            if (e.dataTransfer) {
+                e.dataTransfer.effectAllowed = 'move';
+                try { e.dataTransfer.setData('text/plain', dragType + ':' + dragIndex); } catch (err) {}
+            }
+            wrap.classList.add('cd-dnd-active');
+        });
+
+        wrap.addEventListener('dragover', function (e) {
+            if (dragType === null) return;
+            const target = dragType === 'row'
+                ? e.target.closest('.cd-select-row')
+                : e.target.closest('.cd-col-header');
+            if (!target) return;
+            e.preventDefault();
+            if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+            clearDndTargets();
+            target.classList.add('cd-dnd-target');
+        });
+
+        wrap.addEventListener('drop', function (e) {
+            if (dragType === null) return;
+            e.preventDefault();
+            const target = dragType === 'row'
+                ? e.target.closest('.cd-select-row')
+                : e.target.closest('.cd-col-header');
+            if (target) {
+                const toIndex = parseInt(dragType === 'row' ? target.dataset.row : target.dataset.col, 10);
+                if (!isNaN(toIndex) && !isNaN(dragIndex) && toIndex !== dragIndex) {
+                    if (dragType === 'row') moveSheetRowTo(dragIndex, toIndex);
+                    else moveSheetColumnTo(dragIndex, toIndex);
+                }
+            }
+            endDrag();
+        });
+
+        wrap.addEventListener('dragend', endDrag);
+    })();
 
     let activeCompanyTooltipCell = null;
     document.getElementById('comparison-cd-sheet-wrap')?.addEventListener('mouseover', function (e) {

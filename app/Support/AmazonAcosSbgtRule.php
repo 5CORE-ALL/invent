@@ -8,37 +8,43 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * L30 ACOS (%) → suggested daily budget tier (SBGT), with boundaries and tier $ amounts
- * persisted in {@see AmazonAcosSbgtRuleSetting} (Amazon Ads “BGT rule”).
+ * L30 ACOS (%) → suggested daily budget tier (SBGT). Rule is a list of inclusive
+ * ACOS % bands ({@see defaultSbgtBands}) persisted in {@see AmazonAcosSbgtRuleSetting}
+ * (Amazon Ads “BGT rule”). Bands are evaluated top-to-bottom; the first band whose
+ * From ≤ ACOS ≤ To wins. Use 9999 on To for the catch-all highest band.
  */
 final class AmazonAcosSbgtRule
 {
-    public const CACHE_KEY = 'amazon_acos_sbgt_rule_resolved_v1';
+    public const CACHE_KEY = 'amazon_acos_sbgt_rule_resolved_v2';
 
     /**
-     * Default rule: pink ≤E1 → sbgt_pink; green (E1,E2]; blue (E2,E3]; yellow (E3,E4); red ≥E4.
+     * Default From→To bands (high ACOS first).
      *
-     * @return array{e1: float, e2: float, e3: float, e4: float, sbgt_pink: int, sbgt_green: int, sbgt_blue: int, sbgt_yellow: int, sbgt_red: int}
+     * @return array<int, array{acos_from: float, acos_to: float, sbgt: int, label: string, color: string}>
+     */
+    public static function defaultSbgtBands(): array
+    {
+        return [
+            ['acos_from' => 40, 'acos_to' => 9999, 'sbgt' => 1, 'label' => 'Red', 'color' => '#dc2626'],
+            ['acos_from' => 30, 'acos_to' => 40, 'sbgt' => 2, 'label' => 'Yellow', 'color' => '#ca8a04'],
+            ['acos_from' => 20, 'acos_to' => 30, 'sbgt' => 4, 'label' => 'Blue', 'color' => '#2563eb'],
+            ['acos_from' => 10, 'acos_to' => 20, 'sbgt' => 8, 'label' => 'Green', 'color' => '#16a34a'],
+            ['acos_from' => 0, 'acos_to' => 10, 'sbgt' => 12, 'label' => 'Pink', 'color' => '#db2777'],
+        ];
+    }
+
+    /**
+     * @return array{bands: array<int, array{acos_from: float, acos_to: float, sbgt: int, label: string, color: string}>}
      */
     public static function defaults(): array
     {
-        return [
-            'e1' => 10.0,
-            'e2' => 20.0,
-            'e3' => 30.0,
-            'e4' => 40.0,
-            'sbgt_pink' => 12,
-            'sbgt_green' => 8,
-            'sbgt_blue' => 4,
-            'sbgt_yellow' => 2,
-            'sbgt_red' => 1,
-        ];
+        return ['bands' => self::defaultSbgtBands()];
     }
 
     /**
      * Active rule (cached). Falls back to {@see defaults} when the table is missing or empty.
      *
-     * @return array{e1: float, e2: float, e3: float, e4: float, sbgt_pink: int, sbgt_green: int, sbgt_blue: int, sbgt_yellow: int, sbgt_red: int}
+     * @return array{bands: array<int, array{acos_from: float, acos_to: float, sbgt: int, label: string, color: string}>}
      */
     public static function resolvedRule(): array
     {
@@ -51,7 +57,7 @@ final class AmazonAcosSbgtRule
                 return self::defaults();
             }
 
-            return self::normalizeRule(array_merge(self::defaults(), $row->rule));
+            return self::normalizeRule($row->rule);
         });
     }
 
@@ -61,55 +67,34 @@ final class AmazonAcosSbgtRule
     }
 
     /**
+     * Accepts either a band form ({bands: [...]}, or a bare list of bands) or the
+     * legacy E1–E4 / sbgt_pink…sbgt_red form, and normalizes to {bands: [...]}.
+     *
      * @param  array<string, mixed>  $input
-     * @return array{e1: float, e2: float, e3: float, e4: float, sbgt_pink: int, sbgt_green: int, sbgt_blue: int, sbgt_yellow: int, sbgt_red: int}
+     * @return array{bands: array<int, array{acos_from: float, acos_to: float, sbgt: int, label: string, color: string}>}
      */
     public static function normalizeRule(array $input): array
     {
-        $d = self::defaults();
-        $e1 = (float) ($input['e1'] ?? $d['e1']);
-        $e2 = (float) ($input['e2'] ?? $d['e2']);
-        $e3 = (float) ($input['e3'] ?? $d['e3']);
-        $e4 = (float) ($input['e4'] ?? $d['e4']);
-        foreach ([$e1, $e2, $e3, $e4] as $e) {
-            if (! is_finite($e)) {
-                throw new \InvalidArgumentException('ACOS boundaries must be finite numbers.');
-            }
-        }
-        if (! ($e1 < $e2 && $e2 < $e3 && $e3 < $e4)) {
-            throw new \InvalidArgumentException('ACOS boundaries must satisfy E1 < E2 < E3 < E4.');
-        }
-        if ($e4 > 500) {
-            throw new \InvalidArgumentException('E4 (red threshold) must be ≤ 500.');
-        }
-        if ($e1 <= 0) {
-            throw new \InvalidArgumentException('E1 must be positive.');
+        $bandsIn = null;
+        if (isset($input['bands']) && is_array($input['bands'])) {
+            $bandsIn = $input['bands'];
+        } elseif (self::looksLikeBandList($input)) {
+            $bandsIn = $input;
+        } elseif (self::looksLikeLegacy($input)) {
+            $bandsIn = self::legacyToBands($input);
         }
 
-        $tiers = [];
-        foreach (['sbgt_pink', 'sbgt_green', 'sbgt_blue', 'sbgt_yellow', 'sbgt_red'] as $k) {
-            $v = (int) round((float) ($input[$k] ?? $d[$k]));
-            if ($v < 1 || $v > 100_000) {
-                throw new \InvalidArgumentException('Each SBGT tier must be between 1 and 100000.');
-            }
-            $tiers[$k] = $v;
-        }
+        $bands = ($bandsIn !== null && $bandsIn !== [])
+            ? self::normalizeSbgtBands($bandsIn)
+            : self::defaultSbgtBands();
 
-        return [
-            'e1' => $e1,
-            'e2' => $e2,
-            'e3' => $e3,
-            'e4' => $e4,
-            'sbgt_pink' => $tiers['sbgt_pink'],
-            'sbgt_green' => $tiers['sbgt_green'],
-            'sbgt_blue' => $tiers['sbgt_blue'],
-            'sbgt_yellow' => $tiers['sbgt_yellow'],
-            'sbgt_red' => $tiers['sbgt_red'],
-        ];
+        self::validateSbgtBands($bands);
+
+        return ['bands' => $bands];
     }
 
     /**
-     * @param  array{e1: float, e2: float, e3: float, e4: float, sbgt_pink: int, sbgt_green: int, sbgt_blue: int, sbgt_yellow: int, sbgt_red: int}  $rule
+     * @param  array{bands: array<int, array<string, mixed>>}  $rule
      */
     public static function persistRule(array $rule): void
     {
@@ -123,6 +108,100 @@ final class AmazonAcosSbgtRule
             $row->update(['rule' => $rule]);
         }
         self::forgetResolvedCache();
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $bands
+     * @return array<int, array{acos_from: float, acos_to: float, sbgt: int, label: string, color: string}>
+     */
+    public static function normalizeSbgtBands(array $bands): array
+    {
+        $out = [];
+        foreach ($bands as $band) {
+            if (! is_array($band)) {
+                continue;
+            }
+            $out[] = [
+                'acos_from' => (float) ($band['acos_from'] ?? 0),
+                'acos_to' => (float) ($band['acos_to'] ?? 9999),
+                'sbgt' => (int) round((float) ($band['sbgt'] ?? 0)),
+                'label' => (string) ($band['label'] ?? ''),
+                'color' => (string) ($band['color'] ?? '#6c757d'),
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $bands
+     */
+    private static function validateSbgtBands(array $bands): void
+    {
+        if ($bands === []) {
+            throw new \InvalidArgumentException('Add at least one SBGT band.');
+        }
+        foreach ($bands as $i => $band) {
+            $from = (float) ($band['acos_from'] ?? NAN);
+            $to = (float) ($band['acos_to'] ?? NAN);
+            $sbgt = (int) ($band['sbgt'] ?? 0);
+            if (! is_finite($from) || ! is_finite($to)) {
+                throw new \InvalidArgumentException('SBGT band '.($i + 1).': From and To must be finite numbers.');
+            }
+            if ($from > $to) {
+                throw new \InvalidArgumentException('SBGT band '.($i + 1).': From must be ≤ To.');
+            }
+            if ($sbgt < 1 || $sbgt > 100_000) {
+                throw new \InvalidArgumentException('SBGT band '.($i + 1).': SBGT must be between 1 and 100000.');
+            }
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $input
+     */
+    private static function looksLikeBandList(array $input): bool
+    {
+        if ($input === [] || ! array_is_list($input)) {
+            return false;
+        }
+        foreach ($input as $band) {
+            if (is_array($band) && (array_key_exists('acos_from', $band) || array_key_exists('acos_to', $band) || array_key_exists('sbgt', $band))) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  array<string, mixed>  $input
+     */
+    private static function looksLikeLegacy(array $input): bool
+    {
+        return array_key_exists('e1', $input) || array_key_exists('sbgt_pink', $input);
+    }
+
+    /**
+     * Convert the old E1–E4 / sbgt_* form into From→To bands (high ACOS first).
+     *
+     * @param  array<string, mixed>  $input
+     * @return array<int, array{acos_from: float, acos_to: float, sbgt: int, label: string, color: string}>
+     */
+    private static function legacyToBands(array $input): array
+    {
+        $e1 = (float) ($input['e1'] ?? 10);
+        $e2 = (float) ($input['e2'] ?? 20);
+        $e3 = (float) ($input['e3'] ?? 30);
+        $e4 = (float) ($input['e4'] ?? 40);
+
+        return [
+            ['acos_from' => $e4, 'acos_to' => 9999, 'sbgt' => (int) ($input['sbgt_red'] ?? 1), 'label' => 'Red', 'color' => '#dc2626'],
+            ['acos_from' => $e3, 'acos_to' => $e4, 'sbgt' => (int) ($input['sbgt_yellow'] ?? 2), 'label' => 'Yellow', 'color' => '#ca8a04'],
+            ['acos_from' => $e2, 'acos_to' => $e3, 'sbgt' => (int) ($input['sbgt_blue'] ?? 4), 'label' => 'Blue', 'color' => '#2563eb'],
+            ['acos_from' => $e1, 'acos_to' => $e2, 'sbgt' => (int) ($input['sbgt_green'] ?? 8), 'label' => 'Green', 'color' => '#16a34a'],
+            ['acos_from' => 0, 'acos_to' => $e1, 'sbgt' => (int) ($input['sbgt_pink'] ?? 12), 'label' => 'Pink', 'color' => '#db2777'],
+        ];
     }
 
     /**
@@ -237,21 +316,35 @@ final class AmazonAcosSbgtRule
 
     public static function sbgtFromAcosL30(float $acos): int
     {
-        $r = self::resolvedRule();
-        if ($acos >= $r['e4']) {
-            return (int) $r['sbgt_red'];
-        }
-        if ($acos > $r['e3']) {
-            return (int) $r['sbgt_yellow'];
-        }
-        if ($acos > $r['e2']) {
-            return (int) $r['sbgt_blue'];
-        }
-        if ($acos > $r['e1']) {
-            return (int) $r['sbgt_green'];
+        $bands = self::resolvedRule()['bands'];
+
+        if (is_finite($acos)) {
+            foreach ($bands as $band) {
+                $from = (float) ($band['acos_from'] ?? 0);
+                $to = (float) ($band['acos_to'] ?? 9999);
+                if ($acos >= $from && $acos <= $to) {
+                    return (int) ($band['sbgt'] ?? 1);
+                }
+            }
         }
 
-        return (int) $r['sbgt_pink'];
+        return self::fallbackSbgtFromBands($bands);
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $bands
+     */
+    private static function fallbackSbgtFromBands(array $bands): int
+    {
+        $best = null;
+        foreach ($bands as $band) {
+            $from = (float) ($band['acos_from'] ?? 0);
+            if ($best === null || $from < (float) ($best['acos_from'] ?? 0)) {
+                $best = $band;
+            }
+        }
+
+        return $best !== null ? (int) ($best['sbgt'] ?? 1) : 1;
     }
 
     /**
@@ -261,15 +354,11 @@ final class AmazonAcosSbgtRule
      */
     public static function allowedSbgtTierValues(): array
     {
-        $r = self::resolvedRule();
-        $vals = [
-            (int) $r['sbgt_pink'],
-            (int) $r['sbgt_green'],
-            (int) $r['sbgt_blue'],
-            (int) $r['sbgt_yellow'],
-            (int) $r['sbgt_red'],
-        ];
-        $vals = array_values(array_unique($vals));
+        $vals = [];
+        foreach (self::resolvedRule()['bands'] as $band) {
+            $vals[] = (int) ($band['sbgt'] ?? 0);
+        }
+        $vals = array_values(array_unique(array_filter($vals, static fn ($v) => $v > 0)));
         sort($vals, SORT_NUMERIC);
 
         return $vals;
@@ -280,22 +369,17 @@ final class AmazonAcosSbgtRule
      */
     public static function sqlSortCaseExpression(string $acosExpr): string
     {
-        $r = self::resolvedRule();
-        $e1 = self::sqlNumberLiteral($r['e1']);
-        $e2 = self::sqlNumberLiteral($r['e2']);
-        $e3 = self::sqlNumberLiteral($r['e3']);
-        $e4 = self::sqlNumberLiteral($r['e4']);
-        $sp = (int) $r['sbgt_pink'];
-        $sg = (int) $r['sbgt_green'];
-        $sb = (int) $r['sbgt_blue'];
-        $sy = (int) $r['sbgt_yellow'];
-        $sr = (int) $r['sbgt_red'];
+        $bands = self::resolvedRule()['bands'];
+        $sql = 'CASE';
+        foreach ($bands as $band) {
+            $from = self::sqlNumberLiteral((float) ($band['acos_from'] ?? 0));
+            $to = self::sqlNumberLiteral((float) ($band['acos_to'] ?? 9999));
+            $sbgt = (int) ($band['sbgt'] ?? 1);
+            $sql .= ' WHEN ('.$acosExpr.') >= '.$from.' AND ('.$acosExpr.') <= '.$to.' THEN '.$sbgt;
+        }
+        $sql .= ' ELSE '.self::fallbackSbgtFromBands($bands).' END';
 
-        return 'CASE WHEN ('.$acosExpr.') >= '.$e4.' THEN '.$sr
-            .' WHEN ('.$acosExpr.') > '.$e3.' THEN '.$sy
-            .' WHEN ('.$acosExpr.') > '.$e2.' THEN '.$sb
-            .' WHEN ('.$acosExpr.') > '.$e1.' THEN '.$sg
-            .' ELSE '.$sp.' END';
+        return $sql;
     }
 
     private static function sqlNumberLiteral(float $n): string

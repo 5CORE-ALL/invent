@@ -20,5 +20,19 @@ class VideoAdsMaster extends Model
         'hook_name',
         'hook',
         'link',
+        'is_checked',
+        'checked_by',
+        'checked_at',
     ];
+
+    protected $casts = [
+        'is_checked' => 'boolean',
+        'checked_at' => 'datetime',
+    ];
+
+    public function checkHistory()
+    {
+        return $this->hasMany(VideoAdsMasterCheckHistory::class, 'video_ads_master_id')
+            ->orderByDesc('id');
+    }
 }

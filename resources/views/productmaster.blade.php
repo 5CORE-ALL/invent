@@ -297,7 +297,7 @@
             vertical-align: middle;
             border-bottom: 1px solid #edf2f9;
             font-size: 13px;
-            color: #495057;
+            color: #000;
             transition: all 0.2s ease;
             text-align: center;
         }
@@ -335,21 +335,21 @@
             box-sizing: border-box;
         }
 
-        .edit-btn.btn-outline-warning {
-            border-radius: 6px;
-            padding: 6px 12px;
-            transition: all 0.2s;
+        /* Action-column icons: dark color, no box outline */
+        .cp-btn, .cp-history-btn, .edit-btn, .duplicate-btn, .delete-btn {
+            border: none !important;
             background: transparent !important;
-            border: 1px solid #b38600 !important;
-            color: #b38600 !important;
+            box-shadow: none !important;
+            color: #222 !important;
+            padding: 4px 6px !important;
         }
 
-        .edit-btn.btn-outline-warning:hover {
-            background: #b38600 !important;
-            color: white !important;
-            border-color: #b38600 !important;
-            transform: translateY(-2px);
-            box-shadow: 0 3px 8px rgba(179, 134, 0, 0.3);
+        .cp-btn:hover, .cp-history-btn:hover, .edit-btn:hover, .duplicate-btn:hover, .delete-btn:hover {
+            color: #000 !important;
+            background: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+            transform: none !important;
         }
 
         .form-control {
@@ -418,33 +418,6 @@
             pointer-events: auto !important;
             z-index: 10;
             position: relative;
-        }
-
-        .selection-actions {
-            display: none;
-            position: fixed;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            z-index: 1050;
-            background: linear-gradient(135deg, #2c6ed5 0%, #1a56b7 100%);
-            padding: 10px 20px;
-            border-radius: 50px;
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
-        }
-
-        .selection-actions .btn {
-            margin: 0 5px;
-            border-radius: 20px;
-            font-weight: 600;
-            padding: 5px 15px;
-        }
-
-        .selection-count {
-            color: white;
-            font-weight: bold;
-            margin-right: 15px;
-            display: inline-block;
         }
 
         .field-operation {
@@ -756,8 +729,9 @@
             height: 32px;
             min-width: 32px;
             padding: 0;
-            border-radius: 50%;
-            border: 2px solid rgba(0,0,0,0.15);
+            border: none;
+            border-radius: 0;
+            background-color: transparent;
             font-size: 18px;
             line-height: 1;
             cursor: pointer;
@@ -771,25 +745,11 @@
         }
 
         .verified-data-dropdown.not-verified {
-            background-color: #fff;
-            border-color: #dc3545;
             color: #dc3545;
         }
 
-        .verified-data-dropdown.not-verified:hover {
-            background-color: rgba(220, 53, 69, 0.1);
-            box-shadow: 0 0 0 2px rgba(220, 53, 69, 0.3);
-        }
-
         .verified-data-dropdown.verified {
-            background-color: #fff;
-            border-color: #28a745;
             color: #28a745;
-        }
-
-        .verified-data-dropdown.verified:hover {
-            background-color: rgba(40, 167, 69, 0.1);
-            box-shadow: 0 0 0 2px rgba(40, 167, 69, 0.3);
         }
 
         .verified-data-dropdown option {
@@ -879,57 +839,58 @@
         <div class="col-12">
             <div class="card">
                 <div class="card-body">
-                    <div class="row mb-3">
-                        <div class="col-md-6">
-                            <div class="d-flex align-items-center gap-3">
-                                <div class="btn-group time-navigation-group" role="group" aria-label="Parent navigation">
-                                    <button id="play-backward" class="btn btn-light rounded-circle" title="Previous parent">
-                                        <i class="fas fa-step-backward"></i>
-                                    </button>
-                                    <button id="play-pause" class="btn btn-light rounded-circle" title="Show all products"
-                                        style="display: none;">
-                                        <i class="fas fa-pause"></i>
-                                    </button>
-                                    <button id="play-auto" class="btn btn-light rounded-circle" title="Show all products">
-                                        <i class="fas fa-play"></i>
-                                    </button>
-                                    <button id="play-forward" class="btn btn-light rounded-circle" title="Next parent">
-                                        <i class="fas fa-step-forward"></i>
-                                    </button>
-                                </div>
+                    <div class="col-12 mb-3">
+                        <div class="d-flex flex-nowrap align-items-center gap-2" style="overflow-x: auto;">
+                            <div class="btn-group time-navigation-group" role="group" aria-label="Parent navigation">
+                                <button id="play-backward" class="btn btn-sm btn-light" title="Previous parent">
+                                    <i class="fas fa-step-backward"></i>
+                                </button>
+                                <button id="play-pause" class="btn btn-sm btn-light" title="Show all products" style="display: none;">
+                                    <i class="fas fa-pause"></i>
+                                </button>
+                                <button id="play-auto" class="btn btn-sm btn-light" title="Show all products">
+                                    <i class="fas fa-play"></i>
+                                </button>
+                                <button id="play-forward" class="btn btn-sm btn-light" title="Next parent">
+                                    <i class="fas fa-step-forward"></i>
+                                </button>
                             </div>
+                            <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal"
+                                data-bs-target="#addProductModal" title="Add product">
+                                <i class="fas fa-plus"></i>
+                            </button>
+                            <div class="btn-group" role="group">
+                                <button type="button" class="btn btn-sm btn-primary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                                    <i class="fas fa-file-excel me-1"></i> Export / Import
+                                </button>
+                                <ul class="dropdown-menu">
+                                    <li>
+                                        <button type="button" class="dropdown-item" id="downloadExcel">
+                                            <i class="fas fa-file-excel me-2 text-success"></i> Export
+                                        </button>
+                                    </li>
+                                    <li>
+                                        <button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#importExcelModal">
+                                            <i class="fas fa-file-upload me-2 text-info"></i> Import
+                                        </button>
+                                    </li>
+                                </ul>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-success" id="viewArchivedBtn">
+                                <i class="fas fa-eye me-1"></i> DC
+                            </button>
+                            <button type="button" class="btn btn-sm btn-primary" id="cpAllHistoryBtn" title="CP change history for all SKUs">
+                                <i class="fas fa-clock-rotate-left me-1"></i> CP History
+                            </button>
+                            <button type="button" class="btn btn-sm btn-warning" id="importFromApiBtn" hidden>
+                                <i class="fas fa-cloud-download-alt me-1"></i> Import from API Sheet
+                            </button>
+                            <input type="text" id="parentSearch" class="form-control form-control-sm" placeholder="Search Parent" style="width: 160px;">
+                            <input type="text" id="skuSearch" class="form-control form-control-sm" placeholder="Search SKU" style="width: 160px;">
+                            <span id="pmParentBadge" class="badge bg-primary" style="font-size: 18px; padding: 9px 15px; white-space: nowrap;">Parent 0</span>
+                            <span id="pmSkuBadge" class="badge bg-success" style="font-size: 18px; padding: 9px 15px; white-space: nowrap;">SKU 0</span>
                         </div>
                     </div>
-
-                    <div class="col-12 mb-2">
-                            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
-                                <div class="d-flex flex-wrap align-items-center gap-2">
-                                    <button type="button" class="btn btn-primary" data-bs-toggle="modal"
-                                        data-bs-target="#addProductModal" title="Add product">
-                                        <i class="fas fa-plus"></i>
-                                    </button>
-                                    <button type="button" class="btn btn-success" id="downloadExcel">
-                                        <i class="fas fa-file-excel me-1"></i> Export
-                                    </button>
-                                    <button type="button" class="btn btn-info" data-bs-toggle="modal" data-bs-target="#importExcelModal">
-                                        <i class="fas fa-file-upload me-1"></i> Import
-                                    </button>
-                                    <button type="button" class="btn btn-success" id="viewArchivedBtn">
-                                        <i class="fas fa-eye me-1"></i> DC
-                                    </button>
-                                    <button type="button" class="btn btn-primary" id="cpAllHistoryBtn" title="CP change history for all SKUs">
-                                        <i class="fas fa-clock-rotate-left me-1"></i> CP History
-                                    </button>
-                                    <button type="button" class="btn btn-warning" id="importFromApiBtn" hidden>
-                                        <i class="fas fa-cloud-download-alt me-1"></i> Import from API Sheet
-                                    </button>
-                                </div>
-                            </div>
-                    </div>
-                    <div class="col-12 mb-3">
-                        <div id="statusBadgesBar" class="status-badges-full d-flex align-items-center justify-content-between gap-2"></div>
-                    </div>
-
 
                     <div class="modal fade" id="archivedProductsModal" tabindex="-1" aria-labelledby="archivedProductsModalLabel" aria-hidden="true">
                         <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
@@ -1039,7 +1000,7 @@
                                     <form id="addProductForm">
                                         <!-- Row 1 -->
                                         <div class="row mb-5">
-                                            <div class="col-md-3">
+                                            <div class="col-md">
                                                 <div class="form-group">
                                                     <label for="sku" class="form-label fw-bold"
                                                         style="color: #4A5568;">SKU <span class="text-danger">*</span></label>
@@ -1049,7 +1010,7 @@
                                                     <div class="invalid-feedback"></div>
                                                 </div>
                                             </div>
-                                            <div class="col-md-3">
+                                            <div class="col-md">
                                                 <div class="form-group">
                                                     <label for="parent" class="form-label fw-bold"
                                                         style="color: #4A5568;">Parent</label>
@@ -1059,25 +1020,11 @@
                                                             style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;"
                                                             list="parentOptions">
                                                         <datalist id="parentOptions"></datalist>
-                                                        <button class="btn btn-outline-secondary" type="button"
-                                                            id="refreshParents" style="border-radius: 0 6px 6px 0;">
-                                                            <i class="fas fa-sync-alt"></i>
-                                                        </button>
                                                     </div>
                                                     <div class="invalid-feedback"></div>
                                                 </div>
                                             </div>
-                                            <div class="col-md-3">
-                                                <div class="form-group">
-                                                    <label for="labelQty" class="form-label fw-bold"
-                                                        style="color: #4A5568;">Label QTY</label>
-                                                    <input type="text" class="form-control" id="labelQty"
-                                                        placeholder="Enter QTY"
-                                                        style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;">
-                                                    <div class="invalid-feedback"></div>
-                                                </div>
-                                            </div>
-                                            <div class="col-md-3">
+                                            <div class="col-md">
                                                 <div class="form-group">
                                                     <label for="status" class="form-label fw-bold"
                                                         style="color: #4A5568;">Status</label>
@@ -1093,15 +1040,16 @@
                                                     <div class="invalid-feedback"></div>
                                                 </div>
                                             </div>
-                                            <div class="col-md-3">
+                                            <div class="col-md">
                                                 <div class="form-group">
                                                     <label for="unit" class="form-label fw-bold"
                                                         style="color: #4A5568;">Unit <span class="text-danger">*</span></label>
                                                     <select class="form-control" id="unit" name="unit" required
                                                         style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;">
                                                         <option value="">Select Unit</option>
-                                                        <option value="Pieces">Pieces</option>
+                                                        <option value="Pieces">PCs</option>
                                                         <option value="Pair">Pair</option>
+                                                        <option value="Set">Set</option>
                                                     </select>
                                                     <div class="invalid-feedback"></div>
                                                 </div>
@@ -1149,99 +1097,6 @@
                                                         placeholder="Enter WT ACT"
                                                         style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;">
                                                     <div class="invalid-feedback"></div>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <!-- Row 3 -->
-                                        <div class="row mb-4">
-                                            <div class="col-md-3">
-                                                <div class="form-group">
-                                                    <label for="wtDecl" class="form-label fw-bold"
-                                                        style="color: #4A5568;">WT DECL</label>
-                                                    <input type="text" class="form-control" id="wtDecl"
-                                                        placeholder="Enter WT DECL"
-                                                        style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;">
-                                                    <div class="invalid-feedback"></div>
-                                                </div>
-                                            </div>
-                                            <div class="col-md-3">
-                                                <div class="form-group">
-                                                    <label for="ship" class="form-label fw-bold"
-                                                        style="color: #4A5568;">SHIP</label>
-                                                    <input type="text" class="form-control" id="ship"
-                                                        placeholder="Enter SHIP"
-                                                        style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;">
-                                                    <div class="invalid-feedback"></div>
-                                                </div>
-                                            </div>
-                                            <div class="col-md-3">
-                                                <div class="form-group">
-                                                    <label for="temu_ship" class="form-label fw-bold"
-                                                        style="color: #4A5568;">TEMU SHIP</label>
-                                                    <input type="text" class="form-control" id="temu_ship"
-                                                        placeholder="Enter TEMU SHIP"
-                                                        style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;">
-                                                </div>
-                                            </div>
-
-                                    
-
-                                            <div class="col-md-3">
-                                                <div class="form-group">
-                                                    <label for="moq" class="form-label fw-bold"
-                                                        style="color: #4A5568;" title="Minimum Order Quantity">MOQ</label>
-                                                    <input type="text" class="form-control" id="moq"
-                                                        placeholder="Enter MOQ"
-                                                        style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;">
-                                                </div>
-                                            </div>
-                                            <div class="col-md-3">
-                                                <div class="form-group">
-                                                    <label for="ebay2_ship" class="form-label fw-bold"
-                                                        style="color: #4A5568;">EBAY2 SHIP</label>
-                                                    <input type="text" class="form-control" id="ebay2_ship"
-                                                        placeholder="Enter EBAY2 SHIP"
-                                                        style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;">
-                                                </div>
-                                            </div>
-                                            <div class="col-md-3">
-                                                <div class="form-group">
-                                                    <label for="w" class="form-label fw-bold"
-                                                        style="color: #4A5568;">Width</label>
-                                                    <input type="text" class="form-control" id="w"
-                                                        placeholder="Enter Width (inches)"
-                                                        style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;">
-                                                    <div class="invalid-feedback"></div>
-                                                </div>
-                                            </div>
-                                            <div class="col-md-3">
-                                                <div class="form-group">
-                                                    <label for="l" class="form-label fw-bold"
-                                                        style="color: #4A5568;">Length</label>
-                                                    <input type="text" class="form-control" id="l"
-                                                        placeholder="Enter Length (inches)"
-                                                        style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;">
-                                                    <div class="invalid-feedback"></div>
-                                                </div>
-                                            </div>
-                                            <div class="col-md-3">
-                                                <div class="form-group">
-                                                    <label for="h" class="form-label fw-bold"
-                                                        style="color: #4A5568;">Height</label>
-                                                    <input type="text" class="form-control" id="h"
-                                                        placeholder="Enter Height (inches)"
-                                                        style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;">
-                                                    <div class="invalid-feedback"></div>
-                                                </div>
-                                            </div>
-                                            <div class="col-md-3">
-                                                <div class="form-group">
-                                                    <label for="pcbox" class="form-label fw-bold"
-                                                        style="color: #4A5568;">Pcs/Box</label>
-                                                    <input type="text" class="form-control" id="pcbox"
-                                                        placeholder="Enter Pcs/Box"
-                                                        style="border: 2px solid #E2E8F0; border-radius: 6px; padding: 0.75rem; background-color: white;">
                                                 </div>
                                             </div>
                                         </div>
@@ -1777,16 +1632,6 @@
                         </div>
                     </div>
 
-                    <!-- Selection actions bar -->
-                    <div class="selection-actions" id="selectionActions">
-                        <span class="selection-count">0 items selected</span>
-                        <button class="btn btn-sm btn-light" id="cancelSelection">Cancel</button>
-                        <button class="btn btn-sm btn-info" id="bulkActionsBtn" title="Bulk edit Parent, CP, Unit, MOQ, Status">
-                            <i class="fas fa-tasks me-1"></i>Bulk Actions
-                        </button>
-                        <button class="btn btn-sm btn-success" id="processSelected" title="Update price, status, etc. for selected products"><i class="fas fa-edit me-1"></i> Update selected</button>
-                    </div>
-
                     <div class="table-responsive">
                         <table id="row-callback-datatable" class="table dt-responsive nowrap w-100">
                             <thead>
@@ -1794,33 +1639,19 @@
                                     <th class="checkbox-column">
                                         <input type="checkbox" class="select-all-checkbox" id="selectAll">
                                     </th>
-                                    <th>Images</th>
+                                    <th>Img</th>
 
-                                    <th>
-                                        <div style="display: flex; align-items: center; gap: 10px;">
-                                            <span>Parent</span>
-                                            <span id="parentCount" class="column-badge">(0)</span>
-                                        </div>
-                                        <input type="text" id="parentSearch" class="form-control-sm"
-                                            placeholder="Search Parent">
-                                    </th>
-                                    <th>
-                                        <div style="display: flex; align-items: center; gap: 10px;">
-                                            <span>SKU</span>
-                                            <span id="skuCount" class="column-badge">(0)</span>
-                                        </div>
-                                        <input type="text" id="skuSearch" class="form-control-sm"
-                                            placeholder="Search SKU">
-                                    </th>
+                                    <th>Parent</th>
+                                    <th>SKU</th>
                                     <th>UPC</th>
                                     <th>Status</th>
-                                    <th>Inventory</th>
-                                    <th>OV L30</th>
+                                    <th>Inv</th>
+                                    <th>L30</th>
                                     <th>DIL</th>
                                     <th>Unit</th>
-                                    <th>LP</th>
                                     <th>CP$</th>
-                                    <th>FRGHT</th>
+                                    <th title="Freight">FRG</th>
+                                    <th>LP</th>
                                     <th>SHIP</th>
                                     <th>TEMU SHIP</th>
                                     <th title="Minimum Order Quantity">MOQ</th>
@@ -1996,8 +1827,8 @@
                                 if (item.SKU && !String(item.SKU).toUpperCase().includes('PARENT'))
                                     skuCount++;
                             });
-                            document.getElementById('parentCount').textContent = `(${parentSet.size})`;
-                            document.getElementById('skuCount').textContent = `(${skuCount})`;
+                            if (document.getElementById('pmParentBadge')) document.getElementById('pmParentBadge').textContent = `Parent ${parentSet.size}`;
+                            if (document.getElementById('pmSkuBadge')) document.getElementById('pmSkuBadge').textContent = `SKU ${skuCount}`;
                             setupHeaderColumnSearch();
 
                         } else {
@@ -2062,8 +1893,8 @@
                         skuCount++;
                     }
                 });
-                document.getElementById('parentCount').textContent = `(${parentSet.size})`;
-                document.getElementById('skuCount').textContent = `(${skuCount})`;
+                if (document.getElementById('pmParentBadge')) document.getElementById('pmParentBadge').textContent = `Parent ${parentSet.size}`;
+                if (document.getElementById('pmSkuBadge')) document.getElementById('pmSkuBadge').textContent = `SKU ${skuCount}`;
                 updateParentOptions();
                 initProductPlaybackControls();
                 applyFilters();
@@ -2094,8 +1925,8 @@
 
                 // All available columns
                 const allColumns = [
-                    "Image", "Parent", "SKU", "UPC", "Status", "Inventory", "OV L30", "DIL", "Unit", "LP", "CP$",
-                    "FRGHT", "SHIP", "TEMU SHIP", "MOQ", "EBAY2 SHIP", "Label QTY", "WT ACT", "WT DECL", "Length", "Width", "Height",
+                    "Image", "Parent", "SKU", "UPC", "Status", "Inventory", "OV L30", "DIL", "Unit", "CP$",
+                    "FRGHT", "LP", "SHIP", "TEMU SHIP", "MOQ", "EBAY2 SHIP", "Label QTY", "WT ACT", "WT DECL", "Length", "Width", "Height",
                     "CBM", "Url", "Verified", "Action"
                 ];
 
@@ -2152,7 +1983,7 @@
 
                     // Parent row
                     if (item.SKU && item.SKU.toUpperCase().includes('PARENT')) {
-                        row.style.backgroundColor = 'rgba(13, 110, 253, 0.2)';
+                        row.style.backgroundColor = '#fef9c3';
                         row.style.fontWeight = '500';
                         const totals = parentTotals[item.Parent] || {
                             inv: 0,
@@ -2236,7 +2067,7 @@
                                     break;
                                 case "LP":
                                     cell.className = 'text-center';
-                                    cell.textContent = formatNumber(item.lp, 2);
+                                    cell.textContent = '-';
                                     break;
                                 case "CP$":
                                     cell.className = 'text-center';
@@ -2409,29 +2240,24 @@
                                 if (isMissing) {
                                     cell.innerHTML = createMissingDataButton(item.SKU || '', 'SKU', 'SKU');
                                 } else {
+                                    const skuHasUrl = !isDataMissing(item.l2_url);
+                                    const skuLinkEl = skuHasUrl
+                                        ? `<a href="${escapeHtml(item.l2_url)}" target="_blank" class="sku-hover" data-sku="${escapeHtml(item.SKU) || ''}" data-image="${item.image_path ? item.image_path : ''}" style="color:#0a3d91; font-weight:600; text-decoration:none;">${escapeHtml(item.SKU)}</a>`
+                                        : `<span class="sku-hover" data-sku="${escapeHtml(item.SKU) || ''}" data-image="${item.image_path ? item.image_path : ''}" style="color:#dc3545; font-weight:600;">${escapeHtml(item.SKU)}</span>`;
                                     cell.innerHTML = `
-                                        <span class="sku-hover" 
-                                            data-sku="${escapeHtml(item.SKU) || ''}" 
-                                            data-image="${item.image_path ? item.image_path : ''}">
-                                            ${escapeHtml(item.SKU)}
-                                        </span><button class="sku-copy-btn" title="Copy SKU" data-copy-sku="${escapeHtml(item.SKU || '')}"><i class="fas fa-copy"></i></button>
+                                        ${skuLinkEl}<button class="sku-copy-btn" title="Copy SKU" data-copy-sku="${escapeHtml(item.SKU || '')}"><i class="fas fa-copy"></i></button>
                                     `;
                                 }
                                 break;
-                            case "UPC":
+                            case "UPC": {
                                 cell.className = 'text-center';
-                                isMissing = isDataMissing(item.upc, true);
-                                if (isMissing) {
-                                    cell.innerHTML = createMissingDataButton(item.SKU || '', 'upc', 'UPC');
-                                } else {
-                                    const formatted = formatNumber(item.upc, 0);
-                                    if (formatted === '-') {
-                                        cell.innerHTML = createMissingDataButton(item.SKU || '', 'upc', 'UPC');
-                                    } else {
-                                        cell.textContent = formatted;
-                                    }
-                                }
+                                const upcFormatted = formatNumber(item.upc, 0);
+                                const upcAvailable = !isDataMissing(item.upc, true) && upcFormatted !== '-';
+                                const upcDotColor = upcAvailable ? '#28a745' : '#dc3545';
+                                const upcTitle = upcAvailable ? ('UPC: ' + upcFormatted) : 'No UPC available';
+                                cell.innerHTML = `<span title="${escapeHtml(upcTitle)}" style="display:inline-block; width:12px; height:12px; border-radius:50%; background:${upcDotColor}; cursor:pointer;"></span>`;
                                 break;
+                            }
                             case "Inventory":
                                 if (item.shopify_inv === 0 || item.shopify_inv === "0") {
                                     cell.textContent = "0";
@@ -2478,11 +2304,17 @@
                                 cellContent = getStatusCellDisplayHtml(item.status);
                                 cell.innerHTML = addMissingIndicator(cellContent, isMissing, item.SKU || '', 'status', 'Status');
                                 break;
-                            case "Unit":
+                            case "Unit": {
+                                const isParentUnit = item.SKU && String(item.SKU).toUpperCase().includes('PARENT');
+                                if (isParentUnit) {
+                                    cell.textContent = '--';
+                                    break;
+                                }
                                 isMissing = isDataMissing(item.unit);
-                                cellContent = isMissing ? '' : item.unit;
+                                cellContent = isMissing ? '' : (String(item.unit).trim().toLowerCase() === 'pieces' ? 'PCs' : item.unit);
                                 cell.innerHTML = addMissingIndicator(cellContent, isMissing, item.SKU || '', 'unit', 'Unit');
                                 break;
+                            }
                             case "LP":
                                 cell.className = 'text-center';
                                 isMissing = isDataMissing(item.lp, true);
@@ -2497,20 +2329,17 @@
                                     }
                                 }
                                 break;
-                            case "CP$":
+                            case "CP$": {
                                 cell.className = 'text-center';
                                 isMissing = isDataMissing(item.cp, true);
-                                if (isMissing) {
-                                    cell.innerHTML = '<span class="missing-data-indicator" title="Missing Data">M</span>';
-                                } else {
-                                    const formatted = formatNumber(item.cp, 2);
-                                    if (formatted === '-') {
-                                        cell.innerHTML = '<span class="missing-data-indicator" title="Missing Data">M</span>';
-                                    } else {
-                                        cell.textContent = formatted;
-                                    }
-                                }
+                                const cpFormatted = formatNumber(item.cp, 2);
+                                const cpValid = !isMissing && cpFormatted !== '-';
+                                const cpText = cpValid ? cpFormatted : '<span class="missing-data-indicator" title="Missing Data">M</span>';
+                                const isParentCp = item.SKU && String(item.SKU).toUpperCase().includes('PARENT');
+                                const cpPen = isParentCp ? '' : `<button type="button" class="btn btn-sm cp-btn ms-1" data-sku="${escapeHtml(item.SKU)}" title="Edit Cost Price (CP)"><i class="bi bi-pencil-square"></i></button>`;
+                                cell.innerHTML = `<span class="cp-value">${cpText}</span>${cpPen}`;
                                 break;
+                            }
                             case "FRGHT":
                                 cell.className = 'text-center';
                                 isMissing = isDataMissing(frght, true);
@@ -2662,10 +2491,7 @@
                                 cell.innerHTML = `
                         <div class="d-inline-flex">
                             ${!isParentPlaceholder ?
-                                `<button type="button" class="btn btn-sm btn-outline-primary cp-btn me-1" data-sku="${escapeHtml(item.SKU)}" title="Manage Cost Price (CP)">
-                                                        CP
-                                                    </button>
-                                 <button type="button" class="btn btn-sm btn-outline-info cp-history-btn me-1" data-sku="${escapeHtml(item.SKU)}" title="CP change history">
+                                `<button type="button" class="btn btn-sm btn-outline-info cp-history-btn me-1" data-sku="${escapeHtml(item.SKU)}" title="CP change history">
                                                         <i class="bi bi-clock-history"></i>
                                                     </button>`
                                 : ''
@@ -3340,8 +3166,8 @@
 
                 // All available columns
                 const allColumns = [
-                    "Images", "Parent", "SKU", "UPC","STATUS", "Inventory", "OV L30", "DIL", "Unit", "LP", "CP$",
-                    "FRGHT", "SHIP", "TEMU SHIP", "MOQ", "EBAY2 SHIP", "Label QTY", "WT ACT", "WT DECL", "Length", "Width", "Height",
+                    "Images", "Parent", "SKU", "UPC","STATUS", "Inventory", "OV L30", "DIL", "Unit", "CP$",
+                    "FRGHT", "LP", "SHIP", "TEMU SHIP", "MOQ", "EBAY2 SHIP", "Label QTY", "WT ACT", "WT DECL", "Length", "Width", "Height",
                     "CBM", "Url", "Verified", "Action"
                 ];
 
@@ -3350,82 +3176,11 @@
                     if (!hiddenColumns.includes(colName)) {
                         const th = document.createElement('th');
 
-                        if (colName === "Parent" || colName === "SKU") {
-                            th.innerHTML = `
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <span>${colName}</span>
-                        <span id="${colName.toLowerCase()}Count" class="column-badge">(0)</span>
-                    </div>
-                    <input type="text" id="${colName.toLowerCase()}Search" class="form-control-sm" placeholder="Search ${colName}">
-                `;
-                        } else if (colName === "Action" || colName === "Verified" || colName === "DIL") {
-                            th.textContent = colName;
-                        } else if (colName === "STATUS") {
-                            const filterId = `filter${colName.replace(/\s+/g, '').replace(/[()]/g, '')}`;
-                            const savedFilterValue = existingFilterValues && existingFilterValues[colName] ? existingFilterValues[colName] : 'all';
-                            th.className = 'pm-status-col';
-                            th.innerHTML = `
-                    <div class="pm-status-header-label">STATUS</div>
-                    <div class="pm-status-filter-wrap">
-                        <button type="button" class="pm-status-filter-trigger" aria-expanded="false" aria-haspopup="listbox">
-                            <span class="pm-status-filter-trigger-label">${savedFilterValue === 'all' ? 'All' : (pmStatusFilterLabels()[savedFilterValue] || savedFilterValue)}</span>
-                            <span class="pm-status-filter-caret" aria-hidden="true" style="font-size:9px;opacity:0.85;">▼</span>
-                        </button>
-                        <input type="hidden" id="${filterId}" class="missing-data-filter pm-status-filter-hidden" data-column="${colName}" value="${escapeHtml(savedFilterValue)}">
-                        <div class="pm-status-filter-menu" role="listbox">
-                            <button type="button" class="pm-status-filter-item" data-value="all" role="option">
-                                <span class="pm-status-filter-check" aria-hidden="true">✓</span>
-                                <span>All</span>
-                            </button>
-                            <button type="button" class="pm-status-filter-item" data-value="missing" role="option">
-                                <span class="pm-status-filter-item-spacer"></span>
-                                <span>Missing</span>
-                            </button>
-                            <button type="button" class="pm-status-filter-item" data-value="active" role="option">
-                                <span class="pm-status-marble pm-status-marble--active"></span>
-                                <span>Active</span>
-                            </button>
-                            <button type="button" class="pm-status-filter-item" data-value="inactive" role="option">
-                                <span class="pm-status-marble pm-status-marble--inactive"></span>
-                                <span>Inactive</span>
-                            </button>
-                            <button type="button" class="pm-status-filter-item" data-value="DC" role="option">
-                                <span class="pm-status-marble pm-status-marble--dc"></span>
-                                <span>DC</span>
-                            </button>
-                            <button type="button" class="pm-status-filter-item" data-value="upcoming" role="option">
-                                <span class="pm-status-marble pm-status-marble--upcoming"></span>
-                                <span>Coming</span>
-                            </button>
-                            <button type="button" class="pm-status-filter-item" data-value="2BDC" role="option">
-                                <span class="pm-status-marble pm-status-marble--2bdc"></span>
-                                <span>2BDC</span>
-                            </button>
-                        </div>
-                    </div>
-                `;
-                        } else if (colName === "Inventory") {
-                            const filterId = `filter${colName.replace(/\s+/g, '').replace(/[()]/g, '')}`;
-                            const invSaved = existingFilterValues && existingFilterValues[colName] ? existingFilterValues[colName] : 'all';
-                            th.innerHTML = `
-                    <div style="font-size: 9px;">${colName}</div>
-                    <select id="${filterId}" class="form-control form-control-sm mt-1 missing-data-filter" style="font-size: 9px; padding: 2px 4px;" data-column="${colName}">
-                        <option value="all" ${invSaved === 'all' ? 'selected' : ''}>All</option>
-                        <option value="0" ${invSaved === '0' ? 'selected' : ''}>0</option>
-                    </select>
-                `;
-                        } else {
-                            // Add filter dropdown for missing data
-                            const filterId = `filter${colName.replace(/\s+/g, '').replace(/[()]/g, '')}`;
-                            const savedFilterValue = existingFilterValues && existingFilterValues[colName] ? existingFilterValues[colName] : 'all';
-                            th.innerHTML = `
-                    <div style="font-size: 9px;">${colName}</div>
-                    <select id="${filterId}" class="form-control form-control-sm mt-1 missing-data-filter" style="font-size: 9px; padding: 2px 4px;" data-column="${colName}">
-                        <option value="all" ${savedFilterValue === 'all' ? 'selected' : ''}>All</option>
-                        <option value="missing" ${savedFilterValue === 'missing' ? 'selected' : ''}>Missing</option>
-                    </select>
-                `;
-                        }
+                        // Plain label only (no header count badges, filters, or search)
+                        const headerLabelMap = { 'Inventory': 'Inv', 'Verified': 'Ver', 'OV L30': 'L30', 'Images': 'Img', 'FRGHT': 'FRG' };
+                        const headerTitleMap = { 'FRGHT': 'Freight' };
+                        th.textContent = headerLabelMap[colName] || colName;
+                        if (headerTitleMap[colName]) th.title = headerTitleMap[colName];
 
                         if (colName === "MOQ") {
                             th.title = "Minimum Order Quantity";
@@ -3489,7 +3244,7 @@
                     }
                 }
 
-                if (parentCount && skuCount) {
+                {
                     const parentSet = new Set();
                     let skuCountNum = 0;
                     tableData.forEach(item => {
@@ -3499,8 +3254,8 @@
                             skuCountNum++;
                     });
 
-                    document.getElementById('parentCount').textContent = `(${parentSet.size})`;
-                    document.getElementById('skuCount').textContent = `(${skuCountNum})`;
+                    if (document.getElementById('pmParentBadge')) document.getElementById('pmParentBadge').textContent = `Parent ${parentSet.size}`;
+                    if (document.getElementById('pmSkuBadge')) document.getElementById('pmSkuBadge').textContent = `SKU ${skuCountNum}`;
                 }
 
                 updateStatusBadgesBar();
@@ -3543,36 +3298,7 @@
                     <span class="status-badge-item bg-dc">DC ${statusCounts.DC}</span>
                     <span class="status-badge-item bg-upcoming">Coming ${statusCounts.upcoming}</span>
                     <span class="status-badge-item bg-2bdc">2BDC ${statusCounts['2BDC']}</span>
-                    <span id="zeroInvBadge" class="status-badge-item bg-zero-inv" title="Click to filter 0 inventory items">0 Inv Count ${statusCounts.zeroInv}</span>
                 `;
-                
-                // Add click event to zero inventory badge
-                const zeroInvBadge = document.getElementById('zeroInvBadge');
-                if (zeroInvBadge) {
-                    zeroInvBadge.onclick = function() {
-                        // Find the Inventory filter dropdown
-                        const inventoryFilter = Array.from(document.querySelectorAll('.missing-data-filter')).find(
-                            filter => filter.getAttribute('data-column') === 'Inventory'
-                        );
-                        
-                        if (inventoryFilter) {
-                            // Set the filter to '0' to show only zero inventory items
-                            inventoryFilter.value = '0';
-                            
-                            // Trigger change event
-                            inventoryFilter.dispatchEvent(new Event('change'));
-                            
-                            // Apply filters
-                            applyFilters();
-                            
-                            // Scroll to the table
-                            const tableContainer = document.querySelector('.table-responsive');
-                            if (tableContainer) {
-                                tableContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                            }
-                        }
-                    };
-                }
             }
 
             function pmStatusFilterLabels() {
@@ -3684,7 +3410,7 @@
                 const row = document.createElement('tr');
 
                 if (isParent) {
-                    row.style.backgroundColor = 'rgba(13, 110, 253, 0.2)';
+                    row.style.backgroundColor = '#fef9c3';
                     row.style.fontWeight = '500';
                 }
 
@@ -3723,15 +3449,13 @@
                             cell.textContent = escapeHtml(item.Parent) || '-';
                             break;
 
-                        case "SKU":
-                            cell.innerHTML = `
-                    <span class="sku-hover" 
-                        data-sku="${escapeHtml(item.SKU) || ''}" 
-                        data-image="${item.image_path ? item.image_path : ''}">
-                        ${escapeHtml(item.SKU) || '-'}
-                    </span>
-                `;
+                        case "SKU": {
+                            const skuHasUrl2 = !isDataMissing(item.l2_url);
+                            cell.innerHTML = skuHasUrl2
+                                ? `<a href="${escapeHtml(item.l2_url)}" target="_blank" class="sku-hover" data-sku="${escapeHtml(item.SKU) || ''}" data-image="${item.image_path ? item.image_path : ''}" style="color:#0a3d91; font-weight:600; text-decoration:none;">${escapeHtml(item.SKU) || '-'}</a>`
+                                : `<span class="sku-hover" data-sku="${escapeHtml(item.SKU) || ''}" data-image="${item.image_path ? item.image_path : ''}" style="color:#dc3545; font-weight:600;">${escapeHtml(item.SKU) || '-'}</span>`;
                             break;
+                        }
 
                             // Add cases for other columns...
 
@@ -3741,10 +3465,7 @@
                             cell.innerHTML = `
                     <div class="d-inline-flex">
                         ${!isParentPlaceholder ?
-                            `<button type="button" class="btn btn-sm btn-outline-primary cp-btn me-1" data-sku="${escapeHtml(item.SKU)}" title="Manage Cost Price (CP)">
-                                                                            CP
-                                                                        </button>
-                             <button type="button" class="btn btn-sm btn-outline-info cp-history-btn me-1" data-sku="${escapeHtml(item.SKU)}" title="CP change history">
+                            `<button type="button" class="btn btn-sm btn-outline-info cp-history-btn me-1" data-sku="${escapeHtml(item.SKU)}" title="CP change history">
                                                                             <i class="bi bi-clock-history"></i>
                                                                         </button>`
                             : ''
@@ -4579,8 +4300,8 @@
 
             // Function to get columns to hide for current user
             function getUserHiddenColumns() {
-                // Always hide these columns
-                const alwaysHiddenColumns = ['WT ACT', 'WT DECL', 'Width', 'Height', 'Length', 'Label QTY', 'CBM', 'SHIP', 'TEMU SHIP', 'EBAY2 SHIP'];
+                // Always hide these columns (both 'Status' body key and 'STATUS' header label)
+                const alwaysHiddenColumns = ['Status', 'STATUS', 'MOQ', 'Url', 'WT ACT', 'WT DECL', 'Width', 'Height', 'Length', 'Label QTY', 'CBM', 'SHIP', 'TEMU SHIP', 'EBAY2 SHIP'];
                 
                 // Default columns to hide if user has no specific permissions
                 const defaultHiddenColumns = [...alwaysHiddenColumns];
@@ -5055,7 +4776,7 @@
                     }
                 });
 
-                refreshParentsBtn.addEventListener('click', updateParentOptions);
+                if (refreshParentsBtn) refreshParentsBtn.addEventListener('click', updateParentOptions);
 
                 saveBtn.addEventListener('click', async function() {
                     if (!validateProductForm(false)) return;
@@ -5133,9 +4854,9 @@
 
             // Calculate CBM based on dimensions
             function calculateCBM() {
-                const w = parseFloat(document.getElementById('w').value) || 0;
-                const l = parseFloat(document.getElementById('l').value) || 0;
-                const h = parseFloat(document.getElementById('h').value) || 0;
+                const w = parseFloat(document.getElementById('w')?.value) || 0;
+                const l = parseFloat(document.getElementById('l')?.value) || 0;
+                const h = parseFloat(document.getElementById('h')?.value) || 0;
 
                 // Convert to cm then to m³ per user formula: ((L*2.54)*(W*2.54)*(H*2.54))/1000000
                 let cbm = 0;
@@ -5148,10 +4869,10 @@
 
             // Calculate LP based on CP and FRGHT (FRGHT = CBM * 200; CBM from dimensions)
             function calculateLP() {
-                const cp = parseFloat(document.getElementById('cp').value) || 0;
-                const w = parseFloat(document.getElementById('w').value) || 0;
-                const l = parseFloat(document.getElementById('l').value) || 0;
-                const h = parseFloat(document.getElementById('h').value) || 0;
+                const cp = parseFloat(document.getElementById('cp')?.value) || 0;
+                const w = parseFloat(document.getElementById('w')?.value) || 0;
+                const l = parseFloat(document.getElementById('l')?.value) || 0;
+                const h = parseFloat(document.getElementById('h')?.value) || 0;
                 let cbm = 0;
                 if (w > 0 && l > 0 && h > 0) {
                     cbm = ((l * 2.54) * (w * 2.54) * (h * 2.54)) / 1000000;
@@ -5255,41 +4976,41 @@
                 formData.append('sku', document.getElementById('sku').value);
 
                 // Build Values JSON
-                const w = parseFloat(document.getElementById('w').value) || 0;
-                const l = parseFloat(document.getElementById('l').value) || 0;
-                const h = parseFloat(document.getElementById('h').value) || 0;
+                const w = parseFloat(document.getElementById('w')?.value) || 0;
+                const l = parseFloat(document.getElementById('l')?.value) || 0;
+                const h = parseFloat(document.getElementById('h')?.value) || 0;
                 let cbm = null, frght = null;
                 if (w > 0 && l > 0 && h > 0) {
                     cbm = ((l * 2.54) * (w * 2.54) * (h * 2.54)) / 1000000;
                     frght = cbm * 200;
                 }
                 const values = {
-                    lp: document.getElementById('lp').value || null,
-                    cp: document.getElementById('cp').value || null,
+                    lp: document.getElementById('lp')?.value || null,
+                    cp: document.getElementById('cp')?.value || null,
                     frght: frght != null ? frght.toFixed(2) : null,
                     lps: document.getElementById('lps')?.value || null,
-                    ship: document.getElementById('ship').value || null,
-                    temu_ship: document.getElementById('temu_ship').value || null,
-                    moq: document.getElementById('moq').value || null,
-                    ebay2_ship: document.getElementById('ebay2_ship').value || null,
-                    label_qty: document.getElementById('labelQty').value || null,
-                    wt_act: document.getElementById('wtAct').value || null,
-                    wt_decl: document.getElementById('wtDecl').value || null,
-                    l: document.getElementById('l').value || null,
-                    w: document.getElementById('w').value || null,
-                    h: document.getElementById('h').value || null,
+                    ship: document.getElementById('ship')?.value || null,
+                    temu_ship: document.getElementById('temu_ship')?.value || null,
+                    moq: document.getElementById('moq')?.value || null,
+                    ebay2_ship: document.getElementById('ebay2_ship')?.value || null,
+                    label_qty: document.getElementById('labelQty')?.value || null,
+                    wt_act: document.getElementById('wtAct')?.value || null,
+                    wt_decl: document.getElementById('wtDecl')?.value || null,
+                    l: document.getElementById('l')?.value || null,
+                    w: document.getElementById('w')?.value || null,
+                    h: document.getElementById('h')?.value || null,
                     cbm: cbm != null ? cbm.toFixed(4) : null,
                     dc: document.getElementById('dc')?.value || null,
-                    l2_url: document.getElementById('l2Url').value || null,
-                    pcs_per_box: document.getElementById('pcbox').value || null,
-                    b: document.getElementById('b').value || null,
-                    h1: document.getElementById('h1').value || null,
-                    weight: document.getElementById('weight').value || null,
-                    msrp: document.getElementById('msrp').value || null,
-                    map: document.getElementById('map').value || null,
-                    status: document.getElementById('status').value || null,
-                    unit: document.getElementById('unit').value || null,
-                    upc: document.getElementById('upc').value || null,
+                    l2_url: document.getElementById('l2Url')?.value || null,
+                    pcs_per_box: document.getElementById('pcbox')?.value || null,
+                    b: document.getElementById('b')?.value || null,
+                    h1: document.getElementById('h1')?.value || null,
+                    weight: document.getElementById('weight')?.value || null,
+                    msrp: document.getElementById('msrp')?.value || null,
+                    map: document.getElementById('map')?.value || null,
+                    status: document.getElementById('status')?.value || null,
+                    unit: document.getElementById('unit')?.value || null,
+                    upc: document.getElementById('upc')?.value || null,
                 };
 
                 formData.append('Values', JSON.stringify(values));
@@ -5425,6 +5146,71 @@
                         showToast('danger', err.message || 'Duplicate failed');
                     }
                 });
+            }
+
+            // Apply the fields changed in the edit modal to all selected rows.
+            // Only shared, non-identity fields are applied; SKU/Parent/UPC/URL/image are never bulk-copied.
+            async function bulkApplyChangedFieldsToSelected(originalProduct, selectedSkus) {
+                const fieldDefs = [
+                    { key: 'lp', el: 'lp' }, { key: 'cp', el: 'cp' }, { key: 'ship', el: 'ship' },
+                    { key: 'temu_ship', el: 'temu_ship' }, { key: 'moq', el: 'moq' }, { key: 'ebay2_ship', el: 'ebay2_ship' },
+                    { key: 'label_qty', el: 'labelQty' }, { key: 'wt_act', el: 'wtAct' }, { key: 'wt_decl', el: 'wtDecl' },
+                    { key: 'l', el: 'l' }, { key: 'w', el: 'w' }, { key: 'h', el: 'h' },
+                    { key: 'dc', el: 'dc' }, { key: 'pcs_per_box', el: 'pcbox' }, { key: 'b', el: 'b' }, { key: 'h1', el: 'h1' },
+                    { key: 'weight', el: 'weight' }, { key: 'msrp', el: 'msrp' }, { key: 'map', el: 'map' },
+                    { key: 'status', el: 'status' }, { key: 'unit', el: 'unit' }, { key: 'lps', el: 'lps' }
+                ];
+
+                // Only fields that were actually changed and are non-empty
+                const changed = [];
+                fieldDefs.forEach(def => {
+                    const elx = document.getElementById(def.el);
+                    if (!elx) return;
+                    const newVal = (elx.value || '').trim();
+                    if (newVal === '') return;
+                    const origVal = originalProduct[def.key];
+                    const origStr = origVal == null ? '' : String(origVal).trim();
+                    if (newVal !== origStr) changed.push({ field: def.key, value: newVal });
+                });
+                if (changed.length === 0) return;
+
+                const targets = selectedSkus.filter(s =>
+                    s !== originalProduct.SKU && !String(s).toUpperCase().includes('PARENT'));
+                if (targets.length === 0) return;
+
+                let applied = 0;
+                for (const tSku of targets) {
+                    for (const ch of changed) {
+                        try {
+                            await makeRequest('/product_master/update-field', 'POST', { sku: tSku, field: ch.field, value: ch.value });
+                        } catch (e) {
+                            console.error('Bulk update-field failed', tSku, ch.field, e);
+                        }
+                    }
+                    // Update local caches so the grid reflects the change immediately
+                    const prod = productMap.get(tSku);
+                    if (prod) {
+                        if (!prod.Values || typeof prod.Values === 'string') {
+                            try { prod.Values = prod.Values ? JSON.parse(prod.Values) : {}; } catch (e) { prod.Values = {}; }
+                        }
+                        changed.forEach(ch => { prod[ch.field] = ch.value; prod.Values[ch.field] = ch.value; });
+                    }
+                    const idx = tableData.findIndex(p => (p.SKU || p.sku) === tSku);
+                    if (idx !== -1) {
+                        changed.forEach(ch => { tableData[idx][ch.field] = ch.value; });
+                    }
+                    applied++;
+                }
+
+                if (applied > 0) {
+                    applyFilters();
+                    setTimeout(() => {
+                        setupEditButtons();
+                        setupDuplicateButtons();
+                        setupDeleteButtons();
+                    }, 100);
+                    showToast('success', `Applied changes to ${applied} selected row(s).`);
+                }
             }
 
             // Edit product
@@ -5626,6 +5412,17 @@
                                 setupDuplicateButtons();
                                 setupDeleteButtons();
                             }, 100);
+
+                            // Bulk apply: if more than one row is selected, apply the
+                            // changed (shared) fields to all the selected rows too.
+                            try {
+                                const selectedSkus = Object.keys(selectedItems);
+                                if (selectedSkus.length > 1) {
+                                    await bulkApplyChangedFieldsToSelected(product, selectedSkus);
+                                }
+                            } catch (bulkErr) {
+                                console.error('Bulk apply error:', bulkErr);
+                            }
                         } else {
                             // If no data returned, reload with filters preserved
                             loadData();
@@ -6006,7 +5803,12 @@
                 if (!selectAllCheckbox) return;
 
                 selectAllCheckbox.addEventListener('change', function () {
-                    const checkboxes = document.querySelectorAll('.row-checkbox');
+                    // Only affect currently visible (filtered) rows
+                    const checkboxes = Array.from(document.querySelectorAll('.row-checkbox'))
+                        .filter(cb => {
+                            const rowEl = cb.closest('tr');
+                            return rowEl && rowEl.offsetParent !== null;
+                        });
 
                     if (this.checked) {
                         checkboxes.forEach(checkbox => {
@@ -6126,8 +5928,8 @@
             // Get current filter values
             function getCurrentFilters() {
                 return {
-                    parent: normalizeForTextSearch(document.getElementById('parentSearch').value),
-                    sku: normalizeForTextSearch(document.getElementById('skuSearch').value),
+                    parent: normalizeForTextSearch(document.getElementById('parentSearch')?.value || ''),
+                    sku: normalizeForTextSearch(document.getElementById('skuSearch')?.value || ''),
                     global: ''
                 };
             }

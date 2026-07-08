@@ -5,7 +5,9 @@ namespace App\Http\Controllers;
 use App\Models\ChannelMaster;
 use App\Models\VideoAdsHookOption;
 use App\Models\VideoAdsMaster;
+use App\Models\VideoAdsMasterCheckHistory;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 
 class VideoAdsMasterController extends Controller
 {
@@ -113,9 +115,67 @@ class VideoAdsMasterController extends Controller
         $original = VideoAdsMaster::findOrFail($id);
 
         $copy = $original->replicate();
+        // A duplicated row starts life unchecked — the check state and its
+        // audit fields are per-row and should not be carried over.
+        $copy->is_checked = false;
+        $copy->checked_by = null;
+        $copy->checked_at = null;
         $copy->save();
 
         return response()->json(['success' => true, 'row' => $copy]);
+    }
+
+    /**
+     * Toggle (or explicitly set) the CHECK state of a row. Stamps the
+     * acting user + time onto the row and appends an immutable entry to
+     * video_ads_master_check_history so the full audit trail is preserved.
+     */
+    public function toggleCheck(Request $request, $id)
+    {
+        $row = VideoAdsMaster::findOrFail($id);
+
+        // If the client sends an explicit `is_checked`, honour it; otherwise
+        // flip whatever the current state is.
+        $newState = $request->has('is_checked')
+            ? $request->boolean('is_checked')
+            : !$row->is_checked;
+
+        $username = Auth::user()?->name ?? 'System';
+        $now      = now();
+
+        $row->is_checked = $newState;
+        $row->checked_by = $newState ? $username : null;
+        $row->checked_at = $newState ? $now : null;
+        $row->save();
+
+        VideoAdsMasterCheckHistory::create([
+            'video_ads_master_id' => $row->id,
+            'is_checked'          => $newState,
+            'action'              => $newState ? 'checked' : 'unchecked',
+            'username'            => $username,
+            'created_at'          => $now,
+        ]);
+
+        return response()->json(['success' => true, 'row' => $row]);
+    }
+
+    /**
+     * Return the full check/uncheck audit trail for a row, newest first.
+     */
+    public function checkHistory($id)
+    {
+        $row = VideoAdsMaster::findOrFail($id);
+
+        $history = $row->checkHistory()->get()->map(function ($h) {
+            return [
+                'action'     => $h->action,
+                'is_checked' => (bool) $h->is_checked,
+                'username'   => $h->username,
+                'created_at' => optional($h->created_at)->format('Y-m-d H:i:s'),
+            ];
+        });
+
+        return response()->json(['success' => true, 'history' => $history]);
     }
 
     /**

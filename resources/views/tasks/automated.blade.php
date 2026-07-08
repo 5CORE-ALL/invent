@@ -220,13 +220,13 @@
         }
 
         .tabulator .tabulator-header {
-            background-color: #f8f9fa !important;
-            border-bottom: 2px solid #e9ecef !important;
+            background-color: #0dcaf0 !important;
+            border-bottom: 2px solid #0aa5c2 !important;
         }
 
         .tabulator .tabulator-header .tabulator-col {
-            background-color: #f8f9fa !important;
-            border-right: 1px solid #e9ecef !important;
+            background-color: #0dcaf0 !important;
+            border-right: 1px solid #3dd5f3 !important;
             padding: 12px 8px !important;
         }
 
@@ -236,7 +236,7 @@
 
         .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
             font-weight: 600 !important;
-            color: #495057 !important;
+            color: #06333d !important;
             font-size: calc(13px * 0.9) !important; /* ~10% smaller than 13px */
             text-transform: uppercase;
         }
@@ -594,6 +594,60 @@
         font-size: 12px;
         opacity: 0.6;
     }
+
+    /* ── Solid colored "pill" badges (match the /tasks index badge UI) ──
+       Flat solid background per metric, single-line label+value at equal size,
+       no white card / icon / shadow. Scoped to the stat cards only, so the
+       MANUAL / CREATE / BULK / EXPORT / REFRESH buttons are untouched. */
+    .stat-card.automated-stat-trigger {
+        border: none !important;
+        border-radius: 8px !important;
+        box-shadow: none !important;
+        padding: 4px 8px !important;
+        color: #fff;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+    }
+    .stat-card.automated-stat-trigger::after { display: none; }
+    .stat-card.automated-stat-trigger .stat-icon { display: none !important; }
+    .stat-card.automated-stat-trigger > .d-flex {
+        width: 100%;
+        justify-content: center !important;
+    }
+    .stat-card.automated-stat-trigger .stat-content {
+        display: flex !important;
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: baseline;
+        justify-content: center;
+        column-gap: 5px;
+    }
+    .stat-card.automated-stat-trigger .stat-label,
+    .stat-card.automated-stat-trigger .stat-value {
+        color: inherit !important;
+        font-size: 13px !important;
+        margin-bottom: 0 !important;
+        line-height: 1.2 !important;
+    }
+    .stat-card.automated-stat-trigger .stat-value { font-weight: 700; }
+
+    .stat-card-blue.automated-stat-trigger   { background: #3b7ddd !important; }
+    .stat-card-cyan.automated-stat-trigger   { background: #0dcaf0 !important; }
+    .stat-card-red.automated-stat-trigger    { background: #dc3545 !important; }
+    .stat-card-green.automated-stat-trigger  { background: #28a745 !important; }
+    .stat-card-yellow.automated-stat-trigger { background: #f0ad4e !important; }
+    .stat-card-teal.automated-stat-trigger   { background: #20c997 !important; }
+    .stat-card-orange.automated-stat-trigger { background: #fd7e14 !important; }
+    .stat-card-purple.automated-stat-trigger { background: #6610f2 !important; }
+
+    /* Dark text reads better on the lighter fills. */
+    .stat-card-cyan.automated-stat-trigger,
+    .stat-card-yellow.automated-stat-trigger,
+    .stat-card-teal.automated-stat-trigger,
+    .stat-card-green.automated-stat-trigger {
+        color: #1f2d3d;
+    }
     
     /* History chart modal styling */
     #automatedHistoryChartModal {
@@ -665,7 +719,7 @@
                                 <i class="mdi mdi-format-list-bulleted"></i>
                             </div>
                             <div class="stat-content text-center">
-                                <div class="stat-label" style="font-size: 9px;">TOTAL</div>
+                                <div class="stat-label" style="font-size: 9px;">Total</div>
                                 <div class="stat-value" style="font-size: 20px;">{{ $stats['total'] }}</div>
                             </div>
                         </div>
@@ -678,7 +732,7 @@
                                 <i class="mdi mdi-calendar-today"></i>
                             </div>
                             <div class="stat-content text-center">
-                                <div class="stat-label" style="font-size: 9px;">DAILY</div>
+                                <div class="stat-label" style="font-size: 9px;">Daily</div>
                                 <div class="stat-value" style="font-size: 20px;">{{ $stats['daily'] }}</div>
                             </div>
                         </div>
@@ -691,7 +745,7 @@
                                 <i class="mdi mdi-calendar-week"></i>
                             </div>
                             <div class="stat-content text-center">
-                                <div class="stat-label" style="font-size: 9px;">WEEKLY</div>
+                                <div class="stat-label" style="font-size: 9px;">Weekly</div>
                                 <div class="stat-value" style="font-size: 20px;">{{ $stats['weekly'] }}</div>
                             </div>
                         </div>
@@ -704,20 +758,20 @@
                                 <i class="mdi mdi-calendar-month"></i>
                             </div>
                             <div class="stat-content text-center">
-                                <div class="stat-label" style="font-size: 9px;">MONTHLY</div>
+                                <div class="stat-label" style="font-size: 9px;">Monthly</div>
                                 <div class="stat-value" style="font-size: 20px;">{{ $stats['monthly'] }}</div>
                             </div>
                         </div>
                     </div>
 
-                    <!-- ETC (H): raw hours = sum(ETC minutes) ÷ 60 for visible rows (matches ETC column) -->
+                    <!-- ETC D: per-day ETC hours = ETC-M ÷ 25 for visible rows -->
                     <div class="stat-card stat-card-teal automated-stat-trigger" data-metric="etc" data-value="0" title="Click to view history" style="flex: 1; min-width: 110px; padding: 10px 12px; margin-bottom: 0;">
                         <div class="d-flex align-items-center">
                             <div class="stat-icon" style="width: 36px; height: 36px; font-size: 18px; margin-right: 8px;">
                                 <i class="mdi mdi-timer-sand"></i>
                             </div>
                             <div class="stat-content text-center">
-                                <div class="stat-label" style="font-size: 9px;">ETC (H)</div>
+                                <div class="stat-label" style="font-size: 9px;">ETC D</div>
                                 <div class="stat-value" style="font-size: 20px;">0</div>
                             </div>
                         </div>
@@ -730,53 +784,29 @@
                                 <i class="mdi mdi-calculator-variant"></i>
                             </div>
                             <div class="stat-content text-center">
-                                <div class="stat-label" style="font-size: 9px;">ETC-M</div>
+                                <div class="stat-label" style="font-size: 9px;">ETC M</div>
                                 <div class="stat-value" style="font-size: 20px;">0</div>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Manual Task Button -->
-                    <a href="{{ route('tasks.index') }}" class="stat-card stat-card-blue" style="flex: 1; min-width: 110px; padding: 10px 12px; margin-bottom: 0; text-decoration: none; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #6c757d 0%, #495057 100%) !important; border-left-color: #495057;">
-                        <div class="text-center">
-                            <i class="mdi mdi-arrow-left" style="font-size: 18px; color: white;"></i>
-                            <div style="font-size: 10px; font-weight: 600; color: white; margin-top: 2px;">MANUAL</div>
-                        </div>
-                    </a>
-
                     <!-- Create A-Task Button -->
-                    <a href="{{ route('tasks.automatedCreate') }}" class="stat-card stat-card-blue" style="flex: 1; min-width: 110px; padding: 10px 12px; margin-bottom: 0; text-decoration: none; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #dc3545 0%, #c82333 100%) !important; border-left-color: #c82333;">
-                        <div class="text-center">
-                            <i class="mdi mdi-plus-circle" style="font-size: 18px; color: white;"></i>
-                            <div style="font-size: 10px; font-weight: 600; color: white; margin-top: 2px;">CREATE</div>
-                        </div>
+                    <a href="{{ route('tasks.automatedCreate') }}" class="stat-card stat-card-blue" title="Create task" style="padding: 8px 12px; margin-bottom: 0; text-decoration: none; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #dc3545 0%, #c82333 100%) !important; border-left-color: #c82333;">
+                        <i class="mdi mdi-plus-circle" style="font-size: 20px; color: white;"></i>
                     </a>
 
-                    <!-- Bulk Actions Button -->
                     @if($isAdmin)
-                    <button type="button" class="stat-card stat-card-blue border-0" style="flex: 1; min-width: 110px; padding: 10px 12px; margin-bottom: 0; cursor: pointer; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #0dcaf0 0%, #0891b2 100%) !important; border-left-color: #0891b2;" id="bulk-actions-btn">
-                        <div class="text-center">
-                            <i class="mdi mdi-format-list-checks" style="font-size: 18px; color: white;"></i>
-                            <div style="font-size: 10px; font-weight: 600; color: white; margin-top: 2px;">BULK</div>
-                        </div>
-                    </button>
                     <span id="selected-count" class="text-muted align-self-center ms-2" style="display: none;">
                         <strong id="count-number">0</strong> selected
                     </span>
                     @endif
 
-                    <button type="button" class="stat-card stat-card-blue border-0" style="flex: 1; min-width: 110px; padding: 10px 12px; margin-bottom: 0; cursor: pointer; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #6c757d 0%, #495057 100%) !important; border-left-color: #495057;" id="export-selected-btn">
-                        <div class="text-center">
-                            <i class="mdi mdi-download" style="font-size: 18px; color: white;"></i>
-                            <div style="font-size: 10px; font-weight: 600; color: white; margin-top: 2px;">EXPORT</div>
-                        </div>
+                    <button type="button" class="stat-card stat-card-blue border-0" title="Export selected" style="padding: 8px 12px; margin-bottom: 0; cursor: pointer; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #6c757d 0%, #495057 100%) !important; border-left-color: #495057;" id="export-selected-btn">
+                        <i class="mdi mdi-download" style="font-size: 20px; color: white;"></i>
                     </button>
 
-                    <button type="button" class="stat-card border-0 text-dark" style="flex: 1; min-width: 110px; padding: 10px 12px; margin-bottom: 0; cursor: pointer; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #ffc107 0%, #e0a800) !important; border-left-color: #e0a800 !important;" id="tasks-refresh-table-btn" title="Reload tasks from server (keeps your filters)">
-                        <div class="text-center">
-                            <i class="mdi mdi-refresh" style="font-size: 18px; color: #212529;"></i>
-                            <div style="font-size: 10px; font-weight: 600; color: #212529; margin-top: 2px;">REFRESH</div>
-                        </div>
+                    <button type="button" class="stat-card border-0 text-dark" style="padding: 8px 12px; margin-bottom: 0; cursor: pointer; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #ffc107 0%, #e0a800) !important; border-left-color: #e0a800 !important;" id="tasks-refresh-table-btn" title="Reload tasks from server (keeps your filters)">
+                        <i class="mdi mdi-refresh" style="font-size: 20px; color: #212529;"></i>
                     </button>
                 </div>
             </div>
@@ -795,21 +825,17 @@
                         @endif
 
                         <!-- Search/Filter Bar -->
-                        <div class="row mb-3 p-3" style="background: #f8f9fa; border-radius: 8px;">
-                            <div class="col-md-2 mb-2">
-                                <label class="form-label fw-bold">Search</label>
+                        <div class="d-flex flex-nowrap align-items-start gap-2 mb-3 p-3" style="background: #f8f9fa; border-radius: 8px;">
+                            <div class="mb-2" style="flex: 1 1 0; min-width: 0;">
                                 <input type="text" id="filter-search" class="form-control form-control-sm" placeholder="Search all">
                             </div>
-                            <div class="col-md-2 mb-2">
-                                <label class="form-label fw-bold">Group</label>
+                            <div class="mb-2" style="flex: 1 1 0; min-width: 0;">
                                 <input type="text" id="filter-group" class="form-control form-control-sm" placeholder="Enter Group">
                             </div>
-                            <div class="col-md-2 mb-2">
-                                <label class="form-label fw-bold">Task</label>
+                            <div class="mb-2" style="flex: 1 1 0; min-width: 0;">
                                 <input type="text" id="filter-task" class="form-control form-control-sm" placeholder="Enter Task">
                             </div>
-                            <div class="col-md-2 mb-2">
-                                <label class="form-label fw-bold">Assignor</label>
+                            <div class="mb-2" style="flex: 1 1 0; min-width: 0;">
                                 <select id="filter-assignor" class="form-select form-select-sm">
                                     <option value="">All Assignors</option>
                                     <option value="__NULL__" style="color: #dc3545; font-weight: bold;">🔴 No Assignor</option>
@@ -835,8 +861,7 @@
                                     <span id="task-playback-label-assignor" class="text-muted small" style="font-size:11px; display:none;"></span>
                                 </div>
                             </div>
-                            <div class="col-md-2 mb-2">
-                                <label class="form-label fw-bold">Assignee</label>
+                            <div class="mb-2" style="flex: 1 1 0; min-width: 0;">
                                 <select id="filter-assignee" class="form-select form-select-sm">
                                     <option value="">All Assignees</option>
                                     <option value="__NULL__" style="color: #dc3545; font-weight: bold;">🔴 No Assignee</option>
@@ -862,8 +887,7 @@
                                     <span id="task-playback-label-assignee" class="text-muted small" style="font-size:11px; display:none;"></span>
                                 </div>
                             </div>
-                            <div class="col-md-2 mb-2">
-                                <label class="form-label fw-bold">Freq</label>
+                            <div class="mb-2" style="flex: 1 1 0; min-width: 0;">
                                 <select id="filter-freq" class="form-select form-select-sm">
                                     <option value="">All Frequencies</option>
                                     <option value="__NULL__" style="color: #dc3545; font-weight: bold;">🔴 No Freq</option>
@@ -1806,13 +1830,13 @@
                     var valueEl = $(this).find('.stat-value');
                     
                     switch(label) {
-                        case 'TOTAL': valueEl.text(total); break;
-                        case 'DAILY': valueEl.text(daily); break;
-                        case 'WEEKLY': valueEl.text(weekly); break;
-                        case 'MONTHLY': valueEl.text(monthly); break;
+                        case 'Total': valueEl.text(total); break;
+                        case 'Daily': valueEl.text(daily); break;
+                        case 'Weekly': valueEl.text(weekly); break;
+                        case 'Monthly': valueEl.text(monthly); break;
                         case 'ACTIVE': valueEl.text(active); break;
-                        case 'ETC (H)': valueEl.text(etcRawHours + 'h'); break;
-                        case 'ETC-M': valueEl.text(Math.round(etcMonthlyTotal / 60) + 'h'); break;
+                        case 'ETC D': valueEl.text((etcMonthlyTotal / 60 / 25).toFixed(1) + 'h'); break;
+                        case 'ETC M': valueEl.text(Math.round(etcMonthlyTotal / 60) + 'h'); break;
                     }
                 });
             }
@@ -2673,9 +2697,16 @@
                 });
             }
 
-            // Edit Automated Task
+            // Edit Automated Task — when more than one row is selected, the edit button
+            // performs a BULK edit (opens the bulk actions modal) instead of opening the
+            // single task editor.
             $(document).on('click', '.edit-automated-task', function(e) {
                 e.preventDefault();
+                if (typeof selectedTasks !== 'undefined' && selectedTasks.length > 1) {
+                    $('#bulk-selected-count').text(selectedTasks.length);
+                    $('#bulkActionsModal').modal('show');
+                    return;
+                }
                 var taskId = $(this).data('id');
                 window.location.href = '/tasks/automated/' + taskId + '/edit';
             });
@@ -3072,7 +3103,7 @@
                 'daily': 'Daily Tasks History',
                 'weekly': 'Weekly Tasks History',
                 'monthly': 'Monthly Tasks History',
-                'etc': 'ETC (H) History',
+                'etc': 'ETC D History',
                 'etcm': 'ETC-M History (Frequency Weighted)'
             };
             document.getElementById('automatedHistoryChartTitle').textContent = titles[metric] || 'History Trend';

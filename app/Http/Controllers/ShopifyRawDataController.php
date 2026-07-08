@@ -27,7 +27,17 @@ class ShopifyRawDataController extends Controller
 
     public function shopifyIndex()
     {
-        return view('shopify.index');
+        // Seed the date pickers with the canonical Pacific L30 window so the
+        // page's default Net Sales matches the cross-page badges (e.g. the
+        // "S SALES" badge on /shopify-ads-master). Computing the default here
+        // (server-side, Pacific) avoids the browser-local drift that used to
+        // shift the window a day when the viewer wasn't in US Pacific time.
+        [$defaultFrom, $defaultTo] = self::shopifyDirectL30Range();
+
+        return view('shopify.index', [
+            'defaultFrom' => $defaultFrom->toDateString(),
+            'defaultTo'   => $defaultTo->toDateString(),
+        ]);
     }
 
     // Marketplace source_name / tag values to always exclude

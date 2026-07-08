@@ -338,7 +338,7 @@
                             </a>
                         </li>
                         <li>
-                            <a href="{{ route('customer.care.orders.on.hold') }}">Orders On Hold</a>
+                            <a href="{{ route('customer.care.orders.on.hold') }}">on hold / Mapping</a>
                         </li>
                         <li>
                             <a href="{{ route('customer.care.qc.and.packing') }}">QC And Packing</a>
@@ -683,6 +683,9 @@
                         <li>
                             <a href="{{ route('facebook.all.ads.sheet') }}">Meta Ads All</a>
                         </li>
+                        <li>
+                            <a href="{{ route('facebook.ads.audit') }}">Facebook Ads Audit</a>
+                        </li>
                         <li class="side-nav-item">
                             <a data-bs-toggle="collapse" href="#sidebarFacebookAdsTypes" aria-expanded="false"
                                 aria-controls="sidebarFacebookAdsTypes">
@@ -740,6 +743,12 @@
                         </li>
                         <li>
                             <a href="{{ route('facebook.carousal.ads.sheet') }}">Facebook Carousal Ads Sheet</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('music.store.ads.sheet') }}">Music Store</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('music.school.ads.sheet') }}">Music School</a>
                         </li>
                     </ul>
                 </div>
@@ -1379,6 +1388,15 @@
                                             <ul class="side-nav-fourth-level">
                                                 <li>
                                                     <a href="{{ route('amazon.ads.all') }}">Amazon Ads All</a>
+                                                </li>
+                                                <li>
+                                                    <a href="{{ route('amazon.ads.audit') }}">Amazon Ads Audit</a>
+                                                </li>
+                                                <li>
+                                                    <a href="{{ route('amazon.ads.missing') }}">Amazon Ads Missing</a>
+                                                </li>
+                                                <li>
+                                                    <a href="{{ route('amazon.ads.categories') }}">Ads Categories</a>
                                                 </li>
                                                 {{-- <li>
                                                     <a href=" {{ route('amazon-sp.amz-utilized-bgt-kw') }} "> >
@@ -2071,10 +2089,19 @@
                             <a href="{{ route('google.shopping.campaigns') }}">Google Shopping</a>
                         </li>
                         <li>
+                            <a href="{{ route('google.shopping.audit') }}">Google Shopping Audit</a>
+                        </li>
+                        <li>
                             <a href="{{ route('google.serp.campaigns') }}">Google SERP Campaigns</a>
                         </li>
                         <li>
+                            <a href="{{ route('google.serp.audit') }}">Google SERP Audit</a>
+                        </li>
+                        <li>
                             <a href="{{ Route::has('google.youtube.ads.campaigns') ? route('google.youtube.ads.campaigns') : url('/google/shopping/youtube-ads') }}">Youtube ads</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('google.youtube.ads.audit') }}">Youtube Ads Audit</a>
                         </li>
                         <li>
                             <a href="{{ route('google.pmax.list') }}">Google PMAX</a>
@@ -2218,6 +2245,9 @@
                 </a>
                 <div class="collapse" id="sidebarFBMarketplace">
                     <ul class="side-nav-third-level">
+                        <li><a href="{{ route('fb.marketplace.tabulator.view') }}">Fb Marketplace - Analytics</a>
+                        </li>
+
                         <li><a href="{{ url('fbmarketplaceAnalysis') }}">FB Marketplace Analytics</a>
                         </li>
 

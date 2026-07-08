@@ -80,6 +80,8 @@
                         <span class="badge bg-primary fs-6 p-2" id="total-orders-badge" style="color: #000; font-weight: bold;">Orders: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: #000; font-weight: bold;">Quantity: 0</span>
                         <span class="badge bg-info fs-6 p-2" id="total-revenue-badge" style="color: white; font-weight: bold;">Sales: $0</span>
+                        <span class="badge fs-6 p-2" id="y-sales-badge" style="background-color: #fd7e14; color: white; font-weight: bold;" title="Yesterday's sales (UTC) = Σ order total for yesterday">Y Sales: $0</span>
+                        <span class="badge fs-6 p-2" id="l7-sales-badge" style="background-color: #6610f2; color: white; font-weight: bold;" title="Last 7 days sales (UTC) = Σ order total for the last 7 days">L7 Sales: $0</span>
                         <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge" style="color: white; font-weight: bold;">PFT: 0%</span>
                         <span class="badge fs-6 p-2" id="roi-percentage-badge" style="background-color: purple; color: white; font-weight: bold;">ROI: 0%</span>
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0</span>
@@ -130,6 +132,13 @@
 <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
 <script>
     const COLUMN_VIS_KEY = "reverb_sales_tabulator_column_visibility";
+    // UTC "yesterday" date (order_date is stored as a UTC date to match Reverb's
+    // dashboard), used for the Y Sales badge independent of the viewer's browser timezone.
+    const CA_YESTERDAY = @json(\Carbon\Carbon::now('UTC')->subDay()->toDateString());
+    // UTC start date for the last-7-days window. Matches Reverb's "last 7 days" which
+    // spans today + 7 previous days (same +1-day convention as the L30 window using
+    // subDays(30)). Rolling window, so it stays correct as the data changes daily.
+    const L7_START = @json(\Carbon\Carbon::now('UTC')->subDays(7)->toDateString());
     let table = null;
     
     // Toast notification function
@@ -589,19 +598,16 @@
             let totalQuantityForPrice = 0;
             let totalCogs = 0;
             let l30Sales = 0; // Sales for last 30 days only
+            let ySales = 0;   // Yesterday's sales (UTC)
+            let l7Sales = 0;  // Last 7 days sales (UTC)
             let totalBumpFees = 0; // Sum of bump fees
             let totalSellingFees = 0; // Sum of selling fees
             let totalCheckoutFees = 0; // Sum of checkout fees
-            
-            // Calculate date 30 days ago (through yesterday, matching ChannelMaster)
-            const today = new Date();
-            const yesterday = new Date(today);
-            yesterday.setDate(today.getDate() - 1);
-            yesterday.setHours(23, 59, 59, 999); // End of yesterday
-            
-            const thirtyDaysAgo = new Date(yesterday);
-            thirtyDaysAgo.setDate(yesterday.getDate() - 29); // 30 days total (yesterday + 29 days back)
-            thirtyDaysAgo.setHours(0, 0, 0, 0); // Start of day
+
+            // NOTE: The server already restricts the response to the California L30 window
+            // (see ReverbSalesController::getDailyData). We must NOT re-filter here using the
+            // browser's local timezone (IST for us) — that previously shifted the window and
+            // dropped the most recent day, undercounting Sales vs Reverb.
 
             data.forEach(row => {
                 // Skip rows with empty SKU or order_number
@@ -615,26 +621,33 @@
                     return;
                 }
                 
-                // Check if order is within last 30 days - FILTER ALL DATA
+                // Skip orders without a date (server already applied the L30 window)
                 if (!row.order_date) {
-                    return; // Skip orders without date
+                    return;
                 }
                 
-                const orderDate = new Date(row.order_date);
-                if (orderDate < thirtyDaysAgo) {
-                    return; // Skip orders older than 30 days
-                }
-                
-                // All calculations below are now for L30 only
+                // All calculations below are for the server-provided L30 window
                 totalOrders++;
                 
                 const quantity = parseInt(row.quantity) || 1;
                 totalQuantity += quantity;
                 
-                // Revenue from product_subtotal
+                // Profit-side revenue = product_subtotal (margin applies to the item price).
                 const lineRevenue = parseFloat(row.product_subtotal) || parseFloat(row.amount) || 0;
                 totalRevenue += lineRevenue;
-                l30Sales += lineRevenue; // Same as totalRevenue now
+                // Displayed "Sales" = Reverb order total (product + shipping + tax) to match
+                // Reverb's dashboard. Shipping is usually FREE and tax is included in `amount`.
+                const lineSales = parseFloat(row.amount) || parseFloat(row.product_subtotal) || 0;
+                l30Sales += lineSales;
+
+                // Yesterday's sales (UTC), by stored UTC order_date
+                if (row.order_date === CA_YESTERDAY) {
+                    ySales += lineSales;
+                }
+                // Last 7 days sales (UTC): order_date within [L7_START .. today]
+                if (row.order_date >= L7_START) {
+                    l7Sales += lineSales;
+                }
                 
                 // Fees
                 totalFees += parseFloat(row.total_fees) || 0;
@@ -686,7 +699,10 @@
 
             $('#total-orders-badge').text('Orders: ' + totalOrders.toLocaleString());
             $('#total-quantity-badge').text('Quantity: ' + totalQuantity.toLocaleString());
-            $('#total-revenue-badge').text('Sales: $' + Math.round(totalRevenue).toLocaleString());
+            // Show Reverb order total (matches Reverb dashboard "Sales")
+            $('#total-revenue-badge').text('Sales: $' + Math.round(l30Sales).toLocaleString());
+            $('#y-sales-badge').text('Y Sales: $' + Math.round(ySales).toLocaleString());
+            $('#l7-sales-badge').text('L7 Sales: $' + Math.round(l7Sales).toLocaleString());
             $('#pft-percentage-badge').text('PFT: ' + Math.round(pftPercentage) + '%');
             $('#roi-percentage-badge').text('ROI: ' + Math.round(roiPercentage) + '%');
             $('#avg-price-badge').text('Avg Price: $' + Math.round(avgPrice).toLocaleString());

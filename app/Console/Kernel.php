@@ -1199,7 +1199,7 @@ class Kernel extends ConsoleKernel
         /*
         |--------------------------------------------------------------------------
         | TEMU
-        |--------------------------------------------------------------------------
+        |--------------------------------------------------------------------------]
         */
         // Fetch rolling 60-day order-wise raw data (powers /temu-tabulator)
         $ist($schedule->command('app:fetch-temu-orders')

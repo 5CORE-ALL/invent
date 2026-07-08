@@ -300,7 +300,7 @@ class FetchTemuMetrics extends Command
 
                 $priceInfo = $priceInfoList[0];
 
-                TemuMetric::where('sku_id', $skuId)->update([
+                TemuMetric::where('sku_id', (string) $skuId)->update([
                     'base_price' => $priceInfo['basePrice'] ?? null,
                     'currency'   => $priceInfo['currency'] ?? null,
                     'price_last_updated' => now(),
@@ -363,9 +363,12 @@ class FetchTemuMetrics extends Command
                         $skuSn = $sku['skuSn'] ?? null;
                         
                         if ($skuSn && $goodsId) {
-                            // Try both 'sku' and 'sku_id' columns since data might be in either
-                            $updated = TemuMetric::where('sku', $skuSn)
-                                ->orWhere('sku_id', $skuSn)
+                            // Try both 'sku' and 'sku_id' columns since data might be in either.
+                            // Cast to string so MySQL does a string comparison — a numeric bind
+                            // coerces the VARCHAR columns to DOUBLE and errors on text SKUs.
+                            $skuSnKey = (string) $skuSn;
+                            $updated = TemuMetric::where('sku', $skuSnKey)
+                                ->orWhere('sku_id', $skuSnKey)
                                 ->update([
                                     'goods_id' => $goodsId,
                                 ]);
@@ -490,8 +493,12 @@ class FetchTemuMetrics extends Command
                 } while ($hasMorePages);
             }
 
-            foreach ($finalSkuQuantities as $skuId => $data) {                
-                $updated = TemuMetric::where('sku_id', $skuId)
+            foreach ($finalSkuQuantities as $skuId => $data) {
+                // Cast to string: `sku_id`/`sku` are VARCHAR columns. Binding a numeric
+                // value makes MySQL coerce every row's value to DOUBLE, which throws
+                // "Truncated incorrect DOUBLE value" on non-numeric SKUs (e.g. 'WM SPK SLV').
+                $skuKey = (string) $skuId;
+                $updated = TemuMetric::where('sku_id', $skuKey)
                     ->update([
                         'quantity_purchased_l30' => $data['quantity_purchased_l30'],
                         'quantity_purchased_l60' => $data['quantity_purchased_l60'],
@@ -501,7 +508,7 @@ class FetchTemuMetrics extends Command
                     Log::info("Updated quantities for SKU: {$skuId}", $data);
                 } else {
                     // Try by SKU column if sku_id didn't work
-                    $updated = TemuMetric::where('sku', $skuId)
+                    $updated = TemuMetric::where('sku', $skuKey)
                         ->update([
                             'quantity_purchased_l30' => $data['quantity_purchased_l30'],
                             'quantity_purchased_l60' => $data['quantity_purchased_l60'],
@@ -610,9 +617,9 @@ class FetchTemuMetrics extends Command
                     $price = is_numeric($price) ? (float) $price : null;
 
                     TemuMetric::updateOrCreate(
-                        ['sku' => $outSkuSn],
+                        ['sku' => (string) $outSkuSn],
                         [
-                            'sku_id' => $skuId,
+                            'sku_id' => (string) $skuId,
                             'base_price' => $price,
                             'price_last_updated' => now()
                         ]

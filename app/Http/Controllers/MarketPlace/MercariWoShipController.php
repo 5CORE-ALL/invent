@@ -125,6 +125,7 @@ class MercariWoShipController extends Controller
                 'factor' => $factor,
                 'buyer_link' => $statusValue['buyer_link'] ?? null,
                 'seller_link' => $statusValue['seller_link'] ?? null,
+                'approved' => $statusValue['approved'] ?? null,
             ];
         }
 
@@ -145,7 +146,7 @@ class MercariWoShipController extends Controller
             : (json_decode($status->value, true) ?: []);
 
         // Only update fields present in the request
-        foreach (['sprice', 'nr_req'] as $field) {
+        foreach (['sprice', 'nr_req', 'approved'] as $field) {
             if ($request->has($field)) {
                 $value[$field] = $request->input($field);
             }

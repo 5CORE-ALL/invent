@@ -37,7 +37,18 @@ class ComparisonController extends Controller
     }
     public function index()
     {
-        return view('purchase-master.comparison.index');
+        return view('purchase-master.comparison.index', ['cdPageSku' => null]);
+    }
+
+    /**
+     * Full-page comparison-sheet editor for a single SKU (reuses the index view in a
+     * dedicated "sheet page" mode instead of the in-list modal).
+     */
+    public function sheetPage(Request $request)
+    {
+        return view('purchase-master.comparison.index', [
+            'cdPageSku' => trim((string) $request->query('sku', '')),
+        ]);
     }
 
     public function getData(Request $request)
@@ -75,10 +86,33 @@ class ComparisonController extends Controller
 
             $total = (clone $baseQuery)->count();
 
+            // Remote sort — applied to the FULL result set before pagination so the
+            // requested order spans all pages (not just the current page). Only DB-backed
+            // columns are sortable; unknown fields fall back to the default order.
+            $sortField = trim((string) $request->query('sort_field', ''));
+            $sortDir = strtolower(trim((string) $request->query('sort_dir', ''))) === 'desc' ? 'desc' : 'asc';
+
             $productsQuery = (clone $baseQuery)
-                ->with(['productCategory:id,category_name'])
-                ->orderBy('parent')
-                ->orderBy('sku');
+                ->with(['productCategory:id,category_name']);
+
+            switch ($sortField) {
+                case 'sku':
+                    $productsQuery->orderBy('sku', $sortDir);
+                    break;
+                case 'parent':
+                    $productsQuery->orderBy('parent', $sortDir)->orderBy('sku');
+                    break;
+                case 'category':
+                    // Sort by the (primary) category name via a correlated subquery on category_id.
+                    $productsQuery
+                        ->orderByRaw('(SELECT category_name FROM product_categories WHERE product_categories.id = product_master.category_id) ' . $sortDir)
+                        ->orderBy('parent')
+                        ->orderBy('sku');
+                    break;
+                default:
+                    $productsQuery->orderBy('parent')->orderBy('sku');
+                    break;
+            }
 
             $products = $skuList !== []
                 ? $productsQuery->get(['id', 'parent', 'sku', 'category_id', 'mfr_category_ids', 'Values', 'main_image', 'image1'])
@@ -719,6 +753,11 @@ class ComparisonController extends Controller
 
     private function importSheetFromUrl(string $sku, string $parent, string $url, string $tab, string $historyMessage)
     {
+        // Google Sheets exports can be large (many rows/columns) and the fetch + parse +
+        // normalize pipeline briefly holds several copies in memory. Raise the limit for
+        // this request so a big sheet no longer trips the default 128M cap.
+        @ini_set('memory_limit', '1024M');
+
         $user = Auth::user()?->name ?? 'N/A';
 
         try {
@@ -891,28 +930,57 @@ class ComparisonController extends Controller
         $byCategory = filter_var($request->query('by_category', false), FILTER_VALIDATE_BOOLEAN);
 
         if ($byCategory) {
-            if ($category === '') {
+            // Support MULTIPLE categories so a SKU tagged with several Mfr Categories
+            // fetches the union of suppliers from every one (not just the primary).
+            $categoryNames = $request->query('categories', []);
+            if (is_string($categoryNames)) {
+                $categoryNames = array_map('trim', explode(',', $categoryNames));
+            }
+            if (! is_array($categoryNames)) {
+                $categoryNames = [];
+            }
+            $categoryNames = array_values(array_filter(array_map('trim', $categoryNames)));
+
+            if (empty($categoryNames) && $category !== '') {
+                $categoryNames = [$category];
+            }
+
+            if (empty($categoryNames)) {
                 $product = ProductMaster::query()
                     ->with(['productCategory:id,category_name'])
                     ->whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper($sku)])
                     ->first(['category_id']);
 
-                $category = trim((string) ($product?->productCategory?->category_name ?? ''));
+                $fallbackCategory = trim((string) ($product?->productCategory?->category_name ?? ''));
+                if ($fallbackCategory !== '') {
+                    $categoryNames = [$fallbackCategory];
+                }
             }
 
-            if ($category === '') {
+            if (empty($categoryNames)) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Category is required to autopopulate suppliers.',
                 ], 400);
             }
 
-            $suppliers = $this->suppliersForCategory($category);
+            // Union suppliers across all requested categories, de-duped by id.
+            $suppliers = [];
+            $seenSupplierIds = [];
+            foreach (array_unique($categoryNames) as $name) {
+                foreach ($this->suppliersForCategory($name) as $supplier) {
+                    if (! isset($seenSupplierIds[$supplier['id']])) {
+                        $seenSupplierIds[$supplier['id']] = true;
+                        $suppliers[] = $supplier;
+                    }
+                }
+            }
 
             return response()->json([
                 'success' => true,
                 'sku' => $sku,
-                'category' => $category,
+                'category' => implode(', ', $categoryNames),
+                'categories' => array_values(array_unique($categoryNames)),
                 'suppliers' => $suppliers,
             ]);
         }

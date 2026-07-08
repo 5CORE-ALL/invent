@@ -107,10 +107,13 @@ class UpdateMarketplaceDailyMetrics extends Command
     private function calculateAmazonMetrics($date)
     {
         $windowDays = AmazonSalesController::DAILY_SALES_WINDOW_DAYS;
-        // Rolling window ending on $date (California Pacific), from actual orders, non-cancelled
-        $datePacific = Carbon::parse($date->format('Y-m-d'), 'America/Los_Angeles');
-        $endOfDay = $datePacific->copy()->endOfDay();
-        $startOfDay = $datePacific->copy()->subDays($windowDays - 1)->startOfDay();
+        // Rolling window ending on *yesterday* Pacific (today is a partial day and is
+        // excluded), IDENTICAL to AmazonSalesController::getData()/getAmazonChannelData().
+        // Anchoring here (instead of $date/today) keeps /all-marketplace-master's Amazon
+        // Gprofit% and PFT byte-identical with the /amazon/daily-sales page.
+        $yesterdayPacific = Carbon::yesterday('America/Los_Angeles');
+        $endOfDay = $yesterdayPacific->copy()->endOfDay();
+        $startOfDay = $yesterdayPacific->copy()->subDays($windowDays - 1)->startOfDay();
 
         $totalRevenue = AmazonOrder::badgeTotalSalesByOrderDate($startOfDay, $endOfDay);
 
@@ -135,9 +138,10 @@ class UpdateMarketplaceDailyMetrics extends Command
             return null;
         }
 
-        $productMasters = ProductMaster::all()->keyBy(function ($item) {
-            return strtoupper($item->sku);
-        });
+        // Key by exact SKU (case-sensitive), EXACTLY like AmazonSalesController::getData()
+        // (ProductMaster::whereIn('sku', …)->keyBy('sku')). Uppercasing here matched extra
+        // rows the daily-sales page does not, skewing PFT/COGS away from that page.
+        $productMasters = ProductMaster::all()->keyBy('sku');
 
         $totalOrders = $orderRows->pluck('amazon_order_id')->unique()->count();
         $totalQuantity = 0;
@@ -145,6 +149,10 @@ class UpdateMarketplaceDailyMetrics extends Command
         $totalPft = 0;
         $totalWeightedPrice = 0;
         $totalQuantityForPrice = 0;
+        // Sum of SKU-line sales — this is the GPFT% denominator on the /amazon/daily-sales
+        // page (Σ sale_amount, i.e. line price), NOT the order-greatest badge total.
+        // Keep this so /all-marketplace-master's Amazon Gprofit% matches that page exactly.
+        $totalSkuLineSales = 0;
 
         // Get marketplace percentage
         $marketplaceData = MarketplacePercentage::where('marketplace', 'Amazon')->first();
@@ -169,12 +177,19 @@ class UpdateMarketplaceDailyMetrics extends Command
                 $totalQuantityForPrice += $quantity;
             }
 
-            $sku = strtoupper($row->sku ?? '');
+            // Exact SKU (case-sensitive) — matches getData()'s $productMasters[$item->sku].
+            $sku = $row->sku ?? '';
+
+            // Accumulate SKU-line sales exactly like the /amazon/daily-sales badge:
+            // only lines with a SKU and qty > 0 count toward the GPFT% denominator.
+            if ($sku !== '' && $quantity > 0) {
+                $totalSkuLineSales += round($lineRevenue, 2);
+            }
             $lp = 0;
             $ship = 0;
             $weightAct = 0;
 
-            if ($sku && isset($productMasters[$sku])) {
+            if ($sku !== '' && isset($productMasters[$sku])) {
                 $pm = $productMasters[$sku];
                 $values = is_array($pm->Values) ? $pm->Values :
                         (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
@@ -192,15 +207,20 @@ class UpdateMarketplaceDailyMetrics extends Command
                 $shipCost = $ship;
             }
 
-            $cogs = $lp * $quantity;
+            // Round per line before summing — matches getData()'s per-row round(…, 2)
+            // whose rounded values the daily-sales badge then sums.
+            $cogs = round($lp * $quantity, 2);
             $totalCogs += $cogs;
             $pftEach = ($unitPrice * 0.80) - $lp - $shipCost;
-            $pft = $pftEach * $quantity;
+            $pft = round($pftEach * $quantity, 2);
             $totalPft += $pft;
         }
 
         $avgPrice = $totalQuantityForPrice > 0 ? $totalWeightedPrice / $totalQuantityForPrice : 0;
-        $pftPercentage = $totalRevenue > 0 ? ($totalPft / $totalRevenue) * 100 : 0;
+        // GPFT% denominator = Σ SKU-line sales (matches /amazon/daily-sales "GPFT %"),
+        // NOT $totalRevenue (order-greatest badge total shown in the "Total Sales" badge).
+        // This keeps /all-marketplace-master's Amazon Gprofit% identical to the daily-sales page.
+        $pftPercentage = $totalSkuLineSales > 0 ? ($totalPft / $totalSkuLineSales) * 100 : 0;
         // ROI = (PFT / COGS) * 100 - but COGS is LP only
         $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
 
@@ -256,7 +276,9 @@ class UpdateMarketplaceDailyMetrics extends Command
         $hlSales = (float) $hlData->sum('sales');
         $hlSold = (int) $hlData->sum('purchases');
 
-        $tacosPercentage = $totalRevenue > 0 ? (($kwSpent + $ptSpent + $hlSpent) / $totalRevenue) * 100 : 0;
+        // TACOS% denominator = Σ SKU-line sales, same as GPFT% above, so N PFT
+        // (GPFT% − TACOS%) stays byte-identical with the /amazon/daily-sales page.
+        $tacosPercentage = $totalSkuLineSales > 0 ? (($kwSpent + $ptSpent + $hlSpent) / $totalSkuLineSales) * 100 : 0;
         $nPft = $pftPercentage - $tacosPercentage;
         
         // N ROI = (Net Profit / COGS) * 100 where Net Profit = Gross Profit - Ad Spend

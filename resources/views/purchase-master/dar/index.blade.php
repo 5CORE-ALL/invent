@@ -165,11 +165,19 @@
         <div class="col-12">
             <div class="card">
                 <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center mb-2">
+                    <div class="d-flex justify-content-between align-items-center gap-2 mb-2 flex-wrap">
                         <button type="button" class="dar-page-add-btn" id="darPageAddBtn" title="Add Daily Activity Report">
                             <i class="fas fa-clipboard-list"></i>
                             <span>DAR</span>
                         </button>
+                        <div class="flex-grow-1" style="max-width: 260px;">
+                            <select id="darUserFilter" class="form-select form-select-sm" title="Filter by user">
+                                <option value="">All Users</option>
+                                @foreach($users as $u)
+                                    <option value="{{ $u->id }}">{{ $u->name }}</option>
+                                @endforeach
+                            </select>
+                        </div>
                         <span class="dar-count-badge" id="darCountBadge" title="Total DAR entries out of a target of 25">
                             <i class="fas fa-list-check me-1"></i>
                             Total Count: <strong id="darCountValue">0</strong>/25
@@ -211,6 +219,32 @@
                 return d.innerHTML;
             }
 
+            // Minutes → "Xh Ym" (e.g. 135 → "2h 15m", 40 → "40m", 120 → "2h").
+            function formatHrsMin(mins) {
+                const m = Math.round(Number(mins) || 0);
+                const h = Math.floor(m / 60);
+                const r = m % 60;
+                if (h > 0 && r > 0) return h + 'h ' + r + 'm';
+                if (h > 0) return h + 'h';
+                return r + 'm';
+            }
+
+            function sumGroupMinutes(data) {
+                return (data || []).reduce(function (sum, r) {
+                    return sum + (Number(r.time_taken) || 0);
+                }, 0);
+            }
+
+            // "2026-07-08" → "08 Jul" (drop the year for display).
+            function formatDateNoYear(value) {
+                const s = (value == null ? '' : String(value)).trim();
+                const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+                if (!m) return esc(s || '\u2014');
+                const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                const mon = months[parseInt(m[2], 10) - 1] || m[2];
+                return m[3] + ' ' + mon;
+            }
+
             // ---- Column formatters ----
             function userFormatter(cell) {
                 const value = (cell.getValue() ?? '').toString();
@@ -229,7 +263,9 @@
                 if (v === null || v === undefined || v === '') {
                     return '<span class="dar-time-pill is-empty">&mdash;</span>';
                 }
-                return `<span class="dar-time-pill">${esc(v)}</span>`;
+                const n = Number(v);
+                const display = isNaN(n) ? esc(v) : Math.round(n);
+                return `<span class="dar-time-pill">${display}</span>`;
             }
 
             function actionFormatter() {
@@ -251,12 +287,31 @@
                 dataLoaded: function (data) {
                     updateCountBadge(Array.isArray(data) ? data.length : 0);
                 },
+                dataFiltered: function (filters, rows) {
+                    updateCountBadge(Array.isArray(rows) ? rows.length : 0);
+                },
                 layout: 'fitColumns',
                 rowHeight: 52,
                 pagination: 'local',
                 paginationSize: 25,
                 paginationSizeSelector: [10, 25, 50, 100],
                 placeholder: 'No DAR records yet. Click "Add" or the topbar DAR button to add one.',
+                // Group day-wise first, then per user within each day. Each group header
+                // shows the total time (hrs + minutes) for that scope.
+                groupBy: ['report_date', 'user_name'],
+                groupStartOpen: true,
+                groupHeader: [
+                    function (value, count, data) {
+                        const total = formatHrsMin(sumGroupMinutes(data));
+                        return '<i class="fas fa-calendar-day me-1 text-muted"></i>' + formatDateNoYear(value)
+                            + '<span style="margin-left:10px;color:#3730a3;font-weight:700;">Total: ' + total + '</span>';
+                    },
+                    function (value, count, data) {
+                        const total = formatHrsMin(sumGroupMinutes(data));
+                        return '<span class="dar-user-pill">' + esc(value || '\u2014') + '</span>'
+                            + ' <span style="color:#3730a3;font-weight:600;">(' + count + ' task(s) &middot; ' + total + ')</span>';
+                    }
+                ],
                 columns: [
                     {
                         title: '#',
@@ -273,6 +328,9 @@
                         hozAlign: 'center',
                         vertAlign: 'middle',
                         headerSort: true,
+                        formatter: function (cell) {
+                            return formatDateNoYear(cell.getValue());
+                        },
                     },
                     {
                         title: 'User',
@@ -337,6 +395,20 @@
             // Page "DAR" button opens the shared add modal (blank/create mode).
             $('#darPageAddBtn').on('click', function () {
                 if (window.DarModal) window.DarModal.open();
+            });
+
+            // User filter — show only the selected user's DAR rows, and update the
+            // reports count badge to reflect the filtered (visible) rows.
+            $('#darUserFilter').on('change', function () {
+                const val = $(this).val();
+                if (!val) {
+                    table.clearFilter();
+                } else {
+                    table.setFilter(function (rowData) {
+                        return String(rowData.user_id) === String(val);
+                    });
+                }
+                updateCountBadge(table.getDataCount('active'));
             });
 
             function deleteRow(id) {

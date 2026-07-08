@@ -117,6 +117,20 @@
         #google-ads-campaigns-raw-wrap .tabulator .tabulator-cell.red-bg {
             color: #ff2727 !important;
         }
+        /* CTR / CVR flag bands (relative to the filtered-set average):
+           red   < avg*0.80, green avg*0.80–avg*1.20, magenta > avg*1.20 */
+        #google-ads-campaigns-raw-wrap .tabulator .tabulator-cell.flag-red {
+            color: #ff2727 !important;
+            font-weight: 600;
+        }
+        #google-ads-campaigns-raw-wrap .tabulator .tabulator-cell.flag-green {
+            color: #05bd30 !important;
+            font-weight: 600;
+        }
+        #google-ads-campaigns-raw-wrap .tabulator .tabulator-cell.flag-magenta {
+            color: #d400d4 !important;
+            font-weight: 600;
+        }
         /* ACOS L30 text color bands: <10 pink, <20 green, <30 blue, <40 yellow, <=50 orange, >50 red */
         #google-ads-campaigns-raw-wrap .tabulator .tabulator-cell.acos-pink {
             color: #ff01d0 !important;
@@ -156,6 +170,20 @@
             color: #475569;
             margin-bottom: 4px;
             letter-spacing: 0.01em;
+        }
+        #gac-raw-filter-bar .gac-raw-range-input {
+            width: 70px;
+            border-radius: 6px;
+            border: 1px solid #cbd5e1;
+            background: #fff;
+            color: #334155;
+            font-size: 0.8125rem;
+            padding: 0.35rem 0.4rem;
+            text-align: center;
+        }
+        #gac-raw-filter-bar .gac-raw-range-sep {
+            color: #94a3b8;
+            font-weight: 600;
         }
         #gac-raw-filter-bar .gac-raw-filter-select {
             min-width: 132px;
@@ -276,7 +304,7 @@
                             div) moves the action buttons to a second row instead of clipping
                             or horizontally scrolling the badges.
                         --}}
-                        <div class="d-flex align-items-center flex-nowrap gap-2 py-1">
+                        <div class="d-flex align-items-center flex-wrap gap-2 py-1">
                             {{-- Live sums of key Tabulator columns
                                 across whatever rows are currently visible
                                 (after search / header filters). Updated by
@@ -289,6 +317,10 @@
                             <span id="faasCampaignsBadge" data-metric="campaigns" data-label="Campaigns"
                                 class="faas-stat-badge faas-stat-badge--count is-static"
                                 title="Total campaigns matching current filters">CAMPAIGNS:<span id="faasCampaignsValue">0</span></span>
+
+                            <span id="faasActiveBadge" data-label="Active"
+                                class="faas-stat-badge faas-stat-badge--sales is-static"
+                                title="Active (ENABLED) campaigns matching current filters">ACTIVE:<span id="faasActiveValue">0</span></span>
 
                             <span id="faasL30SpendBadge" data-metric="spend" data-label="Spend"
                                 class="faas-stat-badge faas-stat-badge--spend badge-chart-link"
@@ -375,6 +407,22 @@
                                 </select>
                             </div>
                             <div class="gac-raw-filter-field">
+                                <label class="gac-raw-filter-label mb-0">CTR %</label>
+                                <div class="d-flex align-items-center gap-1">
+                                    <input type="number" id="gac-filter-ctr-min" class="gac-raw-range-input" placeholder="Min" min="0" step="0.01" inputmode="decimal" aria-label="Minimum CTR percent">
+                                    <span class="gac-raw-range-sep">–</span>
+                                    <input type="number" id="gac-filter-ctr-max" class="gac-raw-range-input" placeholder="Max" min="0" step="0.01" inputmode="decimal" aria-label="Maximum CTR percent">
+                                </div>
+                            </div>
+                            <div class="gac-raw-filter-field">
+                                <label class="gac-raw-filter-label mb-0">CVR %</label>
+                                <div class="d-flex align-items-center gap-1">
+                                    <input type="number" id="gac-filter-cvr-min" class="gac-raw-range-input" placeholder="Min" min="0" step="0.01" inputmode="decimal" aria-label="Minimum CVR percent">
+                                    <span class="gac-raw-range-sep">–</span>
+                                    <input type="number" id="gac-filter-cvr-max" class="gac-raw-range-input" placeholder="Max" min="0" step="0.01" inputmode="decimal" aria-label="Maximum CVR percent">
+                                </div>
+                            </div>
+                            <div class="gac-raw-filter-field">
                                 <label class="gac-raw-filter-label mb-0" for="gac-filter-stat">Sts</label>
                                 <select id="gac-filter-stat" class="form-select form-select-sm gac-raw-filter-select" aria-label="Filter by campaign status">
                                     <option value="all" selected>All</option>
@@ -386,18 +434,6 @@
                             </div>
                             <div class="gac-raw-filter-field d-flex align-items-end">
                                 <button type="button" class="btn btn-sm btn-outline-secondary" id="gac-raw-u7-pie-open" data-bs-toggle="modal" data-bs-target="#gacRawU7PieModal" title="Row counts by U7% band (U7 filter ignored). Opens chart; click a slice for last 30 days.">U7% mix</button>
-                            </div>
-                            <span class="vr align-self-stretch d-none d-md-inline-block opacity-50"></span>
-                            <div class="d-flex flex-wrap align-items-center gap-3 ms-md-auto">
-                                <div class="d-flex align-items-center gap-2">
-                                    <span class="gac-raw-pill-dark">SPI30</span>
-                                    <span id="gac-raw-summary-spi30-val" class="gac-raw-summary-num">—</span>
-                                </div>
-                                <span class="vr align-self-stretch d-none d-sm-inline-block opacity-50"></span>
-                                <div class="d-flex align-items-center gap-2">
-                                    <span class="gac-raw-pill-muted">ACOS</span>
-                                    <span id="gac-raw-summary-acos-val" class="gac-raw-summary-acos">—</span>
-                                </div>
                             </div>
                         </div>
                     </div>
@@ -602,6 +638,20 @@
             </div>
         </div>
     </div>
+
+    <div class="modal fade" id="gacRawSbgtHistoryModal" tabindex="-1" aria-labelledby="gacRawSbgtHistoryModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-sm">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h6 class="modal-title" id="gacRawSbgtHistoryModalLabel">SBGT daily history — <span id="gacRawSbgtHistoryCid" class="text-muted"></span></h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body py-2" id="gacRawSbgtHistoryBody" style="max-height:360px;overflow:auto;">
+                    <p class="text-muted small mb-0">Loading…</p>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script-bottom')
@@ -616,6 +666,7 @@
             const gacRawPushSbidUrl = @json(route('google.shopping.campaigns.push.sbid'));
             const gacRawPullDataUrl = @json(route('google.shopping.campaigns.pull.data'));
             const gacRawBadgeHistoryUrl = @json(route('google.shopping.campaigns.badge.history'));
+            const gacRawSbgtHistoryUrl = @json(route('google.shopping.campaigns.sbgt.history'));
             const gacRawU7PieDistribUrl = @json(route('google.shopping.campaigns.u7.distribution'));
             const gacRawU7PieHistoryUrl = @json(route('google.shopping.campaigns.u7.history'));
             window.gacRawRule = @json($googleShoppingRule);
@@ -625,7 +676,139 @@
             let gacRawBadgeChart = null;
             let gacRawActiveBadgeMetric = null;
             let gacRawActiveBadgeLabel = '';
+            // Filtered-set weighted averages (from response.summary) that drive the CTR/CVR
+            // flag colours. Refreshed by gacRawSummaryFromResponse() before each render.
+            let gacRawAvgCtr = 0;
+            let gacRawAvgCvr = 0;
+            // Current average ACOS (%) — mirrors the toolbar ACOS badge
+            // (ΣSpend / ΣSales over the loaded rows). Refreshed by
+            // updateMetricBadges() and drives the Action column alert.
+            let gacRawAvgAcos = 0;
+            let gacRawReformatting = false;
             const GAC_RAW_U7_PIE_MODAL_CHART_H = 400;
+
+            // Action column: red alert triangle when a row's ACOS is above the
+            // current average ACOS AND its Spend is over $30. Reads the live
+            // gacRawAvgAcos so it re-evaluates as the badge changes.
+            function gacRawActionFormatter(cell) {
+                var row = cell.getRow().getData();
+                var acos = gacRawNumber(row.acos_l30);
+                var spend = gacRawNumber(row.spend);
+                if (acos > gacRawAvgAcos && spend > 30) {
+                    var tip = 'ACOS ' + Math.round(acos) + '% > avg ' + Math.round(gacRawAvgAcos)
+                            + '% and Spend $' + Math.round(spend) + ' > $30';
+                    return '<i class="fas fa-exclamation-triangle" title="' + tip + '"'
+                         + ' style="color:#dc2626;font-size:15px;"></i>';
+                }
+                return '';
+            }
+
+            // Re-run the Action column formatter after the average ACOS changes
+            // (page change / filter / refresh). Guarded against re-entry.
+            function gacRawReformatActionColumn() {
+                if (!table || gacRawReformatting) return;
+                gacRawReformatting = true;
+                try {
+                    (table.getRows('active') || []).forEach(function(r) { r.reformat(); });
+                } catch (e) { /* table not ready */ }
+                gacRawReformatting = false;
+            }
+
+            // SBGT cell: integer value + a day-over-day trend dot — green when today's
+            // SBGT is above the previous saved day, red when below, gray when unchanged
+            // or there is no prior day yet. Clicking the dot opens the daily history.
+            function gacRawEscAttr(s) {
+                return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+            }
+            function gacRawSbgtCellFormatter(cell) {
+                var row = cell.getRow().getData();
+                var v = parseInt(cell.getValue(), 10);
+                var valTxt = isFinite(v) ? v.toLocaleString() : '—';
+                var trend = row.sbgt_trend || 'na';
+                var color = trend === 'up' ? '#05bd30' : (trend === 'down' ? '#ff2727' : '#9ca3af');
+                var prev = row.sbgt_prev;
+                var prevTxt = (prev === null || prev === undefined) ? '—' : Math.round(prev).toLocaleString();
+                var tip = (trend === 'na')
+                    ? 'No previous day saved yet — click for daily history'
+                    : ('Prev (' + (row.sbgt_prev_date || '') + '): ' + prevTxt + ' → today ' + valTxt + ' — click for daily history');
+                var cid = (row.campaign_id != null) ? String(row.campaign_id) : '';
+                var dot = '<span class="gac-sbgt-dot" role="button" tabindex="0" data-sbgt-cid="' + gacRawEscAttr(cid) + '"'
+                        + ' title="' + gacRawEscAttr(tip) + '"'
+                        + ' style="display:inline-block;width:9px;height:9px;border-radius:50%;background:' + color + ';margin-left:6px;cursor:pointer;vertical-align:middle;flex-shrink:0;"></span>';
+                return '<span style="display:inline-flex;align-items:center;justify-content:center;">' + valTxt + dot + '</span>';
+            }
+
+            function gacRawOpenSbgtHistory(campaignId) {
+                var cid = String(campaignId || '').replace(/\D/g, '');
+                if (!cid) return;
+                var modalEl = document.getElementById('gacRawSbgtHistoryModal');
+                var body = document.getElementById('gacRawSbgtHistoryBody');
+                var cidEl = document.getElementById('gacRawSbgtHistoryCid');
+                if (cidEl) cidEl.textContent = cid;
+                if (body) body.innerHTML = '<p class="text-muted small mb-0">Loading…</p>';
+                if (modalEl && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                }
+                fetch(gacRawSbgtHistoryUrl + '?campaign_id=' + encodeURIComponent(cid) + '&days=30', {
+                    credentials: 'same-origin',
+                    headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+                }).then(function(r) { return r.json(); }).then(function(resp) {
+                    gacRawRenderSbgtHistory((resp && resp.data) || []);
+                }).catch(function() {
+                    if (body) body.innerHTML = '<p class="text-danger small mb-0">Failed to load history.</p>';
+                });
+            }
+
+            function gacRawRenderSbgtHistory(rows) {
+                var body = document.getElementById('gacRawSbgtHistoryBody');
+                if (!body) return;
+                if (!rows.length) {
+                    body.innerHTML = '<p class="text-muted small mb-0">No SBGT history saved yet — it builds up one row per day.</p>';
+                    return;
+                }
+                var html = '<table class="table table-sm mb-0"><thead><tr>'
+                         + '<th>Date</th><th class="text-end">SBGT</th><th class="text-center">Δ</th><th class="text-end">ACOS</th>'
+                         + '</tr></thead><tbody>';
+                rows.forEach(function(d) {
+                    var color = d.trend === 'up' ? '#05bd30' : (d.trend === 'down' ? '#ff2727' : '#9ca3af');
+                    var arrow = d.trend === 'up' ? '▲' : (d.trend === 'down' ? '▼' : '—');
+                    html += '<tr><td>' + d.date + '</td>'
+                          + '<td class="text-end">' + Math.round(d.sbgt).toLocaleString() + '</td>'
+                          + '<td class="text-center" style="color:' + color + ';font-weight:700;">' + arrow + '</td>'
+                          + '<td class="text-end">' + (d.acos != null ? Math.round(d.acos) + '%' : '—') + '</td></tr>';
+                });
+                html += '</tbody></table>';
+                body.innerHTML = html;
+            }
+
+            /**
+             * Colour a CTR/CVR cell relative to the filtered-set average:
+             *   red     when value < avg * 0.80
+             *   magenta when value > avg * 1.20
+             *   green   when avg*0.80 <= value <= avg*1.20
+             * Degenerate average (avg <= 0, e.g. a channel with no conversions so every
+             * CVR is 0): fall back to absolute meaning so cells still colour consistently
+             * with pages that do have an average — 0 is the performance floor (red), any
+             * positive value beats the zero average (magenta).
+             */
+            function gacRawApplyFlagColor(td, value, avg) {
+                if (!td) return;
+                td.classList.remove('flag-red', 'flag-green', 'flag-magenta');
+                if (!isFinite(value)) return;
+                if (!isFinite(avg) || avg <= 0) {
+                    td.classList.add(value > 0 ? 'flag-magenta' : 'flag-red');
+                    return;
+                }
+                var low = avg * 0.80;
+                var high = avg * 1.20;
+                if (value < low) {
+                    td.classList.add('flag-red');
+                } else if (value > high) {
+                    td.classList.add('flag-magenta');
+                } else {
+                    td.classList.add('flag-green');
+                }
+            }
 
             function updatePageInfoBadge() {
                 const el = document.getElementById('gac-raw-page-info');
@@ -681,13 +864,19 @@
                 var spiEl = document.getElementById('gac-raw-summary-spi30-val');
                 var acosEl = document.getElementById('gac-raw-summary-acos-val');
                 var campaignsEl = document.getElementById('faasCampaignsValue');
+                var activeEl = document.getElementById('faasActiveValue');
                 if (!response || typeof response !== 'object' || !response.summary) {
                     if (spiEl) spiEl.textContent = '—';
                     if (acosEl) acosEl.textContent = '—';
                     if (campaignsEl) campaignsEl.textContent = '0';
+                    if (activeEl) activeEl.textContent = '0';
+                    gacRawAvgCtr = 0;
+                    gacRawAvgCvr = 0;
                     return;
                 }
                 var s = response.summary;
+                gacRawAvgCtr = Number.isFinite(Number(s.avg_ctr)) ? Number(s.avg_ctr) : 0;
+                gacRawAvgCvr = Number.isFinite(Number(s.avg_cvr)) ? Number(s.avg_cvr) : 0;
                 if (spiEl) {
                     if (s.spi30 !== null && s.spi30 !== undefined && !isNaN(Number(s.spi30))) {
                         spiEl.textContent = Number(s.spi30).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -706,6 +895,21 @@
                     var n = Number(s.filtered_row_count);
                     campaignsEl.textContent = Number.isFinite(n) ? Math.round(n).toLocaleString() : '0';
                 }
+                if (activeEl) {
+                    var a = Number(s.active_count);
+                    activeEl.textContent = Number.isFinite(a) ? Math.round(a).toLocaleString() : '0';
+                }
+            }
+
+            /** Read a numeric range box; returns '' when blank / negative / non-numeric. */
+            function gacRawRangeInputVal(id) {
+                var el = document.getElementById(id);
+                if (!el) return '';
+                var v = String(el.value || '').trim();
+                if (v === '') return '';
+                var n = parseFloat(v);
+                if (!Number.isFinite(n) || n < 0) return '';
+                return String(n);
             }
 
             function gacRawCurrentFilterParams() {
@@ -714,6 +918,10 @@
                     filter_ub1: gacRawFilterParamVal('gac-filter-ub1'),
                     filter_acos: gacRawFilterParamVal('gac-filter-acos'),
                     filter_stat: gacRawFilterParamVal('gac-filter-stat'),
+                    filter_ctr_min: gacRawRangeInputVal('gac-filter-ctr-min'),
+                    filter_ctr_max: gacRawRangeInputVal('gac-filter-ctr-max'),
+                    filter_cvr_min: gacRawRangeInputVal('gac-filter-cvr-min'),
+                    filter_cvr_max: gacRawRangeInputVal('gac-filter-cvr-max'),
                     q: gacRawSearchQueryVal(),
                 };
             }
@@ -1040,6 +1248,14 @@
                         }, 1000);
                     }).catch(function () {});
                 });
+                // Click the SBGT trend dot → open the campaign's daily SBGT history.
+                document.addEventListener('click', function (e) {
+                    var dot = e.target.closest ? e.target.closest('.gac-sbgt-dot') : null;
+                    if (!dot) return;
+                    e.stopPropagation();
+                    e.preventDefault();
+                    gacRawOpenSbgtHistory(dot.getAttribute('data-sbgt-cid'));
+                });
             })();
 
             table = new Tabulator('#google-ads-campaigns-raw-table', {
@@ -1092,6 +1308,7 @@
                         ad_sales_L30: 'Sales',
                         acos_l30: 'ACOS',
                         cvr_l30: 'CVR',
+                        ctr_l30: 'CTR',
                         ub7: '7 UB%',
                         ub2: '2 UB%',
                         ub1: '1 UB%',
@@ -1218,6 +1435,7 @@
                         ad_sales_L30: true,
                         acos_l30: true,
                         cvr_l30: true,
+                        ctr_l30: true,
                         ub7: true,
                         ub2: true,
                         ub1: true,
@@ -1247,7 +1465,8 @@
                         } else {
                             col.minWidth = 50;
                         }
-                        if (col.field === 'id' || col.field === 'campaign_id' || col.field === 'date') {
+                        if (col.field === 'id' || col.field === 'campaign_id' || col.field === 'date'
+                            || col.field === 'sbgt_prev' || col.field === 'sbgt_prev_date' || col.field === 'sbgt_trend') {
                             col.visible = false;
                         }
                         // L7 / L2 Spend are still computed server-side (the SQL joins them so
@@ -1277,18 +1496,30 @@
                             } else if (col.field === 'cvr_l30') {
                                 // CVR = (Sold / Clicks) * 100 — formatted with 1 decimal,
                                 // matches the toolbar CVR badge value to the percent.
+                                // Flag colour is relative to the filtered-set average CVR.
                                 col.formatter = function(c) {
                                     var v = parseFloat(c.getValue());
-                                    if (!isFinite(v)) return '0%';
+                                    if (!isFinite(v)) v = 0;
+                                    gacRawApplyFlagColor(c.getElement(), v, gacRawAvgCvr);
                                     return v.toFixed(1) + '%';
+                                };
+                                col.minWidth = Math.max(col.minWidth || 0, 60);
+                            } else if (col.field === 'ctr_l30') {
+                                // CTR = (Clicks / Impressions) * 100 — 2 decimals. Flag colour
+                                // is relative to the filtered-set average CTR.
+                                col.formatter = function(c) {
+                                    var v = parseFloat(c.getValue());
+                                    if (!isFinite(v)) v = 0;
+                                    gacRawApplyFlagColor(c.getElement(), v, gacRawAvgCtr);
+                                    return v.toFixed(2) + '%';
                                 };
                                 col.minWidth = Math.max(col.minWidth || 0, 60);
                             } else if (col.field === 'ub7' || col.field === 'ub2' || col.field === 'ub1') {
                                 col.formatter = ubUtilColorFormatter;
                                 col.minWidth = Math.max(col.minWidth || 0, 57);
                             } else if (col.field === 'sbgt') {
-                                col.formatter = intLocaleFormatter;
-                                col.minWidth = Math.max(col.minWidth || 0, 57);
+                                col.formatter = gacRawSbgtCellFormatter;
+                                col.minWidth = Math.max(col.minWidth || 0, 72);
                             } else if (col.field === 'sbid') {
                                 col.formatter = sbidFormatter;
                                 col.minWidth = Math.max(col.minWidth || 0, 70);
@@ -1306,6 +1537,20 @@
                             col.minWidth = Math.max(col.minWidth || 0, 57);
                         }
                     });
+                    // Action column (synthetic — no data field). Red alert when
+                    // ACOS > current avg ACOS badge AND Spend > $30.
+                    if (!defs.some(function(d) { return d.field === 'action'; })) {
+                        defs.push({
+                            title: 'Action',
+                            field: 'action',
+                            headerSort: false,
+                            hozAlign: 'center',
+                            headerHozAlign: 'center',
+                            width: 80,
+                            minWidth: 70,
+                            formatter: gacRawActionFormatter,
+                        });
+                    }
                     return defs;
                 },
                 ajaxResponse: function(url, params, response) {
@@ -1342,6 +1587,38 @@
                     fel.addEventListener('change', gacRawReloadGridForFilters);
                 }
             });
+
+            // CTR / CVR min-max boxes: debounce typing so we only reload after 400ms idle;
+            // 'change' (blur / Enter / stepper) reloads immediately.
+            (function() {
+                var rangeTimer = null;
+                var lastRangeKey = '';
+                function currentRangeKey() {
+                    return [
+                        gacRawRangeInputVal('gac-filter-ctr-min'),
+                        gacRawRangeInputVal('gac-filter-ctr-max'),
+                        gacRawRangeInputVal('gac-filter-cvr-min'),
+                        gacRawRangeInputVal('gac-filter-cvr-max')
+                    ].join('|');
+                }
+                lastRangeKey = currentRangeKey();
+                function scheduleRangeReload(immediate) {
+                    if (rangeTimer) { clearTimeout(rangeTimer); rangeTimer = null; }
+                    var run = function() {
+                        var k = currentRangeKey();
+                        if (k === lastRangeKey) return;
+                        lastRangeKey = k;
+                        gacRawReloadGridForFilters();
+                    };
+                    if (immediate) { run(); } else { rangeTimer = setTimeout(run, 400); }
+                }
+                ['gac-filter-ctr-min', 'gac-filter-ctr-max', 'gac-filter-cvr-min', 'gac-filter-cvr-max'].forEach(function(fid) {
+                    var fel = document.getElementById(fid);
+                    if (!fel) return;
+                    fel.addEventListener('input', function() { scheduleRangeReload(false); });
+                    fel.addEventListener('change', function() { scheduleRangeReload(true); });
+                });
+            })();
 
             // Campaign-name search: debounce keystrokes so we only hit the server after 300ms of inactivity.
             // 'search' fires on the native ✕ clear button and on Enter, both of which should reload immediately.
@@ -1819,6 +2096,14 @@
                 acosEl.textContent = gacRawPercent(spendSum, salesSum, 0);
                 cvrEl.textContent = gacRawPercent(soldSum, clicksSum, 1);
                 bgtEl.textContent = gacRawWholeMoney(bgtSum);
+
+                // Keep the numeric average ACOS (matches the badge) in sync and
+                // repaint the Action column so its alert reflects the current average.
+                var newAvgAcos = salesSum > 0 ? (spendSum / salesSum) * 100 : 0;
+                if (newAvgAcos !== gacRawAvgAcos) {
+                    gacRawAvgAcos = newAvgAcos;
+                    gacRawReformatActionColumn();
+                }
             }
 
             function gacRawFormatBadgeChartValue(metric, value) {

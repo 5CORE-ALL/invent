@@ -254,6 +254,29 @@ class DispatchIssuesController extends IssueBoardControllerBase
         return $payload;
     }
 
+    /**
+     * Resolve a warehouse name from its id, caching the full id→name map for
+     * the request. Uses the query builder (not Eloquent) so soft-deleted
+     * warehouses are still resolved — the outgoing picker hides them, but a
+     * previously saved issue may still reference one and the edit modal needs
+     * the name to re-inject the option.
+     */
+    private ?array $warehouseNameMap = null;
+
+    private function warehouseNameById($id): ?string
+    {
+        if ($id === null || $id === '') {
+            return null;
+        }
+        if ($this->warehouseNameMap === null) {
+            $this->warehouseNameMap = DB::table('warehouses')
+                ->pluck('name', 'id')
+                ->map(fn ($n) => (string) $n)
+                ->toArray();
+        }
+        return $this->warehouseNameMap[(int) $id] ?? null;
+    }
+
     protected function extraRowFields(object $row): array
     {
         return array_merge(
@@ -270,6 +293,10 @@ class DispatchIssuesController extends IssueBoardControllerBase
                 'replacement_qty_sending' => isset($row->replacement_qty_sending) && $row->replacement_qty_sending !== null ? (float) $row->replacement_qty_sending : null,
                 'outgoing_needed'         => (bool) ($row->outgoing_needed ?? false),
                 'outgoing_warehouse_id'   => isset($row->outgoing_warehouse_id) && $row->outgoing_warehouse_id !== null ? (int) $row->outgoing_warehouse_id : null,
+                // Name (incl. soft-deleted / de-duped warehouses) so the edit
+                // modal can re-inject the saved option even when it's not in the
+                // filtered picker — otherwise the select renders blank on edit.
+                'outgoing_warehouse_name' => $this->warehouseNameById($row->outgoing_warehouse_id ?? null),
                 'outgoing_processed_at'   => $row->outgoing_processed_at ?? null,
                 'outgoing_inventory_id'   => isset($row->outgoing_inventory_id) && $row->outgoing_inventory_id !== null ? (int) $row->outgoing_inventory_id : null,
                 // Issue? sub-fields:
@@ -284,6 +311,7 @@ class DispatchIssuesController extends IssueBoardControllerBase
                 'wrong_sent_qty'                   => isset($row->wrong_sent_qty) && $row->wrong_sent_qty !== null ? (float) $row->wrong_sent_qty : null,
                 'wrong_sent_outgoing_needed'       => (bool) ($row->wrong_sent_outgoing_needed ?? false),
                 'wrong_sent_outgoing_warehouse_id' => isset($row->wrong_sent_outgoing_warehouse_id) && $row->wrong_sent_outgoing_warehouse_id !== null ? (int) $row->wrong_sent_outgoing_warehouse_id : null,
+                'wrong_sent_outgoing_warehouse_name' => $this->warehouseNameById($row->wrong_sent_outgoing_warehouse_id ?? null),
                 'wrong_sent_outgoing_processed_at' => $row->wrong_sent_outgoing_processed_at ?? null,
                 'wrong_sent_outgoing_inventory_id' => isset($row->wrong_sent_outgoing_inventory_id) && $row->wrong_sent_outgoing_inventory_id !== null ? (int) $row->wrong_sent_outgoing_inventory_id : null,
                 // "Why it happened" reason for the Wrong Item Sent panel.
@@ -1506,9 +1534,8 @@ class DispatchIssuesController extends IssueBoardControllerBase
 
         $imagePaths = $this->persistDispatchImagesToDir($request, 'groups/'.$groupId, null);
 
-        // Shared fields for every (SKU x Dept) row in the group. The `department`
-        // column is set per row inside the loop below — one dept per row.
-        $sharedPayload = array_merge([
+        
+        $sharedPayload = array_merge($this->buildExtraPayload($request->all()), [
             'group_id'             => $groupId,
             'order_number'         => $request->input('order_number') ? trim($request->input('order_number')) : null,
             'refund_amount'        => $request->input('refund_amount') !== null && $request->input('refund_amount') !== '' ? (float) $request->input('refund_amount') : null,

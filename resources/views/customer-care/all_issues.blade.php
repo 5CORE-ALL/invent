@@ -1990,9 +1990,18 @@
                 if (d.replacement_qty_sending != null && String(d.replacement_qty_sending).trim() !== '') {
                     replacementParts.push(detailsTextRow('Qty sending', d.replacement_qty_sending));
                 }
-                if (d.outgoing_needed != null && String(d.outgoing_needed).trim() !== '') {
-                    const yn = String(d.outgoing_needed) === '1' || d.outgoing_needed === true ? 'Yes' : 'No';
+                // Treat a processed outgoing as "Yes" even when the outgoing_needed
+                // flag wasn't persisted (legacy rows created before create saved
+                // the outgoing_* fields). The processed timestamp is the source of
+                // truth that Shopify was actually decremented.
+                const outgoingProcessed = !!d.outgoing_processed_at;
+                const outgoingNeededTrue = String(d.outgoing_needed) === '1' || d.outgoing_needed === true;
+                if (outgoingProcessed || outgoingNeededTrue || (d.outgoing_needed != null && String(d.outgoing_needed).trim() !== '')) {
+                    const yn = (outgoingProcessed || outgoingNeededTrue) ? 'Yes' : 'No';
                     replacementParts.push(detailsTextRow('Outgoing needed', yn));
+                }
+                if (outgoingProcessed) {
+                    replacementParts.push(detailsTextRow('Outgoing processed at', d.outgoing_processed_at));
                 }
                 if (d.refund_amount != null && String(d.refund_amount).trim() !== '') {
                     const amt = '$' + Number(d.refund_amount).toFixed(2);
@@ -3261,11 +3270,11 @@
                 const preview = document.getElementById('replacementSkuPreview');
                 const qtyAv = document.getElementById('replacementQtyAvailable');
                 const img = document.getElementById('replacementSkuImage');
-                if (skuInp) skuInp.value = '';
-                if (qtyInp) qtyInp.value = '';
-                if (trkInp) trkInp.value = '';
+                if (skuInp) { skuInp.value = ''; skuInp.readOnly = false; }
+                if (qtyInp) { qtyInp.value = ''; qtyInp.readOnly = false; }
+                if (trkInp) { trkInp.value = ''; trkInp.readOnly = false; }
                 if (outChk) { outChk.checked = false; outChk.disabled = false; }
-                if (whInp) whInp.value = '';
+                if (whInp) { whInp.value = ''; whInp.disabled = false; }
                 if (whWrap) whWrap.classList.add('d-none');
                 if (notice) notice.classList.add('d-none');
                 if (preview) preview.classList.add('d-none');
@@ -3563,14 +3572,14 @@
                 const qtyAv  = document.getElementById('wrongSentQtyAvailable');
                 const img    = document.getElementById('wrongSentSkuImage');
                 const cnt    = document.getElementById('issueNotesCharCount');
-                if (skuInp) skuInp.value = '';
-                if (notes) notes.value = '';
-                if (qtyInp) qtyInp.value = '';
+                if (skuInp) { skuInp.value = ''; skuInp.readOnly = false; }
+                if (notes) { notes.value = ''; notes.readOnly = false; }
+                if (qtyInp) { qtyInp.value = ''; qtyInp.readOnly = false; }
                 if (outChk) { outChk.checked = false; outChk.disabled = false; }
-                if (whInp) whInp.value = '';
+                if (whInp) { whInp.value = ''; whInp.disabled = false; }
                 if (whWrap) whWrap.classList.add('d-none');
                 if (notice) notice.classList.add('d-none');
-                if (reason) reason.value = '';
+                if (reason) { reason.value = ''; reason.disabled = false; }
                 if (preview) preview.classList.add('d-none');
                 if (qtyAv) qtyAv.textContent = '—';
                 if (img) img.setAttribute('src', '');
@@ -3819,6 +3828,21 @@
                 grp.appendChild(opt);
             }
 
+            // Re-inject a saved warehouse into an outgoing <select> when it's not
+            // in the filtered picker (soft-deleted or de-duped by name), so the
+            // edit modal shows the saved value instead of rendering blank.
+            function ensureWarehouseOptionPresent(selectEl, id, name) {
+                if (!selectEl || id == null || id === '') return;
+                const val = String(id);
+                if (Array.from(selectEl.options).some(o => o.value === val)) return;
+                const opt = document.createElement('option');
+                opt.value = val;
+                opt.textContent = (name && String(name).trim() !== '')
+                    ? String(name)
+                    : ('Warehouse #' + val);
+                selectEl.appendChild(opt);
+            }
+
             async function addWrongSentReasonOption() {
                 const value = String(prompt('Enter new reason') || '').trim();
                 if (!value) return;
@@ -4057,16 +4081,35 @@
                     const outChk = document.getElementById('hold_issue_wrong_sent_outgoing_needed');
                     if (outChk) outChk.checked = !!record.wrong_sent_outgoing_needed;
                     const wsWh = document.getElementById('hold_issue_wrong_sent_outgoing_warehouse_id');
-                    if (wsWh) wsWh.value = record.wrong_sent_outgoing_warehouse_id
-                        ? String(record.wrong_sent_outgoing_warehouse_id) : '';
+                    if (wsWh) {
+                        ensureWarehouseOptionPresent(wsWh, record.wrong_sent_outgoing_warehouse_id, record.wrong_sent_outgoing_warehouse_name);
+                        wsWh.value = record.wrong_sent_outgoing_warehouse_id
+                            ? String(record.wrong_sent_outgoing_warehouse_id) : '';
+                    }
                     toggleWrongSentOutgoingWarehouseVisibility();
-                    // Lock the checkbox + show the "already processed" notice when
-                    // Shopify has already been decremented for this issue, so
-                    // re-saves don't double-deduct.
+                    // On EDIT the whole Wrong Item Sent Details block is view-only /
+                    // locked — it shouldn't be altered after the issue was created.
+                    // Create/new-entry stays editable (clearWrongItemSubsection()
+                    // unlocks first).
+                    {
+                        const wSku = document.getElementById('hold_issue_wrong_sent_sku');
+                        const wQty = document.getElementById('hold_issue_wrong_sent_qty');
+                        const wReason = document.getElementById('hold_issue_wrong_sent_reason');
+                        const wNotes = document.getElementById('hold_issue_issue_notes');
+                        const wCb = document.getElementById('hold_issue_wrong_sent_outgoing_needed');
+                        if (wSku) wSku.readOnly = true;
+                        if (wQty) wQty.readOnly = true;
+                        if (wReason) wReason.disabled = true;
+                        if (wNotes) wNotes.readOnly = true;
+                        if (wCb) wCb.disabled = true;
+                        if (wsWh) wsWh.disabled = true;
+                    }
+                    // Show the "already processed" notice when Shopify was
+                    // decremented for this issue.
                     if (record.wrong_sent_outgoing_processed_at) {
                         const cb = document.getElementById('hold_issue_wrong_sent_outgoing_needed');
                         const notice = document.getElementById('wrongSentOutgoingProcessedNotice');
-                        if (cb) { cb.checked = true; cb.disabled = true; }
+                        if (cb) cb.checked = true;
                         if (notice) notice.classList.remove('d-none');
                     }
                 } else if (whKey === 'wrong_qty') {
@@ -4118,14 +4161,32 @@
                     document.getElementById('hold_issue_replacement_tracking_30').value = record.replacement_tracking || '';
                     document.getElementById('hold_issue_outgoing_needed').checked = !!record.outgoing_needed;
                     const whSel = document.getElementById('hold_issue_outgoing_warehouse_id');
-                    if (whSel) whSel.value = record.outgoing_warehouse_id ? String(record.outgoing_warehouse_id) : '';
+                    if (whSel) {
+                        ensureWarehouseOptionPresent(whSel, record.outgoing_warehouse_id, record.outgoing_warehouse_name);
+                        whSel.value = record.outgoing_warehouse_id ? String(record.outgoing_warehouse_id) : '';
+                    }
                     toggleOutgoingWarehouseVisibility();
-                    // If outgoing was already processed, lock the checkbox so we
-                    // can't accidentally re-trigger and double-decrement Shopify.
+                    // On EDIT the whole Replacement Details block is view-only /
+                    // locked — a replacement (and its outgoing) shouldn't be
+                    // altered after the issue was created. Create/new-entry stays
+                    // editable because clearReplacementSubsection() unlocks first.
+                    {
+                        const rSku = document.getElementById('hold_issue_replacement_sku');
+                        const rQty = document.getElementById('hold_issue_replacement_qty_sending');
+                        const rTrk = document.getElementById('hold_issue_replacement_tracking_30');
+                        const rCb  = document.getElementById('hold_issue_outgoing_needed');
+                        if (rSku) rSku.readOnly = true;
+                        if (rQty) rQty.readOnly = true;
+                        if (rTrk) rTrk.readOnly = true;
+                        if (rCb) rCb.disabled = true;
+                        if (whSel) whSel.disabled = true;
+                    }
+                    // Show the "already processed" notice when Shopify was
+                    // decremented for this issue.
                     if (record.outgoing_processed_at) {
-                        const cb = document.getElementById('hold_issue_outgoing_needed');
                         const notice = document.getElementById('outgoingProcessedNotice');
-                        if (cb) { cb.checked = true; cb.disabled = true; }
+                        const cb = document.getElementById('hold_issue_outgoing_needed');
+                        if (cb) cb.checked = true;
                         if (notice) notice.classList.remove('d-none');
                     }
                     if (record.replacement_sku) fillReplacementSkuDetails();
@@ -4262,8 +4323,13 @@
                 if (img2 && img2.files && img2.files[0]) fd.append('image_2', img2.files[0]);
             }
 
+            let isSubmittingIssue = false;
+
             async function submitIssueForm(event) {
                 event.preventDefault();
+                // Guard against double-submit (e.g. rapid double left-click on Save),
+                // which was creating duplicate entries.
+                if (isSubmittingIssue) return;
                 hideAlert();
                 const sku = skuInput.value.trim();
                 const issue = issueInput.value.trim();
@@ -4463,6 +4529,13 @@
                     issueNotesVal = n;
                 }
 
+                const submitBtnEl = form.querySelector('button[type="submit"]');
+                const submitBtnLabel = submitBtnEl ? submitBtnEl.textContent : '';
+                isSubmittingIssue = true;
+                if (submitBtnEl) {
+                    submitBtnEl.disabled = true;
+                    submitBtnEl.textContent = 'Saving…';
+                }
                 try {
                     const extraSkuRows = document.querySelectorAll('#extra-sku-rows-container .extra-sku-row');
                     const isMultiSku = extraSkuRows.length > 0;
@@ -4587,6 +4660,12 @@
                     if (modalInstance) setTimeout(() => modalInstance.hide(), 250);
                 } catch (e) {
                     showAlert('Unable to save issue. Please try again.');
+                } finally {
+                    isSubmittingIssue = false;
+                    if (submitBtnEl) {
+                        submitBtnEl.disabled = false;
+                        submitBtnEl.textContent = submitBtnLabel;
+                    }
                 }
             }
 

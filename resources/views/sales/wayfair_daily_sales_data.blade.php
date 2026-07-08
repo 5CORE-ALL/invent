@@ -76,9 +76,10 @@
     <div class="toast-container"></div>
     <div class="row">
         <div class="card shadow-sm">
-            <div class="card-body py-3">
-                <h4>Wayfair Daily Sales Data (L30)</h4>
-                <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
+            <div class="card-body py-2">
+                <div class="d-flex align-items-center flex-wrap gap-2">
+                    <h5 class="mb-0 me-1">Wayfair Daily Sales Data (L30)</h5>
+
                     <!-- Column Visibility Dropdown -->
                     <div class="dropdown d-inline-block">
                         <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
@@ -92,40 +93,35 @@
                     <button id="show-all-columns-btn" class="btn btn-sm btn-outline-secondary">
                         <i class="fa fa-eye"></i> Show All
                     </button>
-
                     <button type="button" class="btn btn-sm btn-success" id="export-btn">
                         <i class="fa fa-file-excel"></i> Export
                     </button>
-                    <a href="{{ route('wayfair.pricing.view') }}" class="btn btn-sm btn-outline-primary">
-                        <i class="fa fa-tags"></i> Wayfair Analytics
-                    </a>
-                </div>
 
-                <!-- Summary Stats -->
-                <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
-                    <h6 class="mb-3">Summary Statistics</h6>
-                    <div class="d-flex flex-wrap gap-2">
-                        <span class="badge bg-primary fs-6 p-2" id="total-orders-badge"
-                            style="color: white; font-weight: bold;">Total Orders: 0</span>
-                        <span class="badge bg-success fs-6 p-2" id="total-quantity-badge"
-                            style="color: white; font-weight: bold;">Total Quantity: 0</span>
-                        <span class="badge fs-6 p-2" id="total-sales-badge"
-                            style="background-color: #17a2b8; color: white; font-weight: bold;">Total Sales: $0.00</span>
-                        <span class="badge bg-info fs-6 p-2" id="total-revenue-badge"
-                            style="color: white; font-weight: bold;">Total Revenue: $0.00</span>
-                        <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge"
-                            style="color: white; font-weight: bold;">GPFT %: 0%</span>
-                        <span class="badge fs-6 p-2" id="roi-percentage-badge"
-                            style="background-color: purple; color: white; font-weight: bold;">ROI %: 0%</span>
-                        <span class="badge bg-warning fs-6 p-2" id="avg-price-badge"
-                            style="color: black; font-weight: bold;">Avg Price: $0.00</span>
-                        <span class="badge bg-dark fs-6 p-2" id="pft-total-badge"
-                            style="color: white; font-weight: bold;">GPFT Total: $0.00</span>
-                        <span class="badge bg-secondary fs-6 p-2" id="l30-sales-badge"
-                            style="color: white; font-weight: bold;">L30 Sales: $0.00</span>
-                        <span class="badge bg-primary fs-6 p-2" id="total-cogs-badge"
-                            style="color: white; font-weight: bold;">Total COGS: $0.00</span>
-                    </div>
+                    <!-- Summary Stats — all badges inline in one row -->
+                    <span class="vr mx-1"></span>
+                    <span class="badge fs-6 p-2" id="y-sales-badge"
+                        style="background-color: #6f42c1; color: white; font-weight: bold;"
+                        title="Yesterday's Wayfair sales{{ !empty($ySalesDate) ? ' — ' . \Carbon\Carbon::parse($ySalesDate)->format('M j, Y') . ' (PT)' : '' }}. Σ unit price × qty ({{ number_format((int) ($yQuantity ?? 0)) }} qty, {{ number_format((int) ($yOrders ?? 0)) }} orders). Same source as the Wayfair row on /all-marketplace-master.">Y Sales: ${{ number_format((float) ($ySales ?? 0), 2) }}</span>
+                    <span class="badge bg-primary fs-6 p-2" id="total-orders-badge"
+                        style="color: white; font-weight: bold;">Total Orders: 0</span>
+                    <span class="badge bg-success fs-6 p-2" id="total-quantity-badge"
+                        style="color: white; font-weight: bold;">Total Quantity: 0</span>
+                    <span class="badge fs-6 p-2" id="total-sales-badge"
+                        style="background-color: #17a2b8; color: white; font-weight: bold;">Total Sales: $0.00</span>
+                    <span class="badge bg-info fs-6 p-2" id="total-revenue-badge"
+                        style="color: white; font-weight: bold;">Total Revenue: $0.00</span>
+                    <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge"
+                        style="color: white; font-weight: bold;">GPFT %: 0%</span>
+                    <span class="badge fs-6 p-2" id="roi-percentage-badge"
+                        style="background-color: purple; color: white; font-weight: bold;">ROI %: 0%</span>
+                    <span class="badge bg-warning fs-6 p-2" id="avg-price-badge"
+                        style="color: black; font-weight: bold;">Avg Price: $0.00</span>
+                    <span class="badge bg-dark fs-6 p-2" id="pft-total-badge"
+                        style="color: white; font-weight: bold;">GPFT Total: $0.00</span>
+                    <span class="badge bg-secondary fs-6 p-2" id="l30-sales-badge"
+                        style="color: white; font-weight: bold;">L30 Sales: $0.00</span>
+                    <span class="badge bg-primary fs-6 p-2" id="total-cogs-badge"
+                        style="color: white; font-weight: bold;">Total COGS: $0.00</span>
                 </div>
             </div>
             <div class="card-body" style="padding: 0;">

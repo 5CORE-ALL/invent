@@ -559,7 +559,10 @@ class ChannelMasterController extends Controller
                 return [
                     'total_orders' => $m['orders'],
                     'total_quantity' => $m['qty'],
-                    'total_revenue' => $m['sales'],
+                    // Reported sales = base price × qty (Temu "Base price sales"), NOT the
+                    // FB-adjusted figure, so /all-marketplace-master matches the /temu-tabulator
+                    // Total Revenue badge and Temu Seller Central.
+                    'total_revenue' => $m['base_sales'],
                 ];
             } catch (\Throwable $e) {
                 Log::warning('Temu orders live sales summary failed: '.$e->getMessage());
@@ -727,7 +730,8 @@ class ChannelMasterController extends Controller
                 $m = TemuShopifySalesService::computeMetricsFromOrders($start, $end);
 
                 return [
-                    'sales' => (float) $m['sales'],
+                    // Base-price sales for the displayed L-60 figure (matches L30 reporting).
+                    'sales' => (float) $m['base_sales'],
                     'orders' => (int) $m['orders'],
                 ];
             } catch (\Throwable $e) {
@@ -5105,21 +5109,24 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Reverb: same line revenue as /reverb-pricing (Σ quantity × amount per row).
+     * Reverb Yesterday sales — matches /reverb-sales: UTC yesterday (order_date is stored
+     * as a UTC date), summing the Reverb order total (`amount`, product + shipping + tax).
      */
     private function computeReverbYSalesLikeAmazon(): ?float
     {
-        $latestRaw = DB::table('reverb_daily_data')->whereNotNull('order_date')->max('order_date');
-        if (!$latestRaw) {
+        if (! Schema::hasTable('reverb_daily_data')) {
             return null;
         }
 
-        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
-        $yDate = $latestPacific->copy()->subDay()->toDateString();
+        $yDate = Carbon::now('UTC')->subDay()->toDateString();
 
         $sum = (float) DB::table('reverb_daily_data')
             ->whereDate('order_date', $yDate)
-            ->selectRaw('COALESCE(SUM(quantity * COALESCE(NULLIF(product_subtotal, 0), amount, 0)), 0) as revenue')
+            ->whereRaw('LOWER(COALESCE(status, "")) NOT LIKE ?', ['%cancel%'])
+            ->whereRaw('LOWER(COALESCE(status, "")) NOT LIKE ?', ['%refund%'])
+            ->whereNotNull('sku')->where('sku', '!=', '')
+            ->whereNotNull('order_number')->where('order_number', '!=', '')
+            ->selectRaw('COALESCE(SUM(COALESCE(NULLIF(amount, 0), product_subtotal, 0)), 0) as revenue')
             ->value('revenue');
 
         return round($sum, 2);
@@ -5706,21 +5713,29 @@ class ChannelMasterController extends Controller
         return round($sum, 2);
     }
 
+    /**
+     * Reverb L7 sales — matches /reverb-sales: UTC window of today + 7 previous days
+     * (subDays(7), the same +1-day convention Reverb's dashboard uses), summing the Reverb
+     * order total (`amount`, product + shipping + tax).
+     */
     private function computeReverbL7SalesLikeAmazon(): ?float
     {
-        $latestRaw = DB::table('reverb_daily_data')->whereNotNull('order_date')->max('order_date');
-        if (!$latestRaw) {
+        if (! Schema::hasTable('reverb_daily_data')) {
             return null;
         }
 
-        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
-        $l7StartDate = $latestPacific->copy()->subDay()->subDays(6)->toDateString();
-        $l7EndDate = $latestPacific->copy()->subDay()->toDateString();
+        $nowUtc = Carbon::now('UTC');
+        $l7StartDate = $nowUtc->copy()->subDays(7)->toDateString();
+        $l7EndDate = $nowUtc->toDateString();
 
         $sum = (float) DB::table('reverb_daily_data')
             ->where('order_date', '>=', $l7StartDate)
             ->where('order_date', '<=', $l7EndDate)
-            ->selectRaw('COALESCE(SUM(quantity * COALESCE(amount, 0)), 0) as revenue')
+            ->whereRaw('LOWER(COALESCE(status, "")) NOT LIKE ?', ['%cancel%'])
+            ->whereRaw('LOWER(COALESCE(status, "")) NOT LIKE ?', ['%refund%'])
+            ->whereNotNull('sku')->where('sku', '!=', '')
+            ->whereNotNull('order_number')->where('order_number', '!=', '')
+            ->selectRaw('COALESCE(SUM(COALESCE(NULLIF(amount, 0), product_subtotal, 0)), 0) as revenue')
             ->value('revenue');
 
         return round($sum, 2);
@@ -7316,19 +7331,24 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Pacific calendar windows for Reverb daily order rows (same anchor as computeReverbL7SalesLikeAmazon).
+     * UTC calendar windows for Reverb daily order rows. order_date is stored as a UTC date
+     * (to match Reverb's dashboard), so we anchor on UTC "today" and do NOT run a timezone
+     * conversion on the date-only column. Same basis as computeReverbL7SalesLikeAmazon.
      */
     private function getReverbDailyDataPacificWindows(): ?array
     {
+        if (! Schema::hasTable('reverb_daily_data')) {
+            return null;
+        }
         $latestRaw = DB::table('reverb_daily_data')->whereNotNull('order_date')->max('order_date');
         if (! $latestRaw) {
             return null;
         }
 
-        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
-        // Use latest date (today) instead of yesterday to match sales badge
-        $l30EndDate = $latestPacific->toDateString();  // Today (not yesterday)
-        $l30StartDate = $latestPacific->copy()->subDays(29)->toDateString();  // 30 days including today
+        $nowUtc = Carbon::now('UTC');
+        // Match /reverb-sales L30 window (today + 30 previous days = Reverb "last 30 days").
+        $l30EndDate = $nowUtc->toDateString();
+        $l30StartDate = $nowUtc->copy()->subDays(30)->toDateString();
 
         // L60 column = "prior 30 days" (days 31-60), matching Amazon/Temu/Walmart/etc.
         // Growth = (L30 - L60) / L60 * 100 then makes sense across all channels.
@@ -7434,8 +7454,12 @@ class ChannelMasterController extends Controller
             // Bump Fees (matching frontend badge calculation)
             $bumpFee = (float) ($row->bump_fee ?? 0);
 
+            // Displayed "Sales" = Reverb order total (amount = product + shipping + tax),
+            // matching /reverb-sales. Profit/COGS above stay on the product price.
+            $lineSales = $amount > 0 ? $amount : $productSubtotal;
+
             $totalQty += $qty;
-            $totalRev += $lineTotal;
+            $totalRev += $lineSales;
             $totalCogs += $lineCogs;
             $totalProfit += $tPft;
             $totalBumpFees += $bumpFee;
@@ -7985,6 +8009,10 @@ class ChannelMasterController extends Controller
         $l30 = TemuShopifySalesService::computeMetricsFromOrders($l30Start, $l30End);
         $l60 = TemuShopifySalesService::computeMetricsFromOrders($l60Start, $l60End);
 
+        // Margin math (GPFT%, ROI, TACOS%) stays on the FB-adjusted `sales` so it matches
+        // /temu-decrease and the /temu-tabulator profit columns. The *displayed* L30/L60
+        // Sales use `base_sales` (base price × qty) so the row mirrors Temu Seller Central's
+        // "Base price sales" — the +$2.99/unit freight uplift was overstating reported sales.
         $l30Sales = $l30['sales'];
         $l30Orders = $l30['orders'];
         $totalQuantity = $l30['qty'];
@@ -7992,6 +8020,10 @@ class ChannelMasterController extends Controller
         $totalCogs = $l30['cogs'];
         $l60Sales = $l60['sales'];
         $l60Orders = $l60['orders'];
+
+        // Reported (base-price) sales for display + growth.
+        $l30SalesReported = $l30['base_sales'];
+        $l60SalesReported = $l60['base_sales'];
 
         $gProfitPct = $l30Sales > 0 ? round(($totalProfit / $l30Sales) * 100, 2) : 0.0;
         $gRoi = $totalCogs > 0 ? round(($totalProfit / $totalCogs) * 100, 2) : 0.0;
@@ -8008,15 +8040,15 @@ class ChannelMasterController extends Controller
         $netProfit = $totalProfit - $totalAdSpend;
         $nRoi = $totalCogs > 0 ? round(($netProfit / $totalCogs) * 100, 2) : 0.0;
 
-        $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
+        $growth = $l60SalesReported > 0 ? (($l30SalesReported - $l60SalesReported) / $l60SalesReported) * 100 : 0;
 
         $channelData = ChannelMaster::where('channel', 'Temu')->first();
         $mapMissCounts = $this->getTemuLiveMapMissNMapFromDecreaseData(false);
 
         $result[] = [
             'Channel '   => 'Temu',
-            'L-60 Sales' => intval($l60Sales),
-            'L30 Sales'  => intval($l30Sales),
+            'L-60 Sales' => intval($l60SalesReported),
+            'L30 Sales'  => intval($l30SalesReported),
             'Growth'     => round($growth, 2) . '%',
             'L60 Orders' => $l60Orders,
             'L30 Orders' => $l30Orders,

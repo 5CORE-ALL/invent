@@ -2,6 +2,8 @@
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ asset('css/select-searchable.css') }}">
+    <link rel="stylesheet" href="{{ asset('css/exec-typeahead.css') }}">
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <style>
         .tabulator .tabulator-header {
@@ -31,8 +33,8 @@
         .mip-new-img-aspect { width: 44px; height: 44px; margin: 0 auto; }
         .mip-new-img-aspect img { width: 100%; height: 100%; object-fit: contain; cursor: pointer; display: block; }
 
-        /* Executive colored select */
-        .toa-exec-select { border: none; border-radius: 6px; padding: 3px 6px; font-size: 0.8rem; font-weight: 600; cursor: pointer; outline: none; width: 100%; }
+        /* Executive pill cell (matches Forecast Analysis) */
+        .tabulator .tabulator-cell.mip-exec-cell { padding-left: 2px !important; padding-right: 2px !important; }
 
         /* Stage dot + invisible select overlay */
         .mip-stage-dot { position: relative; width: 44px; height: 30px; margin: 0 auto; }
@@ -271,15 +273,12 @@
                             </div>
 
                             <div class="mip-field">
-                                <select id="mip-exec-filter" class="form-select form-select-sm border-primary mip-filter-field" aria-label="Executive filter" title="Executive filter">
+                                <select id="mip-exec-filter" class="form-select form-select-sm border-primary mip-filter-field exec-typeahead" aria-label="Executive filter" title="Executive filter" data-eta-placeholder="Search executive…">
                                     <option value="">Executive</option>
                                     <option value="__un__">Unassigned</option>
-                                    <option value="Atin">Atin</option>
-                                    <option value="Jack">Jack</option>
-                                    <option value="Nitish">Nitish</option>
-                                    <option value="Ajay">Ajay</option>
-                                    <option value="Candy">Candy</option>
-                                    <option value="Sruti">Sruti</option>
+                                    @foreach (($execUsers ?? []) as $execName)
+                                        <option value="{{ $execName }}">{{ $execName }}</option>
+                                    @endforeach
                                 </select>
                             </div>
 
@@ -485,6 +484,9 @@
 @section('script')
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <script src="{{ asset('js/select-searchable.js') }}"></script>
+    <script src="{{ asset('js/exec-typeahead.js') }}"></script>
+    <script src="{{ asset('js/exec-colors.js') }}"></script>
     <script>
         document.addEventListener("DOMContentLoaded", function () {
             document.body.style.zoom = "96%";
@@ -576,15 +578,18 @@
             // searchable Supplier dropdown so every supplier is selectable, not just ones already in the grid.
             const ALL_SUPPLIERS = @json($allSuppliers ?? []);
 
-            const EXEC_OPTIONS = ['Atin', 'Jack', 'Nitish', 'Ajay', 'Candy', 'Sruti'];
-            const EXEC_COLORS = {
-                'Atin':   { bg: '#3b82f6', text: '#fff' },
-                'Jack':   { bg: '#10b981', text: '#fff' },
-                'Nitish': { bg: '#8b5cf6', text: '#fff' },
-                'Ajay':   { bg: '#f59e0b', text: '#fff' },
-                'Candy':  { bg: '#ec4899', text: '#fff' },
-                'Sruti':  { bg: '#14b8a6', text: '#fff' },
-            };
+            // Executive list — dynamic from the users table (server-provided), matching
+            // the Forecast Analysis page. Drives the Exec column list editor, the filter
+            // and the bulk-edit modal.
+            const EXEC_OPTIONS = @json($execUsers ?? []);
+            const EXEC_EDITOR_VALUES = (function () {
+                const o = { "": "NA" };
+                (EXEC_OPTIONS || []).forEach(function (n) {
+                    const v = String(n == null ? '' : n).trim();
+                    if (v) o[v] = v;
+                });
+                return o;
+            })();
             const STAGE_COLORS = {
                 'appr_req': '#facc15', 'mip': '#2563eb', 'to_order_analysis': '#c2410c',
                 'r2s': '#16a34a', 'all_good': '#22c55e', '': '#94a3b8',
@@ -662,12 +667,12 @@
 
             // ---- formatters ----
             function execFormatter(cell) {
-                const row = cell.getRow().getData();
-                const val = (cell.getValue() || '').trim();
-                const c = EXEC_COLORS[val] || { bg: '#e5e7eb', text: '#6b7280' };
-                let opts = '<option value=""' + (val === '' ? ' selected' : '') + '>— Unassigned —</option>';
-                EXEC_OPTIONS.forEach(function (n) { opts += '<option value="' + n + '"' + (n === val ? ' selected' : '') + '>' + n + '</option>'; });
-                return '<select class="toa-exec-select" data-sku="' + esc(row.sku) + '" style="background:' + c.bg + ';color:' + c.text + ';">' + opts + '</select>';
+                const value = (cell.getValue() || '').trim();
+                if (!value) {
+                    return '<span style="display:inline-block;padding:2px 6px;border-radius:6px;background:#e5e7eb;color:#6b7280;font-size:0.72rem;font-weight:600;cursor:pointer;white-space:nowrap;" title="Click to assign">NA</span>';
+                }
+                const c = (window.ExecColors ? window.ExecColors.get(value) : { bg: '#6b7280', text: '#fff' });
+                return '<span style="display:inline-block;padding:2px 6px;border-radius:6px;background:' + c.bg + ';color:' + c.text + ';font-size:0.72rem;font-weight:700;cursor:pointer;white-space:nowrap;" title="Click to change">' + esc(value) + '</span>';
             }
             function stageFormatter(cell) {
                 const d = cell.getRow().getData();
@@ -1049,6 +1054,50 @@
                         }
                     },
                     { title: "Executive", field: "exec", width: 120, hozAlign: "center",
+                      cssClass: "mip-exec-cell",
+                      editor: "list",
+                      editorParams: {
+                          values: EXEC_EDITOR_VALUES,
+                          defaultValue: "",
+                          autocomplete: true,
+                          listOnEmpty: true,
+                          freetext: false,
+                          allowEmpty: true,
+                          clearable: true,
+                          placeholderEmpty: "No executive found",
+                          verticalNavigation: "editor",
+                      },
+                      editable: function () { return !showArchived; },
+                      cellClick: function (e, cell) {
+                          e.stopPropagation();
+                          if (showArchived) return;
+                          cell.edit();
+                      },
+                      cellEditing: function (cell) { cell._execPrev = cell.getValue(); },
+                      cellEdited: function (cell) {
+                          const row = cell.getRow();
+                          const d = row.getData();
+                          const next = String(cell.getValue() || '').trim();
+                          const prev = String(cell._execPrev || '').trim();
+                          delete cell._execPrev;
+                          if (next === prev) return;
+                          const sku = d.sku || '';
+                          const prevExec = (d.exec == null) ? null : d.exec;
+                          row.update({ exec: next });
+                          postUpdateLink(sku, 'Exec', next || null)
+                              .then(function (r) {
+                                  if (!r || !r.success) {
+                                      row.update({ exec: prevExec });
+                                      cell.setValue(prev, true);
+                                      alert((r && r.message) || 'Could not save executive.');
+                                  }
+                              })
+                              .catch(function (err) {
+                                  row.update({ exec: prevExec });
+                                  cell.setValue(prev, true);
+                                  alert('Could not save executive: ' + (err && err.message ? err.message : err));
+                              });
+                      },
                       formatter: execFormatter },
                     { title: "Supplier", field: "supplier", width: 140, hozAlign: "center",
                       formatter: supplierFormatter,
@@ -1082,6 +1131,16 @@
                           return '<span class="mip-sku-text">' + esc(v) + '</span>' +
                               '<i class="far fa-copy mip-sku-copy" data-sku="' + esc(v) + '" title="Copy SKU"></i>';
                       } },
+                    { title: "MOQ", field: "moq", width: 70, hozAlign: "center",
+                      headerTooltip: "Minimum Order Quantity — same value as To Order Analysis & Forecast (read-only here)",
+                      formatter: function (cell) {
+                          const v = cell.getValue();
+                          if (v == null || v === '' || Number(v) === 0) {
+                              return '<span class="text-muted">0</span>';
+                          }
+                          return '<span style="font-weight:600;">' + esc(String(v)) + '</span>';
+                      }
+                    },
                     { title: "QTY", field: "qty", width: 90, hozAlign: "center",
                       // Read-only display by default; click to open a number editor.
                       // Previously rendered an always-open <input> so the value looked editable
@@ -1402,36 +1461,7 @@
                 const sku = d.sku || '';
                 const mipId = d.id || 0;
 
-                if (t.classList.contains('toa-exec-select')) {
-                    const v = t.value;
-                    const prevExec = (d.exec == null) ? null : d.exec;
-                    const c = EXEC_COLORS[v] || { bg: '#e5e7eb', text: '#6b7280' };
-                    t.style.background = c.bg; t.style.color = c.text;
-                    // OPTIMISTIC update: commit the new exec to the row data immediately.
-                    //
-                    // The old code waited for the server response before calling
-                    // row.update({ exec: v }), which left the new value sitting only in
-                    // the raw <select> DOM. If Tabulator re-rendered the cell during the
-                    // async save (page change, filter, another row update, dataLoaded,
-                    // header-checkbox sync, etc.), it regenerated the dropdown from the
-                    // OLD row data — so the user saw their just-picked executive snap
-                    // back to "Unassigned" intermittently.
-                    //
-                    // Now we update the row first; on save failure we roll back and
-                    // alert. This eliminates the visual race entirely.
-                    row.update({ exec: v });
-                    postUpdateLink(sku, 'Exec', v || null)
-                        .then(r => {
-                            if (!r || !r.success) {
-                                row.update({ exec: prevExec });
-                                alert((r && r.message) || 'Could not save executive.');
-                            }
-                        })
-                        .catch(err => {
-                            row.update({ exec: prevExec });
-                            alert('Could not save executive: ' + (err && err.message ? err.message : err));
-                        });
-                } else if (t.classList.contains('editable-stage')) {
+                if (t.classList.contains('editable-stage')) {
                     const v = t.value;
                     postStage(sku, d.parent, v).done(function () {
                         row.update({ stage: v });
@@ -1764,7 +1794,7 @@
             const YESNO = [['Yes', 'Yes'], ['No', 'No']];
             const EDIT_FIELDS = [
                 { key: 'sku', label: 'SKU', type: 'text', readonly: true },
-                { key: 'exec', label: 'Executive', type: 'select', options: function () { return [['', '— Unassigned —']].concat(EXEC_OPTIONS.map(function (n) { return [n, n]; })); } },
+                { key: 'exec', label: 'Executive', type: 'select', searchable: true, options: function () { return [['', '— Unassigned —']].concat(EXEC_OPTIONS.map(function (n) { return [n, n]; })); } },
                 { key: 'qty', label: 'QTY', type: 'number' },
                 { key: 'created_at', label: 'O Date', type: 'date' },
                 { key: 'delivery_date', label: 'D Date', type: 'date' },
@@ -1821,7 +1851,7 @@
                         const opts = (f.options ? f.options() : []).map(function (o) {
                             return '<option value="' + esc(o[0]) + '"' + (String(o[0]) === String(val) ? ' selected' : '') + '>' + esc(o[1]) + '</option>';
                         }).join('');
-                        input = '<select class="form-select form-select-sm" id="' + id + '" data-key="' + esc(f.key) + '"' + (f.readonly ? ' disabled' : '') + '>' + opts + '</select>';
+                        input = '<select class="form-select form-select-sm' + (f.searchable ? ' select-searchable' : '') + '" id="' + id + '" data-key="' + esc(f.key) + '"' + (f.readonly ? ' disabled' : '') + '>' + opts + '</select>';
                     } else if (f.type === 'textarea') {
                         input = '<textarea class="form-control form-control-sm" id="' + id + '" data-key="' + esc(f.key) + '" rows="2"' + (f.readonly ? ' readonly' : '') + '>' + esc(val) + '</textarea>';
                     } else {
@@ -1834,7 +1864,9 @@
                         (f.note ? '<div class="text-muted" style="font-size:0.7rem;">' + esc(f.note) + '</div>' : '') +
                         '</div>';
                 });
-                document.getElementById('mip-edit-form').innerHTML = html;
+                const editForm = document.getElementById('mip-edit-form');
+                editForm.innerHTML = html;
+                if (window.SelectSearchable) window.SelectSearchable.init(editForm);
                 new bootstrap.Modal(document.getElementById('mipEditModal')).show();
             }
             document.getElementById('mip-edit-save').addEventListener('click', async function () {

@@ -955,6 +955,70 @@ class ProductMasterController extends Controller
     }
 
     /**
+     * Update verified data status for multiple products at once (bulk).
+     */
+    public function updateVerifiedBulk(Request $request)
+    {
+        $request->headers->set('Accept', 'application/json');
+
+        $validated = $request->validate([
+            'skus' => 'required|array|min:1',
+            'skus.*' => 'required|string',
+            'verified_data' => 'required|integer|in:0,1',
+        ]);
+
+        $verifiedValue = (int) $validated['verified_data'];
+        $skus = array_values(array_unique(array_map('strval', $validated['skus'])));
+
+        $updated = 0;
+        $notFound = [];
+
+        try {
+            foreach ($skus as $sku) {
+                $product = ProductMaster::where('sku', $sku)->first();
+
+                if (! $product) {
+                    $notFound[] = $sku;
+
+                    continue;
+                }
+
+                $values = is_array($product->Values) ? $product->Values : json_decode($product->Values, true);
+                if (! is_array($values)) {
+                    $values = [];
+                }
+
+                $values['verified_data'] = $verifiedValue;
+                $product->Values = $values;
+                $product->save();
+                $updated++;
+            }
+
+            $message = "Verified status updated for {$updated} SKU(s).";
+            if (! empty($notFound)) {
+                $message .= ' '.count($notFound).' SKU(s) not found.';
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => $message,
+                'data' => [
+                    'updated' => $updated,
+                    'verified_data' => $verifiedValue,
+                    'not_found' => $notFound,
+                ],
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error bulk updating verified data: '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error updating verified status: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
      * Check if a value is considered missing
      */
     private function isDataMissing($value, $isNumeric = false, $field = null)

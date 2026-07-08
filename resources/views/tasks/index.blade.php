@@ -453,11 +453,6 @@
                 flex: 1 1 58px;
                 min-width: 50px;
             }
-            .task-toolbar-wrap .toolbar-field-date {
-                flex: 0 0 112px;
-                min-width: 112px;
-                max-width: 112px;
-            }
             .task-toolbar-wrap .toolbar-field-select {
                 flex: 1 1 68px;
                 min-width: 62px;
@@ -760,6 +755,11 @@
             flex-shrink: 0;
         }
 
+        /* Hide the icon square on all task stat cards. */
+        .stat-card .stat-icon {
+            display: none !important;
+        }
+
         .stat-content {
             flex: 1;
             min-width: 0;
@@ -834,23 +834,6 @@
         }
         .stat-card-cyan .stat-icon {
             background: linear-gradient(135deg, #0dcaf0 0%, #0891b2 100%);
-        }
-
-        /* Info - Page ETC total */
-        .stat-card-info {
-            border-left-color: #3bc9e8;
-        }
-        .stat-card-info .stat-icon {
-            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-        }
-
-        /* Hide the year (YYYY) portion of the start-date filter (WebKit/Chromium). */
-        #filter-date::-webkit-datetime-edit-year-field {
-            display: none;
-        }
-        /* Hide the "/" separator that precedes the year field. */
-        #filter-date::-webkit-datetime-edit-text:last-of-type {
-            display: none;
         }
 
         /* Red - Overdue */
@@ -949,6 +932,70 @@
         }
         .stat-card-purple .stat-icon {
             background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+        }
+
+        /* ── Solid colored "pill" badges (match the forecast summary badge UI) ──
+           Flat solid background per card, centered compact label+value, no white
+           card / left-accent / shadow. */
+        .stats-row .stat-card,
+        .stats-row.flex-nowrap > .col > .stat-card {
+            border: none !important;
+            border-radius: 8px;
+            box-shadow: none;
+            justify-content: center;
+            text-align: center;
+            padding: 6px 8px;
+            color: #fff;
+        }
+        .stats-row .stat-card:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+        }
+        .stats-row .stat-content {
+            flex-direction: row;
+            flex-wrap: wrap;
+            align-items: baseline;
+            justify-content: center;
+            column-gap: 5px;
+            row-gap: 0;
+        }
+        .stats-row .stat-card .stat-label,
+        .stats-row .stat-card .stat-value,
+        .stats-row .stat-card .stat-unit {
+            color: inherit !important;
+        }
+        .stats-row .stat-card .stat-label {
+            font-size: 13px;
+            opacity: 0.95;
+            margin-bottom: 0;
+        }
+        .stats-row .stat-card .stat-value {
+            font-size: 13px;
+        }
+        /* Keep label + value on the same line. */
+        .stats-row .stat-card .stat-unit {
+            flex-basis: 100%;
+            font-size: 8px;
+        }
+
+        /* Solid backgrounds per metric colour. */
+        .stats-row .stat-card-blue        { background: #3b7ddd !important; }
+        .stats-row .stat-card-cyan        { background: #0dcaf0 !important; }
+        .stats-row .stat-card-red         { background: #dc3545 !important; }
+        .stats-row .stat-card-green       { background: #28a745 !important; }
+        .stats-row .stat-card-yellow      { background: #f0ad4e !important; }
+        .stats-row .stat-card-teal        { background: #20c997 !important; }
+        .stats-row .stat-card-perf-score  { background: #7c3aed !important; }
+        .stats-row .stat-card-red-missed  { background: #dc3545 !important; }
+        .stats-row .stat-card-orange      { background: #fd7e14 !important; }
+        .stats-row .stat-card-purple      { background: #6610f2 !important; }
+
+        /* Lighter fills read better with dark text (mirrors the forecast badges). */
+        .stats-row .stat-card-cyan,
+        .stats-row .stat-card-yellow,
+        .stats-row .stat-card-teal,
+        .stats-row .stat-card-green {
+            color: #1f2d3d;
         }
 
         /* Responsive adjustments */
@@ -1627,7 +1674,7 @@
                         <i class="mdi mdi-format-list-bulleted"></i>
                     </div>
                     <div class="stat-content text-center">
-                        <div class="stat-label">TOTAL</div>
+                        <div class="stat-label">Pending</div>
                         <div class="stat-value">{{ $stats['total'] }}</div>
                     </div>
                 </div>
@@ -1653,9 +1700,8 @@
                         <i class="mdi mdi-briefcase-clock"></i>
                     </div>
                     <div class="stat-content text-center">
-                        <div class="stat-label">ETC 30D</div>
+                        <div class="stat-label">ETC L30 D</div>
                         <div class="stat-value">{{ (int) round(($stats['etc_last_30'] ?? 0) / 60) }}h</div>
-                        <div class="stat-unit" title="Last 30 days ETC including deleted tasks">hours</div>
                     </div>
                 </div>
             </div>
@@ -1667,9 +1713,8 @@
                         <i class="mdi mdi-timer"></i>
                     </div>
                     <div class="stat-content text-center">
-                        <div class="stat-label">ATC 30D</div>
+                        <div class="stat-label">ATC L30</div>
                         <div class="stat-value">{{ (int) round(($stats['atc_last_30'] ?? 0) / 60) }}h</div>
-                        <div class="stat-unit" title="Last 30 days ATC including deleted tasks">hours</div>
                     </div>
                 </div>
             </div>
@@ -1683,7 +1728,6 @@
                     <div class="stat-content text-center">
                         <div class="stat-label">TAT</div>
                         <div class="stat-value">{{ isset($stats['tat_avg_30']) && $stats['tat_avg_30'] !== null ? (int) round((float) $stats['tat_avg_30']) : '-' }}</div>
-                        <div class="stat-unit" title="Average turnaround (days) for tasks completed in the last 30 days">30-day avg</div>
                     </div>
                 </div>
             </div>
@@ -1697,7 +1741,6 @@
                     <div class="stat-content text-center">
                         <div class="stat-label">AVG SCORE</div>
                         <div class="stat-value">{{ isset($stats['average_score']) && $stats['average_score'] !== null ? number_format($stats['average_score'], 2) : '-' }}</div>
-                        <div class="stat-unit" title="Your average score from completed performance reviews (out of 5). Not affected by task filters.">Your avg / 5</div>
                     </div>
                 </div>
             </div>
@@ -1711,7 +1754,6 @@
                     <div class="stat-content text-center">
                         <div class="stat-label">MISSED</div>
                         <div class="stat-value">{{ $stats['missed_count_30'] ?? 0 }}</div>
-                        <div class="stat-unit" title="Missed / not done tasks with start date in the last 30 days">Last 30 days</div>
                     </div>
                 </div>
             </div>
@@ -1725,24 +1767,10 @@
                     <div class="stat-content text-center">
                         <div class="stat-label">PENDING ETC</div>
                         <div class="stat-value">0h</div>
-                        <div class="stat-unit" title="Total ETC (estimated time) of pending tasks not yet Done or Archived">hours</div>
                     </div>
                 </div>
             </div>
 
-            <!-- Page ETC total (sum of ETC for tasks shown on this page) -->
-            <div class="col">
-                <div class="stat-card stat-card-info" title="Total ETC of tasks shown on this page">
-                    <div class="stat-icon">
-                        <i class="mdi mdi-clock-outline"></i>
-                    </div>
-                    <div class="stat-content text-center">
-                        <div class="stat-label">ETC</div>
-                        <div class="stat-value" id="etc-page-total">0m</div>
-                        <div class="stat-unit">this page</div>
-                    </div>
-                </div>
-            </div>
         </div>
 
         <div class="row">
@@ -1863,13 +1891,6 @@
                                     <i class="mdi mdi-refresh"></i>
                                 </button>
 
-                                @if(!empty($canShowTaskMaintenanceButtons))
-                                <button type="button" class="btn btn-outline-danger" id="expire-daily-auto-btn"
-                                    title="Auto-delete DAILY automated tasks not completed before the California business day ends. Runs at 12:05 AM {{ $taskBusinessTzShort ?? 'PT' }} each night. Weekly/monthly not affected.">
-                                    <i class="mdi mdi-magnify"></i>
-                                </button>
-                                @endif
-
                                 <div class="btn-group task-playback-group task-playback-assignor" role="group" aria-label="Assignor playback">
                                     <button type="button" id="task-play-backward-assignor" class="btn btn-light btn-sm rounded-circle p-0" title="Previous assignor" disabled>
                                         <i class="mdi mdi-skip-previous"></i>
@@ -1911,10 +1932,6 @@
                             <div class="col-12 mb-2 toolbar-field toolbar-field-task">
                                 <input type="text" id="filter-task" class="form-control form-control-sm" placeholder="Task" autocomplete="off" onkeydown="if(event.key === 'Enter') { event.preventDefault(); return false; }">
                             </div>
-                            <div class="col-12 mb-2 toolbar-field toolbar-field-date">
-                                <input type="date" id="filter-date" class="form-control form-control-sm" title="Filter by start date">
-                            </div>
-                            
                             <div class="col-12 mb-2 toolbar-field toolbar-field-select">
                                 <select id="filter-assignor" class="form-select form-select-sm task-filter-user-select" title="Search by name or email">
                                     <option value=""></option>
@@ -2709,6 +2726,140 @@
     </div>
 </div>
 
+<!-- Shared Add / Edit Task side panel (offcanvas) — replaces the separate create/edit pages -->
+<div class="offcanvas offcanvas-end" tabindex="-1" id="taskFormOffcanvas" aria-labelledby="taskFormOffcanvasLabel"
+     style="width: 440px; max-width: 92vw;">
+    <div class="offcanvas-header" style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color:#fff; padding: 12px 16px;">
+        <h5 class="offcanvas-title mb-0" id="taskFormOffcanvasLabel">
+            <i class="mdi mdi-pencil me-1" id="task-form-title-icon"></i>
+            <span id="task-form-title">Edit Task</span>
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+    </div>
+    <div class="offcanvas-body" style="padding: 15px;">
+        <div id="task-form-alert"></div>
+
+        <div id="task-form-assignee-note" class="alert alert-info py-2 px-2 mb-2" style="font-size: 11px; display: none;">
+            <i class="mdi mdi-information-outline me-1"></i>
+            You're an assignee on this task. Group, task title, date and assignee stay locked —
+            but you can still attach reference / SOP / proof links below.
+        </div>
+
+        <form id="task-form" enctype="multipart/form-data">
+            @csrf
+            <input type="hidden" name="_method" id="tf_method" value="">
+            <input type="hidden" id="tf_task_id" value="">
+
+            <div class="mb-2">
+                <label for="tf_group" class="form-label fw-bold" style="font-size: 12px;">Group</label>
+                <input type="text" class="form-control form-control-sm tf-lockable" id="tf_group" name="group" placeholder="Group">
+            </div>
+            <div class="mb-2">
+                <label for="tf_title" class="form-label fw-bold" style="font-size: 12px;">Task <span class="text-danger">*</span></label>
+                <input type="text" class="form-control form-control-sm tf-lockable" id="tf_title" name="title" placeholder="Enter Task">
+            </div>
+            <div class="mb-2">
+                <label for="tf_assignee_id" class="form-label fw-bold" style="font-size: 12px;">Assignee</label>
+                <select class="form-select form-select-sm tf-lockable tf-select2" id="tf_assignee_id" name="assignee_id">
+                    <option value="">Please Select</option>
+                    @foreach($users as $user)
+                        <option value="{{ $user->id }}">{{ $user->name }}</option>
+                    @endforeach
+                </select>
+            </div>
+            <div class="mb-2">
+                <label for="tf_etc_minutes" class="form-label fw-bold" style="font-size: 12px;">ETC (Min) <span class="text-danger">*</span></label>
+                <input type="number" class="form-control form-control-sm tf-lockable" id="tf_etc_minutes" name="etc_minutes" placeholder="10" min="1">
+            </div>
+
+            <div class="mb-2">
+                <button type="button" class="btn btn-sm btn-outline-secondary w-100" id="tf-toggle-more" style="font-size: 11px;">
+                    <i class="mdi mdi-chevron-down" id="tf-toggle-icon"></i> More Fields
+                </button>
+            </div>
+
+            <div id="tf-more-fields" style="display: none;">
+                <div class="mb-2">
+                    <label for="tf_priority" class="form-label fw-bold" style="font-size: 12px;">Priority <span class="text-danger">*</span></label>
+                    <select class="form-select form-select-sm tf-lockable" id="tf_priority" name="priority">
+                        <option value="normal">Normal</option>
+                        <option value="high">Urgent</option>
+                        <option value="low">Low</option>
+                    </select>
+                </div>
+                <div class="mb-2">
+                    <label for="tf_assignor_id" class="form-label fw-bold" style="font-size: 12px;">Assignor <span class="text-danger">*</span></label>
+                    @if($isAdmin)
+                        <select class="form-select form-select-sm tf-select2" id="tf_assignor_id" name="assignor_id">
+                            @foreach($users as $user)
+                                <option value="{{ $user->id }}">{{ $user->name }}</option>
+                            @endforeach
+                        </select>
+                    @else
+                        <input type="text" class="form-control form-control-sm" id="tf_assignor_display" readonly>
+                        <input type="hidden" id="tf_assignor_id" name="assignor_id" value="{{ Auth::id() }}">
+                    @endif
+                </div>
+                <div class="mb-2">
+                    <label for="tf_tid" class="form-label fw-bold" style="font-size: 12px;">TID <span class="text-danger">*</span></label>
+                    <input type="datetime-local" class="form-control form-control-sm tf-lockable" id="tf_tid" name="tid">
+                </div>
+                <div class="row">
+                    <div class="col-6 mb-2">
+                        <label for="tf_l1" class="form-label fw-bold" style="font-size: 12px;">L1</label>
+                        <input type="text" class="form-control form-control-sm" id="tf_l1" name="l1" placeholder="L1">
+                    </div>
+                    <div class="col-6 mb-2">
+                        <label for="tf_l2" class="form-label fw-bold" style="font-size: 12px;">L2</label>
+                        <input type="text" class="form-control form-control-sm" id="tf_l2" name="l2" placeholder="L2">
+                    </div>
+                </div>
+                <div class="mb-2">
+                    <label for="tf_training_link" class="form-label fw-bold" style="font-size: 12px;">Training</label>
+                    <input type="text" class="form-control form-control-sm" id="tf_training_link" name="training_link" placeholder="Training Link">
+                </div>
+                <div class="mb-2">
+                    <label for="tf_video_link" class="form-label fw-bold" style="font-size: 12px;">Video</label>
+                    <input type="text" class="form-control form-control-sm" id="tf_video_link" name="video_link" placeholder="Video Link">
+                </div>
+                <div class="mb-2">
+                    <label for="tf_form_link" class="form-label fw-bold" style="font-size: 12px;">Form</label>
+                    <input type="text" class="form-control form-control-sm" id="tf_form_link" name="form_link" placeholder="Form Link">
+                </div>
+                <div class="mb-2">
+                    <label for="tf_form_report_link" class="form-label fw-bold" style="font-size: 12px;">Report</label>
+                    <input type="text" class="form-control form-control-sm" id="tf_form_report_link" name="form_report_link" placeholder="Report Link">
+                </div>
+                <div class="mb-2">
+                    <label for="tf_checklist_link" class="form-label fw-bold" style="font-size: 12px;">Checklist</label>
+                    <input type="text" class="form-control form-control-sm" id="tf_checklist_link" name="checklist_link" placeholder="Checklist">
+                </div>
+                <div class="mb-2">
+                    <label for="tf_pl" class="form-label fw-bold" style="font-size: 12px;">PL</label>
+                    <input type="text" class="form-control form-control-sm" id="tf_pl" name="pl" placeholder="PL">
+                </div>
+                <div class="mb-2 tf-image-wrap">
+                    <label class="form-label fw-bold" style="font-size: 12px;">Image</label>
+                    <div id="tf_image_current" class="mb-1"></div>
+                    <input type="file" class="form-control form-control-sm" id="tf_image" name="image" accept="image/*">
+                </div>
+            </div>
+
+            <div class="mt-3">
+                <button type="submit" class="btn btn-sm btn-success w-100" id="tf-submit-btn">
+                    <i class="mdi mdi-check-circle me-1"></i> <span id="tf-submit-label">Save Task</span>
+                </button>
+            </div>
+        </form>
+
+        <div id="task-form-delete-wrap" style="display: none;">
+            <button type="button" id="tf-delete-btn" class="btn btn-sm btn-outline-danger w-100 mt-2" data-id="">
+                <i class="mdi mdi-delete me-1"></i> Delete Task
+            </button>
+        </div>
+    </div>
+</div>
+
 
 @endsection
 
@@ -2782,7 +2933,6 @@
                         search: $('#filter-search').val() || '',
                         group: $('#filter-group').val() || '',
                         task: $('#filter-task').val() || '',
-                        date: $('#filter-date').val() || '',
                         assignor: $('#filter-assignor').val() || '',
                         assignee: $('#filter-assignee').val() || '',
                         status: $('#filter-status').val() || '',
@@ -2801,7 +2951,6 @@
                     $('#filter-search').val(s.search || '');
                     $('#filter-group').val(s.group || '');
                     $('#filter-task').val(s.task || '');
-                    $('#filter-date').val(s.date || '');
                     $('#filter-status').val(s.status || '');
                     $('#filter-priority').val(s.priority || '');
                     $('#filter-task-type').val(s.taskType || '');
@@ -3295,7 +3444,8 @@
                     openBulkActionsModal();
                     return;
                 }
-                window.location.href = `/tasks/${id}/edit`;
+                var row = table.getRow(taskId);
+                openTaskPanel('edit', row ? row.getData() : { id: taskId });
             };
             
             // Pull to refresh for mobile
@@ -3647,11 +3797,15 @@
                             var row = cell.getRow().getData();
                             var value = cell.getValue();
                             if (value && value !== '-') {
-                                var firstNames = String(value).split(',').map(function(name) {
+                                var firstNamesArr = String(value).split(',').map(function(name) {
                                     return name.trim().split(/\s+/)[0];
-                                }).filter(Boolean).join(', ');
+                                }).filter(Boolean);
                                 var imgSrc = (row.assignee_avatar || "{{ asset('images/users/avatar-2.jpg') }}").replace(/&/g, '&amp;');
-                                var nameEsc = String(firstNames).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                                // 2+ assignees stack on separate lines (<br>); a single one stays inline.
+                                var nameSep = firstNamesArr.length > 1 ? '<br>' : ', ';
+                                var nameEsc = firstNamesArr.map(function(n) {
+                                    return String(n).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                                }).join(nameSep);
                                 var designation = row.assignee_designation || '';
                                 var designationAttr = designation ? ' title="' + String(designation).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '"' : '';
                                 return '<div class="d-flex align-items-center justify-content-center gap-2 flex-nowrap"' + designationAttr + '>' +
@@ -3694,34 +3848,6 @@
                         }
                     });
 
-                    // AUTO DEL — red dot; full time on hover (daily auto-tasks)
-                    cols.push({
-                        title: "AUTO DEL",
-                        titleFormatter: function() {
-                            return '<span title="Auto-delete (daily auto tasks) — hover row dot for time" style="font-weight:700;font-size:calc(11px * 0.9);color:#495057;">AUTO DEL</span>';
-                        },
-                        headerTooltip: "Daily automated tasks auto-delete at 12:05 AM {{ $taskBusinessTzShort ?? 'PT' }} the day after TID if not Done. Hover the dot for time.",
-                        field: "auto_delete_at_human",
-                        width: 52,
-                        minWidth: 44,
-                        widthGrow: 0,
-                        cssClass: "tasks-col-auto-del",
-                        headerClass: "tasks-col-auto-del",
-                        hozAlign: "center",
-                        formatter: function(cell) {
-                            var row = cell.getRow().getData();
-                            var hoverText = autoDeleteHoverText(row);
-                            if (!hoverText) {
-                                return '<span style="color: #adb5bd;">-</span>';
-                            }
-                            return '<span class="task-auto-del-hit" data-tip="' + escAttr(hoverText) + '" role="img" aria-label="' + escAttr(hoverText) + '">' +
-                                '<span class="task-auto-del-dot"></span></span>';
-                        },
-                        tooltip: function (cell) {
-                            return autoDeleteHoverText(cell.getRow().getData()) || false;
-                        }
-                    });
-                    
                     // ETC (Estimated Time) — whole minutes
                     cols.push({
                         title: "ETC",
@@ -3869,14 +3995,14 @@
                             var currentStatus = statuses[value] || {bg: '#6c757d', text: '#fff'};
                             
                             if (!canUpdateStatus) {
-                                return '<span style="background: ' + currentStatus.bg + '; color: ' + currentStatus.text + '; padding: 6px 12px; border-radius: 20px; font-size: 11px; font-weight: 700; display: inline-block;">' + displayText + '</span>';
+                                return '<span style="background: ' + currentStatus.bg + '; color: ' + currentStatus.text + '; padding: 4.8px 9.6px; border-radius: 16px; font-size: 8.8px; font-weight: 700; display: inline-block;">' + displayText + '</span>';
                             }
                             
                             return `
                                 <select class="form-select form-select-sm status-select" 
                                         data-task-id="${taskId}" 
                                         data-current-status="${value}"
-                                        style="background: ${currentStatus.bg}; color: ${currentStatus.text}; border: none; font-weight: 700; font-size: 11px; border-radius: 20px; padding: 6px 12px;">
+                                        style="background: ${currentStatus.bg}; color: ${currentStatus.text}; border: none; font-weight: 700; font-size: 8.8px; border-radius: 16px; padding: 4.8px 9.6px;">
                                     <option value="Todo" ${value === 'Todo' ? 'selected' : ''}>Todo</option>
                                     <option value="Working" ${value === 'Working' ? 'selected' : ''}>Working</option>
                                     <option value="Archived" ${value === 'Archived' ? 'selected' : ''}>Archived</option>
@@ -3904,6 +4030,7 @@
                     // as Done modal at submission time.
                     cols.push({
                         title: "DONE NOTE",
+                        visible: false,
                         titleFormatter: function() {
                             return '<span style="font-weight:700;font-size:11px;color:#495057;">DONE NOTE</span>';
                         },
@@ -4032,23 +4159,8 @@
                                 }
                             }
                             
-                            // Always show delete button for symmetry, but disable when no permission
-                            if (canDelete) {
-                                buttons += `
-                                    <button class="action-btn-icon action-btn-delete delete-task" data-id="${id}" title="Delete">
-                                        <i class="mdi mdi-delete"></i>
-                                    </button>
-                                `;
-                            } else {
-                                buttons += `
-                                    <button class="action-btn-icon action-btn-delete-disabled" 
-                                            title="Only task creator can delete"
-                                            disabled>
-                                        <i class="mdi mdi-delete"></i>
-                                    </button>
-                                `;
-                            }
-                            
+                            // Delete moved into the Edit form — no delete button in the listing.
+
                             return '<div style="white-space: nowrap;">' + buttons + '</div>';
                         }
                     });
@@ -4056,17 +4168,6 @@
                     return cols;
                 })(),
             });
-
-            // Format a minute total as "Xh Ym" (e.g. 5392 -> "89h 52m"). Under an hour -> "Ym".
-            function formatMinutesAsHm(totalMinutes) {
-                var mins = Math.round(Number(totalMinutes) || 0);
-                var hours = Math.floor(mins / 60);
-                var rem = mins % 60;
-                if (hours > 0) {
-                    return hours.toLocaleString() + 'h ' + rem + 'm';
-                }
-                return rem + 'm';
-            }
 
             // Update statistics based on filtered data
             function updateStatistics() {
@@ -4076,7 +4177,6 @@
                     total: filteredData.length,
                     pending: filteredData.filter(t => t.status === 'Todo').length,
                     done: filteredData.filter(t => t.status === 'Done').length,
-                    etc_total: filteredData.reduce((sum, t) => sum + (parseInt(t.eta_time) || 0), 0),
                     atc_total: filteredData.reduce((sum, t) => sum + (parseInt(t.etc_done) || 0), 0),
                     done_etc: filteredData.filter(t => t.status === 'Done').reduce((sum, t) => sum + (parseInt(t.eta_time) || 0), 0),
                     done_atc: filteredData.filter(t => t.status === 'Done').reduce((sum, t) => sum + (parseInt(t.etc_done) || 0), 0),
@@ -4181,7 +4281,7 @@
                     var valueEl = $(this).find('.stat-value');
                     
                     switch(label) {
-                        case 'TOTAL':
+                        case 'Pending':
                             valueEl.text(stats.total);
                             $(this).attr('data-value', stats.total);
                             break;
@@ -4197,12 +4297,12 @@
                             valueEl.text(stats.done);
                             $(this).attr('data-value', stats.done);
                             break;
-                        case 'ETC 30D':
+                        case 'ETC L30 D':
                             break;
                         case 'R&R':
                             valueEl.text(stats.rr != null ? Math.round(stats.rr / 60) : (stats.etc_rr != null ? Math.round(stats.etc_rr / 60) : '-'));
                             break;
-                        case 'ATC 30D':
+                        case 'ATC L30':
                             break;
                         case 'DONE ETC':
                             valueEl.text(Math.round(stats.done_etc / 60));
@@ -4225,9 +4325,6 @@
                         case 'MISSED':
                             valueEl.text(stats.missed_count_30);
                             $(this).attr('data-value', stats.missed_count_30);
-                            break;
-                        case 'ETC':
-                            valueEl.text(formatMinutesAsHm(stats.etc_total || 0));
                             break;
                         case 'PENDING ETC':
                             var pendingEtcHours = Math.round((stats.pending_etc || 0) / 60);
@@ -4257,9 +4354,9 @@
                         $('.stat-card').each(function() {
                             var label = $(this).find('.stat-label').text().trim();
                             var valueEl = $(this).find('.stat-value');
-                            if (label === 'ETC 30D') {
+                            if (label === 'ETC L30 D') {
                                 valueEl.text(Math.round(etcHours) + 'h');
-                            } else if (label === 'ATC 30D') {
+                            } else if (label === 'ATC L30') {
                                 valueEl.text(Math.round(atcHours) + 'h');
                             }
                         });
@@ -4328,25 +4425,6 @@
                     filters.push({field:"title", type:"like", value:taskValue});
                     console.log('Filter - Task:', taskValue);
                 }
-
-                // Date filter — match the date the TID column actually shows.
-                // The TID cell renders rowData.tid_business_date (start_date's calendar day in
-                // the office TZ); raw start_date can land on a different calendar day after an
-                // edit (e.g. evening PT stored as next-day UTC / app-TZ), so a `like` on
-                // start_date silently misses the row right after TID is changed. Use a function
-                // filter so we compare against the same Y-m-d that the TID column displays,
-                // falling back to the start_date prefix only when tid_business_date is missing.
-                var dateValue = $('#filter-date').val();
-                if (dateValue) {
-                    filters.push(function (rowData) {
-                        var bd = rowData && rowData.tid_business_date
-                            ? String(rowData.tid_business_date)
-                            : (rowData && rowData.start_date ? String(rowData.start_date) : '');
-                        return bd.slice(0, 10) === dateValue;
-                    });
-                    console.log('Filter - Date:', dateValue);
-                }
-                
 
                 // Assignor filter (including NULL check); skipped when session user focus is active (uses OR block below)
                 var assignorValue = $('#filter-assignor').val();
@@ -4527,8 +4605,6 @@
                     applyFilters();
                 }
             });
-            $('#filter-date').on('change', applyFilters);
-            
             $('#filter-assignor, #filter-assignee').on('change', function () {
                 if (suppressAssignFilterApply) return;
                 if (taskManagerSessionUserFocus) {
@@ -4878,54 +4954,6 @@
                 });
             });
 
-            // Admin: trigger the "Cleanup Missed Daily" job on demand.
-            // Auto-deletes daily automated tasks that were not completed the same day and counts them in Missed.
-            $('#expire-daily-auto-btn').on('click', function () {
-                var $btn = $(this);
-                var originalHtml = $btn.html();
-
-                if (!confirm('Auto-delete DAILY automated tasks that were NOT completed before today?\n\n• Only schedule_type = daily is affected.\n• Weekly and Monthly automated tasks are NOT touched.\n• Deleted tasks are moved to the Deleted/Archive list and counted in the Missed badge.')) {
-                    return;
-                }
-
-                $btn.prop('disabled', true).html('<i class="mdi mdi-loading mdi-spin me-2"></i> Cleaning...');
-
-                $.ajax({
-                    url: '{{ route('tasks.expireDailyAutomated') }}',
-                    method: 'POST',
-                    data: { _token: '{{ csrf_token() }}' },
-                    dataType: 'json'
-                }).done(function (resp) {
-                    if (resp && resp.success) {
-                        alert(resp.message || 'Cleanup complete.');
-                        // Refresh table + stats so the Missed badge updates immediately.
-                        if (typeof table !== 'undefined' && table && typeof table.replaceData === 'function') {
-                            table.replaceData().then(function () {
-                                applyFilters();
-                                setTimeout(updateStatistics, 100);
-                            });
-                        } else {
-                            location.reload();
-                        }
-                        // Refresh Today Deleted badge — auto-expired tasks become today-deleted entries.
-                        if (typeof refreshTodayDeletedBadge === 'function') {
-                            refreshTodayDeletedBadge();
-                        }
-                    } else {
-                        alert((resp && resp.message) ? resp.message : 'Cleanup failed.');
-                    }
-                }).fail(function (xhr) {
-                    var msg = 'Cleanup failed.';
-                    try {
-                        var r = xhr.responseJSON;
-                        if (r && r.message) { msg = r.message; }
-                    } catch (e) {}
-                    alert(msg);
-                }).always(function () {
-                    $btn.prop('disabled', false).html(originalHtml);
-                });
-            });
-
             // Assignor playback (step through assignors - next to Bulk button)
             var taskPlaybackListAssignor = [];
             var currentTaskPlaybackIndexAssignor = -1;
@@ -5129,7 +5157,6 @@
                         $('#filter-status').val('');
                         $('#filter-priority').val('');
                         $('#filter-task-type').val('');
-                        $('#filter-date').val('');
                         $('#filter-assignor').val('');
                         $('#filter-assignee').val('');
                         console.log('✓ Showing all tasks');
@@ -6021,7 +6048,8 @@
                 $('#doneNoteViewModal').modal('show');
             }
 
-            // Edit Task — multiple selected rows open bulk actions; otherwise single-task edit
+            // Edit Task — multiple selected rows open bulk actions; otherwise open the
+            // shared Add/Edit side panel (offcanvas) instead of navigating to a separate page.
             $(document).on('click', '.edit-task', function() {
                 var taskId = String($(this).data('id'));
                 var selectedIdSet = new Set(selectedTasks.map(function(id) { return String(id); }));
@@ -6029,10 +6057,244 @@
                     openBulkActionsModal();
                     return;
                 }
-                window.location.href = '/tasks/' + taskId + '/edit';
+                var row = table.getRow(taskId);
+                openTaskPanel('edit', row ? row.getData() : { id: taskId });
             });
 
-            // Delete Task
+            // ============================================================
+            // Shared Add / Edit Task side panel (offcanvas)
+            // Replaces the old separate /tasks/create and /tasks/{id}/edit pages.
+            // ============================================================
+            var currentUserName = @json(Auth::user()->name ?? '');
+            var taskFormOffcanvasEl = document.getElementById('taskFormOffcanvas');
+            var taskFormOffcanvas = taskFormOffcanvasEl ? new bootstrap.Offcanvas(taskFormOffcanvasEl) : null;
+            var tfSelect2Ready = false;
+
+            function tfInitSelect2() {
+                if (tfSelect2Ready) return;
+                $('#tf_assignee_id').select2({
+                    theme: 'bootstrap-5',
+                    placeholder: 'Please Select',
+                    allowClear: true,
+                    dropdownParent: $('#taskFormOffcanvas')
+                });
+                if ($('#tf_assignor_id').is('select')) {
+                    $('#tf_assignor_id').select2({
+                        theme: 'bootstrap-5',
+                        placeholder: 'Please Select',
+                        dropdownParent: $('#taskFormOffcanvas')
+                    });
+                }
+                tfSelect2Ready = true;
+            }
+
+            function tfSetMoreFields(open) {
+                if (open) {
+                    $('#tf-more-fields').show();
+                    $('#tf-toggle-more').html('<i class="mdi mdi-chevron-up" id="tf-toggle-icon"></i> Hide Fields');
+                } else {
+                    $('#tf-more-fields').hide();
+                    $('#tf-toggle-more').html('<i class="mdi mdi-chevron-down" id="tf-toggle-icon"></i> More Fields');
+                }
+            }
+
+            // Normalize "Y-m-d H:i:s" / ISO to the "Y-m-dTH:i" datetime-local input format.
+            function tfToLocalDatetime(val) {
+                if (!val) return '';
+                var s = String(val).replace('T', ' ');
+                var m = s.match(/^(\d{4})-(\d{2})-(\d{2})[ ](\d{2}):(\d{2})/);
+                if (m) return m[1] + '-' + m[2] + '-' + m[3] + 'T' + m[4] + ':' + m[5];
+                var m2 = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+                if (m2) return m2[1] + '-' + m2[2] + '-' + m2[3] + 'T00:00';
+                return '';
+            }
+
+            function tfSetVal(id, val) {
+                $('#' + id).val(val == null ? '' : val);
+            }
+
+            function tfNowLocal() {
+                var d = new Date();
+                var pad = function(n) { return (n < 10 ? '0' : '') + n; };
+                return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+            }
+
+            function openTaskPanel(mode, rowData) {
+                tfInitSelect2();
+                rowData = rowData || {};
+                $('#task-form-alert').empty();
+                $('#tf_image').val('');
+
+                // Permissions (mirror the actions-column logic).
+                var assignorId = parseInt(rowData.assignor_id, 10);
+                var isOwner = canDeleteAnyTask || (!isNaN(assignorId) && assignorId === currentUserId);
+                var isAssigneeOnly = (mode === 'edit') && !isOwner && currentUserIsAssigneeOnTask(rowData);
+                var lock = (mode === 'edit') && !isOwner; // assignee-only: lock everything except links
+
+                if (mode === 'add') {
+                    $('#task-form-title').text('Add Task');
+                    $('#task-form-title-icon').attr('class', 'mdi mdi-plus-circle me-1');
+                    $('#tf-submit-label').text('Create Task');
+                    $('#tf_method').val('');
+                    $('#tf_task_id').val('');
+                    $('#task-form-delete-wrap').hide();
+                    $('#task-form-assignee-note').hide();
+
+                    tfSetVal('tf_group', '');
+                    tfSetVal('tf_title', '');
+                    $('#tf_assignee_id').val('').trigger('change');
+                    tfSetVal('tf_etc_minutes', 10);
+                    $('#tf_priority').val('normal');
+                    if ($('#tf_assignor_id').is('select')) {
+                        $('#tf_assignor_id').val(String(currentUserId)).trigger('change');
+                    } else {
+                        $('#tf_assignor_display').val(currentUserName);
+                        $('#tf_assignor_id').val(String(currentUserId));
+                    }
+                    tfSetVal('tf_tid', tfNowLocal());
+                    ['tf_l1','tf_l2','tf_training_link','tf_video_link','tf_form_link','tf_form_report_link','tf_checklist_link','tf_pl'].forEach(function(id){ tfSetVal(id, ''); });
+                    $('#tf_image_current').empty();
+                    tfSetMoreFields(false);
+                } else {
+                    var id = rowData.id;
+                    $('#task-form-title').text(isAssigneeOnly ? 'Add Reference Links' : 'Edit Task');
+                    $('#task-form-title-icon').attr('class', (isAssigneeOnly ? 'mdi mdi-link-variant-plus' : 'mdi mdi-pencil') + ' me-1');
+                    $('#tf-submit-label').text(isAssigneeOnly ? 'Save Links' : 'Update Task');
+                    $('#tf_method').val('PUT');
+                    $('#tf_task_id').val(id);
+
+                    tfSetVal('tf_group', rowData.group);
+                    tfSetVal('tf_title', rowData.title);
+                    $('#tf_assignee_id').val(rowData.assignee_id ? String(rowData.assignee_id) : '').trigger('change');
+                    tfSetVal('tf_etc_minutes', rowData.eta_time || rowData.etc_minutes || 10);
+                    $('#tf_priority').val(rowData.priority || 'normal');
+                    if ($('#tf_assignor_id').is('select')) {
+                        $('#tf_assignor_id').val(rowData.assignor_id ? String(rowData.assignor_id) : '').trigger('change');
+                    } else {
+                        $('#tf_assignor_display').val(rowData.assignor_name || currentUserName);
+                        $('#tf_assignor_id').val(rowData.assignor_id ? String(rowData.assignor_id) : String(currentUserId));
+                    }
+                    tfSetVal('tf_tid', tfToLocalDatetime(rowData.start_date || rowData.tid));
+                    tfSetVal('tf_l1', rowData.link1);
+                    tfSetVal('tf_l2', rowData.link2);
+                    tfSetVal('tf_training_link', rowData.link3);
+                    tfSetVal('tf_video_link', rowData.link4);
+                    tfSetVal('tf_form_link', rowData.link5);
+                    tfSetVal('tf_form_report_link', rowData.link6);
+                    tfSetVal('tf_checklist_link', rowData.link7);
+                    tfSetVal('tf_pl', rowData.link8);
+
+                    if (rowData.image) {
+                        var url = '{{ asset('uploads/tasks') }}/' + rowData.image;
+                        $('#tf_image_current').html('<a href="' + url + '" target="_blank" rel="noopener"><img src="' + url + '" class="img-thumbnail" style="max-width: 160px; cursor: zoom-in;"></a>');
+                    } else {
+                        $('#tf_image_current').html('<span class="text-muted small" style="font-size:11px;"><i class="mdi mdi-image-off-outline"></i> No image attached.</span>');
+                    }
+
+                    if (isOwner) {
+                        $('#tf-delete-btn').data('id', id).attr('data-id', id);
+                        $('#task-form-delete-wrap').show();
+                    } else {
+                        $('#task-form-delete-wrap').hide();
+                    }
+
+                    $('#task-form-assignee-note').toggle(isAssigneeOnly);
+                    tfSetMoreFields(isAssigneeOnly);
+                }
+
+                // Lock non-link fields for assignee-only edit; unlock otherwise.
+                $('.tf-lockable').prop('disabled', lock);
+                $('#tf_assignee_id').prop('disabled', lock).trigger('change.select2');
+                $('.tf-image-wrap').toggle(!lock); // assignees can't change the image
+
+                if (taskFormOffcanvas) taskFormOffcanvas.show();
+            }
+
+            $('#tf-toggle-more').on('click', function() {
+                tfSetMoreFields($('#tf-more-fields').is(':hidden'));
+            });
+
+            // Submit (Add or Edit) via AJAX so the task list stays in place.
+            $('#task-form').on('submit', function(e) {
+                e.preventDefault();
+                var taskId = $('#tf_task_id').val();
+                var isEdit = $('#tf_method').val() === 'PUT';
+                var url = isEdit ? ('/tasks/' + taskId) : '{{ route('tasks.store') }}';
+
+                var formData = new FormData(this);
+                if (!isEdit) formData.delete('_method');
+
+                var $btn = $('#tf-submit-btn');
+                var prevHtml = $btn.html();
+                $btn.prop('disabled', true).html('<i class="mdi mdi-loading mdi-spin me-1"></i> Saving...');
+
+                $.ajax({
+                    url: url,
+                    type: 'POST', // real verb; _method=PUT spoofs the update route on edit
+                    data: formData,
+                    processData: false,
+                    contentType: false,
+                    headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+                    success: function(resp) {
+                        if (taskFormOffcanvas) taskFormOffcanvas.hide();
+                        table.replaceData();
+                        var msg = (resp && resp.message) ? resp.message : (isEdit ? 'Task updated successfully!' : 'Task created successfully!');
+                        var alertHtml = '<div class="alert alert-success alert-dismissible fade show" role="alert">' +
+                            '<i class="mdi mdi-check-circle me-2"></i>' + msg +
+                            '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button></div>';
+                        $('.task-card .card-body').prepend(alertHtml);
+                        setTimeout(function() { $('.task-card .card-body .alert').fadeOut(function() { $(this).remove(); }); }, 3500);
+                        $btn.prop('disabled', false).html(prevHtml);
+                    },
+                    error: function(xhr) {
+                        var msg = 'Failed to save task.';
+                        if (xhr.status === 422 && xhr.responseJSON && xhr.responseJSON.errors) {
+                            msg = Object.values(xhr.responseJSON.errors).map(function(a){ return a.join(' '); }).join(' ');
+                        } else if (xhr.responseJSON && xhr.responseJSON.message) {
+                            msg = xhr.responseJSON.message;
+                        }
+                        $('#task-form-alert').html('<div class="alert alert-danger py-2 px-2" style="font-size:12px;"><i class="mdi mdi-alert-circle me-1"></i>' + msg + '</div>');
+                        $btn.prop('disabled', false).html(prevHtml);
+                    }
+                });
+            });
+
+            // Delete from within the panel (owners/admins only — button is hidden otherwise).
+            $('#tf-delete-btn').on('click', function() {
+                if (!confirm('Delete this task? This action cannot be undone.')) return;
+                var taskId = $(this).data('id');
+                var $btn = $(this);
+                $btn.prop('disabled', true).html('<i class="mdi mdi-loading mdi-spin me-1"></i> Deleting...');
+                $.ajax({
+                    url: '/tasks/' + taskId,
+                    type: 'DELETE',
+                    data: { _token: '{{ csrf_token() }}' },
+                    headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+                    success: function(resp) {
+                        if (taskFormOffcanvas) taskFormOffcanvas.hide();
+                        table.replaceData();
+                        var msg = (resp && resp.message) ? resp.message : 'Task deleted successfully!';
+                        var alertHtml = '<div class="alert alert-success alert-dismissible fade show" role="alert">' +
+                            '<i class="mdi mdi-check-circle me-2"></i>' + msg +
+                            '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button></div>';
+                        $('.task-card .card-body').prepend(alertHtml);
+                        setTimeout(function() { $('.task-card .card-body .alert').fadeOut(function() { $(this).remove(); }); }, 3500);
+                        $btn.prop('disabled', false).html('<i class="mdi mdi-delete me-1"></i> Delete Task');
+                    },
+                    error: function(xhr) {
+                        var msg = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : 'Failed to delete task. You may not have permission.';
+                        alert('Error: ' + msg);
+                        $btn.prop('disabled', false).html('<i class="mdi mdi-delete me-1"></i> Delete Task');
+                    }
+                });
+            });
+
+            // Open the shared panel in Add mode.
+            $(document).on('click', '.tf-add-task-btn', function() {
+                openTaskPanel('add', {});
+            });
+
+            // Legacy delete button (kept for safety; the listing no longer renders it).
             $(document).on('click', '.delete-task', function(e) {
                 e.preventDefault();
                 e.stopPropagation();

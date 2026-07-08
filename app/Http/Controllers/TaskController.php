@@ -1433,6 +1433,14 @@ class TaskController extends Controller
             ]);
         }
 
+        // AJAX (shared Add/Edit side panel on the task list) expects JSON.
+        if ($request->expectsJson()) {
+            return response()->json([
+                'success' => $flash !== 'error',
+                'message' => $message,
+            ]);
+        }
+
         return redirect()->back()->with($flash, $message);
     }
 
@@ -1678,6 +1686,14 @@ class TaskController extends Controller
             } catch (\Throwable $e) {
                 \Illuminate\Support\Facades\Log::warning('Task WhatsApp notify updated failed: ' . $e->getMessage());
             }
+        }
+
+        // AJAX (shared Add/Edit side panel on the task list) expects JSON.
+        if ($request->expectsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => $canEditAll ? 'Task updated successfully!' : 'Links saved successfully!',
+            ]);
         }
 
         return redirect()->route('tasks.index')->with('success', 'Task updated successfully!');

@@ -309,6 +309,15 @@ class AmazonAdsController extends Controller
             }
         }
 
+        // Cvr (%) = Sold ÷ Clicks × 100 — computed from the displayed Sold (L30 purchases) and Clicks columns.
+        if (in_array('Prchase', $ordered, true) && in_array('clicks', $ordered, true)) {
+            $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'Cvr'));
+            $idxPrchaseForCvr = array_search('Prchase', $ordered, true);
+            if ($idxPrchaseForCvr !== false) {
+                array_splice($ordered, $idxPrchaseForCvr + 1, 0, ['Cvr']);
+            }
+        }
+
         if ($table === 'amazon_sp_campaign_reports' || $table === 'amazon_sb_campaign_reports') {
             $ordered = array_values(array_filter(
                 $ordered,
@@ -1447,6 +1456,18 @@ class AmazonAdsController extends Controller
             } elseif (in_array('id', $dbColumns, true)) {
                 $query->orderBy('id', 'desc');
             }
+        } elseif ($requested === 'Cvr'
+            && in_array('clicks', $dbColumns, true)
+            && (in_array('purchases30d', $dbColumns, true) || in_array('purchases', $dbColumns, true))) {
+            $purchSub = self::correlatedL30SummaryPurchases30dScalarSubquerySql($table, $dbColumns);
+            if ($purchSub !== null) {
+                $purchExpr = in_array('purchases30d', $dbColumns, true)
+                    ? 'COALESCE(('.$purchSub.'), purchases30d)'
+                    : 'COALESCE(('.$purchSub.'), purchases)';
+            } else {
+                $purchExpr = in_array('purchases30d', $dbColumns, true) ? 'purchases30d' : 'purchases';
+            }
+            $query->orderByRaw('CASE WHEN COALESCE(clicks, 0) > 0 THEN ('.$purchExpr.') / NULLIF(clicks, 0) ELSE NULL END '.$dir);
         } elseif ($requested === 'sbid' && in_array('last_sbid', $dbColumns, true) && in_array('sbid', $dbColumns, true)) {
             $query->orderByRaw('COALESCE(last_sbid, sbid, 0) '.$dir);
         } elseif ($requested === 'costPerClick'
@@ -2408,6 +2429,13 @@ class AmazonAdsController extends Controller
             $defaultReportRangeDates[$param] = self::latestAvailableReportDayYmd($table);
         }
 
+        // Virtual "All" source: SP + SB combined (shares the SP display column set).
+        $rawSources['all_reports'] = [
+            'table' => 'amazon_sp_campaign_reports',
+            'columns' => self::displayColumnsForTable('amazon_sp_campaign_reports'),
+        ];
+        $defaultReportRangeDates['all_reports'] = self::latestAvailableReportDayYmd('amazon_sp_campaign_reports');
+
         return view('amazon_ads.all', [
             'rawSources' => $rawSources,
             'defaultReportRangeDates' => $defaultReportRangeDates,
@@ -2719,31 +2747,48 @@ class AmazonAdsController extends Controller
      */
     public function rawData(Request $request, string $source)
     {
+        if ($source === 'all_reports') {
+            return response()->json($this->rawDataAllReportsPayload($request));
+        }
+
         if (! isset(self::RAW_TABLE_SOURCES[$source])) {
             abort(404);
         }
 
         $table = self::RAW_TABLE_SOURCES[$source];
 
+        return response()->json($this->rawDataSingleSourcePayload($request, $table));
+    }
+
+    /**
+     * DataTables payload for a single raw table source (SP / SB / SD / bid caps / FBM).
+     *
+     * When $forceStart / $forceLength are supplied (used by the combined "All" view), they override
+     * the request's paging window so a wider slice can be fetched for cross-source merging.
+     *
+     * @return array<string, mixed>
+     */
+    private function rawDataSingleSourcePayload(Request $request, string $table, ?int $forceStart = null, ?int $forceLength = null): array
+    {
         if (! Schema::hasTable($table)) {
-            return response()->json([
+            return [
                 'draw' => (int) $request->input('draw', 0),
                 'recordsTotal' => 0,
                 'recordsFiltered' => 0,
                 'data' => [],
                 'error' => 'Table does not exist: '.$table,
-            ]);
+            ];
         }
 
         $dbColumns = self::orderedColumnsForTable($table);
         $columns = self::displayColumnsForTable($table);
         if ($columns === [] || $dbColumns === []) {
-            return response()->json([
+            return [
                 'draw' => (int) $request->input('draw', 0),
                 'recordsTotal' => 0,
                 'recordsFiltered' => 0,
                 'data' => [],
-            ]);
+            ];
         }
 
         $draw = (int) $request->input('draw', 1);
@@ -2753,6 +2798,12 @@ class AmazonAdsController extends Controller
             $length = 25;
         }
         $length = min($length, 500);
+        if ($forceStart !== null) {
+            $start = max(0, $forceStart);
+        }
+        if ($forceLength !== null) {
+            $length = max(1, min($forceLength, 20000));
+        }
 
         $search = trim((string) $request->input('search.value', ''));
 
@@ -3034,6 +3085,15 @@ class AmazonAdsController extends Controller
                 }
                 $arr['sbgt'] = self::computedSbgtFromReportRow($sbgtRow, $dbColumns);
             }
+            if (in_array('Cvr', $columns, true)) {
+                $soldForCvr = $arr['Prchase'] ?? null;
+                $clicksForCvr = $arr['clicks'] ?? null;
+                $scv = is_numeric($soldForCvr) ? (float) $soldForCvr : null;
+                $ccv = is_numeric($clicksForCvr) ? (float) $clicksForCvr : null;
+                $arr['Cvr'] = ($scv !== null && $ccv !== null && $ccv > 0)
+                    ? round(($scv / $ccv) * 100, 2)
+                    : null;
+            }
             self::roundAmazonAdsDisplayNumericFields($arr, $columns);
             unset($arr['pink_dil_paused_at'], $arr['campaignBudgetCurrencyCode']);
             $data[] = $arr;
@@ -3067,7 +3127,178 @@ class AmazonAdsController extends Controller
             $payload['salesTotal'] = $salesTotal;
         }
 
-        return response()->json($payload);
+        return $payload;
+    }
+
+    /**
+     * Combined "All" DataTables payload: union of SP + SB campaign reports. Both share the SP display
+     * column set, so each source is fetched, enriched and sorted through the existing single-table
+     * pipeline; the two result sets are then merged, globally re-sorted by the requested column and
+     * sliced to the current page. Summary badges (SPL30 / ACOS / Spend / Clicks / Sold / Sales) are
+     * aggregated across both sources.
+     *
+     * Note: rows are merged from two independently sorted result sets, so the combined ordering is
+     * exact for the first ~20k rows of the filtered union; deeper pages are capped by $fetchLen.
+     *
+     * @return array<string, mixed>
+     */
+    private function rawDataAllReportsPayload(Request $request): array
+    {
+        $draw = (int) $request->input('draw', 1);
+        $start = max(0, (int) $request->input('start', 0));
+        $length = (int) $request->input('length', 25);
+        if ($length < 1) {
+            $length = 25;
+        }
+        $length = min($length, 500);
+
+        $displayColumns = self::displayColumnsForTable('amazon_sp_campaign_reports');
+        $orderColumnIndex = (int) $request->input('order.0.column', 0);
+        $orderDir = strtolower((string) $request->input('order.0.dir', 'desc')) === 'asc' ? 'asc' : 'desc';
+        $orderKey = ($orderColumnIndex >= 0 && $orderColumnIndex < count($displayColumns))
+            ? $displayColumns[$orderColumnIndex]
+            : ($displayColumns[0] ?? 'id');
+
+        // Fetch enough top rows from each source that the merged slice for this page is exact.
+        $fetchLen = min($start + $length, 20000);
+
+        $sources = ['amazon_sp_campaign_reports', 'amazon_sb_campaign_reports'];
+        $rows = [];
+        $recordsTotal = 0;
+        $recordsFiltered = 0;
+        $distinctCampaignCount = 0;
+        $costSum = 0.0;
+        $salesSum = 0.0;
+        $spendSum = 0.0;
+        $clicksSum = 0;
+        $soldSum = 0;
+        $haveDistinct = false;
+        $haveCost = false;
+        $haveSales = false;
+        $haveSpend = false;
+        $haveClicks = false;
+        $haveSold = false;
+
+        foreach ($sources as $table) {
+            $part = $this->rawDataSingleSourcePayload($request, $table, 0, $fetchLen);
+            if (isset($part['data']) && is_array($part['data'])) {
+                foreach ($part['data'] as $r) {
+                    $rows[] = $r;
+                }
+            }
+            $recordsTotal += (int) ($part['recordsTotal'] ?? 0);
+            $recordsFiltered += (int) ($part['recordsFiltered'] ?? 0);
+            if (isset($part['distinctCampaignCount'])) {
+                $distinctCampaignCount += (int) $part['distinctCampaignCount'];
+                $haveDistinct = true;
+            }
+            if (isset($part['spl30Total'])) {
+                $costSum += (float) $part['spl30Total'];
+                $haveCost = true;
+            }
+            if (isset($part['salesTotal'])) {
+                $salesSum += (float) $part['salesTotal'];
+                $haveSales = true;
+            }
+            if (isset($part['spendTotal'])) {
+                $spendSum += (float) $part['spendTotal'];
+                $haveSpend = true;
+            }
+            if (isset($part['clicksTotal'])) {
+                $clicksSum += (int) $part['clicksTotal'];
+                $haveClicks = true;
+            }
+            if (isset($part['soldTotal'])) {
+                $soldSum += (int) $part['soldTotal'];
+                $haveSold = true;
+            }
+        }
+
+        usort($rows, static function ($a, $b) use ($orderKey, $orderDir) {
+            $cmp = self::compareAmazonAdsRowValues($a[$orderKey] ?? null, $b[$orderKey] ?? null);
+
+            return $orderDir === 'asc' ? $cmp : -$cmp;
+        });
+
+        $pageRows = array_slice($rows, $start, $length);
+
+        $payload = [
+            'draw' => $draw,
+            'recordsTotal' => $recordsTotal,
+            'recordsFiltered' => $recordsFiltered,
+            'data' => array_values($pageRows),
+        ];
+        if ($haveDistinct) {
+            $payload['distinctCampaignCount'] = $distinctCampaignCount;
+        }
+        if ($haveCost) {
+            $payload['spl30Total'] = round($costSum, 2);
+        }
+        if ($haveSpend) {
+            $payload['spendTotal'] = round($spendSum, 2);
+        }
+        if ($haveClicks) {
+            $payload['clicksTotal'] = $clicksSum;
+        }
+        if ($haveSold) {
+            $payload['soldTotal'] = $soldSum;
+        }
+        if ($haveSales) {
+            $payload['salesTotal'] = round($salesSum, 2);
+        }
+        if ($haveCost && $haveSales) {
+            $payload['overallAcosPercent'] = self::overallAcosPercentFromAggregatedSums($costSum, $salesSum);
+        }
+
+        return $payload;
+    }
+
+    /**
+     * Compare two raw display-cell values for the combined "All" sort: numeric when both parse as
+     * numbers (percent / money strings included), otherwise a case-insensitive string compare.
+     * Values that parse as numbers are treated as ranking after plain strings so text tie-breaks stay stable.
+     */
+    private static function compareAmazonAdsRowValues(mixed $a, mixed $b): int
+    {
+        $na = self::amazonAdsSortableNumber($a);
+        $nb = self::amazonAdsSortableNumber($b);
+        if ($na !== null && $nb !== null) {
+            return $na <=> $nb;
+        }
+        if ($na !== null) {
+            return 1;
+        }
+        if ($nb !== null) {
+            return -1;
+        }
+
+        $sa = $a === null ? '' : strtolower((string) $a);
+        $sb = $b === null ? '' : strtolower((string) $b);
+
+        return strcmp($sa, $sb);
+    }
+
+    /**
+     * Parse a display value to a sortable float (stripping %, $, commas); null when not numeric.
+     */
+    private static function amazonAdsSortableNumber(mixed $v): ?float
+    {
+        if ($v === null || $v === '') {
+            return null;
+        }
+        if (is_int($v) || is_float($v)) {
+            return (float) $v;
+        }
+        if (is_string($v)) {
+            $s = str_replace([',', '%', '$', ' '], '', trim($v));
+            if ($s === '' || ! is_numeric($s)) {
+                return null;
+            }
+
+            return (float) $s;
+        }
+
+        return null;
     }
 
     /**
@@ -3743,24 +3974,40 @@ class AmazonAdsController extends Controller
         $spMetrics = $this->advertisementMasterMetricsForSource('sp_reports');
         $sbMetrics = $this->advertisementMasterMetricsForSource('sb_reports');
 
+        $spActive = $this->advertisementMasterActiveCountForSource('sp_reports');
+        $sbActive = $this->advertisementMasterActiveCountForSource('sb_reports');
+
         $amazonMetrics = [
             'spend'  => $spMetrics['spend'] + $sbMetrics['spend'],
             'clicks' => $spMetrics['clicks'] + $sbMetrics['clicks'],
             'sold'   => $spMetrics['sold'] + $sbMetrics['sold'],
             'sales'  => $spMetrics['sales'] + $sbMetrics['sales'],
+            'active' => $spActive + $sbActive,
         ];
 
         $kwMetrics = $this->advertisementMasterMetricsForSource(
             'sp_reports',
-            fn (Builder $query) => self::applyAdvertisementMasterKwScope($query)
+            fn (Builder $query, array $cols, string $tbl) => self::applyAdvertisementMasterKwScope($query, $cols, $tbl)
+        );
+        $kwMetrics['active'] = $this->advertisementMasterActiveCountForSource(
+            'sp_reports',
+            fn (Builder $query, array $cols, string $tbl) => self::applyAdvertisementMasterKwScope($query, $cols, $tbl)
         );
         $ptMetrics = $this->advertisementMasterMetricsForSource(
             'sp_reports',
-            fn (Builder $query) => self::applyAdvertisementMasterPtScope($query)
+            fn (Builder $query, array $cols, string $tbl) => self::applyAdvertisementMasterPtScope($query, $cols, $tbl)
+        );
+        $ptMetrics['active'] = $this->advertisementMasterActiveCountForSource(
+            'sp_reports',
+            fn (Builder $query, array $cols, string $tbl) => self::applyAdvertisementMasterPtScope($query, $cols, $tbl)
         );
         $hlMetrics = $this->advertisementMasterMetricsForSource(
             'sb_reports',
-            fn (Builder $query) => self::applyAdvertisementMasterHlScope($query)
+            fn (Builder $query, array $cols, string $tbl) => self::applyAdvertisementMasterHlScope($query, $cols, $tbl)
+        );
+        $hlMetrics['active'] = $this->advertisementMasterActiveCountForSource(
+            'sb_reports',
+            fn (Builder $query, array $cols, string $tbl) => self::applyAdvertisementMasterHlScope($query, $cols, $tbl)
         );
 
         $sep = ' · ';
@@ -3775,33 +4022,66 @@ class AmazonAdsController extends Controller
         return [$parent];
     }
 
-    /** KW scope — SP campaigns excluding PT / FBA suffixes (same as AMZ KW utilized charts). */
-    private static function applyAdvertisementMasterKwScope(Builder $query): void
+    /**
+     * KW scope — mirrors /amazon-ads/all with "KW" typed into the global search
+     * box on the SP reports table: %KW% OR-matched across every column. The L30
+     * badge aggregation then runs over exactly those matched rows.
+     *
+     * @param  array<int, string>  $dbColumns
+     */
+    private static function applyAdvertisementMasterKwScope(Builder $query, array $dbColumns, string $table): void
     {
-        $query->whereRaw("campaignName NOT REGEXP '(PT\\.?$|FBA$)'")
-            ->whereRaw('(campaignStatus IS NULL OR campaignStatus != \'ARCHIVED\')');
-    }
-
-    /** PT scope — SP campaigns ending in PT (excludes FBA PT). */
-    private static function applyAdvertisementMasterPtScope(Builder $query): void
-    {
-        $query->where(function ($q) {
-            $q->whereRaw("campaignName LIKE '%PT'")
-                ->orWhereRaw("campaignName LIKE '%PT.'");
-        })
-            ->whereRaw("campaignName NOT LIKE '%FBA PT%'")
-            ->whereRaw("campaignName NOT LIKE '%FBA PT.%'")
-            ->whereRaw('(campaignStatus IS NULL OR campaignStatus != \'ARCHIVED\')');
-    }
-
-    /** HL scope — all non-archived SB campaigns. */
-    private static function applyAdvertisementMasterHlScope(Builder $query): void
-    {
-        $query->whereRaw('(campaignStatus IS NULL OR campaignStatus != \'ARCHIVED\')');
+        self::applyAdvertisementMasterSearchScope($query, $dbColumns, $table, 'KW');
     }
 
     /**
-     * @param  callable(Builder): void|null  $scope
+     * PT scope — mirrors /amazon-ads/all with "PT" typed into the global search
+     * box on the SP reports table (%PT% OR-matched across every column).
+     *
+     * @param  array<int, string>  $dbColumns
+     */
+    private static function applyAdvertisementMasterPtScope(Builder $query, array $dbColumns, string $table): void
+    {
+        self::applyAdvertisementMasterSearchScope($query, $dbColumns, $table, 'PT');
+    }
+
+    /**
+     * HL scope — mirrors /amazon-ads/all with the SB reports table selected and
+     * an empty search box: every SB campaign counts, so no extra filtering.
+     *
+     * @param  array<int, string>  $dbColumns
+     */
+    private static function applyAdvertisementMasterHlScope(Builder $query, array $dbColumns, string $table): void
+    {
+        // No search term: HL == all SB campaigns (matches picking the SB table
+        // on /amazon-ads/all with an empty search box).
+    }
+
+    /**
+     * Replicate the /amazon-ads/all DataTables global search: the term wrapped
+     * in %...% and OR-matched across every column of the table, so these badge
+     * totals line up with what the grid shows for the same typed search.
+     * Columns are qualified with the table name so the same scope also works on
+     * the joined "active" count query without ambiguous-column errors.
+     *
+     * @param  array<int, string>  $dbColumns
+     */
+    private static function applyAdvertisementMasterSearchScope(Builder $query, array $dbColumns, string $table, string $search): void
+    {
+        if ($dbColumns === []) {
+            return;
+        }
+
+        $term = '%'.addcslashes($search, '%_\\').'%';
+        $query->where(function ($q) use ($dbColumns, $table, $term) {
+            foreach ($dbColumns as $col) {
+                $q->orWhere($table.'.'.$col, 'LIKE', $term);
+            }
+        });
+    }
+
+    /**
+     * @param  callable(Builder, array<int, string>, string): void|null  $scope
      * @return array{spend: float, clicks: int, sold: int, sales: float}
      */
     private function advertisementMasterMetricsForSource(string $source, ?callable $scope = null): array
@@ -3824,8 +4104,13 @@ class AmazonAdsController extends Controller
         }
 
         $query = DB::table($table);
+        // Match the /amazon-ads/all default view: it pre-fills the date box with
+        // the latest available report day (single Calendar day), so the badge
+        // totals reflect that one day. Mirror it here so the advertisement rows
+        // equal what /amazon-ads/all shows on load.
+        self::applyAdvertisementMasterLatestDayFilter($query, $table);
         if ($scope !== null) {
-            $scope($query);
+            $scope($query, $dbColumns, $table);
         }
         $l30Agg = self::aggregateL30CostAndSalesDistinctForFilteredAmazonAdsRows(
             $query,
@@ -3844,6 +4129,83 @@ class AmazonAdsController extends Controller
             'sold'   => (int) round((float) ($l30Agg['purchases_sum'] ?? 0)),
             'sales'  => round((float) ($l30Agg['sales_sum'] ?? 0), 2),
         ];
+    }
+
+    /**
+     * Count ACTIVE (campaignStatus = ENABLED) campaigns in the same window the
+     * metrics use — the latest available report day (single Calendar day), same
+     * default as /amazon-ads/all. Optional $scope applies the same KW / PT / HL
+     * search scope as {@see advertisementMasterMetricsForSource}. Falls back to
+     * the latest `report_date_range = 'L30'` row per campaign when no daily day
+     * is available.
+     *
+     * @param  callable(Builder, array<int, string>, string): void|null  $scope
+     */
+    private function advertisementMasterActiveCountForSource(string $source, ?callable $scope = null): int
+    {
+        if (! isset(self::RAW_TABLE_SOURCES[$source])) {
+            return 0;
+        }
+        $table = self::RAW_TABLE_SOURCES[$source];
+        if (! Schema::hasTable($table)) {
+            return 0;
+        }
+        $dbColumns = self::orderedColumnsForTable($table);
+        if (! in_array('campaign_id', $dbColumns, true)
+            || ! in_array('report_date_range', $dbColumns, true)
+            || ! in_array('campaignStatus', $dbColumns, true)
+            || ! in_array('id', $dbColumns, true)) {
+            return 0;
+        }
+
+        $latestDay = self::latestAvailableReportDayYmd($table);
+
+        if ($latestDay !== null) {
+            // Enabled distinct campaigns that ran on the latest report day, so
+            // the "active" count lines up with the single-day metric window.
+            $query = DB::table($table);
+            self::whereReportDateRangeDailyYmdInRange($query, $latestDay, $latestDay);
+            $query->whereRaw("UPPER(TRIM({$table}.campaignStatus)) = 'ENABLED'");
+
+            if ($scope !== null) {
+                $scope($query, $dbColumns, $table);
+            }
+
+            return (int) $query->distinct()->count($table.'.campaign_id');
+        }
+
+        // Fallback (no daily rows): latest L30 row id per campaign.
+        $latest = DB::table($table)
+            ->whereRaw("UPPER(TRIM(report_date_range)) = 'L30'")
+            ->whereNotNull('campaign_id')
+            ->selectRaw('campaign_id, MAX(id) AS max_id')
+            ->groupBy('campaign_id');
+
+        $query = DB::table($table)
+            ->joinSub($latest, 'l30x', fn ($j) => $j->on($table.'.id', '=', 'l30x.max_id'))
+            ->whereRaw("UPPER(TRIM({$table}.campaignStatus)) = 'ENABLED'");
+
+        // The scope qualifies its search columns with $table, so joining l30x
+        // (which only carries campaign_id + max_id) stays unambiguous.
+        if ($scope !== null) {
+            $scope($query, $dbColumns, $table);
+        }
+
+        return (int) $query->distinct()->count($table.'.campaign_id');
+    }
+
+    /**
+     * Apply the /amazon-ads/all default date filter: the latest available report
+     * day for this table as a single Calendar day. No-op when the table has no
+     * dated daily rows (then the full L30 rolling window is used).
+     */
+    private static function applyAdvertisementMasterLatestDayFilter(Builder $query, string $table): void
+    {
+        $latestDay = self::latestAvailableReportDayYmd($table);
+        if ($latestDay === null) {
+            return;
+        }
+        self::whereReportDateRangeDailyYmdInRange($query, $latestDay, $latestDay);
     }
 
     /**
@@ -3868,6 +4230,7 @@ class AmazonAdsController extends Controller
                 ? round(($spend / $sales) * 100, 0)
                 : ($spend > 0 ? 100 : 0),
             'tcos'       => 0,
+            'active'     => (int) ($row->active ?? 0),
             'is_sub_row' => $isSubRow,
             'marketplace' => 'amazon',
         ];

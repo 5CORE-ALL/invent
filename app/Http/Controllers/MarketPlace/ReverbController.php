@@ -761,9 +761,11 @@ class ReverbController extends Controller
             ]);
         }
 
-        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
-        $l30EndDate = $latestPacific->toDateString();
-        $l30StartDate = $latestPacific->copy()->subDays(29)->toDateString();
+        // Last 30 days in UTC (today + 30 previous), matching /reverb-sales and Reverb's
+        // dashboard. order_date is stored as a UTC date, so no timezone conversion.
+        $nowUtc = Carbon::now('UTC');
+        $l30EndDate = $nowUtc->toDateString();
+        $l30StartDate = $nowUtc->copy()->subDays(30)->toDateString();
 
         $agg = DB::table('reverb_daily_data')
             ->whereNotNull('order_date')
@@ -775,6 +777,7 @@ class ReverbController extends Controller
             ->selectRaw('COALESCE(SUM(quantity * COALESCE(amount, 0)), 0) as sum_qty_x_amount')
             ->selectRaw('COALESCE(SUM(COALESCE(product_subtotal, 0)), 0) as sum_product_subtotal')
             ->selectRaw('COALESCE(SUM(COALESCE(amount, 0)), 0) as sum_amount')
+            ->selectRaw('COALESCE(SUM(COALESCE(bump_fee, 0)), 0) as sum_bump_fee')
             ->first();
 
         return response()->json([
@@ -784,6 +787,7 @@ class ReverbController extends Controller
             'sum_quantity_x_amount' => round((float) ($agg->sum_qty_x_amount ?? 0), 2),
             'sum_product_subtotal' => round((float) ($agg->sum_product_subtotal ?? 0), 2),
             'sum_amount' => round((float) ($agg->sum_amount ?? 0), 2),
+            'sum_bump_fee' => round((float) ($agg->sum_bump_fee ?? 0), 2),
         ]);
     }
 
@@ -893,6 +897,8 @@ class ReverbController extends Controller
                 $processedItem["R Stock"] = $reverbItem->remaining_inventory ?? 0;
                 $processedItem["Bump"] = $reverbItem->bump_bid ?? null; // Bump bid % only from API
                 $processedItem["RE_BID"] = $reverbItem->recommended_bid ?? null; // Recommended bid in reverb_products
+                $processedItem["reverb_listing_id"] = $reverbItem->reverb_listing_id ?? null;
+                $processedItem["listing_state"] = $reverbItem->listing_state ?? null;
                 $processedItem["Missing"] = ''; // SKU exists in Reverb
             } else {
                 $processedItem["RV Price"] = 0;
@@ -902,6 +908,8 @@ class ReverbController extends Controller
                 $processedItem["R Stock"] = 0;
                 $processedItem["Bump"] = null;
                 $processedItem["RE_BID"] = null;
+                $processedItem["reverb_listing_id"] = null;
+                $processedItem["listing_state"] = null;
                 $processedItem["Missing"] = ''; // Will be set later based on INV and nr_req
             }
 
@@ -955,10 +963,27 @@ class ReverbController extends Controller
             $rStock = $processedItem["R Stock"];
             $nrReq = $processedItem["nr_req"];
             $rvPrice = floatval($processedItem["RV Price"] ?? 0);
-            
-            // Missing L: REQ + INV > 0 + no live Reverb listing (RV Price = 0 — same as Macys MC Price / Best Buy BB Price)
+
+            // Determine whether the SKU actually has a live Reverb listing. RV Price
+            // (from reverb_products.price) can be 0 even when a listing exists — e.g.
+            // right after a manual price push (which updates the live listing +
+            // reverb_view_data but not the cached price) or before the next sync.
+            // So also treat an active listing_state or a recently pushed price as "listed".
+            $listingState = strtolower(trim((string) ($processedItem["listing_state"] ?? '')));
+            $isActiveListing = ($listingState === '' && !empty($processedItem["reverb_listing_id"]))
+                || in_array($listingState, ['live', 'active'], true);
+
+            $spricePushed = false;
+            if (isset($reverbViewData[$skuNorm])) {
+                $vwArr = $reverbViewData[$skuNorm]->values ?: [];
+                $spricePushed = ($vwArr['SPRICE_STATUS'] ?? null) === 'pushed';
+            }
+
+            $isListed = $rvPrice > 0 || $isActiveListing || $spricePushed;
+
+            // Missing L: REQ + INV > 0 + no live Reverb listing.
             $isMissing = false;
-            if ($nrReq === 'REQ' && $inv > 0 && $rvPrice <= 0) {
+            if ($nrReq === 'REQ' && $inv > 0 && !$isListed) {
                 $processedItem["Missing"] = 'M';
                 $isMissing = true;
             } else {
@@ -987,6 +1012,11 @@ class ReverbController extends Controller
             $processedItem["SPFT"] = 0;
             $processedItem["SROI"] = 0;
             $processedItem["bump_req"] = 'REQ';
+            // Price push status (set by CvrMasterController::pushToReverb)
+            $processedItem["SPRICE_STATUS"] = null;
+            $processedItem["SPRICE_STATUS_UPDATED_AT"] = null;
+            $processedItem["SPRICE_PUSHED_VALUE"] = null;
+            $processedItem["SPRICE_PUSHED_BY"] = null;
 
             if (isset($reverbViewData[$skuNorm])) {
                 $viewData = $reverbViewData[$skuNorm];
@@ -998,6 +1028,11 @@ class ReverbController extends Controller
                 $processedItem["SROI"] = isset($valuesArr["SROI"]) ? floatval(str_replace("%", "", $valuesArr["SROI"])) : 0;
                 // Bump Req like NRA: column first, fallback to values
                 $processedItem["bump_req"] = $viewData->bump_req ?? $valuesArr["bump_req"] ?? 'REQ';
+                // Price push status fields
+                $processedItem["SPRICE_STATUS"] = $valuesArr["SPRICE_STATUS"] ?? null;
+                $processedItem["SPRICE_STATUS_UPDATED_AT"] = $valuesArr["SPRICE_STATUS_UPDATED_AT"] ?? null;
+                $processedItem["SPRICE_PUSHED_VALUE"] = isset($valuesArr["SPRICE_PUSHED_VALUE"]) ? floatval($valuesArr["SPRICE_PUSHED_VALUE"]) : null;
+                $processedItem["SPRICE_PUSHED_BY"] = $valuesArr["SPRICE_PUSHED_BY"] ?? null;
             }
 
             // Calculate profit metrics
