@@ -2403,6 +2403,91 @@ document.addEventListener('DOMContentLoaded', function () {
         };
     }
 
+    // Order ALL supplier columns (everything after Spec) by PRICE USD ascending, keeping
+    // equal prices side-by-side in their original order (stable). Columns without a price
+    // stay after the priced ones, in their original order.
+    function sortSupplierColumnsByPrice(cells) {
+        cells = (cells || []).map(row => Array.isArray(row) ? row.slice() : [String(row || '')]);
+        const specCol = detectSpecColumnIndex(cells);
+        const firstSupplierCol = specCol + 1;
+        const colCount = Math.max(...cells.map(row => row.length), 0);
+        if (firstSupplierCol >= colCount) {
+            return { cells, mapping: null };
+        }
+
+        let priceRow = findRowIndexByLabel(cells, 'usd', specCol);
+        if (priceRow === null) {
+            priceRow = findRowIndexByLabel(cells, 'rmb', specCol);
+        }
+        if (priceRow === null) {
+            return { cells, mapping: null };
+        }
+
+        const supplierCols = [];
+        for (let c = firstSupplierCol; c < colCount; c++) {
+            const price = parseSheetNumber((cells[priceRow] || [])[c]);
+            supplierCols.push({ index: c, price: price, order: c });
+        }
+
+        supplierCols.sort((a, b) => {
+            if (a.price === null && b.price === null) return a.order - b.order;
+            if (a.price === null) return 1;
+            if (b.price === null) return -1;
+            if (a.price === b.price) return a.order - b.order;
+            return a.price - b.price;
+        });
+
+        const newOrder = supplierCols.map(x => x.index);
+
+        let changed = false;
+        for (let i = 0; i < newOrder.length; i++) {
+            if (newOrder[i] !== firstSupplierCol + i) { changed = true; break; }
+        }
+        if (!changed) {
+            return { cells, mapping: null };
+        }
+
+        const mapping = {};
+        for (let c = 0; c <= specCol; c++) mapping[c] = c;
+        newOrder.forEach((origCol, k) => { mapping[origCol] = firstSupplierCol + k; });
+
+        const newCells = cells.map(row => {
+            const head = row.slice(0, specCol + 1);
+            const tail = newOrder.map(origCol => (row[origCol] !== undefined ? row[origCol] : ''));
+            return head.concat(tail);
+        });
+
+        return { cells: newCells, mapping };
+    }
+
+    // Remap format keys (cols + cells "row:col") through an old→new column mapping.
+    function remapFormatColumns(formats, mapping) {
+        formats = normalizeSheetFormats(formats);
+        if (!mapping) {
+            return formats;
+        }
+
+        const cols = {};
+        Object.keys(formats.cols).forEach(key => {
+            const oldC = parseInt(key, 10);
+            if (Number.isNaN(oldC)) return;
+            const newC = mapping.hasOwnProperty(oldC) ? mapping[oldC] : oldC;
+            cols[String(newC)] = formats.cols[key];
+        });
+
+        const cells = {};
+        Object.keys(formats.cells).forEach(key => {
+            const parts = key.split(':');
+            const rowIndex = parseInt(parts[0], 10);
+            const oldC = parseInt(parts[1], 10);
+            if (Number.isNaN(rowIndex) || Number.isNaN(oldC)) return;
+            const newC = mapping.hasOwnProperty(oldC) ? mapping[oldC] : oldC;
+            cells[`${rowIndex}:${newC}`] = formats.cells[key];
+        });
+
+        return { cells, rows: { ...formats.rows }, cols };
+    }
+
     function computeAutoSheetFormats(cells) {
         const formats = { cells: {}, rows: {}, cols: {} };
         if (!cells.length) {
@@ -2847,10 +2932,10 @@ document.addEventListener('DOMContentLoaded', function () {
             return row.slice(0, colCountBeforeMove);
         });
 
-        const lowestMove = moveLowestPriceSupplierAfterSpec(currentSheetCells);
-        currentSheetCells = lowestMove.cells;
-        if (lowestMove.moved && lowestMove.from !== null && lowestMove.from !== lowestMove.to) {
-            currentSheetFormats = moveFormatColumn(currentSheetFormats, lowestMove.from, lowestMove.to);
+        const priceSort = sortSupplierColumnsByPrice(currentSheetCells);
+        currentSheetCells = priceSort.cells;
+        if (priceSort.mapping) {
+            currentSheetFormats = remapFormatColumns(currentSheetFormats, priceSort.mapping);
         }
 
         const colCount = Math.max(...currentSheetCells.map(row => row.length), 1);

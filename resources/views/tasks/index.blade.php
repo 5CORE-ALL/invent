@@ -453,11 +453,6 @@
                 flex: 1 1 58px;
                 min-width: 50px;
             }
-            .task-toolbar-wrap .toolbar-field-date {
-                flex: 0 0 112px;
-                min-width: 112px;
-                max-width: 112px;
-            }
             .task-toolbar-wrap .toolbar-field-select {
                 flex: 1 1 68px;
                 min-width: 62px;
@@ -760,6 +755,11 @@
             flex-shrink: 0;
         }
 
+        /* Hide the icon square on all task stat cards. */
+        .stat-card .stat-icon {
+            display: none !important;
+        }
+
         .stat-content {
             flex: 1;
             min-width: 0;
@@ -834,23 +834,6 @@
         }
         .stat-card-cyan .stat-icon {
             background: linear-gradient(135deg, #0dcaf0 0%, #0891b2 100%);
-        }
-
-        /* Info - Page ETC total */
-        .stat-card-info {
-            border-left-color: #3bc9e8;
-        }
-        .stat-card-info .stat-icon {
-            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-        }
-
-        /* Hide the year (YYYY) portion of the start-date filter (WebKit/Chromium). */
-        #filter-date::-webkit-datetime-edit-year-field {
-            display: none;
-        }
-        /* Hide the "/" separator that precedes the year field. */
-        #filter-date::-webkit-datetime-edit-text:last-of-type {
-            display: none;
         }
 
         /* Red - Overdue */
@@ -949,6 +932,70 @@
         }
         .stat-card-purple .stat-icon {
             background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+        }
+
+        /* ── Solid colored "pill" badges (match the forecast summary badge UI) ──
+           Flat solid background per card, centered compact label+value, no white
+           card / left-accent / shadow. */
+        .stats-row .stat-card,
+        .stats-row.flex-nowrap > .col > .stat-card {
+            border: none !important;
+            border-radius: 8px;
+            box-shadow: none;
+            justify-content: center;
+            text-align: center;
+            padding: 6px 8px;
+            color: #fff;
+        }
+        .stats-row .stat-card:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+        }
+        .stats-row .stat-content {
+            flex-direction: row;
+            flex-wrap: wrap;
+            align-items: baseline;
+            justify-content: center;
+            column-gap: 5px;
+            row-gap: 0;
+        }
+        .stats-row .stat-card .stat-label,
+        .stats-row .stat-card .stat-value,
+        .stats-row .stat-card .stat-unit {
+            color: inherit !important;
+        }
+        .stats-row .stat-card .stat-label {
+            font-size: 13px;
+            opacity: 0.95;
+            margin-bottom: 0;
+        }
+        .stats-row .stat-card .stat-value {
+            font-size: 13px;
+        }
+        /* Keep label + value on the same line. */
+        .stats-row .stat-card .stat-unit {
+            flex-basis: 100%;
+            font-size: 8px;
+        }
+
+        /* Solid backgrounds per metric colour. */
+        .stats-row .stat-card-blue        { background: #3b7ddd !important; }
+        .stats-row .stat-card-cyan        { background: #0dcaf0 !important; }
+        .stats-row .stat-card-red         { background: #dc3545 !important; }
+        .stats-row .stat-card-green       { background: #28a745 !important; }
+        .stats-row .stat-card-yellow      { background: #f0ad4e !important; }
+        .stats-row .stat-card-teal        { background: #20c997 !important; }
+        .stats-row .stat-card-perf-score  { background: #7c3aed !important; }
+        .stats-row .stat-card-red-missed  { background: #dc3545 !important; }
+        .stats-row .stat-card-orange      { background: #fd7e14 !important; }
+        .stats-row .stat-card-purple      { background: #6610f2 !important; }
+
+        /* Lighter fills read better with dark text (mirrors the forecast badges). */
+        .stats-row .stat-card-cyan,
+        .stats-row .stat-card-yellow,
+        .stats-row .stat-card-teal,
+        .stats-row .stat-card-green {
+            color: #1f2d3d;
         }
 
         /* Responsive adjustments */
@@ -1627,7 +1674,7 @@
                         <i class="mdi mdi-format-list-bulleted"></i>
                     </div>
                     <div class="stat-content text-center">
-                        <div class="stat-label">TOTAL</div>
+                        <div class="stat-label">Pending</div>
                         <div class="stat-value">{{ $stats['total'] }}</div>
                     </div>
                 </div>
@@ -1653,9 +1700,8 @@
                         <i class="mdi mdi-briefcase-clock"></i>
                     </div>
                     <div class="stat-content text-center">
-                        <div class="stat-label">ETC 30D</div>
+                        <div class="stat-label">ETC L30 D</div>
                         <div class="stat-value">{{ (int) round(($stats['etc_last_30'] ?? 0) / 60) }}h</div>
-                        <div class="stat-unit" title="Last 30 days ETC including deleted tasks">hours</div>
                     </div>
                 </div>
             </div>
@@ -1667,9 +1713,8 @@
                         <i class="mdi mdi-timer"></i>
                     </div>
                     <div class="stat-content text-center">
-                        <div class="stat-label">ATC 30D</div>
+                        <div class="stat-label">ATC L30</div>
                         <div class="stat-value">{{ (int) round(($stats['atc_last_30'] ?? 0) / 60) }}h</div>
-                        <div class="stat-unit" title="Last 30 days ATC including deleted tasks">hours</div>
                     </div>
                 </div>
             </div>
@@ -1683,7 +1728,6 @@
                     <div class="stat-content text-center">
                         <div class="stat-label">TAT</div>
                         <div class="stat-value">{{ isset($stats['tat_avg_30']) && $stats['tat_avg_30'] !== null ? (int) round((float) $stats['tat_avg_30']) : '-' }}</div>
-                        <div class="stat-unit" title="Average turnaround (days) for tasks completed in the last 30 days">30-day avg</div>
                     </div>
                 </div>
             </div>
@@ -1697,7 +1741,6 @@
                     <div class="stat-content text-center">
                         <div class="stat-label">AVG SCORE</div>
                         <div class="stat-value">{{ isset($stats['average_score']) && $stats['average_score'] !== null ? number_format($stats['average_score'], 2) : '-' }}</div>
-                        <div class="stat-unit" title="Your average score from completed performance reviews (out of 5). Not affected by task filters.">Your avg / 5</div>
                     </div>
                 </div>
             </div>
@@ -1711,7 +1754,6 @@
                     <div class="stat-content text-center">
                         <div class="stat-label">MISSED</div>
                         <div class="stat-value">{{ $stats['missed_count_30'] ?? 0 }}</div>
-                        <div class="stat-unit" title="Missed / not done tasks with start date in the last 30 days">Last 30 days</div>
                     </div>
                 </div>
             </div>
@@ -1725,24 +1767,10 @@
                     <div class="stat-content text-center">
                         <div class="stat-label">PENDING ETC</div>
                         <div class="stat-value">0h</div>
-                        <div class="stat-unit" title="Total ETC (estimated time) of pending tasks not yet Done or Archived">hours</div>
                     </div>
                 </div>
             </div>
 
-            <!-- Page ETC total (sum of ETC for tasks shown on this page) -->
-            <div class="col">
-                <div class="stat-card stat-card-info" title="Total ETC of tasks shown on this page">
-                    <div class="stat-icon">
-                        <i class="mdi mdi-clock-outline"></i>
-                    </div>
-                    <div class="stat-content text-center">
-                        <div class="stat-label">ETC</div>
-                        <div class="stat-value" id="etc-page-total">0m</div>
-                        <div class="stat-unit">this page</div>
-                    </div>
-                </div>
-            </div>
         </div>
 
         <div class="row">
@@ -1776,10 +1804,6 @@
                                             </li>
                                         </ul>
                                     </div>
-
-                                    <button type="button" class="mobile-action-btn btn-success tf-add-task-btn">
-                                        <span>+ Task</span>
-                                    </button>
 
                                     <button type="button" class="mobile-action-btn btn-primary" id="bulk-task-btn-mobile">
                                         <span>+ Multi</span>
@@ -1861,22 +1885,11 @@
                                     </ul>
                                 </div>
 
-                                <button type="button" class="btn btn-success tf-add-task-btn" title="Add a new task">
-                                    <i class="mdi mdi-plus"></i> Task
-                                </button>
-
                                 <button type="button" class="btn btn-primary" id="bulk-task-btn">+ Multi</button>
 
                                 <button type="button" class="btn btn-warning text-dark" id="tasks-refresh-table-btn" title="Reload tasks from server (keeps your filters)">
                                     <i class="mdi mdi-refresh"></i>
                                 </button>
-
-                                @if(!empty($canShowTaskMaintenanceButtons))
-                                <button type="button" class="btn btn-outline-danger" id="expire-daily-auto-btn"
-                                    title="Auto-delete DAILY automated tasks not completed before the California business day ends. Runs at 12:05 AM {{ $taskBusinessTzShort ?? 'PT' }} each night. Weekly/monthly not affected.">
-                                    <i class="mdi mdi-magnify"></i>
-                                </button>
-                                @endif
 
                                 <div class="btn-group task-playback-group task-playback-assignor" role="group" aria-label="Assignor playback">
                                     <button type="button" id="task-play-backward-assignor" class="btn btn-light btn-sm rounded-circle p-0" title="Previous assignor" disabled>
@@ -1919,10 +1932,6 @@
                             <div class="col-12 mb-2 toolbar-field toolbar-field-task">
                                 <input type="text" id="filter-task" class="form-control form-control-sm" placeholder="Task" autocomplete="off" onkeydown="if(event.key === 'Enter') { event.preventDefault(); return false; }">
                             </div>
-                            <div class="col-12 mb-2 toolbar-field toolbar-field-date">
-                                <input type="date" id="filter-date" class="form-control form-control-sm" title="Filter by start date">
-                            </div>
-                            
                             <div class="col-12 mb-2 toolbar-field toolbar-field-select">
                                 <select id="filter-assignor" class="form-select form-select-sm task-filter-user-select" title="Search by name or email">
                                     <option value=""></option>
@@ -2924,7 +2933,6 @@
                         search: $('#filter-search').val() || '',
                         group: $('#filter-group').val() || '',
                         task: $('#filter-task').val() || '',
-                        date: $('#filter-date').val() || '',
                         assignor: $('#filter-assignor').val() || '',
                         assignee: $('#filter-assignee').val() || '',
                         status: $('#filter-status').val() || '',
@@ -2943,7 +2951,6 @@
                     $('#filter-search').val(s.search || '');
                     $('#filter-group').val(s.group || '');
                     $('#filter-task').val(s.task || '');
-                    $('#filter-date').val(s.date || '');
                     $('#filter-status').val(s.status || '');
                     $('#filter-priority').val(s.priority || '');
                     $('#filter-task-type').val(s.taskType || '');
@@ -3790,11 +3797,15 @@
                             var row = cell.getRow().getData();
                             var value = cell.getValue();
                             if (value && value !== '-') {
-                                var firstNames = String(value).split(',').map(function(name) {
+                                var firstNamesArr = String(value).split(',').map(function(name) {
                                     return name.trim().split(/\s+/)[0];
-                                }).filter(Boolean).join(', ');
+                                }).filter(Boolean);
                                 var imgSrc = (row.assignee_avatar || "{{ asset('images/users/avatar-2.jpg') }}").replace(/&/g, '&amp;');
-                                var nameEsc = String(firstNames).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                                // 2+ assignees stack on separate lines (<br>); a single one stays inline.
+                                var nameSep = firstNamesArr.length > 1 ? '<br>' : ', ';
+                                var nameEsc = firstNamesArr.map(function(n) {
+                                    return String(n).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                                }).join(nameSep);
                                 var designation = row.assignee_designation || '';
                                 var designationAttr = designation ? ' title="' + String(designation).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '"' : '';
                                 return '<div class="d-flex align-items-center justify-content-center gap-2 flex-nowrap"' + designationAttr + '>' +
@@ -3837,34 +3848,6 @@
                         }
                     });
 
-                    // AUTO DEL — red dot; full time on hover (daily auto-tasks)
-                    cols.push({
-                        title: "AUTO DEL",
-                        titleFormatter: function() {
-                            return '<span title="Auto-delete (daily auto tasks) — hover row dot for time" style="font-weight:700;font-size:calc(11px * 0.9);color:#495057;">AUTO DEL</span>';
-                        },
-                        headerTooltip: "Daily automated tasks auto-delete at 12:05 AM {{ $taskBusinessTzShort ?? 'PT' }} the day after TID if not Done. Hover the dot for time.",
-                        field: "auto_delete_at_human",
-                        width: 52,
-                        minWidth: 44,
-                        widthGrow: 0,
-                        cssClass: "tasks-col-auto-del",
-                        headerClass: "tasks-col-auto-del",
-                        hozAlign: "center",
-                        formatter: function(cell) {
-                            var row = cell.getRow().getData();
-                            var hoverText = autoDeleteHoverText(row);
-                            if (!hoverText) {
-                                return '<span style="color: #adb5bd;">-</span>';
-                            }
-                            return '<span class="task-auto-del-hit" data-tip="' + escAttr(hoverText) + '" role="img" aria-label="' + escAttr(hoverText) + '">' +
-                                '<span class="task-auto-del-dot"></span></span>';
-                        },
-                        tooltip: function (cell) {
-                            return autoDeleteHoverText(cell.getRow().getData()) || false;
-                        }
-                    });
-                    
                     // ETC (Estimated Time) — whole minutes
                     cols.push({
                         title: "ETC",
@@ -4012,14 +3995,14 @@
                             var currentStatus = statuses[value] || {bg: '#6c757d', text: '#fff'};
                             
                             if (!canUpdateStatus) {
-                                return '<span style="background: ' + currentStatus.bg + '; color: ' + currentStatus.text + '; padding: 6px 12px; border-radius: 20px; font-size: 11px; font-weight: 700; display: inline-block;">' + displayText + '</span>';
+                                return '<span style="background: ' + currentStatus.bg + '; color: ' + currentStatus.text + '; padding: 4.8px 9.6px; border-radius: 16px; font-size: 8.8px; font-weight: 700; display: inline-block;">' + displayText + '</span>';
                             }
                             
                             return `
                                 <select class="form-select form-select-sm status-select" 
                                         data-task-id="${taskId}" 
                                         data-current-status="${value}"
-                                        style="background: ${currentStatus.bg}; color: ${currentStatus.text}; border: none; font-weight: 700; font-size: 11px; border-radius: 20px; padding: 6px 12px;">
+                                        style="background: ${currentStatus.bg}; color: ${currentStatus.text}; border: none; font-weight: 700; font-size: 8.8px; border-radius: 16px; padding: 4.8px 9.6px;">
                                     <option value="Todo" ${value === 'Todo' ? 'selected' : ''}>Todo</option>
                                     <option value="Working" ${value === 'Working' ? 'selected' : ''}>Working</option>
                                     <option value="Archived" ${value === 'Archived' ? 'selected' : ''}>Archived</option>
@@ -4047,6 +4030,7 @@
                     // as Done modal at submission time.
                     cols.push({
                         title: "DONE NOTE",
+                        visible: false,
                         titleFormatter: function() {
                             return '<span style="font-weight:700;font-size:11px;color:#495057;">DONE NOTE</span>';
                         },
@@ -4185,17 +4169,6 @@
                 })(),
             });
 
-            // Format a minute total as "Xh Ym" (e.g. 5392 -> "89h 52m"). Under an hour -> "Ym".
-            function formatMinutesAsHm(totalMinutes) {
-                var mins = Math.round(Number(totalMinutes) || 0);
-                var hours = Math.floor(mins / 60);
-                var rem = mins % 60;
-                if (hours > 0) {
-                    return hours.toLocaleString() + 'h ' + rem + 'm';
-                }
-                return rem + 'm';
-            }
-
             // Update statistics based on filtered data
             function updateStatistics() {
                 var filteredData = table.getData("active");
@@ -4204,7 +4177,6 @@
                     total: filteredData.length,
                     pending: filteredData.filter(t => t.status === 'Todo').length,
                     done: filteredData.filter(t => t.status === 'Done').length,
-                    etc_total: filteredData.reduce((sum, t) => sum + (parseInt(t.eta_time) || 0), 0),
                     atc_total: filteredData.reduce((sum, t) => sum + (parseInt(t.etc_done) || 0), 0),
                     done_etc: filteredData.filter(t => t.status === 'Done').reduce((sum, t) => sum + (parseInt(t.eta_time) || 0), 0),
                     done_atc: filteredData.filter(t => t.status === 'Done').reduce((sum, t) => sum + (parseInt(t.etc_done) || 0), 0),
@@ -4309,7 +4281,7 @@
                     var valueEl = $(this).find('.stat-value');
                     
                     switch(label) {
-                        case 'TOTAL':
+                        case 'Pending':
                             valueEl.text(stats.total);
                             $(this).attr('data-value', stats.total);
                             break;
@@ -4325,12 +4297,12 @@
                             valueEl.text(stats.done);
                             $(this).attr('data-value', stats.done);
                             break;
-                        case 'ETC 30D':
+                        case 'ETC L30 D':
                             break;
                         case 'R&R':
                             valueEl.text(stats.rr != null ? Math.round(stats.rr / 60) : (stats.etc_rr != null ? Math.round(stats.etc_rr / 60) : '-'));
                             break;
-                        case 'ATC 30D':
+                        case 'ATC L30':
                             break;
                         case 'DONE ETC':
                             valueEl.text(Math.round(stats.done_etc / 60));
@@ -4353,9 +4325,6 @@
                         case 'MISSED':
                             valueEl.text(stats.missed_count_30);
                             $(this).attr('data-value', stats.missed_count_30);
-                            break;
-                        case 'ETC':
-                            valueEl.text(formatMinutesAsHm(stats.etc_total || 0));
                             break;
                         case 'PENDING ETC':
                             var pendingEtcHours = Math.round((stats.pending_etc || 0) / 60);
@@ -4385,9 +4354,9 @@
                         $('.stat-card').each(function() {
                             var label = $(this).find('.stat-label').text().trim();
                             var valueEl = $(this).find('.stat-value');
-                            if (label === 'ETC 30D') {
+                            if (label === 'ETC L30 D') {
                                 valueEl.text(Math.round(etcHours) + 'h');
-                            } else if (label === 'ATC 30D') {
+                            } else if (label === 'ATC L30') {
                                 valueEl.text(Math.round(atcHours) + 'h');
                             }
                         });
@@ -4456,25 +4425,6 @@
                     filters.push({field:"title", type:"like", value:taskValue});
                     console.log('Filter - Task:', taskValue);
                 }
-
-                // Date filter — match the date the TID column actually shows.
-                // The TID cell renders rowData.tid_business_date (start_date's calendar day in
-                // the office TZ); raw start_date can land on a different calendar day after an
-                // edit (e.g. evening PT stored as next-day UTC / app-TZ), so a `like` on
-                // start_date silently misses the row right after TID is changed. Use a function
-                // filter so we compare against the same Y-m-d that the TID column displays,
-                // falling back to the start_date prefix only when tid_business_date is missing.
-                var dateValue = $('#filter-date').val();
-                if (dateValue) {
-                    filters.push(function (rowData) {
-                        var bd = rowData && rowData.tid_business_date
-                            ? String(rowData.tid_business_date)
-                            : (rowData && rowData.start_date ? String(rowData.start_date) : '');
-                        return bd.slice(0, 10) === dateValue;
-                    });
-                    console.log('Filter - Date:', dateValue);
-                }
-                
 
                 // Assignor filter (including NULL check); skipped when session user focus is active (uses OR block below)
                 var assignorValue = $('#filter-assignor').val();
@@ -4655,8 +4605,6 @@
                     applyFilters();
                 }
             });
-            $('#filter-date').on('change', applyFilters);
-            
             $('#filter-assignor, #filter-assignee').on('change', function () {
                 if (suppressAssignFilterApply) return;
                 if (taskManagerSessionUserFocus) {
@@ -5006,54 +4954,6 @@
                 });
             });
 
-            // Admin: trigger the "Cleanup Missed Daily" job on demand.
-            // Auto-deletes daily automated tasks that were not completed the same day and counts them in Missed.
-            $('#expire-daily-auto-btn').on('click', function () {
-                var $btn = $(this);
-                var originalHtml = $btn.html();
-
-                if (!confirm('Auto-delete DAILY automated tasks that were NOT completed before today?\n\n• Only schedule_type = daily is affected.\n• Weekly and Monthly automated tasks are NOT touched.\n• Deleted tasks are moved to the Deleted/Archive list and counted in the Missed badge.')) {
-                    return;
-                }
-
-                $btn.prop('disabled', true).html('<i class="mdi mdi-loading mdi-spin me-2"></i> Cleaning...');
-
-                $.ajax({
-                    url: '{{ route('tasks.expireDailyAutomated') }}',
-                    method: 'POST',
-                    data: { _token: '{{ csrf_token() }}' },
-                    dataType: 'json'
-                }).done(function (resp) {
-                    if (resp && resp.success) {
-                        alert(resp.message || 'Cleanup complete.');
-                        // Refresh table + stats so the Missed badge updates immediately.
-                        if (typeof table !== 'undefined' && table && typeof table.replaceData === 'function') {
-                            table.replaceData().then(function () {
-                                applyFilters();
-                                setTimeout(updateStatistics, 100);
-                            });
-                        } else {
-                            location.reload();
-                        }
-                        // Refresh Today Deleted badge — auto-expired tasks become today-deleted entries.
-                        if (typeof refreshTodayDeletedBadge === 'function') {
-                            refreshTodayDeletedBadge();
-                        }
-                    } else {
-                        alert((resp && resp.message) ? resp.message : 'Cleanup failed.');
-                    }
-                }).fail(function (xhr) {
-                    var msg = 'Cleanup failed.';
-                    try {
-                        var r = xhr.responseJSON;
-                        if (r && r.message) { msg = r.message; }
-                    } catch (e) {}
-                    alert(msg);
-                }).always(function () {
-                    $btn.prop('disabled', false).html(originalHtml);
-                });
-            });
-
             // Assignor playback (step through assignors - next to Bulk button)
             var taskPlaybackListAssignor = [];
             var currentTaskPlaybackIndexAssignor = -1;
@@ -5257,7 +5157,6 @@
                         $('#filter-status').val('');
                         $('#filter-priority').val('');
                         $('#filter-task-type').val('');
-                        $('#filter-date').val('');
                         $('#filter-assignor').val('');
                         $('#filter-assignee').val('');
                         console.log('✓ Showing all tasks');

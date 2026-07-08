@@ -1627,7 +1627,9 @@ class ComparisonSheetService
     }
 
     /**
-     * Move the supplier column with the lowest USD (or RMB) price to the first slot after Spec.
+     * Order every supplier column (all columns after Spec) by PRICE USD (falling back to
+     * RMB) ascending. Equal prices keep their original relative order so identical prices
+     * sit side-by-side, and columns without a price stay after the priced ones.
      *
      * @param  array<int, array<int, string>>  $cells
      * @return array<int, array<int, string>>
@@ -1643,16 +1645,72 @@ class ComparisonSheetService
             return $cells;
         }
 
-        $bestCol = $this->findLowestSupplierColumn($cells, $specCol, 'usd');
-        if ($bestCol === null) {
-            $bestCol = $this->findLowestSupplierColumn($cells, $specCol, 'rmb');
+        $priceRow = $this->findRowIndexByLabel($cells, 'usd', $specCol);
+        if ($priceRow === null) {
+            $priceRow = $this->findRowIndexByLabel($cells, 'rmb', $specCol);
         }
-
-        if ($bestCol === null || $bestCol === $firstSupplierCol) {
+        if ($priceRow === null) {
             return $cells;
         }
 
-        return $this->moveColumn($cells, $bestCol, $firstSupplierCol);
+        $supplierCols = [];
+        for ($col = $firstSupplierCol; $col < $colCount; $col++) {
+            $price = $this->parseSheetNumber((string) ($cells[$priceRow][$col] ?? ''));
+            $supplierCols[] = [
+                'index' => $col,
+                'price' => ($price !== null && $price > 0) ? $price : null,
+                'order' => $col,
+            ];
+        }
+
+        usort($supplierCols, function ($a, $b) {
+            if ($a['price'] === null && $b['price'] === null) {
+                return $a['order'] <=> $b['order'];
+            }
+            if ($a['price'] === null) {
+                return 1;
+            }
+            if ($b['price'] === null) {
+                return -1;
+            }
+            if ($a['price'] === $b['price']) {
+                return $a['order'] <=> $b['order'];
+            }
+
+            return $a['price'] <=> $b['price'];
+        });
+
+        $newOrder = array_map(fn ($item) => $item['index'], $supplierCols);
+
+        $changed = false;
+        foreach ($newOrder as $position => $origCol) {
+            if ($origCol !== $firstSupplierCol + $position) {
+                $changed = true;
+                break;
+            }
+        }
+        if (! $changed) {
+            return $cells;
+        }
+
+        $result = [];
+        foreach ($cells as $row) {
+            if (! is_array($row)) {
+                $result[] = $row;
+
+                continue;
+            }
+            $newRow = [];
+            for ($col = 0; $col <= $specCol; $col++) {
+                $newRow[$col] = $row[$col] ?? '';
+            }
+            foreach ($newOrder as $origCol) {
+                $newRow[] = $row[$origCol] ?? '';
+            }
+            $result[] = $newRow;
+        }
+
+        return ComparisonData::normalizeCells($result);
     }
 
     /**

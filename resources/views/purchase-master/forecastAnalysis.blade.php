@@ -3291,9 +3291,9 @@
                         if (!url) {
                             return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
                         }
-                        const sku = String(d.SKU || '').trim().replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+                        const safeUrl = url.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
                         return `<div style="display:flex;align-items:center;justify-content:center;">
-                            <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2 forecast-cd-open" data-sku="${sku}" title="Open comparison" aria-label="Open comparison">
+                            <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2 forecast-clink-open" data-url="${safeUrl}" title="Open C link" aria-label="Open C link">
                                 <i class="mdi mdi-link"></i>
                             </button>
                         </div>`;
@@ -4040,7 +4040,8 @@
             }
             window.addEventListener('resize', function() { requestAnimationFrame(applyForecastTableHeight); });
             table.on('tableBuilt', function() {
-                if (typeof restoreColumnVisibilityFromLocalStorage === 'function') restoreColumnVisibilityFromLocalStorage();
+                if (typeof loadColumnVisibilityFromServer === 'function') loadColumnVisibilityFromServer();
+                else if (typeof restoreColumnVisibilityFromLocalStorage === 'function') restoreColumnVisibilityFromLocalStorage();
                 requestAnimationFrame(applyForecastTableHeight);
             });
             table.on('dataLoaded', function() {
@@ -5502,7 +5503,14 @@
             modal.show();
         }
 
-        const COLUMN_VIS_KEY = "tabulator_column_visibility_forecast";
+        // Column show/hide state persists server-side in the shared DB table
+        // `channel_tabulator_column_settings` (same mechanism as the amazon/ebay tabulators),
+        // under channel = 'forecast_analysis_tabulator', so the selection becomes the default
+        // for everyone on this page across sessions and devices.
+        const FORECAST_COLUMN_VIS_URL = '{{ route('tabulator.column.visibility.get') }}';
+        const FORECAST_COLUMN_VIS_SAVE_URL = '{{ route('tabulator.column.visibility.set') }}';
+        const FORECAST_COLUMN_CHANNEL = 'forecast_analysis_tabulator';
+        let forecastColumnVisibilityCache = null;
 
         function initColumnModal() {
             const trigger = document.getElementById("hide-column-dropdown");
@@ -5596,28 +5604,51 @@
             });
         }
 
-        // Persist the user's Show/Hide column choices across refreshes.
+        // Persist the user's Show/Hide column choices to the shared server store so they
+        // become the default the next time this page (or anyone) opens it.
         function saveColumnVisibilityToLocalStorage() {
+            if (typeof table === 'undefined' || !table) return;
+            const map = {};
+            table.getColumns().forEach(function(col) {
+                const f = col.getField();
+                if (!f) return;
+                const def = col.getDefinition() || {};
+                if (def.hideFromColumnPicker) return; // only user-toggleable columns
+                map[f] = col.isVisible();
+            });
+            forecastColumnVisibilityCache = map;
             try {
-                if (typeof table === 'undefined' || !table) return;
-                const map = {};
-                table.getColumns().forEach(function(col) {
-                    const f = col.getField();
-                    if (!f) return;
-                    const def = col.getDefinition() || {};
-                    if (def.hideFromColumnPicker) return; // only user-toggleable columns
-                    map[f] = col.isVisible();
-                });
-                localStorage.setItem(COLUMN_VIS_KEY, JSON.stringify(map));
+                fetch(FORECAST_COLUMN_VIS_SAVE_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                    },
+                    body: JSON.stringify({ channel: FORECAST_COLUMN_CHANNEL, visibility: map })
+                }).catch(function(e) { console.error('Error saving column visibility:', e); });
             } catch (e) {}
         }
 
+        // Fetch the saved visibility map once, cache it, and apply it to the table.
+        function loadColumnVisibilityFromServer() {
+            return fetch(FORECAST_COLUMN_VIS_URL + '?channel=' + encodeURIComponent(FORECAST_COLUMN_CHANNEL), {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                    }
+                })
+                .then(function(res) { return res.json(); })
+                .then(function(saved) {
+                    forecastColumnVisibilityCache = (saved && typeof saved === 'object') ? saved : {};
+                    restoreColumnVisibilityFromLocalStorage();
+                    return forecastColumnVisibilityCache;
+                })
+                .catch(function(e) { console.error('Error loading column visibility:', e); });
+        }
+
         function restoreColumnVisibilityFromLocalStorage() {
-            let map = null;
-            try {
-                const raw = localStorage.getItem(COLUMN_VIS_KEY);
-                if (raw) map = JSON.parse(raw);
-            } catch (e) { map = null; }
+            const map = forecastColumnVisibilityCache;
             if (!map || typeof map !== 'object' || typeof table === 'undefined' || !table) return;
             table.getColumns().forEach(function(col) {
                 const f = col.getField();
@@ -6504,6 +6535,13 @@
             const sku = String($(this).data('sku') || '').trim();
             if (!sku) return;
             const url = '{{ route('comparison.sheet.page') }}?sku=' + encodeURIComponent(sku);
+            window.open(url, '_blank', 'noopener');
+        });
+
+        // C link button opens the actual comparison link URL (not the internal CD page).
+        $(document).off('click', '.forecast-clink-open').on('click', '.forecast-clink-open', function() {
+            const url = String($(this).attr('data-url') || '').trim();
+            if (!url) return;
             window.open(url, '_blank', 'noopener');
         });
         document.getElementById('forecastCdModal')?.addEventListener('hidden.bs.modal', function() {

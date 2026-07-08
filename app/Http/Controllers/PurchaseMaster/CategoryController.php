@@ -7044,6 +7044,11 @@ PROMPT;
                 'instructions_ctn' => 'ctn_instructions', // column header "Instructions CTN"
                 'ctn' => 'ctn_instructions', // short header "CTN"
                 'ctn_instructions' => 'ctn_instructions',
+                // Verified flag – sheet uses 0/1, stored into Values['verified_data'] as int
+                'verified' => 'verified_data',
+                'verified__0_1_' => 'verified_data', // "Verified (0/1)"
+                'verified_data' => 'verified_data',
+                'n_verify' => 'verified_data',
                 // Short-form / plain names for custom files
                 'wt_act' => 'wt_act',
                 'wt_act_kg' => 'wt_act_kg',
@@ -7138,8 +7143,20 @@ PROMPT;
                             // Convert to float for numeric fields
                             if (in_array($field, ['wt_act', 'wt_act_kg', 'wt_decl', 'l', 'w', 'h', 'l_cm', 'w_cm', 'h_cm', 'cbm', 'ctn_l', 'ctn_w', 'ctn_h', 'ctn_cbm', 'ctn_qty', 'ctn_cbm_each', 'cbm_e', 'ctn_gwt', 'ctn_weight_kg', 'ctn_weight_lb', 'ship', 'ship_bb', 'tt_ship', 'temu_ship', 'ebay2_ship', 'shein_ship', 'gofo', 'temu_gofo', 'fedex', 'ups', 'usps', 'uni'])) {
                                 $value = is_numeric($value) ? (float) $value : null;
+                                // Treat 0 (or blank) as "no change" — keep the old value
+                                if ($value === null || $value == 0) {
+                                    continue;
+                                }
                             } elseif ($field === 'ctn_instructions') {
                                 $value = mb_substr($value, 0, 100);
+                            } elseif ($field === 'verified_data') {
+                                // Sheet supplies 0/1 (or yes/true); store the real value as int 0/1.
+                                // 0/blank means "no change" — keep the old verified value.
+                                $isVerified = in_array(strtolower((string) $value), ['1', 'yes', 'true', 'y', 'verified'], true);
+                                if (! $isVerified) {
+                                    continue;
+                                }
+                                $value = 1;
                             }
                             if ($value !== null) {
                                 $values[$field] = $value;

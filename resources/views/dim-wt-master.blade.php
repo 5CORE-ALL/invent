@@ -233,6 +233,20 @@
             table-layout: auto;
         }
 
+        /* Verified / N Verify filter badges */
+        .badge-filter {
+            opacity: 0.85;
+            transition: opacity 0.15s ease, box-shadow 0.15s ease;
+            user-select: none;
+        }
+        .badge-filter:hover {
+            opacity: 1;
+        }
+        .badge-filter.badge-filter-active {
+            opacity: 1;
+            box-shadow: 0 0 0 2px #fff, 0 0 0 4px rgba(0, 0, 0, 0.35);
+        }
+
         /* Verified column – red/green dot (no outer ring) */
         .verified-data-dropdown {
             width: 28px;
@@ -551,6 +565,14 @@
                                     <div class="d-flex align-items-center gap-1">
                                         <label for="skuSearch" class="form-label mb-0 small fw-bold">SKU</label>
                                         <input type="text" id="skuSearch" class="form-control form-control-sm" placeholder="Search SKU" style="width: 150px;">
+                                    </div>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <span class="badge bg-success rounded-1 d-inline-flex align-items-center badge-filter" id="verifiedBadge" title="Click to show only Verified SKUs" style="font-size: 0.95rem; padding: 0.5rem 0.9rem; font-weight: 500; cursor: pointer;">
+                                            Verified <span id="verifiedCount" class="ms-2 fw-bold">0</span>
+                                        </span>
+                                        <span class="badge bg-danger rounded-1 d-inline-flex align-items-center badge-filter" id="notVerifiedBadge" title="Click to show only Not-Verified SKUs" style="font-size: 0.95rem; padding: 0.5rem 0.9rem; font-weight: 500; cursor: pointer;">
+                                            N Verify <span id="notVerifiedCount" class="ms-2 fw-bold">0</span>
+                                        </span>
                                     </div>
                                 </div>
                                 <div class="btn-group" role="group">
@@ -965,6 +987,7 @@
             // Store the loaded data globally
             let tableData = [];
             let filteredData = [];
+            let verifiedFilter = null; // null = all, 1 = verified only, 0 = not verified only
             let productUniqueParents = [];
             let bulkEditList = null; // When set, save will update all these products with form values
             let isProductNavigationActive = false;
@@ -1067,8 +1090,17 @@
                     .then(response => {
                         if (response && response.data && Array.isArray(response.data)) {
                             tableData = response.data;
-                            filteredData = [...tableData];
-                            renderTable(filteredData);
+                            // Preserve the user's active search / verified filter so applied
+                            // changes show immediately in the current view (no manual refresh).
+                            const hasActiveFilter = verifiedFilter !== null ||
+                                (document.getElementById('parentSearch')?.value || '') !== '' ||
+                                (document.getElementById('skuSearch')?.value || '') !== '';
+                            if (hasActiveFilter) {
+                                applyFilters();
+                            } else {
+                                filteredData = [...tableData];
+                                renderTable(filteredData);
+                            }
                             updateCounts();
                             refreshProductPlaybackState();
                         } else {
@@ -1405,6 +1437,8 @@
                 let lMissingCount = 0;
                 let wMissingCount = 0;
                 let hMissingCount = 0;
+                let verifiedCount = 0;
+                let notVerifiedCount = 0;
                 tableData.forEach(item => {
                     if (item.Parent) parentSet.add(item.Parent);
                     if (item.SKU && !String(item.SKU).toUpperCase().includes('PARENT'))
@@ -1423,6 +1457,12 @@
                     if (isMissing(item.l)) lMissingCount++;
                     if (isMissing(item.w)) wMissingCount++;
                     if (isMissing(item.h)) hMissingCount++;
+
+                    // Verified vs not verified (child SKUs only)
+                    const isVerified = item.verified_data === 1 || item.verified_data === true ||
+                        (item.Values && (item.Values.verified_data === 1 || item.Values.verified_data === true));
+                    if (isVerified) verifiedCount++;
+                    else notVerifiedCount++;
                 });
                 
                 const setHeaderCount = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = `(${val})`; };
@@ -1434,6 +1474,11 @@
                 setHeaderCount('lMissingCount', lMissingCount);
                 setHeaderCount('wMissingCount', wMissingCount);
                 setHeaderCount('hMissingCount', hMissingCount);
+
+                const verifiedCountEl = document.getElementById('verifiedCount');
+                if (verifiedCountEl) verifiedCountEl.textContent = verifiedCount;
+                const notVerifiedCountEl = document.getElementById('notVerifiedCount');
+                if (notVerifiedCountEl) notVerifiedCountEl.textContent = notVerifiedCount;
             }
 
             function refreshProductPlaybackState() {
@@ -1528,6 +1573,15 @@
                 filteredData = tableData.filter(item => {
                     if (parentSearchVal && !(item.Parent || '').toLowerCase().includes(parentSearchVal)) return false;
                     if (skuSearchVal && !(item.SKU || '').toLowerCase().includes(skuSearchVal)) return false;
+
+                    if (verifiedFilter !== null) {
+                        const isParentSku = item.SKU && String(item.SKU).toUpperCase().includes('PARENT');
+                        if (isParentSku) return false;
+                        const isVerified = item.verified_data === 1 || item.verified_data === true ||
+                            (item.Values && (item.Values.verified_data === 1 || item.Values.verified_data === true));
+                        if (verifiedFilter === 1 && !isVerified) return false;
+                        if (verifiedFilter === 0 && isVerified) return false;
+                    }
 
                     return true;
                 });
@@ -1625,6 +1679,21 @@
                 if (skuSearch) skuSearch.addEventListener('input', applyFiltersDebounced);
                 const sectionFilterEl = document.getElementById('dimWtSectionFilter');
                 if (sectionFilterEl) sectionFilterEl.addEventListener('change', applyDimWtSectionFilter);
+
+                const verifiedBadge = document.getElementById('verifiedBadge');
+                const notVerifiedBadge = document.getElementById('notVerifiedBadge');
+                if (verifiedBadge) verifiedBadge.addEventListener('click', () => toggleVerifiedFilter(1));
+                if (notVerifiedBadge) notVerifiedBadge.addEventListener('click', () => toggleVerifiedFilter(0));
+            }
+
+            // Toggle the verified/not-verified badge filter (click again to clear)
+            function toggleVerifiedFilter(value) {
+                verifiedFilter = (verifiedFilter === value) ? null : value;
+                const verifiedBadge = document.getElementById('verifiedBadge');
+                const notVerifiedBadge = document.getElementById('notVerifiedBadge');
+                if (verifiedBadge) verifiedBadge.classList.toggle('badge-filter-active', verifiedFilter === 1);
+                if (notVerifiedBadge) notVerifiedBadge.classList.toggle('badge-filter-active', verifiedFilter === 0);
+                applyFilters();
             }
 
             // Toast notification function
@@ -1661,7 +1730,7 @@
             function setupExcelExport() {
                 document.getElementById('downloadExcel').addEventListener('click', function() {
                     // Columns to export (excluding Image, Action, and Parent)
-                    const columns = ["SKU", "Status", "INV", "Weight ACT (Kg)", "Itm wt GW", "WT DECL (LB)", "Length (inch)", "Width (inch)", "Height (Inch)", "Length (CM)", "Width (CM)", "Height (CM)", "CTN L (CM)", "CTN W (CM)", "CTN H (CM)", "CTN (CBM)", "CTN (QTY)", "CTN (CBM/Each)"];
+                    const columns = ["SKU", "Status", "INV", "Weight ACT (Kg)", "Itm wt GW", "WT DECL (LB)", "Length (inch)", "Width (inch)", "Height (Inch)", "Length (CM)", "Width (CM)", "Height (CM)", "CTN L (CM)", "CTN W (CM)", "CTN H (CM)", "CTN (CBM)", "CTN (QTY)", "CTN (CBM/Each)", "Verified"];
 
                     // Column definitions with their data keys
                     const columnDefs = {
@@ -1718,6 +1787,9 @@
                         },
                         "CTN (CBM/Each)": {
                             key: "ctn_cbm_each"
+                        },
+                        "Verified": {
+                            key: "verified_data"
                         }
                     };
 
@@ -1751,6 +1823,14 @@
                                     if (colDef) {
                                         const key = colDef.key;
                                         let value = item[key] !== undefined && item[key] !== null ? item[key] : '';
+
+                                        // Verified: export as 0/1 (real value stored in Values.verified_data)
+                                        if (key === 'verified_data') {
+                                            const isVerified = item.verified_data === 1 || item.verified_data === true ||
+                                                (item.Values && (item.Values.verified_data === 1 || item.Values.verified_data === true));
+                                            row.push(isVerified ? 1 : 0);
+                                            return;
+                                        }
 
                                         // CTN CBM: calculated as CTN L * CTN W * CTN H / 1000000
                                         if (key === 'ctn_cbm') {
@@ -2048,12 +2128,25 @@
                 // Download sample file
                 downloadSampleBtn.addEventListener('click', function() {
                     // Create sample data with all columns
-                    const sampleData = [
-                        ['SKU', 'Weight ACT (Kg)', 'Itm wt GW', 'WT DECL (LB)', 'Length (inch)', 'Width (inch)', 'Height (Inch)', 'Length (CM)', 'Width (CM)', 'Height (CM)', 'CTN L (CM)', 'CTN W (CM)', 'CTN H (CM)', 'CTN (CBM)', 'CTN (QTY)', 'CTN (CBM/Each)'],
-                        ['SKU001', '6.2', '1.5', '1.2', '10.5', '8.3', '5.2', '26.67', '21.08', '13.21', '30', '25', '20', '0.015', '12', '0.00125'],
-                        ['SKU002', '9.1', '2.0', '1.8', '12.0', '9.0', '6.0', '30.48', '22.86', '15.24', '35', '28', '22', '0.0216', '15', '0.00144'],
-                        ['SKU003', '5.4', '1.2', '1.0', '9.5', '7.5', '4.5', '24.13', '19.05', '11.43', '28', '24', '18', '0.0121', '10', '0.00121']
-                    ];
+                    const sampleHeader = ['SKU', 'Weight ACT (Kg)', 'Itm wt GW', 'WT DECL (LB)', 'Length (inch)', 'Width (inch)', 'Height (Inch)', 'Length (CM)', 'Width (CM)', 'Height (CM)', 'CTN L (CM)', 'CTN W (CM)', 'CTN H (CM)', 'CTN (CBM)', 'CTN (QTY)', 'CTN (CBM/Each)', 'Verified (0/1)'];
+                    const sampleKeys = ['SKU', 'wt_act_kg', 'wt_act', 'wt_decl', 'l', 'w', 'h', 'l_cm', 'w_cm', 'h_cm', 'ctn_l', 'ctn_w', 'ctn_h', 'ctn_cbm', 'ctn_qty', 'ctn_cbm_each', 'verified_data'];
+
+                    // Populate the sample with ALL real SKUs (parent rows excluded)
+                    const sampleData = [sampleHeader];
+                    (tableData || []).forEach(item => {
+                        if (item.SKU && String(item.SKU).toUpperCase().includes('PARENT')) return;
+                        const row = sampleKeys.map(key => {
+                            if (key === 'SKU') return item.SKU || '';
+                            if (key === 'verified_data') {
+                                const isVerified = item.verified_data === 1 || item.verified_data === true ||
+                                    (item.Values && (item.Values.verified_data === 1 || item.Values.verified_data === true));
+                                return isVerified ? 1 : 0;
+                            }
+                            const v = item[key];
+                            return (v !== undefined && v !== null && v !== '') ? v : '';
+                        });
+                        sampleData.push(row);
+                    });
 
                     // Create workbook
                     const wb = XLSX.utils.book_new();
@@ -2077,6 +2170,7 @@
                         { wch: 15 }, // CTN (CBM)
                         { wch: 12 }, // CTN (QTY)
                         { wch: 18 }, // CTN (CBM/Each)
+                        { wch: 14 }, // Verified (0/1)
                     ];
 
                     // Style header row
@@ -2140,21 +2234,19 @@
                             `;
                             importResult.style.display = 'block';
 
-                            // Reload data after successful import
+                            // Reload data immediately so applied changes show without a refresh
+                            loadData();
+                            // Close modal after a short delay (keeps the success message visible briefly)
                             setTimeout(() => {
-                                loadData();
-                                // Close modal after a delay
-                                setTimeout(() => {
-                                    const modal = bootstrap.Modal.getInstance(importModal);
-                                    if (modal) modal.hide();
-                                    // Reset form
-                                    importFile.value = '';
-                                    importBtn.disabled = true;
-                                    importProgress.style.display = 'none';
-                                    importResult.style.display = 'none';
-                                    progressBar.style.width = '0%';
-                                }, 2000);
-                            }, 1000);
+                                const modal = bootstrap.Modal.getInstance(importModal);
+                                if (modal) modal.hide();
+                                // Reset form
+                                importFile.value = '';
+                                importBtn.disabled = true;
+                                importProgress.style.display = 'none';
+                                importResult.style.display = 'none';
+                                progressBar.style.width = '0%';
+                            }, 1500);
                         } else {
                             importResult.className = 'alert alert-danger';
                             importResult.innerHTML = `
@@ -2638,6 +2730,7 @@
                                     if (product.Values) product.Values.verified_data = verifiedValue;
                                     else if (!product.Values) product.Values = { verified_data: verifiedValue };
                                 }
+                                updateCounts();
                             } else {
                                 showToast('danger', data.message || 'Failed to update verified status');
                                 dropdown.value = verifiedValue === 1 ? '0' : '1';
