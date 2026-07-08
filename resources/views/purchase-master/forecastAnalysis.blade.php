@@ -1256,7 +1256,7 @@
                 <div class="modal-footer py-2">
                     <button type="button" class="btn btn-sm btn-outline-secondary" id="columnShowAllBtn">Show All</button>
                     <button type="button" class="btn btn-sm btn-outline-danger" id="columnHideAllBtn">Hide All</button>
-                    <button type="button" class="btn btn-sm btn-primary" data-bs-dismiss="modal">Done</button>
+                    <button type="button" class="btn btn-sm btn-primary" id="columnSaveBtn" data-bs-dismiss="modal">Save</button>
                         </div>
             </div>
         </div>
@@ -4010,6 +4010,10 @@
                     requestAnimationFrame(() => {
                         setCombinedFilters();
                         table.setSort([{ column: "mfrg_order_date", dir: "asc" }]);
+                        // Re-apply saved column visibility LAST: updateColumnDefinition()
+                        // above rebuilds several core columns and resets their visibility,
+                        // so this must run after those mutations to remain authoritative.
+                        if (typeof restoreColumnVisibilityFromLocalStorage === 'function') restoreColumnVisibilityFromLocalStorage();
                     });
                 });
                 return sorted;
@@ -5585,6 +5589,11 @@
                 saveColumnVisibilityToLocalStorage();
                 buildCheckboxList();
             });
+
+            // Save the current selection as the default for next use, then close.
+            document.getElementById("columnSaveBtn")?.addEventListener("click", function() {
+                saveColumnVisibilityToLocalStorage();
+            });
         }
 
         // Persist the user's Show/Hide column choices across refreshes.
@@ -6494,7 +6503,8 @@
         $(document).off('click', '.forecast-cd-open').on('click', '.forecast-cd-open', function() {
             const sku = String($(this).data('sku') || '').trim();
             if (!sku) return;
-            window.location.href = '{{ route('comparison.sheet.page') }}?sku=' + encodeURIComponent(sku);
+            const url = '{{ route('comparison.sheet.page') }}?sku=' + encodeURIComponent(sku);
+            window.open(url, '_blank', 'noopener');
         });
         document.getElementById('forecastCdModal')?.addEventListener('hidden.bs.modal', function() {
             const iframe = document.getElementById('forecastCdIframe');

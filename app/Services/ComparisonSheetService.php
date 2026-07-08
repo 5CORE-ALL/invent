@@ -431,35 +431,58 @@ class ComparisonSheetService
         }
 
         $labelCol = $this->detectLabelColumnIndex($cells);
-        usort($placements, fn ($a, $b) => $a['row'] <=> $b['row']
-            ?: $a['col'] <=> $b['col']
-            ?: $a['x'] <=> $b['x']);
+        $photoRowIndex = $this->findRowIndexByLabel($cells, 'product photo', $labelCol) ?? 0;
 
-        $filled = [];
+        // A pasted image is anchored to a cell (row/col) PLUS a pixel offset (x) that can
+        // push it visually into a NEIGHBOURING column. Resolve the true target column from
+        // the absolute horizontal position using the export's real column widths, so an
+        // image anchored to the label column (but offset into the next one) is not lost.
+        $colWidths = $this->extractColumnWidthsFromHtml($html);
+        $colLefts = $this->columnLeftOffsets($colWidths);
+
+        $resolved = [];
         foreach ($placements as $placement) {
             $url = $embedImages[$placement['embed_id']] ?? '';
             if ($url === '' || ! $this->isImageUrl($url)) {
                 continue;
             }
 
-            $row = $placement['row'];
-            $col = $placement['col'];
-            if ($col === $labelCol && $this->cellContainsRowLabel($cells[$row][$col] ?? '')) {
+            $anchorLeft = $colLefts[$placement['col']] ?? ($placement['col'] * 100);
+            $absLeft = $anchorLeft + max(0, $placement['x']);
+            $targetCol = $this->columnAtOffset($colWidths, $colLefts, $absLeft, $placement['col']);
+            if ($targetCol === $labelCol) {
+                $targetCol++; // never drop a supplier photo onto the Spec/label column
+            }
+
+            $resolved[] = [
+                'url' => $url,
+                'row' => $placement['row'],
+                'col' => $targetCol,
+                'abs_left' => $absLeft,
+            ];
+        }
+
+        // Order left-to-right (then top-down) so the first image in each column lands on
+        // the Product Photo row and any extras stack into additional rows below it.
+        usort($resolved, fn ($a, $b) => $a['row'] <=> $b['row'] ?: $a['abs_left'] <=> $b['abs_left']);
+
+        foreach ($resolved as $image) {
+            $col = $image['col'];
+            $baseRow = ($image['row'] <= $photoRowIndex) ? $photoRowIndex : $image['row'];
+
+            $existing = trim((string) ($cells[$baseRow][$col] ?? ''));
+            if ($existing === '' || $this->isPlaceholderSheetCellValue($existing)) {
+                $cells[$baseRow][$col] = $image['url'];
+
+                continue;
+            }
+            if ($existing === $image['url']) {
                 continue;
             }
 
-            $slot = $row . ':' . $col;
-            if (isset($filled[$slot])) {
-                continue;
-            }
-
-            $existing = trim((string) ($cells[$row][$col] ?? ''));
-            if ($existing !== '' && ! $this->isPlaceholderSheetCellValue($existing) && ! $this->isImageUrl($existing)) {
-                continue;
-            }
-
-            $cells[$row][$col] = $url;
-            $filled[$slot] = true;
+            // Same column already holds a photo → stack this additional image into a new
+            // row within the SAME column rather than spilling into the neighbour.
+            $cells = $this->placeStackedPhoto($cells, $baseRow, $col, $image['url'], $labelCol);
         }
 
         return $cells;
@@ -512,6 +535,81 @@ class ComparisonSheetService
         }
 
         return $placements;
+    }
+
+    /**
+     * Parse per-column pixel widths from the Google HTML/ZIP export header
+     * (`<th id="0C3" style="width:197px;">`), keyed by 0-based column index.
+     *
+     * @return array<int, int>
+     */
+    protected function extractColumnWidthsFromHtml(string $html): array
+    {
+        if (trim($html) === '') {
+            return [];
+        }
+
+        preg_match_all(
+            '/<th\s+id="\d+C(\d+)"\s+style="width:\s*(\d+)px;?"/i',
+            $html,
+            $matches,
+            PREG_SET_ORDER
+        );
+
+        $widths = [];
+        foreach ($matches as $match) {
+            $widths[(int) $match[1]] = max(1, (int) $match[2]);
+        }
+
+        return $widths;
+    }
+
+    /**
+     * Cumulative left-edge pixel offset for every column, derived from the widths.
+     *
+     * @param  array<int, int>  $colWidths
+     * @return array<int, int>
+     */
+    protected function columnLeftOffsets(array $colWidths): array
+    {
+        if ($colWidths === []) {
+            return [];
+        }
+
+        ksort($colWidths);
+        $maxCol = (int) max(array_keys($colWidths));
+        $lefts = [];
+        $accumulator = 0;
+        for ($col = 0; $col <= $maxCol; $col++) {
+            $lefts[$col] = $accumulator;
+            $accumulator += $colWidths[$col] ?? 100;
+        }
+
+        return $lefts;
+    }
+
+    /**
+     * Resolve which column an absolute horizontal pixel offset falls into.
+     *
+     * @param  array<int, int>  $colWidths
+     * @param  array<int, int>  $colLefts
+     */
+    protected function columnAtOffset(array $colWidths, array $colLefts, int $absLeft, int $fallbackCol): int
+    {
+        if ($colLefts === []) {
+            return $fallbackCol;
+        }
+
+        $maxCol = (int) max(array_keys($colLefts));
+        for ($col = 0; $col <= $maxCol; $col++) {
+            $left = $colLefts[$col];
+            $width = $colWidths[$col] ?? 100;
+            if ($absLeft >= $left && $absLeft < $left + $width) {
+                return $col;
+            }
+        }
+
+        return $absLeft < 0 ? $fallbackCol : $maxCol;
     }
 
     /**
@@ -710,35 +808,164 @@ class ComparisonSheetService
             return $cells;
         }
 
+        // Drop any image already placed in the grid (e.g. by the precise posObj pass).
+        // Those arrive here again via the generic <img> scan but often carry no usable
+        // position (top/left = 0), so re-placing them would scatter them onto the wrong
+        // columns. Only genuinely un-placed images should be positioned here.
+        $alreadyPlaced = [];
+        foreach ($cells as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            foreach ($row as $value) {
+                $trimmed = trim((string) $value);
+                if ($this->isImageUrl($trimmed)) {
+                    $alreadyPlaced[$trimmed] = true;
+                }
+            }
+        }
+        $positionedImages = array_values(array_filter(
+            $positionedImages,
+            fn ($image) => ! isset($alreadyPlaced[$image['url']])
+        ));
+        if ($positionedImages === []) {
+            return $cells;
+        }
+
         $labelCol = $this->detectLabelColumnIndex($cells);
         $photoRowIndex = $this->findRowIndexByLabel($cells, 'product photo', $labelCol) ?? 0;
         $colWidth = $this->estimateColumnWidthFromHtml($html);
         $rowHeight = $this->estimateRowHeightFromHtml($html);
 
+        // Split images into vertical bands by their top position. The first (top-most)
+        // band belongs on the Product Photo row itself; anything stacked in a lower band
+        // is an ADDITIONAL image for the same supplier column.
         $bands = [];
         foreach ($positionedImages as $image) {
             $band = (int) floor($image['top'] / max(1, $rowHeight));
             $bands[$band][] = $image;
         }
         ksort($bands);
-        $photoBand = reset($bands) ?: $positionedImages;
+        $firstBandKey = array_key_first($bands);
 
-        foreach ($photoBand as $image) {
-            $col = (int) max(0, floor($image['left'] / max(1, $colWidth)));
-            if ($col === $labelCol) {
-                $col++;
+        foreach ($bands as $bandKey => $images) {
+            usort($images, fn ($a, $b) => $a['left'] <=> $b['left'] ?: $a['top'] <=> $b['top']);
+
+            foreach ($images as $image) {
+                $col = (int) max(0, floor($image['left'] / max(1, $colWidth)));
+                if ($col === $labelCol) {
+                    $col++;
+                }
+
+                if ($bandKey === $firstBandKey) {
+                    // Top band → Product Photo row, keeping the original left-to-right
+                    // placement (shift to the next column only on a same-row collision).
+                    while (isset($cells[$photoRowIndex][$col])
+                        && trim((string) $cells[$photoRowIndex][$col]) !== ''
+                        && trim((string) $cells[$photoRowIndex][$col]) !== $image['url']) {
+                        $col++;
+                    }
+                    $cells[$photoRowIndex][$col] = $image['url'];
+
+                    continue;
+                }
+
+                // Lower band → stack DOWN into an additional row in the SAME column,
+                // rather than spilling into a neighbouring supplier's column.
+                $cells = $this->placeStackedPhoto($cells, $photoRowIndex, $col, $image['url'], $labelCol);
             }
-
-            while (isset($cells[$photoRowIndex][$col])
-                && trim((string) $cells[$photoRowIndex][$col]) !== ''
-                && trim((string) $cells[$photoRowIndex][$col]) !== $image['url']) {
-                $col++;
-            }
-
-            $cells[$photoRowIndex][$col] = $image['url'];
         }
 
         return $cells;
+    }
+
+    /**
+     * Place an extra Product Photo into the first available "stack" row below the photo
+     * row within the SAME column, inserting a fresh row when necessary.
+     *
+     * @param  array<int, array<int, string>>  $cells
+     * @return array<int, array<int, string>>
+     */
+    protected function placeStackedPhoto(array $cells, int $photoRowIndex, int $col, string $url, int $labelCol): array
+    {
+        $rowCursor = $photoRowIndex + 1;
+        $guard = 0;
+
+        while ($guard++ < 500) {
+            $cells = $this->ensureStackRowAt($cells, $rowCursor, $labelCol);
+
+            $existing = trim((string) ($cells[$rowCursor][$col] ?? ''));
+            if ($existing === '' || $this->isPlaceholderSheetCellValue($existing)) {
+                $cells[$rowCursor][$col] = $url;
+                break;
+            }
+            if ($existing === $url) {
+                break;
+            }
+
+            $rowCursor++;
+        }
+
+        return $cells;
+    }
+
+    /**
+     * Ensure the row at $rowIndex is a blank/image-only "stack" row that can hold an
+     * additional Product Photo without clobbering a labelled data row. Inserts a fresh
+     * blank row (shifting the rest down) when the current row is a real content row.
+     *
+     * @param  array<int, array<int, string>>  $cells
+     * @return array<int, array<int, string>>
+     */
+    protected function ensureStackRowAt(array $cells, int $rowIndex, int $labelCol): array
+    {
+        if ($rowIndex < 0) {
+            return $cells;
+        }
+
+        if (isset($cells[$rowIndex]) && is_array($cells[$rowIndex])
+            && $this->isExtraPhotoStackRow($cells[$rowIndex], $labelCol)) {
+            return $cells;
+        }
+
+        $width = 0;
+        foreach ($cells as $row) {
+            if (is_array($row)) {
+                $width = max($width, count($row));
+            }
+        }
+        $blank = $width > 0 ? array_fill(0, $width, '') : [''];
+        array_splice($cells, $rowIndex, 0, [$blank]);
+
+        return $cells;
+    }
+
+    /**
+     * A row is safe to stack extra photos into when it carries no row label and holds
+     * only image URLs (or is empty) — i.e. it is not a real labelled data row.
+     *
+     * @param  array<int, string>  $row
+     */
+    protected function isExtraPhotoStackRow(array $row, int $labelCol): bool
+    {
+        if (trim((string) ($row[$labelCol] ?? '')) !== '') {
+            return false;
+        }
+
+        foreach ($row as $colIndex => $value) {
+            if ((int) $colIndex === $labelCol) {
+                continue;
+            }
+            $text = trim((string) $value);
+            if ($text === '') {
+                continue;
+            }
+            if (! $this->isImageUrl($text)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     protected function estimateColumnWidthFromHtml(string $html): int
