@@ -658,6 +658,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::controller(KpiShippingController::class)->group(function () {
         Route::get('/kpi-shipping/tabulator', 'tabulator')->name('kpi.shipping.tabulator');
         Route::get('/kpi-shipping/tabulator-data', 'tabulatorData')->name('kpi.shipping.tabulator.data');
+        Route::post('/kpi-shipping/link/save', 'saveLink')->name('kpi.shipping.link.save');
+        Route::post('/kpi-shipping/value/save', 'saveValue')->name('kpi.shipping.value.save');
+        Route::get('/kpi-shipping/avg-history', 'avgHistory')->name('kpi.shipping.avg.history');
+        Route::get('/kpi-shipping/incentive', 'incentive')->name('kpi.shipping.incentive');
+        Route::post('/kpi-shipping/incentive/save', 'saveIncentive')->name('kpi.shipping.incentive.save');
     });
 
     // Account Health Master Channel Dashboard
