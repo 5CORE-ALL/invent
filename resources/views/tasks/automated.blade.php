@@ -1835,7 +1835,7 @@
                         case 'Weekly': valueEl.text(weekly); break;
                         case 'Monthly': valueEl.text(monthly); break;
                         case 'ACTIVE': valueEl.text(active); break;
-                        case 'ETC D': valueEl.text((etcMonthlyTotal / 60 / 25).toFixed(1) + 'h'); break;
+                        case 'ETC D': valueEl.text(Math.round(etcMonthlyTotal / 60 / 25) + 'h'); break;
                         case 'ETC M': valueEl.text(Math.round(etcMonthlyTotal / 60) + 'h'); break;
                     }
                 });

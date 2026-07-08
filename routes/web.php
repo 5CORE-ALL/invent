@@ -15,6 +15,7 @@ use App\Http\Controllers\AmazonAdsController;
 use App\Http\Controllers\AmazonAds\AmazonAdsPushLogController;
 use App\Http\Controllers\ArrivedContainerController;
 use App\Http\Controllers\Auth\UserController;
+use App\Http\Controllers\Kpi\KpiShippingController;
 use App\Http\Controllers\Campaigns\AmazonAdRunningController;
 use App\Http\Controllers\Campaigns\AmazonCampaignReportsController;
 use App\Http\Controllers\Campaigns\AmazonCPCZeroController;
@@ -651,6 +652,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/shipping-health/scope-link/save', 'saveScopeLink')->name('shipping.health.scope.link.save');
         Route::post('/shipping-health/audit/save', 'saveAudit')->name('shipping.health.audit.save');
         Route::get('/shipping-health/audit/history', 'auditHistory')->name('shipping.health.audit.history');
+    });
+
+    // KPI
+    Route::controller(KpiShippingController::class)->group(function () {
+        Route::get('/kpi-shipping/tabulator', 'tabulator')->name('kpi.shipping.tabulator');
+        Route::get('/kpi-shipping/tabulator-data', 'tabulatorData')->name('kpi.shipping.tabulator.data');
     });
 
     // Account Health Master Channel Dashboard

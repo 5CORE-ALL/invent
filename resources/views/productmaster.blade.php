@@ -4314,6 +4314,38 @@
                 return defaultHiddenColumns;
             }
 
+            // Loads the SheetJS (XLSX) library on demand if the CDN <script> tag
+            // failed to load (ad-blocker, offline, proxy, or stale service-worker
+            // cache). Resolves once window.XLSX is available; rejects if every
+            // source fails. This prevents the Export button from silently doing
+            // nothing when the library is missing.
+            let xlsxLoadPromise = null;
+            function ensureXlsxLoaded() {
+                if (typeof XLSX !== 'undefined') return Promise.resolve();
+                if (xlsxLoadPromise) return xlsxLoadPromise;
+                const sources = [
+                    'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
+                    'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js',
+                    'https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js'
+                ];
+                xlsxLoadPromise = new Promise((resolve, reject) => {
+                    let i = 0;
+                    const tryNext = () => {
+                        if (typeof XLSX !== 'undefined') { resolve(); return; }
+                        if (i >= sources.length) { reject(new Error('All XLSX sources failed to load')); return; }
+                        const url = sources[i++];
+                        const s = document.createElement('script');
+                        s.src = url;
+                        s.async = true;
+                        s.onload = () => { (typeof XLSX !== 'undefined') ? resolve() : tryNext(); };
+                        s.onerror = () => { s.remove(); tryNext(); };
+                        document.head.appendChild(s);
+                    };
+                    tryNext();
+                });
+                return xlsxLoadPromise;
+            }
+
             // Excel export: always include EVERY column (weight, dimensions, etc.)
             // even if they are hidden in the UI, so users don't have to fill them
             // in manually before re-importing.
@@ -4428,11 +4460,21 @@
                         }
                     };
 
+                    // Guard: nothing to export until the table data has loaded.
+                    if (!Array.isArray(tableData) || tableData.length === 0) {
+                        showToast('warning', 'No product data to export yet. Please wait for the table to finish loading, then try again.');
+                        return;
+                    }
+
                     // Show loader or indicate download is in progress
                     downloadExcelBtn.innerHTML =
                         '<i class="fas fa-spinner fa-spin"></i> Generating...';
                     downloadExcelBtn.disabled = true;
 
+                    // Make sure the SheetJS (XLSX) library is available before we try
+                    // to build the workbook. If the CDN script was blocked/failed, this
+                    // loads it on demand (with fallback CDNs) so export keeps working.
+                    ensureXlsxLoaded().then(() => {
                     // Use setTimeout to avoid UI freeze for large datasets
                     setTimeout(() => {
                         try {
@@ -4595,7 +4637,7 @@
                             showToast('success', 'Excel file downloaded successfully!');
                         } catch (error) {
                             console.error("Excel export error:", error);
-                            showToast('danger', 'Failed to export Excel file.');
+                            showToast('danger', 'Failed to export Excel file. See the browser console for details.');
                         } finally {
                             // Reset button state
                             downloadExcelBtn.innerHTML =
@@ -4603,6 +4645,14 @@
                             downloadExcelBtn.disabled = false;
                         }
                     }, 100); // Small timeout to allow UI to update
+                    }).catch((loadErr) => {
+                        // XLSX library could not be loaded from any source.
+                        console.error('Excel export: XLSX library failed to load.', loadErr);
+                        showToast('danger', 'Excel library could not be loaded. Please check your internet connection or ad-blocker, then reload the page.');
+                        downloadExcelBtn.innerHTML =
+                            '<i class="fas fa-file-excel me-1"></i> Export';
+                        downloadExcelBtn.disabled = false;
+                    });
                     });
                 }
             }

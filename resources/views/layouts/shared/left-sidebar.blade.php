@@ -134,6 +134,25 @@
             </li>
 
 
+            {{-- KPI --}}
+            <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#kpiSidebarPages" aria-expanded="false"
+                    aria-controls="kpiSidebarPages" class="side-nav-link">
+                    <i class="ri-bar-chart-line"></i>
+                    <span>KPI</span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse" id="kpiSidebarPages">
+                    <ul class="side-nav-second-level">
+                        <li>
+                            <a href="{{ route('kpi.shipping.tabulator') }}">
+                                <i class="ri-truck-line me-2"></i>Kpi Shipping
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </li>
+
             <li class="side-nav-item">
                 <a data-bs-toggle="collapse" href="#channelSidebarPages" aria-expanded="false"
                     aria-controls="sidebarPages" class="side-nav-link">
