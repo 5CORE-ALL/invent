@@ -17,6 +17,8 @@ class TaskPolicy
     private const SPECIAL_TASK_DELETE_MODIFY_EMAILS = [
         'president@5core.com',
         'software5@5core.com',
+        'ritu.kaur013@gmail.com',
+        'inventory@5core.com',
     ];
 
     /**
