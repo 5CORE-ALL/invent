@@ -530,8 +530,21 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/{product}', [\App\Http\Controllers\SkuImageController::class, 'getImages'])->whereNumber('product')->name('images');
     });
 
-    // Marketplace Sync: dynamic routes per marketplace (reverb, amazon, ebay, walmart)
-    Route::prefix('marketplace/{marketplace}')->where(['marketplace' => 'reverb|amazon|ebay|walmart|topdawg'])->group(function () {
+    // Marketplace Manager (LitCommerce-style hub — AliExpress first, more later)
+    Route::prefix('marketplace-manager')->name('marketplace.manager.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\MarketplaceManager\MarketplaceManagerController::class, 'index'])->name('index');
+        Route::get('/aliexpress/connect', [\App\Http\Controllers\MarketPlace\AliexpressSyncController::class, 'connect'])->name('aliexpress.connect');
+        Route::post('/aliexpress/test-connection', [\App\Http\Controllers\MarketPlace\AliexpressSyncController::class, 'testConnection'])->name('aliexpress.test');
+        Route::post('/aliexpress/refresh-products', [\App\Http\Controllers\MarketPlace\AliexpressSyncController::class, 'refreshProducts'])->name('aliexpress.refresh');
+        Route::post('/aliexpress/fetch-orders', [\App\Http\Controllers\MarketPlace\AliexpressSyncController::class, 'fetchOrders'])->name('aliexpress.fetch.orders');
+        Route::post('/aliexpress/sync-inventory', [\App\Http\Controllers\MarketPlace\AliexpressSyncController::class, 'syncInventoryNow'])->name('aliexpress.sync.inventory');
+        Route::get('/{marketplace}', [\App\Http\Controllers\MarketplaceManager\MarketplaceManagerController::class, 'show'])
+            ->name('show')
+            ->where('marketplace', 'aliexpress');
+    });
+
+    // Marketplace Sync: dynamic routes per marketplace (reverb, amazon, ebay, walmart, aliexpress)
+    Route::prefix('marketplace/{marketplace}')->where(['marketplace' => 'reverb|amazon|ebay|walmart|topdawg|aliexpress'])->group(function () {
         Route::get('/products', [\App\Http\Controllers\MarketplaceController::class, 'products'])->name('marketplace.products');
         Route::get('/orders', [\App\Http\Controllers\MarketplaceController::class, 'orders'])->name('marketplace.orders');
         Route::get('/settings', [\App\Http\Controllers\MarketplaceController::class, 'settings'])->name('marketplace.settings');

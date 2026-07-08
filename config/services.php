@@ -668,11 +668,25 @@ return [
         'access_token' => env('ALIEXPRESS_ACCESS_TOKEN'),
         'redirect_uri' => env('ALIEXPRESS_REDIRECT_URI', env('APP_URL')),
         /**
-         * Dropshipping API POST URL (must end with /sync).
-         * Default: https://api-sg.aliexpress.com/sync
+         * API gateway: "rest" = business APIs (product list, orders); "sync" = legacy dropshipping /sync.
+         */
+        /** Prefer "sync" on dev networks; "rest" for newer business APIs when reachable */
+        'gateway' => env('ALIEXPRESS_GATEWAY', 'sync'),
+        'rest_base' => env('ALIEXPRESS_REST_BASE', 'https://api-sg.aliexpress.com/rest'),
+        /** hmac (HMAC-MD5) or md5 for rest gateway — see TOP docs */
+        'rest_sign_method' => env('ALIEXPRESS_REST_SIGN_METHOD', 'hmac'),
+        'connect_timeout' => (int) env('ALIEXPRESS_CONNECT_TIMEOUT', 30),
+        'timeout' => (int) env('ALIEXPRESS_TIMEOUT', 60),
+        /** Force IPv4 when IPv6 routes to AliExpress are blocked (common on some ISPs) */
+        'resolve_ipv4' => filter_var(env('ALIEXPRESS_RESOLVE_IPV4', true), FILTER_VALIDATE_BOOL),
+        /** Optional HTTP proxy, e.g. http://127.0.0.1:7890 */
+        'http_proxy' => env('ALIEXPRESS_HTTP_PROXY'),
+        /** Try the other gateway if the primary cannot connect */
+        'gateway_fallback' => filter_var(env('ALIEXPRESS_GATEWAY_FALLBACK', true), FILTER_VALIDATE_BOOL),
+        /**
+         * Dropshipping API POST URL (must end with /sync). Used when gateway=sync.
          */
         'api_base' => env('ALIEXPRESS_API_BASE', 'https://api-sg.aliexpress.com/sync'),
-        /** Public param name for the token: dropshipping uses `session` */
         'token_param' => env('ALIEXPRESS_TOKEN_PARAM', 'session'),
         'partner_id' => env('ALIEXPRESS_PARTNER_ID', 'iop-sdk-php'),
         'format' => env('ALIEXPRESS_FORMAT', 'json'),
@@ -687,7 +701,9 @@ return [
          * Official IOP SDK sends system params on the URL query and API params as multipart POST body.
          * Use "form" only if your gateway explicitly expects application/x-www-form-urlencoded body only.
          */
-        'transport' => env('ALIEXPRESS_TRANSPORT', 'iop'),
+        'transport' => env('ALIEXPRESS_TRANSPORT', 'form'),
+        /** iop = /sync prefix sign; legacy = secret sandwich (matches ProductMaster) */
+        'sync_sign_style' => env('ALIEXPRESS_SYNC_SIGN_STYLE', 'legacy'),
         /** "iop" = time()."000" like SDK msectime(); "ms" = round(microtime(true)*1000) */
         'timestamp_style' => env('ALIEXPRESS_TIMESTAMP_STYLE', 'iop'),
     ],

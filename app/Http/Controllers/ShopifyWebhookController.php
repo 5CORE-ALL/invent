@@ -2,10 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\SyncInventoryToAliexpress;
 use App\Jobs\SyncInventoryToReverb;
+use App\Models\MarketplaceSyncSettings;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class ShopifyWebhookController extends Controller
 {
@@ -31,9 +34,16 @@ class ShopifyWebhookController extends Controller
             }
         }
 
-        Log::info('ShopifyWebhookController: inventory update received, dispatching SyncInventoryToReverb');
+        Log::info('ShopifyWebhookController: inventory update received, dispatching marketplace sync jobs');
 
         SyncInventoryToReverb::dispatch()->onQueue('reverb');
+
+        if (Schema::hasTable('marketplace_sync_settings')) {
+            $aliexpressSettings = MarketplaceSyncSettings::getFor('aliexpress');
+            if ($aliexpressSettings['inventory']['inventory_sync'] ?? false) {
+                SyncInventoryToAliexpress::dispatch()->onQueue('aliexpress');
+            }
+        }
 
         return response()->json(['ok' => true]);
     }
