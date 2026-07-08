@@ -62,6 +62,21 @@ class Temu2ApiService extends TemuApiService
             return (string) $goodsId;
         }
 
+        if (Schema::hasTable('temu2_metrics') && Schema::hasColumn('temu2_metrics', 'goods_id')) {
+            $fromMetrics = DB::table('temu2_metrics')
+                ->where(function ($q) use ($sku) {
+                    $q->where('sku', $sku)
+                        ->orWhere('sku', strtoupper($sku))
+                        ->orWhere('sku', strtolower($sku));
+                })
+                ->whereNotNull('goods_id')
+                ->where('goods_id', '!=', '')
+                ->value('goods_id');
+            if ($fromMetrics !== null && $fromMetrics !== '') {
+                return (string) $fromMetrics;
+            }
+        }
+
         return $this->findTemuGoodsIdBySkuViaApi($sku);
     }
 
@@ -75,6 +90,21 @@ class Temu2ApiService extends TemuApiService
         $skuId = Temu2Pricing::where('sku', $sku)->value('sku_id');
         if ($skuId !== null && $skuId !== '') {
             return (string) $skuId;
+        }
+
+        if (Schema::hasTable('temu2_metrics') && Schema::hasColumn('temu2_metrics', 'sku_id')) {
+            $fromMetrics = DB::table('temu2_metrics')
+                ->where(function ($q) use ($sku) {
+                    $q->where('sku', $sku)
+                        ->orWhere('sku', strtoupper($sku))
+                        ->orWhere('sku', strtolower($sku));
+                })
+                ->whereNotNull('sku_id')
+                ->where('sku_id', '!=', '')
+                ->value('sku_id');
+            if ($fromMetrics !== null && $fromMetrics !== '') {
+                return (string) $fromMetrics;
+            }
         }
 
         return $this->findTemuSkuIdBySkuViaApi($sku);

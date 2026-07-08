@@ -1,6 +1,6 @@
 # Bullet Points Page Overview
 
-Last reviewed: 2026-06-11
+Last reviewed: 2026-07-03
 
 ## User-Facing Page
 
@@ -70,18 +70,14 @@ Important: although the browser URL can be `/bullet-points`, the active blade fe
 4. `getCombinedData()` delegates to `getData()`.
 5. `getData()` calls `ProductMasterController@getViewProductData()` to load all `product_master` rows.
 6. Product rows include `SKU`, `Parent`, `bullet1` through `bullet5`, images, descriptions, and flattened `Values` JSON.
-7. `getData()` also loads saved marketplace bullet text from these metrics tables:
-   - `ebay_metrics`
-   - `ebay_2_metrics`
-   - `ebay_3_metrics`
-   - `macy_metrics`
-   - `amazon_metrics`
-   - `temu_metrics`
-   - `reverb_metrics`
-   - `wayfair_metrics`
-   - `bestbuy_metrics`
-   - `shopify_metrics`
-   - `shopify_pls_metrics`
+7. `getData()` loads saved marketplace bullet text from every metrics table returned by `MarketplaceMetricsTableResolver::bulletTableMap()` (backed by `ProductMasterMarketplaceMaps::bulletServiceMap()`). As of 2026-07-03 that is **24** marketplaces, including:
+   - `ebay_metrics`, `ebay_2_metrics`, `ebay_3_metrics`
+   - `amazon_metrics`, `macy_metrics`, `temu_metrics`, `temu2_metrics`
+   - `reverb_metrics`, `wayfair_metrics`, `bestbuy_metrics`, `walmart_metrics`
+   - `shopify_metrics`, `shopify_pls_metrics` (also used for `shopify_b5c`)
+   - `doba_metrics`, `faire_metrics`, `shein_metrics`
+   - `aliexpress_metric`, `alibaba_metrics`, `purchasing_power_metrics`
+   - `newegg_metrics`, `topdawg_metrics`, `tiktok_metrics`
 8. Each product row receives:
    - `default_bullets`: `bullet1` through `bullet5` combined from `product_master`.
    - `bullet_points`: object keyed by marketplace, containing saved metrics-table text only.
@@ -123,18 +119,13 @@ Important: although the browser URL can be `/bullet-points`, the active blade fe
 ## Marketplace Push Flow
 
 - `BulletPointMasterController@update` validates `{ sku, updates: [{ marketplace, bullet_points }] }`.
-- Allowed marketplace keys:
-  - `ebay`
-  - `ebay2`
-  - `ebay3`
-  - `macy`
-  - `amazon`
-  - `temu`
-  - `reverb`
-  - `wayfair`
-  - `bestbuy`
-  - `shopify_main`
-  - `shopify_pls`
+- Allowed marketplace keys (from `ProductMasterMarketplaceMaps::bulletServiceMap()` — **24** total):
+  - `ebay`, `ebay2`, `ebay3`, `macy`, `amazon`, `temu`, `temu2`
+  - `reverb`, `wayfair`, `bestbuy`, `walmart`, `doba`, `faire`, `shein`
+  - `shopify_main`, `shopify_pls`, `shopify_b5c`
+  - `aliexpress`, `alibaba`, `purchasing_power`
+  - `newegg`, `topdawg`, `tiktok`, `tiktok2`
+- UI tiles come from `AllMarketplaceChannelRegistry` (`bullet => true`). Push is only allowed when the mapped metrics table exists in the database (`MarketplaceMetricsTableResolver`).
 - For each update:
   - Loads the latest saved `product_master.bullet1` through `bullet5` server-side and uses those newline-separated bullets for marketplace pushes when the SKU exists.
   - Saves that same pushed text to the mapped metrics table using `saveToMarketplaceTable()`.
@@ -146,7 +137,7 @@ Important: although the browser URL can be `/bullet-points`, the active blade fe
 - Shopify bullet pushes preserve the existing Shopify product description HTML and do not rebuild it from Product Master description data.
 - Shopify pushes still write bullet text into `body_html`, not a separate Shopify bullet metafield.
 - New Shopify bullet blocks are wrapped with `bullet-points-master-section` / `data-bullet-points-master="1"` markers, so future pushes can replace by marker before falling back to legacy pattern matching.
-- Shopify duplicate-bullet cleanup handles rich `About Item` heading blocks and older paragraph/list-style blocks, including standalone nested `About Item:` paragraphs, Amazon A+ pasted `aplus-3p-center-content` bullet blocks, `Highlighted Features`/`Key Benefits`/`Product Highlights`/`Main Features`/`Bullet Points` heading sections, single or grouped span-wrapped bold bracket bullets (`<span><strong>【...】</strong>...</span>`), mixed paragraph/heading bracket bullets, top-of-description bold-label bullets (`<strong>Label -</strong> text` or `<strong>Label</strong> - text`) in paragraphs or headings, Google-docs style `ol`/`ul` lists containing bracket bullets, top-of-description symbol/numbered bullets, top-of-description simple lists, and empty list shells left behind by cleanup.
+- Shopify duplicate-bullet cleanup (and shared Reverb legacy stripping) handles rich `About Item` heading blocks and older paragraph/list-style blocks, including standalone nested `About Item:` paragraphs, Amazon A+ pasted `aplus-3p-center-content` bullet blocks, `Highlighted Features`/`Key Benefits`/`Product Highlights`/`Main Features`/`Bullet Points` heading sections, single or grouped span-wrapped bold bracket bullets (`<span><strong>【...】</strong>...</span>`), mixed paragraph/heading bracket bullets, top-of-description bold-label bullets (`<strong>Label -</strong> text` or `<strong>Label</strong> - text`) in paragraphs or headings, Google-docs style `ol`/`ul` lists containing bracket bullets, top-of-description symbol/numbered bullets, top-of-description simple lists, and empty list shells left behind by cleanup. Reverb bullet push reuses `ShopifyBulletPointsFormatter::stripLegacyBulletBlocksForMarketplace()` for the same patterns before prepending `Highlighted Features`.
 - Shopify manual download links (`Download Product Manual`) are preserved above the generated bullet block when they exist near the top of the product HTML.
 - Shopify-to-local pull is available from the Bullet Points page via the `Shopify Pull` toolbar button, which opens a modal for filtered-SKU/background monitoring. The modal contains Run in BG, Pause, Resume, Stop, progress, and recent log messages. Individual SKU pulls use the row action download icon directly: it opens a Bootstrap confirmation modal, changes the row button to Syncing after confirmation, starts the same background worker, and shows a toast without opening the progress modal. Before starting, the UI confirms that Shopify bullet points will update the existing Product Master bullet fields. Refresh does not stop the pull. Progress is stored in `storage/app/shopify-bullet-pull/job.json`, the page polls status after refresh, and the worker saves only to `product_master.bullet1` through `bullet5`, waits 6s between SKUs, uses backend 429 retry/backoff, reuses catalog product IDs when possible, and writes persistent details to `storage/logs/shopify-bullet-pull.log`. Background worker: `App\Jobs\RunShopifyBulletPullJob` on queue **`shopify-bullet-pull`** (dedicated). Requires `php artisan queue:work --queue=shopify-bullet-pull --timeout=14400`; supervisor template: `config/supervisor/shopify-bullet-pull-worker.conf`. Crontab watchdog: `scripts/cron-shopify-bullet-pull-worker.sh`. Manual re-dispatch: `php artisan bullet-points:shopify-pull-run` (or `--sync` to run in the current shell). It does not write to Shopify or push marketplaces. Pull mapping is store-aware: if `shopify_catalog_variants` has a SKU row, its `store` decides whether to use Main or PLS Shopify before falling back to legacy `shopify_skus`. For each SKU, pull checks the public storefront product JSON first (`www.5core.com/products/{handle}.js`) so it imports the user-served product description. If storefront content is unavailable or has no bullets, it falls back to Shopify Admin API `body_html`; if live sources return only 0-1 bullets and cached catalog HTML has a richer bullet block, it uses cached catalog as the last fallback. Extraction fallbacks include checkmark/emoji `Key Features` lines, plain `About Item` line bullets, colon-label bullets such as `Feature: description`, spreadsheet-pasted bracket bullets separated by `<br>` inside one paragraph, inline `About Item:【...】【...】` bracket bullets collapsed into one paragraph, top bracket paragraphs/headings separated by blank/non-breaking-space spacer paragraphs, multiple bold-label bullets inside one paragraph, plain colon-label paragraphs after bold-label bullets, mixed `About Item` bracket bullets followed by bold-label paragraphs, and leading `About Item` plus bold-label paragraphs/headings with non-breaking spaces/extra attributes and separators either inside or outside `<strong>`. `About Item` bracket paragraphs are prioritized before broad bold-label extraction so specification tables are not mistaken for bullet points. The spaced bracket fallback requires a real bracket marker so bold-label paragraphs that only contain non-breaking spaces are not mistaken for bracket bullets. Bold-label cleanup stops before adjacent description headings even when tags/images remove spacing. Bracket bullet cleanup stops before later description/features/spec/package/about-brand sections so long-form content is not appended to the last bullet, while normal sentence text like `This product features...` is not treated as a section heading.
 - The Bullet Points table toolbar includes a bullet-status filter for Product Master bullets present/missing and exact bullet counts from 1 to 5. This filter also controls which SKUs are included when running the filtered Shopify pull.
@@ -154,24 +145,54 @@ Important: although the browser URL can be `/bullet-points`, the active blade fe
 - E1/E2 preserve exact user-entered bullet text inside seller-description list items.
 - eBay3 (`E3`) fetches the current item and updates Item Specifics `Bullet Point 1` through `Bullet Point 5`, preserving existing non-bullet specifics and leaving seller Description HTML unchanged. E3 bullet lines are trimmed to the configured eBay item-specific max length (`EBAY_ITEM_SPECIFIC_BULLET_MAX_LENGTH`, default 65), and E3 adds a configurable `Type` fallback (`EBAY_TYPE_FALLBACK_VALUE`, default `Audio Connector`) when the listing has no existing `Type`.
 - Temu (`T`) updates only the configured bullet/summary field (`goodsSummary` by default) and local `temu_metrics.goods_summary`; it does not send or save `goodsDesc` during bullet pushes.
-- Reverb (`R`) updates the visible `Highlighted Features` block in the listing description because Reverb's public page/API did not expose the separate `features` field for the tested listing. It preserves the rest of the description, logs request/response details, and preserves exact user-entered feature text.
+- Reverb (`R`) updates the visible `Highlighted Features` block at the top of the listing `description` (PUT `description` + `plain_text_description`). Reverb's public PDP does not expose a separate `features` API field for tested listings. Legacy bullet HTML is stripped via `ShopifyBulletPointsFormatter::stripLegacyBulletBlocksForMarketplace()` (same rules as Shopify: 【】 brackets, bold-label lines, `About Item` blocks, Amazon A+ blocks, lists), then a fresh `Highlighted Features` section is prepended. Long-form sections lower in the description (e.g. `Lavalier Microphone Features`, spec grids) are **not** replaced by bullet push.
+- **Duplicate Reverb listings:** Some SKUs exist on multiple Reverb listings (e.g. spacing variants like `GSTOOL BLK` vs `GSTOOL  BLK`, or relisted copies). `ReverbApiService::getAllListingIdsBySku()` normalizes SKU whitespace/case and finds every match via `my/listings?state=all`. `updateBulletPoints()` pushes to **all** matching listing IDs and logs/returns `Updated N of M Reverb listings for this SKU (IDs: …)`. `getListingIdBySku()` picks a primary ID for title/image/description pushes (last API match when duplicates exist).
+- **Sold-out listings:** Brand New / Mint / B-Stock listings with `inventory: 0` still accept description updates via API; the response may say `Your listing is now marked sold out.` Used-condition listings sold once may be locked by Reverb and cannot be edited.
+- Reverb bullet push verifies bullets on the PUT response **and** on a follow-up GET read-back. Failure returns an error instead of false success when legacy 【】 bullets remain at the top.
 - Macy (`M`) reads the current Mirakl Connect product description and replaces only the leading `About Item` bullet text before `Product Description`, preserving the remaining description text. Macy product data did not expose a separate visible `bulletPoints` field for tested products, so the push also logs the Mirakl response and target section.
 - Wayfair (`W`) updates Product Catalog `keyFeatures` through `WayfairApiService::updateBulletPoints()`, sending the current bullet lines as Wayfair key features.
 - Best Buy (`B`) updates only Mirakl `bulletPoints` for channel `bestbuyusa` through `BestBuyApiService::updateBulletPoints()`; it no longer writes bullet pushes to `longDescription` or `productDescription`.
 
 ## Marketplace Service Map
 
-- `ebay` -> `App\Services\EbayApiService`
-- `ebay2` -> `App\Services\Ebay2ApiService`
-- `ebay3` -> `App\Services\EbayThreeApiService`
-- `macy` -> `App\Services\MacysApiService`
-- `amazon` -> `App\Services\AmazonSpApiService`
-- `temu` -> `App\Services\TemuApiService`
-- `reverb` -> `App\Services\ReverbApiService`
-- `wayfair` -> `App\Services\WayfairApiService`
-- `bestbuy` -> `App\Services\BestBuyApiService`
-- `shopify_main` -> `App\Services\ShopifyApiService`
-- `shopify_pls` -> `App\Services\ShopifyPLSApiService`
+Canonical map: `ProductMasterMarketplaceMaps::bulletServiceMap()` (24 entries). Summary:
+
+| Key | Service |
+|-----|---------|
+| ebay | `EbayApiService` |
+| ebay2 | `Ebay2ApiService` |
+| ebay3 | `EbayThreeApiService` |
+| macy | `MacysApiService` |
+| amazon | `AmazonSpApiService` |
+| temu | `TemuApiService` |
+| temu2 | `Temu2ApiService` |
+| reverb | `ReverbApiService` |
+| wayfair | `WayfairApiService` |
+| bestbuy | `BestBuyApiService` |
+| walmart | `WalmartService` |
+| doba | `DobaApiService` |
+| faire | `FaireService` |
+| shein | `SheinApiService` |
+| shopify_main | `ShopifyApiService` |
+| shopify_pls | `ShopifyPLSApiService` |
+| shopify_b5c | `ShopifyPLSApiService` (Business 5Core store) |
+| aliexpress | `AliExpressApiService` |
+| alibaba | `AlibabaApiService` (extends AliExpress signing) |
+| purchasing_power | `PurchasingPowerApiService` (Mirakl `purchasingpower`) |
+| newegg | `NeweggApiService` |
+| topdawg | `TopDawgApiService` |
+| tiktok / tiktok2 | `TikTokShopService` |
+
+## Safe testing (dry-run)
+
+Default test SKU: `SP 12120 4OHM GTR` (`config/marketplace_testing.php`).
+
+```bash
+php artisan marketplace:audit-master bullet --dry-run --sku="SP 12120 4OHM GTR"
+php artisan marketplace:audit-master bullet --live --sku="SP 12120 4OHM GTR" --marketplace=ebay
+```
+
+See `docs/MARKETPLACE_API_INTEGRATION.md` and `docs/MARKETPLACE_MASTER_DRY_RUN_RESULTS.md` for full audit output.
 
 ## Things To Watch While Debugging
 
@@ -184,5 +205,7 @@ Important: although the browser URL can be `/bullet-points`, the active blade fe
 - `temu_metrics` also updates `goods_summary` when that column exists.
 - Shopify bullet pushes should not overwrite the product description section; they replace only the top bullet/About Item block and preserve the remaining current Shopify `body_html`.
 - eBay1/eBay2 bullet pushes edit the listing Description field, but only by replacing the first visible bullet block and preserving the rest of the existing seller description HTML. E3 bullet pushes update item-specific bullet fields instead.
+- Reverb bullet push updates every listing that shares the normalized SKU. If the live PDP still shows old 【】 `About Item` bullets, confirm you are viewing the listing ID from the push success message (duplicate listings are common). Save bullets in Bullet Master before pushing if the edit modal is closed. Hard-refresh the Reverb PDP (Ctrl+Shift+R).
+- Debug helper: `php scripts/debug-reverb-bullets.php "SKU"` (optional `--push` to live-push). Compare PM vs API: `php scripts/compare-reverb-pm-bullets.php "SKU"`.
 - Storefront/theme caching may delay visible Shopify changes.
 - AI Generate uses `services.anthropic.model` with a Sonnet 4 default and strips common bullet/check symbols from generated lines before filling the edit modal fields. `Regenerate Existing Bullet Points with AI` sends the current five bullet fields as source content and asks AI to rewrite them using the saved prompt rules. Each bullet field also has a `Change` action that opens a prompt modal and rewrites only that one bullet via `/bullet-point-master/rewrite-bullet`, sending the product title, optional AI prompt details, target bullet, and all five current bullets as context so the rewrite stays related and does not randomize the remaining points. After an AI rewrite, the affected fields show `Revert` so the user can switch back to the previous text before saving.

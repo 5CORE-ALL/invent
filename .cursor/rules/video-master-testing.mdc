@@ -1,0 +1,28 @@
+---
+description: Default SKU and workflow for Video Master marketplace API testing
+globs: app/Http/Controllers/ProductMaster/VideoMasterController.php,app/Services/Support/MarketplaceMasterAuditService.php,app/Services/Support/VideoMasterPushRunner.php,app/Console/Commands/AuditMarketplaceMasterCommand.php,docs/VIDEO_MASTER_OVERVIEW.md,docs/MARKETPLACE_API_INTEGRATION.md
+alwaysApply: false
+---
+
+# Video Master — test SKU
+
+**Default test SKU:** `SP 12120 4OHM GTR`  
+(Config: `config/marketplace_testing.php` → `video_sku`)
+
+## Safe testing order
+
+1. Dry-run (no API writes):
+   `php artisan marketplace:audit-master video --dry-run --sku="SP 12120 4OHM GTR"`
+2. HTTP push with dry_run:
+   `POST /video-master/push` with `{ sku, updates: [...], dry_run: true }`
+3. Live push only after dry-run passes **and** PM has video URL(s):
+   row marketplace tile or background push job
+
+## Known status for this SKU (dry-run)
+
+- **Wiring:** 24/24 marketplaces ready
+- **Content gap:** `video1`–`video5` all empty — live push needs at least one URL
+- **Metrics rows:** ebay, ebay3, temu, doba, walmart; `video_master_json` empty until first push
+- **ebay2:** no metrics row; eBay API lookup on push
+
+Do not run bulk live push without explicit user approval.

@@ -9,10 +9,12 @@ use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use App\Services\Support\Concerns\HandlesMarketplaceApiExceptions;
 use App\Services\Support\SavesMarketplaceImageMetrics;
 
 class WalmartService
 {
+    use HandlesMarketplaceApiExceptions;
     use SavesMarketplaceImageMetrics;
     protected $clientId;
     protected $clientSecret;
@@ -24,9 +26,41 @@ class WalmartService
     {
         $this->clientId       = config('services.walmart.client_id');
         $this->clientSecret   = config('services.walmart.client_secret');
-        $this->baseUrl        = config('services.walmart.api_endpoint');
+        $this->baseUrl        = $this->normalizeApiBaseUrl((string) config('services.walmart.api_endpoint'));
         $this->marketplaceId  = config('services.walmart.marketplace_id');
         $this->token          = $this->getAccessToken();
+    }
+
+    private function normalizeApiBaseUrl(string $endpoint): string
+    {
+        $base = rtrim(trim($endpoint), '/');
+        if ($base === '') {
+            $base = 'https://marketplace.walmartapis.com';
+        }
+
+        return (string) preg_replace('#/v3$#', '', $base);
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function walmartFeedHeaders(string $accessToken): array
+    {
+        return [
+            'WM_SEC.ACCESS_TOKEN' => $accessToken,
+            'WM_QOS.CORRELATION_ID' => (string) Str::uuid(),
+            'WM_SVC.NAME' => 'Walmart Marketplace',
+            'WM_MARKET_ID' => (string) $this->marketplaceId,
+            'WM_CONSUMER.CHANNEL.TYPE' => (string) config('services.walmart.channel_type'),
+            'WM_MARKET' => (string) config('services.walmart.market', 'us'),
+            'WM_GLOBAL_VERSION' => (string) config('services.walmart.global_version', '3.1'),
+            'Accept' => 'application/json',
+        ];
+    }
+
+    private function feedsSubmitUrl(string $feedType): string
+    {
+        return $this->baseUrl.'/v3/feeds?'.http_build_query(['feedType' => $feedType]);
     }
 
 
@@ -93,16 +127,9 @@ class WalmartService
                 'xml' => $feedXml,
             ]);
 
-            $response = Http::withoutVerifying()->withHeaders([
-                'WM_SEC.ACCESS_TOKEN' => $accessToken,
-                'WM_QOS.CORRELATION_ID' => (string) Str::uuid(),
-                'WM_SVC.NAME' => 'Walmart Marketplace',
-                'WM_MARKET_ID' => $this->marketplaceId,
-                'WM_CONSUMER.CHANNEL.TYPE' => config('services.walmart.channel_type'),
-                'Accept' => 'application/json',
-            ])->attach('file', $feedXml, 'mp-item-feed.xml')->post($this->baseUrl . '/v3/feeds', [
-                'feedType' => 'MP_ITEM',
-            ]);
+            $response = Http::withoutVerifying()->withHeaders($this->walmartFeedHeaders($accessToken))
+                ->attach('file', $feedXml, 'mp-item-feed.xml')
+                ->post($this->feedsSubmitUrl('MP_MAINTENANCE'));
 
             Log::info('Walmart feed submission response', [
                 'sku' => $sku,
@@ -212,17 +239,66 @@ class WalmartService
 
         $feedXml = $this->buildBulletFeedXml($sku, $body);
 
-        return $this->submitMpItemFeed($feedXml, $sku, 'Walmart bullet points');
+        return $this->submitMpItemFeed(
+            $feedXml,
+            $sku,
+            'Walmart bullet points',
+            'Walmart bullet points updated successfully',
+            'MP_MAINTENANCE'
+        );
     }
 
     /**
-     * Product description uses the same MP_ITEM feed fields as marketing copy (truncate in caller if needed).
+     * Product description via MP_ITEM feed (shortDescription only — separate from bullet shelf copy).
      *
      * @return array{success:bool,message:string,feed_id?:string,feed_status?:string,response?:mixed}
      */
     public function updateProductDescription(string $identifier, string $description): array
     {
-        return $this->updateBulletPoints($identifier, $description);
+        $sku = trim($identifier);
+        $body = trim($description);
+        if ($sku === '' || $body === '') {
+            return ['success' => false, 'message' => 'SKU and description are required.'];
+        }
+
+        $feedXml = $this->buildDescriptionFeedXml($sku, $body);
+
+        return $this->submitMpItemFeed(
+            $feedXml,
+            $sku,
+            'Walmart description',
+            'Walmart description updated successfully',
+            'MP_MAINTENANCE'
+        );
+    }
+
+    private function buildDescriptionFeedXml(string $sku, string $description): string
+    {
+        $escapedSku = htmlspecialchars($sku, ENT_XML1);
+        $escaped = htmlspecialchars($description, ENT_XML1);
+        $lines = preg_split('/\r\n|\r|\n/', $description);
+        $titleLine = trim($lines[0] ?? '') ?: $sku;
+        $escapedName = htmlspecialchars($titleLine, ENT_XML1);
+
+        return '<?xml version="1.0" encoding="UTF-8"?>
+<MPItemFeed xmlns="http://walmart.com/" xmlns:ns2="http://walmart.com/mp/orders" xmlns:ns3="http://walmart.com/">
+  <MPItemFeedHeader>
+    <mart>US</mart>
+    <sellingChannel>marketplace</sellingChannel>
+    <processMode>REPLACE</processMode>
+    <subset>EXTERNAL</subset>
+    <locale>en</locale>
+    <version>4.8</version>
+  </MPItemFeedHeader>
+  <MPItem>
+    <Orderable>
+      <sku>'.$escapedSku.'</sku>
+      <productName>'.$escapedName.'</productName>
+      <shortDescription>'.$escaped.'</shortDescription>
+      <productType>Item</productType>
+    </Orderable>
+  </MPItem>
+</MPItemFeed>';
     }
 
     private function buildBulletFeedXml(string $sku, string $bulletText): string
@@ -258,9 +334,14 @@ class WalmartService
     /**
      * @return array{success:bool,message:string,feed_id?:string,feed_status?:string,response?:mixed}
      */
-    private function submitMpItemFeed(string $feedXml, string $sku, string $logLabel): array
-    {
-        Log::info("🚀 {$logLabel} update started", ['sku' => $sku]);
+    private function submitMpItemFeed(
+        string $feedXml,
+        string $sku,
+        string $logLabel,
+        string $successMessage = 'Walmart update completed successfully',
+        string $feedType = 'MP_MAINTENANCE',
+    ): array {
+        Log::info("🚀 {$logLabel} update started", ['sku' => $sku, 'feed_type' => $feedType]);
 
         try {
             $accessToken = $this->getAccessToken();
@@ -268,16 +349,9 @@ class WalmartService
                 return ['success' => false, 'message' => 'Failed to get Walmart access token'];
             }
 
-            $response = Http::withoutVerifying()->withHeaders([
-                'WM_SEC.ACCESS_TOKEN' => $accessToken,
-                'WM_QOS.CORRELATION_ID' => (string) Str::uuid(),
-                'WM_SVC.NAME' => 'Walmart Marketplace',
-                'WM_MARKET_ID' => $this->marketplaceId,
-                'WM_CONSUMER.CHANNEL.TYPE' => config('services.walmart.channel_type'),
-                'Accept' => 'application/json',
-            ])->attach('file', $feedXml, 'mp-item-feed.xml')->post($this->baseUrl . '/v3/feeds', [
-                'feedType' => 'MP_ITEM',
-            ]);
+            $response = Http::withoutVerifying()->withHeaders($this->walmartFeedHeaders($accessToken))
+                ->attach('file', $feedXml, 'mp-item-feed.xml')
+                ->post($this->feedsSubmitUrl($feedType));
 
             if (! $response->successful() && $response->status() !== 202) {
                 return ['success' => false, 'message' => 'Feed submission failed: ' . $response->body()];
@@ -304,7 +378,7 @@ class WalmartService
             if (in_array($finalStatus, ['PROCESSED', 'COMPLETED', 'DONE'], true)) {
                 return [
                     'success' => true,
-                    'message' => 'Walmart bullet points updated successfully',
+                    'message' => $successMessage,
                     'feed_id' => (string) $feedId,
                     'feed_status' => $finalStatus,
                     'response' => $statusResult,

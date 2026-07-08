@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\ProductStockMapping;
 use App\Services\Concerns\ResolvesBulletPointIdentifier;
+use App\Services\Support\Concerns\ResolvesEbayListingItemId;
 use App\Services\Support\DescriptionWithImagesFormatter;
 use App\Services\Support\EbayDescriptionToDm2Parser;
 use App\Services\Support\EbaySellInventoryListingResolver;
@@ -21,6 +22,7 @@ use ZipArchive;
 class EbayApiService
 {
     use ResolvesBulletPointIdentifier;
+    use ResolvesEbayListingItemId;
     use SavesMarketplaceVideoMetrics;
     use VideoMasterMarketplaceMethods;
 
@@ -1615,15 +1617,23 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
         }
 
         $row = $this->findMetricRowBySkuOrAlternateIds('ebay_metrics', $identifier, ['item_id']);
-        $itemId = $row->item_id ?? null;
-        if (! $itemId) {
-            return ['success' => false, 'message' => 'Product not found in ebay_metrics (try SKU or eBay item_id).'];
-        }
-
         try {
             $token = $this->generateBearerToken();
         } catch (\Throwable $e) {
             return ['success' => false, 'message' => $e->getMessage()];
+        }
+
+        $resolved = $this->resolveEbayItemIdForPush(
+            'ebay_metrics',
+            $identifier,
+            $token,
+            $this->endpoint,
+            $this->tradingApiHeadersBase()
+        );
+        $itemId = $resolved['item_id'];
+        $row = $resolved['row'] ?? $row;
+        if (! $itemId) {
+            return ['success' => false, 'message' => 'No eBay listing found for this SKU or item_id (check ebay_metrics or Inventory / GetSellerList).'];
         }
 
         $getItemResponse = $this->getItem((string) $itemId);

@@ -1,0 +1,29 @@
+---
+description: Default SKU and workflow for Bullet Point Master marketplace API testing
+globs: app/Http/Controllers/ProductMaster/BulletPointMasterController.php,app/Services/Support/MarketplaceMasterAuditService.php,app/Console/Commands/AuditMarketplaceMasterCommand.php,docs/BULLET_POINTS_OVERVIEW.md,docs/MARKETPLACE_API_INTEGRATION.md
+alwaysApply: false
+---
+
+# Bullet Point Master — test SKU
+
+**Default test SKU:** `SP 12120 4OHM GTR`  
+(Config: `config/marketplace_testing.php` → `bullet_point_sku`)
+
+## Safe testing order
+
+1. Dry-run (no API writes):
+   `php artisan marketplace:audit-master bullet --dry-run --sku="SP 12120 4OHM GTR"`
+2. Single marketplace dry-run:
+   `php artisan marketplace:audit-master bullet --dry-run --sku="SP 12120 4OHM GTR" --marketplace=amazon`
+3. Live push only after dry-run passes (confirmation required):
+   `php artisan marketplace:audit-master bullet --live --sku="SP 12120 4OHM GTR" --marketplace=amazon`
+
+## Known status for this SKU (dry-run)
+
+- **eBay2:** no metrics row; push uses Inventory API / GetSellerList to resolve `item_id` automatically
+- **Metrics row present:** ebay, ebay3, temu, doba, walmart
+- **Payload:** 5 bullet lines, ~1078 chars (from metrics or `product_master` fallback)
+- **Dry-run:** 24/24 marketplaces ready (credentials + service + payload)
+- **Metrics tables:** all 24 mapped tables exist locally (incl. `newegg_metrics`, `topdawg_metrics`, `tiktok_metrics`)
+
+Do not run bulk or multi-marketplace live pushes without explicit user approval.

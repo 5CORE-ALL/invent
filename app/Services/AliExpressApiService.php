@@ -58,6 +58,32 @@ class AliExpressApiService
     /** Matches IOP SDK msectime() vs true millisecond timestamp. */
     protected string $timestampStyle;
 
+    /** rest = business /rest gateway; sync = dropshipping /sync */
+    protected string $gateway;
+
+    protected string $restBase;
+
+    protected string $restSignMethod;
+
+    protected int $httpConnectTimeout;
+
+    protected int $httpTimeout;
+
+    protected ?string $httpProxy;
+
+    protected bool $resolveIpv4;
+
+    protected bool $gatewayFallback;
+
+    /** sync signing: iop (/sync prefix) or legacy (secret sandwich + access_token) */
+    protected string $syncSignStyle;
+
+    /** Human label for OAuth token error messages (override in subclasses). */
+    protected string $channelLabel = 'AliExpress';
+
+    /** .env key hint in token error messages (override in subclasses). */
+    protected string $tokenEnvKey = 'ALIEXPRESS_ACCESS_TOKEN';
+
     public function __construct()
     {
         $this->appKey = (string) (config('services.aliexpress.app_key') ?: env('ALIEXPRESS_APP_KEY', ''));
@@ -78,6 +104,26 @@ class AliExpressApiService
         $this->transport = in_array($tr, ['iop', 'form'], true) ? $tr : 'iop';
         $ts = strtolower((string) (config('services.aliexpress.timestamp_style') ?: env('ALIEXPRESS_TIMESTAMP_STYLE', 'iop')));
         $this->timestampStyle = in_array($ts, ['iop', 'ms'], true) ? $ts : 'iop';
+
+        $gw = strtolower((string) (config('services.aliexpress.gateway') ?: env('ALIEXPRESS_GATEWAY', 'sync')));
+        $this->gateway = in_array($gw, ['sync', 'rest'], true) ? $gw : 'sync';
+        $this->restBase = rtrim((string) (config('services.aliexpress.rest_base') ?: env('ALIEXPRESS_REST_BASE', 'https://api-sg.aliexpress.com/rest')), '/');
+        $rsm = strtolower((string) (config('services.aliexpress.rest_sign_method') ?: env('ALIEXPRESS_REST_SIGN_METHOD', 'hmac')));
+        $this->restSignMethod = in_array($rsm, ['hmac', 'md5'], true) ? $rsm : 'hmac';
+        $this->httpConnectTimeout = max(5, (int) (config('services.aliexpress.connect_timeout') ?: env('ALIEXPRESS_CONNECT_TIMEOUT', 30)));
+        $this->httpTimeout = max(10, (int) (config('services.aliexpress.timeout') ?: env('ALIEXPRESS_TIMEOUT', 60)));
+        $proxy = config('services.aliexpress.http_proxy') ?: env('ALIEXPRESS_HTTP_PROXY');
+        $this->httpProxy = is_string($proxy) && $proxy !== '' ? $proxy : null;
+        $this->resolveIpv4 = filter_var(
+            config('services.aliexpress.resolve_ipv4', env('ALIEXPRESS_RESOLVE_IPV4', true)),
+            FILTER_VALIDATE_BOOL
+        );
+        $this->gatewayFallback = filter_var(
+            config('services.aliexpress.gateway_fallback', env('ALIEXPRESS_GATEWAY_FALLBACK', true)),
+            FILTER_VALIDATE_BOOL
+        );
+        $ss = strtolower((string) (config('services.aliexpress.sync_sign_style') ?: env('ALIEXPRESS_SYNC_SIGN_STYLE', 'legacy')));
+        $this->syncSignStyle = in_array($ss, ['iop', 'legacy'], true) ? $ss : 'legacy';
     }
 
     public function getAccessToken(): ?string
@@ -95,8 +141,13 @@ class AliExpressApiService
             'page_size' => $pageSize,
         ], $extraListParams));
 
-        $raw = $this->callSync('aliexpress.solution.product.list.get', [
-            'product_list_get_request' => $this->encodeRequestPayload($listRequest),
+        $encoded = $this->encodeRequestPayload($listRequest);
+        $syncParams = $this->syncSignStyle === 'legacy'
+            ? $listRequest
+            : ['product_list_get_request' => $encoded];
+        $raw = $this->callApiFlexible('aliexpress.solution.product.list.get', [
+            'rest' => ['aeop_a_e_product_list_query' => $encoded],
+            'sync' => $syncParams,
         ]);
 
         if (empty($raw['success'])) {
@@ -195,19 +246,43 @@ class AliExpressApiService
                 $multipart[] = ['name' => $name, 'contents' => $contents];
             }
 
-            $pending = Http::withoutVerifying()->asMultipart();
-            $response = $multipart === []
-                ? $pending->post($queryUrl)
-                : $pending->post($queryUrl, $multipart);
+            $pending = $this->httpClient()->asMultipart();
+            try {
+                $response = $multipart === []
+                    ? $pending->post($queryUrl)
+                    : $pending->post($queryUrl, $multipart);
+            } catch (\Illuminate\Http\Client\ConnectionException $e) {
+                return [
+                    'request' => $requestDebug,
+                    'response' => [
+                        'status' => 0,
+                        'body' => $e->getMessage(),
+                        'json' => null,
+                    ],
+                    'network_error' => true,
+                ];
+            }
         } else {
             $url = $this->apiBase;
             $merged = array_merge($api, $system);
             $requestDebug['request_url'] = $url;
             $requestDebug['raw_body'] = http_build_query($merged, '', '&', PHP_QUERY_RFC3986);
-            $response = Http::withoutVerifying()
-                ->asForm()
-                ->withHeaders(['Content-Type' => 'application/x-www-form-urlencoded'])
-                ->post($url, $merged);
+            try {
+                $response = $this->httpClient()
+                    ->asForm()
+                    ->withHeaders(['Content-Type' => 'application/x-www-form-urlencoded'])
+                    ->post($url, $merged);
+            } catch (\Illuminate\Http\Client\ConnectionException $e) {
+                return [
+                    'request' => $requestDebug,
+                    'response' => [
+                        'status' => 0,
+                        'body' => $e->getMessage(),
+                        'json' => null,
+                    ],
+                    'network_error' => true,
+                ];
+            }
         }
 
         Log::debug('AliExpress sync debug', $requestDebug);
@@ -223,64 +298,183 @@ class AliExpressApiService
     }
 
     /**
-     * POST to dropshipping `/sync` endpoint with IOP-style transport (query + multipart).
+     * Route to business /rest or legacy /sync gateway.
      *
-     * @param  array<string, mixed>  $businessParams  Top-level API keys (e.g. edit_product_request => JSON string)
+     * @param  array<string, mixed>  $businessParams
      */
-    private function callSync(string $method, array $businessParams = []): array
+    private function callApi(string $method, array $businessParams = []): array
     {
-        if ($this->appKey === '' || $this->appSecret === '') {
-            return [
-                'success' => false,
-                'message' => 'AliExpress app_key / app_secret are missing.',
-            ];
+        return $this->gateway === 'rest'
+            ? $this->callRestGateway($method, $businessParams)
+            : $this->callSync($method, $businessParams);
+    }
+
+    /**
+     * Try primary gateway, then fallback on network errors (with per-gateway param shapes).
+     *
+     * @param  array<string, array<string, mixed>>  $paramsByGateway
+     */
+    private function callApiFlexible(string $method, array $paramsByGateway): array
+    {
+        $order = $this->gateway === 'rest' ? ['rest', 'sync'] : ['sync', 'rest'];
+        if (! $this->gatewayFallback) {
+            $order = [$this->gateway];
         }
 
+        $last = null;
+        foreach ($order as $gateway) {
+            if (! isset($paramsByGateway[$gateway])) {
+                continue;
+            }
+
+            $last = $gateway === 'rest'
+                ? $this->callRestGateway($method, $paramsByGateway[$gateway])
+                : $this->callSync($method, $paramsByGateway[$gateway]);
+
+            if (empty($last['network_error'])) {
+                return $last;
+            }
+
+            Log::warning('AliExpress gateway unreachable', [
+                'gateway' => $gateway,
+                'method' => $method,
+                'message' => $last['message'] ?? null,
+            ]);
+        }
+
+        return $last ?? $this->networkErrorResult('No AliExpress gateway configured.');
+    }
+
+    /**
+     * Shared HTTP client: longer timeouts, optional IPv4 + proxy.
+     */
+    private function httpClient(): \Illuminate\Http\Client\PendingRequest
+    {
+        $pending = Http::withoutVerifying()
+            ->connectTimeout($this->httpConnectTimeout)
+            ->timeout($this->httpTimeout);
+
+        $options = [];
+        $curl = [];
+        if ($this->resolveIpv4 && defined('CURLOPT_IPRESOLVE') && defined('CURL_IPRESOLVE_V4')) {
+            $curl[CURLOPT_IPRESOLVE] = CURL_IPRESOLVE_V4;
+        }
+        if ($curl !== []) {
+            $options['curl'] = $curl;
+        }
+        if ($this->httpProxy !== null) {
+            $options['proxy'] = $this->httpProxy;
+        }
+        if ($options !== []) {
+            $pending = $pending->withOptions($options);
+        }
+
+        return $pending;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function networkErrorResult(string $message, ?\Throwable $e = null): array
+    {
+        return [
+            'success' => false,
+            'network_error' => true,
+            'message' => $message,
+            'detail' => $e?->getMessage(),
+        ];
+    }
+
+    /**
+     * Business gateway — POST https://api-sg.aliexpress.com/rest (TOP / IOP standard).
+     *
+     * @param  array<string, mixed>  $businessParams
+     */
+    private function callRestGateway(string $method, array $businessParams = []): array
+    {
+        if ($this->appKey === '' || $this->appSecret === '') {
+            return ['success' => false, 'message' => 'AliExpress app_key / app_secret are missing.'];
+        }
         if (empty($this->accessToken)) {
             return [
                 'success' => false,
-                'message' => 'AliExpress OAuth token is missing (set ALIEXPRESS_ACCESS_TOKEN; sent as '.$this->tokenParam.').',
+                'message' => $this->channelLabel.' OAuth token is missing (set '.$this->tokenEnvKey.').',
             ];
         }
 
-        $system = $this->buildBaseParams($method);
-        $api = [];
+        $params = [
+            'app_key' => $this->appKey,
+            'method' => $method,
+            'format' => $this->format,
+            'sign_method' => $this->restSignMethod,
+            'timestamp' => now('Asia/Shanghai')->format('Y-m-d H:i:s'),
+            'v' => '2.0',
+            'simplify' => $this->simplify,
+            'session' => $this->accessToken,
+        ];
+
         foreach ($businessParams as $key => $value) {
             if ($value === null || $value === '') {
                 continue;
             }
-            $api[$key] = is_array($value) ? $this->encodeRequestPayload($value) : (string) $value;
+            $params[$key] = is_array($value) ? $this->encodeRequestPayload($value) : (string) $value;
         }
 
-        $forSign = array_merge($api, $system);
-        $signSource = $this->buildSignSource($forSign);
-        $sign = $this->sign($signSource);
-        $system['sign'] = $sign;
+        $params['sign'] = $this->signRestParams($params);
 
-        if ($this->transport === 'iop') {
-            $queryUrl = $this->apiBase.'?'.http_build_query($system, '', '&', PHP_QUERY_RFC3986);
-            $multipart = [];
-            foreach ($api as $name => $contents) {
-                $multipart[] = ['name' => $name, 'contents' => $contents];
-            }
-            $pending = Http::withoutVerifying()->asMultipart();
-            $response = $multipart === []
-                ? $pending->post($queryUrl)
-                : $pending->post($queryUrl, $multipart);
-        } else {
-            $merged = array_merge($api, $system);
-            $response = Http::withoutVerifying()
+        try {
+            $response = $this->httpClient()
                 ->asForm()
-                ->withHeaders(['Content-Type' => 'application/x-www-form-urlencoded'])
-                ->post($this->apiBase, $merged);
+                ->post($this->restBase, $params);
+        } catch (\Illuminate\Http\Client\ConnectionException $e) {
+            return $this->networkErrorResult(
+                'Could not reach AliExpress REST API (network timeout). Check firewall/VPN or run from your production server.',
+                $e
+            );
         }
 
+        return $this->parseHttpResponse($response, $method, 'rest');
+    }
+
+    /**
+     * TOP sign for /rest: HMAC-MD5 or MD5(secret+sorted+secret).
+     *
+     * @param  array<string, string>  $params
+     */
+    private function signRestParams(array $params): string
+    {
+        unset($params['sign']);
+        ksort($params);
+
+        if ($this->restSignMethod === 'md5') {
+            $source = $this->appSecret;
+            foreach ($params as $key => $value) {
+                $source .= (string) $key.(string) $value;
+            }
+            $source .= $this->appSecret;
+
+            return strtoupper(md5($source));
+        }
+
+        $source = '';
+        foreach ($params as $key => $value) {
+            $source .= (string) $key.(string) $value;
+        }
+
+        return strtoupper(hash_hmac('md5', $source, $this->appSecret));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function parseHttpResponse(\Illuminate\Http\Client\Response $response, string $method, string $gateway): array
+    {
         $json = $response->json();
         $body = $response->body();
 
-        Log::info('AliExpress sync call', [
+        Log::info('AliExpress API call', [
             'method' => $method,
-            'transport' => $this->transport,
+            'gateway' => $gateway,
             'status' => $response->status(),
             'response_body' => mb_substr((string) $body, 0, 4000),
         ]);
@@ -294,7 +488,7 @@ class AliExpressApiService
             ];
         }
 
-        if (!is_array($json)) {
+        if (! is_array($json)) {
             return [
                 'success' => false,
                 'status' => $response->status(),
@@ -322,19 +516,18 @@ class AliExpressApiService
             return [
                 'success' => false,
                 'status' => $response->status(),
-                'message' => $json['message'] ?? 'AliExpress ISV error.',
+                'message' => (string) ($json['msg'] ?? $json['message'] ?? 'ISV error'),
                 'response' => $json,
             ];
         }
 
-        // Success: code "0" (string) or 0
         if (array_key_exists('code', $json)) {
             $code = $json['code'];
             if ((string) $code !== '0' && $code !== 0) {
                 return [
                     'success' => false,
                     'status' => $response->status(),
-                    'message' => $json['message'] ?? $json['msg'] ?? 'AliExpress API error.',
+                    'message' => (string) ($json['message'] ?? $json['msg'] ?? 'AliExpress API error.'),
                     'code' => $code,
                     'response' => $json,
                 ];
@@ -351,6 +544,76 @@ class AliExpressApiService
     }
 
     /**
+     * POST to dropshipping `/sync` endpoint with IOP-style transport (query + multipart).
+     *
+     * @param  array<string, mixed>  $businessParams  Top-level API keys (e.g. edit_product_request => JSON string)
+     */
+    private function callSync(string $method, array $businessParams = []): array
+    {
+        if ($this->appKey === '' || $this->appSecret === '') {
+            return [
+                'success' => false,
+                'message' => 'AliExpress app_key / app_secret are missing.',
+            ];
+        }
+
+        if (empty($this->accessToken)) {
+            return [
+                'success' => false,
+                'message' => $this->channelLabel.' OAuth token is missing (set '.$this->tokenEnvKey.'; sent as '.$this->tokenParam.').',
+            ];
+        }
+
+        $system = $this->buildBaseParams($method);
+        $api = [];
+        foreach ($businessParams as $key => $value) {
+            if ($value === null || $value === '') {
+                continue;
+            }
+            $api[$key] = is_array($value) ? $this->encodeRequestPayload($value) : (string) $value;
+        }
+
+        $forSign = array_merge($api, $system);
+        $signSource = $this->buildSignSource($forSign);
+        $sign = $this->sign($signSource);
+        $system['sign'] = $sign;
+
+        if ($this->transport === 'iop') {
+            $queryUrl = $this->apiBase.'?'.http_build_query($system, '', '&', PHP_QUERY_RFC3986);
+            $multipart = [];
+            foreach ($api as $name => $contents) {
+                $multipart[] = ['name' => $name, 'contents' => $contents];
+            }
+            $pending = $this->httpClient()->asMultipart();
+            try {
+                $response = $multipart === []
+                    ? $pending->post($queryUrl)
+                    : $pending->post($queryUrl, $multipart);
+            } catch (\Illuminate\Http\Client\ConnectionException $e) {
+                return $this->networkErrorResult(
+                    'Could not reach AliExpress sync API (network timeout). Check firewall/VPN or run from your production server.',
+                    $e
+                );
+            }
+        } else {
+            $merged = array_merge($api, $system);
+            try {
+                $response = $this->httpClient()
+                    ->asForm()
+                    ->withHeaders(['Content-Type' => 'application/x-www-form-urlencoded'])
+                    ->post($this->apiBase, $merged);
+            } catch (\Illuminate\Http\Client\ConnectionException $e) {
+                return $this->networkErrorResult(
+                    'Could not reach AliExpress sync API (network timeout). Check firewall/VPN or run from your production server.',
+                    $e
+                );
+            }
+        }
+
+        return $this->parseHttpResponse($response, $method, 'sync');
+    }
+
+    /**
      * IOP SDK {@see IopClient::msectime()} uses second + "000", not true ms; must match what you send.
      */
     private function buildTimestampForSign(): string
@@ -364,6 +627,16 @@ class AliExpressApiService
 
     private function buildBaseParams(string $method): array
     {
+        if ($this->syncSignStyle === 'legacy') {
+            return [
+                'app_key' => $this->appKey,
+                'timestamp' => (string) (int) round(microtime(true) * 1000),
+                'access_token' => $this->accessToken,
+                'sign_method' => 'sha256',
+                'method' => $method,
+            ];
+        }
+
         $params = [
             'app_key' => $this->appKey,
             'format' => $this->format,
@@ -400,6 +673,17 @@ class AliExpressApiService
     {
         unset($params['sign']);
         ksort($params);
+
+        if ($this->syncSignStyle === 'legacy') {
+            $source = $this->appSecret;
+            foreach ($params as $key => $value) {
+                if ($value !== null && $value !== '') {
+                    $source .= (string) $key.(string) $value;
+                }
+            }
+
+            return $source.$this->appSecret;
+        }
 
         $source = $this->signPath;
         foreach ($params as $key => $value) {
@@ -1026,7 +1310,8 @@ class AliExpressApiService
             ]);
             if (! empty($res['success'])) {
                 $sku = $row && $row->sku ? (string) $row->sku : $trim;
-                $this->saveVideoUrlsToMetricsRow('aliexpress_metrics', $sku, $videos);
+                $table = app(\App\Services\Support\MarketplaceMetricsTableResolver::class)->table('aliexpress') ?? 'aliexpress_metric';
+                $this->saveVideoUrlsToMetricsRow($table, $sku, $videos);
 
                 return [
                     'success' => true,
@@ -1082,7 +1367,8 @@ class AliExpressApiService
             ]);
             if (! empty($res['success'])) {
                 $sku = $row && $row->sku ? (string) $row->sku : $trim;
-                $this->saveImageUrlsToMetricsRow('aliexpress_metrics', $sku, $images);
+                $table = app(\App\Services\Support\MarketplaceMetricsTableResolver::class)->table('aliexpress') ?? 'aliexpress_metric';
+                $this->saveImageUrlsToMetricsRow($table, $sku, $images);
 
                 return [
                     'success' => true,
@@ -1094,5 +1380,150 @@ class AliExpressApiService
         }
 
         return ['success' => false, 'message' => $lastMessage];
+    }
+
+    /**
+     * Resolve AliExpress product_id from local metrics by merchant SKU.
+     */
+    public function resolveProductIdBySku(string $sku): ?string
+    {
+        $trim = trim($sku);
+        if ($trim === '') {
+            return null;
+        }
+
+        $row = AliexpressMetric::query()
+            ->where('sku', $trim)
+            ->orWhere('sku', strtoupper($trim))
+            ->orWhere('sku', strtolower($trim))
+            ->first();
+
+        return $row && $row->product_id ? (string) $row->product_id : null;
+    }
+
+    /**
+     * Batch inventory update — aliexpress.solution.batch.product.inventory.update
+     *
+     * @param  array<int, array{product_id: string, sku_code: string, inventory: int}>  $rows
+     */
+    public function batchUpdateInventory(array $rows): array
+    {
+        if ($rows === []) {
+            return ['success' => true, 'message' => 'No rows to update.', 'updated' => 0];
+        }
+
+        $grouped = [];
+        foreach ($rows as $row) {
+            $productId = (string) ($row['product_id'] ?? '');
+            $skuCode = trim((string) ($row['sku_code'] ?? $row['sku'] ?? ''));
+            $inventory = max(0, min(999999, (int) ($row['inventory'] ?? $row['stock'] ?? 0)));
+            if ($productId === '' || $skuCode === '') {
+                continue;
+            }
+            $grouped[$productId][] = [
+                'sku_code' => $skuCode,
+                'inventory' => $inventory,
+            ];
+        }
+
+        if ($grouped === []) {
+            return ['success' => false, 'message' => 'No valid inventory rows.', 'updated' => 0];
+        }
+
+        $updated = 0;
+        $errors = [];
+        $chunks = array_chunk($grouped, 20, true);
+
+        foreach ($chunks as $chunk) {
+            $payload = [];
+            foreach ($chunk as $productId => $skus) {
+                $payload[] = [
+                    'product_id' => (string) $productId,
+                    'multiple_sku_update_list' => array_values($skus),
+                ];
+            }
+
+            $raw = $this->callSync('aliexpress.solution.batch.product.inventory.update', [
+                'mutiple_product_update_list' => $this->encodeRequestPayload($payload),
+            ]);
+
+            if (empty($raw['success'])) {
+                $errors[] = $raw['message'] ?? 'Batch inventory update failed.';
+                continue;
+            }
+
+            $updated += count($payload);
+            usleep(200000);
+        }
+
+        return [
+            'success' => $errors === [],
+            'message' => $errors === [] ? "Inventory updated for {$updated} product group(s)." : implode(' | ', $errors),
+            'updated' => $updated,
+            'errors' => $errors,
+        ];
+    }
+
+    /**
+     * Batch price update — aliexpress.solution.batch.product.price.update
+     *
+     * @param  array<int, array{product_id: string, sku_code: string, price: float|string}>  $rows
+     */
+    public function batchUpdatePrice(array $rows): array
+    {
+        if ($rows === []) {
+            return ['success' => true, 'message' => 'No rows to update.', 'updated' => 0];
+        }
+
+        $grouped = [];
+        foreach ($rows as $row) {
+            $productId = (string) ($row['product_id'] ?? '');
+            $skuCode = trim((string) ($row['sku_code'] ?? $row['sku'] ?? ''));
+            $price = (float) ($row['price'] ?? 0);
+            if ($productId === '' || $skuCode === '' || $price <= 0) {
+                continue;
+            }
+            $grouped[$productId][] = [
+                'sku_code' => $skuCode,
+                'price' => number_format($price, 2, '.', ''),
+            ];
+        }
+
+        if ($grouped === []) {
+            return ['success' => false, 'message' => 'No valid price rows.', 'updated' => 0];
+        }
+
+        $updated = 0;
+        $errors = [];
+        $chunks = array_chunk($grouped, 20, true);
+
+        foreach ($chunks as $chunk) {
+            $payload = [];
+            foreach ($chunk as $productId => $skus) {
+                $payload[] = [
+                    'product_id' => (string) $productId,
+                    'multiple_sku_update_list' => array_values($skus),
+                ];
+            }
+
+            $raw = $this->callSync('aliexpress.solution.batch.product.price.update', [
+                'mutiple_product_update_list' => $this->encodeRequestPayload($payload),
+            ]);
+
+            if (empty($raw['success'])) {
+                $errors[] = $raw['message'] ?? 'Batch price update failed.';
+                continue;
+            }
+
+            $updated += count($payload);
+            usleep(200000);
+        }
+
+        return [
+            'success' => $errors === [],
+            'message' => $errors === [] ? "Price updated for {$updated} product group(s)." : implode(' | ', $errors),
+            'updated' => $updated,
+            'errors' => $errors,
+        ];
     }
 }

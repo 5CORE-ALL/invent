@@ -7,11 +7,14 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Http;
 use Carbon\Carbon;
+use App\Services\Support\Concerns\HandlesMarketplaceApiExceptions;
+use App\Services\Support\MarketplaceCharacterLimits;
 use App\Services\Support\SavesMarketplaceVideoMetrics;
 use App\Services\Support\VideoMasterMarketplaceMethods;
 
 class TikTokShopService
 {
+    use HandlesMarketplaceApiExceptions;
     use SavesMarketplaceVideoMetrics;
     use VideoMasterMarketplaceMethods;
 
@@ -1291,6 +1294,155 @@ class TikTokShopService
 
             return ['success' => false, 'message' => $e->getMessage()];
         }
+    }
+
+    /**
+     * Update product title on TikTok Shop (Title Master).
+     *
+     * @return array{success: bool, message: string}
+     */
+    public function updateProductTitle(string $productId, string $title): array
+    {
+        $productId = trim($productId);
+        $title = MarketplaceCharacterLimits::truncateTitle($title, 'tiktok');
+
+        if ($productId === '' || $title === '') {
+            return ['success' => false, 'message' => 'Product ID and title are required.'];
+        }
+
+        if (! $this->accessToken) {
+            return ['success' => false, 'message' => 'TikTok access token not configured.'];
+        }
+
+        $baseUrl = 'https://open-api.tiktokglobalshop.com';
+        $headers = [
+            'Authorization' => 'Bearer '.$this->accessToken,
+            'Content-Type' => 'application/json',
+            'Accept' => 'application/json',
+        ];
+        $payload = ['title' => $title];
+
+        $endpoints = [
+            "/product/202309/products/{$productId}",
+            "/api/products/{$productId}",
+        ];
+
+        $lastStatus = 0;
+        $lastBody = '';
+
+        foreach ($endpoints as $endpoint) {
+            try {
+                $response = Http::withoutVerifying()
+                    ->withHeaders($headers)
+                    ->timeout(45)
+                    ->patch($baseUrl.$endpoint, $payload);
+
+                $lastStatus = $response->status();
+                $lastBody = $response->body();
+
+                if ($response->successful()) {
+                    $data = $response->json();
+                    if (is_array($data) && (isset($data['data']) || ($data['success'] ?? false))) {
+                        return $this->marketplaceApiSuccess('TikTok updateProductTitle', $productId);
+                    }
+                }
+
+                if ($lastStatus === 404) {
+                    continue;
+                }
+            } catch (\Throwable $e) {
+                return $this->handleMarketplaceThrowable('TikTok updateProductTitle', $productId, $e);
+            }
+        }
+
+        return $this->marketplaceApiFailure(
+            'TikTok updateProductTitle',
+            $productId,
+            $lastStatus === 401 || $lastStatus === 403
+                ? "Authentication failed (HTTP {$lastStatus}). Check TikTok API credentials."
+                : ($lastBody !== '' ? mb_substr($lastBody, 0, 500) : "TikTok title update failed (HTTP {$lastStatus})."),
+            ['status' => $lastStatus]
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>  $fields
+     * @return array{success: bool, message: string}
+     */
+    private function updateTikTokProductFields(string $identifier, array $fields): array
+    {
+        if (! $this->accessToken) {
+            return ['success' => false, 'message' => 'TikTok Shop access token not available.'];
+        }
+
+        $productId = $this->resolveTikTokProductIdForIdentifier(trim($identifier));
+        if (! $productId) {
+            return ['success' => false, 'message' => 'TikTok Shop product not found for SKU / id.'];
+        }
+
+        $this->client->setAccessToken($this->accessToken);
+        if ($this->shopCipher) {
+            $this->client->setShopCipher($this->shopCipher);
+        }
+
+        $body = array_merge(['product_id' => $productId], $fields);
+
+        try {
+            if (! method_exists($this->client->Product, 'editProduct')) {
+                return ['success' => false, 'message' => 'TikTok Shop product edit API is not available in this SDK version.'];
+            }
+
+            $response = $this->client->Product->editProduct($body);
+            if (is_array($response) && (int) ($response['code'] ?? -1) === 0) {
+                return ['success' => true, 'message' => 'TikTok Shop product updated.'];
+            }
+
+            return [
+                'success' => false,
+                'message' => (string) ($response['message'] ?? 'TikTok Shop product update failed.'),
+            ];
+        } catch (\Throwable $e) {
+            Log::error('TikTok product field update failed', ['identifier' => $identifier, 'error' => $e->getMessage()]);
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    public function updateBulletPoints(string $identifier, string $bulletPoints): array
+    {
+        $lines = array_filter(array_map('trim', preg_split('/\r\n|\r|\n/', $bulletPoints) ?: []));
+        $html = $lines === [] ? '' : '<ul>'.implode('', array_map(fn ($l) => '<li>'.htmlspecialchars($l, ENT_QUOTES, 'UTF-8').'</li>', $lines)).'</ul>';
+
+        return $this->updateTikTokProductFields($identifier, [
+            'description' => $html,
+            'product_attributes' => ['bullet_points' => array_values($lines)],
+        ]);
+    }
+
+    public function updateDescription(string $identifier, string $description, array $imageUrls = []): array
+    {
+        return $this->updateTikTokProductFields($identifier, ['description' => $description]);
+    }
+
+    public function updateProductDescription(string $identifier, string $description): array
+    {
+        return $this->updateDescription($identifier, $description);
+    }
+
+    /**
+     * @param  list<string>  $images
+     */
+    public function updateImages(string $identifier, array $images, string $mode = 'replace'): array
+    {
+        $images = array_values(array_filter(array_map('trim', $images), fn ($v) => $v !== ''));
+        if ($images === []) {
+            return ['success' => false, 'message' => 'At least one image URL is required.'];
+        }
+
+        return $this->updateTikTokProductFields($identifier, [
+            'images' => array_map(fn ($url) => ['url' => $url], $images),
+            'main_image' => ['url' => $images[0]],
+        ]);
     }
 
     private function resolveTikTokProductIdForIdentifier(string $identifier): ?string

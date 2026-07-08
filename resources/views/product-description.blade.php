@@ -118,9 +118,9 @@
                                             <div class="bp-mp-th-title">DESC 800</div>
                                             <div class="bp-mp-th-icons"><span class="bp-mp-th-pill btn-ebay1">E1</span><span class="bp-mp-th-pill btn-ebay2">E2</span><span class="bp-mp-th-pill btn-ebay3">E3</span></div>
                                         </th>
-                                        <th title="Macy's — max 600 characters">
+                                        <th title="Macy's, Faire, Alibaba, Newegg, TopDawg, TikTok, Purchasing Power, Shopify B5C — max 600 chars (falls back to 1500 tier).">
                                             <div class="bp-mp-th-title">DESC 600</div>
-                                            <div class="bp-mp-th-icons"><span class="bp-mp-th-pill btn-macy">M</span></div>
+                                            <div class="bp-mp-th-icons"><span class="bp-mp-th-pill btn-macy">M</span><span class="bp-mp-th-pill btn-faire">F</span><span class="bp-mp-th-pill btn-newegg">NE</span><span class="bp-mp-th-pill btn-tiktok">TT</span></div>
                                         </th>
                                     </tr>
                                 </thead>
@@ -248,17 +248,21 @@ document.addEventListener('DOMContentLoaded', () => {
         macy: '600', faire: '600',
     };
     const LABELS = __mp.labels || {};
+    const ENABLED_MP = __mp.enabled || [];
+    const TIER1500_SET = new Set(['amazon', 'temu', 'temu2', 'reverb', 'wayfair', 'bestbuy', 'walmart', 'shein', 'aliexpress']);
+    const TIER1000_SET = new Set(['shopify_main', 'shopify_pls', 'doba']);
+    const TIER800_SET = new Set(['ebay', 'ebay2', 'ebay3']);
     const GROUPS = {
-        g1500: ['amazon', 'temu', 'temu2', 'reverb', 'wayfair', 'bestbuy', 'walmart', 'shein', 'aliexpress'],
-        g1000: ['shopify_main', 'shopify_pls', 'doba'],
-        g800: ['ebay', 'ebay2', 'ebay3'],
-        g600: ['macy', 'faire'],
+        g1500: ENABLED_MP.filter((mp) => TIER1500_SET.has(mp)),
+        g1000: ENABLED_MP.filter((mp) => TIER1000_SET.has(mp)),
+        g800: ENABLED_MP.filter((mp) => TIER800_SET.has(mp)),
+        g600: ENABLED_MP.filter((mp) => !TIER1500_SET.has(mp) && !TIER1000_SET.has(mp) && !TIER800_SET.has(mp)),
     };
     const MP_TILE = {};
     Object.entries(__mp.tiles || {}).forEach(([k, v]) => { MP_TILE[k] = v.cls; });
     const MP_SHORT = {};
     Object.entries(__mp.tiles || {}).forEach(([k, v]) => { MP_SHORT[k] = v.short; });
-    const ALL_MP = __mp.enabled || Object.keys(LIMITS);
+    const ALL_MP = ENABLED_MP.length ? ENABLED_MP : Object.keys(LIMITS);
     const TIER_MIN_AI = { 1500: 1400, 1000: 900, 800: 700, 600: 500 };
     const EBAY3_WARNING = 'eBay3 has different listing structure. Please verify bullet points format before pushing.';
 

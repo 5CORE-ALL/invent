@@ -531,7 +531,11 @@ class VideoMasterController extends Controller
 
         $row = DB::table($table)->where('sku', $sku)->first();
         if (! $row) {
-            return ['success' => false, 'message' => 'Dry run: no eBay listing row for SKU.', 'dry_run' => true];
+            return [
+                'success' => true,
+                'message' => 'Dry run: no eBay metrics row; listing resolved via API on live push.',
+                'dry_run' => true,
+            ];
         }
 
         foreach ($imageUrls as $url) {
@@ -936,29 +940,14 @@ class VideoMasterController extends Controller
      */
     private function marketplaceTableMap(): array
     {
-        return [
-            'ebay' => 'ebay_metrics',
-            'ebay2' => 'ebay_2_metrics',
-            'ebay3' => 'ebay_3_metrics',
-            'amazon' => 'amazon_metrics',
-            'temu' => 'temu_metrics',
-            'wayfair' => 'wayfair_metrics',
-            'bestbuy' => 'bestbuy_metrics',
-            'macy' => 'macy_metrics',
-            'reverb' => 'reverb_products', // reverb_metrics may not exist; reverb_products has image_urls + unique sku
-            'shopify_main' => 'shopify_metrics',
-            'shopify_pls' => 'shopify_pls_metrics',
-            'doba' => 'doba_metrics',
-            'temu2' => 'temu2_metrics',
-            'walmart' => 'walmart_metrics',
-            'faire' => 'faire_metrics',
-            'shein' => 'shein_metrics',
-            'aliexpress' => 'aliexpress_metrics',
-            'newegg' => 'newegg_metrics',
-            'topdawg' => 'topdawg_metrics',
-            'tiktok' => 'tiktok_metrics',
-            'tiktok2' => 'tiktok_metrics',
-        ];
+        $map = ProductMasterMarketplaceMaps::videoTableMap();
+        $map['reverb'] = 'reverb_products';
+        $ali = app(\App\Services\Support\MarketplaceMetricsTableResolver::class)->table('aliexpress');
+        if ($ali) {
+            $map['aliexpress'] = $ali;
+        }
+
+        return $map;
     }
 
     /**
