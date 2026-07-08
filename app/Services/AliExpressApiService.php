@@ -865,6 +865,7 @@ class AliExpressApiService
         return [
             'products' => $products,
             'total_count' => $result['product_count'] ?? $result['total_count'] ?? $result['total_item'] ?? $result['totalCount'] ?? null,
+            'total_page' => $result['total_page'] ?? $result['totalPage'] ?? null,
             'current_page' => $result['current_page'] ?? $result['currentPage'] ?? null,
             'page_size' => $result['page_size'] ?? $result['pageSize'] ?? null,
         ];
@@ -993,7 +994,7 @@ class AliExpressApiService
      */
     public function getProductInfo(string $productId): array
     {
-        $raw = $this->callSync('aliexpress.solution.product.info.get', [
+        $raw = $this->callRestGateway('aliexpress.solution.product.info.get', [
             'product_id' => (string) $productId,
         ]);
 

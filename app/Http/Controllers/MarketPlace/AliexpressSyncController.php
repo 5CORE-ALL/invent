@@ -4,10 +4,10 @@ namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
 use App\Jobs\ImportAliexpressOrderToShopify;
-use App\Models\AliexpressListingStatus;
 use App\Models\AliexpressMetric;
 use App\Models\AliexpressOrderMetric;
 use App\Models\MarketplaceSyncSettings;
+use App\Models\ShopifySku;
 use App\Services\AliExpressApiService;
 use App\Services\AliExpressAuthService;
 use App\Services\MarketplaceManager\AliexpressInventorySyncService;
@@ -135,50 +135,92 @@ class AliexpressSyncController extends Controller
     {
         $searchSku = trim((string) $request->input('search_sku', ''));
         $searchName = trim((string) $request->input('search_name', ''));
-        $source = $request->input('source', 'db');
+        $linkTab = strtolower((string) $request->input('link', 'all'));
+        if (! in_array($linkTab, ['all', 'linked', 'unlinked'], true)) {
+            $linkTab = 'all';
+        }
         $page = max(1, (int) $request->input('page', 1));
         $perPage = 50;
         $apiError = null;
 
-        if ($source === 'api') {
-            [$products, $apiError] = $this->productsFromApi($page, $perPage, $searchSku, $searchName);
-        } else {
-            $products = $this->productsFromDatabase($page, $perPage, $searchSku, $searchName);
+        if (! Schema::hasTable('shopify_skus')) {
+            $apiError = 'shopify_skus table missing. Run Shopify inventory sync first.';
+            $products = new LengthAwarePaginator([], 0, $perPage, $page);
+            $counts = ['all' => 0, 'linked' => 0, 'unlinked' => 0];
+
+            return view('marketplace.aliexpress.products', [
+                'products' => $products,
+                'title' => 'AliExpress — Listings',
+                'searchSku' => $searchSku,
+                'searchName' => $searchName,
+                'linkTab' => $linkTab,
+                'counts' => $counts,
+                'apiError' => $apiError,
+                'connected' => $this->apiConfig->isConfigured('aliexpress'),
+            ]);
         }
 
-        $skus = collect($products->items())->pluck('sku')->filter()->values()->all();
-        $shopifyDetails = $skus ? $this->shopifyApi->getProductDetailsBySkuMap($skus) : [];
-        $listingStatuses = $this->listingStatusMap($skus);
+        $linkedSkus = $this->linkedAliexpressSkus();
+        $counts = $this->shopifyListingCounts($linkedSkus);
 
-        $enriched = collect($products->items())->map(function ($row) use ($shopifyDetails, $listingStatuses) {
-            $sku = $row->sku ?? '';
-            $shopify = $shopifyDetails[$sku] ?? null;
-            $listing = $listingStatuses[$sku] ?? null;
-            $listed = is_array($listing) ? ($listing['listed'] ?? $listing['rl_nrl'] ?? null) : null;
+        $query = ShopifySku::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '');
+
+        if ($searchSku !== '') {
+            $query->where('sku', 'like', '%'.$searchSku.'%');
+        }
+        if ($searchName !== '') {
+            $query->where(function ($q) use ($searchName) {
+                $q->where('product_title', 'like', '%'.$searchName.'%')
+                    ->orWhere('variant_title', 'like', '%'.$searchName.'%')
+                    ->orWhere('sku', 'like', '%'.$searchName.'%');
+            });
+        }
+
+        if ($linkTab === 'linked' && $linkedSkus !== []) {
+            $query->whereIn('sku', $linkedSkus);
+        } elseif ($linkTab === 'unlinked' && $linkedSkus !== []) {
+            $query->whereNotIn('sku', $linkedSkus);
+        } elseif ($linkTab === 'linked') {
+            $query->whereRaw('1 = 0');
+        }
+
+        $paginator = $query->orderBy('sku')->paginate($perPage, ['*'], 'page', $page)->withQueryString();
+        $skus = collect($paginator->items())->pluck('sku')->filter()->values()->all();
+        $aeMap = $this->aliexpressMetricMapForSkus($skus);
+
+        $enriched = collect($paginator->items())->map(function (ShopifySku $row) use ($aeMap) {
+            $sku = (string) $row->sku;
+            $metric = $aeMap[$sku] ?? null;
+            $linked = $this->isShopifySkuLinkedOnAliexpress($metric, $sku);
+            $shopifyQty = $row->available_to_sell ?? $row->inv ?? $row->on_hand ?? null;
+            $shopifyPrice = $row->b2c_price ?? $row->price ?? null;
 
             return (object) [
-                'product_id' => $row->product_id ?? null,
+                'product_id' => $linked ? ($metric->product_id ?? null) : null,
                 'sku' => $sku,
-                'title' => $shopify['title'] ?? ($row->product_name ?? $row->title ?? $sku),
-                'aliexpress_title' => $row->product_name ?? $row->title ?? null,
-                'image_src' => $shopify['image_src'] ?? ($row->image_src ?? null),
-                'price' => $row->price ?? null,
-                'shopify_price' => $shopify['price'] ?? null,
-                'quantity' => $row->quantity ?? $row->stock ?? null,
-                'shopify_quantity' => $shopify['quantity'] ?? null,
-                'linked' => $listed === 'listed' || $listed === 'RL' || ! empty($row->product_id),
-                'listing_status' => $listed,
+                'title' => trim(($row->product_title ?? '').($row->variant_title ? ' — '.$row->variant_title : '')) ?: $sku,
+                'aliexpress_title' => $metric->product_name ?? null,
+                'image_src' => $row->image_src ?? null,
+                'price' => $linked ? ($metric->price ?? null) : null,
+                'shopify_price' => $shopifyPrice,
+                'quantity' => null,
+                'shopify_quantity' => $shopifyQty,
+                'linked' => $linked,
+                'listing_status' => $linked ? 'linked' : 'unlinked',
             ];
         });
 
-        $products->setCollection($enriched);
+        $paginator->setCollection($enriched);
 
         return view('marketplace.aliexpress.products', [
-            'products' => $products,
+            'products' => $paginator,
             'title' => 'AliExpress — Listings',
             'searchSku' => $searchSku,
             'searchName' => $searchName,
-            'source' => $source,
+            'linkTab' => $linkTab,
+            'counts' => $counts,
             'apiError' => $apiError,
             'connected' => $this->apiConfig->isConfigured('aliexpress'),
         ]);
@@ -191,36 +233,60 @@ class AliexpressSyncController extends Controller
         }
 
         $page = max(1, (int) $request->input('page', 1));
-        $result = $this->aliExpressApi->getInventory($page, 50);
-
-        if (empty($result['success'])) {
-            return response()->json([
-                'success' => false,
-                'message' => $result['message'] ?? 'Failed to fetch products from AliExpress.',
-            ]);
-        }
-
         $upserted = 0;
-        foreach ($result['data']['products'] ?? [] as $item) {
-            foreach ($this->aliExpressApi->extractSkuRowsFromListItem($item) as $row) {
-                if (! Schema::hasTable('aliexpress_metric')) {
-                    break 2;
+        $pagesSynced = 0;
+        $maxPages = 50;
+
+        for ($p = 1; $p <= $maxPages; $p++) {
+            $result = $this->aliExpressApi->getInventory($p, 50);
+            if (empty($result['success'])) {
+                if ($pagesSynced === 0) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => $result['message'] ?? 'Failed to fetch products from AliExpress.',
+                    ]);
                 }
-                AliexpressMetric::updateOrCreate(
-                    ['sku' => $row['sku']],
-                    [
-                        'product_id' => $row['product_id'],
-                        'product_name' => $row['product_name'],
-                        'price' => $row['price'] ?? 0,
-                    ]
-                );
-                $upserted++;
+
+                break;
+            }
+
+            $items = $result['data']['products'] ?? [];
+            if ($items === []) {
+                break;
+            }
+
+            foreach ($items as $item) {
+                foreach ($this->aliExpressApi->extractSkuRowsFromListItem($item, fetchDetail: $p === 1) as $row) {
+                    if (! Schema::hasTable('aliexpress_metric')) {
+                        break 3;
+                    }
+                    $sku = trim((string) ($row['sku'] ?? ''));
+                    $productId = (string) ($row['product_id'] ?? '');
+                    if ($productId === '' || $sku === '' || $sku === $productId) {
+                        continue;
+                    }
+                    AliexpressMetric::updateOrCreate(
+                        ['sku' => $sku],
+                        [
+                            'product_id' => $productId,
+                            'product_name' => $row['product_name'] ?? null,
+                            'price' => $row['price'] ?? 0,
+                        ]
+                    );
+                    $upserted++;
+                }
+            }
+
+            $pagesSynced++;
+            $totalPage = (int) ($result['data']['total_page'] ?? 0);
+            if ($totalPage > 0 && $p >= $totalPage) {
+                break;
             }
         }
 
         return response()->json([
             'success' => true,
-            'message' => "Synced {$upserted} SKU row(s) from AliExpress API (page {$page}).",
+            'message' => "Updated {$upserted} Shopify SKU link(s) from AliExpress ({$pagesSynced} API page(s)).",
             'upserted' => $upserted,
         ]);
     }
@@ -346,85 +412,99 @@ class AliexpressSyncController extends Controller
         return response()->json(['success' => true, 'message' => 'AliExpress sync settings saved.']);
     }
 
-    protected function productsFromDatabase(int $page, int $perPage, string $searchSku, string $searchName): LengthAwarePaginator
+    /**
+     * SKUs in aliexpress_metric that map to a real Shopify SKU (not product_id placeholders).
+     *
+     * @return array<int, string>
+     */
+    protected function linkedAliexpressSkus(): array
     {
         if (! Schema::hasTable('aliexpress_metric')) {
-            return new LengthAwarePaginator([], 0, $perPage, $page);
+            return [];
         }
 
-        $query = AliexpressMetric::query()->whereNotNull('sku');
-
-        if ($searchSku !== '') {
-            $query->where('sku', 'like', '%'.$searchSku.'%');
-        }
-        if ($searchName !== '') {
-            $query->where(function ($q) use ($searchName) {
-                $q->where('product_name', 'like', '%'.$searchName.'%')
-                    ->orWhere('sku', 'like', '%'.$searchName.'%');
-            });
-        }
-
-        return $query->orderBy('sku')->paginate($perPage, ['*'], 'page', $page)->withQueryString();
+        return AliexpressMetric::query()
+            ->whereNotNull('sku')
+            ->whereNotNull('product_id')
+            ->where('sku', '!=', '')
+            ->where('product_id', '!=', '')
+            ->whereColumn('sku', '!=', 'product_id')
+            ->pluck('sku')
+            ->unique()
+            ->values()
+            ->all();
     }
 
     /**
-     * @return array{0: LengthAwarePaginator, 1: string|null}
+     * @param  array<int, string>  $linkedSkus
+     * @return array{all: int, linked: int, unlinked: int}
      */
-    protected function productsFromApi(int $page, int $perPage, string $searchSku, string $searchName): array
+    protected function shopifyListingCounts(array $linkedSkus): array
     {
-        if (! $this->apiConfig->isConfigured('aliexpress')) {
-            return [new LengthAwarePaginator([], 0, $perPage, $page), 'AliExpress API not configured.'];
-        }
-
-        $result = $this->aliExpressApi->getInventory($page, $perPage);
-        if (empty($result['success'])) {
-            return [new LengthAwarePaginator([], 0, $perPage, $page), $result['message'] ?? 'API error'];
-        }
-
-        $rows = [];
-        foreach ($result['data']['products'] ?? [] as $item) {
-            foreach ($this->aliExpressApi->extractSkuRowsFromListItem($item) as $row) {
-                if ($searchSku !== '' && stripos($row['sku'], $searchSku) === false) {
-                    continue;
-                }
-                if ($searchName !== '' && stripos((string) ($row['product_name'] ?? ''), $searchName) === false) {
-                    continue;
-                }
-                $rows[] = (object) [
-                    'product_id' => $row['product_id'],
-                    'sku' => $row['sku'],
-                    'product_name' => $row['product_name'],
-                    'price' => $row['price'],
-                    'quantity' => $row['stock'],
-                ];
-            }
-        }
-
-        $total = (int) ($result['data']['total_count'] ?? count($rows));
+        $base = ShopifySku::query()->whereNotNull('sku')->where('sku', '!=', '');
+        $all = (clone $base)->count();
+        $linked = $linkedSkus === [] ? 0 : (clone $base)->whereIn('sku', $linkedSkus)->count();
 
         return [
-            new LengthAwarePaginator($rows, $total, $perPage, $page, [
-                'path' => request()->url(),
-                'query' => request()->query(),
-            ]),
-            null,
+            'all' => $all,
+            'linked' => $linked,
+            'unlinked' => max(0, $all - $linked),
         ];
     }
 
     /**
      * @param  array<int, string>  $skus
-     * @return array<string, array<string, mixed>>
+     * @return array<string, AliexpressMetric>
      */
-    protected function listingStatusMap(array $skus): array
+    protected function aliexpressMetricMapForSkus(array $skus): array
     {
-        if ($skus === [] || ! Schema::hasTable('aliexpress_listing_statuses')) {
+        if ($skus === [] || ! Schema::hasTable('aliexpress_metric')) {
             return [];
         }
 
-        return AliexpressListingStatus::query()
-            ->whereIn('sku', $skus)
-            ->get()
-            ->mapWithKeys(fn ($row) => [$row->sku => (array) ($row->value ?? [])])
-            ->all();
+        $exact = AliexpressMetric::query()->whereIn('sku', $skus)->get()->keyBy('sku');
+        $byNorm = [];
+        foreach (AliexpressMetric::query()
+            ->whereNotNull('sku')
+            ->whereNotNull('product_id')
+            ->where('sku', '!=', '')
+            ->where('product_id', '!=', '')
+            ->whereColumn('sku', '!=', 'product_id')
+            ->get() as $metric) {
+            $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $metric->sku);
+            if ($norm !== '' && ! isset($byNorm[$norm])) {
+                $byNorm[$norm] = $metric;
+            }
+        }
+
+        $out = [];
+        foreach ($skus as $sku) {
+            if ($exact->has($sku)) {
+                $out[$sku] = $exact->get($sku);
+
+                continue;
+            }
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+            if ($norm !== '' && isset($byNorm[$norm])) {
+                $out[$sku] = $byNorm[$norm];
+            }
+        }
+
+        return $out;
+    }
+
+    protected function isShopifySkuLinkedOnAliexpress(?AliexpressMetric $metric, string $shopifySku): bool
+    {
+        if (! $metric || empty($metric->product_id)) {
+            return false;
+        }
+
+        $mappedSku = trim((string) $metric->sku);
+        if ($mappedSku === '' || $mappedSku === (string) $metric->product_id) {
+            return false;
+        }
+
+        return ShopifySku::normalizeSkuForShopifyLookup($mappedSku)
+            === ShopifySku::normalizeSkuForShopifyLookup($shopifySku);
     }
 }
