@@ -142,7 +142,9 @@ class AliExpressApiService
         ], $extraListParams));
 
         $encoded = $this->encodeRequestPayload($listRequest);
-        $raw = $this->callRestGateway('aliexpress.solution.product.list.get', $listRequest);
+        $raw = $this->callRestGateway('aliexpress.solution.product.list.get', [
+            'aeop_a_e_product_list_query' => $encoded,
+        ]);
 
         if (empty($raw['success'])) {
             return $raw;
@@ -198,6 +200,7 @@ class AliExpressApiService
         return array_merge([
             'current_page' => 1,
             'page_size' => 20,
+            'product_status_type' => 'onSelling',
         ], $params);
     }
 
@@ -585,6 +588,16 @@ class AliExpressApiService
             }
         }
 
+        $businessError = $this->extractBusinessResultError($json);
+        if ($businessError !== null) {
+            return [
+                'success' => false,
+                'status' => $response->status(),
+                'message' => $businessError,
+                'response' => $json,
+            ];
+        }
+
         return [
             'success' => true,
             'status' => $response->status(),
@@ -592,6 +605,24 @@ class AliExpressApiService
             'result' => $json['result'] ?? null,
             'request_id' => $json['request_id'] ?? null,
         ];
+    }
+
+    /**
+     * Detect inner result.success=false from solution API envelopes.
+     */
+    private function extractBusinessResultError(array $json): ?string
+    {
+        $result = $json['result'] ?? null;
+        if (! is_array($result)) {
+            return null;
+        }
+
+        $success = $result['success'] ?? null;
+        if ($success === false || $success === 'false' || $success === 0 || $success === '0') {
+            return (string) ($result['error_message'] ?? $result['error_msg'] ?? $result['message'] ?? 'AliExpress API returned success=false.');
+        }
+
+        return null;
     }
 
     /**
@@ -815,22 +846,25 @@ class AliExpressApiService
         }
 
         $products = $result['aeop_ae_product_display_dto_list']
+            ?? $result['aeop_a_e_product_display_d_t_o_list']
             ?? $result['aeop_ae_product_display_d_t_o_list']
             ?? $result['product_list']
             ?? $result['products']
             ?? [];
 
-        if (!is_array($products)) {
+        if (! is_array($products)) {
             $products = [];
         }
 
-        if ($products !== [] && !isset($products[0]) && isset($products['product_id'])) {
-            $products = [$products];
+        if ($products !== [] && ! isset($products[0]) && (isset($products['item_display_dto']) || isset($products['aeop_ae_product_display_dto']))) {
+            $products = $products['item_display_dto'] ?? $products['aeop_ae_product_display_dto'] ?? [$products];
         }
+
+        $products = $this->normalizeList($products);
 
         return [
             'products' => $products,
-            'total_count' => $result['total_count'] ?? $result['total_item'] ?? $result['totalCount'] ?? null,
+            'total_count' => $result['product_count'] ?? $result['total_count'] ?? $result['total_item'] ?? $result['totalCount'] ?? null,
             'current_page' => $result['current_page'] ?? $result['currentPage'] ?? null,
             'page_size' => $result['page_size'] ?? $result['pageSize'] ?? null,
         ];
@@ -990,7 +1024,7 @@ class AliExpressApiService
             'page_size' => $pageSize,
         ], $query);
 
-        $raw = $this->callSync('aliexpress.solution.order.get', [
+        $raw = $this->callRestGateway('aliexpress.solution.order.get', [
             'param0' => $this->encodeRequestPayload($orderQuery),
         ]);
 
