@@ -3493,6 +3493,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/facebook-all-ads-sheet/audit',            [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'getAudit'])->name('facebook.all.ads.sheet.audit.get');
     Route::post('/facebook-all-ads-sheet/audit',           [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'saveAudit'])->name('facebook.all.ads.sheet.audit.save');
 
+    // Facebook Ads Audit page (amazon-style: Fixed? + details, red/green 30-day dot + history)
+    Route::get('/facebook-ads/audit',                      [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'auditPage'])->name('facebook.ads.audit');
+    Route::get('/facebook-ads/audit/data',                 [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'auditPageData'])->name('facebook.ads.audit.data');
+    Route::post('/facebook-ads/audit/save',                [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'auditPageSave'])->name('facebook.ads.audit.save');
+
     // Type-filtered variants (Video / Carousal). Reuse the same controller
     // and view; only `pageType` and the ad_type filter differ.
     Route::get('/facebook-video-ads-sheet',                [\App\Http\Controllers\FacebookAllAdsSheetController::class, 'videoIndex'])->name('facebook.video.ads.sheet');
@@ -5726,6 +5731,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/google/shopping/google-shopping/sbgt-history', 'sbgtHistory')->name('google.shopping.campaigns.sbgt.history');
         Route::post('/google/shopping/google-shopping/u7-distribution', 'u7Distribution')->name('google.shopping.campaigns.u7.distribution');
         Route::post('/google/shopping/google-shopping/u7-distribution-history', 'u7DistributionHistory')->name('google.shopping.campaigns.u7.history');
+
+        // Google Shopping Ads Audit page (amazon-style: Fixed? + details, red/green 30-day dot + history)
+        Route::get('/google/shopping/google-shopping/audit', 'auditPage')->name('google.shopping.audit');
+        Route::get('/google/shopping/google-shopping/audit/data', 'auditPageData')->name('google.shopping.audit.data');
+        Route::post('/google/shopping/google-shopping/audit/save', 'auditPageSave')->name('google.shopping.audit.save');
     });
 
     // Google SERP campaigns — same grid + rule storage as Google Shopping above, but filtered to
@@ -5741,6 +5751,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/google/shopping/google-serp/sbgt-history', 'sbgtHistory')->name('google.serp.campaigns.sbgt.history');
         Route::post('/google/shopping/google-serp/u7-distribution', 'u7Distribution')->name('google.serp.campaigns.u7.distribution');
         Route::post('/google/shopping/google-serp/u7-distribution-history', 'u7DistributionHistory')->name('google.serp.campaigns.u7.history');
+
+        // Google SERP Ads Audit page (amazon-style: Fixed? + details, red/green 30-day dot + history)
+        Route::get('/google/shopping/google-serp/audit', 'auditPage')->name('google.serp.audit');
+        Route::get('/google/shopping/google-serp/audit/data', 'auditPageData')->name('google.serp.audit.data');
+        Route::post('/google/shopping/google-serp/audit/save', 'auditPageSave')->name('google.serp.audit.save');
     });
 
     // YouTube Ads — same grid + rule storage as Google Shopping above, but filtered to
@@ -5756,6 +5771,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/google/shopping/youtube-ads/sbgt-history', 'sbgtHistory')->name('google.youtube.ads.campaigns.sbgt.history');
         Route::post('/google/shopping/youtube-ads/u7-distribution', 'u7Distribution')->name('google.youtube.ads.campaigns.u7.distribution');
         Route::post('/google/shopping/youtube-ads/u7-distribution-history', 'u7DistributionHistory')->name('google.youtube.ads.campaigns.u7.history');
+
+        // YouTube Ads Audit page (amazon-style: Fixed? + details, red/green 30-day dot + history)
+        Route::get('/google/shopping/youtube-ads/audit', 'auditPage')->name('google.youtube.ads.audit');
+        Route::get('/google/shopping/youtube-ads/audit/data', 'auditPageData')->name('google.youtube.ads.audit.data');
+        Route::post('/google/shopping/youtube-ads/audit/save', 'auditPageSave')->name('google.youtube.ads.audit.save');
     });
 
     Route::controller(GoogleAdsController::class)->group(function () {

@@ -683,6 +683,9 @@
                         <li>
                             <a href="{{ route('facebook.all.ads.sheet') }}">Meta Ads All</a>
                         </li>
+                        <li>
+                            <a href="{{ route('facebook.ads.audit') }}">Facebook Ads Audit</a>
+                        </li>
                         <li class="side-nav-item">
                             <a data-bs-toggle="collapse" href="#sidebarFacebookAdsTypes" aria-expanded="false"
                                 aria-controls="sidebarFacebookAdsTypes">
@@ -2086,10 +2089,19 @@
                             <a href="{{ route('google.shopping.campaigns') }}">Google Shopping</a>
                         </li>
                         <li>
+                            <a href="{{ route('google.shopping.audit') }}">Google Shopping Audit</a>
+                        </li>
+                        <li>
                             <a href="{{ route('google.serp.campaigns') }}">Google SERP Campaigns</a>
                         </li>
                         <li>
+                            <a href="{{ route('google.serp.audit') }}">Google SERP Audit</a>
+                        </li>
+                        <li>
                             <a href="{{ Route::has('google.youtube.ads.campaigns') ? route('google.youtube.ads.campaigns') : url('/google/shopping/youtube-ads') }}">Youtube ads</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('google.youtube.ads.audit') }}">Youtube Ads Audit</a>
                         </li>
                         <li>
                             <a href="{{ route('google.pmax.list') }}">Google PMAX</a>

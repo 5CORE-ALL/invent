@@ -57,6 +57,143 @@ class GoogleShoppingCampaignsController extends Controller
     }
 
     /**
+     * The audit page view for this channel. Subclasses (YouTube) override with their own view.
+     */
+    protected function auditView(): string
+    {
+        return 'campaign.google-shopping-audit';
+    }
+
+    /**
+     * The route name of this channel's grid page (used for the audit "Link" column).
+     */
+    protected function auditGridRouteName(): string
+    {
+        return 'google.shopping.campaigns';
+    }
+
+    /**
+     * Amazon-style audit page (Fixed? + details, red/green 30-day dot + history) for this channel.
+     */
+    public function auditPage()
+    {
+        return view($this->auditView());
+    }
+
+    /**
+     * One row per campaign with Cvr / CTR / ACOS, its audit history and dot status.
+     * Sorted oldest-audited (or never audited) first — same shape as /amazon-ads/audit.
+     */
+    public function auditPageData(\Illuminate\Http\Request $request): \Illuminate\Http\JsonResponse
+    {
+        $rows = [];
+        $page = 1;
+        do {
+            $req = \Illuminate\Http\Request::create('', 'GET', ['size' => 1000, 'page' => $page]);
+            $j = json_decode($this->data($req)->getContent(), true);
+            foreach (($j['data'] ?? []) as $r) {
+                $rows[] = $r;
+            }
+            $lastPage = (int) ($j['last_page'] ?? 1);
+            $page++;
+        } while ($page <= $lastPage && $page <= 20);
+
+        $histByCid = \App\Models\GoogleAdsAuditHistory::where('channel', $this->channelKey())
+            ->orderBy('created_at')
+            ->get()
+            ->groupBy(fn ($h) => (string) $h->campaign_id);
+
+        $now = \Illuminate\Support\Carbon::now();
+        $greenDays = 30;
+        $link = route($this->auditGridRouteName());
+        $data = [];
+        $seen = [];
+        foreach ($rows as $r) {
+            $cid = trim((string) ($r['campaign_id'] ?? ''));
+            if ($cid === '' || isset($seen[$cid])) {
+                continue;
+            }
+            $seen[$cid] = true;
+
+            $cvr = isset($r['cvr_l30']) && is_numeric($r['cvr_l30']) ? round((float) $r['cvr_l30'], 2) : null;
+            $ctr = isset($r['ctr_l30']) && is_numeric($r['ctr_l30']) ? round((float) $r['ctr_l30'], 2) : null;
+            $acos = isset($r['acos_l30']) && is_numeric($r['acos_l30']) ? round((float) $r['acos_l30'], 2) : null;
+
+            $hist = $histByCid->get($cid, collect());
+            $historyArr = [];
+            foreach ($hist as $h) {
+                $historyArr[] = [
+                    'fixed' => (bool) $h->fixed,
+                    'details' => (string) $h->details,
+                    'created_at' => optional($h->created_at)->format('Y-m-d H:i'),
+                ];
+            }
+            $latest = $hist->last();
+            $latestAt = $latest && $latest->created_at ? $latest->created_at : null;
+            $isGreen = $latestAt !== null && $latestAt->gt($now->copy()->subDays($greenDays));
+
+            $data[] = [
+                'campaign_id' => $cid,
+                'campaign_name' => (string) ($r['campaign_name'] ?? ''),
+                'cvr' => $cvr,
+                'ctr' => $ctr,
+                'acos' => $acos,
+                'link' => $link,
+                'dot' => $isGreen ? 'green' : 'red',
+                'latest_audit_at' => $latestAt ? $latestAt->format('Y-m-d H:i') : null,
+                'latest_audit_ts' => $latestAt ? $latestAt->getTimestamp() : 0,
+                'history' => $historyArr,
+            ];
+        }
+
+        usort($data, fn ($a, $b) => $a['latest_audit_ts'] <=> $b['latest_audit_ts']);
+
+        return response()->json(['data' => $data]);
+    }
+
+    /**
+     * Record an audit submission for a campaign in this channel (both fields mandatory).
+     */
+    public function auditPageSave(\Illuminate\Http\Request $request): \Illuminate\Http\JsonResponse
+    {
+        $validated = $request->validate([
+            'campaign_id' => ['required', 'string', 'max:255'],
+            'campaign_name' => ['nullable', 'string', 'max:255'],
+            'fixed' => ['required', 'boolean'],
+            'details' => ['required', 'string'],
+        ]);
+
+        \App\Models\GoogleAdsAuditHistory::create([
+            'channel' => $this->channelKey(),
+            'campaign_id' => $validated['campaign_id'],
+            'campaign_name' => $validated['campaign_name'] ?? null,
+            'fixed' => (bool) $validated['fixed'],
+            'details' => $validated['details'],
+            'user_id' => auth()->id(),
+            'created_at' => \Illuminate\Support\Carbon::now(),
+        ]);
+
+        $hist = \App\Models\GoogleAdsAuditHistory::where('channel', $this->channelKey())
+            ->where('campaign_id', $validated['campaign_id'])
+            ->orderBy('created_at')->get();
+        $historyArr = $hist->map(fn ($h) => [
+            'fixed' => (bool) $h->fixed,
+            'details' => (string) $h->details,
+            'created_at' => optional($h->created_at)->format('Y-m-d H:i'),
+        ])->all();
+        $latest = $hist->last();
+        $latestAt = $latest && $latest->created_at ? $latest->created_at : null;
+        $isGreen = $latestAt !== null && $latestAt->gt(\Illuminate\Support\Carbon::now()->subDays(30));
+
+        return response()->json([
+            'ok' => true,
+            'dot' => $isGreen ? 'green' : 'red',
+            'latest_audit_at' => $latestAt ? $latestAt->format('Y-m-d H:i') : null,
+            'history' => $historyArr,
+        ]);
+    }
+
+    /**
      * SQL expression used to compute "L30 Sales" inside aggregate queries (sort, summary,
      * ACOS color filter, sales_l30_agg). Returns the L30 sum of `ga4_actual_revenue` —
      * the actual GA4 Analytics Data API revenue that matches the GA4 dashboard "Total

@@ -77,4 +77,14 @@ class GoogleYoutubeAdsCampaignsController extends GoogleShoppingCampaignsControl
     {
         return 'push-sbid-youtube';
     }
+
+    protected function auditView(): string
+    {
+        return 'campaign.google-youtube-ads-audit';
+    }
+
+    protected function auditGridRouteName(): string
+    {
+        return 'google.youtube.ads.campaigns';
+    }
 }

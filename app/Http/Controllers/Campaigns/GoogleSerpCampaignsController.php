@@ -55,6 +55,16 @@ class GoogleSerpCampaignsController extends GoogleShoppingCampaignsController
         return 'serp';
     }
 
+    protected function auditView(): string
+    {
+        return 'campaign.google-serp-audit';
+    }
+
+    protected function auditGridRouteName(): string
+    {
+        return 'google.serp.campaigns';
+    }
+
     protected function pushSbgtCommandLabel(): string
     {
         return 'push-sbgt-serp';
