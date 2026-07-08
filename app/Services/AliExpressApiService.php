@@ -105,8 +105,8 @@ class AliExpressApiService
         $ts = strtolower((string) (config('services.aliexpress.timestamp_style') ?: env('ALIEXPRESS_TIMESTAMP_STYLE', 'iop')));
         $this->timestampStyle = in_array($ts, ['iop', 'ms'], true) ? $ts : 'iop';
 
-        $gw = strtolower((string) (config('services.aliexpress.gateway') ?: env('ALIEXPRESS_GATEWAY', 'sync')));
-        $this->gateway = in_array($gw, ['sync', 'rest'], true) ? $gw : 'sync';
+        $gw = strtolower((string) (config('services.aliexpress.gateway') ?: env('ALIEXPRESS_GATEWAY', 'rest')));
+        $this->gateway = in_array($gw, ['sync', 'rest'], true) ? $gw : 'rest';
         $this->restBase = rtrim((string) (config('services.aliexpress.rest_base') ?: env('ALIEXPRESS_REST_BASE', 'https://api-sg.aliexpress.com/rest')), '/');
         $rsm = strtolower((string) (config('services.aliexpress.rest_sign_method') ?: env('ALIEXPRESS_REST_SIGN_METHOD', 'hmac')));
         $this->restSignMethod = in_array($rsm, ['hmac', 'md5'], true) ? $rsm : 'hmac';
@@ -142,13 +142,7 @@ class AliExpressApiService
         ], $extraListParams));
 
         $encoded = $this->encodeRequestPayload($listRequest);
-        $syncParams = $this->syncSignStyle === 'legacy'
-            ? $listRequest
-            : ['product_list_get_request' => $encoded];
-        $raw = $this->callApiFlexible('aliexpress.solution.product.list.get', [
-            'rest' => ['aeop_a_e_product_list_query' => $encoded],
-            'sync' => $syncParams,
-        ]);
+        $raw = $this->callRestGateway('aliexpress.solution.product.list.get', $listRequest);
 
         if (empty($raw['success'])) {
             return $raw;
@@ -386,9 +380,10 @@ class AliExpressApiService
     }
 
     /**
-     * Business gateway — POST https://api-sg.aliexpress.com/rest (TOP / IOP standard).
+     * Business REST gateway — POST https://api-sg.aliexpress.com/rest
+     * Official sign: apiName + sorted key+value, HMAC-SHA256, ms timestamp, access_token.
      *
-     * @param  array<string, mixed>  $businessParams
+     * @param  array<string, mixed>  $businessParams  Flat business fields (e.g. current_page, page_size)
      */
     private function callRestGateway(string $method, array $businessParams = []): array
     {
@@ -405,43 +400,99 @@ class AliExpressApiService
         $params = [
             'app_key' => $this->appKey,
             'method' => $method,
-            'format' => $this->format,
-            'sign_method' => $this->restSignMethod,
-            'timestamp' => now('Asia/Shanghai')->format('Y-m-d H:i:s'),
-            'v' => '2.0',
-            'simplify' => $this->simplify,
-            'session' => $this->accessToken,
+            'access_token' => $this->accessToken,
+            'sign_method' => 'sha256',
+            'timestamp' => (string) (int) round(microtime(true) * 1000),
         ];
 
         foreach ($businessParams as $key => $value) {
             if ($value === null || $value === '') {
                 continue;
             }
-            $params[$key] = is_array($value) ? $this->encodeRequestPayload($value) : (string) $value;
+            $params[(string) $key] = is_array($value)
+                ? $this->encodeRequestPayload($value)
+                : (string) $value;
         }
 
-        $params['sign'] = $this->signRestParams($params);
+        $apiNames = [$method, '/rest'];
+        $last = null;
 
-        try {
-            $response = $this->httpClient()
-                ->asForm()
-                ->post($this->restBase, $params);
-        } catch (\Illuminate\Http\Client\ConnectionException $e) {
-            return $this->networkErrorResult(
-                'Could not reach AliExpress REST API (network timeout). Check firewall/VPN or run from your production server.',
-                $e
-            );
+        foreach ($apiNames as $apiName) {
+            $attempt = $params;
+            $attempt['sign'] = $this->signBusinessApi($attempt, $apiName);
+
+            try {
+                $response = $this->httpClient()
+                    ->asForm()
+                    ->post($this->restBase, $attempt);
+            } catch (\Illuminate\Http\Client\ConnectionException $e) {
+                return $this->networkErrorResult(
+                    'Could not reach AliExpress REST API (network timeout). Check firewall/VPN or run from your production server.',
+                    $e
+                );
+            }
+
+            $parsed = $this->parseHttpResponse($response, $method, 'rest');
+            $last = $parsed;
+
+            if (! empty($parsed['success'])) {
+                return $parsed;
+            }
+
+            $code = $this->extractErrorCode($parsed);
+            if ($code !== 'IncompleteSignature' && $code !== 'IllegalTimestamp') {
+                return $parsed;
+            }
         }
 
-        return $this->parseHttpResponse($response, $method, 'rest');
+        return $last ?? ['success' => false, 'message' => 'AliExpress REST call failed.'];
     }
 
     /**
-     * TOP sign for /rest: HMAC-MD5 or MD5(secret+sorted+secret).
+     * AliExpress business API sign — apiName prefix + sorted key+value, HMAC-SHA256 uppercase hex.
      *
      * @param  array<string, string>  $params
      */
-    private function signRestParams(array $params): string
+    private function signBusinessApi(array $params, string $apiName): string
+    {
+        unset($params['sign']);
+        ksort($params);
+
+        $source = $apiName;
+        foreach ($params as $key => $value) {
+            if ($value !== null && $value !== '') {
+                $source .= (string) $key.(string) $value;
+            }
+        }
+
+        return strtoupper(hash_hmac('sha256', $source, $this->appSecret));
+    }
+
+    /**
+     * @param  array<string, mixed>  $result
+     */
+    private function extractErrorCode(array $result): ?string
+    {
+        $response = $result['response'] ?? null;
+        if (! is_array($response)) {
+            return null;
+        }
+        if (isset($response['error_response']['code'])) {
+            return (string) $response['error_response']['code'];
+        }
+        if (isset($response['code'])) {
+            return (string) $response['code'];
+        }
+
+        return null;
+    }
+
+    /**
+     * TOP legacy sign for /rest (hmac-md5 / md5) — kept for optional fallback via env.
+     *
+     * @param  array<string, string>  $params
+     */
+    private function signTopRestParams(array $params): string
     {
         unset($params['sign']);
         ksort($params);
