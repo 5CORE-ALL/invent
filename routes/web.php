@@ -3483,6 +3483,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::delete('/video-ads-master/{id}',               [\App\Http\Controllers\VideoAdsMasterController::class, 'destroy'])->whereNumber('id')->name('video.ads.master.destroy');
     Route::post('/video-ads-master/{id}/copy',            [\App\Http\Controllers\VideoAdsMasterController::class, 'copy'])->whereNumber('id')->name('video.ads.master.copy');
     Route::put('/video-ads-master/{id}/check',            [\App\Http\Controllers\VideoAdsMasterController::class, 'toggleCheck'])->whereNumber('id')->name('video.ads.master.check');
+    Route::put('/video-ads-master/{id}/ad-check',         [\App\Http\Controllers\VideoAdsMasterController::class, 'toggleAdCheck'])->whereNumber('id')->name('video.ads.master.ad.check');
     Route::get('/video-ads-master/{id}/check-history',    [\App\Http\Controllers\VideoAdsMasterController::class, 'checkHistory'])->whereNumber('id')->name('video.ads.master.check.history');
     Route::post('/video-ads-master/hook-options',         [\App\Http\Controllers\VideoAdsMasterController::class, 'storeHookOption'])->name('video.ads.master.hook.options.store');
     Route::get('/video-ads-master/sample-csv',            [\App\Http\Controllers\VideoAdsMasterController::class, 'sampleCsv'])->name('video.ads.master.sample.csv');

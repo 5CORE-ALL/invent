@@ -125,7 +125,9 @@
            look "editable". */
         #video-ads-master-table .tabulator-cell { cursor: text; }
         #video-ads-master-table .tabulator-cell[tabulator-field="id"],
+        #video-ads-master-table .tabulator-cell[tabulator-field="_missing"],
         #video-ads-master-table .tabulator-cell[tabulator-field="_check"],
+        #video-ads-master-table .tabulator-cell[tabulator-field="_adcheck"],
         #video-ads-master-table .tabulator-cell[tabulator-field="_actions"] { cursor: default; }
         #video-ads-master-table .tabulator-cell.tabulator-editing { background: #fff8d6 !important; }
 
@@ -162,6 +164,22 @@
             white-space: nowrap;
         }
         .vam-check-meta .vam-check-user { font-weight: 700; color: #16a34a; }
+        .vam-check-meta .vam-ad-user { font-weight: 700; color: #2c6ed5; }
+        .vam-ad-box {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+
+        /* MISSING column — red dot shown when a row has no valid link. */
+        .vam-missing-dot {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #dc2626;
+            box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.18);
+        }
     </style>
 @endsection
 
@@ -209,9 +227,9 @@
                         Required: <span id="vamRowCount">0</span>
                     </span>
                     <span class="vam-count-badge vam-count-badge--links"  title="Rows that have a link available">
-                        Links: <span id="vamLinkCount">0</span>
+                        Available: <span id="vamLinkCount">0</span>
                     </span>
-                    <span class="vam-count-badge vam-count-badge--missing" title="Rows still missing a link (Required − Links)">
+                    <span class="vam-count-badge vam-count-badge--missing" title="Rows still missing a link (Required − Available)">
                         Missing: <span id="vamMissingCount">0</span>
                     </span>
                 </div>
@@ -449,6 +467,16 @@
                 return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="vam-link-icon" title="Open link"><i class="fas fa-link"></i></a>`;
             }
 
+            // MISSING column — shows a red dot when the row has no valid link,
+            // making it easy to scan for rows that still need one. Rows that
+            // already have a link show nothing.
+            function missingFormatter(cell) {
+                const row = cell.getRow().getData();
+                const hasLink = isLikelyUrl(normalizeUrl(row.link));
+                if (hasLink) return '';
+                return '<span class="vam-missing-dot" title="Link missing"></span>';
+            }
+
             // Human-friendly datetime. Server sends ISO 8601 (datetime cast);
             // fall back to the raw string if it can't be parsed.
             function formatDateTime(v) {
@@ -480,6 +508,32 @@
                         <div class="vam-check-top">
                             <input type="checkbox" class="vam-check-box form-check-input" ${checked ? 'checked' : ''} title="Mark row as checked / unchecked">
                             <a href="#" class="vam-check-history" title="View check history"><i class="fas fa-clock-rotate-left"></i></a>
+                        </div>
+                        ${meta}
+                    </div>`;
+            }
+
+            // AD column — a checkbox reflecting ad_checked plus the user + time
+            // stamp of when the row was marked as an ad. Clicks are wired in
+            // the column's cellClick handler (see initTable).
+            function adCheckFormatter(cell) {
+                const row     = cell.getRow().getData();
+                const checked = !!row.ad_checked;
+                const by      = row.ad_checked_by ? escapeHtml(row.ad_checked_by) : '';
+                const at      = row.ad_checked_at ? escapeHtml(formatDateTime(row.ad_checked_at)) : '';
+
+                let meta = '';
+                if (checked && (by || at)) {
+                    meta = `<div class="vam-check-meta" title="${by}${at ? ' • ' + at : ''}">`
+                         + (by ? `<span class="vam-ad-user">${by}</span>` : '')
+                         + (at ? `<br>${at}` : '')
+                         + `</div>`;
+                }
+
+                return `
+                    <div class="vam-check-wrap">
+                        <div class="vam-check-top">
+                            <input type="checkbox" class="vam-ad-box form-check-input" ${checked ? 'checked' : ''} title="Mark row as an ad">
                         </div>
                         ${meta}
                     </div>`;
@@ -588,6 +642,13 @@
                 // locally, so update the counts before the server replies.
                 updateCount();
 
+                // Editing the LINK cell changes whether the row is "missing"
+                // a link, so refresh that cell's red-dot indicator live.
+                if (field === 'link') {
+                    const missingCell = row.getCell('_missing');
+                    if (missingCell) missingCell.reformat();
+                }
+
                 fetch(`/video-ads-master/${data.id}`, {
                     method: 'PUT',
                     headers: {
@@ -672,6 +733,8 @@
                 // cellEdited (row.update bypasses editor hooks), then issue a
                 // single PUT carrying both changes.
                 row.update(updates);
+                const missingCell = row.getCell('_missing');
+                if (missingCell) missingCell.reformat();
                 const id = row.getData().id;
                 if (!id) return;
 
@@ -973,6 +1036,11 @@
                             cellEdited: persistCell,
                         },
                         {
+                            title: 'MISSING', field: '_missing', width: 90, hozAlign: 'center',
+                            headerSort: false,
+                            formatter: missingFormatter,
+                        },
+                        {
                             title: 'CHECK', field: '_check', width: 130, hozAlign: 'center',
                             headerSort: false,
                             formatter: checkFormatter,
@@ -987,6 +1055,19 @@
                                     // The browser has already flipped the box;
                                     // box.checked is the desired new state.
                                     toggleCheck(cell.getRow(), box.checked);
+                                }
+                            },
+                        },
+                        {
+                            title: 'AD', field: '_adcheck', width: 130, hozAlign: 'center',
+                            headerSort: false,
+                            formatter: adCheckFormatter,
+                            cellClick: (e, cell) => {
+                                const box = e.target.closest('.vam-ad-box');
+                                if (box) {
+                                    // The browser has already flipped the box;
+                                    // box.checked is the desired new state.
+                                    toggleAdCheck(cell.getRow(), box.checked);
                                 }
                             },
                         },
@@ -1228,6 +1309,40 @@
                     showToast(j.row.is_checked ? 'Marked as checked' : 'Marked as unchecked', 'success');
                 })
                 .catch(e => { console.error(e); showToast('Network error while updating check', 'error'); row.reformat(); });
+            }
+
+            // Toggle a row's AD state. Persists the new state to the server
+            // (which stamps user + time), then mirrors the returned values
+            // back onto the row.
+            function toggleAdCheck(row, desired) {
+                const data = row.getData();
+                if (!data.id) return;
+
+                fetch(`/video-ads-master/${data.id}/ad-check`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken,
+                    },
+                    body: JSON.stringify({ ad_checked: !!desired }),
+                })
+                .then(r => r.json().then(j => ({ ok: r.ok, j })))
+                .then(({ ok, j }) => {
+                    if (!ok || !j.success) {
+                        showToast((j && j.message) || 'Failed to update ad', 'error');
+                        row.reformat(); // revert the visual toggle
+                        return;
+                    }
+                    row.update({
+                        ad_checked:    j.row.ad_checked,
+                        ad_checked_by: j.row.ad_checked_by,
+                        ad_checked_at: j.row.ad_checked_at,
+                    });
+                    row.reformat();
+                    showToast(j.row.ad_checked ? 'Marked as ad' : 'Unmarked as ad', 'success');
+                })
+                .catch(e => { console.error(e); showToast('Network error while updating ad', 'error'); row.reformat(); });
             }
 
             // Fetch and render the check/uncheck audit trail for a row.

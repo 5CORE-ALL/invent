@@ -23,11 +23,16 @@ class VideoAdsMaster extends Model
         'is_checked',
         'checked_by',
         'checked_at',
+        'ad_checked',
+        'ad_checked_by',
+        'ad_checked_at',
     ];
 
     protected $casts = [
-        'is_checked' => 'boolean',
-        'checked_at' => 'datetime',
+        'is_checked'    => 'boolean',
+        'checked_at'    => 'datetime',
+        'ad_checked'    => 'boolean',
+        'ad_checked_at' => 'datetime',
     ];
 
     public function checkHistory()

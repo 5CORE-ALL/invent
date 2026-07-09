@@ -117,9 +117,12 @@ class VideoAdsMasterController extends Controller
         $copy = $original->replicate();
         // A duplicated row starts life unchecked — the check state and its
         // audit fields are per-row and should not be carried over.
-        $copy->is_checked = false;
-        $copy->checked_by = null;
-        $copy->checked_at = null;
+        $copy->is_checked    = false;
+        $copy->checked_by    = null;
+        $copy->checked_at    = null;
+        $copy->ad_checked    = false;
+        $copy->ad_checked_by = null;
+        $copy->ad_checked_at = null;
         $copy->save();
 
         return response()->json(['success' => true, 'row' => $copy]);
@@ -155,6 +158,30 @@ class VideoAdsMasterController extends Controller
             'username'            => $username,
             'created_at'          => $now,
         ]);
+
+        return response()->json(['success' => true, 'row' => $row]);
+    }
+
+    /**
+     * Toggle (or explicitly set) the AD state of a row. Stamps the acting
+     * user + time onto the row so the grid can show who ticked the "ad"
+     * checkbox and when.
+     */
+    public function toggleAdCheck(Request $request, $id)
+    {
+        $row = VideoAdsMaster::findOrFail($id);
+
+        $newState = $request->has('ad_checked')
+            ? $request->boolean('ad_checked')
+            : !$row->ad_checked;
+
+        $username = Auth::user()?->name ?? 'System';
+        $now      = now();
+
+        $row->ad_checked    = $newState;
+        $row->ad_checked_by = $newState ? $username : null;
+        $row->ad_checked_at = $newState ? $now : null;
+        $row->save();
 
         return response()->json(['success' => true, 'row' => $row]);
     }
