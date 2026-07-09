@@ -4,6 +4,7 @@ namespace App\Services\MarketplaceManager;
 
 use App\Models\AliexpressMetric;
 use App\Models\AliexpressOrderMetric;
+use App\Models\MarketplaceSyncSettings;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use Illuminate\Support\Collection;
@@ -138,7 +139,7 @@ class AliexpressDetailFormatter
                 'name' => $buyer['first_name'] ?? $addr['contact_person'] ?? $order['buyer_signer_fullname'] ?? null,
                 'last_name' => $buyer['last_name'] ?? null,
                 'login_id' => $buyer['login_id'] ?? $order['buyerloginid'] ?? $order['buyer_login_id'] ?? null,
-                'email' => $buyer['email'] ?? $addr['email'] ?? null,
+                'email' => $this->resolveBuyerEmail($buyer, $addr, $order),
                 'phone' => $phone,
                 'country' => $buyer['country'] ?? $addr['country'] ?? $addr['country_name'] ?? null,
             ],
@@ -153,7 +154,7 @@ class AliexpressDetailFormatter
                 'country' => $addr['country'] ?? null,
                 'country_name' => $addr['country_name'] ?? null,
                 'localized_address' => $addr['localized_address'] ?? null,
-                'email' => $addr['email'] ?? $buyer['email'] ?? null,
+                'email' => $this->resolveBuyerEmail($buyer, $addr, $order),
                 'phone' => $phone,
                 'tax_number' => $addr['tax_number'] ?? $addr['cpf'] ?? $addr['passport_no'] ?? null,
                 'full_address' => $this->joinAddress($addr),
@@ -224,9 +225,7 @@ class AliexpressDetailFormatter
         }
 
         $recipient = trim((string) ($shipping['recipient'] ?? ''));
-        $nameParts = $recipient !== '' ? preg_split('/\s+/', $recipient, 2) : [];
-        $firstName = (string) ($nameParts[0] ?? 'AliExpress');
-        $lastName = (string) ($nameParts[1] ?? 'Customer');
+        [$firstName, $lastName] = $this->splitShopifyCustomerName($detail, $recipient);
 
         $noteLines = [
             'Imported from AliExpress Order #'.$orderRef,
@@ -247,9 +246,15 @@ class AliexpressDetailFormatter
             $noteLines[] = 'Tax number: '.$shipping['tax_number'];
         }
 
+        [$firstName, $lastName] = $this->splitShopifyCustomerName($detail, $recipient);
+        [$shopifyEmail, $emailIsPlaceholder] = $this->resolveShopifyCustomerEmail($orderRef, $shipping['email'] ?? null);
+
         $noteAttrs = [
             ['name' => 'aliexpress_order_id', 'value' => $orderRef],
         ];
+        if ($emailIsPlaceholder) {
+            $noteAttrs[] = ['name' => 'aliexpress_email_is_placeholder', 'value' => 'true'];
+        }
         foreach ([
             'aliexpress_buyer_login' => $summary['buyer_login_id'] ?? null,
             'aliexpress_payment_method' => $payment['method'] ?? null,
@@ -264,20 +269,22 @@ class AliexpressDetailFormatter
             }
         }
 
+        $customerFields = array_filter([
+            'first_name' => $firstName,
+            'last_name' => $lastName !== '' ? $lastName : null,
+            'email' => $shopifyEmail,
+        ], fn ($value) => $value !== null && $value !== '');
+
         $payload = [
             'line_items' => [],
             'financial_status' => 'paid',
             'inventory_behaviour' => 'decrement_obeying_policy',
             'tags' => implode(', ', array_values(array_unique(array_filter($tags)))),
             'note' => implode("\n", $noteLines),
-            'source_name' => 'aliexpress',
             'note_attributes' => $noteAttrs,
-            'customer' => array_filter([
-                'first_name' => $firstName,
-                'last_name' => $lastName,
-                'email' => $shipping['email'] ?? null,
-            ]),
+            'customer' => $customerFields,
         ];
+        $payload = array_merge($payload, $this->resolveShopifySourceAttribution($orderRef));
 
         $shippingCost = (float) ($amounts['shipping_cost'] ?? 0);
         if ($shippingCost > 0) {
@@ -294,9 +301,12 @@ class AliexpressDetailFormatter
         }
 
         if ($address1 !== '') {
-            $payload['shipping_address'] = array_filter([
+            $addressName = array_filter([
                 'first_name' => $firstName,
-                'last_name' => $lastName,
+                'last_name' => $lastName !== '' ? $lastName : null,
+            ], fn ($value) => $value !== null && $value !== '');
+
+            $payload['shipping_address'] = array_filter(array_merge($addressName, [
                 'address1' => $address1,
                 'address2' => $shipping['address_line_2'] ?? null,
                 'city' => $shipping['city'] ?? null,
@@ -304,13 +314,158 @@ class AliexpressDetailFormatter
                 'country_code' => $this->normalizeCountryCode($shipping['country'] ?? $shipping['country_name'] ?? null),
                 'zip' => $shipping['zip'] ?? null,
                 'phone' => $shipping['phone'] ?? null,
-            ]);
+            ]));
             $payload['billing_address'] = $payload['shipping_address'];
         }
 
         $payload['line_items'] = $lineItems;
 
         return $payload;
+    }
+
+    /**
+     * @param  array<string, mixed>  $detail
+     * @return array{0: string, 1: string}
+     */
+    protected function splitShopifyCustomerName(array $detail, string $recipient = ''): array
+    {
+        $buyer = $detail['buyer'] ?? [];
+        $candidates = array_filter([
+            $recipient,
+            trim((string) ($buyer['name'] ?? '')),
+            trim(trim((string) ($buyer['first_name'] ?? '')).' '.trim((string) ($buyer['last_name'] ?? ''))),
+        ], fn ($name) => $name !== '');
+
+        $fullName = '';
+        foreach ($candidates as $candidate) {
+            $cleaned = $this->cleanPersonName((string) $candidate);
+            if ($cleaned !== '') {
+                $fullName = $cleaned;
+                break;
+            }
+        }
+
+        if ($fullName === '') {
+            return ['AliExpress', 'Customer'];
+        }
+
+        $parts = preg_split('/\s+/u', $fullName, 2) ?: [];
+        $firstName = (string) ($parts[0] ?? 'AliExpress');
+        if (! isset($parts[1])) {
+            return [$firstName, ''];
+        }
+
+        return [$firstName, (string) $parts[1]];
+    }
+
+    /**
+     * Shopify channel attribution for API-created orders.
+     *
+     * @return array{source_name: string, source_identifier: string, source_url: string, referring_site: string}
+     */
+    public function resolveShopifySourceAttribution(string $orderRef, ?array $settings = null): array
+    {
+        $settings ??= MarketplaceSyncSettings::getFor('aliexpress');
+        $handle = trim((string) (
+            $settings['order']['shopify_source_name']
+            ?? config('services.aliexpress.shopify_source_name')
+            ?? 'aliexpress'
+        ));
+        $urlTemplate = (string) (
+            $settings['order']['shopify_source_url_template']
+            ?? config('services.aliexpress.shopify_source_url_template')
+            ?? 'https://csp.aliexpress.com/m_apps/order-manage/order_detail?orderId={order_id}'
+        );
+
+        return [
+            'source_name' => $handle !== '' ? $handle : 'aliexpress',
+            'source_identifier' => $orderRef,
+            'source_url' => str_replace('{order_id}', $orderRef, $urlTemplate),
+            'referring_site' => 'https://www.aliexpress.com/',
+        ];
+    }
+
+    public function shopifySourceDisplayName(?array $settings = null): string
+    {
+        $settings ??= MarketplaceSyncSettings::getFor('aliexpress');
+        $name = trim((string) (
+            $settings['order']['shopify_source_display_name']
+            ?? config('services.aliexpress.shopify_source_display_name')
+            ?? 'AliExpress'
+        ));
+
+        return $name !== '' ? $name : 'AliExpress';
+    }
+
+    /**
+     * @return array{0: string, 1: bool} email, is_placeholder
+     */
+    public function resolveShopifyCustomerEmail(string $orderRef, ?string $rawEmail): array
+    {
+        $email = $this->normalizeEmail($rawEmail);
+        if ($email !== null) {
+            return [$email, false];
+        }
+
+        $domain = (string) env('ALIEXPRESS_SHOPIFY_PLACEHOLDER_EMAIL_DOMAIN', 'import.5coremanagement.com');
+        $slug = preg_replace('/[^a-zA-Z0-9]/', '', $orderRef) ?: 'order';
+
+        return ['aliexpress-'.$slug.'@'.$domain, true];
+    }
+
+    /**
+     * @param  array<string, mixed>  $buyer
+     * @param  array<string, mixed>  $addr
+     * @param  array<string, mixed>  $order
+     */
+    protected function resolveBuyerEmail(array $buyer, array $addr, array $order): ?string
+    {
+        foreach ([
+            $addr['email'] ?? null,
+            $buyer['email'] ?? null,
+            $order['buyer_email'] ?? null,
+            $order['email'] ?? null,
+            $buyer['buyer_email'] ?? null,
+        ] as $candidate) {
+            $email = $this->normalizeEmail($candidate);
+            if ($email !== null) {
+                return $email;
+            }
+        }
+
+        return null;
+    }
+
+    protected function normalizeEmail(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $email = strtolower(trim((string) $value));
+        if ($email === '') {
+            return null;
+        }
+
+        return filter_var($email, FILTER_VALIDATE_EMAIL) ? $email : null;
+    }
+
+    protected function cleanPersonName(string $name): string
+    {
+        $name = trim(preg_replace('/\s+/u', ' ', $name) ?? $name);
+        if ($name === '') {
+            return '';
+        }
+
+        $name = preg_replace('/^[:\-.,\s]+/u', '', $name) ?? $name;
+        $name = preg_replace('/[:\-.,\s]+$/u', '', $name) ?? $name;
+
+        $parts = preg_split('/\s+/u', $name) ?: [];
+        $parts = array_values(array_filter($parts, function (string $part): bool {
+            return (bool) preg_match('/[\p{L}\p{N}]/u', $part);
+        }));
+
+        return trim(implode(' ', $parts));
     }
 
     protected function normalizeCountryCode(?string $country): ?string

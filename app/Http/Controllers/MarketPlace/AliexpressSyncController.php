@@ -13,6 +13,7 @@ use App\Services\AliExpressAuthService;
 use App\Services\MarketplaceManager\AliexpressDetailFormatter;
 use App\Services\MarketplaceManager\AliexpressInventorySyncService;
 use App\Services\MarketplaceManager\AliexpressOrderDetailService;
+use App\Services\MarketplaceManager\AliexpressOrderPushService;
 use App\Services\MarketplaceManager\AliexpressOrderSyncService;
 use App\Services\ShopifyApiService;
 use App\Services\Support\MarketplaceApiConfigService;
@@ -530,6 +531,12 @@ class AliexpressSyncController extends Controller
             return response()->json(['success' => false, 'message' => 'Order not found.'], 404);
         }
 
+        if ($request->boolean('dry_run')) {
+            $preview = app(AliexpressOrderPushService::class)->previewShopifyPush($order);
+
+            return response()->json($preview);
+        }
+
         if ($order->shopify_order_id) {
             return response()->json([
                 'success' => true,
@@ -575,6 +582,22 @@ class AliexpressSyncController extends Controller
             $order['shopify_order_tags'] = is_array($tags)
                 ? $tags
                 : array_values(array_filter(array_map('trim', explode(',', (string) $tags))));
+        }
+
+        if ($request->filled('order.shopify_store')) {
+            $store = (string) $request->input('order.shopify_store');
+            $allowed = ['main', '5core', 'business', 'prolightsounds'];
+            if (in_array($store, $allowed, true)) {
+                $order['shopify_store'] = $store;
+            }
+        }
+
+        if ($request->filled('order.shopify_source_name')) {
+            $order['shopify_source_name'] = trim((string) $request->input('order.shopify_source_name'));
+        }
+
+        if ($request->filled('order.shopify_source_display_name')) {
+            $order['shopify_source_display_name'] = trim((string) $request->input('order.shopify_source_display_name'));
         }
 
         MarketplaceSyncSettings::setFor('aliexpress', [
