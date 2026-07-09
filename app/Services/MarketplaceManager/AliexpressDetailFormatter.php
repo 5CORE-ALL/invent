@@ -193,22 +193,127 @@ class AliexpressDetailFormatter
             $desc = $this->arr($desc);
             $out[] = [
                 'language' => $this->str($desc['language'] ?? $desc['locale'] ?? null),
-                'web' => $this->cleanHtml($desc['web_detail'] ?? $desc['detail'] ?? $desc['description'] ?? null),
-                'mobile' => $this->cleanHtml($desc['mobile_detail'] ?? $desc['mobile_desc'] ?? null),
+                'web' => $this->renderDescriptionContent($desc['web_detail'] ?? $desc['detail'] ?? $desc['description'] ?? null),
+                'mobile' => $this->renderDescriptionContent($desc['mobile_detail'] ?? $desc['mobile_desc'] ?? null),
             ];
         }
 
         foreach (['detail', 'mobile_detail', 'product_description'] as $key) {
-            if (! empty($ae[$key]) && is_string($ae[$key])) {
+            $rendered = $this->renderDescriptionContent($ae[$key] ?? null);
+            if ($rendered !== null) {
                 $out[] = [
                     'language' => null,
-                    'web' => $this->cleanHtml($ae[$key]),
-                    'mobile' => null,
+                    'web' => $key !== 'mobile_detail' ? $rendered : null,
+                    'mobile' => $key === 'mobile_detail' ? $rendered : null,
                 ];
             }
         }
 
         return array_values(array_filter($out, fn ($d) => ($d['web'] ?? '') !== '' || ($d['mobile'] ?? '') !== ''));
+    }
+
+    /**
+     * AliExpress descriptions are often JSON module trees (moduleList / mobileDetail), not plain HTML.
+     */
+    protected function renderDescriptionContent(mixed $raw): ?string
+    {
+        if ($raw === null) {
+            return null;
+        }
+
+        if (is_array($raw)) {
+            $html = $this->renderDescriptionModules($raw);
+
+            return $html !== '' ? $html : null;
+        }
+
+        if (! is_string($raw)) {
+            return null;
+        }
+
+        $trimmed = trim($raw);
+        if ($trimmed === '') {
+            return null;
+        }
+
+        if ($trimmed[0] === '{' || $trimmed[0] === '[') {
+            $decoded = json_decode($trimmed, true);
+            if (is_array($decoded)) {
+                $html = $this->renderDescriptionModules($decoded);
+                if ($html !== '') {
+                    return $html;
+                }
+            }
+        }
+
+        if (stripos($trimmed, '<') !== false && stripos($trimmed, '>') !== false) {
+            return $trimmed;
+        }
+
+        return '<p>'.nl2br(e($trimmed), false).'</p>';
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    protected function renderDescriptionModules(array $data): string
+    {
+        $modules = $this->list(
+            $data['moduleList']
+            ?? $data['mobileDetail']
+            ?? $data['module_list']
+            ?? (isset($data[0]['type']) ? $data : [])
+        );
+
+        if ($modules === []) {
+            return '';
+        }
+
+        $html = '';
+        foreach ($modules as $module) {
+            $module = $this->arr($module);
+            $type = strtolower((string) ($module['type'] ?? ''));
+
+            if ($type === 'html') {
+                $content = $module['html']['content'] ?? $module['content'] ?? null;
+                if (is_string($content) && trim($content) !== '') {
+                    $html .= $content;
+                }
+                continue;
+            }
+
+            if ($type === 'text') {
+                foreach ($this->list($module['texts'] ?? []) as $text) {
+                    $text = $this->arr($text);
+                    $content = trim((string) ($text['content'] ?? ''));
+                    if ($content === '') {
+                        continue;
+                    }
+                    $class = strtolower((string) ($text['class'] ?? $text['style'] ?? ''));
+                    if (str_contains($class, 'title') || str_contains($class, 'head')) {
+                        $html .= '<h5 class="ae-desc-title">'.e($content).'</h5>';
+                    } else {
+                        $html .= '<p class="ae-desc-body">'.nl2br(e($content), false).'</p>';
+                    }
+                }
+                continue;
+            }
+
+            if ($type === 'image') {
+                foreach ($this->list($module['images'] ?? []) as $image) {
+                    $image = $this->arr($image);
+                    $url = $this->str($image['url'] ?? $image['imgUrl'] ?? $image['image_url'] ?? null);
+                    if ($url === null) {
+                        continue;
+                    }
+                    $width = (int) ($image['width'] ?? $image['style']['width'] ?? 0);
+                    $style = $width > 0 ? 'max-width:'.min($width, 800).'px;' : 'max-width:100%;';
+                    $html .= '<div class="ae-desc-image my-2"><img src="'.e($url).'" alt="" class="img-fluid rounded border" style="'.$style.'"></div>';
+                }
+            }
+        }
+
+        return trim($html);
     }
 
     /**
@@ -541,15 +646,6 @@ class AliexpressDetailFormatter
         }
 
         return $amount * max(1, $qty);
-    }
-
-    protected function cleanHtml(?string $html): ?string
-    {
-        if ($html === null || trim($html) === '') {
-            return null;
-        }
-
-        return trim($html);
     }
 
     protected function str(mixed $value): ?string

@@ -5,8 +5,11 @@
     .ae-gallery img { max-height: 96px; object-fit: contain; cursor: pointer; border: 1px solid #e9ecef; border-radius: 6px; padding: 4px; background: #fff; }
     .ae-gallery img.active { border-color: #0d6efd; box-shadow: 0 0 0 2px rgba(13,110,253,.2); }
     .ae-main-image { max-height: 320px; object-fit: contain; }
-    .ae-description { max-height: 480px; overflow: auto; }
+    .ae-description { max-height: none; overflow: visible; }
     .ae-description img { max-width: 100%; height: auto; }
+    .ae-desc-title { font-weight: 600; margin-top: 1rem; margin-bottom: .35rem; }
+    .ae-desc-body { margin-bottom: .75rem; color: #444; }
+    .ae-desc-image img { display: block; margin: 0 auto; }
     .sku-hero { font-size: 1.05rem; word-break: break-word; }
     .source-pill { font-size: .75rem; }
 </style>
@@ -259,14 +262,16 @@
                 <div class="card-body">
                     @foreach($ae['descriptions'] as $desc)
                         @if(!empty($desc['language']))
-                            <div class="text-muted small mb-1">Language: {{ $desc['language'] }}</div>
+                            <div class="text-muted small mb-2">Language: {{ $desc['language'] }}</div>
                         @endif
                         @if(!empty($desc['web']))
-                            <div class="ae-description border rounded p-3 mb-3 bg-white">{!! $desc['web'] !!}</div>
+                            <div class="ae-description border rounded p-3 bg-white">{!! $desc['web'] !!}</div>
                         @endif
-                        @if(!empty($desc['mobile']))
-                            <div class="mb-2"><span class="badge bg-light text-muted">Mobile</span></div>
-                            <div class="ae-description border rounded p-3 mb-3 bg-white">{!! $desc['mobile'] !!}</div>
+                        @if(!empty($desc['mobile']) && ($desc['mobile'] ?? '') !== ($desc['web'] ?? ''))
+                            @if(!empty($desc['web']))
+                                <div class="text-muted small mt-3 mb-2">Mobile layout</div>
+                            @endif
+                            <div class="ae-description border rounded p-3 bg-white">{!! $desc['mobile'] !!}</div>
                         @endif
                     @endforeach
                 </div>
