@@ -264,15 +264,7 @@
                         @if(!empty($desc['language']))
                             <div class="text-muted small mb-2">Language: {{ $desc['language'] }}</div>
                         @endif
-                        @if(!empty($desc['web']))
-                            <div class="ae-description border rounded p-3 bg-white">{!! $desc['web'] !!}</div>
-                        @endif
-                        @if(!empty($desc['mobile']) && ($desc['mobile'] ?? '') !== ($desc['web'] ?? ''))
-                            @if(!empty($desc['web']))
-                                <div class="text-muted small mt-3 mb-2">Mobile layout</div>
-                            @endif
-                            <div class="ae-description border rounded p-3 bg-white">{!! $desc['mobile'] !!}</div>
-                        @endif
+                        <div class="ae-description border rounded p-3 bg-white">{!! $desc['html'] ?? '' !!}</div>
                     @endforeach
                 </div>
             </div>

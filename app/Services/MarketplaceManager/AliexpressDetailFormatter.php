@@ -183,33 +183,77 @@ class AliexpressDetailFormatter
 
     /**
      * @param  array<string, mixed>  $ae
-     * @return array<int, array{language: ?string, web: ?string, mobile: ?string}>
+     * @return array<int, array{language: ?string, html: string}>
      */
     protected function extractProductDescriptions(array $ae): array
     {
-        $out = [];
+        $candidates = [];
+        $list = $this->list($ae['multi_language_description_list'] ?? $ae['aeop_a_e_product_description'] ?? []);
 
-        foreach ($this->list($ae['multi_language_description_list'] ?? $ae['aeop_a_e_product_description'] ?? []) as $desc) {
-            $desc = $this->arr($desc);
-            $out[] = [
-                'language' => $this->str($desc['language'] ?? $desc['locale'] ?? null),
-                'web' => $this->renderDescriptionContent($desc['web_detail'] ?? $desc['detail'] ?? $desc['description'] ?? null),
-                'mobile' => $this->renderDescriptionContent($desc['mobile_detail'] ?? $desc['mobile_desc'] ?? null),
-            ];
-        }
-
-        foreach (['detail', 'mobile_detail', 'product_description'] as $key) {
-            $rendered = $this->renderDescriptionContent($ae[$key] ?? null);
-            if ($rendered !== null) {
-                $out[] = [
-                    'language' => null,
-                    'web' => $key !== 'mobile_detail' ? $rendered : null,
-                    'mobile' => $key === 'mobile_detail' ? $rendered : null,
+        if ($list !== []) {
+            foreach ($list as $desc) {
+                $desc = $this->arr($desc);
+                $candidates[] = [
+                    'language' => $this->str($desc['language'] ?? $desc['locale'] ?? null),
+                    'web' => $desc['web_detail'] ?? $desc['detail'] ?? $desc['description'] ?? null,
+                    'mobile' => $desc['mobile_detail'] ?? $desc['mobile_desc'] ?? null,
                 ];
+            }
+        } else {
+            foreach (['detail', 'product_description'] as $key) {
+                if (! empty($ae[$key])) {
+                    $candidates[] = ['language' => null, 'web' => $ae[$key], 'mobile' => null];
+                }
+            }
+            if (! empty($ae['mobile_detail'])) {
+                $candidates[] = ['language' => null, 'web' => null, 'mobile' => $ae['mobile_detail']];
             }
         }
 
-        return array_values(array_filter($out, fn ($d) => ($d['web'] ?? '') !== '' || ($d['mobile'] ?? '') !== ''));
+        $out = [];
+        $seenHashes = [];
+
+        foreach ($candidates as $candidate) {
+            $webHtml = $this->renderDescriptionContent($candidate['web']);
+            $mobileHtml = $this->renderDescriptionContent($candidate['mobile']);
+            $html = $this->pickBestDescriptionHtml($webHtml, $mobileHtml);
+            if ($html === null) {
+                continue;
+            }
+
+            $hash = $this->descriptionContentHash($html);
+            if (isset($seenHashes[$hash])) {
+                continue;
+            }
+            $seenHashes[$hash] = true;
+
+            $out[] = [
+                'language' => $candidate['language'],
+                'html' => $html,
+            ];
+        }
+
+        return $out;
+    }
+
+    protected function pickBestDescriptionHtml(?string $web, ?string $mobile): ?string
+    {
+        if ($web && $mobile) {
+            if ($this->descriptionContentHash($web) === $this->descriptionContentHash($mobile)) {
+                return $web;
+            }
+
+            return strlen(strip_tags($web)) >= strlen(strip_tags($mobile)) ? $web : $mobile;
+        }
+
+        return $web ?? $mobile;
+    }
+
+    protected function descriptionContentHash(string $html): string
+    {
+        $text = preg_replace('/\s+/', ' ', trim(strip_tags($html)) ?? '');
+
+        return md5($text);
     }
 
     /**
