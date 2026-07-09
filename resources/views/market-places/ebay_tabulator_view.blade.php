@@ -374,6 +374,30 @@
                         <option value="blank">Blank SPRICE only</option>
                     </select>
 
+                    {{-- Sprice/LMP filter — "Red" shows only rows where SPRICE is displayed in red (SPRICE > LMP). --}}
+                    <select id="sprice-lmp-filter" class="form-select form-select-sm pricing-filter-item"
+                        style="width: auto; display: inline-block;"
+                        title="Sprice/LMP: Red shows only rows where SPRICE is above LMP (red SPRICE text)">
+                        <option value="all">Sprice/LMP</option>
+                        <option value="red">Red (SPRICE &gt; LMP)</option>
+                    </select>
+
+                    {{-- Prc/LMP filter — "Red" shows only rows where the eBay Price is displayed in red (Price > LMP). --}}
+                    <select id="prc-lmp-filter" class="form-select form-select-sm pricing-filter-item"
+                        style="width: auto; display: inline-block;"
+                        title="Prc/LMP: Red shows only rows where eBay Price is above LMP (red price text)">
+                        <option value="all">Prc/LMP</option>
+                        <option value="red">Red (Price &gt; LMP)</option>
+                    </select>
+
+                    {{-- LMP filter — "Red" shows only rows that have no LMP value. --}}
+                    <select id="lmp-filter" class="form-select form-select-sm pricing-filter-item"
+                        style="width: auto; display: inline-block;"
+                        title="LMP: Red shows only rows that have no LMP value">
+                        <option value="all">LMP</option>
+                        <option value="red">Red (No LMP)</option>
+                    </select>
+
                     {{-- Target ROI% bulk control — back-solves SPRICE for selected rows so SGROI = Target ROI%. --}}
                     {{-- Formula: sprice = (LP × (1 + ROI%/100) + Ship) / margin  (margin = MarketplacePercentage take-home for eBay) --}}
                     <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light pricing-filter-item"
@@ -419,10 +443,7 @@
                                     <span class="status-circle default"></span> All DIL</a></li>
                             <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent"
                                     data-color="red">
-                                    <span class="status-circle red"></span> Red (&lt;16.66%)</a></li>
-                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent"
-                                    data-color="yellow">
-                                    <span class="status-circle yellow"></span> Yellow (16.66-25%)</a></li>
+                                    <span class="status-circle red"></span> Red (&lt;25%)</a></li>
                             <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent"
                                     data-color="green">
                                     <span class="status-circle green"></span> Green (25-50%)</a></li>
@@ -470,14 +491,6 @@
                         <i class="fas fa-download"></i> Sample CSV
                     </a>
 
-                    {{-- SBID Rule button — opens the same shared rule editor as /ebay/campaign-ads.
-                         Edits are stored centrally (ebay_sbid_rules.key = ebay1) so both pages see the same values. --}}
-                    <button type="button" class="btn btn-sm btn-outline-primary pricing-filter-item"
-                            data-bs-toggle="modal" data-bs-target="#sbidRuleModal"
-                            title="Configure L7 views threshold + SCVR bands (shared with /ebay/campaign-ads S Bid column)">
-                        <i class="fas fa-sliders-h me-1"></i>SBID Rule
-                    </button>
-
                     {{-- Dil Rule button — same shared editor as /ebay/campaign-ads
                          (ebay_sbid_rules.key = ebay1_dil). --}}
                     <button type="button" class="btn btn-sm btn-outline-danger pricing-filter-item"
@@ -493,12 +506,25 @@
                             title="Build rules on Dil / El30 / CVR / Groi / LMP that auto-calculate the SPRICE column">
                         <i class="fas fa-magic me-1"></i>Sprice Rule
                     </button>
+
+                    {{-- Sbid Rule button — multi-rule editor that decides the S Bid column
+                         from CVR / Dil / Esold / Views L30 conditions. --}}
+                    <button type="button" class="btn btn-sm btn-outline-primary pricing-filter-item"
+                            data-bs-toggle="modal" data-bs-target="#sbidRuleModal"
+                            title="Build rules on CVR / Dil / Esold / Views L30 that set the S Bid column">
+                        <i class="fas fa-sliders-h me-1"></i>Sbid Rule
+                    </button>
                 </div>
 
                 <!-- Summary Stats (layout matches Ebay 2 Analytics summary row) -->
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
                     <h6 class="mb-3">Summary (INV &gt; 0)</h6>
                     <div class="ebay2-summary-badge-row" role="group" aria-label="Summary metrics">
+                        <!-- Filtered rows count -->
+                        <span class="badge bg-dark fs-6 p-2" id="rows-count-badge"
+                            style="color: white; font-weight: bold;"
+                            title="Number of rows currently shown after filters">Rows: 0</span>
+
                         <!-- Sold Filter Badges (Clickable) -->
                         <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge"
                             style="color: white; font-weight: bold; cursor: pointer;"
@@ -794,85 +820,6 @@
         </div>
     </div>
 
-    {{-- SBID Rule Modal — mirrors /ebay/campaign-ads; same endpoints (/ebay/campaign-ads/rule). --}}
-    <div class="modal fade" id="sbidRuleModal" tabindex="-1" aria-labelledby="sbidRuleModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header py-2">
-                    <h5 class="modal-title" id="sbidRuleModalLabel">
-                        <i class="fas fa-sliders-h me-2 text-primary"></i>eBay SBID Rule — L7 Views + SCVR &rarr; Bid
-                    </h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <p class="small text-muted mb-3">
-                        Step 1: if L30 sold &le; the threshold below &rarr; S Bid = <strong>ES Bid</strong> (raw eBay <code>suggested_bid</code>).
-                        Step 2: if a row's <code>l7_views</code> is below the threshold &rarr; S Bid = <strong>ES Bid</strong>.
-                        Step 3: otherwise SCVR bands are evaluated <strong>top to bottom</strong> &mdash; first match wins.
-                        <code>SCVR = (Sold L30 / Views) &times; 100</code>.
-                    </p>
-
-                    {{-- L30 sold + L7 views thresholds --}}
-                    <div class="row g-2 align-items-end mb-3">
-                        <div class="col-md-5">
-                            <label class="form-label fw-semibold mb-1">L30 Sold ES Bid Max</label>
-                            <div class="input-group input-group-sm">
-                                <input type="number" class="form-control" id="sbid-l30-sold-max-input"
-                                       step="1" min="0" value="0">
-                                <span class="input-group-text">sold</span>
-                            </div>
-                            <small class="text-muted">
-                                If a row's <code>eBay L30</code> &le; this value &rarr; S Bid = ES Bid (default <code>0</code> = zero sold only).
-                            </small>
-                        </div>
-                        <div class="col-md-5">
-                            <label class="form-label fw-semibold mb-1">L7 Views Threshold</label>
-                            <div class="input-group input-group-sm">
-                                <input type="number" class="form-control" id="sbid-l7-threshold-input"
-                                       step="1" min="0" value="70">
-                                <span class="input-group-text">views</span>
-                            </div>
-                            <small class="text-muted">
-                                If a row's <code>l7_views</code> &lt; this value &rarr; S Bid = ES Bid (raw <code>suggested_bid</code>).
-                            </small>
-                        </div>
-                    </div>
-
-                    <table class="table table-sm table-bordered align-middle" id="sbid-rule-table">
-                        <thead class="table-light">
-                            <tr>
-                                <th style="width:40px;">#</th>
-                                <th>Label</th>
-                                <th>Color</th>
-                                <th>CVR &le; (%)</th>
-                                <th>Bid (%)</th>
-                            </tr>
-                        </thead>
-                        <tbody id="sbid-bands-body">
-                            {{-- filled by JS --}}
-                        </tbody>
-                    </table>
-
-                    <div class="alert alert-info small py-2 mb-0">
-                        <i class="fas fa-info-circle me-1"></i>
-                        Set SCVR Max to <code>9999</code> for the last band (catch-all).
-                        Tick <strong>Dynamic by metric</strong> on any band to decide its bid from
-                        Price / L30 Sold / Views / SCVR tiers instead of a flat bid.
-                        Changes are shared with <code>/ebay/campaign-ads</code> and apply next time
-                        <strong>ebay:update-suggestedbid</strong> runs.
-                    </div>
-                    <p class="small text-danger mb-0 mt-2 d-none" id="sbid-rule-err"></p>
-                </div>
-                <div class="modal-footer py-2">
-                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-sm btn-primary" id="sbid-rule-save-btn">
-                        <i class="fas fa-save me-1"></i>Save Rule
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
     {{-- Dilution Rule Modal — mirrors /ebay/campaign-ads; same endpoints (/ebay/campaign-ads/dil-rule). --}}
     <div class="modal fade" id="dilRuleModal" tabindex="-1" aria-labelledby="dilRuleModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-lg">
@@ -943,30 +890,24 @@
             <div class="modal-content">
                 <div class="modal-header py-2">
                     <h5 class="modal-title" id="spriceRuleModalLabel">
-                        <i class="fas fa-magic me-2 text-success"></i>eBay Sprice Rule &mdash; Dil / El30 / CVR / Groi / LMP &rarr; SPRICE
+                        <i class="fas fa-magic me-2 text-success"></i>Sprice Rule
                     </h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
                     <div class="table-responsive">
-                        <table class="table table-sm table-bordered align-middle" id="sprice-rule-table" style="min-width: 1050px;">
+                        <table class="table table-sm table-bordered align-middle" id="sprice-rule-table" style="min-width: 640px;">
                             <thead class="table-light">
                                 <tr>
                                     <th rowspan="2" style="width:34px;" class="text-center align-middle">#</th>
-                                    <th rowspan="2" style="min-width:110px;" class="align-middle">Label</th>
-                                    <th colspan="2" class="text-center">Dil %</th>
-                                    <th colspan="2" class="text-center">El30</th>
+                                    <th rowspan="2" style="min-width:110px;" class="align-middle">CVR</th>
                                     <th colspan="2" class="text-center">CVR %</th>
-                                    <th colspan="2" class="text-center">Groi %</th>
-                                    <th colspan="2" class="text-center">LMP $</th>
+                                    <th colspan="2" class="text-center">Dil %</th>
                                     <th rowspan="2" style="min-width:120px;" class="align-middle text-center">Method</th>
                                     <th rowspan="2" style="width:90px;" class="align-middle text-center">Value</th>
                                     <th rowspan="2" style="width:44px;" class="align-middle"></th>
                                 </tr>
                                 <tr>
-                                    <th class="text-center small text-muted">Min</th><th class="text-center small text-muted">Max</th>
-                                    <th class="text-center small text-muted">Min</th><th class="text-center small text-muted">Max</th>
-                                    <th class="text-center small text-muted">Min</th><th class="text-center small text-muted">Max</th>
                                     <th class="text-center small text-muted">Min</th><th class="text-center small text-muted">Max</th>
                                     <th class="text-center small text-muted">Min</th><th class="text-center small text-muted">Max</th>
                                 </tr>
@@ -977,8 +918,8 @@
                         </table>
                     </div>
 
-                    <button type="button" class="btn btn-sm btn-outline-primary py-0 mb-2" id="sprice-add-rule-btn">
-                        <i class="fas fa-plus me-1"></i>Add rule
+                    <button type="button" class="btn btn-sm btn-primary mb-2" id="sprice-add-rule-btn">
+                        <i class="fas fa-plus me-1"></i>Add rule / slab
                     </button>
 
                     <p class="small text-danger mb-0 mt-2 d-none" id="sprice-rule-err"></p>
@@ -991,6 +932,83 @@
                             <i class="fas fa-bolt me-1"></i>Apply to Visible Rows
                         </button>
                         <button type="button" class="btn btn-sm btn-primary" id="sprice-rule-save-btn">
+                            <i class="fas fa-save me-1"></i>Save Rule
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- ═══════════════════════════════════════════════════════════════════════
+         Sbid Rule Modal — build multiple rules that decide the S Bid column.
+         Each rule is a horizontal row of min/max ranges on 4 factors
+         (CVR, Dil, Esold, Views L30) plus the S Bid to apply. Rules are evaluated
+         top to bottom; the first rule whose ranges all match a row wins.
+         Storage: ebay_sbid_rules.key = 'ebay1_sbid_slabs' (via /ebay-one/sbid-slab-rule).
+    ══════════════════════════════════════════════════════════════════════════ --}}
+    <div class="modal fade" id="sbidRuleModal" tabindex="-1" aria-labelledby="sbidRuleModalLabel" aria-hidden="true">
+        <style>
+            #sbidRuleModal .modal-dialog { max-width: 98vw; width: 98vw; margin: 0.5rem auto; }
+            #sbid-slab-rule-table thead th { background-color: #fff9c4 !important; color: #000 !important; }
+        </style>
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title" id="sbidRuleModalLabel">
+                        <i class="fas fa-sliders-h me-2 text-primary"></i>Sbid Rule
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered align-middle" id="sbid-slab-rule-table" style="min-width: 720px;">
+                            <thead class="table-light">
+                                <tr>
+                                    <th rowspan="2" style="width:34px;" class="text-center align-middle">#</th>
+                                    <th rowspan="2" style="min-width:110px;" class="align-middle">Label</th>
+                                    <th colspan="2" class="text-center">CVR %</th>
+                                    <th colspan="2" class="text-center">Dil %</th>
+                                    <th colspan="2" class="text-center">Esold</th>
+                                    <th colspan="2" class="text-center">Views L30</th>
+                                    <th rowspan="2" style="width:100px;" class="align-middle text-center">S Bid (%)</th>
+                                    <th rowspan="2" style="width:44px;" class="align-middle"></th>
+                                </tr>
+                                <tr>
+                                    <th class="text-center small text-muted">Min</th><th class="text-center small text-muted">Max</th>
+                                    <th class="text-center small text-muted">Min</th><th class="text-center small text-muted">Max</th>
+                                    <th class="text-center small text-muted">Min</th><th class="text-center small text-muted">Max</th>
+                                    <th class="text-center small text-muted">Min</th><th class="text-center small text-muted">Max</th>
+                                </tr>
+                            </thead>
+                            <tbody id="sbid-slab-rules-body">
+                                {{-- filled by JS --}}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <button type="button" class="btn btn-sm btn-primary mb-2" id="sbid-slab-add-rule-btn">
+                        <i class="fas fa-plus me-1"></i>Add rule / slab
+                    </button>
+
+                    <div class="alert alert-info small py-2 mb-0">
+                        <i class="fas fa-info-circle me-1"></i>
+                        Rules are evaluated <strong>top to bottom</strong> — the first rule where all filled
+                        ranges match a row sets that row's <strong>S Bid</strong>. Leave a Min/Max blank to ignore it.
+                        <code>CVR = (Esold / Views) &times; 100</code>, <code>Dil = (OV L30 / INV) &times; 100</code>,
+                        <code>Esold = eBay L30</code>, <code>Views L30 = Views</code>.
+                    </div>
+                    <p class="small text-danger mb-0 mt-2 d-none" id="sbid-slab-rule-err"></p>
+                </div>
+                <div class="modal-footer py-2 d-flex justify-content-between">
+                    <span class="small text-muted" id="sbid-slab-rule-status"></span>
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+                        <button type="button" class="btn btn-sm btn-success" id="sbid-slab-apply-btn"
+                                title="Push each visible row's computed S Bid to its eBay campaign">
+                            <i class="fas fa-bolt me-1"></i>Apply to Visible Rows
+                        </button>
+                        <button type="button" class="btn btn-sm btn-primary" id="sbid-slab-rule-save-btn">
                             <i class="fas fa-save me-1"></i>Save Rule
                         </button>
                     </div>
@@ -1039,19 +1057,11 @@
         }
 
         function resolveSbidBandBid(band, ctx) {
-            const color = band.color || '#333';
-            const sub = band.sub;
-            if (sub && sub.metric && Array.isArray(sub.bands) && sub.bands.length) {
-                const val = parseFloat(ctx[sub.metric]) || 0;
-                for (let j = 0; j < sub.bands.length; j++) {
-                    if (val <= parseFloat(sub.bands[j].max)) {
-                        return { bid: parseFloat(sub.bands[j].bid), color: color, skip: false };
-                    }
-                }
-                const ls = sub.bands[sub.bands.length - 1];
-                return { bid: parseFloat(ls.bid), color: color, skip: false };
+            // Band flagged to use the row's ES Bid (raw eBay suggested_bid).
+            if (band.use_es_bid) {
+                return esBidResult(parseFloat(ctx.es_bid));
             }
-            return { bid: parseFloat(band.bid), color: color, skip: false };
+            return { bid: parseFloat(band.bid), color: band.color || '#333', skip: false };
         }
 
         function getSbidFromRule(scvr, rowData) {
@@ -1063,9 +1073,15 @@
                 ebay_price: parseFloat(rowData['eBay Price']) || 0,
                 ebay_l30: parseFloat(rowData['eBay L30']) || 0,
                 views: parseFloat(rowData.views) || 0,
+                es_bid: parseFloat(rowData.ca_suggested_bid) || 0,
             };
+            // First band whose [scvr_min, scvr_max] range contains the SCVR wins.
             for (let i = 0; i < bands.length; i++) {
-                if (safeScvr <= parseFloat(bands[i].scvr_max)) {
+                const min = parseFloat(bands[i].scvr_min);
+                const max = parseFloat(bands[i].scvr_max);
+                const lo = isFinite(min) ? min : 0;
+                const hi = isFinite(max) ? max : 9999;
+                if (safeScvr >= lo && safeScvr <= hi) {
                     return resolveSbidBandBid(bands[i], ctx);
                 }
             }
@@ -1073,18 +1089,39 @@
             return resolveSbidBandBid(last, ctx);
         }
 
-        // Same logic as /ebay/campaign-ads S Bid column; field names match this tabulator row.
-        function getCombinedSbid(rowData) {
-            const l7 = parseFloat(rowData.l7_views) || 0;
-            const esBidRaw = parseFloat(rowData.ca_suggested_bid);
-            const sold = parseFloat(rowData['eBay L30']) || 0;
-            const views = parseFloat(rowData.views) || 0;
-            const scvr = views > 0 ? (sold / views) * 100 : 0;
+        // S Bid is driven by the Sbid Rule slabs (CVR / Dil / Esold / Views L30 → S Bid).
+        // Populated from /ebay-one/sbid-slab-rule; see the Sbid Rule modal.
+        let currentSbidSlabRules = [];
 
-            if (shouldUseEsBid(sold, l7, currentSbidRule)) {
-                return esBidResult(esBidRaw);
+        function sbidSlabInRange(val, min, max) {
+            if (min !== null && min !== undefined && min !== '' && val < parseFloat(min)) return false;
+            if (max !== null && max !== undefined && max !== '' && val > parseFloat(max)) return false;
+            return true;
+        }
+
+        function getCombinedSbid(rowData) {
+            const esold = parseFloat(rowData['eBay L30']) || 0;
+            const views = parseFloat(rowData.views) || 0;
+            const inv = parseFloat(rowData.INV) || 0;
+            const ovl30 = parseFloat(rowData['L30']) || 0;
+            const cvr = views > 0 ? (esold / views) * 100 : 0;
+            const dil = inv > 0 ? (ovl30 / inv) * 100 : 0;
+
+            const rules = currentSbidSlabRules || [];
+            for (let i = 0; i < rules.length; i++) {
+                const r = rules[i];
+                if (sbidSlabInRange(cvr, r.cvr_min, r.cvr_max)
+                    && sbidSlabInRange(dil, r.dil_min, r.dil_max)
+                    && sbidSlabInRange(esold, r.esold_min, r.esold_max)
+                    && sbidSlabInRange(views, r.views_min, r.views_max)) {
+                    const bid = parseFloat(r.sbid);
+                    if (isFinite(bid) && bid > 0) {
+                        return { bid: bid, color: '#0d6efd', skip: false };
+                    }
+                    return { bid: 0, color: '#6c757d', skip: true };
+                }
             }
-            return getSbidFromRule(scvr, rowData);
+            return { bid: 0, color: '#6c757d', skip: true };
         }
 
         /**
@@ -1190,6 +1227,9 @@
             if (($('#cvr-filter').val() || 'all') !== 'all') return true;
             if (($('#cvr-trend-filter').val() || 'all') !== 'all') return true;
             if (($('#sprice-filter').val() || 'all') !== 'all') return true;
+            if (($('#sprice-lmp-filter').val() || 'all') !== 'all') return true;
+            if (($('#prc-lmp-filter').val() || 'all') !== 'all') return true;
+            if (($('#lmp-filter').val() || 'all') !== 'all') return true;
             if (($('#growth-sign-filter').val() || 'all') !== 'all') return true;
             var dil = 'all';
             try {
@@ -3264,8 +3304,7 @@
                             let color = '';
 
                             // Color logic from inc/dec page - getDilColor
-                            if (dil < 16.66) color = '#a00211'; // red
-                            else if (dil >= 16.66 && dil < 25) color = '#ffc107'; // yellow
+                            if (dil < 25) color = '#a00211'; // red (absorbs former yellow band)
                             else if (dil >= 25 && dil < 50) color = '#28a745'; // green
                             else color = '#e83e8c'; // pink (50 and above)
 
@@ -4089,7 +4128,7 @@
                         field: "ca_suggested_bid",
                         hozAlign: "center",
                         width: 90,
-                        headerTooltip: "Suggested bid: if l7_views < L7 threshold → ES Bid; else SCVR-band lookup (same as /ebay/campaign-ads).",
+                        headerTooltip: "S Bid from the Sbid Rule slabs (CVR / Dil / Esold / Views L30 → S Bid). Configure via the 'Sbid Rule' button.",
                         sorter: function(a, b, aRow, bRow) {
                             return getCombinedSbid(aRow.getData()).bid - getCombinedSbid(bRow.getData()).bid;
                         },
@@ -4455,6 +4494,9 @@
                 const cvrFilter = $('#cvr-filter').val();
                 const cvrTrendFilter = $('#cvr-trend-filter').val();
                 const spriceFilter = $('#sprice-filter').val();
+                const spriceLmpFilter = $('#sprice-lmp-filter').val();
+                const prcLmpFilter = $('#prc-lmp-filter').val();
+                const lmpFilter = $('#lmp-filter').val();
                 const dilFilter = $('.column-filter[data-column="dil_percent"].active')?.data('color') || 'all';
                 const parentSkuVal = $('#parent-sku-dropdown').val() || '';
                 const viewTypeFilter = $('#view-type-filter').val() || 'all';
@@ -4622,6 +4664,38 @@
                     });
                 }
 
+                // Sprice/LMP: "Red" keeps only rows where SPRICE is shown in red (SPRICE > LMP).
+                if (spriceLmpFilter === 'red') {
+                    table.addFilter(function(data) {
+                        if (data.Parent && String(data.Parent).toUpperCase().startsWith('PARENT'))
+                            return true;
+                        const sprice = parseFloat(data.SPRICE) || 0;
+                        const lmp = parseFloat(data.lmp_price) || 0;
+                        return sprice > 0 && lmp > 0 && sprice > lmp;
+                    });
+                }
+
+                // Prc/LMP: "Red" keeps only rows where the eBay Price is shown in red (Price > LMP).
+                if (prcLmpFilter === 'red') {
+                    table.addFilter(function(data) {
+                        if (data.Parent && String(data.Parent).toUpperCase().startsWith('PARENT'))
+                            return true;
+                        const price = parseFloat(data['eBay Price']) || 0;
+                        const lmp = parseFloat(data.lmp_price) || 0;
+                        return price > 0 && lmp > 0 && price > lmp;
+                    });
+                }
+
+                // LMP: "Red" keeps only rows that have no LMP value.
+                if (lmpFilter === 'red') {
+                    table.addFilter(function(data) {
+                        if (data.Parent && String(data.Parent).toUpperCase().startsWith('PARENT'))
+                            return true;
+                        const lmp = parseFloat(data.lmp_price) || 0;
+                        return lmp <= 0;
+                    });
+                }
+
                 // DIL filter
                 if (dilFilter !== 'all') {
                     table.addFilter(function(data) {
@@ -4629,8 +4703,7 @@
                         const l30 = parseFloat(data['L30']) || 0;
                         const dil = inv === 0 ? 0 : (l30 / inv) * 100;
 
-                        if (dilFilter === 'red') return dil < 16.66;
-                        if (dilFilter === 'yellow') return dil >= 16.66 && dil < 25;
+                        if (dilFilter === 'red') return dil < 25;
                         if (dilFilter === 'green') return dil >= 25 && dil < 50;
                         if (dilFilter === 'pink') return dil >= 50;
                         return true;
@@ -4687,7 +4760,7 @@
                 }, 100);
             }
 
-            $('#view-type-filter, #parent-sku-dropdown, #inventory-filter, #el30-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter, #sprice-filter')
+            $('#view-type-filter, #parent-sku-dropdown, #inventory-filter, #el30-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter, #sprice-filter, #sprice-lmp-filter, #prc-lmp-filter, #lmp-filter')
                 .on('change', function() {
                     applyFilters();
                 });
@@ -4822,6 +4895,12 @@
                 $('#avg-price-badge').text('Price: $' + avgPrice.toFixed(2));
                 $('#avg-cvr-badge').text('CVR: ' + avgCVR.toFixed(2) + '%');
                 $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
+
+                // Count of rows currently shown after filters (exclude parent summary rows)
+                const visibleRowCount = filteredData.filter(row =>
+                    !(row['Parent'] && String(row['Parent']).toUpperCase().startsWith('PARENT'))
+                ).length;
+                $('#rows-count-badge').text('Rows: ' + visibleRowCount.toLocaleString());
 
                 $('#zero-sold-count-badge').text('0 Sold: ' + zeroSoldCount.toLocaleString());
                 $('#more-sold-count-badge').text('> 0 Sold: ' + moreSoldCount.toLocaleString());
@@ -5662,291 +5741,63 @@
             const ruleGetUrl  = '/ebay/campaign-ads/rule';
             const ruleSaveUrl = '/ebay/campaign-ads/rule';
 
-            // Metric options for a band's dynamic sub-rule
-            const SUB_METRICS = {
-                scvr:       { label: 'SCVR %',   unit: '%', step: '0.1' },
-                ebay_price: { label: 'Price $',  unit: '$', step: '0.01' },
-                ebay_l30:   { label: 'L30 Sold', unit: '',  step: '1'   },
-                views:      { label: 'Views',    unit: '',  step: '1'   },
-            };
+            // Default dynamic CVR bands (editable Min/Max). 0% band uses each row's ES Bid.
+            function defaultSbidBands() {
+                return [
+                    { scvr_min: 0,     scvr_max: 0,    use_es_bid: true, bid: 0 },
+                    { scvr_min: 0.01,  scvr_max: 3,    bid: 10.1 },
+                    { scvr_min: 3.01,  scvr_max: 7,    bid: 8.1 },
+                    { scvr_min: 7.01,  scvr_max: 13,   bid: 5.1 },
+                    { scvr_min: 13.01, scvr_max: 9999, bid: 5.1 },
+                ];
+            }
 
-            function renderBands(bands) {
-                const tbody = document.getElementById('sbid-bands-body');
-                if (!tbody) return;
-                tbody.innerHTML = '';
-                (bands || []).forEach(function(band, i) {
-                    const isLast = (parseFloat(band.scvr_max) >= 9999);
-                    const hasSub = !!(band.sub && band.sub.metric);
-                    tbody.innerHTML += `
-                    <tr>
-                        <td class="text-center text-muted small">${i + 1}</td>
-                        <td><input type="text" class="form-control form-control-sm" value="${band.label || ''}"
-                                   data-idx="${i}" data-field="label" onchange="window.sbidRuleUpdateBand(this)"></td>
-                        <td>
-                            <div class="d-flex align-items-center gap-2">
-                                <input type="color" class="form-control form-control-color form-control-sm" style="width:40px;height:31px;"
-                                       value="${band.color || '#6c757d'}" data-idx="${i}" data-field="color"
-                                       onchange="window.sbidRuleUpdateBand(this)">
-                                <span class="badge" style="background:${band.color || '#6c757d'};">${band.label || ''}</span>
-                            </div>
-                        </td>
-                        <td>
-                            ${isLast
-                                ? '<span class="text-muted small">∞ (catch-all)</span><input type="hidden" value="9999" data-idx="' + i + '" data-field="scvr_max">'
-                                : `<input type="number" step="0.1" min="0" class="form-control form-control-sm" value="${band.scvr_max}"
-                                          data-idx="${i}" data-field="scvr_max" onchange="window.sbidRuleUpdateBand(this)">`
-                            }
-                        </td>
-                        <td>
-                            <div class="input-group input-group-sm">
-                                <input type="number" step="0.1" min="0" max="100" class="form-control form-control-sm fw-semibold"
-                                       value="${band.bid}" data-idx="${i}" data-field="bid" ${hasSub ? 'disabled' : ''}
-                                       style="color:${band.color || '#333'}; font-weight:600;"
-                                       onchange="window.sbidRuleUpdateBand(this)">
-                                <span class="input-group-text">%</span>
-                            </div>
-                            <div class="form-check form-check-inline mt-1">
-                                <input class="form-check-input" type="checkbox" id="sub-toggle-${i}" ${hasSub ? 'checked' : ''}
-                                       onchange="window.sbidRuleToggleSub(${i}, this.checked)">
-                                <label class="form-check-label small text-muted" for="sub-toggle-${i}">Dynamic by metric</label>
-                            </div>
-                        </td>
-                    </tr>
-                    ${hasSub ? renderSubEditor(band, i) : ''}`;
+            // Ensure every band has an explicit scvr_min / scvr_max. Legacy bands stored
+            // with only scvr_max get a min derived from the previous band's max (+0.01).
+            function normalizeSbidBands(bands) {
+                let arr = Array.isArray(bands) ? bands.slice() : [];
+                if (!arr.length) return defaultSbidBands();
+                let prevMax = null;
+                arr.forEach(function(b, i) {
+                    if (b.scvr_max == null || b.scvr_max === '') b.scvr_max = 9999;
+                    if (b.scvr_min == null || b.scvr_min === '') {
+                        b.scvr_min = (i === 0 || prevMax == null)
+                            ? 0
+                            : +(parseFloat(prevMax) + 0.01).toFixed(2);
+                    }
+                    // A 0–0 band always means "use the row's ES Bid".
+                    if (parseFloat(b.scvr_min) === 0 && parseFloat(b.scvr_max) === 0) b.use_es_bid = true;
+                    prevMax = parseFloat(b.scvr_max);
                 });
+                return arr;
             }
 
-            function renderSubEditor(band, i) {
-                const sub    = band.sub || { metric: 'ebay_price', bands: [] };
-                const metric = sub.metric || 'ebay_price';
-                const unit   = (SUB_METRICS[metric] || {}).unit || '';
-                const step   = (SUB_METRICS[metric] || {}).step || '0.1';
-                const opts   = Object.keys(SUB_METRICS).map(function(k) {
-                    return `<option value="${k}" ${k === metric ? 'selected' : ''}>${SUB_METRICS[k].label}</option>`;
-                }).join('');
-
-                const rows = (sub.bands || []).map(function(sb, j) {
-                    const isLastSub = (parseFloat(sb.max) >= 9999);
-                    return `
-                    <tr>
-                        <td class="text-center text-muted small">${j + 1}</td>
-                        <td>
-                            ${isLastSub
-                                ? '<span class="text-muted small">∞ (catch-all)</span><input type="hidden" value="9999" data-idx="' + i + '" data-sub="max" data-j="' + j + '">'
-                                : `<div class="input-group input-group-sm">
-                                       <input type="number" step="${step}" min="0" class="form-control form-control-sm"
-                                              value="${sb.max}" data-idx="${i}" data-sub="max" data-j="${j}" onchange="window.sbidRuleUpdateSubBand(this)">
-                                       <span class="input-group-text">${unit || '≤'}</span>
-                                   </div>`
-                            }
-                        </td>
-                        <td>
-                            <div class="input-group input-group-sm">
-                                <input type="number" step="0.1" min="0" max="100" class="form-control form-control-sm fw-semibold"
-                                       value="${sb.bid}" data-idx="${i}" data-sub="bid" data-j="${j}" onchange="window.sbidRuleUpdateSubBand(this)">
-                                <span class="input-group-text">%</span>
-                            </div>
-                        </td>
-                        <td class="text-center">
-                            <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1"
-                                    onclick="window.sbidRuleRemoveSubBand(${i}, ${j})" title="Remove tier">&times;</button>
-                        </td>
-                    </tr>`;
-                }).join('');
-
-                return `
-                <tr class="sub-rule-row">
-                    <td></td>
-                    <td colspan="4" class="bg-light">
-                        <div class="border rounded p-2">
-                            <div class="d-flex align-items-center gap-2 mb-2">
-                                <span class="small fw-semibold text-secondary">
-                                    <i class="fas fa-layer-group me-1"></i>${band.label || 'Band'} — bid by
-                                </span>
-                                <select class="form-select form-select-sm" style="width:auto;"
-                                        data-idx="${i}" onchange="window.sbidRuleUpdateSubMetric(${i}, this.value)">${opts}</select>
-                                <span class="small text-muted">tiers (top to bottom — first match wins)</span>
-                            </div>
-                            <table class="table table-sm table-bordered align-middle mb-2">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th style="width:40px;">#</th>
-                                        <th>${(SUB_METRICS[metric] || {}).label || 'Value'} ≤</th>
-                                        <th>Bid (%)</th>
-                                        <th style="width:50px;"></th>
-                                    </tr>
-                                </thead>
-                                <tbody>${rows}</tbody>
-                            </table>
-                            <button type="button" class="btn btn-sm btn-outline-primary py-0"
-                                    onclick="window.sbidRuleAddSubBand(${i})">
-                                <i class="fas fa-plus me-1"></i>Add tier
-                            </button>
-                            <span class="small text-muted ms-2">Set the last tier's value to <code>9999</code> as the catch-all.</span>
-                        </div>
-                    </td>
-                </tr>`;
-            }
-
-            // Exposed globals (referenced by inline onchange handlers above).
-            // Prefixed with `sbidRule` to avoid clashing with anything else on this page.
-            window.sbidRuleUpdateBand = function(el) {
-                const idx   = parseInt(el.dataset.idx);
-                const field = el.dataset.field;
-                if (!currentSbidRule.bands[idx]) return;
-                currentSbidRule.bands[idx][field] = (field === 'scvr_max' || field === 'bid')
-                    ? parseFloat(el.value) : el.value;
-                if (field === 'color') {
-                    const badge = el.closest('tr').querySelector('.badge');
-                    if (badge) badge.style.background = el.value;
-                }
-            };
-
-            window.sbidRuleToggleSub = function(idx, enabled) {
-                if (!currentSbidRule.bands[idx]) return;
-                if (enabled) {
-                    currentSbidRule.bands[idx].sub = {
-                        metric: 'ebay_price',
-                        bands: [{ max: 9999, bid: parseFloat(currentSbidRule.bands[idx].bid) || 2.1 }]
-                    };
-                } else {
-                    delete currentSbidRule.bands[idx].sub;
-                }
-                renderBands(currentSbidRule.bands);
-            };
-
-            window.sbidRuleUpdateSubMetric = function(idx, metric) {
-                if (!currentSbidRule.bands[idx] || !currentSbidRule.bands[idx].sub) return;
-                currentSbidRule.bands[idx].sub.metric = metric;
-                renderBands(currentSbidRule.bands);
-            };
-
-            window.sbidRuleUpdateSubBand = function(el) {
-                const idx   = parseInt(el.dataset.idx);
-                const j     = parseInt(el.dataset.j);
-                const field = el.dataset.sub;
-                if (!currentSbidRule.bands[idx] || !currentSbidRule.bands[idx].sub) return;
-                currentSbidRule.bands[idx].sub.bands[j][field] = parseFloat(el.value);
-            };
-
-            window.sbidRuleAddSubBand = function(idx) {
-                if (!currentSbidRule.bands[idx] || !currentSbidRule.bands[idx].sub) return;
-                const sb = currentSbidRule.bands[idx].sub.bands;
-                const lastIsCatch = sb.length && parseFloat(sb[sb.length - 1].max) >= 9999;
-                const newTier = { max: 0, bid: parseFloat(currentSbidRule.bands[idx].bid) || 2.1 };
-                if (lastIsCatch) sb.splice(sb.length - 1, 0, newTier);
-                else sb.push(newTier);
-                renderBands(currentSbidRule.bands);
-            };
-
-            window.sbidRuleRemoveSubBand = function(idx, j) {
-                if (!currentSbidRule.bands[idx] || !currentSbidRule.bands[idx].sub) return;
-                currentSbidRule.bands[idx].sub.bands.splice(j, 1);
-                renderBands(currentSbidRule.bands);
-            };
-
-            // Fetches the saved rule and re-renders the L7 threshold input + bands table.
-            // Called once at script load (pre-populates the modal so it's ready on first open)
-            // and again every time the modal opens (so we always get the freshest data).
+            // SBID Rule editor removed from this page. The S Bid column still reads the
+            // rule saved on /ebay/campaign-ads: fetch it once and normalize the bands so
+            // getCombinedSbid/getSbidFromRule can resolve each row's bid.
             function loadRule() {
                 $.ajax({
                     url: ruleGetUrl,
                     method: 'GET',
                     dataType: 'json',
                     success: function(data) {
-                        currentSbidRule = data || { l7_views_threshold: 70, l30_sold_es_bid_max: 0, bands: [] };
-                        if (currentSbidRule.l7_views_threshold == null) currentSbidRule.l7_views_threshold = 70;
-                        if (currentSbidRule.l30_sold_es_bid_max == null) currentSbidRule.l30_sold_es_bid_max = 0;
+                        currentSbidRule = data || { bands: [] };
                         if (!Array.isArray(currentSbidRule.bands)) currentSbidRule.bands = [];
-                        const thrEl = document.getElementById('sbid-l7-threshold-input');
-                        if (thrEl) thrEl.value = currentSbidRule.l7_views_threshold;
-                        const l30El = document.getElementById('sbid-l30-sold-max-input');
-                        if (l30El) l30El.value = currentSbidRule.l30_sold_es_bid_max;
-                        renderBands(currentSbidRule.bands);
+                        currentSbidRule.bands = normalizeSbidBands(currentSbidRule.bands);
                         if (table) table.redraw(true);
                     },
                     error: function(xhr) {
-                        const errEl = document.getElementById('sbid-rule-err');
-                        if (errEl) {
-                            errEl.textContent = 'Could not load SBID Rule (HTTP ' + xhr.status + '). Check console / network tab.';
-                            errEl.classList.remove('d-none');
-                        }
                         // eslint-disable-next-line no-console
                         console.error('[SBID Rule] load failed', xhr.status, xhr.responseText);
                     }
                 });
             }
 
-            // Wait for jQuery + the modal DOM to be ready, then prime the rule.
-            // Using both DOMContentLoaded and a fallback so it works regardless of where the
-            // script tag ends up relative to the modal HTML.
-            function primeOnReady() {
-                if (document.getElementById('sbidRuleModal')) {
-                    loadRule();
-                } else {
-                    document.addEventListener('DOMContentLoaded', loadRule);
-                }
+            if (document.readyState !== 'loading') {
+                loadRule();
+            } else {
+                document.addEventListener('DOMContentLoaded', loadRule);
             }
-            primeOnReady();
-
-            // Reload on every modal open so we always reflect the latest server state.
-            // Using vanilla addEventListener (mirrors /ebay/campaign-ads) — Bootstrap 5 fires
-            // these as native CustomEvents which addEventListener catches reliably.
-            const modalEl = document.getElementById('sbidRuleModal');
-            if (modalEl) {
-                modalEl.addEventListener('show.bs.modal', loadRule);
-            }
-
-            // Track threshold edits in-memory
-            $(document).on('change', '#sbid-l7-threshold-input', function() {
-                currentSbidRule.l7_views_threshold = parseFloat(this.value) || 0;
-            });
-            $(document).on('change', '#sbid-l30-sold-max-input', function() {
-                currentSbidRule.l30_sold_es_bid_max = parseFloat(this.value) || 0;
-            });
-
-            // Save
-            $('#sbid-rule-save-btn').on('click', function() {
-                const errEl = document.getElementById('sbid-rule-err');
-                errEl.classList.add('d-none');
-                const btn = this;
-                btn.disabled = true;
-                btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Saving…';
-
-                const threshold = parseFloat(document.getElementById('sbid-l7-threshold-input').value);
-                const l30SoldMax = parseFloat(document.getElementById('sbid-l30-sold-max-input').value);
-
-                $.ajax({
-                    url: ruleSaveUrl,
-                    method: 'POST',
-                    headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
-                    contentType: 'application/json',
-                    data: JSON.stringify({
-                        bands: currentSbidRule.bands || [],
-                        l7_views_threshold: isFinite(threshold) ? threshold : 70,
-                        l30_sold_es_bid_max: isFinite(l30SoldMax) ? l30SoldMax : 0,
-                    }),
-                    success: function(resp) {
-                        btn.disabled = false;
-                        btn.innerHTML = '<i class="fas fa-check me-1"></i>Saved!';
-                        currentSbidRule = resp.rule || currentSbidRule;
-                        if (table) table.redraw(true);
-                        if (typeof showToast === 'function') showToast('success', 'SBID Rule saved');
-                        setTimeout(() => {
-                            btn.innerHTML = '<i class="fas fa-save me-1"></i>Save Rule';
-                            const modalEl = document.getElementById('sbidRuleModal');
-                            const modal = bootstrap.Modal.getInstance(modalEl);
-                            if (modal) modal.hide();
-                        }, 1000);
-                    },
-                    error: function(xhr) {
-                        btn.disabled = false;
-                        btn.innerHTML = '<i class="fas fa-save me-1"></i>Save Rule';
-                        errEl.textContent = 'Error: ' + ((xhr.responseJSON && xhr.responseJSON.error) || xhr.responseText);
-                        errEl.classList.remove('d-none');
-                    }
-                });
-            });
         })();
 
         // ════════════════════════════════════════════════════════════════════
@@ -6110,9 +5961,6 @@
 
             const METHODS = [
                 { v: 'groi',  label: 'GROI% target' },
-                { v: 'gpft',  label: 'GPFT% target' },
-                { v: 'lmp',   label: 'LMP ±%' },
-                { v: 'fixed', label: 'Fixed $' },
             ];
 
             function numAttr(v) {
@@ -6140,7 +5988,7 @@
                 if (!tbody) return;
                 tbody.innerHTML = '';
                 if (!rules.length) {
-                    tbody.innerHTML = `<tr><td colspan="15" class="text-center text-muted small py-3">
+                    tbody.innerHTML = `<tr><td colspan="9" class="text-center text-muted small py-3">
                         No rules yet — click <strong>Add rule</strong> to create one.</td></tr>`;
                     return;
                 }
@@ -6151,11 +5999,8 @@
                         <td class="text-center text-muted small">${i + 1}</td>
                         <td><input type="text" class="form-control form-control-sm" value="${(rule.label || '').replace(/"/g, '&quot;')}"
                                    data-field="label" onchange="window.spriceRuleUpdate(this)" placeholder="Rule ${i + 1}"></td>
-                        ${rangeInputs(rule, 'dil')}
-                        ${rangeInputs(rule, 'el30')}
                         ${rangeInputs(rule, 'cvr')}
-                        ${rangeInputs(rule, 'groi')}
-                        ${rangeInputs(rule, 'lmp')}
+                        ${rangeInputs(rule, 'dil')}
                         <td><select class="form-select form-select-sm" data-field="method"
                                     onchange="window.spriceRuleUpdate(this)">${methodOptions(rule.method || 'groi')}</select></td>
                         <td><input type="number" step="0.01" class="form-control form-control-sm text-end"
@@ -6188,9 +6033,13 @@
             };
 
             $(document).on('click', '#sprice-add-rule-btn', function() {
+                // Ladder the new slab's CVR Min from the previous slab's CVR Max (+0.01).
+                const prev = currentSpriceRules[currentSpriceRules.length - 1];
+                const prevMax = prev ? parseFloat(prev.cvr_max) : NaN;
+                const nextMin = isFinite(prevMax) ? +(prevMax + 0.01).toFixed(2) : null;
                 currentSpriceRules.push({
                     label: '', dil_min: null, dil_max: null, el30_min: null, el30_max: null,
-                    cvr_min: null, cvr_max: null, groi_min: null, groi_max: null,
+                    cvr_min: nextMin, cvr_max: null, groi_min: null, groi_max: null,
                     lmp_min: null, lmp_max: null, method: 'groi', value: 30
                 });
                 renderSpriceRules(currentSpriceRules);
@@ -6271,11 +6120,9 @@
             }
 
             function ruleMatches(rule, f) {
-                return inRange(f.dil,  rule.dil_min,  rule.dil_max)
-                    && inRange(f.el30, rule.el30_min, rule.el30_max)
-                    && inRange(f.cvr,  rule.cvr_min,  rule.cvr_max)
-                    && inRange(f.groi, rule.groi_min, rule.groi_max)
-                    && inRange(f.lmp,  rule.lmp_min,  rule.lmp_max);
+                // Only CVR and Dil are used as conditions.
+                return inRange(f.cvr, rule.cvr_min, rule.cvr_max)
+                    && inRange(f.dil, rule.dil_min, rule.dil_max);
             }
 
             // Returns { sprice } or { skip:'reason' }.
@@ -6406,6 +6253,214 @@
                 loadSpriceRules();
             } else {
                 document.addEventListener('DOMContentLoaded', loadSpriceRules);
+            }
+        })();
+
+        // ════════════════════════════════════════════════════════════════════
+        // Sbid Rule modal — build multiple rules on CVR / Dil / Esold / Views L30
+        // that decide the S Bid column. Storage: ebay_sbid_rules.key = 'ebay1_sbid_slabs'.
+        // ════════════════════════════════════════════════════════════════════
+        (function() {
+            const getUrl  = @json(url('/ebay-one/sbid-slab-rule'));
+            const saveUrl = @json(url('/ebay-one/sbid-slab-rule'));
+
+            function numAttr(v) {
+                return (v === null || v === undefined || v === '' || isNaN(v)) ? '' : v;
+            }
+
+            function rangeInputs(rule, key) {
+                return `
+                    <td><input type="number" step="0.01" class="form-control form-control-sm text-end"
+                               value="${numAttr(rule[key + '_min'])}" data-field="${key}_min"
+                               onchange="window.sbidSlabUpdate(this)" placeholder="—"></td>
+                    <td><input type="number" step="0.01" class="form-control form-control-sm text-end"
+                               value="${numAttr(rule[key + '_max'])}" data-field="${key}_max"
+                               onchange="window.sbidSlabUpdate(this)" placeholder="—"></td>`;
+            }
+
+            function renderSbidSlabRules(rules) {
+                const tbody = document.getElementById('sbid-slab-rules-body');
+                if (!tbody) return;
+                tbody.innerHTML = '';
+                if (!rules.length) {
+                    tbody.innerHTML = `<tr><td colspan="12" class="text-center text-muted small py-3">
+                        No rules yet — click <strong>Add rule / slab</strong> to create one.</td></tr>`;
+                    return;
+                }
+                rules.forEach(function(rule, i) {
+                    const tr = document.createElement('tr');
+                    tr.setAttribute('data-idx', i);
+                    tr.innerHTML = `
+                        <td class="text-center text-muted small">${i + 1}</td>
+                        <td><input type="text" class="form-control form-control-sm" value="${(rule.label || '').replace(/"/g, '&quot;')}"
+                                   data-field="label" onchange="window.sbidSlabUpdate(this)" placeholder="Rule ${i + 1}"></td>
+                        ${rangeInputs(rule, 'cvr')}
+                        ${rangeInputs(rule, 'dil')}
+                        ${rangeInputs(rule, 'esold')}
+                        ${rangeInputs(rule, 'views')}
+                        <td><input type="number" step="0.1" min="0" class="form-control form-control-sm text-end fw-semibold"
+                                   value="${numAttr(rule.sbid)}" data-field="sbid"
+                                   onchange="window.sbidSlabUpdate(this)"></td>
+                        <td class="text-center">
+                            <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1"
+                                    onclick="window.sbidSlabRemove(${i})" title="Remove rule">&times;</button>
+                        </td>`;
+                    tbody.appendChild(tr);
+                });
+            }
+
+            window.sbidSlabUpdate = function(el) {
+                const tr = el.closest('tr');
+                const idx = parseInt(tr.getAttribute('data-idx'), 10);
+                const field = el.dataset.field;
+                if (!currentSbidSlabRules[idx]) return;
+                if (field === 'label') {
+                    currentSbidSlabRules[idx][field] = el.value;
+                } else {
+                    currentSbidSlabRules[idx][field] = (el.value === '' ? null : parseFloat(el.value));
+                }
+            };
+
+            window.sbidSlabRemove = function(idx) {
+                currentSbidSlabRules.splice(idx, 1);
+                renderSbidSlabRules(currentSbidSlabRules);
+            };
+
+            $(document).on('click', '#sbid-slab-add-rule-btn', function() {
+                currentSbidSlabRules.push({
+                    label: '', cvr_min: null, cvr_max: null, dil_min: null, dil_max: null,
+                    esold_min: null, esold_max: null, views_min: null, views_max: null, sbid: 2.1
+                });
+                renderSbidSlabRules(currentSbidSlabRules);
+            });
+
+            function loadSbidSlabRules() {
+                $.ajax({
+                    url: getUrl,
+                    method: 'GET',
+                    dataType: 'json',
+                    success: function(data) {
+                        currentSbidSlabRules = (data && Array.isArray(data.rules)) ? data.rules : [];
+                        renderSbidSlabRules(currentSbidSlabRules);
+                        if (table) table.redraw(true);
+                    },
+                    error: function(xhr) {
+                        console.error('[Sbid Rule] load failed', xhr.status, xhr.responseText);
+                    }
+                });
+            }
+
+            const sbidModalEl = document.getElementById('sbidRuleModal');
+            if (sbidModalEl) {
+                sbidModalEl.addEventListener('show.bs.modal', function() {
+                    renderSbidSlabRules(currentSbidSlabRules);
+                });
+            }
+
+            $('#sbid-slab-rule-save-btn').on('click', function() {
+                const errEl = document.getElementById('sbid-slab-rule-err');
+                errEl.classList.add('d-none');
+                const btn = this;
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Saving…';
+
+                $.ajax({
+                    url: saveUrl,
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                    contentType: 'application/json',
+                    data: JSON.stringify({ rules: currentSbidSlabRules || [] }),
+                    success: function(resp) {
+                        btn.disabled = false;
+                        btn.innerHTML = '<i class="fas fa-check me-1"></i>Saved!';
+                        if (resp.rule && Array.isArray(resp.rule.rules)) currentSbidSlabRules = resp.rule.rules;
+                        if (table) table.redraw(true);
+                        if (typeof showToast === 'function') showToast('success', 'Sbid Rule saved');
+                        setTimeout(() => { btn.innerHTML = '<i class="fas fa-save me-1"></i>Save Rule'; }, 1200);
+                    },
+                    error: function(xhr) {
+                        btn.disabled = false;
+                        btn.innerHTML = '<i class="fas fa-save me-1"></i>Save Rule';
+                        errEl.textContent = 'Error: ' + ((xhr.responseJSON && xhr.responseJSON.error) || xhr.responseText);
+                        errEl.classList.remove('d-none');
+                    }
+                });
+            });
+
+            // Apply to Visible Rows — push each visible row's computed S Bid to eBay.
+            const applyUrl = @json(url('/ebay/campaign-ads/push-sbid-slabs'));
+            $('#sbid-slab-apply-btn').on('click', function() {
+                const btn = this;
+                const statusEl = document.getElementById('sbid-slab-rule-status');
+                const errEl = document.getElementById('sbid-slab-rule-err');
+                errEl.classList.add('d-none');
+
+                if (!currentSbidSlabRules.length) {
+                    errEl.textContent = 'Add at least one rule before applying.';
+                    errEl.classList.remove('d-none');
+                    return;
+                }
+                if (typeof table === 'undefined' || !table) {
+                    errEl.textContent = 'Table not ready yet.';
+                    errEl.classList.remove('d-none');
+                    return;
+                }
+
+                // Collect visible (filtered) rows whose factors match a slab with S Bid > 0.
+                const rows = table.getRows('active');
+                const skus = [];
+                rows.forEach(function(r) {
+                    const rd = r.getData();
+                    const sku = rd['(Child) sku'];
+                    if (!sku) return;
+                    if (rd.is_parent_summary || rd.is_parent_row) return;
+                    if (rd.Parent && String(rd.Parent).toUpperCase().startsWith('PARENT')) return;
+                    const res = getCombinedSbid(rd);
+                    if (res && !res.skip && res.bid > 0) skus.push(sku);
+                });
+
+                if (!skus.length) {
+                    errEl.textContent = 'No visible rows match a slab with a valid S Bid.';
+                    errEl.classList.remove('d-none');
+                    return;
+                }
+
+                if (!confirm(`Push S Bid to eBay for ${skus.length} visible SKU(s)?`)) return;
+
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Applying…';
+                if (statusEl) statusEl.textContent = `Pushing ${skus.length} SKU(s)…`;
+
+                $.ajax({
+                    url: applyUrl,
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                    contentType: 'application/json',
+                    data: JSON.stringify({ skus: skus }),
+                    success: function(resp) {
+                        btn.disabled = false;
+                        btn.innerHTML = '<i class="fas fa-bolt me-1"></i>Apply to Visible Rows';
+                        const s = resp.success || 0, f = resp.failed || 0, sk = resp.skipped || 0;
+                        if (statusEl) statusEl.textContent = `Pushed: ${s} · Failed: ${f} · Skipped: ${sk}`;
+                        if (typeof showToast === 'function') {
+                            if (f === 0) showToast('success', `S Bid pushed to eBay for ${s} SKU(s)`);
+                            else showToast('error', `Pushed ${s}, ${f} failed, ${sk} skipped`);
+                        }
+                    },
+                    error: function(xhr) {
+                        btn.disabled = false;
+                        btn.innerHTML = '<i class="fas fa-bolt me-1"></i>Apply to Visible Rows';
+                        errEl.textContent = 'Error: ' + ((xhr.responseJSON && xhr.responseJSON.error) || xhr.responseText);
+                        errEl.classList.remove('d-none');
+                    }
+                });
+            });
+
+            // Prime on init so the S Bid column resolves immediately.
+            if (document.readyState !== 'loading') {
+                loadSbidSlabRules();
+            } else {
+                document.addEventListener('DOMContentLoaded', loadSbidSlabRules);
             }
         })();
 

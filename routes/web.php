@@ -4482,6 +4482,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/ebay-one/save-sprice', [EbayController::class, 'saveSpriceToDatabase'])->name('ebay-one.save-sprice');
     Route::get('/ebay-one/sprice-rule', [EbayController::class, 'getSpriceRule'])->name('ebay-one.sprice-rule.get');
     Route::post('/ebay-one/sprice-rule', [EbayController::class, 'saveSpriceRule'])->name('ebay-one.sprice-rule.save');
+    Route::get('/ebay-one/sbid-slab-rule', [EbayController::class, 'getSbidSlabRule'])->name('ebay-one.sbid-slab-rule.get');
+    Route::post('/ebay-one/sbid-slab-rule', [EbayController::class, 'saveSbidSlabRule'])->name('ebay-one.sbid-slab-rule.save');
     Route::post('/ebay-clear-sprice', [EbayController::class, 'clearEbaySprice']);
     Route::post('/ebay/save-sprice', [EbayTwoController::class, 'saveSpriceToDatabase'])->name('ebay.save-sprice');
 
@@ -5382,6 +5384,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/ebay/campaign-ads/dil-rule', 'getDilRule')->name('ebay.campaign.ads.dil.rule');
         Route::post('/ebay/campaign-ads/dil-rule', 'saveDilRule')->name('ebay.campaign.ads.dil.rule.save');
         Route::post('/ebay/campaign-ads/push-sbid', 'pushSbid')->name('ebay.campaign.ads.push.sbid');
+        Route::post('/ebay/campaign-ads/push-sbid-slabs', 'pushSbidSlabsBySku')->name('ebay.campaign.ads.push.sbid.slabs');
         Route::post('/ebay/campaign-ads/push-selected', 'pushSelected')->name('ebay.campaign.ads.push.selected');
         Route::get('/ebay/campaign-ads/campaigns', 'getCampaignList')->name('ebay.campaign.ads.campaigns');
         Route::post('/ebay/campaign-ads/enroll', 'enrollInCampaign')->name('ebay.campaign.ads.enroll');

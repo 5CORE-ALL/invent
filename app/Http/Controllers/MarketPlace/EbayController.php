@@ -170,6 +170,55 @@ class EbayController extends Controller
         return ['rules' => []];
     }
 
+    /**
+     * SBID Rule (slab builder) — a list of rules that decide the S Bid column on
+     * /ebay-tabulator-view. Each rule is a set of min/max ranges on four factors
+     * (CVR, Dil, Esold, Views L30) plus the S Bid to apply. Rules are evaluated
+     * top to bottom — the first rule whose ranges all match a row wins.
+     *
+     * Stored (shared across users) under key `ebay1_sbid_slabs` in ebay_sbid_rules.
+     */
+    public function getSbidSlabRule()
+    {
+        $row = DB::table('ebay_sbid_rules')->where('key', 'ebay1_sbid_slabs')->first();
+        return response()->json($row ? json_decode($row->rule, true) : ['rules' => []]);
+    }
+
+    public function saveSbidSlabRule(Request $request)
+    {
+        $rules = $request->input('rules', []);
+
+        if (!is_array($rules)) {
+            return response()->json(['error' => 'Invalid rule data'], 422);
+        }
+
+        $clean = [];
+        foreach ($rules as $r) {
+            if (!is_array($r)) continue;
+            $clean[] = [
+                'label'      => isset($r['label']) ? (string) $r['label'] : '',
+                'cvr_min'    => $this->numOrNull($r['cvr_min']    ?? null),
+                'cvr_max'    => $this->numOrNull($r['cvr_max']    ?? null),
+                'dil_min'    => $this->numOrNull($r['dil_min']    ?? null),
+                'dil_max'    => $this->numOrNull($r['dil_max']    ?? null),
+                'esold_min'  => $this->numOrNull($r['esold_min']  ?? null),
+                'esold_max'  => $this->numOrNull($r['esold_max']  ?? null),
+                'views_min'  => $this->numOrNull($r['views_min']  ?? null),
+                'views_max'  => $this->numOrNull($r['views_max']  ?? null),
+                'sbid'       => $this->numOrNull($r['sbid'] ?? null) ?? 0,
+            ];
+        }
+
+        $rule = ['rules' => $clean];
+
+        DB::table('ebay_sbid_rules')->updateOrInsert(
+            ['key' => 'ebay1_sbid_slabs'],
+            ['rule' => json_encode($rule), 'updated_at' => now()]
+        );
+
+        return response()->json(['success' => true, 'rule' => $rule]);
+    }
+
        public function ebayViewData(Request $request)
     {
         return view("market-places.ebay_pricing_data");

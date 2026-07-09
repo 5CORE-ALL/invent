@@ -429,6 +429,9 @@
                         <span class="badge fs-6 p-2 badge-chart-link" data-metric="ads_pct" style="background-color: #6610f2; color: white; font-weight: bold; cursor:pointer;" title="Average TACOS % = Total Ad Spend / Total L30 Sales × 100">
                             TACOS: <span id="avg-ads-percent">0%</span>
                         </span>
+                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="ads_pct" style="background-color: #d63384; color: white; font-weight: bold; cursor:pointer;" title="Ads % = Total Ad Spend / Total L30 Sales × 100 (blended across channels — same as the Ads % column)">
+                            Ads: <span id="ads-percent-badge">0%</span>
+                        </span>
                         <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="total_views" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">
                             views: <span id="total-views-badge">0</span>
                         </span>
@@ -3624,6 +3627,7 @@
                 $('#avg-groi').text(Math.round(avgGroi) + '%');
                 $('#total-ad-spend').text('$' + Math.round(totalAdSpend).toLocaleString('en-US'));
                 $('#avg-ads-percent').text(avgAdsPercent.toFixed(1) + '%');
+                $('#ads-percent-badge').text(avgAdsPercent.toFixed(1) + '%');
                 $('#total-views-badge').text(Math.round(totalViews).toLocaleString('en-US'));
                 // Listing CVR (overall): Σ Qty / Σ Total Views — units-based to match the per-channel
                 // /temu-decrease badge (qty / views), not ad conversion; see badge title.
