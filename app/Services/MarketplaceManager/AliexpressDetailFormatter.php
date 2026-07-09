@@ -244,8 +244,8 @@ class AliexpressDetailFormatter
         if ($customerPaid !== null) {
             $noteLines[] = sprintf('Customer paid: %s %.2f', $currency, $customerPaid);
         }
-        if (isset($funds['amount_paid'])) {
-            $noteLines[] = sprintf('Seller amount paid: %s %.2f', $currency, (float) $funds['amount_paid']);
+        if (isset($funds['seller_amount_paid'])) {
+            $noteLines[] = sprintf('Seller amount paid: %s %.2f', $currency, (float) $funds['seller_amount_paid']);
         }
         foreach ([
             'Platform commission' => $funds['platform_commission'] ?? null,
@@ -286,7 +286,7 @@ class AliexpressDetailFormatter
             'aliexpress_platform_offer' => isset($funds['platform_offer']) ? number_format((float) $funds['platform_offer'], 2, '.', '') : null,
             'aliexpress_order_amount' => isset($funds['order_amount']) ? number_format((float) $funds['order_amount'], 2, '.', '') : null,
             'aliexpress_customer_paid' => $customerPaid !== null ? number_format($customerPaid, 2, '.', '') : null,
-            'aliexpress_seller_amount_paid' => isset($funds['amount_paid']) ? number_format((float) $funds['amount_paid'], 2, '.', '') : null,
+            'aliexpress_seller_amount_paid' => isset($funds['seller_amount_paid']) ? number_format((float) $funds['seller_amount_paid'], 2, '.', '') : null,
             'aliexpress_platform_commission' => isset($funds['platform_commission']) ? number_format((float) $funds['platform_commission'], 2, '.', '') : null,
             'aliexpress_transaction_service_fee' => isset($funds['transaction_service_fee']) ? number_format((float) $funds['transaction_service_fee'], 2, '.', '') : null,
             'aliexpress_platform_offer_tax' => isset($funds['platform_offer_tax']) ? number_format((float) $funds['platform_offer_tax'], 2, '.', '') : null,
@@ -682,7 +682,8 @@ class AliexpressDetailFormatter
             'transaction_service_fee' => $transactionFee,
             'platform_offer_tax' => $platformTax,
             'customer_total_paid' => $customerTotalPaid,
-            'amount_paid' => $sellerAmountPaid,
+            'amount_paid' => $customerTotalPaid,
+            'seller_amount_paid' => $sellerAmountPaid,
             'currency' => $this->moneyCurrency($order['order_amount'] ?? $order['pay_amount'] ?? null)
                 ?? $this->str($order['settlement_currency'] ?? null),
         ];

@@ -108,7 +108,8 @@
                     'Cashback paid by seller' => isset($funds['cashback_paid_by_seller']) ? $fmt($funds['cashback_paid_by_seller']) : null,
                     'Transaction service fee' => isset($funds['transaction_service_fee']) ? $fmt($funds['transaction_service_fee']) : null,
                     'Platform offer tax' => isset($funds['platform_offer_tax']) ? $fmt($funds['platform_offer_tax']) : null,
-                    'Amount paid' => isset($funds['amount_paid']) ? $fmt($funds['amount_paid']) : null,
+                    'Amount paid' => isset($funds['amount_paid']) ? $fmt($funds['amount_paid']) : (isset($funds['customer_total_paid']) ? $fmt($funds['customer_total_paid']) : null),
+                    'Seller amount paid' => isset($funds['seller_amount_paid']) ? $fmt($funds['seller_amount_paid']) : null,
                 ]])
             </div>
         </div>
