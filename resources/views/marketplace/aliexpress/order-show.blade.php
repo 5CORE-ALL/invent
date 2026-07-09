@@ -100,6 +100,8 @@
                     'Shipping cost' => isset($funds['shipping_cost']) ? $fmt($funds['shipping_cost']) : null,
                     'Adjustment' => isset($funds['adjustment']) ? $fmt($funds['adjustment']) : null,
                     'Store promotion' => isset($funds['store_promotion']) ? $fmt($funds['store_promotion']) : null,
+                    'Platform promotion' => isset($funds['platform_promotion']) ? $fmt($funds['platform_promotion']) : null,
+                    'Platform offer' => isset($funds['platform_offer']) ? $fmt($funds['platform_offer']) : null,
                     'Order amount' => isset($funds['order_amount']) ? $fmt($funds['order_amount']) : null,
                     'Platform commission' => isset($funds['platform_commission']) ? $fmt($funds['platform_commission']) : null,
                     'Affiliate commission' => isset($funds['affiliate_commission']) ? $fmt($funds['affiliate_commission']) : null,
