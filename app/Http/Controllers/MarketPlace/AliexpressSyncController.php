@@ -238,13 +238,21 @@ class AliexpressSyncController extends Controller
 
         $aeLive = null;
         $aeLiveError = null;
-        if ($linked && $metric?->product_id && $this->apiConfig->isConfigured('aliexpress')) {
-            $info = $this->aliExpressApi->getProductInfo((string) $metric->product_id);
+        $aeDataSource = 'none';
+        $productId = $metric?->product_id ? (string) $metric->product_id : null;
+        $canFetchAe = $productId && $productId !== (string) $metric?->sku && $this->apiConfig->isConfigured('aliexpress');
+
+        if ($canFetchAe) {
+            $info = $this->aliExpressApi->getProductInfo($productId);
             if (! empty($info['success'])) {
                 $aeLive = $info['data'] ?? null;
+                $aeDataSource = 'api';
             } else {
                 $aeLiveError = $info['message'] ?? 'Could not load live AliExpress product details.';
+                $aeDataSource = 'cached';
             }
+        } elseif ($metric?->product_id) {
+            $aeDataSource = 'cached';
         }
 
         $aeSkuRows = [];
@@ -267,11 +275,65 @@ class AliexpressSyncController extends Controller
 
         return view('marketplace.aliexpress.product-show', [
             'title' => 'AliExpress Listing — '.$sku,
+            'shopifySkuId' => $shopifySkuId,
             'linked' => $linked,
             'displayTitle' => $title,
             'detail' => $detail,
             'aeLiveError' => $aeLiveError,
+            'aeDataSource' => $aeDataSource,
             'connected' => $this->apiConfig->isConfigured('aliexpress'),
+        ]);
+    }
+
+    public function pullProductFromAliexpress(int $shopifySkuId): JsonResponse
+    {
+        if (! $this->apiConfig->isConfigured('aliexpress')) {
+            return response()->json(['success' => false, 'message' => 'AliExpress not connected.']);
+        }
+
+        $shopifyRow = ShopifySku::query()->findOrFail($shopifySkuId);
+        $sku = (string) $shopifyRow->sku;
+        $metric = $this->aliexpressMetricMapForSkus([$sku])[$sku] ?? null;
+
+        if (! $metric?->product_id || (string) $metric->product_id === (string) $metric->sku) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No AliExpress product_id mapped for this SKU. Run Sync AE link map on Listings first.',
+            ]);
+        }
+
+        $info = $this->aliExpressApi->getProductInfo((string) $metric->product_id);
+        if (empty($info['success'])) {
+            return response()->json([
+                'success' => false,
+                'message' => $info['message'] ?? 'Failed to pull product details from AliExpress.',
+            ]);
+        }
+
+        $aeData = is_array($info['data'] ?? null) ? $info['data'] : [];
+        $rows = $this->aliExpressApi->extractSkuRowsFromProductInfo(
+            $aeData,
+            (string) $metric->product_id,
+            $metric->product_name
+        );
+        $matched = collect($rows)->first(function ($row) use ($sku) {
+            return ShopifySku::normalizeSkuForShopifyLookup((string) ($row['sku'] ?? ''))
+                === ShopifySku::normalizeSkuForShopifyLookup($sku);
+        }) ?? ($rows[0] ?? null);
+
+        $metric->update([
+            'product_name' => trim((string) (
+                $aeData['subject']
+                ?? $aeData['product_name']
+                ?? $metric->product_name
+                ?? ''
+            )) ?: $metric->product_name,
+            'price' => $matched['price'] ?? $metric->price,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Pulled latest AliExpress details for '.$sku.'. Nothing was pushed to Shopify or AliExpress.',
         ]);
     }
 

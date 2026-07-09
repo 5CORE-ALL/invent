@@ -59,6 +59,16 @@ class MarketplaceController extends Controller
         abort(404, 'Product detail not available for this marketplace');
     }
 
+    public function pullProduct(Request $request, string $marketplace, int $shopifySku): JsonResponse
+    {
+        $marketplace = strtolower($marketplace);
+        if ($marketplace !== 'aliexpress') {
+            return response()->json(['success' => false, 'message' => 'Not supported for this marketplace.'], 404);
+        }
+
+        return app(AliexpressSyncController::class)->pullProductFromAliexpress($shopifySku);
+    }
+
     public function orders(Request $request, string $marketplace): View
     {
         $marketplace = strtolower($marketplace);

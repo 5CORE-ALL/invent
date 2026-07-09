@@ -548,6 +548,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::prefix('marketplace/{marketplace}')->where(['marketplace' => 'reverb|amazon|ebay|walmart|topdawg|aliexpress'])->group(function () {
         Route::get('/products', [\App\Http\Controllers\MarketplaceController::class, 'products'])->name('marketplace.products');
         Route::get('/products/{shopifySku}', [\App\Http\Controllers\MarketplaceController::class, 'showProduct'])->name('marketplace.products.show')->whereNumber('shopifySku');
+        Route::post('/products/{shopifySku}/pull', [\App\Http\Controllers\MarketplaceController::class, 'pullProduct'])->name('marketplace.products.pull')->whereNumber('shopifySku');
         Route::get('/orders', [\App\Http\Controllers\MarketplaceController::class, 'orders'])->name('marketplace.orders');
         Route::get('/orders/{order}', [\App\Http\Controllers\MarketplaceController::class, 'showOrder'])->name('marketplace.orders.show')->whereNumber('order');
         Route::get('/settings', [\App\Http\Controllers\MarketplaceController::class, 'settings'])->name('marketplace.settings');
