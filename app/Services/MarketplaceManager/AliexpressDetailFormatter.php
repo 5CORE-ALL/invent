@@ -1110,8 +1110,8 @@ class AliexpressDetailFormatter
     protected function resolveOrderLineImage(array $product, ?AliexpressOrderMetric $db = null): ?string
     {
         foreach ([
-            $product['product_img_url'] ?? null,
             $product['snapshot_small_photo_path'] ?? null,
+            $product['product_img_url'] ?? null,
             $product['product_image'] ?? null,
             $product['sku_image'] ?? null,
             $product['image_url'] ?? null,
@@ -1144,21 +1144,50 @@ class AliexpressDetailFormatter
             return null;
         }
 
-        if (preg_match_all('#https?://[^\s"\'<>]+#i', $url, $matches) && count($matches[0]) > 1) {
+        // Shopify / other non-AE CDNs — keep as-is.
+        if (preg_match('#^https?://#i', $url)
+            && ! str_contains($url, 'alicdn.com')
+            && ! str_contains($url, 'aliexpress-media.com')
+            && ! str_contains($url, 'aliexpress.com')) {
+            return filter_var($url, FILTER_VALIDATE_URL) ? $url : null;
+        }
+
+        $filename = $this->extractOrderImageFilename($url);
+        if ($filename) {
+            return $this->buildAliexpressMediaImageUrl($filename);
+        }
+
+        if (preg_match_all('#https?://[^\s"\'<>]+#i', $url, $matches) && $matches[0] !== []) {
             $url = (string) end($matches[0]);
+            $filename = $this->extractOrderImageFilename($url);
+            if ($filename) {
+                return $this->buildAliexpressMediaImageUrl($filename);
+            }
         }
 
         if (str_starts_with($url, '//')) {
             $url = 'https:'.$url;
-        } elseif (! preg_match('#^https?://#i', $url)) {
-            if (str_contains($url, 'alicdn.com/')) {
-                $url = 'https://'.ltrim($url, '/');
-            } elseif (preg_match('#\.(jpg|jpeg|png|gif|webp)(\?.*)?$#i', $url)) {
-                $url = 'https://ae01.alicdn.com/kf/'.ltrim($url, '/');
-            }
         }
 
         return filter_var($url, FILTER_VALIDATE_URL) ? $url : null;
+    }
+
+    protected function extractOrderImageFilename(string $url): ?string
+    {
+        if (preg_match('#/([^/?#]+\.(?:jpg|jpeg|png|gif|webp))(?:\?.*)?$#i', $url, $matches)) {
+            return $matches[1];
+        }
+
+        if (preg_match('#^[^/]+\.(?:jpg|jpeg|png|gif|webp)$#i', $url)) {
+            return $url;
+        }
+
+        return null;
+    }
+
+    protected function buildAliexpressMediaImageUrl(string $filename): string
+    {
+        return 'https://ae-pic-a1.aliexpress-media.com/kf/'.ltrim($filename, '/');
     }
 
     protected function extractImageFromProductAttributes(mixed $raw): ?string
@@ -1179,10 +1208,6 @@ class AliexpressDetailFormatter
                 continue;
             }
             $img = trim($img);
-            if (! str_contains($img, '://') && ! str_starts_with($img, '//')) {
-                $img = 'https://ae01.alicdn.com/kf/'.ltrim($img, '/');
-            }
-
             $normalized = $this->normalizeOrderImageUrl($img);
             if ($normalized) {
                 return $normalized;
