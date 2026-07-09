@@ -1,0 +1,570 @@
+<?php
+
+namespace App\Services\MarketplaceManager;
+
+use App\Models\AliexpressMetric;
+use App\Models\AliexpressOrderMetric;
+use App\Models\ShopifySku;
+use Illuminate\Support\Collection;
+
+class AliexpressDetailFormatter
+{
+    /**
+     * @param  array<string, mixed>|null  $aeLive
+     * @param  array<int, array<string, mixed>>  $aeSkuRows
+     * @return array<string, mixed>
+     */
+    public function formatProduct(?array $aeLive, ?AliexpressMetric $metric, ShopifySku $shopify, array $aeSkuRows = []): array
+    {
+        $ae = $this->arr($aeLive);
+        $shopifyQty = $shopify->available_to_sell ?? $shopify->inv ?? $shopify->on_hand ?? null;
+        $shopifyPrice = $shopify->b2c_price ?? $shopify->price ?? null;
+
+        $images = $this->extractProductImages($ae, $aeSkuRows, $shopify->image_src);
+        $descriptions = $this->extractProductDescriptions($ae);
+        $variants = $this->formatProductVariants($ae, $aeSkuRows);
+        $properties = $this->extractProductProperties($ae);
+
+        return [
+            'shopify' => [
+                'sku' => $shopify->sku,
+                'product_title' => $shopify->product_title,
+                'variant_title' => $shopify->variant_title,
+                'variant_id' => $shopify->variant_id,
+                'product_link' => $shopify->product_link,
+                'image' => $shopify->image_src,
+                'available_to_sell' => $shopifyQty,
+                'on_hand' => $shopify->on_hand,
+                'committed' => $shopify->committed,
+                'incoming' => $shopify->incoming,
+                'unavailable' => $shopify->unavailable,
+                'b2c_price' => $shopifyPrice,
+                'b2b_price' => $shopify->b2b_price,
+                'price' => $shopify->price,
+                'shopify_l30' => $shopify->shopify_l30,
+            ],
+            'link' => [
+                'product_id' => $metric?->product_id,
+                'title' => $metric?->product_name,
+                'price' => $metric?->price,
+                'l30' => $metric?->l30,
+                'l60' => $metric?->l60,
+                'last_order_date' => $metric?->last_order_date,
+                'bullet_points' => $metric?->bullet_points,
+            ],
+            'aliexpress' => [
+                'product_id' => $this->str($ae['product_id'] ?? $metric?->product_id),
+                'title' => $this->extractProductTitle($ae) ?? $metric?->product_name,
+                'status' => $this->str($ae['product_status_type'] ?? $ae['status'] ?? $ae['product_status'] ?? null),
+                'category_id' => $this->str($ae['category_id'] ?? $ae['categoryId'] ?? null),
+                'currency' => $this->str($ae['currency_code'] ?? $ae['currency'] ?? null),
+                'unit' => $this->str($ae['product_unit'] ?? null),
+                'package_type' => $this->str($ae['package_type'] ?? null),
+                'bulk_order' => $ae['bulk_order'] ?? null,
+                'bulk_discount' => $ae['bulk_discount'] ?? null,
+                'freight_template_id' => $this->str($ae['freight_template_id'] ?? null),
+                'gmt_create' => $this->str($ae['gmt_create'] ?? $ae['create_time'] ?? null),
+                'gmt_modified' => $this->str($ae['gmt_modified'] ?? $ae['modified_time'] ?? null),
+                'min_price' => $this->money($ae['product_min_price'] ?? null),
+                'max_price' => $this->money($ae['product_max_price'] ?? null),
+                'images' => $images,
+                'main_image' => $images[0] ?? null,
+                'descriptions' => $descriptions,
+                'variants' => $variants,
+                'properties' => $properties,
+                'subjects' => $this->extractMultiLanguageSubjects($ae),
+            ],
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $orderRoot
+     * @param  Collection<int, AliexpressOrderMetric>  $lines
+     * @return array<string, mixed>
+     */
+    public function formatOrder(array $orderRoot, Collection $lines, AliexpressOrderMetric $primaryLine): array
+    {
+        $order = $this->arr($orderRoot);
+        $buyer = $this->arr($order['buyer_info'] ?? []);
+        $addr = $this->arr($order['receipt_address'] ?? []);
+        $amounts = $this->extractOrderAmounts($order, $lines);
+        $logistics = $this->extractLogisticsList($order);
+        $apiLines = $this->extractRichOrderLines($order, $lines);
+
+        return [
+            'summary' => [
+                'order_id' => (string) ($order['order_id'] ?? $order['id'] ?? $primaryLine->order_id),
+                'order_number' => $order['order_number'] ?? $primaryLine->order_number ?? null,
+                'status' => $order['order_status'] ?? $order['status'] ?? $primaryLine->status,
+                'buyer_remark' => $order['buyer_remark'] ?? $order['memo'] ?? null,
+                'seller_remark' => $order['seller_remark'] ?? null,
+                'created' => $order['gmt_create'] ?? $order['create_time'] ?? $primaryLine->order_date,
+                'paid' => $order['gmt_pay_time'] ?? $order['pay_time'] ?? null,
+                'sent' => $order['gmt_send_goods_time'] ?? null,
+                'finished' => $order['gmt_receive_goods_time'] ?? $order['end_time'] ?? null,
+                'modified' => $order['gmt_modified'] ?? null,
+            ],
+            'amounts' => $amounts,
+            'buyer' => [
+                'name' => $buyer['first_name'] ?? $addr['contact_person'] ?? $order['buyer_signer_fullname'] ?? null,
+                'last_name' => $buyer['last_name'] ?? null,
+                'login_id' => $buyer['login_id'] ?? $order['buyer_login_id'] ?? null,
+                'email' => $buyer['email'] ?? $addr['email'] ?? null,
+                'phone' => $addr['mobile_no'] ?? $addr['phone_number'] ?? $addr['phone'] ?? null,
+                'country' => $buyer['country'] ?? $addr['country'] ?? null,
+            ],
+            'shipping' => [
+                'recipient' => $addr['contact_person'] ?? $addr['receiver'] ?? null,
+                'address_line_1' => $addr['address'] ?? $addr['detail_address'] ?? null,
+                'address_line_2' => $addr['address2'] ?? null,
+                'city' => $addr['city'] ?? null,
+                'province' => $addr['province'] ?? $addr['state'] ?? null,
+                'zip' => $addr['zip'] ?? $addr['zip_code'] ?? null,
+                'country' => $addr['country'] ?? null,
+                'full_address' => $this->joinAddress($addr),
+            ],
+            'logistics' => $logistics,
+            'line_items' => $apiLines,
+            'shopify' => [
+                'shopify_order_id' => $primaryLine->shopify_order_id,
+                'import_status' => $primaryLine->import_status,
+                'pushed_to_shopify_at' => $primaryLine->pushed_to_shopify_at,
+            ],
+            'payment' => [
+                'method' => $order['payment_type'] ?? $order['pay_type'] ?? null,
+                'currency' => $this->moneyCurrency($order['order_amount'] ?? $order['pay_amount'] ?? null),
+            ],
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $ae
+     * @param  array<int, array<string, mixed>>  $aeSkuRows
+     * @return array<int, string>
+     */
+    protected function extractProductImages(array $ae, array $aeSkuRows, ?string $shopifyImage = null): array
+    {
+        $urls = [];
+
+        foreach ([
+            $ae['main_image_url'] ?? null,
+            $ae['product_main_image'] ?? null,
+            $ae['image_url'] ?? null,
+        ] as $url) {
+            $urls = array_merge($urls, $this->splitImageUrls($url));
+        }
+
+        $urls = array_merge($urls, $this->splitImageUrls($ae['image_u_r_ls'] ?? $ae['image_urls'] ?? null));
+
+        foreach (['aeop_a_e_product_propertys', 'aeop_ae_product_propertys', 'product_properties'] as $key) {
+            foreach ($this->list($ae[$key] ?? []) as $prop) {
+                $prop = $this->arr($prop);
+                if (($prop['attr_name'] ?? '') === 'image' || isset($prop['attr_value'])) {
+                    $urls = array_merge($urls, $this->splitImageUrls($prop['attr_value'] ?? $prop['attr_value_id'] ?? null));
+                }
+            }
+        }
+
+        foreach ($aeSkuRows as $row) {
+            $urls = array_merge($urls, $this->splitImageUrls($row['image'] ?? $row['sku_image'] ?? null));
+        }
+
+        if ($shopifyImage) {
+            $urls[] = $shopifyImage;
+        }
+
+        return array_values(array_unique(array_filter($urls)));
+    }
+
+    /**
+     * @param  array<string, mixed>  $ae
+     * @return array<int, array{language: ?string, web: ?string, mobile: ?string}>
+     */
+    protected function extractProductDescriptions(array $ae): array
+    {
+        $out = [];
+
+        foreach ($this->list($ae['multi_language_description_list'] ?? $ae['aeop_a_e_product_description'] ?? []) as $desc) {
+            $desc = $this->arr($desc);
+            $out[] = [
+                'language' => $this->str($desc['language'] ?? $desc['locale'] ?? null),
+                'web' => $this->cleanHtml($desc['web_detail'] ?? $desc['detail'] ?? $desc['description'] ?? null),
+                'mobile' => $this->cleanHtml($desc['mobile_detail'] ?? $desc['mobile_desc'] ?? null),
+            ];
+        }
+
+        foreach (['detail', 'mobile_detail', 'product_description'] as $key) {
+            if (! empty($ae[$key]) && is_string($ae[$key])) {
+                $out[] = [
+                    'language' => null,
+                    'web' => $this->cleanHtml($ae[$key]),
+                    'mobile' => null,
+                ];
+            }
+        }
+
+        return array_values(array_filter($out, fn ($d) => ($d['web'] ?? '') !== '' || ($d['mobile'] ?? '') !== ''));
+    }
+
+    /**
+     * @param  array<string, mixed>  $ae
+     * @param  array<int, array<string, mixed>>  $aeSkuRows
+     * @return array<int, array<string, mixed>>
+     */
+    protected function formatProductVariants(array $ae, array $aeSkuRows): array
+    {
+        $variants = [];
+
+        $skuList = $this->list(
+            $ae['aeop_a_e_product_sku_list']
+            ?? $ae['aeop_ae_product_sku_list']
+            ?? $ae['aeop_a_e_product_s_k_u_list']
+            ?? []
+        );
+
+        if ($skuList !== []) {
+            foreach ($skuList as $skuRow) {
+                $skuRow = $this->arr($skuRow);
+                $variants[] = [
+                    'sku' => $this->str($skuRow['sku_code'] ?? $skuRow['sku'] ?? null),
+                    'price' => $this->money($skuRow['sku_price'] ?? $skuRow['price'] ?? null),
+                    'stock' => $skuRow['ipm_sku_stock'] ?? $skuRow['sku_stock'] ?? $skuRow['stock'] ?? null,
+                    'image' => $this->str($skuRow['sku_image'] ?? $skuRow['image'] ?? null),
+                    'ean' => $this->str($skuRow['ean_code'] ?? $skuRow['barcode'] ?? null),
+                    'properties' => $this->formatSkuProperties($skuRow),
+                ];
+            }
+        }
+
+        if ($variants === [] && $aeSkuRows !== []) {
+            foreach ($aeSkuRows as $row) {
+                $variants[] = [
+                    'sku' => $this->str($row['sku'] ?? null),
+                    'price' => $this->money($row['price'] ?? null),
+                    'stock' => $row['stock'] ?? null,
+                    'image' => null,
+                    'ean' => null,
+                    'properties' => [],
+                ];
+            }
+        }
+
+        return $variants;
+    }
+
+    /**
+     * @param  array<string, mixed>  $ae
+     * @return array<int, array{name: string, value: string}>
+     */
+    protected function extractProductProperties(array $ae): array
+    {
+        $out = [];
+        foreach (['aeop_a_e_product_propertys', 'aeop_ae_product_propertys', 'product_properties'] as $key) {
+            foreach ($this->list($ae[$key] ?? []) as $prop) {
+                $prop = $this->arr($prop);
+                $name = $this->str($prop['attr_name'] ?? $prop['name'] ?? null);
+                $value = $this->str($prop['attr_value'] ?? $prop['value'] ?? $prop['attr_value_id'] ?? null);
+                if ($name && $value && strtolower($name) !== 'image') {
+                    $out[] = ['name' => $name, 'value' => $value];
+                }
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<string, mixed>  $ae
+     * @return array<int, array{language: ?string, subject: ?string}>
+     */
+    protected function extractMultiLanguageSubjects(array $ae): array
+    {
+        $out = [];
+        foreach ($this->list($ae['multi_language_subject_list'] ?? []) as $row) {
+            $row = $this->arr($row);
+            $out[] = [
+                'language' => $this->str($row['language'] ?? $row['locale'] ?? null),
+                'subject' => $this->str($row['subject'] ?? $row['title'] ?? null),
+            ];
+        }
+
+        return array_values(array_filter($out, fn ($r) => ($r['subject'] ?? '') !== ''));
+    }
+
+    /**
+     * @param  array<string, mixed>  $order
+     * @param  Collection<int, AliexpressOrderMetric>  $lines
+     * @return array<string, mixed>
+     */
+    protected function extractOrderAmounts(array $order, Collection $lines): array
+    {
+        return [
+            'order_total' => $this->money($order['order_amount'] ?? $order['total_amount'] ?? null)
+                ?? $this->sumLineTotals($lines),
+            'pay_amount' => $this->money($order['pay_amount'] ?? null),
+            'shipping_cost' => $this->money($order['logistics_amount'] ?? $order['shipping_cost'] ?? null),
+            'discount' => $this->money($order['discount_amount'] ?? $order['promotion_amount'] ?? null),
+            'tax' => $this->money($order['tax_amount'] ?? null),
+            'currency' => $this->moneyCurrency($order['order_amount'] ?? $order['pay_amount'] ?? null),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $order
+     * @return array<int, array<string, mixed>>
+     */
+    protected function extractLogisticsList(array $order): array
+    {
+        $out = [];
+        $list = $this->list(
+            $order['logistics_info_list']['aeop_tp_logistics_info_dto']
+            ?? $order['logistics_info_list']
+            ?? $order['child_order_list']
+            ?? []
+        );
+
+        foreach ($list as $row) {
+            $row = $this->arr($row);
+            $out[] = [
+                'service' => $this->str($row['logistics_service_name'] ?? $row['logistics_type'] ?? null),
+                'tracking' => $this->str($row['logistics_no'] ?? $row['tracking_number'] ?? null),
+                'status' => $this->str($row['logistics_status'] ?? null),
+                'send_type' => $this->str($row['send_type'] ?? null),
+                'receive_status' => $this->str($row['receive_status'] ?? null),
+            ];
+        }
+
+        if ($out === [] && ! empty($order['logistics_no'])) {
+            $out[] = [
+                'service' => $this->str($order['logistics_type'] ?? null),
+                'tracking' => $this->str($order['logistics_no']),
+                'status' => null,
+                'send_type' => null,
+                'receive_status' => null,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<string, mixed>  $order
+     * @param  Collection<int, AliexpressOrderMetric>  $lines
+     * @return array<int, array<string, mixed>>
+     */
+    protected function extractRichOrderLines(array $order, Collection $lines): array
+    {
+        $apiProducts = $this->list(
+            $order['product_list']['order_product_dto']
+            ?? $order['product_list']['aeop_order_product_dto']
+            ?? $order['product_list']
+            ?? []
+        );
+
+        $bySku = [];
+        foreach ($lines as $line) {
+            $bySku[(string) $line->sku] = $line;
+        }
+
+        $out = [];
+        foreach ($apiProducts as $product) {
+            $product = $this->arr($product);
+            $sku = $this->str($product['sku_code'] ?? $product['sku'] ?? null) ?: '__unknown__';
+            $db = $bySku[$sku] ?? null;
+            $unit = $product['product_unit_price'] ?? $product['total_product_amount'] ?? null;
+
+            $out[] = [
+                'sku' => $sku,
+                'product_id' => $this->str($product['product_id'] ?? $db?->product_id),
+                'title' => $this->str($product['product_name'] ?? $product['subject'] ?? $db?->display_title),
+                'quantity' => (int) ($product['product_count'] ?? $product['quantity'] ?? $db?->quantity ?? 1),
+                'unit_price' => $this->money($unit),
+                'line_total' => $this->multiplyMoney($this->money($unit), (int) ($product['product_count'] ?? 1)),
+                'image' => $this->str($product['product_img_url'] ?? $product['snapshot_small_photo_path'] ?? $product['product_image'] ?? null),
+                'child_order_id' => $this->str($product['child_order_id'] ?? $product['order_sort_id'] ?? null),
+                'status' => $this->str($product['order_status'] ?? $product['logistics_status'] ?? null),
+                'import_status' => $db?->import_status,
+                'shopify_order_id' => $db?->shopify_order_id,
+            ];
+        }
+
+        if ($out === []) {
+            foreach ($lines as $line) {
+                $rawLine = is_array($line->raw_payload) ? ($line->raw_payload['line'] ?? []) : [];
+                $out[] = [
+                    'sku' => $line->sku,
+                    'product_id' => $line->product_id,
+                    'title' => $line->display_title,
+                    'quantity' => $line->quantity ?? 1,
+                    'unit_price' => is_numeric($line->amount) ? (float) $line->amount : null,
+                    'line_total' => is_numeric($line->amount) ? (float) $line->amount * max(1, (int) $line->quantity) : null,
+                    'image' => $this->str($rawLine['product_img_url'] ?? $rawLine['snapshot_small_photo_path'] ?? null),
+                    'child_order_id' => null,
+                    'status' => $line->status,
+                    'import_status' => $line->import_status,
+                    'shopify_order_id' => $line->shopify_order_id,
+                ];
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<string, mixed>  $skuRow
+     * @return array<int, array{name: string, value: string}>
+     */
+    protected function formatSkuProperties(array $skuRow): array
+    {
+        $out = [];
+        foreach ($this->list($skuRow['aeop_s_k_u_property_list'] ?? $skuRow['sku_property_list'] ?? []) as $prop) {
+            $prop = $this->arr($prop);
+            $name = $this->str($prop['sku_property_name'] ?? $prop['property_name'] ?? null);
+            $value = $this->str($prop['property_value_definition_name'] ?? $prop['sku_property_value'] ?? null);
+            if ($name && $value) {
+                $out[] = ['name' => $name, 'value' => $value];
+            }
+        }
+
+        return $out;
+    }
+
+    protected function extractProductTitle(array $ae): ?string
+    {
+        foreach (['subject', 'product_name', 'title', 'product_title'] as $key) {
+            if (! empty($ae[$key]) && is_string($ae[$key])) {
+                return trim($ae[$key]);
+            }
+        }
+
+        $subjects = $this->extractMultiLanguageSubjects($ae);
+
+        return $subjects[0]['subject'] ?? null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $addr
+     */
+    protected function joinAddress(array $addr): ?string
+    {
+        $parts = array_filter([
+            $addr['contact_person'] ?? $addr['receiver'] ?? null,
+            $addr['address'] ?? $addr['detail_address'] ?? null,
+            $addr['address2'] ?? null,
+            $addr['city'] ?? null,
+            $addr['province'] ?? $addr['state'] ?? null,
+            $addr['zip'] ?? $addr['zip_code'] ?? null,
+            $addr['country'] ?? null,
+        ]);
+
+        return $parts !== [] ? implode(', ', $parts) : null;
+    }
+
+    /**
+     * @param  Collection<int, AliexpressOrderMetric>  $lines
+     */
+    protected function sumLineTotals(Collection $lines): ?float
+    {
+        $sum = $lines->sum(fn ($row) => is_numeric($row->amount) ? (float) $row->amount * max(1, (int) $row->quantity) : 0);
+
+        return $sum > 0 ? $sum : null;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    protected function splitImageUrls(mixed $value): array
+    {
+        if (is_array($value)) {
+            return array_values(array_filter(array_map(fn ($v) => $this->str($v), $value)));
+        }
+        if (! is_string($value) || trim($value) === '') {
+            return [];
+        }
+
+        $parts = preg_split('/[;,\s]+/', trim($value)) ?: [];
+
+        return array_values(array_filter(array_map(fn ($v) => $this->str($v), $parts)));
+    }
+
+    protected function money(mixed $value): ?float
+    {
+        if (is_array($value)) {
+            $value = $value['amount'] ?? $value['value'] ?? null;
+        }
+
+        return is_numeric($value) ? (float) $value : null;
+    }
+
+    protected function moneyCurrency(mixed $value): ?string
+    {
+        if (is_array($value)) {
+            return $this->str($value['currency_code'] ?? $value['currency'] ?? null);
+        }
+
+        return null;
+    }
+
+    protected function multiplyMoney(?float $amount, int $qty): ?float
+    {
+        if ($amount === null) {
+            return null;
+        }
+
+        return $amount * max(1, $qty);
+    }
+
+    protected function cleanHtml(?string $html): ?string
+    {
+        if ($html === null || trim($html) === '') {
+            return null;
+        }
+
+        return trim($html);
+    }
+
+    protected function str(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+        if (is_scalar($value)) {
+            $s = trim((string) $value);
+
+            return $s !== '' ? $s : null;
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function arr(mixed $value): array
+    {
+        if (is_array($value)) {
+            return $value;
+        }
+        if (is_object($value)) {
+            return json_decode(json_encode($value), true) ?: [];
+        }
+
+        return [];
+    }
+
+    /**
+     * @return array<int, mixed>
+     */
+    protected function list(mixed $list): array
+    {
+        $list = $this->arr($list);
+        if ($list === []) {
+            return [];
+        }
+        if (! isset($list[0]) && (isset($list['product_id']) || isset($list['sku_code']) || isset($list['order_id']) || isset($list['attr_name']))) {
+            return [$list];
+        }
+
+        return array_values($list);
+    }
+}
