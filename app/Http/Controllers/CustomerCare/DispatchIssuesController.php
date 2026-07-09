@@ -104,6 +104,12 @@ class DispatchIssuesController extends IssueBoardControllerBase
         return view('customer-care.chargeback_issues', $this->issueBoardIndexData());
     }
 
+    /** Tabulator board: same data and APIs as All Issues (`dispatch_issue_issues`), filtered to the "Shipping" department. */
+    public function shippingIssuesLabelBoard()
+    {
+        return view('customer-care.shipping_issues_label', $this->issueBoardIndexData());
+    }
+
     protected function issuesTable(): string
     {
         return 'dispatch_issue_issues';
@@ -637,6 +643,28 @@ class DispatchIssuesController extends IssueBoardControllerBase
         return response()->json(['message' => 'Updated.', 'claim_filed' => $next]);
     }
 
+    public function updateNfe(Request $request, int $id): JsonResponse
+    {
+        if (! Schema::hasColumn($this->issuesTable(), 'nfe')) {
+            return response()->json(['message' => 'Not available.'], 503);
+        }
+        $validated = $request->validate(['nfe' => 'nullable|in:yes,no']);
+        $next = $validated['nfe'] ?? null;
+
+        $updated = DB::table($this->issuesTable())
+            ->where('id', $id)
+            ->where(function ($q) {
+                $q->whereNull('is_archived')->orWhere('is_archived', false);
+            })
+            ->update(['nfe' => $next, 'updated_at' => now()]);
+
+        if ($updated === 0) {
+            return response()->json(['message' => 'Record not found.'], 404);
+        }
+
+        return response()->json(['message' => 'Updated.', 'nfe' => $next]);
+    }
+
     public function updateClaimable(Request $request, int $id): JsonResponse
     {
         if (! Schema::hasColumn($this->issuesTable(), 'claimable')) {
@@ -1065,6 +1093,7 @@ class DispatchIssuesController extends IssueBoardControllerBase
                 'c_action_1'           => $row->c_action_1,
                 'c_action_1_remark'    => $row->c_action_1_remark,
                 'close_note'           => $row->close_note,
+                'nfe'                  => $row->nfe ?? null,
                 'department'           => CustomerCareDepartments::label($row->department ?? null),
                 'departments'          => CustomerCareDepartments::decode($row->department ?? null),
                 'created_by'           => $row->created_by,

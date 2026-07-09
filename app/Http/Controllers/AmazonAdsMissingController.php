@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\AmazonAdsMissingLink;
+use App\Models\ShopifySku;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -23,8 +24,11 @@ class AmazonAdsMissingController extends Controller
     }
 
     /**
-     * Parent + SKU rows from product_master, each flagged as a parent (SKU starting with "PARENT"),
-     * plus its linked PT / KW campaigns so the grid can render them.
+     * One synthetic parent row per distinct parent — same method as /amazon-tabulator-view:
+     * raw "PARENT …" SKU rows are ignored, children are grouped by their (normalized) parent,
+     * and each group yields a single parent row whose SKU is "PARENT {parent}". Inventory is the
+     * SUM of the children's Shopify inv. This avoids the duplicate-parent rows that come from
+     * multiple / whitespace-variant "PARENT …" SKUs in product_master.
      */
     public function data(): JsonResponse
     {
@@ -38,19 +42,38 @@ class AmazonAdsMissingController extends Controller
             ->orderBy('sku')
             ->get();
 
-        // All links grouped by sku.
+        // Inventory per normalized parent = SUM(shopify_skus.inv) over child (non-PARENT) SKUs.
+        $inventoryByParent = $this->buildInventorySumByParent($rows);
+
+        // Distinct parents, derived from child rows only (mirrors the tabulator view's grouping).
+        $parents = [];
+        foreach ($rows as $r) {
+            $sku = trim((string) ($r->sku ?? ''));
+            if ($sku === '' || Str::startsWith(strtoupper($sku), 'PARENT')) {
+                continue;
+            }
+            $parent = preg_replace('/\s+/', ' ', trim((string) ($r->parent ?? '')));
+            if ($parent === '') {
+                continue;
+            }
+            $parents[strtoupper($parent)] = $parent; // display value keyed by uppercase for dedupe
+        }
+        ksort($parents);
+
+        // All links grouped by sku ("PARENT {parent}").
         $linksBySku = AmazonAdsMissingLink::orderBy('id')
             ->get()
             ->groupBy(fn ($l) => (string) $l->sku);
 
-        $data = $rows->map(function ($r) use ($linksBySku) {
-            $sku = (string) ($r->sku ?? '');
+        $data = collect($parents)->map(function ($parent, $parentKey) use ($linksBySku, $inventoryByParent) {
+            $sku = 'PARENT '.$parent;
             $links = $linksBySku->get($sku, collect());
 
             return [
-                'parent' => $r->parent,
-                'sku' => $r->sku,
-                'is_parent' => Str::startsWith(strtoupper(trim($sku)), 'PARENT'),
+                'parent' => $parent,
+                'sku' => $sku,
+                'is_parent' => true,
+                'inventory' => (int) round($inventoryByParent[$parentKey] ?? 0),
                 'campaign_pick' => '',
                 'pt' => $this->linkListForType($links, 'PT'),
                 'kw' => $this->linkListForType($links, 'KW'),
@@ -130,6 +153,43 @@ class AmazonAdsMissingController extends Controller
         }
 
         return response()->json($this->linksResponseForSku((string) $sku));
+    }
+
+    /**
+     * SUM(shopify_skus.inv) for child (non-PARENT) SKUs, keyed by normalized-uppercase parent name
+     * (whitespace collapsed) so it lines up with the grouped parent rows.
+     *
+     * @param  \Illuminate\Support\Collection  $rows  product_master rows with parent + sku
+     * @return array<string, float>
+     */
+    private function buildInventorySumByParent($rows): array
+    {
+        $childSkus = [];
+        foreach ($rows as $r) {
+            $s = trim((string) ($r->sku ?? ''));
+            if ($s === '' || Str::startsWith(strtoupper($s), 'PARENT')) {
+                continue;
+            }
+            $childSkus[] = $s;
+        }
+
+        $shopifyByPmSku = ShopifySku::mapByProductSkus(array_values(array_unique($childSkus)));
+
+        $totals = [];
+        foreach ($rows as $r) {
+            $s = trim((string) ($r->sku ?? ''));
+            if ($s === '' || Str::startsWith(strtoupper($s), 'PARENT')) {
+                continue;
+            }
+            $pKey = strtoupper(preg_replace('/\s+/', ' ', trim((string) ($r->parent ?? ''))));
+            if ($pKey === '') {
+                continue;
+            }
+            $rec = $shopifyByPmSku->get($s);
+            $totals[$pKey] = ($totals[$pKey] ?? 0) + (float) ($rec?->inv ?? 0);
+        }
+
+        return $totals;
     }
 
     /**

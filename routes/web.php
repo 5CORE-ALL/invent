@@ -1842,6 +1842,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         ->name('customer.care.dispatch.carrier.issue');
     Route::get('/customer-care/chargeback-issues', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'chargebackBoard'])
         ->name('customer.care.dispatch.chargeback.issues');
+    Route::get('/customer-care/shipping-issues-label', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'shippingIssuesLabelBoard'])
+        ->name('customer.care.shipping.issues.label');
     Route::permanentRedirect('/customer-care/dispatch-issue', '/customer-care/all-issues');
     Route::get('/customer-care/all-issues/sku-details', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'skuDetails'])
         ->name('customer.care.dispatch.issues.sku.details');
@@ -1869,6 +1871,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         ->name('customer.care.dispatch.issues.list.patch.claim.filed');
     Route::patch('/customer-care/all-issues/issues/{id}/claimable', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'updateClaimable'])
         ->name('customer.care.dispatch.issues.list.patch.claimable');
+    Route::patch('/customer-care/all-issues/issues/{id}/nfe', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'updateNfe'])
+        ->name('customer.care.dispatch.issues.list.patch.nfe');
     Route::patch('/customer-care/all-issues/issues/{id}/amp-usd', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'updateAmpUsd'])
         ->name('customer.care.dispatch.issues.list.patch.amp.usd');
     Route::patch('/customer-care/all-issues/issues/{id}/amt-rec', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'updateAmtRec'])

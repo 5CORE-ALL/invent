@@ -164,11 +164,11 @@
                             <span class="amz-missing-badge-label">Parent</span>
                             <span class="amz-missing-badge-value tabular-nums" id="amzParentValue">0</span>
                         </div>
-                        <div class="amz-missing-badge amz-missing-badge--pt" id="amzMissingPtWrap" title="Missing PT: rows (in the current view) with no linked PT campaign.">
+                        <div class="amz-missing-badge amz-missing-badge--pt" id="amzMissingPtWrap" title="Missing PT: in-stock rows (inventory > 0) in the current view with no linked PT campaign.">
                             <span class="amz-missing-badge-label">Missing PT</span>
                             <span class="amz-missing-badge-value tabular-nums" id="amzMissingPtValue">0</span>
                         </div>
-                        <div class="amz-missing-badge amz-missing-badge--kw" id="amzMissingKwWrap" title="Missing KW: rows (in the current view) with no linked KW campaign.">
+                        <div class="amz-missing-badge amz-missing-badge--kw" id="amzMissingKwWrap" title="Missing KW: in-stock rows (inventory > 0) in the current view with no linked KW campaign.">
                             <span class="amz-missing-badge-label">Missing KW</span>
                             <span class="amz-missing-badge-value tabular-nums" id="amzMissingKwValue">0</span>
                         </div>
@@ -204,6 +204,18 @@
                 var la = Array.isArray(a) ? a.length : 0;
                 var lb = Array.isArray(b) ? b.length : 0;
                 return la - lb;
+            }
+
+            // Header filter for Inventory: All / In Stock (>0) / Zero Inv (<=0).
+            function inventoryHeaderFilter(headerValue, rowValue) {
+                var inv = Number(rowValue) || 0;
+                if (headerValue === 'in') {
+                    return inv > 0;
+                }
+                if (headerValue === 'zero') {
+                    return inv <= 0;
+                }
+                return true;
             }
 
             // Header filter for PT/KW: All / Missing (blank) / Linked.
@@ -253,6 +265,7 @@
                     },
                     index: 'sku',
                     layout: 'fitColumns',
+                    height: 'calc(100vh - 220px)',
                     pagination: true,
                     paginationSize: 100,
                     paginationSizeSelector: [25, 50, 100, 200, 500],
@@ -275,13 +288,16 @@
                             }
                         },
                         {
-                            title: 'Campaign PT', field: 'pt', widthGrow: 2,
-                            hozAlign: 'center', headerHozAlign: 'center',
-                            headerSort: true, sorter: linkCountSorter,
+                            title: 'Inventory', field: 'inventory', width: 130,
+                            hozAlign: 'right', headerHozAlign: 'right',
+                            headerSort: true, sorter: 'number',
                             headerFilter: 'list',
-                            headerFilterParams: { values: { '': 'All', missing: 'Missing', linked: 'Linked' } },
-                            headerFilterFunc: missingHeaderFilter,
-                            formatter: chipsFormatter('PT')
+                            headerFilterParams: { values: { '': 'All', in: 'In Stock', zero: 'Zero Inv' } },
+                            headerFilterFunc: inventoryHeaderFilter,
+                            formatter: function (cell) {
+                                var v = cell.getValue();
+                                return (v == null || v === '') ? '' : Number(v).toLocaleString('en-US');
+                            }
                         },
                         {
                             title: 'Campaign KW', field: 'kw', widthGrow: 2,
@@ -291,6 +307,15 @@
                             headerFilterParams: { values: { '': 'All', missing: 'Missing', linked: 'Linked' } },
                             headerFilterFunc: missingHeaderFilter,
                             formatter: chipsFormatter('KW')
+                        },
+                        {
+                            title: 'Campaign PT', field: 'pt', widthGrow: 2,
+                            hozAlign: 'center', headerHozAlign: 'center',
+                            headerSort: true, sorter: linkCountSorter,
+                            headerFilter: 'list',
+                            headerFilterParams: { values: { '': 'All', missing: 'Missing', linked: 'Linked' } },
+                            headerFilterFunc: missingHeaderFilter,
+                            formatter: chipsFormatter('PT')
                         }
                     ]
                 });
@@ -305,8 +330,10 @@
                     var pt = 0;
                     var kw = 0;
                     rows.forEach(function (r) {
-                        if (!r || !r.pt || !r.pt.length) { pt++; }
-                        if (!r || !r.kw || !r.kw.length) { kw++; }
+                        // Skip parents with no inventory — they shouldn't inflate the missing count.
+                        if (!r || (Number(r.inventory) || 0) <= 0) { return; }
+                        if (!r.pt || !r.pt.length) { pt++; }
+                        if (!r.kw || !r.kw.length) { kw++; }
                     });
                     var ptEl = document.getElementById('amzMissingPtValue');
                     var kwEl = document.getElementById('amzMissingKwValue');
@@ -365,10 +392,10 @@
                     return parentNamesFrom(table.getData(), function (r) { return r.is_parent; });
                 });
                 bindBadge('amzMissingPtWrap', 'Missing PT', function () {
-                    return parentNamesFrom(table.getData('active'), function (r) { return !r.pt || !r.pt.length; });
+                    return parentNamesFrom(table.getData('active'), function (r) { return (Number(r.inventory) || 0) > 0 && (!r.pt || !r.pt.length); });
                 });
                 bindBadge('amzMissingKwWrap', 'Missing KW', function () {
-                    return parentNamesFrom(table.getData('active'), function (r) { return !r.kw || !r.kw.length; });
+                    return parentNamesFrom(table.getData('active'), function (r) { return (Number(r.inventory) || 0) > 0 && (!r.kw || !r.kw.length); });
                 });
 
                 document.addEventListener('click', function (e) {
