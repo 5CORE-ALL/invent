@@ -3777,10 +3777,8 @@
                             // Show lowest price
                             if (lmpPrice) {
                                 const priceFormatted = '$' + parseFloat(lmpPrice).toFixed(2);
-                                const priceColor = (lmpPrice < currentPrice) ? '#dc3545' :
-                                '#28a745';
                                 html +=
-                                    `<span style="color: ${priceColor}; font-weight: 600; font-size: 14px;">${priceFormatted}</span>`;
+                                    `<span style="font-weight: 600; font-size: 14px;">${priceFormatted}</span>`;
                             }
 
                             // Show link to open modal with all competitors
@@ -3817,6 +3815,11 @@
                             // Always show SPRICE when it has a value — even if it equals the eBay price.
 
                             const formattedValue = `$${Number(sprice).toFixed(2)}`;
+                            // If SPRICE is above the LMP (lowest market price), flag it in red.
+                            const lmp = parseFloat(rowData.lmp_price) || 0;
+                            if (lmp > 0 && sprice > lmp) {
+                                return `<span style="color: #dc3545; font-weight: 600;">${formattedValue}</span>`;
+                            }
                             if (hasCustomSprice === false) {
                                 return `<span style="color: #0d6efd; font-weight: 500;">${formattedValue}</span>`;
                             }
