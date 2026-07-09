@@ -59,6 +59,8 @@ class MarketplaceSyncSettings extends Model
                 'keep_order_number_from_channel' => true,
                 'shopify_order_tags' => [],
                 'shopify_store' => 'main',
+                'shopify_source_name' => 'aliexpress',
+                'shopify_source_display_name' => 'AliExpress',
             ],
             'listings' => [
                 'auto_link_by_sku' => true,

@@ -4,6 +4,7 @@ namespace App\Services\MarketplaceManager;
 
 use App\Models\AliexpressMetric;
 use App\Models\AliexpressOrderMetric;
+use App\Models\MarketplaceSyncSettings;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use Illuminate\Support\Collection;
@@ -280,10 +281,10 @@ class AliexpressDetailFormatter
             'inventory_behaviour' => 'decrement_obeying_policy',
             'tags' => implode(', ', array_values(array_unique(array_filter($tags)))),
             'note' => implode("\n", $noteLines),
-            'source_name' => 'aliexpress',
             'note_attributes' => $noteAttrs,
             'customer' => $customerFields,
         ];
+        $payload = array_merge($payload, $this->resolveShopifySourceAttribution($orderRef));
 
         $shippingCost = (float) ($amounts['shipping_cost'] ?? 0);
         if ($shippingCost > 0) {
@@ -355,6 +356,45 @@ class AliexpressDetailFormatter
         }
 
         return [$firstName, (string) $parts[1]];
+    }
+
+    /**
+     * Shopify channel attribution for API-created orders.
+     *
+     * @return array{source_name: string, source_identifier: string, source_url: string, referring_site: string}
+     */
+    public function resolveShopifySourceAttribution(string $orderRef, ?array $settings = null): array
+    {
+        $settings ??= MarketplaceSyncSettings::getFor('aliexpress');
+        $handle = trim((string) (
+            $settings['order']['shopify_source_name']
+            ?? config('services.aliexpress.shopify_source_name')
+            ?? 'aliexpress'
+        ));
+        $urlTemplate = (string) (
+            $settings['order']['shopify_source_url_template']
+            ?? config('services.aliexpress.shopify_source_url_template')
+            ?? 'https://csp.aliexpress.com/m_apps/order-manage/order_detail?orderId={order_id}'
+        );
+
+        return [
+            'source_name' => $handle !== '' ? $handle : 'aliexpress',
+            'source_identifier' => $orderRef,
+            'source_url' => str_replace('{order_id}', $orderRef, $urlTemplate),
+            'referring_site' => 'https://www.aliexpress.com/',
+        ];
+    }
+
+    public function shopifySourceDisplayName(?array $settings = null): string
+    {
+        $settings ??= MarketplaceSyncSettings::getFor('aliexpress');
+        $name = trim((string) (
+            $settings['order']['shopify_source_display_name']
+            ?? config('services.aliexpress.shopify_source_display_name')
+            ?? 'AliExpress'
+        ));
+
+        return $name !== '' ? $name : 'AliExpress';
     }
 
     /**

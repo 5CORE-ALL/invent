@@ -154,6 +154,11 @@ class AliexpressOrderPushService
         } elseif (empty($shipping['email'] ?? null) && empty($orderPayload['customer']['email'] ?? null)) {
             $warnings[] = 'No buyer email on AliExpress order.';
         }
+
+        $sourceName = trim((string) ($orderPayload['source_name'] ?? ''));
+        if ($sourceName === '') {
+            $warnings[] = 'No Shopify source_name set — Channel information may show your app name instead of AliExpress.';
+        }
         if (empty($shipping['phone'] ?? null)) {
             $warnings[] = 'No buyer phone on AliExpress order.';
         }
@@ -211,6 +216,12 @@ class AliexpressOrderPushService
             'note' => $orderPayload['note'] ?? null,
             'note_attributes' => $orderPayload['note_attributes'] ?? [],
             'shipping_lines' => $orderPayload['shipping_lines'] ?? [],
+            'channel' => [
+                'display_name' => $this->formatter->shopifySourceDisplayName(),
+                'source_name' => $orderPayload['source_name'] ?? null,
+                'source_identifier' => $orderPayload['source_identifier'] ?? null,
+                'source_url' => $orderPayload['source_url'] ?? null,
+            ],
         ];
     }
 

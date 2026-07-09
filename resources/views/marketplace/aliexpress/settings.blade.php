@@ -83,6 +83,16 @@
                         <div class="form-text">AliExpress orders import here. Default is main B2C store (same as <code>shopify_skus</code>).</div>
                     </div>
                     <div class="mt-2">
+                        <label class="form-label small">Shopify channel handle (source_name)</label>
+                        <input type="text" class="form-control form-control-sm" name="order[shopify_source_name]" value="{{ $settings['order']['shopify_source_name'] ?? 'aliexpress' }}" style="max-width: 400px;">
+                        <div class="form-text">Case-sensitive handle registered in your Shopify app’s <strong>Marketplace extension</strong> (Partner Dashboard). Shopify shows this as the channel name (e.g. AliExpress) instead of the app name (5core).</div>
+                    </div>
+                    <div class="mt-2">
+                        <label class="form-label small">Shopify channel display label</label>
+                        <input type="text" class="form-control form-control-sm" name="order[shopify_source_display_name]" value="{{ $settings['order']['shopify_source_display_name'] ?? 'AliExpress' }}" style="max-width: 400px;">
+                        <div class="form-text">Used in our dry-run preview only. Shopify Admin uses the label from your registered Marketplace handle.</div>
+                    </div>
+                    <div class="mt-2">
                         <label class="form-label small">Shopify order tags (comma-separated)</label>
                         <input type="text" class="form-control form-control-sm" name="order[shopify_order_tags]" value="{{ implode(', ', $settings['order']['shopify_order_tags'] ?? ['aliexpress']) }}" style="max-width: 400px;">
                     </div>

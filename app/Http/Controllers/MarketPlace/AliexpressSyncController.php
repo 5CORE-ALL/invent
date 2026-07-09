@@ -592,6 +592,14 @@ class AliexpressSyncController extends Controller
             }
         }
 
+        if ($request->filled('order.shopify_source_name')) {
+            $order['shopify_source_name'] = trim((string) $request->input('order.shopify_source_name'));
+        }
+
+        if ($request->filled('order.shopify_source_display_name')) {
+            $order['shopify_source_display_name'] = trim((string) $request->input('order.shopify_source_display_name'));
+        }
+
         MarketplaceSyncSettings::setFor('aliexpress', [
             'pricing' => $pricing,
             'inventory' => $inventory,

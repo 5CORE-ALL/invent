@@ -364,6 +364,8 @@ document.getElementById('btn-dry-run-shopify')?.addEventListener('click', functi
             }
             summaryEl.innerHTML = warnHtml
                 + '<p class="small mb-1"><strong>Store:</strong> ' + (data.shopify_store || '—') + '</p>'
+                + '<p class="small mb-1"><strong>Channel:</strong> ' + ((p.channel && p.channel.display_name) || 'AliExpress')
+                + ' <span class="text-muted">(source_name: ' + ((p.channel && p.channel.source_name) || '—') + ')</span></p>'
                 + '<p class="small mb-1"><strong>Customer:</strong> ' + customerName + ' &lt;' + customerEmail + '&gt;</p>'
                 + '<p class="small mb-1"><strong>Ship to:</strong> ' + ((p.shipping_address && p.shipping_address.address1) || '—') + ', '
                 + ((p.shipping_address && p.shipping_address.city) || '') + ' ' + ((p.shipping_address && p.shipping_address.province) || '') + ' '

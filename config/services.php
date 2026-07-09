@@ -711,6 +711,17 @@ return [
         'sync_sign_style' => env('ALIEXPRESS_SYNC_SIGN_STYLE', 'legacy'),
         /** "iop" = time()."000" like SDK msectime(); "ms" = round(microtime(true)*1000) */
         'timestamp_style' => env('ALIEXPRESS_TIMESTAMP_STYLE', 'iop'),
+        /**
+         * Shopify order attribution handle (case-sensitive). Must match a handle registered
+         * under your app’s Marketplace extension in the Shopify Partner Dashboard,
+         * or Channel information will show the app name (e.g. 5core) instead of AliExpress.
+         */
+        'shopify_source_name' => env('ALIEXPRESS_SHOPIFY_SOURCE_NAME', 'aliexpress'),
+        'shopify_source_display_name' => env('ALIEXPRESS_SHOPIFY_SOURCE_DISPLAY_NAME', 'AliExpress'),
+        'shopify_source_url_template' => env(
+            'ALIEXPRESS_SHOPIFY_SOURCE_URL_TEMPLATE',
+            'https://csp.aliexpress.com/m_apps/order-manage/order_detail?orderId={order_id}'
+        ),
     ],
 
     /*
