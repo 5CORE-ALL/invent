@@ -4,8 +4,11 @@ namespace App\Services\MarketplaceManager;
 
 use App\Models\AliexpressMetric;
 use App\Models\AliexpressOrderMetric;
+use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class AliexpressDetailFormatter
 {
@@ -20,10 +23,14 @@ class AliexpressDetailFormatter
         $shopifyQty = $shopify->available_to_sell ?? $shopify->inv ?? $shopify->on_hand ?? null;
         $shopifyPrice = $shopify->b2c_price ?? $shopify->price ?? null;
 
-        $images = $this->extractProductImages($ae, $aeSkuRows, $shopify->image_src);
+        $shopifyCatalog = $this->loadShopifyCatalogRow($shopify);
+        $shopifyImages = $this->extractShopifyImages($shopify, $shopifyCatalog);
+        $aeImages = $this->extractProductImages($ae, $aeSkuRows);
+        $shopifyDescription = $this->resolveShopifyDescription($shopify, $shopifyCatalog);
         $descriptions = $this->extractProductDescriptions($ae);
         $variants = $this->formatProductVariants($ae, $aeSkuRows, $metric, $shopify);
         $properties = $this->extractProductProperties($ae);
+        $shopifyProperties = $this->extractShopifyProperties($shopify, $shopifyCatalog);
 
         $cachedPrice = $this->money($metric?->price);
         $minPrice = $this->money($ae['product_min_price'] ?? null) ?? $cachedPrice;
@@ -46,6 +53,19 @@ class AliexpressDetailFormatter
                 'b2b_price' => $shopify->b2b_price,
                 'price' => $shopify->price,
                 'shopify_l30' => $shopify->shopify_l30,
+                'images' => $shopifyImages,
+                'main_image' => $shopifyImages[0] ?? $shopify->image_src,
+                'description_html' => $shopifyDescription['html'],
+                'description_source' => $shopifyDescription['source'],
+                'properties' => $shopifyProperties,
+                'catalog_store' => $shopifyCatalog?->store ?? null,
+                'shopify_product_id' => $shopifyCatalog?->shopify_product_id
+                    ? (string) $shopifyCatalog->shopify_product_id
+                    : null,
+                'vendor' => $this->str($shopifyCatalog?->vendor ?? null),
+                'product_type' => $this->str($shopifyCatalog?->product_type ?? null),
+                'handle' => $this->str($shopifyCatalog?->handle ?? null),
+                'catalog_status' => $this->str($shopifyCatalog?->status ?? null),
             ],
             'link' => [
                 'product_id' => $metric?->product_id,
@@ -72,8 +92,8 @@ class AliexpressDetailFormatter
                 'min_price' => $minPrice,
                 'max_price' => $maxPrice,
                 'cached_price' => $cachedPrice,
-                'images' => $images,
-                'main_image' => $shopify->image_src ?? ($images[0] ?? null),
+                'images' => $aeImages,
+                'main_image' => $aeImages[0] ?? null,
                 'descriptions' => $descriptions,
                 'variants' => $variants,
                 'properties' => $properties,
@@ -147,13 +167,9 @@ class AliexpressDetailFormatter
      * @param  array<int, array<string, mixed>>  $aeSkuRows
      * @return array<int, string>
      */
-    protected function extractProductImages(array $ae, array $aeSkuRows, ?string $shopifyImage = null): array
+    protected function extractProductImages(array $ae, array $aeSkuRows): array
     {
         $urls = [];
-
-        if ($shopifyImage) {
-            $urls[] = $shopifyImage;
-        }
 
         foreach ([
             $ae['main_image_url'] ?? null,
@@ -179,6 +195,224 @@ class AliexpressDetailFormatter
         }
 
         return array_values(array_unique(array_filter($urls)));
+    }
+
+    /**
+     * @return array{html: ?string, source: ?string}
+     */
+    protected function resolveShopifyDescription(ShopifySku $shopify, ?object $catalogRow): array
+    {
+        $bodyHtml = trim((string) ($catalogRow->body_html ?? ''));
+        if ($bodyHtml !== '') {
+            return ['html' => $bodyHtml, 'source' => 'shopify_catalog'];
+        }
+
+        $pmHtml = $this->resolveProductMasterDescriptionHtml($shopify->sku);
+        if ($pmHtml !== null) {
+            return ['html' => $pmHtml, 'source' => 'product_master'];
+        }
+
+        return ['html' => null, 'source' => null];
+    }
+
+    protected function resolveProductMasterDescriptionHtml(?string $sku): ?string
+    {
+        if ($sku === null || trim($sku) === '') {
+            return null;
+        }
+
+        $pm = ProductMaster::query()
+            ->whereRaw('LOWER(TRIM(sku)) = ?', [mb_strtolower(trim($sku))])
+            ->first();
+
+        if (! $pm) {
+            return null;
+        }
+
+        $html = trim((string) ($pm->description_html ?? ''));
+        if ($html !== '') {
+            return $html;
+        }
+
+        foreach (['description_1500', 'description_1000', 'description_800', 'description_600', 'product_description'] as $col) {
+            $text = trim((string) ($pm->{$col} ?? ''));
+            if ($text !== '') {
+                return '<p>'.nl2br(e($text), false).'</p>';
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array<int, array{name: string, value: string}>
+     */
+    protected function extractShopifyProperties(ShopifySku $shopify, ?object $catalogRow): array
+    {
+        $out = [];
+
+        foreach ([
+            'Vendor' => $this->str($catalogRow?->vendor ?? null),
+            'Product type' => $this->str($catalogRow?->product_type ?? null),
+            'Catalog status' => $this->str($catalogRow?->status ?? null),
+            'Handle' => $this->str($catalogRow?->handle ?? null),
+            'Store' => $this->str($catalogRow?->store ?? null),
+        ] as $name => $value) {
+            if ($value) {
+                $out[] = ['name' => $name, 'value' => $value];
+            }
+        }
+
+        $pm = ProductMaster::query()
+            ->whereRaw('LOWER(TRIM(sku)) = ?', [mb_strtolower(trim((string) $shopify->sku))])
+            ->first();
+
+        if ($pm) {
+            foreach ([
+                'Category' => $this->str($pm->category ?? null),
+                'Group' => $this->str($pm->group ?? null),
+            ] as $name => $value) {
+                if ($value) {
+                    $out[] = ['name' => $name, 'value' => $value];
+                }
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    protected function extractShopifyImages(ShopifySku $shopify, ?object $catalogRow): array
+    {
+        $urls = $this->parseCatalogImageUrls($catalogRow);
+
+        if ($shopify->image_src) {
+            array_unshift($urls, $shopify->image_src);
+        }
+
+        if ($urls === []) {
+            $pm = ProductMaster::query()
+                ->whereRaw('LOWER(TRIM(sku)) = ?', [mb_strtolower(trim((string) $shopify->sku))])
+                ->first();
+
+            if ($pm) {
+                foreach (array_merge(
+                    [$pm->main_image ?? null, $pm->main_image_brand ?? null],
+                    array_map(fn ($i) => $pm->{"image{$i}"} ?? null, range(1, 12))
+                ) as $url) {
+                    $url = trim((string) $url);
+                    if ($url !== '') {
+                        $urls[] = $url;
+                    }
+                }
+            }
+        }
+
+        return array_values(array_unique(array_filter($urls)));
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    protected function parseCatalogImageUrls(?object $catalogRow): array
+    {
+        if (! $catalogRow) {
+            return [];
+        }
+
+        $urls = [];
+
+        if (Schema::hasColumn('shopify_catalog_products', 'image_urls')) {
+            $decoded = json_decode((string) ($catalogRow->image_urls ?? ''), true);
+            if (is_array($decoded)) {
+                foreach ($decoded as $item) {
+                    if (is_string($item) && trim($item) !== '') {
+                        $urls[] = trim($item);
+                    } elseif (is_array($item) && ! empty($item['src'])) {
+                        $urls[] = trim((string) $item['src']);
+                    }
+                }
+            }
+        }
+
+        if ($urls === [] && Schema::hasColumn('shopify_catalog_products', 'images')) {
+            $decoded = json_decode((string) ($catalogRow->images ?? ''), true);
+            if (is_array($decoded)) {
+                foreach ($decoded as $item) {
+                    if (is_string($item) && trim($item) !== '') {
+                        $urls[] = trim($item);
+                    } elseif (is_array($item) && ! empty($item['src'])) {
+                        $urls[] = trim((string) $item['src']);
+                    }
+                }
+            }
+        }
+
+        if ($urls === [] && ! empty($catalogRow->image_src)) {
+            $urls[] = trim((string) $catalogRow->image_src);
+        }
+
+        return array_values(array_unique(array_filter($urls)));
+    }
+
+    protected function loadShopifyCatalogRow(ShopifySku $shopify): ?object
+    {
+        if (! Schema::hasTable('shopify_catalog_variants') || ! Schema::hasTable('shopify_catalog_products')) {
+            return null;
+        }
+
+        $select = [
+            'p.id',
+            'p.title',
+            'p.handle',
+            'p.status',
+            'p.body_html',
+            'p.vendor',
+            'p.product_type',
+            'v.store',
+            'v.shopify_variant_id',
+            'v.shopify_product_id',
+        ];
+
+        if (Schema::hasColumn('shopify_catalog_products', 'image_src')) {
+            $select[] = 'p.image_src';
+        }
+        if (Schema::hasColumn('shopify_catalog_products', 'images')) {
+            $select[] = 'p.images';
+        }
+        if (Schema::hasColumn('shopify_catalog_products', 'image_urls')) {
+            $select[] = 'p.image_urls';
+        }
+
+        $base = DB::table('shopify_catalog_variants as v')
+            ->join('shopify_catalog_products as p', 'p.id', '=', 'v.shopify_catalog_product_id');
+
+        if ($shopify->variant_id) {
+            $row = (clone $base)
+                ->where('v.shopify_variant_id', $shopify->variant_id)
+                ->orderByDesc('v.synced_at')
+                ->orderByDesc('v.id')
+                ->select($select)
+                ->first();
+
+            if ($row) {
+                return $row;
+            }
+        }
+
+        $sku = trim((string) $shopify->sku);
+        if ($sku === '') {
+            return null;
+        }
+
+        return (clone $base)
+            ->whereRaw('LOWER(TRIM(COALESCE(v.sku, \'\'))) = ?', [mb_strtolower($sku)])
+            ->orderByDesc('v.synced_at')
+            ->orderByDesc('v.id')
+            ->select($select)
+            ->first();
     }
 
     /**

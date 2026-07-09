@@ -5,7 +5,7 @@
     .ae-gallery img { max-height: 96px; object-fit: contain; cursor: pointer; border: 1px solid #e9ecef; border-radius: 6px; padding: 4px; background: #fff; }
     .ae-gallery img.active { border-color: #0d6efd; box-shadow: 0 0 0 2px rgba(13,110,253,.2); }
     .ae-main-image { max-height: 320px; object-fit: contain; }
-    .ae-description { max-height: none; overflow: visible; }
+    .ae-description { max-height: 480px; overflow: auto; }
     .ae-description img { max-width: 100%; height: auto; }
     .ae-desc-title { font-weight: 600; margin-top: 1rem; margin-bottom: .35rem; }
     .ae-desc-body { margin-bottom: .75rem; color: #444; }
@@ -20,13 +20,61 @@
     $s = $detail['shopify'] ?? [];
     $l = $detail['link'] ?? [];
     $ae = $detail['aliexpress'] ?? [];
-    $images = $ae['images'] ?? [];
-    if (!empty($s['image']) && !in_array($s['image'], $images, true)) {
-        array_unshift($images, $s['image']);
-    }
-    $mainImage = $s['image'] ?? $ae['main_image'] ?? ($images[0] ?? null);
+    $shopifyImages = $s['images'] ?? [];
+    $aeImages = $ae['images'] ?? [];
     $aeSource = $aeDataSource ?? 'none';
+    $shopifyDescription = $s['description_html'] ?? null;
+    $aeDescriptionBlocks = $ae['descriptions'] ?? [];
+    $shopifyDescSource = $s['description_source'] ?? null;
+
+    $shopifyListingRows = [
+        'SKU' => '<code>'.e($s['sku'] ?? '—').'</code>',
+        'Title' => $s['product_title'] ?? null,
+        'Variant' => $s['variant_title'] ?? null,
+        'Variant ID' => $s['variant_id'] ?? null,
+        'B2C price' => isset($s['b2c_price']) ? '$'.number_format((float)$s['b2c_price'], 2) : null,
+        'B2B price' => isset($s['b2b_price']) ? '$'.number_format((float)$s['b2b_price'], 2) : null,
+        'Base price' => isset($s['price']) ? '$'.number_format((float)$s['price'], 2) : null,
+        'Available' => $s['available_to_sell'] ?? null,
+        'On hand' => $s['on_hand'] ?? null,
+        'Committed' => $s['committed'] ?? null,
+        'Incoming' => $s['incoming'] ?? null,
+        'Unavailable' => $s['unavailable'] ?? null,
+        'Shopify L30' => $s['shopify_l30'] ?? null,
+        'Vendor' => $s['vendor'] ?? null,
+        'Product type' => $s['product_type'] ?? null,
+        'Catalog status' => $s['catalog_status'] ?? null,
+        'Shopify product ID' => $s['shopify_product_id'] ?? null,
+        'Product link' => !empty($s['product_link']) ? '<a href="'.e($s['product_link']).'" target="_blank" rel="noopener">Open in Shopify</a>' : null,
+    ];
+
+    $aeListingRows = [
+        'Product ID' => $ae['product_id'] ?? $l['product_id'] ?? null,
+        'Title' => $ae['title'] ?? $l['title'] ?? null,
+        'Status' => $ae['status'] ?? null,
+        'Category ID' => $ae['category_id'] ?? null,
+        'Currency' => $ae['currency'] ?? null,
+        'Product unit' => $ae['unit'] ?? null,
+        'Package type' => $ae['package_type'] ?? null,
+        'Freight template' => $ae['freight_template_id'] ?? null,
+        'Bulk order' => $ae['bulk_order'] ?? null,
+        'Bulk discount' => $ae['bulk_discount'] ?? null,
+        'Min price' => isset($ae['min_price']) ? '$'.number_format((float)$ae['min_price'], 2) : null,
+        'Max price' => isset($ae['max_price']) ? '$'.number_format((float)$ae['max_price'], 2) : null,
+        'Price (cached)' => isset($ae['cached_price']) ? '$'.number_format((float)$ae['cached_price'], 2) : null,
+        'L30 / L60' => isset($l['l30']) ? ($l['l30'].' / '.($l['l60'] ?? '—')) : null,
+        'Created' => $ae['gmt_create'] ?? null,
+        'Modified' => $ae['gmt_modified'] ?? null,
+        'Last order' => !empty($l['last_order_date']) ? \Carbon\Carbon::parse($l['last_order_date'])->format('M d, Y H:i') : null,
+    ];
+
+    ob_start();
 @endphp
+@include('marketplace.aliexpress._detail-table', ['showEmpty' => true, 'rows' => $shopifyListingRows])
+@php $shopifyListingHtml = ob_get_clean(); ob_start(); @endphp
+@include('marketplace.aliexpress._detail-table', ['showEmpty' => true, 'rows' => $aeListingRows])
+@php $aeListingHtml = ob_get_clean(); @endphp
+
 <div class="row">
     <div class="col-12">
         <a href="{{ route('marketplace.products', 'aliexpress') }}" class="text-muted small"><i class="ri-arrow-left-line"></i> Back to Listings</a>
@@ -62,7 +110,7 @@
         @include('marketplace.aliexpress._nav', ['active' => 'products'])
 
         <div class="alert alert-info py-2 small mb-3">
-            <strong>Read-only view.</strong> This page only displays data from Shopify and AliExpress. Nothing is pushed to Shopify or AliExpress from here.
+            <strong>Read-only view.</strong> This page compares Shopify (source) with AliExpress side by side. Nothing is pushed from here.
         </div>
 
         @if($aeLiveError)
@@ -76,107 +124,37 @@
             </div>
         @endif
 
-        <div class="row g-3 mb-3">
-            <div class="col-lg-4">
-                <div class="card h-100">
-                    <div class="card-header">Images</div>
-                    <div class="card-body text-center">
-                        @if($mainImage)
-                            <img id="ae-main-image" src="{{ $mainImage }}" alt="" class="img-fluid ae-main-image mb-3 rounded border">
-                        @else
-                            <p class="text-muted mb-0">No image available</p>
-                        @endif
-                        @if(count($images) > 1)
-                            <div class="d-flex flex-wrap gap-2 justify-content-center ae-gallery">
-                                @foreach($images as $i => $img)
-                                    <img src="{{ $img }}" alt="" class="{{ $img === $mainImage ? 'active' : '' }}" onclick="document.getElementById('ae-main-image').src='{{ $img }}'; document.querySelectorAll('.ae-gallery img').forEach(function(el){el.classList.remove('active')}); this.classList.add('active');">
-                                @endforeach
-                            </div>
-                        @endif
-                    </div>
-                </div>
-            </div>
-            <div class="col-lg-8">
-                <div class="row g-3">
-                    <div class="col-md-6">
-                        <div class="card h-100 border-primary-subtle">
-                            <div class="card-header bg-primary-subtle">Shopify (source)</div>
-                            <div class="card-body p-0">
-                                @include('marketplace.aliexpress._detail-table', ['showEmpty' => true, 'rows' => [
-                                    'SKU' => '<code>'.e($s['sku'] ?? '—').'</code>',
-                                    'Title' => $s['product_title'] ?? null,
-                                    'Variant' => $s['variant_title'] ?? null,
-                                    'Variant ID' => $s['variant_id'] ?? null,
-                                    'B2C price' => isset($s['b2c_price']) ? '$'.number_format((float)$s['b2c_price'], 2) : null,
-                                    'Base price' => isset($s['price']) ? '$'.number_format((float)$s['price'], 2) : null,
-                                    'Available' => $s['available_to_sell'] ?? null,
-                                    'On hand' => $s['on_hand'] ?? null,
-                                ]])
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        <div class="card h-100 border-warning-subtle">
-                            <div class="card-header bg-warning-subtle">AliExpress</div>
-                            <div class="card-body p-0">
-                                @include('marketplace.aliexpress._detail-table', ['showEmpty' => true, 'rows' => [
-                                    'Product ID' => $ae['product_id'] ?? $l['product_id'] ?? null,
-                                    'Title' => $ae['title'] ?? $l['title'] ?? null,
-                                    'Status' => $ae['status'] ?? null,
-                                    'Price (live)' => isset($ae['min_price']) ? '$'.number_format((float)$ae['min_price'], 2) : null,
-                                    'Price (cached)' => isset($ae['cached_price']) ? '$'.number_format((float)$ae['cached_price'], 2) : null,
-                                    'L30 / L60' => isset($l['l30']) ? ($l['l30'].' / '.($l['l60'] ?? '—')) : null,
-                                ]])
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+        @include('marketplace.aliexpress._compare-row', [
+            'rowTitle' => 'Listing details',
+            'left' => $shopifyListingHtml,
+            'right' => $aeListingHtml,
+            'leftEmpty' => 'No Shopify listing data',
+            'rightEmpty' => 'No AliExpress listing data — link SKU and pull from AliExpress',
+        ])
 
-        <div class="card mb-3">
-            <div class="card-header">Full Shopify inventory & pricing</div>
-            <div class="card-body p-0">
-                @include('marketplace.aliexpress._detail-table', ['showEmpty' => true, 'rows' => [
-                    'SKU' => '<code>'.e($s['sku'] ?? '—').'</code>',
-                    'Product title' => $s['product_title'] ?? null,
-                    'Variant title' => $s['variant_title'] ?? null,
-                    'Variant ID' => $s['variant_id'] ?? null,
-                    'Available to sell' => $s['available_to_sell'] ?? null,
-                    'On hand' => $s['on_hand'] ?? null,
-                    'Committed' => $s['committed'] ?? null,
-                    'Incoming' => $s['incoming'] ?? null,
-                    'Unavailable' => $s['unavailable'] ?? null,
-                    'B2C price' => isset($s['b2c_price']) ? '$'.number_format((float)$s['b2c_price'], 2) : null,
-                    'B2B price' => isset($s['b2b_price']) ? '$'.number_format((float)$s['b2b_price'], 2) : null,
-                    'Shopify L30' => $s['shopify_l30'] ?? null,
-                    'Product link' => !empty($s['product_link']) ? '<a href="'.e($s['product_link']).'" target="_blank" rel="noopener">Open in Shopify</a>' : null,
-                ]])
-            </div>
-        </div>
+        @php
+            ob_start();
+        @endphp
+        @include('marketplace.aliexpress._image-gallery', [
+            'images' => $shopifyImages,
+            'mainImage' => $s['main_image'] ?? null,
+            'galleryId' => 'shopify-gallery',
+        ])
+        @php $shopifyImagesHtml = ob_get_clean(); ob_start(); @endphp
+        @include('marketplace.aliexpress._image-gallery', [
+            'images' => $aeImages,
+            'mainImage' => $ae['main_image'] ?? null,
+            'galleryId' => 'ae-gallery',
+        ])
+        @php $aeImagesHtml = ob_get_clean(); @endphp
 
-        <div class="card mb-3">
-            <div class="card-header">AliExpress listing details</div>
-            <div class="card-body p-0">
-                @include('marketplace.aliexpress._detail-table', ['showEmpty' => true, 'rows' => [
-                    'Product ID' => $ae['product_id'] ?? $l['product_id'] ?? null,
-                    'Title' => $ae['title'] ?? $l['title'] ?? null,
-                    'Status' => $ae['status'] ?? null,
-                    'Category ID' => $ae['category_id'] ?? null,
-                    'Currency' => $ae['currency'] ?? null,
-                    'Product unit' => $ae['unit'] ?? null,
-                    'Package type' => $ae['package_type'] ?? null,
-                    'Freight template' => $ae['freight_template_id'] ?? null,
-                    'Bulk order' => $ae['bulk_order'] ?? null,
-                    'Bulk discount' => $ae['bulk_discount'] ?? null,
-                    'Min price' => isset($ae['min_price']) ? '$'.number_format((float)$ae['min_price'], 2) : null,
-                    'Max price' => isset($ae['max_price']) ? '$'.number_format((float)$ae['max_price'], 2) : null,
-                    'Created' => $ae['gmt_create'] ?? null,
-                    'Modified' => $ae['gmt_modified'] ?? null,
-                    'Last order' => !empty($l['last_order_date']) ? \Carbon\Carbon::parse($l['last_order_date'])->format('M d, Y H:i') : null,
-                ]])
-            </div>
-        </div>
+        @include('marketplace.aliexpress._compare-row', [
+            'rowTitle' => 'Images',
+            'left' => $shopifyImagesHtml,
+            'right' => $aeImagesHtml,
+            'leftEmpty' => 'No Shopify images in catalog cache',
+            'rightEmpty' => 'No AliExpress images — pull live product details',
+        ])
 
         @if(!empty($ae['variants']))
             <div class="card mb-3">
@@ -224,60 +202,111 @@
             </div>
         @endif
 
-        @if(!empty($ae['subjects']))
-            <div class="card mb-3">
-                <div class="card-header">Titles by language</div>
-                <div class="card-body p-0">
-                    <table class="table table-sm mb-0">
-                        <thead class="table-light"><tr><th class="ps-3">Language</th><th>Title</th></tr></thead>
-                        <tbody>
-                            @foreach($ae['subjects'] as $sub)
-                                <tr><td class="ps-3">{{ $sub['language'] ?? '—' }}</td><td>{{ $sub['subject'] ?? '—' }}</td></tr>
-                            @endforeach
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+        @php
+            $shopifyProps = $s['properties'] ?? [];
+            $aeProps = $ae['properties'] ?? [];
+            $hasAttributes = !empty($shopifyProps) || !empty($aeProps) || !empty($ae['subjects']);
+        @endphp
+
+        @if($hasAttributes)
+            @php ob_start(); @endphp
+            @if(!empty($shopifyProps))
+                <table class="table table-sm mb-0">
+                    <thead class="table-light"><tr><th class="ps-3">Property</th><th>Value</th></tr></thead>
+                    <tbody>
+                        @foreach($shopifyProps as $prop)
+                            <tr><td class="ps-3">{{ $prop['name'] }}</td><td>{{ $prop['value'] }}</td></tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            @endif
+            @php $shopifyAttrsHtml = ob_get_clean(); ob_start(); @endphp
+            @if(!empty($ae['subjects']))
+                <div class="small text-muted mb-2">Titles by language</div>
+                <table class="table table-sm mb-3">
+                    <thead class="table-light"><tr><th class="ps-3">Language</th><th>Title</th></tr></thead>
+                    <tbody>
+                        @foreach($ae['subjects'] as $sub)
+                            <tr><td class="ps-3">{{ $sub['language'] ?? '—' }}</td><td>{{ $sub['subject'] ?? '—' }}</td></tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            @endif
+            @if(!empty($aeProps))
+                <table class="table table-sm mb-0">
+                    <thead class="table-light"><tr><th class="ps-3">Property</th><th>Value</th></tr></thead>
+                    <tbody>
+                        @foreach($aeProps as $prop)
+                            <tr><td class="ps-3">{{ $prop['name'] }}</td><td>{{ $prop['value'] }}</td></tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            @endif
+            @php $aeAttrsHtml = ob_get_clean(); @endphp
+
+            @include('marketplace.aliexpress._compare-row', [
+                'rowTitle' => 'Attributes',
+                'left' => $shopifyAttrsHtml,
+                'right' => $aeAttrsHtml,
+                'leftEmpty' => 'No Shopify attributes in catalog',
+                'rightEmpty' => 'No AliExpress properties',
+            ])
         @endif
 
-        @if(!empty($ae['properties']))
-            <div class="card mb-3">
-                <div class="card-header">Product properties</div>
-                <div class="card-body p-0">
-                    <table class="table table-sm mb-0">
-                        <thead class="table-light"><tr><th class="ps-3">Property</th><th>Value</th></tr></thead>
-                        <tbody>
-                            @foreach($ae['properties'] as $prop)
-                                <tr><td class="ps-3">{{ $prop['name'] }}</td><td>{{ $prop['value'] }}</td></tr>
-                            @endforeach
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        @endif
+        @php
+            ob_start();
+            if ($shopifyDescription) {
+                if ($shopifyDescSource === 'shopify_catalog') {
+                    echo '<div class="text-muted small mb-2">Source: Shopify catalog cache</div>';
+                } elseif ($shopifyDescSource === 'product_master') {
+                    echo '<div class="text-muted small mb-2">Source: Product Master (catalog cache empty)</div>';
+                }
+                echo '<div class="ae-description border rounded p-3 bg-white">'.$shopifyDescription.'</div>';
+            }
+            $shopifyDescHtml = ob_get_clean();
 
-        @if(!empty($ae['descriptions']))
-            <div class="card mb-3">
-                <div class="card-header">Description</div>
-                <div class="card-body">
-                    @foreach($ae['descriptions'] as $desc)
-                        @if(!empty($desc['language']))
-                            <div class="text-muted small mb-2">Language: {{ $desc['language'] }}</div>
-                        @endif
-                        <div class="ae-description border rounded p-3 bg-white">{!! $desc['html'] ?? '' !!}</div>
-                    @endforeach
-                </div>
-            </div>
-        @elseif(!empty($l['bullet_points']))
-            <div class="card mb-3">
-                <div class="card-header">Bullet points (cached)</div>
-                <div class="card-body"><pre class="mb-0 small">{{ $l['bullet_points'] }}</pre></div>
-            </div>
+            ob_start();
+            if (!empty($aeDescriptionBlocks)) {
+                foreach ($aeDescriptionBlocks as $desc) {
+                    if (!empty($desc['language'])) {
+                        echo '<div class="text-muted small mb-2">Language: '.e($desc['language']).'</div>';
+                    }
+                    echo '<div class="ae-description border rounded p-3 bg-white">'.($desc['html'] ?? '').'</div>';
+                }
+            } elseif (!empty($l['bullet_points'])) {
+                echo '<div class="text-muted small mb-2">Cached bullet points (no full description)</div>';
+                echo '<pre class="mb-0 small border rounded p-3 bg-white">'.e($l['bullet_points']).'</pre>';
+            }
+            $aeDescHtml = ob_get_clean();
+        @endphp
+
+        @if(filled($shopifyDescHtml) || filled($aeDescHtml))
+            @include('marketplace.aliexpress._compare-row', [
+                'rowTitle' => 'Description',
+                'left' => $shopifyDescHtml,
+                'right' => $aeDescHtml,
+                'leftEmpty' => 'No Shopify description in catalog cache or Product Master',
+                'rightEmpty' => 'No AliExpress description — pull live product details',
+            ])
         @endif
     </div>
 </div>
 
 <script>
+document.querySelectorAll('.ae-gallery-thumb').forEach(function (thumb) {
+    thumb.addEventListener('click', function () {
+        var gid = this.getAttribute('data-gallery');
+        var main = document.getElementById(gid + '-main');
+        if (main) {
+            main.src = this.getAttribute('data-src') || this.src;
+        }
+        document.querySelectorAll('.ae-gallery-thumb[data-gallery="' + gid + '"]').forEach(function (el) {
+            el.classList.remove('active');
+        });
+        this.classList.add('active');
+    });
+});
+
 document.getElementById('btn-pull-ae')?.addEventListener('click', function () {
     var btn = this;
     var id = btn.getAttribute('data-id');
