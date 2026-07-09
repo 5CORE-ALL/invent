@@ -22,8 +22,12 @@ class AliexpressDetailFormatter
 
         $images = $this->extractProductImages($ae, $aeSkuRows, $shopify->image_src);
         $descriptions = $this->extractProductDescriptions($ae);
-        $variants = $this->formatProductVariants($ae, $aeSkuRows);
+        $variants = $this->formatProductVariants($ae, $aeSkuRows, $metric, $shopify);
         $properties = $this->extractProductProperties($ae);
+
+        $cachedPrice = $this->money($metric?->price);
+        $minPrice = $this->money($ae['product_min_price'] ?? null) ?? $cachedPrice;
+        $maxPrice = $this->money($ae['product_max_price'] ?? null) ?? $cachedPrice;
 
         return [
             'shopify' => [
@@ -65,10 +69,11 @@ class AliexpressDetailFormatter
                 'freight_template_id' => $this->str($ae['freight_template_id'] ?? null),
                 'gmt_create' => $this->str($ae['gmt_create'] ?? $ae['create_time'] ?? null),
                 'gmt_modified' => $this->str($ae['gmt_modified'] ?? $ae['modified_time'] ?? null),
-                'min_price' => $this->money($ae['product_min_price'] ?? null),
-                'max_price' => $this->money($ae['product_max_price'] ?? null),
+                'min_price' => $minPrice,
+                'max_price' => $maxPrice,
+                'cached_price' => $cachedPrice,
                 'images' => $images,
-                'main_image' => $images[0] ?? null,
+                'main_image' => $shopify->image_src ?? ($images[0] ?? null),
                 'descriptions' => $descriptions,
                 'variants' => $variants,
                 'properties' => $properties,
@@ -146,6 +151,10 @@ class AliexpressDetailFormatter
     {
         $urls = [];
 
+        if ($shopifyImage) {
+            $urls[] = $shopifyImage;
+        }
+
         foreach ([
             $ae['main_image_url'] ?? null,
             $ae['product_main_image'] ?? null,
@@ -167,10 +176,6 @@ class AliexpressDetailFormatter
 
         foreach ($aeSkuRows as $row) {
             $urls = array_merge($urls, $this->splitImageUrls($row['image'] ?? $row['sku_image'] ?? null));
-        }
-
-        if ($shopifyImage) {
-            $urls[] = $shopifyImage;
         }
 
         return array_values(array_unique(array_filter($urls)));
@@ -211,7 +216,7 @@ class AliexpressDetailFormatter
      * @param  array<int, array<string, mixed>>  $aeSkuRows
      * @return array<int, array<string, mixed>>
      */
-    protected function formatProductVariants(array $ae, array $aeSkuRows): array
+    protected function formatProductVariants(array $ae, array $aeSkuRows, ?AliexpressMetric $metric = null, ?ShopifySku $shopify = null): array
     {
         $variants = [];
 
@@ -247,6 +252,30 @@ class AliexpressDetailFormatter
                     'properties' => [],
                 ];
             }
+        }
+
+        if ($variants === [] && $metric && $metric->product_id && $metric->sku && $metric->sku !== $metric->product_id) {
+            $variants[] = [
+                'sku' => $this->str($metric->sku),
+                'price' => $this->money($metric->price),
+                'stock' => null,
+                'image' => null,
+                'ean' => null,
+                'properties' => [],
+                'source' => 'cached',
+            ];
+        }
+
+        if ($variants === [] && $shopify && $shopify->sku) {
+            $variants[] = [
+                'sku' => $this->str($shopify->sku),
+                'price' => $this->money($shopify->b2c_price ?? $shopify->price),
+                'stock' => $shopify->available_to_sell ?? $shopify->inv ?? $shopify->on_hand,
+                'image' => $shopify->image_src,
+                'ean' => null,
+                'properties' => [],
+                'source' => 'shopify',
+            ];
         }
 
         return $variants;
