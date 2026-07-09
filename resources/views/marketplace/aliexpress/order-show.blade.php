@@ -4,39 +4,68 @@
 @php
     $summary = $detail['summary'] ?? [];
     $amounts = $detail['amounts'] ?? [];
+    $funds = $detail['funds'] ?? [];
     $buyer = $detail['buyer'] ?? [];
     $shipping = $detail['shipping'] ?? [];
+    $shipment = $detail['shipment'] ?? [];
     $logistics = $detail['logistics'] ?? [];
     $lineItems = $detail['line_items'] ?? [];
     $shopify = $detail['shopify'] ?? [];
     $payment = $detail['payment'] ?? [];
-    $currency = $amounts['currency'] ?? $payment['currency'] ?? '';
+    $currency = $funds['currency'] ?? $amounts['currency'] ?? $payment['currency'] ?? '';
+    $fmt = function ($value) use ($currency) {
+        if ($value === null || $value === '') return '—';
+        return ($currency ? $currency.' ' : '').number_format((float)$value, 2);
+    };
+    $aeSource = $aeDataSource ?? 'cached';
 @endphp
 <div class="row">
     <div class="col-12">
         <a href="{{ route('marketplace.orders', 'aliexpress') }}" class="text-muted small"><i class="ri-arrow-left-line"></i> Back to Orders</a>
-        <h4 class="mt-2 mb-1">Order {{ $summary['order_id'] ?? $orderId }}</h4>
-        <p class="text-muted mb-3">
-            @if(!empty($summary['created']))
-                {{ \Carbon\Carbon::parse($summary['created'])->format('M d, Y H:i') }}
-            @endif
-            <span class="badge bg-secondary ms-1">{{ $summary['status'] ?? '—' }}</span>
-            @if(isset($amounts['order_total']))
-                <span class="ms-2 fw-semibold">{{ $currency }} {{ number_format((float)$amounts['order_total'], 2) }}</span>
-            @endif
-        </p>
+        <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mt-2 mb-1">
+            <div>
+                <h4 class="mb-1">Order {{ $summary['order_id'] ?? $orderId }}</h4>
+                <p class="text-muted mb-0">
+                    @if(!empty($summary['created']))
+                        {{ \Carbon\Carbon::parse($summary['created'])->format('M d, Y H:i') }}
+                    @endif
+                    <span class="badge bg-secondary ms-1">{{ $summary['status'] ?? '—' }}</span>
+                    @if($aeSource === 'api')
+                        <span class="badge bg-info-subtle text-info ms-1">AE data: live API</span>
+                    @else
+                        <span class="badge bg-warning-subtle text-warning ms-1">AE data: cached</span>
+                    @endif
+                </p>
+            </div>
+            <div class="d-flex gap-2">
+                @if($connected)
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="btn-pull-ae-order" data-id="{{ $line->id }}">
+                        <i class="ri-download-cloud-line"></i> Pull from AliExpress
+                    </button>
+                @endif
+            </div>
+        </div>
 
         @include('marketplace.aliexpress._nav', ['active' => 'orders'])
+
+        <div class="alert alert-info py-2 small mb-3">
+            <strong>Read-only view.</strong> Shipping, buyer, payment, and fund details are pulled from AliExpress and sent to Shopify when you push this order.
+        </div>
+
+        @if($aeLiveError ?? null)
+            <div class="alert alert-warning">{{ $aeLiveError }}</div>
+        @endif
 
         <div class="row g-3 mb-3">
             <div class="col-lg-8">
                 <div class="card h-100">
                     <div class="card-header">Order summary</div>
                     <div class="card-body p-0">
-                        @include('marketplace.aliexpress._detail-table', ['rows' => [
+                        @include('marketplace.aliexpress._detail-table', ['showEmpty' => true, 'rows' => [
                             'Order ID' => $summary['order_id'] ?? null,
                             'Order number' => $summary['order_number'] ?? null,
                             'Status' => $summary['status'] ?? null,
+                            'Buyer login' => $summary['buyer_login_id'] ?? null,
                             'Created' => !empty($summary['created']) ? \Carbon\Carbon::parse($summary['created'])->format('M d, Y H:i') : null,
                             'Paid' => !empty($summary['paid']) ? \Carbon\Carbon::parse($summary['paid'])->format('M d, Y H:i') : null,
                             'Shipped' => !empty($summary['sent']) ? \Carbon\Carbon::parse($summary['sent'])->format('M d, Y H:i') : null,
@@ -50,19 +79,48 @@
             </div>
             <div class="col-lg-4">
                 <div class="card h-100">
-                    <div class="card-header">Payment & totals</div>
+                    <div class="card-header">Payment details</div>
                     <div class="card-body p-0">
-                        @include('marketplace.aliexpress._detail-table', ['rows' => [
-                            'Currency' => $currency ?: null,
-                            'Order total' => isset($amounts['order_total']) ? number_format((float)$amounts['order_total'], 2) : null,
-                            'Pay amount' => isset($amounts['pay_amount']) ? number_format((float)$amounts['pay_amount'], 2) : null,
-                            'Shipping' => isset($amounts['shipping_cost']) ? number_format((float)$amounts['shipping_cost'], 2) : null,
-                            'Discount' => isset($amounts['discount']) ? number_format((float)$amounts['discount'], 2) : null,
-                            'Tax' => isset($amounts['tax']) ? number_format((float)$amounts['tax'], 2) : null,
+                        @include('marketplace.aliexpress._detail-table', ['showEmpty' => true, 'rows' => [
+                            'Total amount paid' => isset($payment['total_paid']) ? $fmt($payment['total_paid']) : null,
+                            'Payment time' => !empty($payment['paid_at']) ? \Carbon\Carbon::parse($payment['paid_at'])->format('M d, Y H:i') : null,
                             'Payment method' => $payment['method'] ?? null,
+                            'Currency' => $currency ?: null,
                         ]])
                     </div>
                 </div>
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header">Fund details</div>
+            <div class="card-body p-0">
+                @include('marketplace.aliexpress._detail-table', ['showEmpty' => true, 'rows' => [
+                    'Product total' => isset($funds['product_total']) ? $fmt($funds['product_total']) : null,
+                    'Shipping cost' => isset($funds['shipping_cost']) ? $fmt($funds['shipping_cost']) : null,
+                    'Adjustment' => isset($funds['adjustment']) ? $fmt($funds['adjustment']) : null,
+                    'Store promotion' => isset($funds['store_promotion']) ? $fmt($funds['store_promotion']) : null,
+                    'Order amount' => isset($funds['order_amount']) ? $fmt($funds['order_amount']) : null,
+                    'Platform commission' => isset($funds['platform_commission']) ? $fmt($funds['platform_commission']) : null,
+                    'Affiliate commission' => isset($funds['affiliate_commission']) ? $fmt($funds['affiliate_commission']) : null,
+                    'Cashback paid by seller' => isset($funds['cashback_paid_by_seller']) ? $fmt($funds['cashback_paid_by_seller']) : null,
+                    'Transaction service fee' => isset($funds['transaction_service_fee']) ? $fmt($funds['transaction_service_fee']) : null,
+                    'Platform offer tax' => isset($funds['platform_offer_tax']) ? $fmt($funds['platform_offer_tax']) : null,
+                    'Amount paid' => isset($funds['amount_paid']) ? $fmt($funds['amount_paid']) : null,
+                ]])
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header">Shipment information</div>
+            <div class="card-body p-0">
+                @include('marketplace.aliexpress._detail-table', ['showEmpty' => true, 'rows' => [
+                    'Shipping time' => !empty($shipment['shipped_at']) ? \Carbon\Carbon::parse($shipment['shipped_at'])->format('M d, Y H:i') : null,
+                    'Shipping method' => $shipment['service'] ?? null,
+                    'Tracking number' => !empty($shipment['tracking']) ? '<code>'.e($shipment['tracking']).'</code>' : null,
+                    'Status' => $shipment['status'] ?? null,
+                    'Status message' => $shipment['status_message'] ?? null,
+                ]])
             </div>
         </div>
 
@@ -71,7 +129,7 @@
                 <div class="card h-100">
                     <div class="card-header">Buyer</div>
                     <div class="card-body p-0">
-                        @include('marketplace.aliexpress._detail-table', ['rows' => [
+                        @include('marketplace.aliexpress._detail-table', ['showEmpty' => true, 'rows' => [
                             'Name' => trim(($buyer['name'] ?? '').' '.($buyer['last_name'] ?? '')) ?: null,
                             'Login ID' => $buyer['login_id'] ?? null,
                             'Email' => $buyer['email'] ?? null,
@@ -83,17 +141,21 @@
             </div>
             <div class="col-md-6">
                 <div class="card h-100">
-                    <div class="card-header">Shipping address</div>
+                    <div class="card-header">Complete shipping address</div>
                     <div class="card-body p-0">
-                        @include('marketplace.aliexpress._detail-table', ['rows' => [
-                            'Recipient' => $shipping['recipient'] ?? null,
+                        @include('marketplace.aliexpress._detail-table', ['showEmpty' => true, 'rows' => [
+                            'Receiver name' => $shipping['recipient'] ?? null,
+                            'Detailed address' => $shipping['detail_address'] ?? $shipping['full_address'] ?? null,
                             'Address line 1' => $shipping['address_line_1'] ?? null,
                             'Address line 2' => $shipping['address_line_2'] ?? null,
                             'City' => $shipping['city'] ?? null,
                             'State / Province' => $shipping['province'] ?? null,
-                            'ZIP' => $shipping['zip'] ?? null,
-                            'Country' => $shipping['country'] ?? null,
-                            'Full address' => $shipping['full_address'] ?? null,
+                            'Zip code' => $shipping['zip'] ?? null,
+                            'Country' => $shipping['country_name'] ?? $shipping['country'] ?? null,
+                            'Localized address' => $shipping['localized_address'] ?? null,
+                            'Email' => $shipping['email'] ?? null,
+                            'Phone' => $shipping['phone'] ?? null,
+                            'Tax number' => $shipping['tax_number'] ?? null,
                         ]])
                     </div>
                 </div>
@@ -109,9 +171,9 @@
                             <tr>
                                 <th class="ps-3">Service</th>
                                 <th>Tracking</th>
+                                <th>Shipped</th>
                                 <th>Status</th>
-                                <th>Send type</th>
-                                <th>Receive status</th>
+                                <th>Message</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -119,9 +181,9 @@
                                 <tr>
                                     <td class="ps-3">{{ $log['service'] ?? '—' }}</td>
                                     <td><code>{{ $log['tracking'] ?? '—' }}</code></td>
+                                    <td class="small">{{ !empty($log['shipped_at']) ? \Carbon\Carbon::parse($log['shipped_at'])->format('M d, Y H:i') : '—' }}</td>
                                     <td>{{ $log['status'] ?? '—' }}</td>
-                                    <td>{{ $log['send_type'] ?? '—' }}</td>
-                                    <td>{{ $log['receive_status'] ?? '—' }}</td>
+                                    <td class="small">{{ $log['status_message'] ?? '—' }}</td>
                                 </tr>
                             @endforeach
                         </tbody>
@@ -140,6 +202,7 @@
                                 <th style="width:72px;">Image</th>
                                 <th>SKU</th>
                                 <th>Product ID</th>
+                                <th>Child order</th>
                                 <th>Title</th>
                                 <th>Qty</th>
                                 <th>Unit price</th>
@@ -154,12 +217,11 @@
                                     <td>
                                         @if(!empty($item['image']))
                                             <img src="{{ $item['image'] }}" alt="" class="img-thumbnail" style="max-width:56px; max-height:56px; object-fit:contain;">
-                                        @else
-                                            —
-                                        @endif
+                                        @else — @endif
                                     </td>
                                     <td><code>{{ $item['sku'] ?? '—' }}</code></td>
                                     <td>{{ $item['product_id'] ?? '—' }}</td>
+                                    <td>{{ $item['child_order_id'] ?? '—' }}</td>
                                     <td>{{ $item['title'] ?? '—' }}</td>
                                     <td>{{ $item['quantity'] ?? 1 }}</td>
                                     <td>{{ isset($item['unit_price']) ? number_format((float)$item['unit_price'], 2) : '—' }}</td>
@@ -174,7 +236,7 @@
                                     </td>
                                 </tr>
                             @empty
-                                <tr><td colspan="9" class="text-center text-muted py-4">No line items found.</td></tr>
+                                <tr><td colspan="10" class="text-center text-muted py-4">No line items found.</td></tr>
                             @endforelse
                         </tbody>
                     </table>
@@ -192,9 +254,10 @@
                         <tr><th class="ps-3">Pushed at</th><td>
                             @if(!empty($shopify['pushed_to_shopify_at']))
                                 {{ \Carbon\Carbon::parse($shopify['pushed_to_shopify_at'])->format('M d, Y H:i') }}
-                            @else
-                                —
-                            @endif
+                            @else — @endif
+                        </td></tr>
+                        <tr><th class="ps-3">Sent to Shopify</th><td class="small text-muted">
+                            Shipping address, buyer email/phone, payment method, tracking number, tax number, and all line items.
                         </td></tr>
                         <tr><th class="ps-3">Action</th><td>
                             @if($shopify['shopify_order_id'] ?? null)
@@ -211,6 +274,31 @@
 </div>
 
 <script>
+document.getElementById('btn-pull-ae-order')?.addEventListener('click', function () {
+    var btn = this;
+    var id = btn.getAttribute('data-id');
+    if (!id) return;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="ri-loader-4-line"></i> Pulling…';
+    fetch('{{ url('marketplace/aliexpress/orders') }}/' + id + '/pull', {
+        method: 'POST',
+        headers: {
+            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+            'Accept': 'application/json',
+        },
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+        alert(data.message || (data.success ? 'Done' : 'Failed'));
+        if (data.success) location.reload();
+    })
+    .catch(function () { alert('Request failed.'); })
+    .finally(function () {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="ri-download-cloud-line"></i> Pull from AliExpress';
+    });
+});
+
 document.getElementById('btn-push-order')?.addEventListener('click', function () {
     var btn = this;
     var id = btn.getAttribute('data-id');

@@ -12,6 +12,7 @@ use App\Services\AliExpressApiService;
 use App\Services\AliExpressAuthService;
 use App\Services\MarketplaceManager\AliexpressDetailFormatter;
 use App\Services\MarketplaceManager\AliexpressInventorySyncService;
+use App\Services\MarketplaceManager\AliexpressOrderDetailService;
 use App\Services\MarketplaceManager\AliexpressOrderSyncService;
 use App\Services\ShopifyApiService;
 use App\Services\Support\MarketplaceApiConfigService;
@@ -447,9 +448,21 @@ class AliexpressSyncController extends Controller
             ->orderBy('id')
             ->get();
 
-        $raw = is_array($line->raw_payload) ? $line->raw_payload : [];
-        $orderRoot = is_array($raw['order'] ?? null) ? $raw['order'] : $raw;
+        $aeLiveError = null;
+        $aeDataSource = 'cached';
+        $detailService = app(AliexpressOrderDetailService::class);
 
+        if ($this->apiConfig->isConfigured('aliexpress')) {
+            $pull = $detailService->fetchAndPersistOrderDetail($orderId);
+            if (! empty($pull['success'])) {
+                $aeDataSource = 'api';
+                $line->refresh();
+            } else {
+                $aeLiveError = $pull['message'] ?? 'Could not refresh live AliExpress order details.';
+            }
+        }
+
+        $orderRoot = $detailService->resolveOrderRoot($line);
         $detail = app(AliexpressDetailFormatter::class)->formatOrder($orderRoot, $lines, $line);
 
         return view('marketplace.aliexpress.order-show', [
@@ -457,7 +470,24 @@ class AliexpressSyncController extends Controller
             'orderId' => $orderId,
             'line' => $line,
             'detail' => $detail,
+            'aeLiveError' => $aeLiveError,
+            'aeDataSource' => $aeDataSource,
             'connected' => $this->apiConfig->isConfigured('aliexpress'),
+        ]);
+    }
+
+    public function pullOrderFromAliexpress(int $id): JsonResponse
+    {
+        if (! $this->apiConfig->isConfigured('aliexpress')) {
+            return response()->json(['success' => false, 'message' => 'AliExpress not connected.']);
+        }
+
+        $line = AliexpressOrderMetric::query()->findOrFail($id);
+        $result = app(AliexpressOrderDetailService::class)->fetchAndPersistOrderDetail((string) $line->order_id);
+
+        return response()->json([
+            'success' => ! empty($result['success']),
+            'message' => $result['message'] ?? ($result['success'] ? 'Order details updated from AliExpress.' : 'Failed to pull order details.'),
         ]);
     }
 

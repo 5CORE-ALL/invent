@@ -69,6 +69,16 @@ class MarketplaceController extends Controller
         return app(AliexpressSyncController::class)->pullProductFromAliexpress($shopifySku);
     }
 
+    public function pullOrder(Request $request, string $marketplace, int $order): JsonResponse
+    {
+        $marketplace = strtolower($marketplace);
+        if ($marketplace !== 'aliexpress') {
+            return response()->json(['success' => false, 'message' => 'Not supported for this marketplace.'], 404);
+        }
+
+        return app(AliexpressSyncController::class)->pullOrderFromAliexpress($order);
+    }
+
     public function orders(Request $request, string $marketplace): View
     {
         $marketplace = strtolower($marketplace);
