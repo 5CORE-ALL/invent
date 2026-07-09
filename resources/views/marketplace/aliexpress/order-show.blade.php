@@ -263,11 +263,36 @@
                             @if($shopify['shopify_order_id'] ?? null)
                                 <span class="text-muted">Already imported</span>
                             @else
-                                <button type="button" class="btn btn-sm btn-warning" id="btn-push-order" data-id="{{ $line->id }}">Push to Shopify</button>
+                                <div class="d-flex flex-wrap gap-2">
+                                    <button type="button" class="btn btn-sm btn-outline-primary" id="btn-dry-run-shopify" data-id="{{ $line->id }}">
+                                        Dry run (preview)
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-warning" id="btn-push-order" data-id="{{ $line->id }}">
+                                        Push to Shopify
+                                    </button>
+                                </div>
                             @endif
                         </td></tr>
                     </tbody>
                 </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="shopifyDryRunModal" tabindex="-1" aria-labelledby="shopifyDryRunModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="shopifyDryRunModalLabel">Shopify push preview (dry run)</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="shopify-dry-run-summary" class="mb-3"></div>
+                <pre id="shopify-dry-run-json" class="small bg-light border rounded p-3 mb-0" style="max-height: 420px; overflow: auto;"></pre>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
             </div>
         </div>
     </div>
@@ -299,10 +324,65 @@ document.getElementById('btn-pull-ae-order')?.addEventListener('click', function
     });
 });
 
+document.getElementById('btn-dry-run-shopify')?.addEventListener('click', function () {
+    var btn = this;
+    var id = btn.getAttribute('data-id');
+    if (!id) return;
+    btn.disabled = true;
+    btn.textContent = 'Running dry run…';
+    fetch('{{ route('marketplace.orders.push', 'aliexpress') }}', {
+        method: 'POST',
+        headers: {
+            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ id: id, dry_run: true }),
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+        var summaryEl = document.getElementById('shopify-dry-run-summary');
+        var jsonEl = document.getElementById('shopify-dry-run-json');
+        if (!data.success) {
+            summaryEl.innerHTML = '<div class="alert alert-danger mb-0">' + (data.message || 'Dry run failed') + '</div>';
+            jsonEl.textContent = JSON.stringify(data, null, 2);
+        } else {
+            var p = data.preview || {};
+            var warnHtml = (data.warnings || []).length
+                ? '<div class="alert alert-warning py-2 small"><strong>Warnings</strong><ul class="mb-0 ps-3">' + data.warnings.map(function (w) { return '<li>' + w + '</li>'; }).join('') + '</ul></div>'
+                : '<div class="alert alert-success py-2 small mb-2">Ready to push — no warnings.</div>';
+            var linesHtml = '<ul class="small mb-2">';
+            (p.line_items || []).forEach(function (li) {
+                linesHtml += '<li><code>' + (li.sku || '—') + '</code> × ' + li.quantity + ' @ $' + li.price
+                    + (li.variant_id ? ' → variant ' + li.variant_id : ' → custom line') + '</li>';
+            });
+            linesHtml += '</ul>';
+            summaryEl.innerHTML = warnHtml
+                + '<p class="small mb-1"><strong>Store:</strong> ' + (data.shopify_store || '—') + '</p>'
+                + '<p class="small mb-1"><strong>Customer:</strong> ' + ((p.customer && p.customer.name) || '—') + ' &lt;' + ((p.customer && p.customer.email) || '—') + '&gt;</p>'
+                + '<p class="small mb-1"><strong>Ship to:</strong> ' + ((p.shipping_address && p.shipping_address.address1) || '—') + ', '
+                + ((p.shipping_address && p.shipping_address.city) || '') + ' ' + ((p.shipping_address && p.shipping_address.province) || '') + ' '
+                + ((p.shipping_address && p.shipping_address.zip) || '') + ' ' + ((p.shipping_address && p.shipping_address.country_code) || '') + '</p>'
+                + '<p class="small mb-1"><strong>Tracking:</strong> ' + (p.tracking || '—') + ' (' + (p.shipping_method || '—') + ')</p>'
+                + '<p class="small mb-1"><strong>Line items</strong></p>' + linesHtml
+                + '<p class="small text-muted mb-0">' + (data.message || '') + '</p>';
+            jsonEl.textContent = JSON.stringify(data.payload || data, null, 2);
+        }
+        var modal = new bootstrap.Modal(document.getElementById('shopifyDryRunModal'));
+        modal.show();
+    })
+    .catch(function () { alert('Dry run request failed.'); })
+    .finally(function () {
+        btn.disabled = false;
+        btn.textContent = 'Dry run (preview)';
+    });
+});
+
 document.getElementById('btn-push-order')?.addEventListener('click', function () {
     var btn = this;
     var id = btn.getAttribute('data-id');
     if (!id) return;
+    if (!confirm('Create a real Shopify order from this AliExpress order?')) return;
     btn.disabled = true;
     fetch('{{ route('marketplace.orders.push', 'aliexpress') }}', {
         method: 'POST',

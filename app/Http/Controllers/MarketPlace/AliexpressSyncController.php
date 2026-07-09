@@ -13,6 +13,7 @@ use App\Services\AliExpressAuthService;
 use App\Services\MarketplaceManager\AliexpressDetailFormatter;
 use App\Services\MarketplaceManager\AliexpressInventorySyncService;
 use App\Services\MarketplaceManager\AliexpressOrderDetailService;
+use App\Services\MarketplaceManager\AliexpressOrderPushService;
 use App\Services\MarketplaceManager\AliexpressOrderSyncService;
 use App\Services\ShopifyApiService;
 use App\Services\Support\MarketplaceApiConfigService;
@@ -528,6 +529,12 @@ class AliexpressSyncController extends Controller
 
         if (! $order) {
             return response()->json(['success' => false, 'message' => 'Order not found.'], 404);
+        }
+
+        if ($request->boolean('dry_run')) {
+            $preview = app(AliexpressOrderPushService::class)->previewShopifyPush($order);
+
+            return response()->json($preview);
         }
 
         if ($order->shopify_order_id) {
