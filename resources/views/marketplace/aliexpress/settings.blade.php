@@ -81,6 +81,7 @@
             <div class="settings-section">
                 <div class="settings-section-header">Listings</div>
                 <div class="settings-section-body">
+                    <p class="text-muted small mb-2">Sync AE link map (Listings page) only reads AliExpress and saves SKU mappings locally — it never creates listings on AliExpress.</p>
                     <div class="sync-toggle-row">
                         <label class="form-check form-switch mb-0">
                             <input class="form-check-input" type="checkbox" name="listings[auto_link_by_sku]" value="1" {{ ($settings['listings']['auto_link_by_sku'] ?? true) ? 'checked' : '' }}>
@@ -89,14 +90,20 @@
                     </div>
                     <div class="sync-toggle-row">
                         <label class="form-check form-switch mb-0">
-                            <input class="form-check-input" type="checkbox" name="listings[sync_title]" value="1" {{ ($settings['listings']['sync_title'] ?? true) ? 'checked' : '' }}>
-                            <span class="form-check-label">Push title updates to AliExpress</span>
+                            <input class="form-check-input" type="checkbox" name="listings[create_products_on_aliexpress]" value="1" {{ ($settings['listings']['create_products_on_aliexpress'] ?? false) ? 'checked' : '' }}>
+                            <span class="form-check-label">Create new listings on AliExpress from Shopify <span class="text-muted">(off for testing — not implemented yet)</span></span>
                         </label>
                     </div>
                     <div class="sync-toggle-row">
                         <label class="form-check form-switch mb-0">
-                            <input class="form-check-input" type="checkbox" name="listings[sync_images]" value="1" {{ ($settings['listings']['sync_images'] ?? true) ? 'checked' : '' }}>
-                            <span class="form-check-label">Push image updates to AliExpress</span>
+                            <input class="form-check-input" type="checkbox" name="listings[sync_title]" value="1" {{ ($settings['listings']['sync_title'] ?? false) ? 'checked' : '' }}>
+                            <span class="form-check-label">Push title updates to existing AliExpress listings</span>
+                        </label>
+                    </div>
+                    <div class="sync-toggle-row">
+                        <label class="form-check form-switch mb-0">
+                            <input class="form-check-input" type="checkbox" name="listings[sync_images]" value="1" {{ ($settings['listings']['sync_images'] ?? false) ? 'checked' : '' }}>
+                            <span class="form-check-label">Push image updates to existing AliExpress listings</span>
                         </label>
                     </div>
                 </div>

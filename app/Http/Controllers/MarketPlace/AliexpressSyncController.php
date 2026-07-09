@@ -232,14 +232,20 @@ class AliexpressSyncController extends Controller
             return response()->json(['success' => false, 'message' => 'AliExpress not connected.']);
         }
 
-        $page = max(1, (int) $request->input('page', 1));
         $upserted = 0;
         $pagesSynced = 0;
         $maxPages = 50;
 
+        Log::info('Aliexpress link map sync started', ['max_pages' => $maxPages]);
+
         for ($p = 1; $p <= $maxPages; $p++) {
             $result = $this->aliExpressApi->getInventory($p, 50);
             if (empty($result['success'])) {
+                Log::warning('Aliexpress link map sync API error', [
+                    'page' => $p,
+                    'message' => $result['message'] ?? null,
+                    'network_error' => $result['network_error'] ?? false,
+                ]);
                 if ($pagesSynced === 0) {
                     return response()->json([
                         'success' => false,
@@ -284,9 +290,15 @@ class AliexpressSyncController extends Controller
             }
         }
 
+        Log::info('Aliexpress link map sync finished', [
+            'pages_synced' => $pagesSynced,
+            'upserted' => $upserted,
+            'create_products_setting' => MarketplaceSyncSettings::aliexpressCanCreateProducts(),
+        ]);
+
         return response()->json([
             'success' => true,
-            'message' => "Updated {$upserted} Shopify SKU link(s) from AliExpress ({$pagesSynced} API page(s)).",
+            'message' => "Updated {$upserted} Shopify SKU link(s) from AliExpress ({$pagesSynced} API page(s)). No new listings were created on AliExpress.",
             'upserted' => $upserted,
         ]);
     }
@@ -380,20 +392,18 @@ class AliexpressSyncController extends Controller
     {
         $current = MarketplaceSyncSettings::getFor('aliexpress');
 
-        $pricing = array_merge($current['pricing'] ?? [], $request->input('pricing', []));
-        $inventory = array_merge($current['inventory'] ?? [], $request->input('inventory', []));
-        $order = array_merge($current['order'] ?? [], $request->input('order', []));
-        $listings = array_merge($current['listings'] ?? [], $request->input('listings', []));
-
-        foreach (['pricing', 'inventory', 'order', 'listings'] as $section) {
-            foreach ($$section as $key => $value) {
-                if (in_array($value, ['1', 'on', 'true'], true)) {
-                    $$section[$key] = true;
-                } elseif (in_array($value, ['0', 'off', 'false'], true)) {
-                    $$section[$key] = false;
-                }
-            }
-        }
+        $pricing = $this->mergeSettingsSection($current['pricing'] ?? [], $request->input('pricing', []), [
+            'price_sync', 'use_sale_price', 'currency_conversion',
+        ]);
+        $inventory = $this->mergeSettingsSection($current['inventory'] ?? [], $request->input('inventory', []), [
+            'inventory_sync',
+        ]);
+        $order = $this->mergeSettingsSection($current['order'] ?? [], $request->input('order', []), [
+            'auto_import_to_shopify', 'keep_order_number_from_channel',
+        ]);
+        $listings = $this->mergeSettingsSection($current['listings'] ?? [], $request->input('listings', []), [
+            'auto_link_by_sku', 'create_products_on_aliexpress', 'sync_title', 'sync_images',
+        ]);
 
         if ($request->has('order.shopify_order_tags')) {
             $tags = $request->input('order.shopify_order_tags');
@@ -410,6 +420,27 @@ class AliexpressSyncController extends Controller
         ]);
 
         return response()->json(['success' => true, 'message' => 'AliExpress sync settings saved.']);
+    }
+
+    /**
+     * @param  array<string, mixed>  $current
+     * @param  array<string, mixed>  $input
+     * @param  array<int, string>  $booleanKeys
+     * @return array<string, mixed>
+     */
+    protected function mergeSettingsSection(array $current, array $input, array $booleanKeys): array
+    {
+        $merged = array_merge($current, $input);
+
+        if ($input !== []) {
+            foreach ($booleanKeys as $key) {
+                $merged[$key] = array_key_exists($key, $input)
+                    ? filter_var($input[$key], FILTER_VALIDATE_BOOLEAN)
+                    : false;
+            }
+        }
+
+        return $merged;
     }
 
     /**

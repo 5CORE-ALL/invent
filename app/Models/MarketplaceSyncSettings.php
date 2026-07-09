@@ -29,6 +29,13 @@ class MarketplaceSyncSettings extends Model
         );
     }
 
+    public static function aliexpressCanCreateProducts(?array $settings = null): bool
+    {
+        $settings ??= self::getFor('aliexpress');
+
+        return (bool) ($settings['listings']['create_products_on_aliexpress'] ?? false);
+    }
+
     public static function defaults(): array
     {
         return [
@@ -54,8 +61,9 @@ class MarketplaceSyncSettings extends Model
             ],
             'listings' => [
                 'auto_link_by_sku' => true,
-                'sync_title' => true,
-                'sync_images' => true,
+                'create_products_on_aliexpress' => false,
+                'sync_title' => false,
+                'sync_images' => false,
             ],
         ];
     }

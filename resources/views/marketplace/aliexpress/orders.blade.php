@@ -85,7 +85,7 @@
                     </table>
                 </div>
                 @if($orders->hasPages())
-                    <div class="d-flex justify-content-center py-3">{{ $orders->links() }}</div>
+                    <div class="d-flex justify-content-center py-3">{{ $orders->onEachSide(1)->links('pagination::bootstrap-5') }}</div>
                 @endif
             </div>
         </div>

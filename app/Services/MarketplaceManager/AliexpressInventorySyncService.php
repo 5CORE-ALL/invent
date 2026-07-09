@@ -66,8 +66,12 @@ class AliexpressInventorySyncService
                 'failed' => 0,
                 'skipped' => 0,
                 'price_updated' => 0,
-                'message' => 'No AliExpress SKU mappings found. Sync listings from API first.',
+                'message' => 'No AliExpress SKU mappings found. Run Sync AE link map on Listings first.',
             ];
+        }
+
+        if (MarketplaceSyncSettings::aliexpressCanCreateProducts($settings)) {
+            Log::info('AliexpressInventorySyncService: create_products_on_aliexpress is enabled but listing creation is not implemented yet; only existing linked SKUs will be updated.');
         }
 
         $skus = $metrics->pluck('sku')->unique()->values()->all();
