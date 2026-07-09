@@ -17,6 +17,10 @@
             <button class="btn btn-sm btn-info text-white d-none" id="enroll-selected-btn" data-bs-toggle="modal" data-bs-target="#enrollModal">
                 <i class="fas fa-plus-circle me-1"></i>Enroll in Campaign (<span id="enroll-count">0</span>)
             </button>
+            <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#sbidRuleModal"
+                    title="Build rules on CVR / Dil / Esold / Views L30 that set the S Bid column">
+                <i class="fas fa-sliders-h me-1"></i>Sbid Rule
+            </button>
             <button class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#dilRuleModal">
                 <i class="fas fa-tint me-1"></i>Dil Rule
             </button>
@@ -114,6 +118,77 @@
                 <button type="button" class="btn btn-sm btn-info text-white" id="enroll-confirm-btn">
                     <i class="fas fa-plus-circle me-1"></i>Enroll Now
                 </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{{-- Sbid Rule Modal — slab builder (CVR / Dil / Esold / Views L30 → S Bid).
+     Shared with /ebay-tabulator-view and the cron (ebay_sbid_rules.key = ebay1_sbid_slabs). --}}
+<div class="modal fade" id="sbidRuleModal" tabindex="-1" aria-labelledby="sbidRuleModalLabel" aria-hidden="true">
+    <style>
+        #sbidRuleModal .modal-dialog { max-width: 98vw; width: 98vw; margin: 0.5rem auto; }
+        #sbid-slab-rule-table thead th { background-color: #fff9c4 !important; color: #000 !important; }
+    </style>
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h5 class="modal-title" id="sbidRuleModalLabel">
+                    <i class="fas fa-sliders-h me-2 text-primary"></i>Sbid Rule
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="table-responsive">
+                    <table class="table table-sm table-bordered align-middle" id="sbid-slab-rule-table" style="min-width: 720px;">
+                        <thead class="table-light">
+                            <tr>
+                                <th rowspan="2" style="width:34px;" class="text-center align-middle">#</th>
+                                <th rowspan="2" style="min-width:110px;" class="align-middle">Label</th>
+                                <th colspan="2" class="text-center">CVR %</th>
+                                <th colspan="2" class="text-center">Dil %</th>
+                                <th colspan="2" class="text-center">Esold</th>
+                                <th colspan="2" class="text-center">Views L30</th>
+                                <th rowspan="2" style="width:100px;" class="align-middle text-center">S Bid (%)</th>
+                                <th rowspan="2" style="width:44px;" class="align-middle"></th>
+                            </tr>
+                            <tr>
+                                <th class="text-center small text-muted">Min</th><th class="text-center small text-muted">Max</th>
+                                <th class="text-center small text-muted">Min</th><th class="text-center small text-muted">Max</th>
+                                <th class="text-center small text-muted">Min</th><th class="text-center small text-muted">Max</th>
+                                <th class="text-center small text-muted">Min</th><th class="text-center small text-muted">Max</th>
+                            </tr>
+                        </thead>
+                        <tbody id="sbid-slab-rules-body">
+                            {{-- filled by JS --}}
+                        </tbody>
+                    </table>
+                </div>
+
+                <button type="button" class="btn btn-sm btn-primary mb-2" id="sbid-slab-add-rule-btn">
+                    <i class="fas fa-plus me-1"></i>Add rule / slab
+                </button>
+
+                <div class="alert alert-info small py-2 mb-0">
+                    <i class="fas fa-info-circle me-1"></i>
+                    Rules are evaluated <strong>top to bottom</strong> — the first rule where all filled ranges
+                    match a row sets that row's <strong>S Bid</strong>. Leave a Min/Max blank to ignore it.
+                    Shared with <code>/ebay-tabulator-view</code> and applied by <strong>ebay:update-suggestedbid</strong>.
+                </div>
+                <p class="small text-danger mb-0 mt-2 d-none" id="sbid-slab-rule-err"></p>
+            </div>
+            <div class="modal-footer py-2 d-flex justify-content-between">
+                <span class="small text-muted" id="sbid-slab-rule-status"></span>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-sm btn-success" id="sbid-slab-apply-btn"
+                            title="Push each visible row's computed S Bid to its eBay campaign">
+                        <i class="fas fa-bolt me-1"></i>Apply to Visible Rows
+                    </button>
+                    <button type="button" class="btn btn-sm btn-primary" id="sbid-slab-rule-save-btn">
+                        <i class="fas fa-save me-1"></i>Save Rule
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -759,13 +834,211 @@ function esBidResult(esBidRaw) {
     return { bid: esBidRaw, color: '#0dcaf0', skip: false };
 }
 
-// ES Bid now comes solely from the CVR 0% band (handled inside getBidFromRule).
-function getCombinedSbid(row) {
-    const sold      = parseFloat(row.ebay_l30)    || 0;
-    const views     = parseFloat(row.views)       || 0;
-    const scvr      = views > 0 ? (sold / views) * 100 : 0;
-    return getBidFromRule(scvr, row);
+// S Bid is driven by the Sbid Rule slabs (CVR / Dil / Esold / Views L30 → S Bid),
+// shared with /ebay-tabulator-view and the ebay:update-suggestedbid cron.
+let currentSbidSlabs = [];
+
+function sbidSlabInRange(val, min, max) {
+    if (min !== null && min !== undefined && min !== '' && val < parseFloat(min)) return false;
+    if (max !== null && max !== undefined && max !== '' && val > parseFloat(max)) return false;
+    return true;
 }
+
+function getCombinedSbid(row) {
+    const esold = parseFloat(row.ebay_l30)   || 0;
+    const views = parseFloat(row.views)      || 0;
+    const inv   = parseFloat(row.shopify_inv) || 0;
+    const qty   = parseFloat(row.shopify_qty) || 0;
+    const cvr   = views > 0 ? (esold / views) * 100 : 0;
+    const dil   = inv   > 0 ? (qty / inv) * 100 : 0;
+
+    for (let i = 0; i < currentSbidSlabs.length; i++) {
+        const r = currentSbidSlabs[i];
+        if (sbidSlabInRange(cvr, r.cvr_min, r.cvr_max)
+            && sbidSlabInRange(dil, r.dil_min, r.dil_max)
+            && sbidSlabInRange(esold, r.esold_min, r.esold_max)
+            && sbidSlabInRange(views, r.views_min, r.views_max)) {
+            const bid = parseFloat(r.sbid);
+            if (isFinite(bid) && bid > 0) return { bid: bid, color: '#0d6efd', skip: false };
+            return { bid: 0, color: '#6c757d', skip: true };
+        }
+    }
+    return { bid: 0, color: '#6c757d', skip: true };
+}
+
+// Load the slab rules so the S Bid column matches what the cron / Push SBID pushes.
+$.get(@json(url('/ebay-one/sbid-slab-rule')), function(data) {
+    currentSbidSlabs = (data && Array.isArray(data.rules)) ? data.rules : [];
+    renderSbidSlabRules(currentSbidSlabs);
+    if (typeof table !== 'undefined' && table && table.redraw) table.redraw(true);
+}).fail(function(xhr) {
+    console.error('[Sbid slabs] load failed', xhr.status, xhr.responseText);
+});
+
+// ── Sbid Rule editor (same slab model as /ebay-tabulator-view) ──
+const sbidSlabGetUrl   = @json(url('/ebay-one/sbid-slab-rule'));
+const sbidSlabSaveUrl  = @json(url('/ebay-one/sbid-slab-rule'));
+const sbidSlabApplyUrl = @json(url('/ebay/campaign-ads/push-sbid-slabs'));
+
+function sbidSlabNumAttr(v) {
+    return (v === null || v === undefined || v === '' || isNaN(v)) ? '' : v;
+}
+
+function sbidSlabRangeInputs(rule, key) {
+    return `
+        <td><input type="number" step="0.01" class="form-control form-control-sm text-end"
+                   value="${sbidSlabNumAttr(rule[key + '_min'])}" data-field="${key}_min"
+                   onchange="sbidSlabUpdate(this)" placeholder="—"></td>
+        <td><input type="number" step="0.01" class="form-control form-control-sm text-end"
+                   value="${sbidSlabNumAttr(rule[key + '_max'])}" data-field="${key}_max"
+                   onchange="sbidSlabUpdate(this)" placeholder="—"></td>`;
+}
+
+function renderSbidSlabRules(rules) {
+    const tbody = document.getElementById('sbid-slab-rules-body');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+    if (!rules.length) {
+        tbody.innerHTML = `<tr><td colspan="12" class="text-center text-muted small py-3">
+            No rules yet — click <strong>Add rule / slab</strong> to create one.</td></tr>`;
+        return;
+    }
+    rules.forEach(function(rule, i) {
+        const tr = document.createElement('tr');
+        tr.setAttribute('data-idx', i);
+        tr.innerHTML = `
+            <td class="text-center text-muted small">${i + 1}</td>
+            <td><input type="text" class="form-control form-control-sm" value="${(rule.label || '').replace(/"/g, '&quot;')}"
+                       data-field="label" onchange="sbidSlabUpdate(this)" placeholder="Rule ${i + 1}"></td>
+            ${sbidSlabRangeInputs(rule, 'cvr')}
+            ${sbidSlabRangeInputs(rule, 'dil')}
+            ${sbidSlabRangeInputs(rule, 'esold')}
+            ${sbidSlabRangeInputs(rule, 'views')}
+            <td><input type="number" step="0.1" min="0" class="form-control form-control-sm text-end fw-semibold"
+                       value="${sbidSlabNumAttr(rule.sbid)}" data-field="sbid"
+                       onchange="sbidSlabUpdate(this)"></td>
+            <td class="text-center">
+                <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1"
+                        onclick="sbidSlabRemove(${i})" title="Remove rule">&times;</button>
+            </td>`;
+        tbody.appendChild(tr);
+    });
+}
+
+function sbidSlabUpdate(el) {
+    const tr = el.closest('tr');
+    const idx = parseInt(tr.getAttribute('data-idx'), 10);
+    const field = el.dataset.field;
+    if (!currentSbidSlabs[idx]) return;
+    if (field === 'label') {
+        currentSbidSlabs[idx][field] = el.value;
+    } else {
+        currentSbidSlabs[idx][field] = (el.value === '' ? null : parseFloat(el.value));
+    }
+}
+
+function sbidSlabRemove(idx) {
+    currentSbidSlabs.splice(idx, 1);
+    renderSbidSlabRules(currentSbidSlabs);
+}
+
+document.getElementById('sbid-slab-add-rule-btn').addEventListener('click', function() {
+    currentSbidSlabs.push({
+        label: '', cvr_min: null, cvr_max: null, dil_min: null, dil_max: null,
+        esold_min: null, esold_max: null, views_min: null, views_max: null, sbid: 2.1
+    });
+    renderSbidSlabRules(currentSbidSlabs);
+});
+
+document.getElementById('sbidRuleModal').addEventListener('show.bs.modal', function() {
+    renderSbidSlabRules(currentSbidSlabs);
+});
+
+document.getElementById('sbid-slab-rule-save-btn').addEventListener('click', function() {
+    const errEl = document.getElementById('sbid-slab-rule-err');
+    errEl.classList.add('d-none');
+    const btn = this;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Saving…';
+    $.ajax({
+        url: sbidSlabSaveUrl,
+        method: 'POST',
+        headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+        contentType: 'application/json',
+        data: JSON.stringify({ rules: currentSbidSlabs || [] }),
+        success: function(resp) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-check me-1"></i>Saved!';
+            if (resp.rule && Array.isArray(resp.rule.rules)) currentSbidSlabs = resp.rule.rules;
+            if (typeof table !== 'undefined' && table && table.redraw) table.redraw(true);
+            setTimeout(() => { btn.innerHTML = '<i class="fas fa-save me-1"></i>Save Rule'; }, 1200);
+        },
+        error: function(xhr) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-save me-1"></i>Save Rule';
+            errEl.textContent = 'Error: ' + ((xhr.responseJSON && xhr.responseJSON.error) || xhr.responseText);
+            errEl.classList.remove('d-none');
+        }
+    });
+});
+
+document.getElementById('sbid-slab-apply-btn').addEventListener('click', function() {
+    const btn = this;
+    const statusEl = document.getElementById('sbid-slab-rule-status');
+    const errEl = document.getElementById('sbid-slab-rule-err');
+    errEl.classList.add('d-none');
+
+    if (!currentSbidSlabs.length) {
+        errEl.textContent = 'Add at least one rule before applying.';
+        errEl.classList.remove('d-none');
+        return;
+    }
+    if (typeof table === 'undefined' || !table) {
+        errEl.textContent = 'Table not ready yet.';
+        errEl.classList.remove('d-none');
+        return;
+    }
+
+    const skus = [];
+    table.getRows('active').forEach(function(r) {
+        const rd = r.getData();
+        const sku = rd.resolved_sku;
+        if (!sku) return;
+        const res = getCombinedSbid(rd);
+        if (res && !res.skip && res.bid > 0) skus.push(sku);
+    });
+
+    if (!skus.length) {
+        errEl.textContent = 'No visible rows match a slab with a valid S Bid.';
+        errEl.classList.remove('d-none');
+        return;
+    }
+    if (!confirm(`Push S Bid to eBay for ${skus.length} visible listing(s)?`)) return;
+
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Applying…';
+    if (statusEl) statusEl.textContent = `Pushing ${skus.length}…`;
+
+    $.ajax({
+        url: sbidSlabApplyUrl,
+        method: 'POST',
+        headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+        contentType: 'application/json',
+        data: JSON.stringify({ skus: skus }),
+        success: function(resp) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-bolt me-1"></i>Apply to Visible Rows';
+            const s = resp.success || 0, f = resp.failed || 0, sk = resp.skipped || 0;
+            if (statusEl) statusEl.textContent = `Pushed: ${s} · Failed: ${f} · Skipped: ${sk}`;
+        },
+        error: function(xhr) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-bolt me-1"></i>Apply to Visible Rows';
+            errEl.textContent = 'Error: ' + ((xhr.responseJSON && xhr.responseJSON.error) || xhr.responseText);
+            errEl.classList.remove('d-none');
+        }
+    });
+});
 
 function renderDilBands(bands) {
     const tbody = document.getElementById('dil-bands-body');

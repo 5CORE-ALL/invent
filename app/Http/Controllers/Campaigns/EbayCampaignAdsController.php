@@ -124,10 +124,9 @@ class EbayCampaignAdsController extends Controller
             return response()->json(['error' => 'No listings selected'], 422);
         }
 
-        // Load rule
-        $ruleConfig = $this->sbidRuleConfig();
-        $bands      = $ruleConfig['bands'] ?? [];
-        $dilBands   = $this->dilBands();
+        // Load Sbid Rule slabs (CVR / Dil / Esold / Views L30 → S Bid).
+        $slabRow = DB::table('ebay_sbid_rules')->where('key', 'ebay1_sbid_slabs')->first();
+        $slabs   = $slabRow ? (json_decode($slabRow->rule, true)['rules'] ?? []) : [];
 
         // Get ebay metrics for these listings
         $metrics = \App\Models\EbayMetric::whereIn('item_id', $listingIds)->get()->keyBy('item_id');
@@ -167,30 +166,20 @@ class EbayCampaignAdsController extends Controller
                 continue;
             }
 
-            // Calculate bid from SCVR + DIL (Pink in either → push Pink bid)
+            // Calculate S Bid from the slab rules (CVR / Dil / Esold / Views L30).
             $metric = $metrics->get($lid);
             $views  = (float)($metric?->views ?? 0);
-            $l7     = (float)($metric?->l7_views ?? 0);
             $l30    = (float)($metric?->ebay_l30 ?? 0);
             $scvr   = $views > 0 ? ($l30 / $views) * 100 : 0;
-            $esBid  = (float)($ad?->suggested_bid ?? 0);
 
             $shop = $metric ? ($shopifyMap[$this->normSku($metric->sku)] ?? null) : null;
             $inv  = (float)($shop->inv ?? 0);
             $qty  = (float)($shop->quantity ?? 0);
             $dil  = $inv > 0 ? ($qty / $inv) * 100 : 0;
 
-            if ($this->shouldUseEsBid($l30, $l7, $ruleConfig)) {
-                $newBid = $esBid;
-            } else {
-                $newBid = $this->resolveCombinedBid($scvr, $bands, $dil, $dilBands, [
-                    'ebay_price' => (float)($metric?->ebay_price ?? 0),
-                    'ebay_l30'   => $l30,
-                    'views'      => $views,
-                ]);
-            }
+            $newBid = $this->resolveSlabBid($scvr, $dil, $l30, $views, $slabs);
             if ($newBid <= 0) {
-                $results[] = ['listing_id' => $lid, 'status' => 'skipped', 'reason' => 'No SBID — ES Bid fallback with no ES Bid, or 0 CVR & DIL not Pink'];
+                $results[] = ['listing_id' => $lid, 'status' => 'skipped', 'reason' => 'No matching slab'];
                 $skipped++;
                 continue;
             }
