@@ -1074,7 +1074,7 @@ class AliexpressDetailFormatter
                 'quantity' => (int) ($product['product_count'] ?? $product['quantity'] ?? $db?->quantity ?? 1),
                 'unit_price' => $this->money($unit),
                 'line_total' => $this->multiplyMoney($this->money($unit), (int) ($product['product_count'] ?? 1)),
-                'image' => $this->str($product['product_img_url'] ?? $product['snapshot_small_photo_path'] ?? $product['product_image'] ?? null),
+                'image' => $this->resolveOrderLineImage($product, $db),
                 'child_order_id' => $this->str($product['child_order_id'] ?? $product['order_sort_id'] ?? null),
                 'status' => $this->str($product['order_status'] ?? $product['logistics_status'] ?? null),
                 'import_status' => $db?->import_status,
@@ -1092,7 +1092,7 @@ class AliexpressDetailFormatter
                     'quantity' => $line->quantity ?? 1,
                     'unit_price' => is_numeric($line->amount) ? (float) $line->amount : null,
                     'line_total' => is_numeric($line->amount) ? (float) $line->amount * max(1, (int) $line->quantity) : null,
-                    'image' => $this->str($rawLine['product_img_url'] ?? $rawLine['snapshot_small_photo_path'] ?? null),
+                    'image' => $this->resolveOrderLineImage($rawLine, $line),
                     'child_order_id' => null,
                     'status' => $line->status,
                     'import_status' => $line->import_status,
@@ -1102,6 +1102,116 @@ class AliexpressDetailFormatter
         }
 
         return $out;
+    }
+
+    /**
+     * @param  array<string, mixed>  $product
+     */
+    protected function resolveOrderLineImage(array $product, ?AliexpressOrderMetric $db = null): ?string
+    {
+        foreach ([
+            $product['product_img_url'] ?? null,
+            $product['snapshot_small_photo_path'] ?? null,
+            $product['product_image'] ?? null,
+            $product['sku_image'] ?? null,
+            $product['image_url'] ?? null,
+        ] as $candidate) {
+            $normalized = $this->normalizeOrderImageUrl(is_string($candidate) ? $candidate : null);
+            if ($normalized) {
+                return $normalized;
+            }
+        }
+
+        $fromAttrs = $this->extractImageFromProductAttributes($product['product_attributes'] ?? null);
+        if ($fromAttrs) {
+            return $fromAttrs;
+        }
+
+        $sku = $this->str($product['sku_code'] ?? $product['sku'] ?? $db?->sku);
+        $productId = $this->str($product['product_id'] ?? $db?->product_id);
+
+        return $this->resolveOrderLineImageFallback($sku, $productId);
+    }
+
+    protected function normalizeOrderImageUrl(?string $url): ?string
+    {
+        if ($url === null) {
+            return null;
+        }
+
+        $url = trim(str_replace('\\', '/', $url));
+        if ($url === '') {
+            return null;
+        }
+
+        if (preg_match_all('#https?://[^\s"\'<>]+#i', $url, $matches) && count($matches[0]) > 1) {
+            $url = (string) end($matches[0]);
+        }
+
+        if (str_starts_with($url, '//')) {
+            $url = 'https:'.$url;
+        } elseif (! preg_match('#^https?://#i', $url)) {
+            if (str_contains($url, 'alicdn.com/')) {
+                $url = 'https://'.ltrim($url, '/');
+            } elseif (preg_match('#\.(jpg|jpeg|png|gif|webp)(\?.*)?$#i', $url)) {
+                $url = 'https://ae01.alicdn.com/kf/'.ltrim($url, '/');
+            }
+        }
+
+        return filter_var($url, FILTER_VALIDATE_URL) ? $url : null;
+    }
+
+    protected function extractImageFromProductAttributes(mixed $raw): ?string
+    {
+        if (! is_string($raw) || trim($raw) === '') {
+            return null;
+        }
+
+        $decoded = json_decode($raw, true);
+        if (! is_array($decoded)) {
+            return null;
+        }
+
+        foreach ($this->list($decoded['sku'] ?? []) as $skuRow) {
+            $skuRow = $this->arr($skuRow);
+            $img = $skuRow['skuImg'] ?? $skuRow['sku_image'] ?? $skuRow['image'] ?? null;
+            if (! is_string($img) || trim($img) === '') {
+                continue;
+            }
+            $img = trim($img);
+            if (! str_contains($img, '://') && ! str_starts_with($img, '//')) {
+                $img = 'https://ae01.alicdn.com/kf/'.ltrim($img, '/');
+            }
+
+            $normalized = $this->normalizeOrderImageUrl($img);
+            if ($normalized) {
+                return $normalized;
+            }
+        }
+
+        return null;
+    }
+
+    protected function resolveOrderLineImageFallback(?string $sku, ?string $productId): ?string
+    {
+        if ($sku && ! in_array($sku, ['__order__', '__unknown__'], true)) {
+            $shopify = ShopifySku::firstForProductSku($sku);
+            if ($shopify?->image_src) {
+                return $this->normalizeOrderImageUrl($shopify->image_src);
+            }
+        }
+
+        if ($productId) {
+            $metric = AliexpressMetric::query()->where('product_id', $productId)->first();
+            if ($metric && Schema::hasTable('shopify_skus')) {
+                $shopify = ShopifySku::firstForProductSku($metric->sku);
+                if ($shopify?->image_src) {
+                    return $this->normalizeOrderImageUrl($shopify->image_src);
+                }
+            }
+        }
+
+        return null;
     }
 
     /**

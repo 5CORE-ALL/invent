@@ -216,7 +216,7 @@
                                 <tr>
                                     <td>
                                         @if(!empty($item['image']))
-                                            <img src="{{ $item['image'] }}" alt="" class="img-thumbnail" style="max-width:56px; max-height:56px; object-fit:contain;">
+                                            <img src="{{ $item['image'] }}" alt="" class="img-thumbnail" style="max-width:56px; max-height:56px; object-fit:contain;" referrerpolicy="no-referrer" loading="lazy">
                                         @else — @endif
                                     </td>
                                     <td><code>{{ $item['sku'] ?? '—' }}</code></td>
