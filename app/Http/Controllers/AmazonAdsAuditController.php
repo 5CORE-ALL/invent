@@ -33,23 +33,47 @@ class AmazonAdsAuditController extends Controller
             return response()->json(['data' => []]);
         }
 
-        $hasAdType = Schema::hasColumn(self::SP_TABLE, 'ad_type');
         $hasCost = Schema::hasColumn(self::SP_TABLE, 'cost');
         $hasSpend = Schema::hasColumn(self::SP_TABLE, 'spend');
         $hasPurch30 = Schema::hasColumn(self::SP_TABLE, 'purchases30d');
         $hasPurch = Schema::hasColumn(self::SP_TABLE, 'purchases');
+        $hasSales30 = Schema::hasColumn(self::SP_TABLE, 'sales30d');
+        $hasSales = Schema::hasColumn(self::SP_TABLE, 'sales');
 
-        // Latest L30 row id per campaign (+ ad_type).
-        $sub = DB::table(self::SP_TABLE)
-            ->whereRaw("UPPER(TRIM(report_date_range)) = 'L30'");
-        if ($hasAdType) {
-            $sub->selectRaw('MAX(id) AS max_id')->groupBy('campaign_id', 'ad_type');
-        } else {
-            $sub->selectRaw('MAX(id) AS max_id')->groupBy('campaign_id');
+        // Campaign universe = distinct campaigns that reported on the latest available daily date.
+        // This mirrors the default /amazon-ads/all view (Calendar mode pinned to the latest day),
+        // so the audit lists the same currently-active campaigns instead of every campaign that
+        // ever had an L30 summary row.
+        $universe = [];
+        $latestDay = $this->latestDailyReportDay();
+        if ($latestDay !== null) {
+            $dailyRows = DB::table(self::SP_TABLE)
+                ->whereRaw('CHAR_LENGTH(TRIM(report_date_range)) >= 10')
+                ->whereRaw("LEFT(TRIM(report_date_range), 10) REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'")
+                ->whereRaw('LEFT(TRIM(report_date_range), 10) = ?', [$latestDay])
+                ->get(['campaign_id', 'campaignName']);
+            foreach ($dailyRows as $dr) {
+                $cid = isset($dr->campaign_id) ? trim((string) $dr->campaign_id) : '';
+                if ($cid === '') {
+                    continue;
+                }
+                $name = isset($dr->campaignName) ? (string) $dr->campaignName : '';
+                if (! array_key_exists($cid, $universe) || ($universe[$cid] === '' && $name !== '')) {
+                    $universe[$cid] = $name;
+                }
+            }
         }
-        $ids = $sub->pluck('max_id')->filter()->map(fn ($v) => (int) $v)->all();
 
-        $rows = $ids === [] ? collect() : DB::table(self::SP_TABLE)->whereIn('id', $ids)->get();
+        // Latest L30 summary row per campaign — source for the Cvr / CPC / ACOS overlays (same slice as /amazon-ads/all).
+        $l30Ids = DB::table(self::SP_TABLE)
+            ->whereRaw("UPPER(TRIM(report_date_range)) = 'L30'")
+            ->selectRaw('MAX(id) AS max_id')
+            ->groupBy('campaign_id')
+            ->pluck('max_id')->filter()->map(fn ($v) => (int) $v)->all();
+        $l30ByCampaign = $l30Ids === [] ? collect() : DB::table(self::SP_TABLE)
+            ->whereIn('id', $l30Ids)
+            ->get()
+            ->keyBy(fn ($row) => trim((string) ($row->campaign_id ?? '')));
 
         // Audit history grouped by campaign_id (oldest first).
         $historyByCampaign = AmazonAdsAuditHistory::orderBy('created_at')
@@ -58,10 +82,12 @@ class AmazonAdsAuditController extends Controller
 
         $now = Carbon::now();
         $data = [];
-        foreach ($rows as $row) {
-            $r = (array) $row;
-            $campaignId = isset($r['campaign_id']) ? trim((string) $r['campaign_id']) : '';
-            $campaignName = isset($r['campaignName']) ? (string) $r['campaignName'] : '';
+        foreach ($universe as $campaignId => $campaignName) {
+            $metricRow = $l30ByCampaign->get($campaignId);
+            $r = $metricRow ? (array) $metricRow : [];
+            if ($campaignName === '' && isset($r['campaignName'])) {
+                $campaignName = (string) $r['campaignName'];
+            }
 
             $clicks = isset($r['clicks']) && is_numeric($r['clicks']) ? (float) $r['clicks'] : null;
             $spend = null;
@@ -79,6 +105,22 @@ class AmazonAdsAuditController extends Controller
 
             $cvr = ($sold !== null && $clicks !== null && $clicks > 0) ? round(($sold / $clicks) * 100, 2) : null;
             $cpc = ($spend !== null && $clicks !== null && $clicks > 0) ? round($spend / $clicks, 2) : null;
+
+            $sales = null;
+            if ($hasSales30 && isset($r['sales30d']) && is_numeric($r['sales30d'])) {
+                $sales = (float) $r['sales30d'];
+            } elseif ($hasSales && isset($r['sales']) && is_numeric($r['sales'])) {
+                $sales = (float) $r['sales'];
+            }
+            // ACOS (%) = cost / sales * 100. When spend > 0 and sales = 0, ACOS is 100%.
+            $acos = null;
+            if ($spend !== null) {
+                if ($sales !== null && $sales > 0) {
+                    $acos = round(($spend / $sales) * 100, 2);
+                } elseif ($spend > 0) {
+                    $acos = 100.0;
+                }
+            }
 
             $history = $historyByCampaign->get($campaignId, collect());
             $historyArr = [];
@@ -98,7 +140,8 @@ class AmazonAdsAuditController extends Controller
                 'campaign_name' => $campaignName,
                 'cvr' => $cvr,
                 'cpc' => $cpc,
-                'link' => route('amazon.ads.all').'?search='.rawurlencode($campaignName),
+                'acos' => $acos,
+                'link' => $this->amazonAdsConsoleCampaignUrl($campaignId),
                 'dot' => $isGreen ? 'green' : 'red',
                 'latest_audit_at' => $latestAt ? $latestAt->format('Y-m-d H:i') : null,
                 'latest_audit_ts' => $latestAt ? $latestAt->getTimestamp() : 0,
@@ -110,6 +153,51 @@ class AmazonAdsAuditController extends Controller
         usort($data, fn ($a, $b) => $a['latest_audit_ts'] <=> $b['latest_audit_ts']);
 
         return response()->json(['data' => $data]);
+    }
+
+    /**
+     * Deep-link to the Amazon Advertising console campaign editor for a Sponsored Products campaign.
+     * The console addresses a campaign as /cm/sp/campaigns/{campaignId}; an account `entityId`
+     * (config: services.amazon_ads.entity_id) is appended when configured so the link opens the
+     * correct account directly instead of the account picker.
+     */
+    private function amazonAdsConsoleCampaignUrl(string $campaignId): string
+    {
+        $base = rtrim((string) config('services.amazon_ads.console_base', 'https://advertising.amazon.com'), '/');
+        $url = $base.'/cm/sp/campaigns/'.rawurlencode($campaignId);
+
+        $params = ['adProduct' => 'SPONSORED_PRODUCTS'];
+        $entityId = trim((string) config('services.amazon_ads.entity_id', ''));
+        if ($entityId !== '') {
+            $params = ['entityId' => $entityId] + $params;
+        }
+
+        return $url.'?'.http_build_query($params);
+    }
+
+    /**
+     * Latest calendar day stored in `report_date_range` (YYYY-MM-DD prefix rows only), capped at today.
+     * Matches the default date the /amazon-ads/all grid pins its Calendar filter to.
+     */
+    private function latestDailyReportDay(): ?string
+    {
+        if (! Schema::hasColumn(self::SP_TABLE, 'report_date_range')) {
+            return null;
+        }
+
+        $day = DB::table(self::SP_TABLE)
+            ->whereRaw('CHAR_LENGTH(TRIM(report_date_range)) >= 10')
+            ->whereRaw("LEFT(TRIM(report_date_range), 10) REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'")
+            ->selectRaw('MAX(LEFT(TRIM(report_date_range), 10)) AS d')
+            ->value('d');
+
+        if (! is_string($day) || ! preg_match('/^\d{4}-\d{2}-\d{2}$/', $day)) {
+            return null;
+        }
+
+        $today = Carbon::now(config('app.timezone'))->format('Y-m-d');
+
+        return $day > $today ? $today : $day;
     }
 
     /**

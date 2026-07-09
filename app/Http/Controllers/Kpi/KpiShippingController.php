@@ -64,7 +64,7 @@ class KpiShippingController extends Controller
             return response()->json(['data' => $data]);
         } catch (\Exception $e) {
             return response()->json(['error' => $e->getMessage()], 500);
-        }
+        }   
     }
 
     /**

@@ -159,6 +159,7 @@
                     { title: 'Campaign', field: 'campaign_name', headerFilter: 'input', widthGrow: 3, tooltip: true, formatter: function (c) { return esc(c.getValue()); } },
                     { title: 'Cvr', field: 'cvr', hozAlign: 'center', headerHozAlign: 'center', width: 90, formatter: function (c) { return fmtPct(c.getValue()); } },
                     { title: 'CPC L30', field: 'cpc', hozAlign: 'center', headerHozAlign: 'center', width: 100, formatter: function (c) { return fmtMoney(c.getValue()); } },
+                    { title: 'ACOS', field: 'acos', hozAlign: 'center', headerHozAlign: 'center', width: 90, formatter: function (c) { return fmtPct(c.getValue()); } },
                     {
                         title: 'Link', field: 'link', headerSort: false, hozAlign: 'center', headerHozAlign: 'center', width: 70,
                         formatter: function (c) {

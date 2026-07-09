@@ -389,6 +389,11 @@ return [
         'client_secret' => env('AMAZON_ADS_CLIENT_SECRET'),
         'refresh_token' => env('AMAZON_ADS_REFRESH_TOKEN'),
         'profile_ids' => env('AMAZON_ADS_PROFILE_IDS', ''),
+        // Amazon Advertising console deep-links (campaign editor). The console URL uses an
+        // account "entityId" (copy it from any campaign URL in advertising.amazon.com). When
+        // set, campaign links deep-link straight to the right account.
+        'console_base' => env('AMAZON_ADS_CONSOLE_BASE', 'https://advertising.amazon.com'),
+        'entity_id' => env('AMAZON_ADS_ENTITY_ID', ''),
     ],
 
     /*
