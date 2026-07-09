@@ -198,6 +198,7 @@ class AliexpressSyncController extends Controller
             $shopifyPrice = $row->b2c_price ?? $row->price ?? null;
 
             return (object) [
+                'shopify_sku_id' => $row->id,
                 'product_id' => $linked ? ($metric->product_id ?? null) : null,
                 'sku' => $sku,
                 'title' => trim(($row->product_title ?? '').($row->variant_title ? ' — '.$row->variant_title : '')) ?: $sku,
@@ -222,6 +223,49 @@ class AliexpressSyncController extends Controller
             'linkTab' => $linkTab,
             'counts' => $counts,
             'apiError' => $apiError,
+            'connected' => $this->apiConfig->isConfigured('aliexpress'),
+        ]);
+    }
+
+    public function showProduct(int $shopifySkuId): View
+    {
+        $shopifyRow = ShopifySku::query()->findOrFail($shopifySkuId);
+        $sku = (string) $shopifyRow->sku;
+        $aeMap = $this->aliexpressMetricMapForSkus([$sku]);
+        $metric = $aeMap[$sku] ?? null;
+        $linked = $this->isShopifySkuLinkedOnAliexpress($metric, $sku);
+
+        $aeLive = null;
+        $aeLiveError = null;
+        if ($linked && $metric?->product_id && $this->apiConfig->isConfigured('aliexpress')) {
+            $info = $this->aliExpressApi->getProductInfo((string) $metric->product_id);
+            if (! empty($info['success'])) {
+                $aeLive = $info['data'] ?? null;
+            } else {
+                $aeLiveError = $info['message'] ?? 'Could not load live AliExpress product details.';
+            }
+        }
+
+        $aeSkuRows = [];
+        if (is_array($aeLive)) {
+            $aeSkuRows = $this->aliExpressApi->extractSkuRowsFromProductInfo(
+                $aeLive,
+                (string) ($metric->product_id ?? ''),
+                $metric->product_name ?? null
+            );
+        }
+
+        $title = trim(($shopifyRow->product_title ?? '').($shopifyRow->variant_title ? ' — '.$shopifyRow->variant_title : '')) ?: $sku;
+
+        return view('marketplace.aliexpress.product-show', [
+            'title' => 'AliExpress Listing — '.$sku,
+            'shopify' => $shopifyRow,
+            'metric' => $metric,
+            'linked' => $linked,
+            'displayTitle' => $title,
+            'aeLive' => $aeLive,
+            'aeLiveError' => $aeLiveError,
+            'aeSkuRows' => $aeSkuRows,
             'connected' => $this->apiConfig->isConfigured('aliexpress'),
         ]);
     }
@@ -322,6 +366,36 @@ class AliexpressSyncController extends Controller
             'orders' => $orders,
             'title' => 'AliExpress — Orders',
             'apiError' => $apiError,
+            'connected' => $this->apiConfig->isConfigured('aliexpress'),
+        ]);
+    }
+
+    public function showOrder(int $id): View
+    {
+        $line = AliexpressOrderMetric::query()->findOrFail($id);
+        $orderId = (string) $line->order_id;
+
+        $lines = AliexpressOrderMetric::query()
+            ->where('order_id', $orderId)
+            ->orderBy('id')
+            ->get();
+
+        $raw = is_array($line->raw_payload) ? $line->raw_payload : [];
+        $orderRoot = is_array($raw['order'] ?? null) ? $raw['order'] : $raw;
+
+        $buyer = $this->extractOrderBuyerDetails($orderRoot);
+        $shipping = $this->extractOrderShippingDetails($orderRoot);
+        $orderTotal = $this->extractOrderTotalFromPayload($orderRoot, $lines);
+
+        return view('marketplace.aliexpress.order-show', [
+            'title' => 'AliExpress Order — '.$orderId,
+            'orderId' => $orderId,
+            'line' => $line,
+            'lines' => $lines,
+            'orderRoot' => $orderRoot,
+            'buyer' => $buyer,
+            'shipping' => $shipping,
+            'orderTotal' => $orderTotal,
             'connected' => $this->apiConfig->isConfigured('aliexpress'),
         ]);
     }
@@ -537,5 +611,73 @@ class AliexpressSyncController extends Controller
 
         return ShopifySku::normalizeSkuForShopifyLookup($mappedSku)
             === ShopifySku::normalizeSkuForShopifyLookup($shopifySku);
+    }
+
+    /**
+     * @param  array<string, mixed>  $orderRoot
+     * @return array<string, string|null>
+     */
+    protected function extractOrderBuyerDetails(array $orderRoot): array
+    {
+        $buyer = is_array($orderRoot['buyer_info'] ?? null) ? $orderRoot['buyer_info'] : [];
+        $receiver = is_array($orderRoot['receipt_address'] ?? null) ? $orderRoot['receipt_address'] : [];
+
+        return [
+            'name' => $buyer['first_name'] ?? $receiver['contact_person'] ?? $orderRoot['buyer_signer_fullname'] ?? null,
+            'login_id' => $buyer['login_id'] ?? $orderRoot['buyer_login_id'] ?? null,
+            'email' => $buyer['email'] ?? $receiver['email'] ?? null,
+            'phone' => $receiver['mobile_no'] ?? $receiver['phone_number'] ?? $receiver['phone'] ?? null,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $orderRoot
+     * @return array<string, string|null>
+     */
+    protected function extractOrderShippingDetails(array $orderRoot): array
+    {
+        $addr = is_array($orderRoot['receipt_address'] ?? null)
+            ? $orderRoot['receipt_address']
+            : (is_array($orderRoot['logistics_info_list']['aeop_tp_logistics_info_dto'][0] ?? null)
+                ? $orderRoot['logistics_info_list']['aeop_tp_logistics_info_dto'][0]
+                : []);
+
+        $parts = array_filter([
+            $addr['address'] ?? $addr['detail_address'] ?? null,
+            $addr['address2'] ?? null,
+            $addr['city'] ?? null,
+            $addr['province'] ?? $addr['state'] ?? null,
+            $addr['zip'] ?? $addr['zip_code'] ?? null,
+            $addr['country'] ?? null,
+        ]);
+
+        return [
+            'recipient' => $addr['contact_person'] ?? $addr['receiver'] ?? null,
+            'address' => $parts !== [] ? implode(', ', $parts) : null,
+            'country' => $addr['country'] ?? null,
+            'logistics_type' => $orderRoot['logistics_type'] ?? $addr['logistics_type'] ?? null,
+            'tracking' => $orderRoot['logistics_no'] ?? $addr['logistics_no'] ?? null,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $orderRoot
+     * @param  \Illuminate\Support\Collection<int, AliexpressOrderMetric>  $lines
+     */
+    protected function extractOrderTotalFromPayload(array $orderRoot, $lines): ?float
+    {
+        foreach (['order_amount', 'pay_amount', 'total_amount'] as $key) {
+            $val = $orderRoot[$key] ?? null;
+            if (is_array($val) && isset($val['amount']) && is_numeric($val['amount'])) {
+                return (float) $val['amount'];
+            }
+            if (is_numeric($val)) {
+                return (float) $val;
+            }
+        }
+
+        $sum = $lines->sum(fn ($row) => is_numeric($row->amount) ? (float) $row->amount * max(1, (int) $row->quantity) : 0);
+
+        return $sum > 0 ? $sum : null;
     }
 }
