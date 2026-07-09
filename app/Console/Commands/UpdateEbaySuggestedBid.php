@@ -150,27 +150,14 @@ class UpdateEbaySuggestedBid extends Command
                 ->get()
                 ->keyBy('listing_id');
             
-        // Load SCVR → Bid rule from ebay_sbid_rules table (fallback to hardcoded defaults)
-        $sbidRuleRow = DB::table('ebay_sbid_rules')->where('key', 'ebay1')->first();
-        $sbidRuleData = $sbidRuleRow
-            ? (json_decode($sbidRuleRow->rule, true) ?: [])
-            : [];
-        $sbidBands = $sbidRuleData['bands'] ?? $this->defaultBands();
-        $l30SoldEsBidMax = (float) ($sbidRuleData['l30_sold_es_bid_max'] ?? 0);
-        $l7ViewsThreshold = (float) ($sbidRuleData['l7_views_threshold'] ?? 70);
-        $this->info('SBID Rule bands: ' . collect($sbidBands)->map(fn($b) => "SCVR≤{$b['scvr_max']}%→{$b['bid']}")->implode(', '));
-        $this->info("SBID ES Bid fallback: L30 sold ≤ {$l30SoldEsBidMax} or L7 views < {$l7ViewsThreshold}");
-
-        // Load DIL → Bid rule (ebay1_dil). Used together with SCVR: if EITHER the SCVR or
-        // the DIL value falls in its Pink (catch-all / last) band, the Pink bid is pushed.
-        $dilRule = DB::table('ebay_sbid_rules')->where('key', 'ebay1_dil')->first();
-        $dilBands = $dilRule
-            ? (json_decode($dilRule->rule, true)['bands'] ?? $this->defaultDilBands())
-            : $this->defaultDilBands();
-        $this->info('DIL Rule bands: ' . collect($dilBands)->map(fn($b) => "DIL≤{$b['dil_max']}%→{$b['bid']}")->implode(', '));
+        // Load Sbid Rule slabs (ebay1_sbid_slabs) — CVR / Dil / Esold / Views L30 → S Bid.
+        // Rules are evaluated top to bottom; the first rule whose filled ranges all match wins.
+        $slabRow = DB::table('ebay_sbid_rules')->where('key', 'ebay1_sbid_slabs')->first();
+        $sbidSlabs = $slabRow ? (json_decode($slabRow->rule, true)['rules'] ?? []) : [];
+        $this->info('SBID slab rules loaded: ' . count($sbidSlabs) . ' (CVR / Dil / Esold / Views L30 → S Bid)');
 
         // Process ProductMaster data in chunks and update campaign listings
-        $this->info('Processing bid updates based on SCVR (eBay L30 / Views) thresholds...');
+        $this->info('Processing bid updates based on Sbid Rule slabs...');
         $updatedListings = 0;
         
         ProductMaster::whereNull('deleted_at')
@@ -181,10 +168,7 @@ class UpdateEbaySuggestedBid extends Command
                 $shopifyData, 
                 $ebayMetricsNormalized, 
                 $campaignListings,
-                $sbidBands,
-                $dilBands,
-                $l30SoldEsBidMax,
-                $l7ViewsThreshold,
+                $sbidSlabs,
                 $ebayGeneralL30, 
                 &$updatedListings,
                 $normalizeSku
@@ -196,44 +180,26 @@ class UpdateEbaySuggestedBid extends Command
 
                     if ($ebayMetric && $ebayMetric->item_id && $campaignListings->has($ebayMetric->item_id)) {
                         $listing = $campaignListings[$ebayMetric->item_id];
-                        
-                        // SCVR-based PMT S BID rule
-                        $soldL30  = (float) ($ebayMetric->ebay_l30 ?? 0);
-                        $views    = (float) ($ebayMetric->views ?? 0);
-                        $l7Views  = (float) ($ebayMetric->l7_views ?? 0);
-                        $esbid    = (float) ($listing->suggested_bid ?? 0);
-                        $scvr     = $views > 0 ? ($soldL30 / $views) * 100 : 0;
+
+                        $soldL30  = (float) ($ebayMetric->ebay_l30 ?? 0);   // Esold
+                        $views    = (float) ($ebayMetric->views ?? 0);      // Views L30
+                        $scvr     = $views > 0 ? ($soldL30 / $views) * 100 : 0; // CVR
 
                         // DIL = (L30 sold / inventory) * 100, from Shopify data
                         $inv = (float) ($shopify->inv ?? 0);
                         $qty = (float) ($shopify->quantity ?? 0);
                         $dil = $inv > 0 ? ($qty / $inv) * 100 : 0;
 
-                        // ES Bid fallback (configurable) or SCVR/DIL Pink / SCVR bands.
-                        if ($soldL30 <= $l30SoldEsBidMax || $l7Views < $l7ViewsThreshold) {
-                            $newBid = $esbid;
-                        } else {
-                            $newBid = $this->resolveCombinedBid($scvr, $sbidBands, $dil, $dilBands, [
-                                'ebay_price' => (float) ($ebayMetric->ebay_price ?? 0),
-                                'ebay_l30'   => $soldL30,
-                                'views'      => $views,
-                            ]);
-                        }
+                        // Resolve S Bid from the slab rules (first matching slab wins).
+                        $newBid = $this->resolveSlabBid($scvr, $dil, $soldL30, $views, $sbidSlabs);
 
                         $listing->new_bid = $newBid;
                         $listing->sku = $pm->sku;
 
-                        $scvrPink = $this->isPinkBand($scvr, $sbidBands);
-                        $dilPink  = $this->isPinkBand($dil, $dilBands);
-                        $pinkTag  = ($scvrPink || $dilPink)
-                            ? ' | PINK(' . ($scvrPink ? 'SCVR' : '') . ($scvrPink && $dilPink ? '+' : '') . ($dilPink ? 'DIL' : '') . ')'
-                            : '';
-
                         if ($newBid <= 0) {
-                            // No ES Bid available when L30 sold = 0, or no SCVR/DIL signal otherwise.
-                            $this->warn("SKU: {$pm->sku} | Listing ID: {$ebayMetric->item_id} | SCVR: " . round($scvr, 2) . "% (sold={$soldL30}, views={$views}) DIL: " . round($dil, 2) . "% → No SBID (skipped)");
+                            $this->warn("SKU: {$pm->sku} | Listing ID: {$ebayMetric->item_id} | CVR: " . round($scvr, 2) . "% DIL: " . round($dil, 2) . "% Esold: {$soldL30} Views: {$views} → No matching slab (skipped)");
                         } else {
-                            $this->info("SKU: {$pm->sku} | Listing ID: {$ebayMetric->item_id} | SCVR: " . round($scvr, 2) . "% | DIL: " . round($dil, 2) . "% | SBID: {$newBid}{$pinkTag}");
+                            $this->info("SKU: {$pm->sku} | Listing ID: {$ebayMetric->item_id} | CVR: " . round($scvr, 2) . "% | DIL: " . round($dil, 2) . "% | Esold: {$soldL30} | Views: {$views} | SBID: {$newBid}");
                             $updatedListings++;
                         }
                     }
@@ -443,6 +409,32 @@ class UpdateEbaySuggestedBid extends Command
      * band, the Pink bid is pushed (e.g. 2.1). This applies even if BOTH are Pink.
      * Otherwise the normal SCVR rule decides (and still skips when SCVR = 0).
      */
+    /**
+     * Resolve S Bid from the Sbid Rule slabs. Each slab carries optional min/max
+     * ranges on CVR, Dil, Esold and Views L30 plus an sbid value. The first slab
+     * whose filled ranges all contain the row's values wins. Returns 0 when no
+     * slab matches (caller treats 0 as "skip").
+     */
+    private function resolveSlabBid(float $cvr, float $dil, float $esold, float $views, array $slabs): float
+    {
+        foreach ($slabs as $s) {
+            if ($this->slabInRange($cvr,   $s['cvr_min']   ?? null, $s['cvr_max']   ?? null)
+                && $this->slabInRange($dil,   $s['dil_min']   ?? null, $s['dil_max']   ?? null)
+                && $this->slabInRange($esold, $s['esold_min'] ?? null, $s['esold_max'] ?? null)
+                && $this->slabInRange($views, $s['views_min'] ?? null, $s['views_max'] ?? null)) {
+                return (float) ($s['sbid'] ?? 0);
+            }
+        }
+        return 0.0;
+    }
+
+    private function slabInRange(float $val, $min, $max): bool
+    {
+        if ($min !== null && $min !== '' && $val < (float) $min) return false;
+        if ($max !== null && $max !== '' && $val > (float) $max) return false;
+        return true;
+    }
+
     private function resolveCombinedBid(float $scvr, array $sbidBands, float $dil, array $dilBands, array $ctx = []): float
     {
         $scvrPink = $this->isPinkBand($scvr, $sbidBands);
@@ -496,12 +488,12 @@ class UpdateEbaySuggestedBid extends Command
 
     private function getBidFromRule(float $scvr, array $bands, array $ctx = []): float
     {
-        if ($scvr <= 0) {
-            return 0.0;
-        }
         $ctx['scvr'] = $scvr;
+        // First band whose [scvr_min, scvr_max] range contains the SCVR wins.
         foreach ($bands as $band) {
-            if ($scvr <= (float)($band['scvr_max'] ?? 9999)) {
+            $min = (float)($band['scvr_min'] ?? 0);
+            $max = (float)($band['scvr_max'] ?? 9999);
+            if ($scvr >= $min && $scvr <= $max) {
                 return $this->resolveBandBid($band, $ctx);
             }
         }
@@ -511,25 +503,14 @@ class UpdateEbaySuggestedBid extends Command
     }
 
     /**
-     * Resolve a band's bid. If the band carries a dynamic sub-rule, the bid is
-     * chosen from its sub-bands using the configured metric value; otherwise the
-     * band's flat bid is used.
-     *
-     * sub = ['metric' => 'ebay_price'|'scvr'|'ebay_l30'|'views',
-     *        'bands'  => [['max' => float, 'bid' => float], ...]]
+     * Resolve a band's bid: the row's ES Bid when the band is flagged use_es_bid,
+     * otherwise the band's flat bid.
      */
     private function resolveBandBid(array $band, array $ctx): float
     {
-        $sub = $band['sub'] ?? null;
-        if (is_array($sub) && !empty($sub['metric']) && !empty($sub['bands']) && is_array($sub['bands'])) {
-            $val = (float)($ctx[$sub['metric']] ?? 0);
-            foreach ($sub['bands'] as $sb) {
-                if ($val <= (float)($sb['max'] ?? 9999)) {
-                    return (float)($sb['bid'] ?? $band['bid'] ?? 2.1);
-                }
-            }
-            $lastSub = end($sub['bands']);
-            return (float)($lastSub['bid'] ?? $band['bid'] ?? 2.1);
+        // Band flagged to use the row's ES Bid (raw suggested_bid).
+        if (!empty($band['use_es_bid'])) {
+            return (float)($ctx['es_bid'] ?? 0);
         }
         return (float)($band['bid'] ?? 9.1);
     }

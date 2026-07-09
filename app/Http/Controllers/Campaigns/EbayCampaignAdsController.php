@@ -124,10 +124,9 @@ class EbayCampaignAdsController extends Controller
             return response()->json(['error' => 'No listings selected'], 422);
         }
 
-        // Load rule
-        $ruleConfig = $this->sbidRuleConfig();
-        $bands      = $ruleConfig['bands'] ?? [];
-        $dilBands   = $this->dilBands();
+        // Load Sbid Rule slabs (CVR / Dil / Esold / Views L30 → S Bid).
+        $slabRow = DB::table('ebay_sbid_rules')->where('key', 'ebay1_sbid_slabs')->first();
+        $slabs   = $slabRow ? (json_decode($slabRow->rule, true)['rules'] ?? []) : [];
 
         // Get ebay metrics for these listings
         $metrics = \App\Models\EbayMetric::whereIn('item_id', $listingIds)->get()->keyBy('item_id');
@@ -167,30 +166,20 @@ class EbayCampaignAdsController extends Controller
                 continue;
             }
 
-            // Calculate bid from SCVR + DIL (Pink in either → push Pink bid)
+            // Calculate S Bid from the slab rules (CVR / Dil / Esold / Views L30).
             $metric = $metrics->get($lid);
             $views  = (float)($metric?->views ?? 0);
-            $l7     = (float)($metric?->l7_views ?? 0);
             $l30    = (float)($metric?->ebay_l30 ?? 0);
             $scvr   = $views > 0 ? ($l30 / $views) * 100 : 0;
-            $esBid  = (float)($ad?->suggested_bid ?? 0);
 
             $shop = $metric ? ($shopifyMap[$this->normSku($metric->sku)] ?? null) : null;
             $inv  = (float)($shop->inv ?? 0);
             $qty  = (float)($shop->quantity ?? 0);
             $dil  = $inv > 0 ? ($qty / $inv) * 100 : 0;
 
-            if ($this->shouldUseEsBid($l30, $l7, $ruleConfig)) {
-                $newBid = $esBid;
-            } else {
-                $newBid = $this->resolveCombinedBid($scvr, $bands, $dil, $dilBands, [
-                    'ebay_price' => (float)($metric?->ebay_price ?? 0),
-                    'ebay_l30'   => $l30,
-                    'views'      => $views,
-                ]);
-            }
+            $newBid = $this->resolveSlabBid($scvr, $dil, $l30, $views, $slabs);
             if ($newBid <= 0) {
-                $results[] = ['listing_id' => $lid, 'status' => 'skipped', 'reason' => 'No SBID — ES Bid fallback with no ES Bid, or 0 CVR & DIL not Pink'];
+                $results[] = ['listing_id' => $lid, 'status' => 'skipped', 'reason' => 'No matching slab'];
                 $skipped++;
                 continue;
             }
@@ -230,6 +219,139 @@ class EbayCampaignAdsController extends Controller
             'skipped' => $skipped,
             'results' => $results,
         ]);
+    }
+
+    /**
+     * Apply the Sbid Rule slabs (ebay1_sbid_slabs) to a set of SKUs and push each
+     * computed S Bid to its eBay campaign. Used by the "Apply to Visible Rows"
+     * button in the /ebay-tabulator-view Sbid Rule modal.
+     */
+    public function pushSbidSlabsBySku(Request $request)
+    {
+        $skus = $request->input('skus', []);
+        if (empty($skus) || !is_array($skus)) {
+            return response()->json(['error' => 'No SKUs provided'], 422);
+        }
+
+        // Load slab rules.
+        $slabRow = DB::table('ebay_sbid_rules')->where('key', 'ebay1_sbid_slabs')->first();
+        $slabs   = $slabRow ? (json_decode($slabRow->rule, true)['rules'] ?? []) : [];
+        if (empty($slabs)) {
+            return response()->json(['error' => 'No Sbid Rule slabs configured'], 422);
+        }
+
+        // Metrics keyed by normalized SKU (for factor values + item_id).
+        $metrics = \App\Models\EbayMetric::whereIn('sku', $skus)->get()
+            ->keyBy(fn($m) => $this->normSku($m->sku));
+        $shopifyMap = $this->shopifyByNormSku($skus);
+
+        // Campaign ads keyed by listing_id (item_id).
+        $itemIds = $metrics->pluck('item_id')->filter()->unique()->values()->all();
+        $ads = DB::table('ebay_campaign_ads')
+            ->whereIn('listing_id', $itemIds)
+            ->whereNotNull('campaign_id')
+            ->where('funding_strategy', 'COST_PER_SALE')
+            ->get()
+            ->keyBy('listing_id');
+
+        try {
+            $service = new \App\Services\EbayApiService();
+            $token   = $service->generateBearerToken();
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Token error: ' . $e->getMessage()], 500);
+        }
+
+        $results = [];
+        $success = 0; $failed = 0; $skipped = 0;
+        $byCampaign = [];
+
+        foreach ($skus as $sku) {
+            $norm   = $this->normSku($sku);
+            $metric = $metrics->get($norm);
+            if (!$metric || !$metric->item_id) {
+                $results[] = ['sku' => $sku, 'status' => 'skipped', 'reason' => 'No eBay listing'];
+                $skipped++;
+                continue;
+            }
+            $lid = (string) $metric->item_id;
+            $ad  = $ads->get($lid);
+            if (!$ad || !$ad->campaign_id) {
+                $results[] = ['sku' => $sku, 'status' => 'skipped', 'reason' => 'Not in a COST_PER_SALE campaign'];
+                $skipped++;
+                continue;
+            }
+
+            $esold = (float) ($metric->ebay_l30 ?? 0);
+            $views = (float) ($metric->views ?? 0);
+            $cvr   = $views > 0 ? ($esold / $views) * 100 : 0;
+            $shop  = $shopifyMap[$norm] ?? null;
+            $inv   = (float) ($shop->inv ?? 0);
+            $qty   = (float) ($shop->quantity ?? 0);
+            $dil   = $inv > 0 ? ($qty / $inv) * 100 : 0;
+
+            $bid = $this->resolveSlabBid($cvr, $dil, $esold, $views, $slabs);
+            if ($bid <= 0) {
+                $results[] = ['sku' => $sku, 'status' => 'skipped', 'reason' => 'No matching slab'];
+                $skipped++;
+                continue;
+            }
+            $byCampaign[$ad->campaign_id][] = ['listingId' => $lid, 'bidPercentage' => (string) $bid, 'sku' => $sku];
+        }
+
+        foreach ($byCampaign as $campaignId => $requests) {
+            $payload = array_map(fn($r) => ['listingId' => $r['listingId'], 'bidPercentage' => $r['bidPercentage']], $requests);
+            try {
+                $response = \Illuminate\Support\Facades\Http::withToken($token)
+                    ->withHeaders(['Content-Type' => 'application/json'])
+                    ->post("https://api.ebay.com/sell/marketing/v1/ad_campaign/{$campaignId}/bulk_update_ads_bid_by_listing_id",
+                        ['requests' => $payload]);
+
+                if ($response->successful()) {
+                    foreach ($requests as $r) {
+                        $results[] = ['sku' => $r['sku'], 'status' => 'pushed', 'bid' => $r['bidPercentage'] . '%'];
+                        $success++;
+                    }
+                } else {
+                    foreach ($requests as $r) {
+                        $results[] = ['sku' => $r['sku'], 'status' => 'failed', 'reason' => 'HTTP ' . $response->status()];
+                        $failed++;
+                    }
+                }
+            } catch (\Exception $e) {
+                foreach ($requests as $r) {
+                    $results[] = ['sku' => $r['sku'], 'status' => 'failed', 'reason' => $e->getMessage()];
+                    $failed++;
+                }
+            }
+        }
+
+        return response()->json([
+            'success' => $success,
+            'failed'  => $failed,
+            'skipped' => $skipped,
+            'results' => $results,
+        ]);
+    }
+
+    /** Resolve S Bid from slab rules (first matching slab wins); 0 = no match. */
+    private function resolveSlabBid(float $cvr, float $dil, float $esold, float $views, array $slabs): float
+    {
+        foreach ($slabs as $s) {
+            if ($this->slabInRange($cvr,   $s['cvr_min']   ?? null, $s['cvr_max']   ?? null)
+                && $this->slabInRange($dil,   $s['dil_min']   ?? null, $s['dil_max']   ?? null)
+                && $this->slabInRange($esold, $s['esold_min'] ?? null, $s['esold_max'] ?? null)
+                && $this->slabInRange($views, $s['views_min'] ?? null, $s['views_max'] ?? null)) {
+                return (float) ($s['sbid'] ?? 0);
+            }
+        }
+        return 0.0;
+    }
+
+    private function slabInRange(float $val, $min, $max): bool
+    {
+        if ($min !== null && $min !== '' && $val < (float) $min) return false;
+        if ($max !== null && $max !== '' && $val > (float) $max) return false;
+        return true;
     }
 
     /**
