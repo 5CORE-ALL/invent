@@ -132,7 +132,8 @@ for worker_script in \
     "${PROJECT_DIR}/scripts/cron-shopify-bullet-pull-worker.sh" \
     "${PROJECT_DIR}/scripts/cron-shopify-video-pull-worker.sh" \
     "${PROJECT_DIR}/scripts/cron-image-master-push-worker.sh" \
-    "${PROJECT_DIR}/scripts/cron-video-master-push-worker.sh"
+    "${PROJECT_DIR}/scripts/cron-video-master-push-worker.sh" \
+    "${PROJECT_DIR}/scripts/cron-aliexpress-worker.sh"
 do
     if [ -x "${worker_script}" ]; then
         bash "${worker_script}"

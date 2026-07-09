@@ -128,7 +128,7 @@
                                 <li class="mb-2">Confirm <strong>Test connection</strong> shows success above.</li>
                                 <li class="mb-2">Go to <a href="{{ route('marketplace.products', 'aliexpress') }}">Listings</a> → <strong>Sync from AliExpress API</strong> to pull your products.</li>
                                 <li class="mb-2">Open <a href="{{ route('marketplace.settings', 'aliexpress') }}">Sync Settings</a> → enable inventory / order sync.</li>
-                                <li>Run queue worker: <code>php artisan queue:work --queue=aliexpress</code> for order import jobs.</li>
+                                <li>Order import jobs use the <code>aliexpress</code> queue — started automatically by <code>scripts/cron-aliexpress-worker.sh</code> (see deploy / crontab).</li>
                             </ol>
                         </div>
                     </div>
