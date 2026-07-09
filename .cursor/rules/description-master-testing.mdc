@@ -1,0 +1,28 @@
+---
+description: Default SKU and workflow for Description Master marketplace API testing
+globs: app/Http/Controllers/ProductMaster/DescriptionMasterController.php,app/Services/Support/MarketplaceMasterAuditService.php,app/Console/Commands/AuditMarketplaceMasterCommand.php,docs/DESCRIPTION_MASTER_OVERVIEW.md,docs/MARKETPLACE_API_INTEGRATION.md
+alwaysApply: false
+---
+
+# Description Master — test SKU
+
+**Default test SKU:** `SP 12120 4OHM GTR`  
+(Config: `config/marketplace_testing.php` → `description_sku`)
+
+## Safe testing order
+
+1. Dry-run (no API writes):
+   `php artisan marketplace:audit-master description --dry-run --sku="SP 12120 4OHM GTR"`
+2. Single marketplace dry-run:
+   `php artisan marketplace:audit-master description --dry-run --sku="SP 12120 4OHM GTR" --marketplace=amazon`
+3. Live push only after dry-run passes **and** PM description tiers are filled:
+   `php artisan marketplace:audit-master description --live --sku="SP 12120 4OHM GTR" --marketplace=amazon`
+
+## Known status for this SKU (dry-run)
+
+- **Wiring:** 24/24 marketplaces ready (credentials + service + metrics table)
+- **Content gap:** `description_1500`–`description_600` all empty — live push will fail until filled (AI generate or manual save)
+- **Metrics rows:** ebay, ebay3, temu, doba, walmart have listing sync rows; `description_master` empty until first push
+- **ebay2:** no metrics row; eBay API lookup on push
+
+Do not run bulk or multi-marketplace live pushes without explicit user approval.

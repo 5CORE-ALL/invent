@@ -535,7 +535,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function groupCell(gkey, sku, row) {
-        const keys = GROUPS[gkey] || [];
+        const keys = (GROUPS[gkey] || []).filter((mp) => ENABLED_MARKETPLACES.includes(mp));
         const im = row.image_master || {};
         return `<div class="marketplaces-cell"><div class="bp-mp-inline">${keys.map(mp => mpStackHtml(sku, mp, im[mp]||'')).join('')}</div></div>`;
     }

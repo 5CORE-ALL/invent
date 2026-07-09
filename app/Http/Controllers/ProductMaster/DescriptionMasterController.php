@@ -16,6 +16,7 @@ use App\Services\ReverbApiService;
 use App\Services\ShopifyApiService;
 use App\Services\ShopifyPLSApiService;
 use App\Services\Support\DescriptionWithImagesFormatter;
+use App\Services\Support\MarketplaceCharacterLimits;
 use App\Services\Support\ProductMasterMarketplaceMaps;
 use App\Services\TemuApiService;
 use App\Services\WayfairApiService;
@@ -429,6 +430,7 @@ class DescriptionMasterController extends Controller
 
             $data = (array) ($res['data'] ?? []);
             $html = (string) ($data['description_html'] ?? '');
+            $html = \App\Services\Support\DescriptionWithImagesFormatter::stripBulletPointsFromFetchedBody($html);
             $images = (array) ($data['images'] ?? []);
             $plain = $this->truncateDescriptionForMarketplace($html !== '' ? $html : (string) ($data['description_plain'] ?? ''), 'amazon');
 
@@ -639,13 +641,13 @@ class DescriptionMasterController extends Controller
                             }
                         }
 
-                        return [
+                        return $this->stripBulletsIfNeeded('amazon', [
                             'success' => true,
                             'message' => 'Fetched Amazon listing description (product_description attribute via SP-API).',
                             'html' => $html,
                             'images' => $images,
                             'source' => 'amazon',
-                        ];
+                        ]);
                     }
 
                     return ['success' => false, 'message' => (string) ($r['message'] ?? 'Amazon fetch failed.')];
@@ -667,14 +669,8 @@ class DescriptionMasterController extends Controller
     }
 
     /**
-     * Remove the Bullet Points block from a fetched description so the editor shows only the description
-     * (bullets have their own master). Bullet placement differs per channel:
-     *  - Shopify Main/PLS, eBay1/eBay2: HTML "About Item" block in the body  -> removeAboutItemBlock()
-     *  - Reverb: HTML "Highlighted Features" block in the body               -> removeAboutItemBlock()
-     *  - Macy's: plain-text "About Item ..." before "Product Description"     -> stripMacyAboutItemText()
-     *  - eBay3 (Item Specifics), Temu (goodsSummary), Amazon (A+): bullets are a
-     *    SEPARATE field, never in the description -> nothing to strip.
-     *  - Wayfair / Best Buy: key-feature lines are converted to/from HTML lists on fetch/push.
+     * Remove bullet-point blocks from a fetched listing body only (Highlighted Features / About Item).
+     * Specs, EXTRA USPs, package, brand, and images stay in the description.
      */
     private function stripBulletsIfNeeded(string $marketplace, array $res): array
     {
@@ -682,29 +678,9 @@ class DescriptionMasterController extends Controller
             return $res;
         }
 
-        $html = (string) $res['html'];
-        if (in_array($marketplace, ['shopify_main', 'shopify_pls', 'ebay', 'ebay2', 'reverb'], true)) {
-            $res['html'] = \App\Services\Support\ShopifyBulletPointsFormatter::removeAboutItemBlock($html);
-        } elseif ($marketplace === 'macy') {
-            $res['html'] = $this->stripMacyAboutItemText($html);
-        }
+        $res['html'] = \App\Services\Support\DescriptionWithImagesFormatter::stripBulletPointsFromFetchedBody((string) $res['html']);
 
         return $res;
-    }
-
-    /**
-     * Macy's stores bullets as leading plain "About Item ..." text before the "Product Description" body.
-     * Keep from "Product Description" onward; if there's no such marker, leave the text unchanged.
-     */
-    private function stripMacyAboutItemText(string $text): string
-    {
-        $t = trim($text);
-        $pos = mb_stripos($t, 'Product Description');
-        if ($pos !== false) {
-            return trim(mb_substr($t, $pos));
-        }
-
-        return $t;
     }
 
     /**
@@ -857,16 +833,7 @@ class DescriptionMasterController extends Controller
 
     private function maxCharsForMarketplace(string $marketplace): int
     {
-        // Platform listing limits (Amazon/Temu: plain text; Shopify: no hard cap; eBay: 500k — ~800 visible on mobile).
-        return match ($marketplace) {
-            'amazon', 'temu', 'temu2', 'walmart', 'shein', 'aliexpress' => 2000,
-            'shopify_main', 'shopify_pls' => 500000,
-            'ebay', 'ebay2', 'ebay3' => 500000,
-            'reverb', 'bestbuy', 'doba' => 1500,
-            'wayfair' => 2000,
-            'macy', 'faire' => 600,
-            default => 1500,
-        };
+        return MarketplaceCharacterLimits::descriptionLimit($marketplace);
     }
 
     /**

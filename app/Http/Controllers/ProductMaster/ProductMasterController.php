@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\ProductMaster;
 
 use App\Http\Controllers\ProductMaster\Concerns\GuardsMarketplaceApiConfiguration;
+use App\Http\Controllers\ProductMaster\Concerns\RetriesMarketplacePush;
 use App\Http\Controllers\ApiController;
 use App\Http\Controllers\Controller;
 use App\Models\AmazonListingRaw;
@@ -23,6 +24,10 @@ use App\Services\MacysApiService;
 use App\Services\ReverbApiService;
 use App\Services\SheinApiService;
 use App\Services\ShopifyApiService;
+use App\Services\MarketplaceTitlePushService;
+use App\Services\Support\AllMarketplaceChannelRegistry;
+use App\Services\Support\MarketplaceCharacterLimits;
+use Illuminate\Validation\Rule;
 use App\Services\Support\ShopifyBulletPointsFormatter;
 use App\Services\TemuApiService;
 use App\Services\TitleMasterDataService;
@@ -39,6 +44,7 @@ use PhpOffice\PhpSpreadsheet\IOFactory;
 class ProductMasterController extends Controller
 {
     use GuardsMarketplaceApiConfiguration;
+    use RetriesMarketplacePush;
 
     protected $apiController;
 
@@ -3200,7 +3206,7 @@ PROMPT;
     }
 
     /**
-     * Push Amazon title (title150) to all 4 marketplaces (Amazon, Temu, Reverb, Wayfair) for a single SKU.
+     * Push Title 150 to all Title-150 marketplaces for a single SKU.
      * Logs each attempt to marketplace_push_logs and returns per-marketplace results.
      */
     public function pushTitleToAllMarketplaces(Request $request)
@@ -3213,69 +3219,51 @@ PROMPT;
         $sku = trim($request->input('sku'));
         $title = trim($request->input('title'));
         $userId = auth()->id();
+        $registry = app(AllMarketplaceChannelRegistry::class);
+        $pushKeys = $registry->titlePushKeysForType('150');
 
         Log::info('Multi-Marketplace Push - Started', [
             'sku' => $sku,
             'title_preview' => mb_substr($title, 0, 50),
-            'marketplaces' => ['amazon', 'temu', 'reverb', 'wayfair'],
+            'marketplaces' => $pushKeys,
             'user_id' => $userId,
             'timestamp' => now()->toDateTimeString(),
         ]);
 
-        $results = [
-            'amazon' => ['status' => 'pending', 'message' => ''],
-            'temu' => ['status' => 'pending', 'message' => ''],
-            'reverb' => ['status' => 'pending', 'message' => ''],
-            'wayfair' => ['status' => 'pending', 'message' => ''],
-        ];
+        $results = [];
+        foreach ($pushKeys as $pushKey) {
+            $truncated = MarketplaceCharacterLimits::truncateTitle($title, $pushKey, '150');
 
-        // Amazon
-        try {
-            $amazonService = new AmazonSpApiService;
-            $res = $amazonService->updateAmazonTitle($sku, $title);
-            $results['amazon'] = isset($res['success']) && $res['success'] === true
-                ? ['status' => 'success', 'message' => $res['message'] ?? 'OK']
-                : ['status' => 'failed', 'message' => $res['message'] ?? json_encode($res)];
-        } catch (\Throwable $e) {
-            $results['amazon'] = ['status' => 'failed', 'message' => $e->getMessage()];
-        }
-        $this->logMarketplacePush($sku, 'amazon', $results['amazon']['status'], $results['amazon']['message'] ?? null, $userId);
+            if ($blocked = $this->marketplaceApiNotConfiguredResult($pushKey)) {
+                $results[$pushKey] = ['status' => 'failed', 'message' => $blocked['message']];
+                $this->logMarketplacePush($sku, $pushKey, $results[$pushKey]['status'], $results[$pushKey]['message'], $userId);
 
-        // Temu
-        try {
-            $temuService = new TemuApiService;
-            $res = $temuService->updateTitle($sku, $title);
-            $results['temu'] = $res['success'] ?? false
-                ? ['status' => 'success', 'message' => $res['message'] ?? 'OK']
-                : ['status' => 'failed', 'message' => $res['message'] ?? 'Unknown error'];
-        } catch (\Throwable $e) {
-            $results['temu'] = ['status' => 'failed', 'message' => $e->getMessage()];
-        }
-        $this->logMarketplacePush($sku, 'temu', $results['temu']['status'], $results['temu']['message'] ?? null, $userId);
+                continue;
+            }
 
-        // Reverb
-        try {
-            $reverbService = new ReverbApiService;
-            $res = $reverbService->updateTitle($sku, $title);
-            $results['reverb'] = $res['success'] ?? false
-                ? ['status' => 'success', 'message' => $res['message'] ?? 'OK']
-                : ['status' => 'failed', 'message' => $res['message'] ?? 'Unknown error'];
-        } catch (\Throwable $e) {
-            $results['reverb'] = ['status' => 'failed', 'message' => $e->getMessage()];
-        }
-        $this->logMarketplacePush($sku, 'reverb', $results['reverb']['status'], $results['reverb']['message'] ?? null, $userId);
+            try {
+                $pushResult = $this->invokeMarketplacePushWithRetries(
+                    fn () => $this->titlePushService()->push($pushKey, $sku, $truncated, '150'),
+                    'Title push',
+                    $pushKey,
+                    $sku
+                );
+                $results[$pushKey] = [
+                    'status' => $pushResult['success'] ? 'success' : 'failed',
+                    'message' => $pushResult['message'],
+                ];
+            } catch (\Throwable $e) {
+                $results[$pushKey] = ['status' => 'failed', 'message' => $e->getMessage()];
+            }
 
-        // Wayfair
-        try {
-            $wayfairService = new WayfairApiService;
-            $res = $wayfairService->updateTitle($sku, $title);
-            $results['wayfair'] = $res['success'] ?? false
-                ? ['status' => 'success', 'message' => $res['message'] ?? 'OK']
-                : ['status' => 'failed', 'message' => $res['message'] ?? 'Unknown error'];
-        } catch (\Throwable $e) {
-            $results['wayfair'] = ['status' => 'failed', 'message' => $e->getMessage()];
+            $this->logMarketplacePush(
+                $sku,
+                $pushKey,
+                $results[$pushKey]['status'],
+                $results[$pushKey]['message'] ?? null,
+                $userId
+            );
         }
-        $this->logMarketplacePush($sku, 'wayfair', $results['wayfair']['status'], $results['wayfair']['message'] ?? null, $userId);
 
         Log::info('Multi-Marketplace Push - Summary', ['sku' => $sku, 'results' => $results]);
 
@@ -3283,7 +3271,7 @@ PROMPT;
             'success' => true,
             'sku' => $sku,
             'results' => $results,
-            'message' => 'Push completed for all marketplaces.',
+            'message' => 'Push completed for all Title 150 marketplaces.',
         ]);
     }
 
@@ -3293,42 +3281,27 @@ PROMPT;
      */
     public function pushSingleMarketplace(Request $request)
     {
+        $registry = app(AllMarketplaceChannelRegistry::class);
+
         $request->validate([
             'sku' => 'required|string|max:255',
-            'marketplace' => 'required|string|in:amazon,temu,temu2,reverb,wayfair,walmart,shopify,shopify_main,shopify_pls,doba,ebay1,ebay2,ebay3,macy,faire,shein,aliexpress,tiktok',
+            'marketplace' => ['required', 'string', Rule::in($registry->titlePushKeys())],
             'title_type' => 'required|string|in:150,100,80,60',
             'title' => 'nullable|string|max:2000',
         ]);
 
         $sku = trim($request->input('sku'));
-        $marketplace = $request->input('marketplace');
+        $marketplace = $registry->normalizeTitlePushKey($request->input('marketplace'));
         $titleType = $request->input('title_type');
         $title = trim((string) $request->input('title', ''));
         $userId = auth()->id();
 
-        // Guard against invalid marketplace / title_type combos
-        if ($titleType === '150' && ! in_array($marketplace, ['amazon', 'temu', 'temu2', 'reverb', 'wayfair', 'walmart', 'shein', 'aliexpress', 'tiktok'], true)) {
+        $expectedType = $registry->titleTypeForMarketplace($marketplace);
+        if ($expectedType === null || $titleType !== $expectedType) {
             return response()->json([
                 'success' => false,
-                'message' => 'Amazon title (type 150) is only valid for Amazon, Temu, Reverb, Wayfair, Walmart, Shein, AliExpress, and TikTok.',
-            ], 422);
-        }
-        if ($titleType === '100' && ! in_array($marketplace, ['shopify', 'shopify_main', 'shopify_pls', 'doba'], true)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Title 100 is only valid for Shopify Main, Shopify PLS and Doba.',
-            ], 422);
-        }
-        if ($titleType === '80' && ! in_array($marketplace, ['ebay1', 'ebay2', 'ebay3'], true)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Title 80 is only valid for eBay 1, eBay 2, eBay 3.',
-            ], 422);
-        }
-        if ($titleType === '60' && ! in_array($marketplace, ['macy', 'faire'], true)) {
-            return response()->json([
-                'success' => false,
-                'message' => "Title 60 is only valid for Macy's and Faire.",
+                'message' => "Title type {$titleType} is not valid for marketplace {$marketplace}."
+                    .($expectedType ? " Expected {$expectedType}." : ''),
             ], 422);
         }
 
@@ -3358,6 +3331,8 @@ PROMPT;
             ], 422);
         }
 
+        $title = MarketplaceCharacterLimits::truncateTitle($title, $marketplace, $titleType);
+
         if ($blocked = $this->marketplaceApiNotConfiguredResult($marketplace)) {
             return response()->json(array_merge($blocked, ['success' => false]), 422);
         }
@@ -3382,173 +3357,15 @@ PROMPT;
                 'title' => mb_substr($title, 0, 100),
             ]);
 
-            switch ($marketplace) {
-                case 'amazon':
-                    $endpoint = 'AmazonSpApiService::updateAmazonTitle';
-                    $service = new AmazonSpApiService;
-                    $res = $service->updateAmazonTitle($sku, $title);
-                    $success = isset($res['success']) && $res['success'] === true;
-                    $message = $res['message'] ?? ($success ? 'OK' : json_encode($res));
-                    break;
-
-                case 'temu':
-                    $endpoint = 'TemuApiService::updateTitle';
-                    $service = new TemuApiService;
-                    $res = $service->updateTitle($sku, $title);
-                    $success = $res['success'] ?? false;
-                    $message = $res['message'] ?? ($success ? 'OK' : 'Unknown error');
-                    break;
-
-                case 'temu2':
-                    $endpoint = 'Temu2ApiService::updateTitle';
-                    $service = app(\App\Services\Temu2ApiService::class);
-                    $res = $service->updateTitle($sku, $title);
-                    $success = $res['success'] ?? false;
-                    $message = $res['message'] ?? ($success ? 'OK' : 'Unknown error');
-                    break;
-
-                case 'reverb':
-                    $endpoint = 'ReverbApiService::updateTitle';
-                    $service = new ReverbApiService;
-                    $res = $service->updateTitle($sku, $title);
-                    $success = $res['success'] ?? false;
-                    $message = $res['message'] ?? ($success ? 'OK' : 'Unknown error');
-                    break;
-
-                case 'wayfair':
-                    $endpoint = 'WayfairApiService::updateTitle';
-                    $service = new WayfairApiService;
-                    $res = $service->updateTitle($sku, $title);
-                    $success = $res['success'] ?? false;
-                    $message = $res['message'] ?? ($success ? 'OK' : 'Unknown error');
-                    break;
-
-                case 'walmart':
-                    $endpoint = 'WalmartService::updateTitle';
-                    $service = app(WalmartService::class);
-                    $res = $service->updateTitle($sku, $title);
-                    $success = $res['success'] ?? false;
-                    $message = $res['message'] ?? ($success ? 'OK' : 'Unknown error');
-                    break;
-
-                case 'shopify':
-                case 'shopify_main':
-                    Log::info('🖱️ Push to Main Shopify', ['sku' => $sku, 'title_type' => $titleType]);
-                    $endpoint = 'ShopifyApiService::updateTitle';
-                    $service = app(ShopifyApiService::class);
-                    $success = $service->updateTitle($sku, $title);
-                    $message = $success ? 'OK' : 'Update failed, see logs.';
-                    break;
-
-                case 'shopify_pls':
-                    Log::info('🖱️ Push to ProLight Shopify', ['sku' => $sku, 'title_type' => $titleType]);
-                    $endpoint = 'ProductMasterController::updateShopifyPLSTitle';
-                    $success = $this->updateShopifyPLSTitle($sku, $title);
-                    $message = $success ? 'OK' : 'Update failed, see logs.';
-                    break;
-
-                case 'doba':
-                    $endpoint = 'ProductMasterController::updateDobaTitle';
-                    $success = $this->updateDobaTitle($sku, $title);
-                    $message = $success ? 'OK' : 'Update failed, see logs.';
-                    break;
-
-                case 'ebay1':
-                    $endpoint = 'EbayApiService::updateTitle';
-                    $metric = EbayMetric::where('sku', $sku)->orWhereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])->first();
-                    if (! $metric || ! $metric->item_id) {
-                        Log::error('❌ eBay 1 push failed: listing not found', ['sku' => $sku]);
-                        $success = false;
-                        $message = 'eBay listing not found for this SKU.';
-                    } else {
-                        $ebayService = new EbayApiService;
-                        $res = $ebayService->updateTitle($metric->item_id, $title);
-                        $success = $res['success'] ?? false;
-                        $message = $res['message'] ?? ($success ? 'OK' : 'Unknown error');
-                        if ($success) {
-                            Log::info('✅ eBay 1 title updated', ['sku' => $sku, 'item_id' => $metric->item_id]);
-                        } else {
-                            Log::error('❌ eBay 1 push failed', ['sku' => $sku, 'error' => $message]);
-                        }
-                    }
-                    break;
-
-                case 'ebay2':
-                    $endpoint = 'Ebay2ApiService::updateTitle';
-                    $metric = Ebay2Metric::where('sku', $sku)->orWhereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])->first();
-                    if (! $metric || ! $metric->item_id) {
-                        Log::error('❌ eBay 2 push failed: listing not found', ['sku' => $sku]);
-                        $success = false;
-                        $message = 'eBay 2 listing not found for this SKU.';
-                    } else {
-                        $ebayService = new Ebay2ApiService;
-                        $res = $ebayService->updateTitle($metric->item_id, $title);
-                        $success = $res['success'] ?? false;
-                        $message = $res['message'] ?? ($success ? 'OK' : 'Unknown error');
-                        if ($success) {
-                            Log::info('✅ eBay 2 title updated', ['sku' => $sku, 'item_id' => $metric->item_id]);
-                        } else {
-                            Log::error('❌ eBay 2 push failed', ['sku' => $sku, 'error' => $message]);
-                        }
-                    }
-                    break;
-
-                case 'ebay3':
-                    $endpoint = 'EbayThreeApiService::updateTitle';
-                    $metric = Ebay3Metric::where('sku', $sku)->orWhereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])->first();
-                    if (! $metric || ! $metric->item_id) {
-                        Log::error('❌ eBay 3 push failed: listing not found', ['sku' => $sku]);
-                        $success = false;
-                        $message = 'eBay 3 listing not found for this SKU.';
-                    } else {
-                        $ebayService = new EbayThreeApiService;
-                        $res = $ebayService->updateTitle($metric->item_id, $title);
-                        $success = $res['success'] ?? false;
-                        $message = $res['message'] ?? ($success ? 'OK' : 'Unknown error');
-                        if ($success) {
-                            Log::info('✅ eBay 3 title updated', ['sku' => $sku, 'item_id' => $metric->item_id]);
-                        } else {
-                            Log::error('❌ eBay 3 push failed', ['sku' => $sku, 'error' => $message]);
-                        }
-                    }
-                    break;
-
-                case 'macy':
-                    $endpoint = 'MacysApiService::updateTitle';
-                    Log::info('🖱️ Macy (60) push clicked', ['sku' => $sku, 'title_preview' => mb_substr($title, 0, 30)]);
-                    $service = app(MacysApiService::class);
-                    $res = $service->updateTitle($sku, $title);
-                    $success = $res['success'] ?? false;
-                    $message = $res['message'] ?? ($success ? 'OK' : 'Unknown error');
-                    break;
-
-                case 'faire':
-                    $endpoint = 'FaireService::updateTitle';
-                    Log::info('🖱️ Faire (60) push clicked', ['sku' => $sku, 'title_preview' => mb_substr($title, 0, 30)]);
-                    $service = app(FaireService::class);
-                    $res = $service->updateTitle($sku, $title);
-                    $success = $res['success'] ?? false;
-                    $message = $res['message'] ?? ($success ? 'OK' : 'Unknown error');
-                    break;
-
-                case 'shein':
-                    $endpoint = 'ProductMasterController::updateSheinTitle';
-                    $success = (bool) $this->updateSheinTitle($sku, $title);
-                    $message = $success ? 'OK' : 'Update failed, see logs.';
-                    break;
-
-                case 'aliexpress':
-                    $endpoint = 'ProductMasterController::updateAliexpressTitle';
-                    $success = (bool) $this->updateAliexpressTitle($sku, $title);
-                    $message = $success ? 'OK' : 'Update failed, see logs.';
-                    break;
-
-                case 'tiktok':
-                    $endpoint = 'ProductMasterController::updateTiktokTitle';
-                    $success = (bool) $this->updateTiktokTitle($sku, $title);
-                    $message = $success ? 'OK' : 'Update failed, see logs.';
-                    break;
-            }
+            $pushResult = $this->invokeMarketplacePushWithRetries(
+                fn () => $this->titlePushService()->push($marketplace, $sku, $title, $titleType),
+                'Title push',
+                $marketplace,
+                $sku
+            );
+            $success = $pushResult['success'];
+            $message = $pushResult['message'];
+            $endpoint = 'MarketplaceTitlePushService::push';
         } catch (\Throwable $e) {
             $success = false;
             $message = $e->getMessage();
@@ -3573,12 +3390,12 @@ PROMPT;
         }
 
         // Log to marketplace_push_logs with explicit store naming for Shopify accounts.
-        $mpForLog = $marketplace;
-        if ($marketplace === 'shopify' || $marketplace === 'shopify_main') {
-            $mpForLog = 'shopify_main';
-        } elseif ($marketplace === 'shopify_pls') {
-            $mpForLog = 'shopify_pls';
-        }
+        $mpForLog = match ($marketplace) {
+            'shopify', 'shopify_main' => 'shopify_main',
+            'shopify_pls' => 'shopify_pls',
+            'shopify_b5c' => 'shopify_b5c',
+            default => $marketplace,
+        };
         $this->logMarketplacePush(
             $sku,
             $mpForLog,
@@ -3671,8 +3488,9 @@ PROMPT;
                 $res = $this->pushTitleToAllMarketplaces($req);
                 $data = $res->getData(true);
                 $results = $data['results'] ?? [];
+                $type150Keys = app(AllMarketplaceChannelRegistry::class)->titlePushKeysForType('150');
                 $allOk = true;
-                foreach (['amazon', 'temu', 'reverb', 'wayfair'] as $mp) {
+                foreach ($type150Keys as $mp) {
                     if (($results[$mp]['status'] ?? '') !== 'success') {
                         $allOk = false;
                         break;
@@ -6483,7 +6301,7 @@ GRAPHQL;
             $currentTitle = $validated['current_title'] ?? '';
             $mode = $validated['mode'];
 
-            $maxChars = config("marketplaces.character_limits.{$marketplace}", 150);
+            $maxChars = MarketplaceCharacterLimits::titleLimit($marketplace);
 
             $title = $mode === 'improve'
                 ? $this->improveTitle($marketplace, $description, $keywords, $currentTitle, $maxChars)
@@ -7008,8 +6826,8 @@ Return ONLY the dramatically improved title without quotes.";
 
         $sku = $validated['sku'];
         $parent = $validated['parent'];
-        $marketplace = $validated['marketplace'];
-        $title = $validated['title'];
+        $marketplace = strtolower(trim($validated['marketplace']));
+        $title = MarketplaceCharacterLimits::truncateTitle(trim($validated['title']), $marketplace);
 
         $searchSku = $sku ?: $parent;
         $table = config("marketplaces.tables.{$marketplace}");
@@ -7027,16 +6845,69 @@ Return ONLY the dramatically improved title without quotes.";
                     'updated_at' => now(),
                 ]);
 
-            if ($updated > 0) {
-                return response()->json(['success' => true, 'message' => 'Title updated successfully']);
+            if ($updated === 0) {
+                return response()->json(['success' => false, 'message' => 'No matching record found'], 404);
             }
 
-            return response()->json(['success' => false, 'message' => 'No matching record found'], 404);
+            $apiMarketplace = match ($marketplace) {
+                'ebay' => 'ebay1',
+                'shopify' => 'shopify_main',
+                default => $marketplace,
+            };
+
+            $apiPushKeys = config('marketplaces.api_title_push', []);
+            $shouldPushApi = in_array($apiMarketplace, $apiPushKeys, true)
+                || in_array($marketplace, $apiPushKeys, true);
+
+            if (! $shouldPushApi) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Title saved locally (no live API push for this marketplace).',
+                    'api_pushed' => false,
+                ]);
+            }
+
+            if ($blocked = $this->marketplaceApiNotConfiguredResult($apiMarketplace)) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Title saved locally; API not configured for live push.',
+                    'api_pushed' => false,
+                    'api_message' => $blocked['message'],
+                ]);
+            }
+
+            $apiResult = $this->invokeMarketplacePushWithRetries(
+                fn () => $this->titlePushService()->push($apiMarketplace, $searchSku, $title),
+                'AI Title push',
+                $apiMarketplace,
+                $searchSku
+            );
+
+            if (! $apiResult['success']) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Title saved locally but marketplace API push failed: '.$apiResult['message'],
+                    'api_pushed' => false,
+                    'api_message' => $apiResult['message'],
+                ], 500);
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Title updated and pushed to marketplace.',
+                'api_pushed' => true,
+                'api_message' => $apiResult['message'],
+            ]);
 
         } catch (\Exception $e) {
-            Log::error('Push title error', ['error' => $e->getMessage()]);
+            Log::error('Push title error', ['error' => $e->getMessage(), 'sku' => $searchSku, 'marketplace' => $marketplace]);
 
             return response()->json(['success' => false, 'message' => 'Failed to update title'], 500);
         }
+    }
+
+    private function titlePushService(): MarketplaceTitlePushService
+    {
+        return new MarketplaceTitlePushService(fn (string $sku, string $title): bool => $this->updateDobaTitle($sku, $title));
     }
 }

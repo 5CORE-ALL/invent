@@ -526,6 +526,83 @@ class NeweggApiService
     }
 
     /**
+     * @param  array<string, mixed>  $itemFields
+     * @return array{success: bool, message: string}
+     */
+    protected function pushItemContent(string $sku, array $itemFields): array
+    {
+        $sku = trim($sku);
+        if ($sku === '' || $itemFields === []) {
+            return ['success' => false, 'message' => 'SKU and content fields are required.'];
+        }
+
+        if (! $this->sellerId || ! $this->apiKey || ! $this->secretKey) {
+            return ['success' => false, 'message' => 'Newegg API credentials are not configured.'];
+        }
+
+        $body = ['Item' => array_merge(['SellerPartNumber' => $sku], $itemFields)];
+        $paths = [
+            "/marketplace/contentmgmt/item/basicinfo?sellerid={$this->sellerId}",
+            "/marketplace/contentmgmt/item/update?sellerid={$this->sellerId}",
+        ];
+
+        $lastMessage = 'Newegg content update failed.';
+        foreach ($paths as $path) {
+            $res = $this->request('PUT', $path, [], $body);
+            if ($this->extractItemSuccess($res)) {
+                return ['success' => true, 'message' => 'Newegg product content updated.'];
+            }
+            $lastMessage = $this->extractItemError($res);
+        }
+
+        return ['success' => false, 'message' => $lastMessage];
+    }
+
+    public function updateTitle(string $sku, string $title): array
+    {
+        return $this->pushItemContent($sku, [
+            'WebsiteShortTitle' => $title,
+            'Title' => $title,
+        ]);
+    }
+
+    public function updateBulletPoints(string $identifier, string $bulletPoints): array
+    {
+        return $this->pushItemContent($identifier, [
+            'BulletDescription' => $bulletPoints,
+        ]);
+    }
+
+    public function updateProductDescription(string $identifier, string $description): array
+    {
+        return $this->updateDescription($identifier, $description);
+    }
+
+    public function updateDescription(string $identifier, string $description, array $imageUrls = []): array
+    {
+        return $this->pushItemContent($identifier, [
+            'ItemDescription' => $description,
+            'ProductDescription' => $description,
+        ]);
+    }
+
+    /**
+     * @param  list<string>  $images
+     */
+    public function updateImages(string $identifier, array $images, string $mode = 'replace'): array
+    {
+        $images = array_values(array_filter(array_map('trim', $images), fn ($v) => $v !== ''));
+        if ($images === []) {
+            return ['success' => false, 'message' => 'At least one image URL is required.'];
+        }
+
+        return $this->pushItemContent($identifier, [
+            'Image' => $images[0],
+            'PrimaryImage' => $images[0],
+        ]);
+    }
+
+    /**
      * @param  list<string>  $videos
      * @return array{success: bool, message: string, normalized_urls?: list<string>}
      */

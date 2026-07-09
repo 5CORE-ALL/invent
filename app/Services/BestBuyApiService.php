@@ -10,15 +10,43 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use App\Services\Support\DescriptionWithImagesFormatter;
+use App\Services\Support\Concerns\MiraklConnectProductUpsert;
+use App\Services\Support\Concerns\MiraklMcmBulletImport;
 use App\Services\Support\SavesMarketplaceVideoMetrics;
 use App\Services\Support\VideoMasterMarketplaceMethods;
 use App\Models\ProductStockMapping;
 
 class BestBuyApiService
 {
+    use MiraklConnectProductUpsert;
+    use MiraklMcmBulletImport;
     use SavesMarketplaceVideoMetrics;
     use VideoMasterMarketplaceMethods;
-    private function getAccessToken()
+    protected function miraklChannelCode(): string
+    {
+        return 'bestbuyusa';
+    }
+
+    protected function miraklConnectAccessToken(): ?string
+    {
+        return $this->getAccessToken();
+    }
+
+    /**
+     * @param  array<string, mixed>  $attributes
+     * @return array{success: bool, message: string}
+     */
+    protected function miraklUpsertAttributes(string $sku, array $attributes, ?array $descriptions = null): array
+    {
+        return $this->miraklConnectUpsertProduct(
+            $sku,
+            $this->miraklChannelCode(),
+            $attributes,
+            $descriptions
+        );
+    }
+
+    protected function getAccessToken()
     {
         $response = Http::withoutVerifying()->asForm()->post('https://auth.mirakl.net/oauth/token', [
             'grant_type' => 'client_credentials',
@@ -37,7 +65,7 @@ class BestBuyApiService
         $allProducts = [];
 
         do {
-            $url = 'https://miraklconnect.com/api/products?limit=1000&channel_code=bestbuyusa';
+            $url = 'https://miraklconnect.com/api/products?limit=1000&channel_code='.$this->miraklChannelCode();
             if ($pageToken) {
                 $url .= '&page_token=' . urlencode($pageToken);
             }
@@ -101,6 +129,22 @@ class BestBuyApiService
      *
      * @return array{success: bool, message: string, status_code?: int|null}
      */
+  /**
+     * @return array{success: bool, message: string}
+     */
+    public function updateTitle(string $sku, string $title): array
+    {
+        $title = trim($title);
+        if ($title === '') {
+            return ['success' => false, 'message' => 'Title is required.'];
+        }
+
+        return $this->miraklUpsertAttributes($sku, [
+            'productName' => $title,
+            'title' => $title,
+        ]);
+    }
+
     public function updateBulletPoints(string $sku, string $bulletPoints): array
     {
         $sku = trim($sku);
@@ -109,43 +153,22 @@ class BestBuyApiService
             return ['success' => false, 'message' => 'SKU and bullet points are required.'];
         }
 
-        $token = $this->getAccessToken();
-        if (! $token) {
-            return ['success' => false, 'message' => 'Best Buy / Mirakl access token not available.'];
-        }
+        return $this->pushBulletPointsViaMiraklMcm($sku, $bulletPoints);
+    }
 
-        $baseUrl = 'https://miraklconnect.com/api/products';
-        $productPayload = [
-            'id' => $sku,
-            'attributes' => [
-                'bulletPoints' => $bulletPoints,
-            ],
-        ];
+    protected function miraklMcmConfigKey(): string
+    {
+        return 'bestbuy';
+    }
 
-        $headers = [
-            'Accept' => 'application/json',
-            'Content-Type' => 'application/json',
-            'channel_id' => 'bestbuyusa',
-        ];
+    protected function miraklMcmMarketplaceLabel(): string
+    {
+        return 'Best Buy';
+    }
 
-        try {
-            $request = Http::withoutVerifying()->withToken($token)->withHeaders($headers)->timeout(60);
-            $response = $request->post($baseUrl, ['products' => [$productPayload]]);
-            if (! $response->successful()) {
-                $response = $request->patch("{$baseUrl}/{$sku}", $productPayload);
-            }
-            if (! $response->successful()) {
-                $response = $request->put("{$baseUrl}/{$sku}", $productPayload);
-            }
-
-            if (! $response->successful()) {
-                return ['success' => false, 'message' => 'Best Buy update failed: '.$response->body()];
-            }
-
-            return ['success' => true, 'message' => 'Best Buy bullet points updated.'];
-        } catch (\Throwable $e) {
-            return ['success' => false, 'message' => $e->getMessage()];
-        }
+    protected function miraklMcmHierarchyTable(): ?string
+    {
+        return 'bestbuy_price_data';
     }
 
     /**
@@ -199,7 +222,7 @@ class BestBuyApiService
         $headers = [
             'Accept' => 'application/json',
             'Content-Type' => 'application/json',
-            'channel_id' => 'bestbuyusa',
+            'channel_id' => $this->miraklChannelCode(),
         ];
 
         try {
@@ -278,7 +301,7 @@ class BestBuyApiService
             $response = Http::withoutVerifying()->withToken($token)->withHeaders([
                 'Accept' => 'application/json',
                 'Content-Type' => 'application/json',
-                'channel_id' => 'bestbuyusa',
+                'channel_id' => $this->miraklChannelCode(),
             ])->timeout(45)->get('https://miraklconnect.com/api/products/'.$sku);
 
             if (! $response->successful()) {
@@ -330,7 +353,7 @@ class BestBuyApiService
         $headers = [
             'Accept' => 'application/json',
             'Content-Type' => 'application/json',
-            'channel_id' => 'bestbuyusa',
+            'channel_id' => $this->miraklChannelCode(),
         ];
 
         try {
@@ -401,7 +424,7 @@ class BestBuyApiService
         $headers = [
             'Accept' => 'application/json',
             'Content-Type' => 'application/json',
-            'channel_id' => 'bestbuyusa',
+            'channel_id' => $this->miraklChannelCode(),
         ];
 
         try {
@@ -467,7 +490,7 @@ class BestBuyApiService
         $headers = [
             'Accept' => 'application/json',
             'Content-Type' => 'application/json',
-            'channel_id' => 'bestbuyusa',
+            'channel_id' => $this->miraklChannelCode(),
         ];
 
         try {

@@ -459,6 +459,16 @@ class TitleMasterDataService
         $query->orderBy('skus.sku', $dir === 'DESC' ? 'desc' : 'asc');
     }
 
+    /**
+     * Effective Title 170: saved product_master.title150, else synced Amazon listing title.
+     */
+    private function sqlEffectiveTitle170Expr(): string
+    {
+        $amazon = 'IFNULL(NULLIF(TRIM(alr.item_name), ""), NULLIF(TRIM(ads.amazon_title), ""))';
+
+        return "IFNULL(NULLIF(TRIM(pm.title150), \"\"), {$amazon})";
+    }
+
     private function applyFilters($query, Request $request, bool $hasPricingCvrSnapshot): void
     {
         $qParent = $this->normalizeSearchWhitespace((string) $request->query('q_parent', ''));
@@ -491,14 +501,11 @@ class TitleMasterDataService
         }
 
         $f150 = (string) $request->query('filter_title150', 'all');
+        $eff170 = $this->sqlEffectiveTitle170Expr();
         if ($f150 === 'missing') {
-            $query->whereRaw(
-                '(IFNULL(NULLIF(TRIM(alr.item_name), ""), NULLIF(TRIM(ads.amazon_title), "")) IS NULL OR IFNULL(NULLIF(TRIM(alr.item_name), ""), NULLIF(TRIM(ads.amazon_title), "")) = "")'
-            );
+            $query->whereRaw("({$eff170} IS NULL OR {$eff170} = '')");
         } elseif ($f150 === 'exceeds') {
-            $query->whereRaw(
-                'CHAR_LENGTH(IFNULL(NULLIF(TRIM(alr.item_name), ""), NULLIF(TRIM(ads.amazon_title), ""))) > 170'
-            );
+            $query->whereRaw("CHAR_LENGTH({$eff170}) > 170");
         }
 
         $this->applyPmTitleMissingFilter($query, (string) $request->query('filter_title100', 'all'), 'pm.title100');
@@ -555,8 +562,11 @@ class TitleMasterDataService
                 $parents[(string) $parent] = true;
             }
 
-            // Effective Amazon (Title 170) text: item_name, else ads_amazon_title.
-            $eff = trim((string) ($r->item_name ?? ''));
+            // Effective Title 170: saved title150, else Amazon listing title.
+            $eff = trim((string) ($r->title150 ?? ''));
+            if ($eff === '') {
+                $eff = trim((string) ($r->item_name ?? ''));
+            }
             if ($eff === '') {
                 $eff = trim((string) ($r->ads_amazon_title ?? ''));
             }
@@ -590,14 +600,15 @@ class TitleMasterDataService
 
     private function aggregateStats($base): array
     {
+        $eff170 = $this->sqlEffectiveTitle170Expr();
         $row = $base->clone()
             ->selectRaw('COUNT(*) as total')
             ->selectRaw('COUNT(DISTINCT pm.parent) as parents')
             ->selectRaw(
-                'SUM(CASE WHEN (IFNULL(NULLIF(TRIM(alr.item_name), ""), NULLIF(TRIM(ads.amazon_title), "")) IS NULL OR IFNULL(NULLIF(TRIM(alr.item_name), ""), NULLIF(TRIM(ads.amazon_title), "")) = "") THEN 1 ELSE 0 END) as m150'
+                "SUM(CASE WHEN ({$eff170} IS NULL OR {$eff170} = '') THEN 1 ELSE 0 END) as m150"
             )
             ->selectRaw(
-                'SUM(CASE WHEN CHAR_LENGTH(IFNULL(NULLIF(TRIM(alr.item_name), ""), NULLIF(TRIM(ads.amazon_title), ""))) > 170 THEN 1 ELSE 0 END) as exceeds_150'
+                "SUM(CASE WHEN CHAR_LENGTH({$eff170}) > 170 THEN 1 ELSE 0 END) as exceeds_150"
             )
             ->selectRaw('SUM(CASE WHEN (pm.title100 IS NULL OR TRIM(IFNULL(pm.title100, "")) = "") THEN 1 ELSE 0 END) as m100')
             ->selectRaw('SUM(CASE WHEN (pm.title80 IS NULL OR TRIM(IFNULL(pm.title80, "")) = "") THEN 1 ELSE 0 END) as m80')

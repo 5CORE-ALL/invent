@@ -6,6 +6,7 @@ use App\Models\ProductStockMapping;
 use App\Models\ReverbListingStatus;
 use App\Models\ReverbProduct;
 use App\Services\Support\DescriptionWithImagesFormatter;
+use App\Services\Support\ShopifyBulletPointsFormatter;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Cache;
@@ -328,40 +329,71 @@ class ReverbApiService
     }
 
     /**
-     * Get Reverb listing ID for a SKU.
-     * First checks reverb_products.reverb_listing_id; if not found, paginates through API my/listings.
-     *
-     * @return string|null Listing ID or null if not found
+     * Collapse internal whitespace for Reverb SKU matching (e.g. "GSTOOL  BLK" == "GSTOOL BLK").
      */
-    public function getListingIdBySku(string $sku): ?string
+    private static function normalizeReverbSkuKey(string $sku): string
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return '';
+        }
+
+        return preg_replace('/\s+/u', ' ', mb_strtolower($sku)) ?? mb_strtolower($sku);
+    }
+
+    private static function reverbListingSkuMatches(?string $listingSku, string $needleSku): bool
+    {
+        if ($listingSku === null || trim($listingSku) === '') {
+            return false;
+        }
+
+        return self::normalizeReverbSkuKey($listingSku) === self::normalizeReverbSkuKey($needleSku);
+    }
+
+    /**
+     * All Reverb listing IDs that share the same SKU (handles duplicate listings / spacing variants).
+     *
+     * @return list<string>
+     */
+    public function getAllListingIdsBySku(string $sku): array
     {
         $normalizedSku = trim($sku);
         if ($normalizedSku === '') {
-            return null;
+            return [];
         }
 
-        // Prefer reverb_listing_id from reverb_products (fast, no API call)
+        $ids = [];
         $product = ReverbProduct::query()
             ->whereNotNull('reverb_listing_id')
             ->where('reverb_listing_id', '!=', '')
             ->whereRaw('LOWER(TRIM(sku)) = ?', [strtolower($normalizedSku)])
             ->first();
         if ($product && $product->reverb_listing_id) {
-            return (string) trim($product->reverb_listing_id);
+            $ids[] = trim((string) $product->reverb_listing_id);
         }
 
+        foreach ($this->fetchListingIdsFromReverbApiBySku($normalizedSku) as $id) {
+            $ids[] = $id;
+        }
+
+        return array_values(array_unique(array_filter($ids, fn ($id) => trim((string) $id) !== '')));
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function fetchListingIdsFromReverbApiBySku(string $sku): array
+    {
         $apiBase = rtrim((string) config('services.reverb.api_url', 'https://api.reverb.com/api'), '/');
         $token = self::getReverbBearerToken();
         if (! $token) {
-            Log::warning('Reverb API token not configured (REVERB_CLIENT_ID/REVERB_CLIENT_SECRET or REVERB_TOKEN)');
-
-            return null;
+            return [];
         }
 
+        $ids = [];
         try {
-            // Fast path: filtered search (docs: my/listings?sku=&state=all includes drafts)
             $filteredUrl = $apiBase.'/my/listings?'.http_build_query([
-                'sku' => $normalizedSku,
+                'sku' => $sku,
                 'state' => 'all',
                 'per_page' => 50,
             ]);
@@ -375,22 +407,18 @@ class ReverbApiService
                 ->get($filteredUrl);
 
             if ($filteredRes->successful()) {
-                $data = $filteredRes->json();
-                $listings = $data['listings'] ?? [];
-                foreach ($listings as $item) {
-                    $listingSku = isset($item['sku']) ? trim((string) $item['sku']) : null;
-                    if ($listingSku !== null && strcasecmp($listingSku, $normalizedSku) === 0) {
-                        $id = $item['id'] ?? null;
-                        if ($id !== null) {
-                            $this->persistReverbListingId($normalizedSku, (string) $id);
-
-                            return (string) $id;
-                        }
+                foreach ($filteredRes->json()['listings'] ?? [] as $item) {
+                    $listingSku = isset($item['sku']) ? trim((string) $item['sku']) : '';
+                    if (! self::reverbListingSkuMatches($listingSku, $sku)) {
+                        continue;
+                    }
+                    $id = $item['id'] ?? null;
+                    if ($id !== null && trim((string) $id) !== '') {
+                        $ids[] = trim((string) $id);
                     }
                 }
             }
 
-            // Paginate all listings — must use state=all or drafts / non-live SKUs are invisible (default filter).
             $url = $apiBase.'/my/listings?state=all&per_page=50';
             while ($url) {
                 $response = Http::withoutVerifying()
@@ -403,41 +431,61 @@ class ReverbApiService
                     ->get(trim($url));
 
                 if ($response->failed()) {
-                    Log::error('Reverb getListingIdBySku: failed to fetch listings', [
-                        'url' => $url,
-                        'status' => $response->status(),
-                        'body' => $response->body(),
-                    ]);
-
-                    return null;
+                    break;
                 }
 
                 $data = $response->json();
-                $listings = $data['listings'] ?? [];
-                foreach ($listings as $item) {
-                    $listingSku = isset($item['sku']) ? trim((string) $item['sku']) : null;
-                    if ($listingSku !== null && strcasecmp($listingSku, $normalizedSku) === 0) {
-                        $id = $item['id'] ?? null;
-                        if ($id !== null) {
-                            $this->persistReverbListingId($normalizedSku, (string) $id);
-
-                            return (string) $id;
-                        }
+                foreach ($data['listings'] ?? [] as $item) {
+                    $listingSku = isset($item['sku']) ? trim((string) $item['sku']) : '';
+                    if (! self::reverbListingSkuMatches($listingSku, $sku)) {
+                        continue;
+                    }
+                    $id = $item['id'] ?? null;
+                    if ($id !== null && trim((string) $id) !== '') {
+                        $ids[] = trim((string) $id);
                     }
                 }
 
                 $url = isset($data['_links']['next']['href']) ? trim($data['_links']['next']['href']) : null;
             }
-
-            return null;
         } catch (\Throwable $e) {
-            Log::error('Reverb getListingIdBySku exception: '.$e->getMessage(), [
+            Log::warning('Reverb fetchListingIdsFromReverbApiBySku failed', [
                 'sku' => $sku,
-                'trace' => $e->getTraceAsString(),
+                'error' => $e->getMessage(),
             ]);
+        }
 
+        return array_values(array_unique($ids));
+    }
+
+    /**
+     * Get Reverb listing ID for a SKU.
+     * First checks reverb_products.reverb_listing_id; if not found, paginates through API my/listings.
+     *
+     * @return string|null Listing ID or null if not found
+     */
+    public function getListingIdBySku(string $sku): ?string
+    {
+        $normalizedSku = trim($sku);
+        if ($normalizedSku === '') {
             return null;
         }
+
+        $listingIds = $this->getAllListingIdsBySku($normalizedSku);
+        if ($listingIds === []) {
+            return null;
+        }
+
+        if (count($listingIds) === 1) {
+            $this->persistReverbListingId($normalizedSku, $listingIds[0]);
+
+            return $listingIds[0];
+        }
+
+        $primaryId = $listingIds[count($listingIds) - 1];
+        $this->persistReverbListingId($normalizedSku, $primaryId);
+
+        return $primaryId;
     }
 
     /**
@@ -670,7 +718,7 @@ class ReverbApiService
     }
 
     /**
-     * Push bullet lines to the listing Features section (PUT listing.features), not the long description.
+     * Push bullet lines into the listing description `Highlighted Features` block (PUT listing description).
      * Long-form copy remains on {@see updateDescription()}.
      *
      * @return array{success: bool, message: string, listing_id?: string}
@@ -692,31 +740,64 @@ class ReverbApiService
             return ['success' => false, 'message' => 'SKU or listing_id is required.'];
         }
 
-        $listingId = null;
-        $product = ReverbProduct::query()
-            ->where('sku', $trim)
-            ->orWhere('sku', strtoupper($trim))
-            ->orWhere('sku', strtolower($trim))
-            ->first();
-        if ($product && $product->reverb_listing_id) {
-            $listingId = trim((string) $product->reverb_listing_id);
+        $listingIds = [];
+        if (ctype_digit($trim)) {
+            $listingIds = [$trim];
+        } else {
+            $listingIds = $this->getAllListingIdsBySku($trim);
         }
-        if (! $listingId) {
-            $product = ReverbProduct::query()->where('reverb_listing_id', $trim)->first();
-            if ($product && $product->reverb_listing_id) {
-                $listingId = trim((string) $product->reverb_listing_id);
-            }
-        }
-        if (! $listingId) {
-            $listingId = $this->getListingIdBySku($trim);
-        }
-        if ($listingId === null) {
+
+        if ($listingIds === []) {
             return ['success' => false, 'message' => 'No Reverb listing found for SKU or reverb_listing_id.'];
         }
 
+        $results = [];
+        foreach ($listingIds as $listingId) {
+            $results[] = $this->pushBulletPointsToListingId($token, $listingId, $trim, $features);
+        }
+
+        $successes = array_values(array_filter($results, fn (array $result) => $result['success']));
+        $failures = array_values(array_filter($results, fn (array $result) => ! $result['success']));
+
+        if ($successes === []) {
+            return [
+                'success' => false,
+                'message' => 'Reverb bullet update failed for all matching listings. '.($failures[0]['message'] ?? ''),
+                'listing_id' => $listingIds[0] ?? null,
+            ];
+        }
+
+        $updatedIds = array_map(fn (array $result) => $result['listing_id'], $successes);
+        $this->saveFeaturesToReverbProducts($trim, $updatedIds[0], $features);
+        if (count($updatedIds) > 1) {
+            $this->persistReverbListingId($trim, $updatedIds[0]);
+        }
+
+        $message = 'Reverb listing highlighted features updated.';
+        if (count($listingIds) > 1) {
+            $message .= ' Updated '.count($successes).' of '.count($listingIds).' Reverb listings for this SKU (IDs: '.implode(', ', $updatedIds).').';
+        }
+        if ($failures !== []) {
+            $message .= ' Warning: '.count($failures).' listing(s) failed.';
+        }
+
+        return [
+            'success' => true,
+            'message' => $message,
+            'listing_id' => $updatedIds[0],
+        ];
+    }
+
+    /**
+     * @param  list<string>  $features
+     * @return array{success: bool, message: string, listing_id: string, verified?: bool}
+     */
+    private function pushBulletPointsToListingId(string $token, string $listingId, string $identifier, array $features): array
+    {
+        $listingId = trim($listingId);
         $current = $this->fetchCurrentReverbDescriptionFromApi($token, $listingId);
         if (($current['html'] ?? '') === '' && ($current['plain'] ?? '') === '') {
-            $current = $this->fetchCurrentReverbDescription($token, $listingId, $trim);
+            $current = $this->fetchCurrentReverbDescription($token, $listingId, $identifier);
         }
 
         $currentHtml = (string) ($current['html'] ?? '');
@@ -743,21 +824,40 @@ class ReverbApiService
             $response = $this->reverbPutListingWithRetry($token, $listingId, $payload);
 
             if ($response->successful()) {
-                $localSaved = $this->saveFeaturesToReverbProducts($trim, $listingId, $features);
+                $responseJson = $response->json();
+                $verify = $this->verifyReverbBulletsOnListing(is_array($responseJson) ? $responseJson : null, $features);
+
+                if ($verify['ok']) {
+                    $readBack = $this->fetchCurrentReverbDescriptionFromApi($token, $listingId);
+                    $verify = $this->verifyReverbBulletsOnListing(
+                        ['listing' => ['description' => (string) ($readBack['html'] ?? '')]],
+                        $features
+                    );
+                }
 
                 Log::info('Reverb updateBulletPoints API response', [
                     'identifier' => $identifier,
                     'listing_id' => $listingId,
                     'status' => $response->status(),
                     'feature_count' => count($features),
-                    'local_features_saved' => $localSaved,
+                    'verified' => $verify['ok'],
                     'body_preview' => mb_substr($response->body(), 0, 800),
                 ]);
+
+                if (! $verify['ok']) {
+                    return [
+                        'success' => false,
+                        'message' => 'Reverb API accepted the update but bullets were not verified on listing '.$listingId.'. '.($verify['message'] ?? ''),
+                        'listing_id' => $listingId,
+                        'verified' => false,
+                    ];
+                }
 
                 return [
                     'success' => true,
                     'message' => 'Reverb listing highlighted features updated.',
                     'listing_id' => $listingId,
+                    'verified' => true,
                 ];
             }
 
@@ -770,7 +870,7 @@ class ReverbApiService
 
             return [
                 'success' => false,
-                'message' => 'Reverb API error (HTTP '.$response->status().'): '.$response->body(),
+                'message' => 'Reverb API error (HTTP '.$response->status().') for listing '.$listingId.': '.$response->body(),
                 'listing_id' => $listingId,
             ];
         } catch (\Throwable $e) {
@@ -810,7 +910,8 @@ class ReverbApiService
     }
 
     /**
-     * Replace only the visible Reverb highlighted-features block in listing description HTML.
+     * Replace the visible Reverb highlighted-features block in listing description HTML.
+     * Uses the same legacy bullet stripping rules as Shopify ({@see ShopifyBulletPointsFormatter::stripLegacyBulletBlocksForMarketplace()}).
      *
      * @param  list<string>  $features
      */
@@ -826,20 +927,48 @@ class ReverbApiService
             return $replacement;
         }
 
-        $patterns = [
-            '/<p\b[^>]*>\s*(?:<strong\b[^>]*>\s*)?(?:Highlighted\s+Features|About\s+Item):?\s*(?:<\/strong>)?\s*(?:<b>\s*<\/b>)?\s*<\/p>\s*(?:<p\b[^>]*>\s*<strong\b[^>]*>.*?<\/p>\s*){1,5}/is',
-            '/<h[1-6]\b[^>]*>\s*(?:Highlighted\s+Features|About\s+Item):?\s*<\/h[1-6]>\s*(?:<p\b[^>]*>.*?<\/p>\s*){1,5}/is',
-            '/<(?:ul|ol)\b[^>]*>\s*(?:<li\b[^>]*>.*?<\/li>\s*){1,5}<\/(?:ul|ol)>/is',
-        ];
-
-        foreach ($patterns as $pattern) {
-            $updated = preg_replace($pattern, $replacement, $body, 1, $count);
-            if ($count > 0 && is_string($updated)) {
-                return trim($updated);
-            }
+        $body = ShopifyBulletPointsFormatter::stripLegacyBulletBlocksForMarketplace($body);
+        if ($body === '') {
+            return $replacement;
         }
 
         return $replacement."\n".$body;
+    }
+
+    /**
+     * @param  list<string>  $features
+     * @return array{ok: bool, message?: string}
+     */
+    private function verifyReverbBulletsOnListing(?array $responseJson, array $features): array
+    {
+        if ($features === []) {
+            return ['ok' => true];
+        }
+
+        $html = trim((string) ($responseJson['listing']['description'] ?? ''));
+        if ($html === '') {
+            return ['ok' => false, 'message' => 'Reverb response did not include listing description.'];
+        }
+
+        $topHtml = mb_substr($html, 0, 1200);
+        if (preg_match('/\A\s*<p\b[^>]*>[\s\S]*?【/u', $topHtml) === 1) {
+            return ['ok' => false, 'message' => 'Legacy 【】 bracket bullets are still at the top of the listing.'];
+        }
+
+        if (! str_contains($topHtml, 'Highlighted Features')) {
+            return ['ok' => false, 'message' => 'Highlighted Features block is missing from the top of the listing.'];
+        }
+
+        $first = trim((string) $features[0]);
+        $needle = $first;
+        if (preg_match('/^(.+?)\s+-\s+/u', $first, $matches) === 1) {
+            $needle = trim($matches[1]);
+        }
+        if ($needle !== '' && ! str_contains(mb_strtolower(strip_tags($topHtml)), mb_strtolower($needle))) {
+            return ['ok' => false, 'message' => 'First PM bullet label was not found near the top of the listing.'];
+        }
+
+        return ['ok' => true];
     }
 
     /**

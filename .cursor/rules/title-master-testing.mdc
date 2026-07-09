@@ -1,0 +1,38 @@
+---
+description: Default SKU and workflow for Title Master marketplace API testing
+globs: app/Http/Controllers/ProductMaster/ProductMasterController.php,app/Services/MarketplaceTitlePushService.php,app/Services/Support/AllMarketplaceChannelRegistry.php,app/Services/Support/MarketplaceMasterAuditService.php,app/Console/Commands/AuditMarketplaceMasterCommand.php,resources/views/title-master.blade.php,docs/TITLE_MASTER_OVERVIEW.md,docs/MARKETPLACE_API_INTEGRATION.md
+alwaysApply: false
+---
+
+# Title Master — test SKU
+
+**Default test SKU:** `SP 12120 4OHM GTR`  
+(Config: `config/marketplace_testing.php` → `title_sku`)
+
+## Safe testing order
+
+1. Dry-run (no API writes):
+   `php artisan marketplace:audit-master title --dry-run --sku="SP 12120 4OHM GTR"`
+2. Single marketplace dry-run:
+   `php artisan marketplace:audit-master title --dry-run --sku="SP 12120 4OHM GTR" --marketplace=amazon`
+3. Live push only after dry-run passes (confirmation required):
+   - Per-tile: `POST /api/marketplaces/push-single` with `{ sku, marketplace, title_type, title }`
+   - Title 150 bulk (row/toolbar): `POST /api/marketplaces/push-title` with `{ sku, title }`
+   - Or: `php artisan marketplace:audit-master title --live --sku="SP 12120 4OHM GTR" --marketplace=amazon`
+
+## Push wiring (24 channels)
+
+- Registry: `AllMarketplaceChannelRegistry::titleMeta()` — tiers 150 / 100 / 80 / 60
+- API dispatch: `MarketplaceTitlePushService::push()` (all 24 push keys)
+- Validation: `pushSingleMarketplace` uses `titlePushKeys()` + `titleTypeForMarketplace()` (not hardcoded lists)
+- **Distribute ALL** pushes all `titlePushKeysForType('150')` (15 channels), not legacy Amazon/Temu/Reverb/Wayfair only
+
+## Known status for this SKU (dry-run)
+
+- **Wiring:** 24/24 marketplaces ready (credentials + service)
+- **Content:** PM titles present (`title150`, `title100`, `title80`, `title60` per tier)
+- **Metrics rows:** ebay, ebay3, temu, doba, walmart; blank metrics title columns do not block push when PM has content
+- **ebay2:** no `item_id` in metrics; eBay API lookup on push
+- **aliexpress:** no `product_id` in `aliexpress_metric`; live push may fail until synced
+
+Do not run bulk or multi-marketplace live pushes without explicit user approval.

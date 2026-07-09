@@ -1,0 +1,28 @@
+---
+description: Default SKU and workflow for Image Master marketplace API testing
+globs: app/Http/Controllers/ProductMaster/ImageMasterController.php,app/Services/Support/MarketplaceMasterAuditService.php,app/Services/Support/ImageMasterPushRunner.php,app/Console/Commands/AuditMarketplaceMasterCommand.php,docs/IMAGE_MASTER_OVERVIEW.md,docs/MARKETPLACE_API_INTEGRATION.md
+alwaysApply: false
+---
+
+# Image Master — test SKU
+
+**Default test SKU:** `SP 12120 4OHM GTR`  
+(Config: `config/marketplace_testing.php` → `image_sku`)
+
+## Safe testing order
+
+1. Dry-run (no API writes):
+   `php artisan marketplace:audit-master image --dry-run --sku="SP 12120 4OHM GTR"`
+2. HTTP push with dry_run (controller):
+   `POST /image-master/push` with `{ sku, marketplace, dry_run: true, ... }`
+3. Live push only after dry-run passes (background job or single tile):
+   row marketplace tile or `php artisan image-master:push-run`
+
+## Known status for this SKU (dry-run)
+
+- **Wiring:** 24/24 marketplaces ready
+- **Payload:** 9 image URL(s) from `product_master` (`image1`–`image12` / CDN)
+- **Metrics rows:** ebay, ebay3, temu, doba, walmart (listing sync); `image_master_json` empty until first push
+- **ebay2:** no metrics row; eBay API lookup on push
+
+Do not run bulk live push without explicit user approval.

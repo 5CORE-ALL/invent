@@ -358,6 +358,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const csrfToken = getCsrfToken();
     const __mp = window.__ALL_MP__ || {};
     const MARKETPLACES = __mp.enabled || [];
+    const ENABLED_MP = MARKETPLACES;
     const EBAY3_WARNING = 'eBay3 has different listing structure. Please verify bullet points format before pushing.';
     const LABELS = __mp.labels || {};
     const VIEW_LABELS = { ...LABELS };
@@ -517,8 +518,31 @@ document.addEventListener('DOMContentLoaded', () => {
         return parts.length ? parts.join(' · ') : '';
     }
 
-    function loadData() {
-        document.getElementById('rainbow-loader').style.display = 'block';
+    function getTableScrollContainer() {
+        return document.querySelector('.table-responsive');
+    }
+
+    function captureScrollState() {
+        const el = getTableScrollContainer();
+        return el ? { top: el.scrollTop, left: el.scrollLeft } : null;
+    }
+
+    function restoreScrollState(state) {
+        if (!state) return;
+        const el = getTableScrollContainer();
+        if (!el) return;
+        requestAnimationFrame(() => {
+            el.scrollTop = state.top;
+            el.scrollLeft = state.left;
+        });
+    }
+
+    function loadData(options = {}) {
+        const silent = !!options.silent;
+        const scroll = silent ? captureScrollState() : null;
+        if (!silent) {
+            document.getElementById('rainbow-loader').style.display = 'block';
+        }
         fetch('/bullet-point-master-combined-data')
             .then(r => r.json())
             .then(res => {
@@ -527,7 +551,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 bySku.clear();
                 tableData.forEach(r => bySku.set(String(r.SKU), r));
                 try {
-                    renderTable(tableData);
+                    if (silent) {
+                        applyTableFilters();
+                        restoreScrollState(scroll);
+                    } else {
+                        renderTable(tableData);
+                    }
                 } catch (e) {
                     console.error('renderTable failed', e);
                     const tbody = document.getElementById('table-body');
@@ -537,7 +566,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (badge) badge.textContent = `${tableData.length} products`;
             })
             .catch(e => toast('Failed to load data: ' + e.message, false))
-            .finally(() => { document.getElementById('rainbow-loader').style.display = 'none'; });
+            .finally(() => {
+                if (!silent) {
+                    document.getElementById('rainbow-loader').style.display = 'none';
+                }
+            });
     }
 
     function mpStackHtml(sku, mp, status = '') {
@@ -547,7 +580,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const tile = MP_TILE[mp] || { cls: 'btn-secondary', short: '?' };
         const stateText = pushed ? 'Pushed' : (failed ? 'Push failed' : 'Not pushed');
         const dotClass = pushed ? 'pushed' : (failed ? 'failed' : '');
-        const st = mpPushTileState(mp, { label: LABELS[mp], statusHint: stateText });
+        const st = mpPushTileState(mp, { label: LABELS[mp], implemented: ENABLED_MP.includes(mp), statusHint: stateText });
         return `
             <button type="button" class="bp-mp-stack${st.noApiClass}" data-push-mp="${esc(mp)}" data-sku="${esc(sku)}" data-api-configured="${st.configured ? '1' : '0'}" title="${esc(st.title)}" ${st.disabled ? 'disabled' : ''}>
                 <span class="bp-mp-dot ${dotClass}" aria-hidden="true"></span>
@@ -556,13 +589,55 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function groupCell(groupKey, sku, bp, statuses = {}) {
-        const marketplaces = GROUPS[groupKey] || [];
+        const marketplaces = (GROUPS[groupKey] || []).filter((mp) => ENABLED_MP.includes(mp));
         return `
             <div class="marketplaces-cell">
                 <div class="bp-mp-inline">
                     ${marketplaces.map(mp => mpStackHtml(sku, mp, statuses[mp] ?? '')).join('')}
                 </div>
             </div>`;
+    }
+
+    function buildRowHtml(r) {
+        const sku = String(r.SKU || '');
+        const preview = r.default_bullets || [r.bullet1, r.bullet2, r.bullet3, r.bullet4, r.bullet5].filter(Boolean).join(' ');
+        const bp = r.bullet_points || {};
+        const statuses = r.bullet_push_statuses || {};
+        return `<tr data-sku="${esc(sku)}">
+            <td>${esc(sku)}</td>
+            <td>${esc(r.Parent || sku)}</td>
+            <td class="preview-cell" title="${esc(preview || '')}">${esc(trunc(preview, 64))}</td>
+            <td class="action-buttons-cell">
+                <div class="action-buttons-group">
+                    <button type="button" class="action-btn view-btn" data-view="${esc(sku)}" title="View Bullet Points" aria-label="View Bullet Points"><i class="fas fa-eye" aria-hidden="true"></i></button>
+                    <button type="button" class="action-btn edit-btn" data-edit="${esc(sku)}"><i class="fas fa-edit"></i> Edit</button>
+                    <button type="button" class="action-btn shopify-row-pull-btn" data-shopify-pull-sku="${esc(sku)}" title="Pull Shopify bullets for this SKU"><i class="fas fa-download"></i></button>
+                </div>
+            </td>
+            <td>${groupCell('gChannels', sku, bp, statuses)}</td>
+            <td>${groupCell('gShopify', sku, bp, statuses)}</td>
+        </tr>`;
+    }
+
+    function findTableRow(sku) {
+        return document.querySelector(`#bullet-master-table tbody tr[data-sku="${cssEsc(String(sku))}"]`);
+    }
+
+    function patchTableRow(sku) {
+        const row = bySku.get(String(sku));
+        if (!row) return;
+        const existing = findTableRow(sku);
+        const wrapper = document.createElement('tbody');
+        wrapper.innerHTML = buildRowHtml(row);
+        const newRow = wrapper.firstElementChild;
+        if (!newRow) return;
+        if (existing) {
+            existing.replaceWith(newRow);
+        } else {
+            applyTableFilters();
+            return;
+        }
+        bindRowEvents(newRow);
     }
 
     function renderTable(rows) {
@@ -578,35 +653,16 @@ document.addEventListener('DOMContentLoaded', () => {
             tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">No products found</td></tr>';
             return;
         }
-        tbody.innerHTML = rows.map(r => {
-            const sku = String(r.SKU || '');
-            const preview = r.default_bullets || [r.bullet1, r.bullet2, r.bullet3, r.bullet4, r.bullet5].filter(Boolean).join(' ');
-            const bp = r.bullet_points || {};
-            const statuses = r.bullet_push_statuses || {};
-            return `<tr data-sku="${esc(sku)}">
-                <td>${esc(sku)}</td>
-                <td>${esc(r.Parent || sku)}</td>
-                <td class="preview-cell" title="${esc(preview || '')}">${esc(trunc(preview, 64))}</td>
-                <td class="action-buttons-cell">
-                    <div class="action-buttons-group">
-                        <button type="button" class="action-btn view-btn" data-view="${esc(sku)}" title="View Bullet Points" aria-label="View Bullet Points"><i class="fas fa-eye" aria-hidden="true"></i></button>
-                        <button type="button" class="action-btn edit-btn" data-edit="${esc(sku)}"><i class="fas fa-edit"></i> Edit</button>
-                        <button type="button" class="action-btn shopify-row-pull-btn" data-shopify-pull-sku="${esc(sku)}" title="Pull Shopify bullets for this SKU"><i class="fas fa-download"></i></button>
-                    </div>
-                </td>
-                <td>${groupCell('gChannels', sku, bp, statuses)}</td>
-                <td>${groupCell('gShopify', sku, bp, statuses)}</td>
-            </tr>`;
-        }).join('');
+        tbody.innerHTML = rows.map(r => buildRowHtml(r)).join('');
 
         bindRowEvents();
     }
 
-    function bindRowEvents() {
-        document.querySelectorAll('.view-btn[data-view]').forEach(b => b.addEventListener('click', () => openViewModal(b.dataset.view)));
-        document.querySelectorAll('.edit-btn[data-edit]').forEach(b => b.addEventListener('click', () => openEditModal(b.dataset.edit)));
-        document.querySelectorAll('.shopify-row-pull-btn[data-shopify-pull-sku]').forEach(b => b.addEventListener('click', () => startSingleShopifyPull(b.dataset.shopifyPullSku, b)));
-        document.querySelectorAll('.bp-mp-stack[data-push-mp]:not(:disabled)').forEach(b => b.addEventListener('click', () => {
+    function bindRowEvents(root = document) {
+        root.querySelectorAll('.view-btn[data-view]').forEach(b => b.addEventListener('click', () => openViewModal(b.dataset.view)));
+        root.querySelectorAll('.edit-btn[data-edit]').forEach(b => b.addEventListener('click', () => openEditModal(b.dataset.edit)));
+        root.querySelectorAll('.shopify-row-pull-btn[data-shopify-pull-sku]').forEach(b => b.addEventListener('click', () => startSingleShopifyPull(b.dataset.shopifyPullSku, b)));
+        root.querySelectorAll('.bp-mp-stack[data-push-mp]:not(:disabled)').forEach(b => b.addEventListener('click', () => {
             pushSingleMarketplace(b.dataset.sku, b.dataset.pushMp, b);
         }));
     }
@@ -939,7 +995,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     origStackHtml = stackEl.innerHTML;
                 }
                 toast(`${LABELS[mp]} pushed` + (detail ? ' — ' + detail : ''));
-                setTimeout(loadData, 900);
             } else {
                 if (stackEl) {
                     stackEl.innerHTML = origStackHtml || stackEl.innerHTML;
@@ -955,7 +1010,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 const msg = (rmp ? rmp.message : (res.message || 'Push failed')) + (detail ? ' — ' + detail : '');
                 toast(msg, false);
-                loadData();
             }
         })
         .catch(e => toast('Push failed: ' + e.message, false))
@@ -1085,7 +1139,7 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 stopShopifyPullPolling();
                 if (wasActive && ['completed', 'stopped'].includes(job.status || '')) {
-                    loadData();
+                    loadData({ silent: true });
                 }
             }
         } catch (e) {
@@ -1302,6 +1356,11 @@ document.addEventListener('DOMContentLoaded', () => {
                             throw new Error(res.status === 419 ? 'Session expired. Refresh the page and try again.' : (data.message || 'Save failed'));
                         }
                         successCount++;
+                        const row = bySku.get(String(sku));
+                        if (row) {
+                            [1, 2, 3, 4, 5].forEach((i) => { row['bullet' + i] = bullets[i - 1] || ''; });
+                            row.default_bullets = bullets.filter(Boolean).join('\n');
+                        }
                     } catch (err) {
                         console.error('Bullet import row failed', { sku, error: err });
                         errorCount++;
@@ -1316,7 +1375,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 const failedText = failedSkus.length ? ` Failed SKUs: ${failedSkus.slice(0, 5).join(', ')}${failedSkus.length > 5 ? '...' : ''}` : '';
                 toast(`Import completed: ${successCount} saved, ${errorCount} failed.${failedText}`, errorCount === 0);
-                loadData();
+                applyTableFilters();
             } catch (err) {
                 toast('Import failed: ' + err.message, false);
                 const importBtn = document.getElementById('importBtn');
@@ -1419,18 +1478,18 @@ document.addEventListener('DOMContentLoaded', () => {
         .then(res => {
             const row = bySku.get(String(sku));
             if (row) {
-                [1,2,3,4,5].forEach((i) => { row['bullet' + i] = payload['bullet' + i] || ''; });
+                [1,2,3,4,5].forEach((i) => { row['bullet' + i] = lines[i - 1] || ''; });
                 row.default_bullets = lines.filter(Boolean).join('\n');
             }
             tableData.forEach((row) => {
                 if (String(row.SKU || '') === String(sku)) {
-                    [1,2,3,4,5].forEach((i) => { row['bullet' + i] = payload['bullet' + i] || ''; });
+                    [1,2,3,4,5].forEach((i) => { row['bullet' + i] = lines[i - 1] || ''; });
                     row.default_bullets = lines.filter(Boolean).join('\n');
                 }
             });
             toast(res.message || 'Bullet points saved');
-                if (editRowModal) editRowModal.hide();
-                loadData();
+            if (editRowModal) editRowModal.hide();
+            applyTableFilters();
         })
         .catch(e => toast('Save failed: ' + e.message, false))
         .finally(() => {
