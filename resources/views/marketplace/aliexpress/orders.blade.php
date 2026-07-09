@@ -40,8 +40,11 @@
                         </thead>
                         <tbody>
                             @forelse($orders as $o)
-                                <tr>
-                                    <td>{{ $o->order_id }}</td>
+                                @php $orderUrl = route('marketplace.orders.show', ['marketplace' => 'aliexpress', 'order' => $o->id]); @endphp
+                                <tr style="cursor: pointer;" onclick="window.location='{{ $orderUrl }}'">
+                                    <td>
+                                        <a href="{{ $orderUrl }}" class="text-decoration-none" onclick="event.stopPropagation();">{{ $o->order_id }}</a>
+                                    </td>
                                     <td class="small">
                                         @if($o->order_date)
                                             {{ \Carbon\Carbon::parse($o->order_date)->format('M d, Y H:i') }}
@@ -70,7 +73,7 @@
                                         @if($o->shopify_order_id)
                                             —
                                         @else
-                                            <button type="button" class="btn btn-sm btn-warning btn-push-order" data-id="{{ $o->id }}">Push to Shopify</button>
+                                            <button type="button" class="btn btn-sm btn-warning btn-push-order" data-id="{{ $o->id }}" onclick="event.stopPropagation();">Push to Shopify</button>
                                         @endif
                                     </td>
                                 </tr>

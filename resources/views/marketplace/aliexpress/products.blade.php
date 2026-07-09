@@ -70,7 +70,8 @@
                         </thead>
                         <tbody>
                             @forelse($products as $p)
-                                <tr>
+                                @php $detailUrl = !empty($p->shopify_sku_id) ? route('marketplace.products.show', ['marketplace' => 'aliexpress', 'shopifySku' => $p->shopify_sku_id]) : null; @endphp
+                                <tr @if($detailUrl) style="cursor: pointer;" onclick="window.location='{{ $detailUrl }}'" @endif>
                                     <td>
                                         @if(!empty($p->image_src))
                                             <img src="{{ $p->image_src }}" alt="" class="img-thumbnail" style="max-width: 48px; max-height: 48px; object-fit: contain;">
@@ -78,9 +79,21 @@
                                             <span class="text-muted">—</span>
                                         @endif
                                     </td>
-                                    <td><code>{{ $p->sku }}</code></td>
                                     <td>
-                                        {{ Str::limit($p->title ?? '—', 50) }}
+                                        @if($detailUrl)
+                                            <a href="{{ $detailUrl }}" class="text-decoration-none" onclick="event.stopPropagation();"><code>{{ $p->sku }}</code></a>
+                                        @else
+                                            <code>{{ $p->sku }}</code>
+                                        @endif
+                                    </td>
+                                    <td>
+                                        @if($detailUrl)
+                                            <a href="{{ $detailUrl }}" class="text-decoration-none text-body" onclick="event.stopPropagation();">
+                                                {{ Str::limit($p->title ?? '—', 50) }}
+                                            </a>
+                                        @else
+                                            {{ Str::limit($p->title ?? '—', 50) }}
+                                        @endif
                                         @if(!empty($p->aliexpress_title) && $p->aliexpress_title !== $p->title)
                                             <div class="text-muted small">AE: {{ Str::limit($p->aliexpress_title, 40) }}</div>
                                         @endif

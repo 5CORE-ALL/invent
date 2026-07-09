@@ -10,6 +10,7 @@ use App\Models\MarketplaceSyncSettings;
 use App\Models\ShopifySku;
 use App\Services\AliExpressApiService;
 use App\Services\AliExpressAuthService;
+use App\Services\MarketplaceManager\AliexpressDetailFormatter;
 use App\Services\MarketplaceManager\AliexpressInventorySyncService;
 use App\Services\MarketplaceManager\AliexpressOrderSyncService;
 use App\Services\ShopifyApiService;
@@ -198,6 +199,7 @@ class AliexpressSyncController extends Controller
             $shopifyPrice = $row->b2c_price ?? $row->price ?? null;
 
             return (object) [
+                'shopify_sku_id' => $row->id,
                 'product_id' => $linked ? ($metric->product_id ?? null) : null,
                 'sku' => $sku,
                 'title' => trim(($row->product_title ?? '').($row->variant_title ? ' — '.$row->variant_title : '')) ?: $sku,
@@ -222,6 +224,53 @@ class AliexpressSyncController extends Controller
             'linkTab' => $linkTab,
             'counts' => $counts,
             'apiError' => $apiError,
+            'connected' => $this->apiConfig->isConfigured('aliexpress'),
+        ]);
+    }
+
+    public function showProduct(int $shopifySkuId): View
+    {
+        $shopifyRow = ShopifySku::query()->findOrFail($shopifySkuId);
+        $sku = (string) $shopifyRow->sku;
+        $aeMap = $this->aliexpressMetricMapForSkus([$sku]);
+        $metric = $aeMap[$sku] ?? null;
+        $linked = $this->isShopifySkuLinkedOnAliexpress($metric, $sku);
+
+        $aeLive = null;
+        $aeLiveError = null;
+        if ($linked && $metric?->product_id && $this->apiConfig->isConfigured('aliexpress')) {
+            $info = $this->aliExpressApi->getProductInfo((string) $metric->product_id);
+            if (! empty($info['success'])) {
+                $aeLive = $info['data'] ?? null;
+            } else {
+                $aeLiveError = $info['message'] ?? 'Could not load live AliExpress product details.';
+            }
+        }
+
+        $aeSkuRows = [];
+        if (is_array($aeLive)) {
+            $aeSkuRows = $this->aliExpressApi->extractSkuRowsFromProductInfo(
+                $aeLive,
+                (string) ($metric->product_id ?? ''),
+                $metric->product_name ?? null
+            );
+        }
+
+        $title = trim(($shopifyRow->product_title ?? '').($shopifyRow->variant_title ? ' — '.$shopifyRow->variant_title : '')) ?: $sku;
+
+        $detail = app(AliexpressDetailFormatter::class)->formatProduct(
+            is_array($aeLive) ? $aeLive : null,
+            $metric,
+            $shopifyRow,
+            $aeSkuRows
+        );
+
+        return view('marketplace.aliexpress.product-show', [
+            'title' => 'AliExpress Listing — '.$sku,
+            'linked' => $linked,
+            'displayTitle' => $title,
+            'detail' => $detail,
+            'aeLiveError' => $aeLiveError,
             'connected' => $this->apiConfig->isConfigured('aliexpress'),
         ]);
     }
@@ -322,6 +371,30 @@ class AliexpressSyncController extends Controller
             'orders' => $orders,
             'title' => 'AliExpress — Orders',
             'apiError' => $apiError,
+            'connected' => $this->apiConfig->isConfigured('aliexpress'),
+        ]);
+    }
+
+    public function showOrder(int $id): View
+    {
+        $line = AliexpressOrderMetric::query()->findOrFail($id);
+        $orderId = (string) $line->order_id;
+
+        $lines = AliexpressOrderMetric::query()
+            ->where('order_id', $orderId)
+            ->orderBy('id')
+            ->get();
+
+        $raw = is_array($line->raw_payload) ? $line->raw_payload : [];
+        $orderRoot = is_array($raw['order'] ?? null) ? $raw['order'] : $raw;
+
+        $detail = app(AliexpressDetailFormatter::class)->formatOrder($orderRoot, $lines, $line);
+
+        return view('marketplace.aliexpress.order-show', [
+            'title' => 'AliExpress Order — '.$orderId,
+            'orderId' => $orderId,
+            'line' => $line,
+            'detail' => $detail,
             'connected' => $this->apiConfig->isConfigured('aliexpress'),
         ]);
     }

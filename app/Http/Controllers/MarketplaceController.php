@@ -46,6 +46,19 @@ class MarketplaceController extends Controller
         ]);
     }
 
+    public function showProduct(Request $request, string $marketplace, int $shopifySku): View
+    {
+        $marketplace = strtolower($marketplace);
+        if (!in_array($marketplace, self::SUPPORTED_MARKETPLACES, true)) {
+            abort(404, 'Marketplace not found');
+        }
+        $controller = $this->getController($marketplace);
+        if ($controller && method_exists($controller, 'showProduct')) {
+            return $controller->showProduct($shopifySku);
+        }
+        abort(404, 'Product detail not available for this marketplace');
+    }
+
     public function orders(Request $request, string $marketplace): View
     {
         $marketplace = strtolower($marketplace);
@@ -61,6 +74,19 @@ class MarketplaceController extends Controller
             'page' => 'orders',
             'title' => ucfirst($marketplace) . ' - Orders',
         ]);
+    }
+
+    public function showOrder(Request $request, string $marketplace, int $order): View
+    {
+        $marketplace = strtolower($marketplace);
+        if (!in_array($marketplace, self::SUPPORTED_MARKETPLACES, true)) {
+            abort(404, 'Marketplace not found');
+        }
+        $controller = $this->getController($marketplace);
+        if ($controller && method_exists($controller, 'showOrder')) {
+            return $controller->showOrder($order);
+        }
+        abort(404, 'Order detail not available for this marketplace');
     }
 
     public function settings(Request $request, string $marketplace): View
