@@ -4,6 +4,7 @@ namespace App\Services\MarketplaceManager;
 
 use App\Models\AliexpressOrderMetric;
 use App\Models\MarketplaceSyncSettings;
+use App\Models\ShopifySku;
 use App\Services\ShopifyStoreSelector;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Http;
@@ -118,6 +119,7 @@ class AliexpressOrderPushService
             'success' => true,
             'aliexpress_order_id' => (string) $order->order_id,
             'shopify_store' => $config['store_url'],
+            'shopify_store_key' => $config['store_key'] ?? null,
             'payload' => $orderPayload,
             'fulfillment' => [
                 'tracking' => $tracking !== '' ? $tracking : null,
@@ -162,6 +164,11 @@ class AliexpressOrderPushService
 
         if (($lineResolution === [])) {
             $warnings[] = 'No resolvable line items.';
+        }
+
+        $config = $this->shopifyConfig();
+        if (($config['store_url'] ?? '') === '' || ($config['token'] ?? '') === '') {
+            $warnings[] = 'Shopify store credentials are not configured for the selected import store.';
         }
 
         return array_values(array_unique($warnings));
@@ -233,6 +240,13 @@ class AliexpressOrderPushService
         foreach ($sourceItems as $item) {
             $sku = (string) ($item['sku'] ?? '');
             $variantId = $sku !== '' ? $this->findShopifyVariantIdBySku($sku) : null;
+            $matchSource = null;
+            if ($sku !== '') {
+                $localRow = ShopifySku::firstForProductSku($sku);
+                if ($localRow && ! empty($localRow->variant_id)) {
+                    $matchSource = 'shopify_skus';
+                }
+            }
             $quantity = max(1, (int) ($item['quantity'] ?? 1));
             $price = (string) ($item['price'] ?? '0.00');
             $title = mb_substr(trim((string) ($item['title'] ?? $sku ?: 'AliExpress item')), 0, 255);
@@ -250,6 +264,7 @@ class AliexpressOrderPushService
                     'price' => $price,
                     'variant_id' => $variantId,
                     'match_type' => 'variant',
+                    'match_source' => $matchSource ?? 'shopify_api',
                 ];
                 continue;
             }
@@ -391,7 +406,16 @@ class AliexpressOrderPushService
 
     protected function findShopifyVariantIdBySku(string $sku): ?int
     {
+        $row = ShopifySku::firstForProductSku($sku);
+        if ($row && ! empty($row->variant_id)) {
+            return (int) $row->variant_id;
+        }
+
         $config = $this->shopifyConfig();
+        if (($config['store_url'] ?? '') === '' || ($config['token'] ?? '') === '') {
+            return null;
+        }
+
         $url = 'https://'.$config['store_url'].'/admin/api/2024-01/variants.json?sku='.urlencode($sku);
 
         try {
@@ -417,16 +441,14 @@ class AliexpressOrderPushService
     }
 
     /**
-     * @return array{store_url: string, token: string}
+     * @return array{store_url: string, token: string, store_key: string}
      */
     protected function shopifyConfig(): array
     {
-        $selector = app(ShopifyStoreSelector::class);
+        $settings = MarketplaceSyncSettings::getFor('aliexpress');
+        $storeKey = (string) ($settings['order']['shopify_store'] ?? 'main');
 
-        return [
-            'store_url' => str_replace(['https://', 'http://'], '', $selector->getStoreUrl()),
-            'token' => $selector->getPassword(),
-        ];
+        return app(ShopifyStoreSelector::class)->getConfigForStore($storeKey);
     }
 
     /**

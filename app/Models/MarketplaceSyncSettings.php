@@ -58,6 +58,7 @@ class MarketplaceSyncSettings extends Model
                 'auto_import_to_shopify' => false,
                 'keep_order_number_from_channel' => true,
                 'shopify_order_tags' => [],
+                'shopify_store' => 'main',
             ],
             'listings' => [
                 'auto_link_by_sku' => true,

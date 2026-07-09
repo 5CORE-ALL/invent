@@ -31,7 +31,68 @@ class ShopifyStoreSelector
 
     public function getActiveStore(): string
     {
-        return session('shopify_active_store', env('SHOPIFY_ACTIVE_STORE', 'business'));
+        if ($this->forcedStore !== null && $this->forcedStore !== '') {
+            return $this->forcedStore;
+        }
+
+        $fromSession = session('shopify_active_store');
+        if (is_string($fromSession) && $fromSession !== '') {
+            return $fromSession;
+        }
+
+        return (string) env('SHOPIFY_ACTIVE_STORE', 'business');
+    }
+
+    /**
+     * @return array{store_url: string, token: string, store_key: string}
+     */
+    public function getConfigForStore(?string $storeKey = null): array
+    {
+        $store = $storeKey ?: $this->getActiveStore();
+
+        if ($store === 'main') {
+            $url = (string) config('services.shopify.store_url');
+            $token = (string) (config('services.shopify.access_token') ?: config('services.shopify.password'));
+
+            return [
+                'store_url' => $this->normalizeStoreUrl($url),
+                'token' => $token,
+                'store_key' => 'main',
+            ];
+        }
+
+        $map = $this->stores[$store] ?? null;
+        if ($map === null) {
+            return $this->getConfigForStore('main');
+        }
+
+        $url = (string) env($map['store_url'], '');
+        $token = (string) env($map['password'], '');
+
+        if ($url === '' || $token === '') {
+            return $this->getConfigForStore('main');
+        }
+
+        return [
+            'store_url' => $this->normalizeStoreUrl($url),
+            'token' => $token,
+            'store_key' => $store,
+        ];
+    }
+
+    public function useStore(string $storeKey): self
+    {
+        $clone = clone $this;
+        $clone->forcedStore = $storeKey;
+
+        return $clone;
+    }
+
+    protected ?string $forcedStore = null;
+
+    protected function normalizeStoreUrl(string $url): string
+    {
+        return str_replace(['https://', 'http://'], '', trim($url));
     }
 
     public function getApiKey(): string

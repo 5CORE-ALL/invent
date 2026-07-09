@@ -224,9 +224,7 @@ class AliexpressDetailFormatter
         }
 
         $recipient = trim((string) ($shipping['recipient'] ?? ''));
-        $nameParts = $recipient !== '' ? preg_split('/\s+/', $recipient, 2) : [];
-        $firstName = (string) ($nameParts[0] ?? 'AliExpress');
-        $lastName = (string) ($nameParts[1] ?? 'Customer');
+        [$firstName, $lastName] = $this->splitShopifyCustomerName($detail, $recipient);
 
         $noteLines = [
             'Imported from AliExpress Order #'.$orderRef,
@@ -311,6 +309,57 @@ class AliexpressDetailFormatter
         $payload['line_items'] = $lineItems;
 
         return $payload;
+    }
+
+    /**
+     * @param  array<string, mixed>  $detail
+     * @return array{0: string, 1: string}
+     */
+    protected function splitShopifyCustomerName(array $detail, string $recipient = ''): array
+    {
+        $buyer = $detail['buyer'] ?? [];
+        $candidates = array_filter([
+            $recipient,
+            trim((string) ($buyer['name'] ?? '')),
+            trim(trim((string) ($buyer['first_name'] ?? '')).' '.trim((string) ($buyer['last_name'] ?? ''))),
+        ], fn ($name) => $name !== '');
+
+        $fullName = '';
+        foreach ($candidates as $candidate) {
+            $cleaned = $this->cleanPersonName((string) $candidate);
+            if ($cleaned !== '') {
+                $fullName = $cleaned;
+                break;
+            }
+        }
+
+        if ($fullName === '') {
+            return ['AliExpress', 'Customer'];
+        }
+
+        $parts = preg_split('/\s+/', $fullName, 2) ?: [];
+        $firstName = (string) ($parts[0] ?? 'AliExpress');
+        $lastName = (string) ($parts[1] ?? 'Customer');
+
+        return [$firstName, $lastName];
+    }
+
+    protected function cleanPersonName(string $name): string
+    {
+        $name = trim(preg_replace('/\s+/u', ' ', $name) ?? $name);
+        if ($name === '') {
+            return '';
+        }
+
+        $name = preg_replace('/^[:\-.,\s]+/u', '', $name) ?? $name;
+        $name = preg_replace('/[:\-.,\s]+$/u', '', $name) ?? $name;
+
+        $parts = preg_split('/\s+/u', $name) ?: [];
+        $parts = array_values(array_filter($parts, function (string $part): bool {
+            return (bool) preg_match('/[\p{L}\p{N}]/u', $part);
+        }));
+
+        return trim(implode(' ', $parts));
     }
 
     protected function normalizeCountryCode(?string $country): ?string

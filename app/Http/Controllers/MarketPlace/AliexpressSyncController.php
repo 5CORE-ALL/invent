@@ -584,6 +584,14 @@ class AliexpressSyncController extends Controller
                 : array_values(array_filter(array_map('trim', explode(',', (string) $tags))));
         }
 
+        if ($request->filled('order.shopify_store')) {
+            $store = (string) $request->input('order.shopify_store');
+            $allowed = ['main', '5core', 'business', 'prolightsounds'];
+            if (in_array($store, $allowed, true)) {
+                $order['shopify_store'] = $store;
+            }
+        }
+
         MarketplaceSyncSettings::setFor('aliexpress', [
             'pricing' => $pricing,
             'inventory' => $inventory,

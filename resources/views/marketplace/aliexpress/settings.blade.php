@@ -72,6 +72,17 @@
                         </label>
                     </div>
                     <div class="mt-2">
+                        <label class="form-label small">Shopify import store</label>
+                        <select class="form-select form-select-sm" name="order[shopify_store]" style="max-width: 400px;">
+                            @php $shopifyStore = $settings['order']['shopify_store'] ?? 'main'; @endphp
+                            <option value="main" {{ $shopifyStore === 'main' ? 'selected' : '' }}>Main B2C (5-core)</option>
+                            <option value="5core" {{ $shopifyStore === '5core' ? 'selected' : '' }}>5Core store</option>
+                            <option value="business" {{ $shopifyStore === 'business' ? 'selected' : '' }}>Business 5Core</option>
+                            <option value="prolightsounds" {{ $shopifyStore === 'prolightsounds' ? 'selected' : '' }}>ProLightSounds</option>
+                        </select>
+                        <div class="form-text">AliExpress orders import here. Default is main B2C store (same as <code>shopify_skus</code>).</div>
+                    </div>
+                    <div class="mt-2">
                         <label class="form-label small">Shopify order tags (comma-separated)</label>
                         <input type="text" class="form-control form-control-sm" name="order[shopify_order_tags]" value="{{ implode(', ', $settings['order']['shopify_order_tags'] ?? ['aliexpress']) }}" style="max-width: 400px;">
                     </div>
