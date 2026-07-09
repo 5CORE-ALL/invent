@@ -18,6 +18,7 @@ use Illuminate\Support\Facades\Log;
 use App\Services\BestBuyApiService;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use App\Models\AmazonChannelSummary;
+use App\Models\ChannelTabulatorColumnSetting;
 
 class BestBuyPricingController extends Controller
 {
@@ -89,6 +90,13 @@ class BestBuyPricingController extends Controller
                 return strtoupper($item->sku);
             });
 
+        // The uploaded price sheet is the source of truth. If any price rows exist
+        // (i.e. a sheet has been uploaded), a SKU missing from that sheet is NOT
+        // offered on Best Buy, so it must show no price (0 → MISSING) instead of
+        // falling back to the stale BestbuyUsaProduct price. Only when no sheet has
+        // ever been uploaded do we fall back to the metric price.
+        $hasUploadedPriceData = BestbuyPriceData::exists();
+
         // Fetch Amazon pricing data
         $amazonData = AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy('sku');
 
@@ -127,9 +135,13 @@ class BestBuyPricingController extends Controller
             $row["INV"] = $shopify->inv ?? 0;
             $row["L30"] = $shopify->quantity ?? 0;
 
-            // Best Buy Metrics - Get price from BestbuyPriceData if available, otherwise from BestbuyUsaProduct
+            // Best Buy Metrics - price comes from the uploaded BestbuyPriceData sheet.
+            // If a sheet has been uploaded but this SKU isn't in it, it's not offered → 0 (MISSING).
+            // Only fall back to the BestbuyUsaProduct price when no sheet has ever been uploaded.
             $row["BB L30"] = $bestbuyMetric->m_l30 ?? 0;
-            $row["BB Price"] = $priceData ? ($priceData->price ?? 0) : ($bestbuyMetric->price ?? 0);
+            $row["BB Price"] = $priceData
+                ? ($priceData->price ?? 0)
+                : ($hasUploadedPriceData ? 0 : ($bestbuyMetric->price ?? 0));
             $row["BB INV"] = $bestbuyMetric->stock ?? 0; // Marketplace inventory/stock for mapping
             
             // Amazon Price
@@ -484,25 +496,39 @@ class BestBuyPricingController extends Controller
         return response()->json(['success' => true]);
     }
 
+    /**
+     * Column visibility is persisted in the shared `channel_tabulator_column_settings`
+     * DB table (channel = 'bestbuy_tabulator'), matching every other tabulator page.
+     * Previously this used Cache, which is not durable across cache clears/drivers.
+     */
     public function getColumnVisibility(Request $request)
     {
-        $userId = auth()->id() ?? 'guest';
-        $key = "bestbuy_tabulator_column_visibility_{$userId}";
-        
-        $visibility = Cache::get($key, []);
-        
+        $row = ChannelTabulatorColumnSetting::where('channel_name', 'bestbuy_tabulator')->first();
+
+        $visibility = $row && is_array($row->visibility) ? $row->visibility : [];
+
         return response()->json($visibility);
     }
 
     public function setColumnVisibility(Request $request)
     {
-        $userId = auth()->id() ?? 'guest';
-        $key = "bestbuy_tabulator_column_visibility_{$userId}";
-        
         $visibility = $request->input('visibility', []);
-        
-        Cache::put($key, $visibility, now()->addDays(365));
-        
+
+        // jQuery form-encodes booleans as the strings "true"/"false"; normalize to real bools.
+        $normalized = [];
+        foreach ((array) $visibility as $field => $val) {
+            $field = (string) $field;
+            if ($field === '' || strlen($field) > 190) {
+                continue;
+            }
+            $normalized[$field] = filter_var($val, FILTER_VALIDATE_BOOLEAN);
+        }
+
+        ChannelTabulatorColumnSetting::updateOrCreate(
+            ['channel_name' => 'bestbuy_tabulator'],
+            ['visibility' => $normalized]
+        );
+
         return response()->json(['success' => true]);
     }
 

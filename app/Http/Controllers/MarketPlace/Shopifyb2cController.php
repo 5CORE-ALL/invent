@@ -68,23 +68,6 @@ class Shopifyb2cController extends Controller
     }
 
 
-    public function shopifyb2cViewPricingIncreaseDecrease(Request $request)
-    {
-        $mode = $request->query('mode');
-        $demo = $request->query('demo');
-
-        // Get percentage from cache or database
-        $percentage = Cache::remember('shopifyb2c_marketplace_percentage', now()->addDays(30), function () {
-            $marketplaceData = MarketplacePercentage::where('marketplace', 'ShopifyB2C')->first();
-            return $marketplaceData ? $marketplaceData->percentage : 100; // Default to 100 if not set
-        });
-
-        return view('market-places.shopifyb2c_pricing_increase_decrease', [
-            'mode' => $mode,
-            'demo' => $demo,
-            'shopifyb2cPercentage' => $percentage
-        ]);
-    }
     // public function getViewShopifyB2CData(Request $request)
     // {
     //     $response = $this->apiController->fetchShopifyB2CListingData();

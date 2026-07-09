@@ -71,44 +71,6 @@ class FacebookAdsController extends Controller
         return $response->json();
     }
 
-    public function facebookImageAds()
-    {
-        return view('marketing-masters.facebook.facebook-image-ads');
-    }
-
-    public function facebookImageAdsData() {
-        $productMasters = DB::table('product_master')->orderBy('id', 'asc')->get();
-
-        $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
-
-        $shopifyData = ShopifySku::mapByProductSkus($skus);
-
-        $result = [];
-
-        foreach ($productMasters as $pm) {
-            $sku = strtoupper($pm->sku);
-            $parent = $pm->parent;
-
-            $shopify = $shopifyData[$pm->sku] ?? null;
-
-            $row = [];
-            $row['parent'] = $parent;
-            $row['sku']    = $pm->sku;
-            $row['INV']    = $shopify->inv ?? 0;
-            $row['L30']    = $shopify->quantity ?? 0;
-            $row['fba']    = $pm->fba ?? null;
-            $row['s_l30']    = $shopify->shopify_l30 ?? 0;
-
-            $result[] = (object) $row;
-        }
-
-        return response()->json([
-            'message' => 'Data fetched successfully',
-            'data'    => $result,
-            'status'  => 200,
-        ]);
-    }
-
     public function facebookVideoAds()
     {
         return view('marketing-masters.facebook.facebook-video-ads');

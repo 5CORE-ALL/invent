@@ -102,6 +102,74 @@ class EbayController extends Controller
         }
     }
 
+    /**
+     * SPRICE Rule — a list of rules the /ebay-tabulator-view page uses to
+     * auto-populate the SPRICE column. Each rule is a set of min/max ranges on
+     * five factors (Dil, El30, CVR, Groi, LMP) plus a method + value describing
+     * how SPRICE is computed when the row matches. Rules are evaluated top to
+     * bottom — the first rule whose ranges all match a row wins.
+     *
+     * Stored (shared across users) under key `ebay1_sprice` in ebay_sbid_rules,
+     * same storage pattern as the SBID / Dil rules.
+     */
+    public function getSpriceRule()
+    {
+        $row = DB::table('ebay_sbid_rules')->where('key', 'ebay1_sprice')->first();
+        return response()->json($row ? json_decode($row->rule, true) : $this->defaultSpriceRule());
+    }
+
+    public function saveSpriceRule(Request $request)
+    {
+        $rules = $request->input('rules', []);
+
+        if (!is_array($rules)) {
+            return response()->json(['error' => 'Invalid rule data'], 422);
+        }
+
+        $allowedMethods = ['groi', 'gpft', 'lmp', 'fixed'];
+        $clean = [];
+        foreach ($rules as $r) {
+            if (!is_array($r)) continue;
+            $method = in_array(($r['method'] ?? 'groi'), $allowedMethods, true) ? $r['method'] : 'groi';
+            $clean[] = [
+                'label'    => isset($r['label']) ? (string) $r['label'] : '',
+                'dil_min'  => $this->numOrNull($r['dil_min']  ?? null),
+                'dil_max'  => $this->numOrNull($r['dil_max']  ?? null),
+                'el30_min' => $this->numOrNull($r['el30_min'] ?? null),
+                'el30_max' => $this->numOrNull($r['el30_max'] ?? null),
+                'cvr_min'  => $this->numOrNull($r['cvr_min']  ?? null),
+                'cvr_max'  => $this->numOrNull($r['cvr_max']  ?? null),
+                'groi_min' => $this->numOrNull($r['groi_min'] ?? null),
+                'groi_max' => $this->numOrNull($r['groi_max'] ?? null),
+                'lmp_min'  => $this->numOrNull($r['lmp_min']  ?? null),
+                'lmp_max'  => $this->numOrNull($r['lmp_max']  ?? null),
+                'method'   => $method,
+                'value'    => $this->numOrNull($r['value'] ?? null) ?? 0,
+            ];
+        }
+
+        $rule = ['rules' => $clean];
+
+        DB::table('ebay_sbid_rules')->updateOrInsert(
+            ['key' => 'ebay1_sprice'],
+            ['rule' => json_encode($rule), 'updated_at' => now()]
+        );
+
+        return response()->json(['success' => true, 'rule' => $rule]);
+    }
+
+    /** Cast a request value to float, treating blanks/nulls as "no bound". */
+    private function numOrNull($v)
+    {
+        if ($v === null || $v === '' || !is_numeric($v)) return null;
+        return (float) $v;
+    }
+
+    private function defaultSpriceRule(): array
+    {
+        return ['rules' => []];
+    }
+
        public function ebayViewData(Request $request)
     {
         return view("market-places.ebay_pricing_data");

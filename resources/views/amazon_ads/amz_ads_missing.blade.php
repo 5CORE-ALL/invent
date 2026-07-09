@@ -172,6 +172,9 @@
                             <span class="amz-missing-badge-label">Missing KW</span>
                             <span class="amz-missing-badge-value tabular-nums" id="amzMissingKwValue">0</span>
                         </div>
+                        <button type="button" class="btn btn-success btn-sm ms-auto" id="amzMissingExportBtn" title="Export the current (filtered) view to CSV">
+                            <i class="fa fa-download me-1"></i> Export
+                        </button>
                     </div>
                     <div id="amzAdsMissingTable"></div>
                 </div>
@@ -228,6 +231,16 @@
                     return len > 0;
                 }
                 return true;
+            }
+
+            // Flatten a PT/KW link array into a plain, comma-separated list of campaign names for CSV export.
+            function linkNamesAccessor(value) {
+                if (!Array.isArray(value)) {
+                    return '';
+                }
+                return value.map(function (c) { return c && c.campaign_name ? c.campaign_name : ''; })
+                    .filter(function (n) { return n !== ''; })
+                    .join(', ');
             }
 
             function chipsFormatter(type) {
@@ -306,7 +319,8 @@
                             headerFilter: 'list',
                             headerFilterParams: { values: { '': 'All', missing: 'Missing', linked: 'Linked' } },
                             headerFilterFunc: missingHeaderFilter,
-                            formatter: chipsFormatter('KW')
+                            formatter: chipsFormatter('KW'),
+                            accessorDownload: linkNamesAccessor
                         },
                         {
                             title: 'Campaign PT', field: 'pt', widthGrow: 2,
@@ -315,7 +329,8 @@
                             headerFilter: 'list',
                             headerFilterParams: { values: { '': 'All', missing: 'Missing', linked: 'Linked' } },
                             headerFilterFunc: missingHeaderFilter,
-                            formatter: chipsFormatter('PT')
+                            formatter: chipsFormatter('PT'),
+                            accessorDownload: linkNamesAccessor
                         }
                     ]
                 });
@@ -323,6 +338,15 @@
                 table.on('tableBuilt', function () {
                     table.setFilter(onlyParentsFilter);
                 });
+
+                // Export the current (filtered) view to CSV.
+                var exportBtn = document.getElementById('amzMissingExportBtn');
+                if (exportBtn) {
+                    exportBtn.addEventListener('click', function () {
+                        var stamp = new Date().toISOString().slice(0, 10);
+                        table.download('csv', 'amazon-ads-missing-' + stamp + '.csv');
+                    });
+                }
 
                 // Count blank PT / KW cells across the current (filtered) view.
                 function updateMissingBadges(rowsData) {

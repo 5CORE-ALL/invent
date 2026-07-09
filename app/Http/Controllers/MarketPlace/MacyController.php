@@ -5,6 +5,7 @@ namespace App\Http\Controllers\MarketPlace;
 use App\Http\Controllers\ApiController;
 use App\Http\Controllers\Controller;
 use App\Models\ChannelMaster;
+use App\Models\ChannelTabulatorColumnSetting;
 use App\Models\MacyDataView;
 use App\Models\MacyProduct;
 use App\Models\MacysListingStatus;
@@ -91,6 +92,17 @@ class MacyController extends Controller
         // NBSP / unicode spaces in PM vs macy_products break plain whereIn + strtoupper match (SKU looks identical in UI)
         $macysByNormSku = $this->buildMacyProductLookupByNormalizedSku($skus);
 
+        // Uploaded price sheet (macys_price_data) — SKUs stored uppercased on import.
+        // This is the source of truth for the displayed price: if a sheet has been
+        // uploaded but a SKU isn't in it, it's not offered → price 0 (MISSING). Only
+        // fall back to the macy_products (Mirakl) price when no sheet was ever uploaded.
+        $priceDataCollection = MacysPriceData::whereIn('sku', $skus)
+            ->get()
+            ->keyBy(function ($item) {
+                return strtoupper($item->sku);
+            });
+        $hasUploadedPriceData = MacysPriceData::exists();
+
         // NR/REQ + SPRICE data from MacyDataView
         $dataViews = MacyDataView::whereIn("sku", $skus)->pluck("value", "sku");
 
@@ -134,6 +146,7 @@ class MacyController extends Controller
             $macysMetric = $macysByNormSku[$pmSkuNorm] ?? null;
             $listingStatus = $listingStatusData[strtolower($pm->sku)] ?? null;
             $amazon = $amazonData[$pmSkuU] ?? null;
+            $priceData = $priceDataCollection[$pmSkuU] ?? null;
 
             $row = [];
             $row["Parent"] = $parent;
@@ -143,9 +156,13 @@ class MacyController extends Controller
             $row["INV"] = $shopify ? (int) ($shopify->inv ?? 0) : 0;
             $row["L30"] = $shopify ? (int) ($shopify->quantity ?? 0) : 0;
 
-            // Macys Metrics from macy_products only (Mirakl sync — not macys_price_data upload)
+            // MC L30 / MC INV from macy_products (Mirakl sync). MC Price now comes from the
+            // uploaded macys_price_data sheet; if a sheet is uploaded but the SKU isn't in it,
+            // it's not offered → 0 (MISSING). Falls back to the Mirakl price only when no sheet exists.
             $row["MC L30"] = $macysMetric->m_l30 ?? 0;
-            $row["MC Price"] = $macysMetric ? floatval($macysMetric->price ?? 0) : 0.0;
+            $row["MC Price"] = $priceData
+                ? floatval($priceData->price ?? 0)
+                : ($hasUploadedPriceData ? 0.0 : ($macysMetric ? floatval($macysMetric->price ?? 0) : 0.0));
             $row["MC INV"] = $macysMetric ? (int) ($macysMetric->stock ?? 0) : 0;
 
             // Amazon price
@@ -760,25 +777,37 @@ class MacyController extends Controller
     }
 
     // Column Visibility for Tabulator
+    // Persisted in the shared `channel_tabulator_column_settings` DB table
+    // (channel = 'macys_tabulator'), matching every other tabulator page.
+    // Previously used Cache, which is not durable across cache clears/drivers.
     public function getTabulatorColumnVisibility(Request $request)
     {
-        $userId = auth()->id() ?? 'guest';
-        $key = "macys_tabulator_column_visibility_{$userId}";
-        
-        $visibility = Cache::get($key, []);
-        
+        $row = ChannelTabulatorColumnSetting::where('channel_name', 'macys_tabulator')->first();
+
+        $visibility = $row && is_array($row->visibility) ? $row->visibility : [];
+
         return response()->json($visibility);
     }
 
     public function setTabulatorColumnVisibility(Request $request)
     {
-        $userId = auth()->id() ?? 'guest';
-        $key = "macys_tabulator_column_visibility_{$userId}";
-        
         $visibility = $request->input('visibility', []);
-        
-        Cache::put($key, $visibility, now()->addDays(365));
-        
+
+        // jQuery form-encodes booleans as the strings "true"/"false"; normalize to real bools.
+        $normalized = [];
+        foreach ((array) $visibility as $field => $val) {
+            $field = (string) $field;
+            if ($field === '' || strlen($field) > 190) {
+                continue;
+            }
+            $normalized[$field] = filter_var($val, FILTER_VALIDATE_BOOLEAN);
+        }
+
+        ChannelTabulatorColumnSetting::updateOrCreate(
+            ['channel_name' => 'macys_tabulator'],
+            ['visibility' => $normalized]
+        );
+
         return response()->json(['success' => true]);
     }
 

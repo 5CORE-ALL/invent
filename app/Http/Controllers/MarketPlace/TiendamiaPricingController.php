@@ -10,6 +10,7 @@ use App\Models\ShopifySku;
 use App\Models\MarketplacePercentage;
 use App\Models\TiendamiaDataView;
 use App\Models\TiendamiaListingStatus;
+use App\Models\ChannelTabulatorColumnSetting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -583,25 +584,37 @@ class TiendamiaPricingController extends Controller
     /**
      * Get/Set Column Visibility
      */
+    // Persisted in the shared `channel_tabulator_column_settings` DB table
+    // (channel = 'tiendamia_tabulator'), matching every other tabulator page.
+    // Previously used Cache, which is not durable across cache clears/drivers.
     public function getColumnVisibility(Request $request)
     {
-        $userId = auth()->id() ?? 'guest';
-        $key = "tiendamia_tabulator_column_visibility_{$userId}";
+        $row = ChannelTabulatorColumnSetting::where('channel_name', 'tiendamia_tabulator')->first();
 
-        $visibility = Cache::get($key, []);
-        
+        $visibility = $row && is_array($row->visibility) ? $row->visibility : [];
+
         return response()->json($visibility);
     }
 
     public function setColumnVisibility(Request $request)
     {
-        $userId = auth()->id() ?? 'guest';
-        $key = "tiendamia_tabulator_column_visibility_{$userId}";
-
         $visibility = $request->input('visibility', []);
-        
-        Cache::put($key, $visibility, now()->addDays(365));
-        
+
+        // jQuery form-encodes booleans as the strings "true"/"false"; normalize to real bools.
+        $normalized = [];
+        foreach ((array) $visibility as $field => $val) {
+            $field = (string) $field;
+            if ($field === '' || strlen($field) > 190) {
+                continue;
+            }
+            $normalized[$field] = filter_var($val, FILTER_VALIDATE_BOOLEAN);
+        }
+
+        ChannelTabulatorColumnSetting::updateOrCreate(
+            ['channel_name' => 'tiendamia_tabulator'],
+            ['visibility' => $normalized]
+        );
+
         return response()->json(['success' => true]);
     }
 

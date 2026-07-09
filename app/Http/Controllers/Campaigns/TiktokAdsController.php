@@ -52,17 +52,6 @@ class TiktokAdsController extends Controller
         return view('campaign.tiktok.tiktok-ads', compact('tiktokPercentage', 'tiktokAdPercentage', 'dates', 'clicks', 'spend', 'adSales', 'adSold', 'acos', 'cvr'));
     }
 
-    public function utilized(Request $request)
-    {
-        $mode = $request->query('mode');
-        $demo = $request->query('demo');
-        
-        return view('campaign.tiktok.tiktok-utilized', [
-            'mode' => $mode,
-            'demo' => $demo
-        ]);
-    }
-
     public function getUtilizedData(Request $request)
     {
         try {

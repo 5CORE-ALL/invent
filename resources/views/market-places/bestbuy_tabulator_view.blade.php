@@ -52,24 +52,37 @@
     <div class="toast-container"></div>
     <div class="row">
         <div class="card shadow-sm">
-            <div class="card-body py-3">
-                <h4>Best Buy Data</h4>
-                <div class="d-flex align-items-center flex-wrap gap-2">
+            <div class="card-body py-2">
+                <!-- Summary Stats + filters (single wrapping row) -->
+                <div id="summary-stats" class="d-flex align-items-center flex-wrap gap-1">
+                        <span class="badge bg-success fs-6 p-2" id="total-pft-amt-badge" style="color: black; font-weight: bold; display: none;">PFT: $0</span>
+                        <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-badge" style="color: black; font-weight: bold;">Sales: $0</span>
+                        <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge" style="color: black; font-weight: bold;">GPFT: 0%</span>
+                        <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold; display: none;">Price: $0</span>
+                        <span class="badge bg-success fs-6 p-2" id="total-l30-badge" style="color: black; font-weight: bold;">BB L30: 0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter 0 sold items">0 Sold: 0</span>
+                        <span class="badge fs-6 p-2" id="more-sold-count-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter items with sales">&gt; 0 Sold</span>
+                        <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: black; font-weight: bold;">ROI%: 0%</span>
+                        <span class="badge bg-danger fs-6 p-2" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amazon">&lt; Amz</span>
+                        <span class="badge fs-6 p-2" id="more-amz-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices greater than Amazon">&gt; Amz</span>
+                        <span class="badge bg-danger fs-6 p-2" id="missing-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter missing prices">Miss: 0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="mapping-badge" style="color: white; font-weight: bold; cursor: pointer;" title="N Map: INV vs BB INV mismatch &gt; 3 units (same tolerance as Temu/Macys/eBay)">N Map: 0</span>
+
                     <select id="inventory-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
-                        <option value="all">All Inventory</option>
-                        <option value="zero">0 Inventory</option>
-                        <option value="more" selected>More than 0</option>
+                        <option value="all">All INV</option>
+                        <option value="zero">INV = 0</option>
+                        <option value="more" selected>INV &gt; 0</option>
                     </select>
 
                     <select id="nrl-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
-                        <option value="all">All Status</option>
-                        <option value="REQ" selected>REQ Only</option>
-                        <option value="NR">NR Only</option>
+                        <option value="all">Status</option>
+                        <option value="REQ" selected>REQ</option>
+                        <option value="NR">NR</option>
                     </select>
 
-                    <div class="d-flex flex-column gap-1" style="width: auto;" title="CVR = BB L30 ÷ OV L30">
+                    <div class="d-flex gap-1" style="width: auto;" title="CVR = BB L30 ÷ OV L30">
                         <select id="gpft-filter" class="form-select form-select-sm"
                             style="width: auto; display: inline-block;">
                             <option value="all">GPFT%</option>
@@ -83,7 +96,7 @@
                         </select>
                         <select id="cvr-filter" class="form-select form-select-sm"
                             style="width: auto; display: inline-block;">
-                            <option value="all">All CVR%</option>
+                            <option value="all">CVR%</option>
                             <option value="0-0">0%</option>
                             <option value="0-3">0-3%</option>
                             <option value="3-7">3-7%</option>
@@ -118,8 +131,8 @@
                     </select>
 
                     <select id="dil-filter" class="form-select form-select-sm"
-                        style="width: auto; display: inline-block;">
-                        <option value="all">All DIL%</option>
+                        style="width: 90px; display: inline-block;">
+                        <option value="all">DIL%</option>
                         <option value="red">Red (&lt;16.7%)</option>
                         <option value="yellow">Yellow (16.7-25%)</option>
                         <option value="green">Green (25-50%)</option>
@@ -129,94 +142,62 @@
                     <!-- Column Visibility Dropdown -->
                     <div class="dropdown d-inline-block">
                         <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
-                            id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="fa fa-eye"></i> Columns
+                            id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false"
+                            title="Columns">
+                            <i class="fa fa-eye"></i>
                         </button>
                         <ul class="dropdown-menu" aria-labelledby="columnVisibilityDropdown" id="column-dropdown-menu"
                             style="max-height: 400px; overflow-y: auto;">
                             <!-- Columns will be populated by JavaScript -->
                         </ul>
                     </div>
-                    <button id="show-all-columns-btn" class="btn btn-sm btn-outline-secondary">
-                        <i class="fa fa-eye"></i> Show All
+
+                    <button id="export-btn" class="btn btn-sm btn-info" title="Export CSV">
+                        <i class="fas fa-file-excel"></i>
                     </button>
 
-                    <a href="{{ route('all.marketplace.master') }}" class="btn btn-sm btn-outline-primary"
-                        title="Channel overview — Best Buy Map / Miss / NMap use the same live rules as this page">
-                        <i class="fas fa-th-large"></i> All Marketplace Master
-                    </a>
-
-                    <button id="export-btn" class="btn btn-sm btn-info">
-                        <i class="fas fa-file-excel"></i> Export CSV
-                    </button>
-
-                    <button id="decrease-btn" class="btn btn-sm btn-warning">
-                        <i class="fas fa-arrow-down"></i> Decrease Mode
-                    </button>
-                    
-                    <button id="increase-btn" class="btn btn-sm btn-success">
-                        <i class="fas fa-arrow-up"></i> Increase Mode
+                    <button id="mode-toggle-btn" class="btn btn-sm btn-secondary"
+                        title="Click to cycle: Prc Mode → Decrease → Increase">
+                        Prc Mode
                     </button>
 
                     {{-- Target ROI% bulk control — back-solves S PRC for selected rows so SROI = Target ROI%.
                          Formula: sprice = (LP × (1 + ROI%/100) + Ship) / margin   (margin = per-row `percentage`, default 0.80) --}}
-                    <div class="d-inline-flex align-items-center gap-1 p-1 border rounded bg-light"
+                    <div class="d-inline-flex align-items-center gap-1 px-1 border rounded bg-light"
                         id="target-roi-controls"
                         title="Target ROI% — sets S PRC = (LP × (1 + Target ROI%/100) + Ship) / margin on every selected row (back-solves so SROI column equals the target)">
                         <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
-                            Target ROI%:
+                            <i class="fas fa-bullseye text-danger"></i> ROI%:
                         </label>
                         <input type="number" id="target-roi-input" class="form-control form-control-sm text-end"
-                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
+                            placeholder="30" step="0.1" style="width: 56px;"
                             title="Target ROI% applied to all selected rows when you click 'Apply S PRC'">
                         <button id="apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
                             title="Compute & save S PRC = (LP × (1 + Target ROI%/100) + Ship) / margin for every selected row">
-                            <i class="fas fa-calculator"></i> Apply S PRC
+                            <i class="fas fa-calculator"></i>
                         </button>
                     </div>
 
                     {{-- Target GPFT% bulk control — back-solves S PRC for selected rows so SGPFT = Target GPFT%.
                          Formula: sprice = (LP + Ship) / (margin − GPFT%/100). Target GPFT% must be < margin*100. --}}
-                    <div class="d-inline-flex align-items-center gap-1 p-1 border rounded bg-light"
+                    <div class="d-inline-flex align-items-center gap-1 px-1 border rounded bg-light"
                         id="target-gpft-controls"
                         title="Target GPFT% — sets S PRC = (LP + Ship) / (margin − Target GPFT%/100) on every selected row">
                         <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
-                            Target GPFT%:
+                            <i class="fas fa-bullseye text-danger"></i> GPFT%:
                         </label>
                         <input type="number" id="target-gpft-input" class="form-control form-control-sm text-end"
-                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
+                            placeholder="30" step="0.1" style="width: 56px;"
                             title="Target GPFT% applied to all selected rows when you click 'Apply S PRC'. Must be less than the BestBuy take-home margin (typically < 80%).">
                         <button id="apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
                             title="Compute & save S PRC = (LP + Ship) / (margin − Target GPFT%/100) for every selected row">
-                            <i class="fas fa-calculator"></i> Apply S PRC
+                            <i class="fas fa-calculator"></i>
                         </button>
                     </div>
 
-                    <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#uploadPriceModal">
-                        <i class="fa fa-dollar-sign"></i> Upload Price
+                    <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#uploadPriceModal" title="Upload Price">
+                        <i class="fa fa-upload"></i> Prc
                     </button>
-                </div>
-
-                <!-- Summary Stats -->
-                <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
-                    <h6 class="mb-3">Summary (80% Margin)</h6>
-                    <div class="d-flex flex-wrap gap-2">
-                        <span class="badge bg-success fs-6 p-2" id="total-pft-amt-badge" style="color: black; font-weight: bold;">Total PFT: $0</span>
-                        <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-badge" style="color: black; font-weight: bold;">Total Sales: $0</span>
-                        <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge" style="color: black; font-weight: bold;">AVG GPFT: 0%</span>
-                        <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0</span>
-                        <span class="badge bg-primary fs-6 p-2" id="total-inv-badge" style="color: black; font-weight: bold;">Total INV: 0</span>
-                        <span class="badge bg-success fs-6 p-2" id="total-l30-badge" style="color: black; font-weight: bold;">Total BB L30: 0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter 0 sold items">0 Sold: 0</span>
-                        <span class="badge fs-6 p-2" id="more-sold-count-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter items with sales">&gt; 0 Sold</span>
-                        <span class="badge bg-warning fs-6 p-2" id="avg-dil-badge" style="color: black; font-weight: bold;">DIL%: 0%</span>
-                        <span class="badge bg-info fs-6 p-2" id="total-cogs-badge" style="color: black; font-weight: bold;">COGS: $0</span>
-                        <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: black; font-weight: bold;">ROI%: 0%</span>
-                        <span class="badge bg-danger fs-6 p-2" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amazon">&lt; Amz</span>
-                        <span class="badge fs-6 p-2" id="more-amz-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices greater than Amazon">&gt; Amz</span>
-                        <span class="badge bg-danger fs-6 p-2" id="missing-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter missing prices">MISSING: 0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="mapping-badge" style="color: white; font-weight: bold; cursor: pointer;" title="N Map: INV vs BB INV mismatch &gt; 3 units (same tolerance as Temu/Macys/eBay)">N Map: 0</span>
-                    </div>
                 </div>
             </div>
             <div class="card-body" style="padding: 0;">
@@ -239,9 +220,9 @@
                         </button>
                     </div>
                 </div>
-                <div id="bestbuy-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
+                <div id="bestbuy-table-wrapper" style="height: calc(100vh - 160px); display: flex; flex-direction: column;">
                     <!-- SKU & Parent Search -->
-                    <div class="p-2 bg-light border-bottom d-flex flex-wrap gap-2 align-items-center">
+                    <div class="px-2 py-1 bg-light border-bottom d-flex flex-wrap gap-2 align-items-center">
                         <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU..." style="max-width: 220px;">
                         <input type="text" id="parent-search" class="form-control form-control-sm" placeholder="Search Parent..." style="max-width: 220px;">
                     </div>
@@ -360,36 +341,30 @@
             }
         });
 
-        // Decrease button toggle
-        $('#decrease-btn').on('click', function() {
-            decreaseModeActive = !decreaseModeActive;
-            increaseModeActive = false;
+        // Single toggle that cycles: Off → Decrease → Increase → Off
+        $('#mode-toggle-btn').on('click', function() {
             const selectColumn = table.getColumn('_select');
-            
-            if (decreaseModeActive) {
-                $(this).removeClass('btn-warning').addClass('btn-danger').html('<i class="fas fa-arrow-down"></i> Decrease ON');
+
+            if (!decreaseModeActive && !increaseModeActive) {
+                // Prc Mode → Decrease
+                decreaseModeActive = true;
+                increaseModeActive = false;
+                $(this).removeClass('btn-secondary btn-success').addClass('btn-danger')
+                    .text('Decrease ON');
                 selectColumn.show();
-                $('#increase-btn').removeClass('btn-danger').addClass('btn-success').html('<i class="fas fa-arrow-up"></i> Increase Mode');
-            } else {
-                $(this).removeClass('btn-danger').addClass('btn-warning').html('<i class="fas fa-arrow-down"></i> Decrease Mode');
-                selectColumn.hide();
-                selectedSkus.clear();
-                updateSelectedCount();
-            }
-        });
-        
-        // Increase Mode Toggle
-        $('#increase-btn').on('click', function() {
-            increaseModeActive = !increaseModeActive;
-            decreaseModeActive = false;
-            const selectColumn = table.getColumn('_select');
-            
-            if (increaseModeActive) {
-                $(this).removeClass('btn-success').addClass('btn-danger').html('<i class="fas fa-arrow-up"></i> Increase ON');
+            } else if (decreaseModeActive) {
+                // Decrease → Increase
+                decreaseModeActive = false;
+                increaseModeActive = true;
+                $(this).removeClass('btn-secondary btn-danger').addClass('btn-success')
+                    .text('Increase ON');
                 selectColumn.show();
-                $('#decrease-btn').removeClass('btn-danger').addClass('btn-warning').html('<i class="fas fa-arrow-down"></i> Decrease Mode');
             } else {
-                $(this).removeClass('btn-danger').addClass('btn-success').html('<i class="fas fa-arrow-up"></i> Increase Mode');
+                // Increase → Prc Mode
+                decreaseModeActive = false;
+                increaseModeActive = false;
+                $(this).removeClass('btn-danger btn-success').addClass('btn-secondary')
+                    .text('Prc Mode');
                 selectColumn.hide();
                 selectedSkus.clear();
                 updateSelectedCount();
@@ -861,53 +836,11 @@
             showToast(`SPRICE cleared for ${clearedCount} SKU(s)`, 'success');
         }
 
-        // SAVE SPRICE to database with retry
-        function saveSpriceWithRetry(sku, sprice, row, retryCount = 0) {
-            const maxRetries = 3;
-            
-            $.ajax({
-                url: '/bestbuy-save-sprice',
-                method: 'POST',
-                data: {
-                    sku: sku,
-                    sprice: sprice,
-                    _token: '{{ csrf_token() }}'
-                },
-                success: function(response) {
-                    showToast(`SPRICE saved for ${sku}`, 'success');
-                    if (response.price_push_success !== undefined) {
-                        const codeSuffix = response.price_push_status_code ? ` [code: ${response.price_push_status_code}]` : '';
-                        if (response.price_push_success) {
-                            showToast(`BestBuy price pushed for ${sku}${codeSuffix}`, 'success');
-                        } else {
-                            showToast(`BestBuy push failed for ${sku}${codeSuffix}: ${response.price_push_message || 'Unknown error'}`, 'warning');
-                        }
-                    }
-                    if (response.spft_percent !== undefined) {
-                        row.update({ SPFT: response.spft_percent });
-                    }
-                    if (response.sroi_percent !== undefined) {
-                        row.update({ SROI: response.sroi_percent });
-                    }
-                    if (response.sgpft_percent !== undefined) {
-                        row.update({ SGPFT: response.sgpft_percent });
-                    }
-                },
-                error: function(xhr) {
-                    if (retryCount < maxRetries) {
-                        setTimeout(() => saveSpriceWithRetry(sku, sprice, row, retryCount + 1), 2000);
-                    } else {
-                        showToast(`Failed to save SPRICE for ${sku}`, 'error');
-                    }
-                }
-            });
-        }
-
         // Initialize Tabulator
         table = new Tabulator("#bestbuy-table", {
             ajaxURL: "/bestbuy-data-json",
             ajaxSorting: false,
-            layout: "fitDataStretch",
+            layout: "fitColumns",
             pagination: true,
             paginationSize: 100,
             paginationSizeSelector: [10, 25, 50, 100, 200],
@@ -1154,7 +1087,7 @@
                     width: 60
                 },
                 {
-                    title: "Mapping",
+                    title: "MAP",
                     field: "Mapping",
                     hozAlign: "center",
                     sorter: "string",
@@ -1170,11 +1103,13 @@
                             return '';
                         }
                         
-                        const diff = bestbuyInvMappingDiff(ourInv, bbInv);
-                        if (diff <= BB_INV_MAP_TOLERANCE) {
-                            return '<span style="color: #28a745; font-weight: 600; background-color: #d4edda; padding: 2px 6px; border-radius: 3px;">MAP</span>';
+                        // Mapped (green) when within tolerance — same plain-text style as the eBay MAP column
+                        if (!isBestbuyInvMappingMismatch(ourInv, bbInv)) {
+                            return '<span style="color: #28a745; font-weight: bold;">MP</span>';
                         }
-                        return `<span style="color: #a00211; font-weight: 600; background-color: #f8d7da; padding: 2px 6px; border-radius: 3px;">N MP (${diff})</span>`;
+                        const diff = ourInv - bbInv;
+                        const sign = diff > 0 ? '+' : '';
+                        return `<span style="color: #dc3545; font-weight: bold;">N MP<br>(${sign}${diff})</span>`;
                     },
                     width: 90
                 },
@@ -1330,30 +1265,6 @@
                     width: 80
                 },
                 {
-                    title: "Send",
-                    field: "_send_price",
-                    hozAlign: "center",
-                    headerSort: false,
-                    width: 75,
-                    formatter: function() {
-                        return '<button type="button" class="btn btn-sm btn-primary" style="padding:2px 8px;">Send</button>';
-                    },
-                    cellClick: function(e, cell) {
-                        e.stopPropagation();
-                        const row = cell.getRow();
-                        const rowData = row.getData();
-                        const sku = rowData['(Child) sku'];
-                        const sprice = parseFloat(rowData.SPRICE) || 0;
-
-                        if (sprice <= 0) {
-                            showToast(`Enter valid SPRICE for ${sku} before push`, 'warning');
-                            return;
-                        }
-
-                        saveSpriceWithRetry(sku, sprice, row);
-                    }
-                },
-                {
                     title: "SGPFT",
                     field: "SGPFT",
                     hozAlign: "center",
@@ -1476,7 +1387,7 @@
                     SROI: sroi,
                     has_custom_sprice: true
                 });
-                showToast(`SPRICE updated for ${sku}. Click Send to push.`, 'info');
+                showToast(`SPRICE updated for ${sku}.`, 'info');
             }
         });
 
@@ -1693,29 +1604,33 @@
                 }
             });
 
-            const avgGpft = data.length > 0 ? totalGpft / data.length : 0;
+            // GPFT% = (Total PFT / Total Sales) * 100 — same aggregate formula as the eBay page.
+            // Profit/Sales already use BestBuy's bbship (ship_bb) from the controller.
+            const avgGpft = totalSales > 0 ? (totalPft / totalSales) * 100 : 0;
             const avgPrice = priceCount > 0 ? totalPrice / priceCount : 0;
             const avgDil = dilCount > 0 ? totalDil / dilCount : 0;
             const avgRoi = roiCount > 0 ? totalRoi / roiCount : 0;
 
-            $('#total-pft-amt-badge').text(`Total PFT: $${Math.round(totalPft).toLocaleString()}`);
-            $('#total-sales-amt-badge').text(`Total Sales: $${Math.round(totalSales).toLocaleString()}`);
-            $('#avg-gpft-badge').text(`AVG GPFT: ${avgGpft.toFixed(1)}%`);
-            $('#avg-price-badge').text(`Avg Price: $${avgPrice.toFixed(2)}`);
-            $('#total-inv-badge').text(`Total INV: ${totalInv.toLocaleString()}`);
-            $('#total-l30-badge').text(`Total BB L30: ${totalL30.toLocaleString()}`);
+            $('#total-pft-amt-badge').text(`PFT: $${Math.round(totalPft).toLocaleString()}`);
+            $('#total-sales-amt-badge').text(`Sales: $${Math.round(totalSales).toLocaleString()}`);
+            $('#avg-gpft-badge').text(`GPFT: ${Math.round(avgGpft)}%`);
+            $('#avg-price-badge').text(`Price: $${avgPrice.toFixed(2)}`);
+            $('#total-l30-badge').text(`BB L30: ${totalL30.toLocaleString()}`);
             $('#zero-sold-count-badge').text(`0 Sold: ${zeroSoldCount}`);
-            $('#avg-dil-badge').text(`DIL%: ${(avgDil * 100).toFixed(1)}%`);
-            $('#total-cogs-badge').text(`COGS: $${Math.round(totalCogs).toLocaleString()}`);
             $('#roi-percent-badge').text(`ROI%: ${avgRoi.toFixed(1)}%`);
-            $('#missing-badge').text(`MISSING: ${missingCount}`);
+            $('#missing-badge').text(`Miss: ${missingCount}`);
             $('#mapping-badge').text('N Map: ' + mappingCount.toLocaleString());
         }
 
         // Build Column Visibility Dropdown
         function buildColumnDropdown() {
             const columns = table.getColumns();
-            let html = '';
+            let html = `<li>
+                    <button type="button" id="show-all-columns-item" class="dropdown-item fw-bold">
+                        <i class="fa fa-eye"></i> Show All Columns
+                    </button>
+                </li>
+                <li><hr class="dropdown-divider"></li>`;
             
             columns.forEach(col => {
                 const field = col.getField();
@@ -1813,8 +1728,11 @@
             }
         });
 
-        // Show All Columns button
-        document.getElementById("show-all-columns-btn").addEventListener("click", function() {
+        // Show All Columns — now an item inside the Columns dropdown (delegated, menu is rebuilt dynamically)
+        document.getElementById("column-dropdown-menu").addEventListener("click", function(e) {
+            const showAll = e.target.closest('#show-all-columns-item');
+            if (!showAll) return;
+            e.preventDefault();
             table.getColumns().forEach(col => {
                 if (col.getField() !== '_select') {
                     col.show();

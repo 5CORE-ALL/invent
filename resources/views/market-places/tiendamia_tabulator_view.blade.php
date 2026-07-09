@@ -159,7 +159,7 @@
     <div class="toast-container"></div>
     <div class="row">
         <div class="card shadow-sm">
-            <div class="card-body py-3">
+            <div class="card-body py-2">
                 {{-- <h4>Tiendamia Analytics</h4> --}}
 
                 <!-- Upload Section -->
@@ -191,6 +191,45 @@
                     </div>
                 @endif
 
+                <!-- Summary Stats -->
+                <div id="summary-stats" class="mb-2">
+                    <div class="d-flex flex-wrap gap-2 ebay2-summary-badge-row" role="group" aria-label="Summary metrics">
+                        <span class="badge bg-primary fs-6 p-2 badge-no-chart" data-metric="total_sales"
+                            id="total-sales-amt-badge" style="color: black; font-weight: bold; cursor: default;"
+                            title="Summary metric (½s) for daily trend">Sales: $0</span>
+                        <span class="badge bg-success fs-6 p-2 badge-no-chart" data-metric="total_pft"
+                            id="total-pft-amt-badge" style="color: black; font-weight: bold; cursor: default; display: none;"
+                            title="Summary metric (½s) for daily trend">PFT: $0</span>
+                        <span class="badge bg-info fs-6 p-2 badge-no-chart" data-metric="avg_gpft" id="avg-gpft-badge"
+                            style="color: black; font-weight: bold; cursor: default;" title="Summary metric for daily trend">GPFT:
+                            0%</span>
+                        <span class="badge bg-warning fs-6 p-2 badge-no-chart" data-metric="avg_price"
+                            id="avg-price-badge" style="color: black; font-weight: bold; cursor: default; display: none;"
+                            title="Summary metric for daily trend">Price: $0</span>
+                        <span class="badge bg-success fs-6 p-2 badge-no-chart" data-metric="total_l30"
+                            id="total-l30-badge" style="color: black; font-weight: bold; cursor: default;"
+                            title="Summary metric for daily trend">M L30: 0</span>
+                        <span class="badge bg-danger fs-6 p-2 badge-no-chart" id="zero-sold-count-badge" data-metric="zero_sold_count"
+                            style="color: white; font-weight: bold; cursor: default;"
+                            title="Click to filter ½s for daily trend">0 Sold: 0</span>
+                        <span class="badge fs-6 p-2 badge-no-chart" id="more-sold-count-badge" data-metric="sold_count"
+                            style="background-color: #b6e0fe; color: #0f172a; font-weight: 700; cursor: default;"
+                            title="Click to filter ½s for daily trend">&gt; 0 Sold: 0</span>
+                        <span class="badge bg-secondary fs-6 p-2 badge-no-chart" data-metric="avg_roi"
+                            id="roi-percent-badge" style="color: black; font-weight: bold; cursor: default;"
+                            title="Summary metric for daily trend">ROI%: 0%</span>
+                        <span class="badge bg-danger fs-6 p-2 badge-no-chart" id="missing-count-badge" data-metric="missing_count"
+                            style="color: white; font-weight: bold; cursor: default;"
+                            title="Click to filter ½s for daily trend">Miss: 0</span>
+                        <span class="badge fs-6 p-2 badge-no-chart" id="map-count-badge" data-metric="map_count"
+                            style="background-color: #198754; color: #fff; font-weight: bold; cursor: default;"
+                            title="Click to filter ½s for daily trend">Map: 0</span>
+                        <span class="badge fs-6 p-2 badge-no-chart" id="inv-tt-stock-badge" data-metric="nmap_count"
+                            style="color: white; font-weight: bold; cursor: default; background-color: #a71d2a;"
+                            title="Click to filter ½s for daily trend">N Map: 0</span>
+                    </div>
+                </div>
+
                 <div class="d-flex align-items-center flex-wrap gap-2">
                     <select id="row-type-filter" class="form-select form-select-sm" style="width: 130px;">
                         <option value="all">All Rows</option>
@@ -199,9 +238,9 @@
                     </select>
 
                     <select id="inventory-filter" class="form-select form-select-sm" style="width: 130px;">
-                        <option value="all">All Inventory</option>
-                        <option value="zero">0 Inventory</option>
-                        <option value="more" selected>More than 0</option>
+                        <option value="all">All INV</option>
+                        <option value="zero">INV = 0</option>
+                        <option value="more" selected>INV &gt; 0</option>
                     </select>
 
                     <select id="tiendamia-stock-filter" class="form-select form-select-sm" style="width: 130px;">
@@ -283,57 +322,55 @@
                     <!-- Column Visibility Dropdown -->
                     <div class="dropdown d-inline-block">
                         <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
-                            id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="fa fa-eye"></i> Columns
+                            id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false"
+                            title="Columns">
+                            <i class="fa fa-eye"></i>
                         </button>
                         <ul class="dropdown-menu" aria-labelledby="columnVisibilityDropdown" id="column-dropdown-menu"
                             style="max-height: 400px; overflow-y: auto;">
                         </ul>
                     </div>
-                    <button id="show-all-columns-btn" class="btn btn-sm btn-outline-secondary">
-                        <i class="fa fa-eye"></i> Show All
-                    </button>
 
-                    <button id="export-btn" class="btn btn-sm btn-info">
-                        <i class="fas fa-file-excel"></i> Export CSV
+                    <button id="export-btn" class="btn btn-sm btn-info" title="Export CSV">
+                        <i class="fas fa-file-excel"></i>
                     </button>
 
                     <button id="price-mode-btn" class="btn btn-sm btn-secondary"
-                        title="Cycle: Off → Decrease → Increase → Same Price → Off">
-                        <i class="fas fa-exchange-alt"></i> Price Mode
+                        title="Cycle: Prc Mode → Decrease → Increase → Same Price">
+                        Prc Mode
                     </button>
 
                     {{-- Target ROI% bulk control — back-solves S PRC for selected rows so SROI = Target ROI%.
                          Formula: sprice = (LP × (1 + ROI%/100) + Ship) / margin   (margin = per-row `percentage`, default {{ rtrim(rtrim(number_format((float) ($tiendamiaPercentage ?? 80), 2, '.', ''), '0'), '.') }}%) --}}
-                    <div class="d-inline-flex align-items-center gap-1 p-1 border rounded bg-light"
+                    <div class="d-inline-flex align-items-center gap-1 px-1 border rounded bg-light"
                         id="target-roi-controls"
                         title="Target ROI% — sets S PRC = (LP × (1 + Target ROI%/100) + Ship) / margin on every selected row (back-solves so SROI column equals the target)">
                         <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
-                            Target ROI%:
+                            <i class="fas fa-bullseye text-danger"></i> ROI%:
                         </label>
                         <input type="number" id="target-roi-input" class="form-control form-control-sm text-end"
-                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
+                            placeholder="30" step="0.1" style="width: 56px;"
                             title="Target ROI% applied to all selected rows when you click 'Apply S PRC'">
                         <button id="apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
                             title="Compute & save S PRC = (LP × (1 + Target ROI%/100) + Ship) / margin for every selected row">
-                            <i class="fas fa-calculator"></i> Apply S PRC
+                            <i class="fas fa-calculator"></i>
                         </button>
                     </div>
 
                     {{-- Target GPFT% bulk control — back-solves S PRC for selected rows so SGPFT = Target GPFT%.
                          Formula: sprice = (LP + Ship) / (margin − GPFT%/100). Target GPFT% must be < margin*100. --}}
-                    <div class="d-inline-flex align-items-center gap-1 p-1 border rounded bg-light"
+                    <div class="d-inline-flex align-items-center gap-1 px-1 border rounded bg-light"
                         id="target-gpft-controls"
                         title="Target GPFT% — sets S PRC = (LP + Ship) / (margin − Target GPFT%/100) on every selected row">
                         <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
-                            Target GPFT%:
+                            <i class="fas fa-bullseye text-danger"></i> GPFT%:
                         </label>
                         <input type="number" id="target-gpft-input" class="form-control form-control-sm text-end"
-                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
+                            placeholder="30" step="0.1" style="width: 56px;"
                             title="Target GPFT% applied to all selected rows when you click 'Apply S PRC'. Must be less than each row's take-home margin.">
                         <button id="apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
                             title="Compute & save S PRC = (LP + Ship) / (margin − Target GPFT%/100) for every selected row">
-                            <i class="fas fa-calculator"></i> Apply S PRC
+                            <i class="fas fa-calculator"></i>
                         </button>
                     </div>
 
@@ -425,47 +462,6 @@
                     </div>
                 </div>
 
-                <!-- Summary Stats -->
-                <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
-                    <h6 class="mb-3">Summary
-                        ({{ rtrim(rtrim(number_format((float) ($tiendamiaPercentage ?? 80), 2, '.', ''), '0'), '.') }}% Margin)
-                    </h6>
-                    <div class="d-flex flex-wrap gap-2 ebay2-summary-badge-row" role="group" aria-label="Summary metrics">
-                        <span class="badge bg-primary fs-6 p-2 badge-no-chart" data-metric="total_sales"
-                            id="total-sales-amt-badge" style="color: black; font-weight: bold; cursor: default;"
-                            title="Summary metric (½s) for daily trend">Sales: $0</span>
-                        <span class="badge bg-success fs-6 p-2 badge-no-chart" data-metric="total_pft"
-                            id="total-pft-amt-badge" style="color: black; font-weight: bold; cursor: default;"
-                            title="Summary metric (½s) for daily trend">PFT: $0</span>
-                        <span class="badge bg-info fs-6 p-2 badge-no-chart" data-metric="avg_gpft" id="avg-gpft-badge"
-                            style="color: black; font-weight: bold; cursor: default;" title="Summary metric for daily trend">GPFT:
-                            0%</span>
-                        <span class="badge bg-warning fs-6 p-2 badge-no-chart" data-metric="avg_price"
-                            id="avg-price-badge" style="color: black; font-weight: bold; cursor: default;"
-                            title="Summary metric for daily trend">Price: $0</span>
-                        <span class="badge bg-success fs-6 p-2 badge-no-chart" data-metric="total_l30"
-                            id="total-l30-badge" style="color: black; font-weight: bold; cursor: default;"
-                            title="Summary metric for daily trend">M L30: 0</span>
-                        <span class="badge bg-danger fs-6 p-2 badge-no-chart" id="zero-sold-count-badge" data-metric="zero_sold_count"
-                            style="color: white; font-weight: bold; cursor: default;"
-                            title="Click to filter ½s for daily trend">0 Sold: 0</span>
-                        <span class="badge fs-6 p-2 badge-no-chart" id="more-sold-count-badge" data-metric="sold_count"
-                            style="background-color: #b6e0fe; color: #0f172a; font-weight: 700; cursor: default;"
-                            title="Click to filter ½s for daily trend">&gt; 0 Sold: 0</span>
-                        <span class="badge bg-secondary fs-6 p-2 badge-no-chart" data-metric="avg_roi"
-                            id="roi-percent-badge" style="color: black; font-weight: bold; cursor: default;"
-                            title="Summary metric for daily trend">ROI%: 0%</span>
-                        <span class="badge bg-danger fs-6 p-2 badge-no-chart" id="missing-count-badge" data-metric="missing_count"
-                            style="color: white; font-weight: bold; cursor: default;"
-                            title="Click to filter ½s for daily trend">Missing L: 0</span>
-                        <span class="badge fs-6 p-2 badge-no-chart" id="map-count-badge" data-metric="map_count"
-                            style="background-color: #198754; color: #fff; font-weight: bold; cursor: default;"
-                            title="Click to filter ½s for daily trend">Map: 0</span>
-                        <span class="badge fs-6 p-2 badge-no-chart" id="inv-tt-stock-badge" data-metric="nmap_count"
-                            style="color: white; font-weight: bold; cursor: default; background-color: #a71d2a;"
-                            title="Click to filter ½s for daily trend">N Map: 0</span>
-                    </div>
-                </div>
             </div>
             <div class="card-body" style="padding: 0;">
                 <!-- Discount Input Box -->
@@ -488,9 +484,9 @@
                     </div>
                 </div>
                 <div id="tiendamia-table-wrapper"
-                    style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
+                    style="height: calc(100vh - 160px); display: flex; flex-direction: column;">
                     <!-- SKU & Parent Search -->
-                    <div class="p-2 bg-light border-bottom d-flex flex-wrap gap-2 align-items-center">
+                    <div class="px-2 py-1 bg-light border-bottom d-flex flex-wrap gap-2 align-items-center">
                         <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU..." style="max-width: 220px;">
                         <input type="text" id="parent-search" class="form-control form-control-sm" placeholder="Search Parent..." style="max-width: 220px;">
                     </div>
@@ -962,27 +958,27 @@
                 const selectColumn = table.getColumn('_select');
                 if (decreaseModeActive) {
                     $btn.removeClass('btn-secondary btn-primary btn-info').addClass('btn-danger')
-                        .html('<i class="fas fa-arrow-down"></i> Decrease ON');
+                        .text('Decrease ON');
                     selectColumn.show();
                     syncDiscountInputUi();
                     return;
                 }
                 if (increaseModeActive) {
-                    $btn.removeClass('btn-secondary btn-danger btn-info').addClass('btn-primary')
-                        .html('<i class="fas fa-arrow-up"></i> Increase ON');
+                    $btn.removeClass('btn-secondary btn-danger btn-info').addClass('btn-success')
+                        .text('Increase ON');
                     selectColumn.show();
                     syncDiscountInputUi();
                     return;
                 }
                 if (samePriceModeActive) {
-                    $btn.removeClass('btn-secondary btn-danger btn-primary').addClass('btn-info')
-                        .html('<i class="fas fa-equals"></i> Same Price ON');
+                    $btn.removeClass('btn-secondary btn-danger btn-primary btn-success').addClass('btn-info')
+                        .text('Same Price ON');
                     selectColumn.show();
                     syncDiscountInputUi();
                     return;
                 }
-                $btn.removeClass('btn-danger btn-primary btn-info').addClass('btn-secondary')
-                    .html('<i class="fas fa-exchange-alt"></i> Price Mode');
+                $btn.removeClass('btn-danger btn-primary btn-info btn-success').addClass('btn-secondary')
+                    .text('Prc Mode');
                 selectColumn.hide();
                 selectedSkus.clear();
                 updateSelectedCount();
@@ -1640,7 +1636,7 @@
                     return response;
                 },
                 ajaxSorting: false,
-                layout: "fitDataStretch",
+                layout: "fitColumns",
                 pagination: true,
                 paginationSize: 100,
                 paginationSizeSelector: [10, 25, 50, 100, 200],
@@ -3127,7 +3123,7 @@
                 $('#zero-sold-count-badge').text(`0 Sold: ${zeroSoldCount}`);
                 $('#more-sold-count-badge').text(`> 0 Sold: ${moreSoldCount}`);
                 $('#roi-percent-badge').text(`ROI%: ${Math.round(avgRoi)}%`);
-                $('#missing-count-badge').text(`Missing L: ${missingCount}`);
+                $('#missing-count-badge').text(`Miss: ${missingCount}`);
                 $('#map-count-badge').text(`Map: ${mapCount}`);
                 $('#inv-tt-stock-badge').text('N Map: ' + invTTStockCount.toLocaleString());
             }
@@ -3224,7 +3220,12 @@
             // Build Column Visibility Dropdown
             function buildColumnDropdown() {
                 const columns = table.getColumns();
-                let html = '';
+                let html = `<li>
+                        <button type="button" id="show-all-columns-item" class="dropdown-item fw-bold" style="cursor: pointer;">
+                            <i class="fa fa-eye"></i> Show All Columns
+                        </button>
+                    </li>
+                    <li><hr class="dropdown-divider"></li>`;
 
                 columns.forEach(col => {
                     const field = col.getField();
@@ -3354,8 +3355,12 @@
                 }
             });
 
-            // Show All Columns button (standard columns only; ads columns stay hidden until Show Key Columns is clicked)
-            document.getElementById("show-all-columns-btn").addEventListener("click", function() {
+            // Show All Columns — now an item inside the Columns dropdown (delegated, menu is rebuilt dynamically).
+            // Standard columns only; ads columns stay hidden until Show Key Columns is clicked.
+            document.getElementById("column-dropdown-menu").addEventListener("click", function(e) {
+                const showAll = e.target.closest('#show-all-columns-item');
+                if (!showAll) return;
+                e.preventDefault();
                 table.getColumns().forEach(col => {
                     const field = col.getField();
                     if (field && field !== '_select') {

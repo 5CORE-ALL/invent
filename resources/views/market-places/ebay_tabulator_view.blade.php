@@ -485,6 +485,14 @@
                             title="Configure DIL% color bands (shared with /ebay/campaign-ads)">
                         <i class="fas fa-tint me-1"></i>Dil Rule
                     </button>
+
+                    {{-- Sprice Rule button — opens the multi-rule editor that auto-populates the
+                         SPRICE column from Dil / El30 / CVR / Groi / LMP conditions. --}}
+                    <button type="button" class="btn btn-sm btn-outline-success pricing-filter-item"
+                            data-bs-toggle="modal" data-bs-target="#spriceRuleModal"
+                            title="Build rules on Dil / El30 / CVR / Groi / LMP that auto-calculate the SPRICE column">
+                        <i class="fas fa-magic me-1"></i>Sprice Rule
+                    </button>
                 </div>
 
                 <!-- Summary Stats (layout matches Ebay 2 Analytics summary row) -->
@@ -914,6 +922,78 @@
                     <button type="button" class="btn btn-sm btn-primary" id="dil-rule-save-btn">
                         <i class="fas fa-save me-1"></i>Save Rule
                     </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- ═══════════════════════════════════════════════════════════════════════
+         Sprice Rule Modal — build multiple rules that auto-populate the SPRICE
+         column. Each rule is a horizontal row of min/max ranges on 5 factors
+         (Dil, El30, CVR, Groi, LMP) plus a method + value. Rules are evaluated
+         top to bottom; the first rule whose ranges all match a row wins.
+         Storage: ebay_sbid_rules.key = 'ebay1_sprice' (via /ebay-one/sprice-rule).
+    ══════════════════════════════════════════════════════════════════════════ --}}
+    <div class="modal fade" id="spriceRuleModal" tabindex="-1" aria-labelledby="spriceRuleModalLabel" aria-hidden="true">
+        <style>
+            #spriceRuleModal .modal-dialog { max-width: 98vw; width: 98vw; margin: 0.5rem auto; }
+            #sprice-rule-table thead th { background-color: #fff9c4 !important; color: #000 !important; }
+        </style>
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title" id="spriceRuleModalLabel">
+                        <i class="fas fa-magic me-2 text-success"></i>eBay Sprice Rule &mdash; Dil / El30 / CVR / Groi / LMP &rarr; SPRICE
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered align-middle" id="sprice-rule-table" style="min-width: 1050px;">
+                            <thead class="table-light">
+                                <tr>
+                                    <th rowspan="2" style="width:34px;" class="text-center align-middle">#</th>
+                                    <th rowspan="2" style="min-width:110px;" class="align-middle">Label</th>
+                                    <th colspan="2" class="text-center">Dil %</th>
+                                    <th colspan="2" class="text-center">El30</th>
+                                    <th colspan="2" class="text-center">CVR %</th>
+                                    <th colspan="2" class="text-center">Groi %</th>
+                                    <th colspan="2" class="text-center">LMP $</th>
+                                    <th rowspan="2" style="min-width:120px;" class="align-middle text-center">Method</th>
+                                    <th rowspan="2" style="width:90px;" class="align-middle text-center">Value</th>
+                                    <th rowspan="2" style="width:44px;" class="align-middle"></th>
+                                </tr>
+                                <tr>
+                                    <th class="text-center small text-muted">Min</th><th class="text-center small text-muted">Max</th>
+                                    <th class="text-center small text-muted">Min</th><th class="text-center small text-muted">Max</th>
+                                    <th class="text-center small text-muted">Min</th><th class="text-center small text-muted">Max</th>
+                                    <th class="text-center small text-muted">Min</th><th class="text-center small text-muted">Max</th>
+                                    <th class="text-center small text-muted">Min</th><th class="text-center small text-muted">Max</th>
+                                </tr>
+                            </thead>
+                            <tbody id="sprice-rules-body">
+                                {{-- filled by JS --}}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <button type="button" class="btn btn-sm btn-outline-primary py-0 mb-2" id="sprice-add-rule-btn">
+                        <i class="fas fa-plus me-1"></i>Add rule
+                    </button>
+
+                    <p class="small text-danger mb-0 mt-2 d-none" id="sprice-rule-err"></p>
+                </div>
+                <div class="modal-footer py-2 d-flex justify-content-between">
+                    <span class="small text-muted" id="sprice-rule-status"></span>
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+                        <button type="button" class="btn btn-sm btn-success" id="sprice-rule-apply-btn">
+                            <i class="fas fa-bolt me-1"></i>Apply to Visible Rows
+                        </button>
+                        <button type="button" class="btn btn-sm btn-primary" id="sprice-rule-save-btn">
+                            <i class="fas fa-save me-1"></i>Save Rule
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -6012,6 +6092,318 @@
                     }
                 });
             });
+        })();
+
+        // ════════════════════════════════════════════════════════════════════
+        // Sprice Rule modal — build multiple rules on Dil / El30 / CVR / Groi /
+        // LMP that auto-populate the SPRICE column.
+        // Storage: ebay_sbid_rules.key = 'ebay1_sprice' (via /ebay-one/sprice-rule).
+        // ════════════════════════════════════════════════════════════════════
+        (function() {
+            const spriceGetUrl  = @json(url('/ebay-one/sprice-rule'));
+            const spriceSaveUrl = @json(url('/ebay-one/sprice-rule'));
+            const spriceApplyUrl = @json(url('/ebay-one/save-sprice'));
+            let currentSpriceRules = [];
+
+            const METHODS = [
+                { v: 'groi',  label: 'GROI% target' },
+                { v: 'gpft',  label: 'GPFT% target' },
+                { v: 'lmp',   label: 'LMP ±%' },
+                { v: 'fixed', label: 'Fixed $' },
+            ];
+
+            function numAttr(v) {
+                return (v === null || v === undefined || v === '' || isNaN(v)) ? '' : v;
+            }
+
+            function methodOptions(selected) {
+                return METHODS.map(function(m) {
+                    return `<option value="${m.v}" ${m.v === selected ? 'selected' : ''}>${m.label}</option>`;
+                }).join('');
+            }
+
+            function rangeInputs(rule, key) {
+                return `
+                    <td><input type="number" step="0.01" class="form-control form-control-sm text-end"
+                               value="${numAttr(rule[key + '_min'])}" data-field="${key}_min"
+                               onchange="window.spriceRuleUpdate(this)" placeholder="—"></td>
+                    <td><input type="number" step="0.01" class="form-control form-control-sm text-end"
+                               value="${numAttr(rule[key + '_max'])}" data-field="${key}_max"
+                               onchange="window.spriceRuleUpdate(this)" placeholder="—"></td>`;
+            }
+
+            function renderSpriceRules(rules) {
+                const tbody = document.getElementById('sprice-rules-body');
+                if (!tbody) return;
+                tbody.innerHTML = '';
+                if (!rules.length) {
+                    tbody.innerHTML = `<tr><td colspan="15" class="text-center text-muted small py-3">
+                        No rules yet — click <strong>Add rule</strong> to create one.</td></tr>`;
+                    return;
+                }
+                rules.forEach(function(rule, i) {
+                    const tr = document.createElement('tr');
+                    tr.setAttribute('data-idx', i);
+                    tr.innerHTML = `
+                        <td class="text-center text-muted small">${i + 1}</td>
+                        <td><input type="text" class="form-control form-control-sm" value="${(rule.label || '').replace(/"/g, '&quot;')}"
+                                   data-field="label" onchange="window.spriceRuleUpdate(this)" placeholder="Rule ${i + 1}"></td>
+                        ${rangeInputs(rule, 'dil')}
+                        ${rangeInputs(rule, 'el30')}
+                        ${rangeInputs(rule, 'cvr')}
+                        ${rangeInputs(rule, 'groi')}
+                        ${rangeInputs(rule, 'lmp')}
+                        <td><select class="form-select form-select-sm" data-field="method"
+                                    onchange="window.spriceRuleUpdate(this)">${methodOptions(rule.method || 'groi')}</select></td>
+                        <td><input type="number" step="0.01" class="form-control form-control-sm text-end"
+                                   value="${numAttr(rule.value)}" data-field="value"
+                                   onchange="window.spriceRuleUpdate(this)"></td>
+                        <td class="text-center">
+                            <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1"
+                                    onclick="window.spriceRuleRemove(${i})" title="Remove rule">&times;</button>
+                        </td>`;
+                    tbody.appendChild(tr);
+                });
+            }
+
+            // Each <input>/<select> carries data-field; the row carries data-idx.
+            window.spriceRuleUpdate = function(el) {
+                const tr = el.closest('tr');
+                const idx = parseInt(tr.getAttribute('data-idx'), 10);
+                const field = el.dataset.field;
+                if (!currentSpriceRules[idx]) return;
+                if (field === 'label' || field === 'method') {
+                    currentSpriceRules[idx][field] = el.value;
+                } else {
+                    currentSpriceRules[idx][field] = (el.value === '' ? null : parseFloat(el.value));
+                }
+            };
+
+            window.spriceRuleRemove = function(idx) {
+                currentSpriceRules.splice(idx, 1);
+                renderSpriceRules(currentSpriceRules);
+            };
+
+            $(document).on('click', '#sprice-add-rule-btn', function() {
+                currentSpriceRules.push({
+                    label: '', dil_min: null, dil_max: null, el30_min: null, el30_max: null,
+                    cvr_min: null, cvr_max: null, groi_min: null, groi_max: null,
+                    lmp_min: null, lmp_max: null, method: 'groi', value: 30
+                });
+                renderSpriceRules(currentSpriceRules);
+            });
+
+            function loadSpriceRules() {
+                $.ajax({
+                    url: spriceGetUrl,
+                    method: 'GET',
+                    dataType: 'json',
+                    success: function(data) {
+                        currentSpriceRules = (data && Array.isArray(data.rules)) ? data.rules : [];
+                        renderSpriceRules(currentSpriceRules);
+                    },
+                    error: function(xhr) {
+                        const errEl = document.getElementById('sprice-rule-err');
+                        if (errEl) {
+                            errEl.textContent = 'Could not load Sprice Rule (HTTP ' + xhr.status + ').';
+                            errEl.classList.remove('d-none');
+                        }
+                        console.error('[Sprice Rule] load failed', xhr.status, xhr.responseText);
+                    }
+                });
+            }
+
+            const spriceModalEl = document.getElementById('spriceRuleModal');
+            if (spriceModalEl) {
+                spriceModalEl.addEventListener('show.bs.modal', loadSpriceRules);
+            }
+
+            // Save rules to DB (does not touch any row's SPRICE).
+            $('#sprice-rule-save-btn').on('click', function() {
+                const errEl = document.getElementById('sprice-rule-err');
+                errEl.classList.add('d-none');
+                const btn = this;
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Saving…';
+
+                $.ajax({
+                    url: spriceSaveUrl,
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                    contentType: 'application/json',
+                    data: JSON.stringify({ rules: currentSpriceRules || [] }),
+                    success: function(resp) {
+                        btn.disabled = false;
+                        btn.innerHTML = '<i class="fas fa-check me-1"></i>Saved!';
+                        if (resp.rule && Array.isArray(resp.rule.rules)) currentSpriceRules = resp.rule.rules;
+                        if (typeof showToast === 'function') showToast('success', 'Sprice Rule saved');
+                        setTimeout(() => { btn.innerHTML = '<i class="fas fa-save me-1"></i>Save Rule'; }, 1200);
+                    },
+                    error: function(xhr) {
+                        btn.disabled = false;
+                        btn.innerHTML = '<i class="fas fa-save me-1"></i>Save Rule';
+                        errEl.textContent = 'Error: ' + ((xhr.responseJSON && xhr.responseJSON.error) || xhr.responseText);
+                        errEl.classList.remove('d-none');
+                    }
+                });
+            });
+
+            // ── Rule evaluation helpers ──────────────────────────────────────
+            function inRange(val, min, max) {
+                if (min !== null && min !== undefined && min !== '' && val < parseFloat(min)) return false;
+                if (max !== null && max !== undefined && max !== '' && val > parseFloat(max)) return false;
+                return true;
+            }
+
+            function factorsOf(rd) {
+                const inv = parseFloat(rd.INV) || 0;
+                const ovl30 = parseFloat(rd['L30']) || 0;
+                return {
+                    dil: inv > 0 ? (ovl30 / inv) * 100 : 0,
+                    el30: parseFloat(rd['eBay L30']) || 0,
+                    cvr: parseFloat(rd.SCVR) || 0,
+                    groi: parseFloat(rd['ROI%']) || 0,
+                    lmp: parseFloat(rd.lmp_price) || 0
+                };
+            }
+
+            function ruleMatches(rule, f) {
+                return inRange(f.dil,  rule.dil_min,  rule.dil_max)
+                    && inRange(f.el30, rule.el30_min, rule.el30_max)
+                    && inRange(f.cvr,  rule.cvr_min,  rule.cvr_max)
+                    && inRange(f.groi, rule.groi_min, rule.groi_max)
+                    && inRange(f.lmp,  rule.lmp_min,  rule.lmp_max);
+            }
+
+            // Returns { sprice } or { skip:'reason' }.
+            function spriceFromRule(rule, rd) {
+                const v = parseFloat(rule.value);
+                const lp = parseFloat(rd.LP_productmaster) || 0;
+                const ship = parseFloat(rd.Ship_productmaster) || 0;
+                const marginRaw = parseFloat(rd.percentage);
+                const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : 0.85;
+
+                switch (rule.method) {
+                    case 'fixed':
+                        return isFinite(v) && v > 0 ? { sprice: v } : { skip: 'invalid fixed value' };
+                    case 'lmp': {
+                        const lmp = parseFloat(rd.lmp_price) || 0;
+                        if (lmp <= 0) return { skip: 'no LMP' };
+                        return { sprice: lmp * (1 + (isFinite(v) ? v : 0) / 100) };
+                    }
+                    case 'gpft': {
+                        if (lp <= 0) return { skip: 'no LP' };
+                        const denom = margin - (v / 100);
+                        if (denom <= 0) return { skip: 'GPFT% ≥ margin' };
+                        return { sprice: (lp + ship) / denom };
+                    }
+                    case 'groi':
+                    default: {
+                        if (lp <= 0) return { skip: 'no LP' };
+                        return { sprice: (lp * (1 + v / 100) + ship) / margin };
+                    }
+                }
+            }
+
+            // Apply rules to every row currently visible in the table (post-filter).
+            $('#sprice-rule-apply-btn').on('click', function() {
+                const btn = this;
+                const statusEl = document.getElementById('sprice-rule-status');
+                const errEl = document.getElementById('sprice-rule-err');
+                errEl.classList.add('d-none');
+
+                if (!currentSpriceRules.length) {
+                    errEl.textContent = 'Add at least one rule before applying.';
+                    errEl.classList.remove('d-none');
+                    return;
+                }
+                if (typeof table === 'undefined' || !table) {
+                    errEl.textContent = 'Table not ready yet.';
+                    errEl.classList.remove('d-none');
+                    return;
+                }
+
+                // "active" rows = rows that pass all current filters (i.e. what's visible).
+                const rows = table.getRows('active');
+                const toProcess = [];
+                let noMatch = 0, skipped = 0;
+
+                rows.forEach(function(r) {
+                    const rd = r.getData();
+                    const sku = rd['(Child) sku'];
+                    if (!sku) return;
+                    if (rd.is_parent_summary || rd.is_parent_row) return;
+                    if (rd.Parent && String(rd.Parent).toUpperCase().startsWith('PARENT')) return;
+
+                    const f = factorsOf(rd);
+                    const matched = currentSpriceRules.find(function(rule) { return ruleMatches(rule, f); });
+                    if (!matched) { noMatch++; return; }
+
+                    const res = spriceFromRule(matched, rd);
+                    if (res.skip) { skipped++; return; }
+                    const sprice = +Number(res.sprice).toFixed(2);
+                    if (!isFinite(sprice) || sprice <= 0) { skipped++; return; }
+                    toProcess.push({ row: r, sku: sku, sprice: sprice });
+                });
+
+                if (!toProcess.length) {
+                    errEl.textContent = `No rows matched a rule with a valid price (matched-but-skipped: ${skipped}, unmatched: ${noMatch}).`;
+                    errEl.classList.remove('d-none');
+                    return;
+                }
+
+                if (!confirm(`Auto-populate SPRICE for ${toProcess.length} visible row(s)?\n\nUnmatched rows left unchanged: ${noMatch}. Matched-but-skipped: ${skipped}.`)) {
+                    return;
+                }
+
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Applying…';
+                let done = 0, ok = 0, fail = 0;
+                const total = toProcess.length;
+
+                toProcess.forEach(function(item) {
+                    $.ajax({
+                        url: spriceApplyUrl,
+                        method: 'POST',
+                        headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                        data: { sku: item.sku, sprice: item.sprice },
+                        success: function(response) {
+                            ok++;
+                            item.row.update({
+                                SPRICE: item.sprice,
+                                SPFT: response.spft_percent != null ? response.spft_percent : 0,
+                                SROI: response.sroi_percent != null ? response.sroi_percent : 0,
+                                SGROI: response.sgroi_percent != null ? response.sgroi_percent : 0,
+                                SGPFT: response.sgpft_percent != null ? response.sgpft_percent : 0,
+                                SPRICE_STATUS: 'saved',
+                                has_custom_sprice: true
+                            });
+                            item.row.reformat();
+                        },
+                        error: function() { fail++; },
+                        complete: function() {
+                            done++;
+                            if (statusEl) statusEl.textContent = `Applying… ${done}/${total}`;
+                            if (done === total) {
+                                btn.disabled = false;
+                                btn.innerHTML = '<i class="fas fa-bolt me-1"></i>Apply to Visible Rows';
+                                if (statusEl) statusEl.textContent = `Done: ${ok} saved, ${fail} failed, ${noMatch} unmatched.`;
+                                if (typeof showToast === 'function') {
+                                    if (fail === 0) showToast('success', `SPRICE set on ${ok} row(s) from rules`);
+                                    else showToast('error', `Saved ${ok}/${total} (${fail} failed)`);
+                                }
+                            }
+                        }
+                    });
+                });
+            });
+
+            // Prime on init so the first modal open is instant.
+            if (document.getElementById('spriceRuleModal')) {
+                loadSpriceRules();
+            } else {
+                document.addEventListener('DOMContentLoaded', loadSpriceRules);
+            }
         })();
 
     </script>

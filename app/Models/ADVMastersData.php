@@ -192,31 +192,6 @@ class ADVMastersData extends Model
         }
     }
 
-    protected function getAmzonAdvSaveMissingDataProceed($request)
-    {
-        try {
-            DB::beginTransaction();
-
-                $updateAmazon = ADVMastersData::where('channel', 'AMAZON')->first();
-                $updateAmazon->missing_ads = $request->totalMissingAds;
-                $updateAmazon->save();
-
-                $updateAmazonkw = ADVMastersData::where('channel', 'AMZ KW')->first();
-                $updateAmazonkw->missing_ads = $request->kwMissing;
-                $updateAmazonkw->save();
-
-                $updateAmazonpt = ADVMastersData::where('channel', 'AMZ PT')->first();
-                $updateAmazonpt->missing_ads = $request->ptMissing;
-                $updateAmazonpt->save();
-    
-            DB::commit();
-            return 1; 
-        } catch (\Exception $e) {
-            DB::rollBack(); 
-            return 0;
-        }
-    }
-
     protected function getEbayMissingSaveDataProceed($request)
     {
         try {

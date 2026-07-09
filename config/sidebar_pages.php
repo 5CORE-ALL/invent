@@ -96,27 +96,19 @@ return [
     ['value' => 'fba_inv_age', 'text' => 'FBA INV AGE', 'group' => 'Marketplace'],
     ['value' => 'amazon_pricing', 'text' => 'Amazon Pricing', 'group' => 'Marketplace'],
     ['value' => 'listing_amazon', 'text' => 'Listing Amazon', 'group' => 'Marketplace'],
-    ['value' => 'listing_audit_amazon', 'text' => 'Listing Audit Amazon', 'group' => 'Marketplace'],
-
     ['value' => 'ebay', 'text' => 'eBay', 'group' => 'Marketplace'],
     ['value' => 'ebay_zero_view', 'text' => 'eBay 0 View', 'group' => 'Marketplace'],
     ['value' => 'ebay_low_visibility', 'text' => 'eBay Low Visibility', 'group' => 'Marketplace'],
     ['value' => 'listing_ebay', 'text' => 'Listing eBay', 'group' => 'Marketplace'],
-    ['value' => 'listing_audit_ebay', 'text' => 'Listing Audit eBay', 'group' => 'Marketplace'],
-
     ['value' => 'shopify_b2c', 'text' => 'Shopify B2C', 'group' => 'Marketplace'],
     ['value' => 'shopifyb2c_zero_view', 'text' => 'Shopify B2C 0 View', 'group' => 'Marketplace'],
     ['value' => 'shopifyb2c_low_visibility', 'text' => 'Shopify B2C Low Visibility', 'group' => 'Marketplace'],
     ['value' => 'listing_shopifyb2c', 'text' => 'Listing Shopify B2C', 'group' => 'Marketplace'],
-    ['value' => 'listing_audit_shopifyb2c', 'text' => 'Listing Audit Shopify B2C', 'group' => 'Marketplace'],
-
     ['value' => 'macys', 'text' => 'Macy\'s', 'group' => 'Marketplace'],
     ['value' => 'macys_pricing_tabulator', 'text' => "Macy's Pricing Tabulator", 'group' => 'Marketplace'],
     ['value' => 'macys_zero_view', 'text' => 'Macy\'s 0 View', 'group' => 'Marketplace'],
     ['value' => 'macy_low_visibility', 'text' => 'Macy\'s Low Visibility', 'group' => 'Marketplace'],
     ['value' => 'listing_macys', 'text' => 'Listing Macy\'s', 'group' => 'Marketplace'],
-    ['value' => 'listing_audit_macys', 'text' => 'Listing Audit Macy\'s', 'group' => 'Marketplace'],
-
     ['value' => 'newegg_b2c', 'text' => 'Newegg B2C', 'group' => 'Marketplace'],
     ['value' => 'neweggb2c_zero_view', 'text' => 'Newegg B2C 0 View', 'group' => 'Marketplace'],
     ['value' => 'neweggb2c_low_visibility', 'text' => 'Newegg B2C Low Visibility', 'group' => 'Marketplace'],
@@ -124,11 +116,7 @@ return [
     ['value' => 'listing_audit_Neweggb2c', 'text' => 'Listing Audit Newegg B2C', 'group' => 'Marketplace'],
 
     ['value' => 'wayfair', 'text' => 'Wayfair', 'group' => 'Marketplace'],
-    ['value' => 'wayfair_zero_view', 'text' => 'Wayfair 0 View', 'group' => 'Marketplace'],
-    ['value' => 'wayfair_low_visibility', 'text' => 'Wayfair Low Visibility', 'group' => 'Marketplace'],
     ['value' => 'listing_wayfair', 'text' => 'Listing Wayfair', 'group' => 'Marketplace'],
-    ['value' => 'listing_audit_wayfair', 'text' => 'Listing Audit Wayfair', 'group' => 'Marketplace'],
-
     ['value' => 'reverb', 'text' => 'Reverb', 'group' => 'Marketplace'],
     ['value' => 'listing_reverb', 'text' => 'Listing Reverb', 'group' => 'Marketplace'],
 
@@ -136,10 +124,7 @@ return [
     ['value' => 'temu_zero_view', 'text' => 'Temu 0 View', 'group' => 'Marketplace'],
     ['value' => 'temu_low_visibility', 'text' => 'Temu Low Visibility', 'group' => 'Marketplace'],
     ['value' => 'listing_temu', 'text' => 'Listing Temu', 'group' => 'Marketplace'],
-    ['value' => 'listing_audit_temu', 'text' => 'Listing Audit Temu', 'group' => 'Marketplace'],
-
     ['value' => 'doba', 'text' => 'Doba', 'group' => 'Marketplace'],
-    ['value' => 'doba_zero_view', 'text' => 'Doba 0 View', 'group' => 'Marketplace'],
     ['value' => 'doba_low_visibility', 'text' => 'Doba Low Visibility', 'group' => 'Marketplace'],
     ['value' => 'listing_doba', 'text' => 'Listing Doba', 'group' => 'Marketplace'],
     ['value' => 'listing_audit_doba', 'text' => 'Listing Audit Doba', 'group' => 'Marketplace'],
@@ -162,25 +147,16 @@ return [
     ['value' => 'ebayvariation', 'text' => 'eBay Variation', 'group' => 'Marketplace'],
     ['value' => 'listing_ebayvariation', 'text' => 'Listing eBay Variation', 'group' => 'Marketplace'],
 
-    ['value' => 'shopifywholesale', 'text' => 'Shopify wholesale/DS', 'group' => 'Marketplace'],
-    ['value' => 'listing_shopifywholesale', 'text' => 'Listing Shopify wholesale/DS', 'group' => 'Marketplace'],
-
     ['value' => 'faire', 'text' => 'Faire', 'group' => 'Marketplace'],
-    ['value' => 'listing_faire', 'text' => 'Listing Faire', 'group' => 'Marketplace'],
-
     ['value' => 'tiktokshop', 'text' => 'Tiktok Shop', 'group' => 'Marketplace'],
     ['value' => 'listing_tiktokshop', 'text' => 'Listing Tiktok Shop', 'group' => 'Marketplace'],
     ['value' => 'tiktok_pricing', 'text' => 'TikTok Pricing', 'group' => 'Marketplace'],
 
     ['value' => 'mercariwship', 'text' => 'Mercari w Ship', 'group' => 'Marketplace'],
-    ['value' => 'listing_mercariwship', 'text' => 'Listing Mercari w Ship', 'group' => 'Marketplace'],
-
     ['value' => 'fbmarketplace', 'text' => 'FB Marketplace', 'group' => 'Marketplace'],
     ['value' => 'listing_fbmarketplace', 'text' => 'Listing FB Marketplace', 'group' => 'Marketplace'],
 
     ['value' => 'business5core', 'text' => 'Business 5Core', 'group' => 'Marketplace'],
-    ['value' => 'listing_business5core', 'text' => 'Listing Business 5Core', 'group' => 'Marketplace'],
-
     ['value' => 'pls', 'text' => 'PLS', 'group' => 'Marketplace'],
     ['value' => 'listing_pls', 'text' => 'Listing PLS', 'group' => 'Marketplace'],
 
@@ -227,8 +203,6 @@ return [
     ['value' => 'listing_yamibuy', 'text' => 'Listing Yamibuy', 'group' => 'Marketplace'],
 
     ['value' => 'dhgate', 'text' => 'DHGate', 'group' => 'Marketplace'],
-    ['value' => 'listing_dhgate', 'text' => 'Listing DHGate', 'group' => 'Marketplace'],
-
     ['value' => 'bestbuyusa', 'text' => 'Bestbuy USA', 'group' => 'Marketplace'],
     ['value' => 'listing_bestbuyusa', 'text' => 'Listing Bestbuy USA', 'group' => 'Marketplace'],
 
@@ -238,20 +212,9 @@ return [
     ['value' => 'ebayTwo_zero_view', 'text' => 'Ebay 2 0 View', 'group' => 'Marketplace'],
     ['value' => 'ebayThree_zero_view', 'text' => 'Ebay 3 0 View', 'group' => 'Marketplace'],
     ['value' => 'walmart_zero_view', 'text' => 'Walmart 0 View', 'group' => 'Marketplace'],
-    ['value' => 'aliexpress_zero_view', 'text' => 'Aliexpress 0 View', 'group' => 'Marketplace'],
     ['value' => 'ebay_variation_zero_view', 'text' => 'eBay Variation 0 View', 'group' => 'Marketplace'],
-    ['value' => 'shopify_wholesale_zero_view', 'text' => 'Shopify Wholesale 0 View', 'group' => 'Marketplace'],
-    ['value' => 'faire_zero_view', 'text' => 'Faire 0 View', 'group' => 'Marketplace'],
-    ['value' => 'tiktokshop_zero_view', 'text' => 'Tiktok Shop 0 View', 'group' => 'Marketplace'],
-    ['value' => 'mercariwship_zero_view', 'text' => 'Mercari w Ship 0 View', 'group' => 'Marketplace'],
-    ['value' => 'fbmarketplace_zero_view', 'text' => 'FB Marketplace 0 View', 'group' => 'Marketplace'],
-    ['value' => 'business5core_zero_view', 'text' => 'Business 5Core 0 View', 'group' => 'Marketplace'],
-    ['value' => 'pls_zero_view', 'text' => 'PLS 0 View', 'group' => 'Marketplace'],
     ['value' => 'autods_zero_view', 'text' => 'Auto DS 0 View', 'group' => 'Marketplace'],
-    ['value' => 'mercariwoship_zero_view', 'text' => 'Mercari w/o Ship 0 View', 'group' => 'Marketplace'],
     ['value' => 'poshmark_zero_view', 'text' => 'Poshmark 0 View', 'group' => 'Marketplace'],
-    ['value' => 'tiendamia_zero_view', 'text' => 'Tiendamia 0 View', 'group' => 'Marketplace'],
-    ['value' => 'shein_zero_view', 'text' => 'Shein 0 View', 'group' => 'Marketplace'],
     ['value' => 'spocket_zero_view', 'text' => 'Spocket 0 View', 'group' => 'Marketplace'],
     ['value' => 'zendrop_zero_view', 'text' => 'Zendrop 0 View', 'group' => 'Marketplace'],
     ['value' => 'syncee_zero_view', 'text' => 'Syncee 0 View', 'group' => 'Marketplace'],
@@ -261,7 +224,6 @@ return [
     ['value' => 'fbshop_zero_view', 'text' => 'FB Shop 0 View', 'group' => 'Marketplace'],
     ['value' => 'instagramshop_zero_view', 'text' => 'Instagram Shop 0 View', 'group' => 'Marketplace'],
     ['value' => 'yamibuy_zero_view', 'text' => 'Yamibuy 0 View', 'group' => 'Marketplace'],
-    ['value' => 'dhgate_zero_view', 'text' => 'DHGate 0 View', 'group' => 'Marketplace'],
     ['value' => 'bestbuyusa_zero_view', 'text' => 'Bestbuy USA 0 View', 'group' => 'Marketplace'],
     ['value' => 'swgearexchange_zero_view', 'text' => 'SW Gear Exchange 0 View', 'group' => 'Marketplace'],
 

@@ -1141,27 +1141,6 @@
                                                                     Analytics</a>
                                                             </li>
                                                         
-                                                            <li>
-                                                                <a href="{{ route('amazon.zero.view') }}">Amazon 0
-                                                                    view</a>
-                                                            </li>
-                                                      
-                                                            <li>
-                                                                <a href="{{ route('amazon.low.visibility.view') }}">
-                                                                    Low Visibility</a>
-                                                            </li>
-                                                        <li>
-                                                            <a href="{{ route('amazon.low.visibility.view.fba') }}">
-                                                                Low Visibility FBA</a>
-                                                        </li>
-                                                        <li>
-                                                            <a href="{{ route('amazon.low.visibility.view.fbm') }}">
-                                                                Low Visibility FBM</a>
-                                                        </li>
-                                                        <li>
-                                                            <a href="{{ route('amazon.low.visibility.view.both') }}">
-                                                                Low Visibility BOTH</a>
-                                                        </li>
                                                     </ul>
                                                 </div>
                                             </li>
@@ -1196,11 +1175,6 @@
 
                                             <li>
                                                 <a href="{{ route('listing.amazon') }}">Listing Amazon</a>
-                                            </li>
-
-                                            <li>
-                                                <a href="{{ route('listing.audit.amazon') }}">Listing Audit
-                                                    Amazon</a>
                                             </li>
 
                                         <li>
@@ -1321,10 +1295,6 @@
                                         </li>
 
                                         <li>
-                                            <a href="{{ route('listing.audit.ebay') }}">Listing Audit eBay</a>
-                                        </li>
-
-                                        <li>
                                             <a href="{{ url('ebay-pricing-cvr') }}">Ebay Pricing - CVR</a>
                                         </li>
 
@@ -1403,15 +1373,7 @@
                                         </li>
 
                                         <li>
-                                            <a href="{{ route('listing.audit.shopifyb2c') }}">Listing Audit Shopify B2C</a>
-                                        </li>
-
-                                        <li>
                                             <a href="{{ url('shopify-pricing-cvr') }}">Shopify Pricing - CVR</a>
-                                        </li>
-
-                                        <li>
-                                            <a href="{{ url('shopify-pricing-increase-decrease') }}">Pricing - Increase/Decrease</a>
                                         </li>
 
                                     </ul>
@@ -1440,19 +1402,12 @@
                                                     <li>
                                                         <a href="{{ route('macy.zero.view') }}">Macy's 0 view</a>
                                                     </li>
-                                                    <li>
-                                                        <a href="{{ route('macy.low.visibility.view') }}">Macy's Low Visibility</a>
-                                                    </li>
                                                 </ul>
                                             </div>
                                         </li>
 
                                         <li>
                                             <a href="{{ route('listing.macys') }}">Listing Macy's</a>
-                                        </li>
-
-                                        <li>
-                                            <a href="{{ route('listing.audit.macy') }}">Listing Audit Macy's</a>
                                         </li>
 
                                         <li>
@@ -1540,43 +1495,8 @@
                                         <li>
                                             <a href="{{ route('wayfair.pricing.view') }}">Wayfair Analytics</a>
                                         </li>
-                                        @if (
-                                            (isset($permissions['wayfair']) && in_array('view', $permissions['wayfair'])) ||
-                                                (isset($permissions['wayfair_zero_view']) && in_array('view', $permissions['wayfair_zero_view'])) ||
-                                                (isset($permissions['wayfair_low_visibility']) && in_array('view', $permissions['wayfair_low_visibility'])))
-                                            <li>
-                                                <a data-bs-toggle="collapse" href="#wayfairSubmenu"
-                                                    aria-expanded="false" aria-controls="wayfairSubmenu">
-                                                    <span>Wayfair View</span>
-                                                    <span class="menu-arrow"></span>
-                                                </a>
-                                                <div class="collapse" id="wayfairSubmenu">
-                                                    <ul class="side-nav-fourth-level">
-                                                     
-                                                        @if (isset($permissions['wayfair_zero_view']) && in_array('view', $permissions['wayfair_zero_view']))
-                                                            <li>
-                                                                <a href="{{ route('wayfair.zero.view') }}">Wayfair 0
-                                                                    view</a>
-                                                            </li>
-                                                        @endif
-                                                        @if (isset($permissions['wayfair_low_visibility']) && in_array('view', $permissions['wayfair_low_visibility']))
-                                                            <li>
-                                                                <a href="{{ route('wayfair.low.visibility.view') }}">Wayfair
-                                                                    Low Visibility</a>
-                                                            </li>
-                                                        @endif
-                                                    </ul>
-                                                </div>
-                                            </li>
-                                        @endif
-
                                             <li>
                                                 <a href="{{ route('listing.wayfair') }}">Listing Wayfair</a>
-                                            </li>
-
-                                            <li>
-                                                <a href="{{ route('listing.audit.wayfair') }}">Listing Audit
-                                                    Wayfair</a>
                                             </li>
 
 
@@ -1684,11 +1604,6 @@
                                             </li>
                                         @endif
 
-                                        @if (isset($permissions['listing_audit_temu']) && in_array('view', $permissions['listing_audit_temu']))
-                                            <li>
-                                                <a href="{{ route('listing.audit.temu') }}">Listing Audit Temu</a>
-                                            </li>
-                                        @endif
                                     </ul>
                                 </div>
                             </li>
@@ -1718,7 +1633,6 @@
                                     <ul class="side-nav-third-level">
                                         @if (
                                             (isset($permissions['doba']) && in_array('view', $permissions['doba'])) ||
-                                                (isset($permissions['doba_zero_view']) && in_array('view', $permissions['doba_zero_view'])) ||
                                                 (isset($permissions['doba_low_visibility']) && in_array('view', $permissions['doba_low_visibility'])))
                                             <li>
                                                 <a data-bs-toggle="collapse" href="#dobaSubmenu"
@@ -1734,11 +1648,6 @@
                                                             </li>
                                                         @endif
 
-                                                        @if (isset($permissions['doba_zero_view']) && in_array('view', $permissions['doba_zero_view']))
-                                                            <li>
-                                                                <a href="{{ route('zero.doba') }}">Doba 0 view</a>
-                                                            </li>
-                                                        @endif
                                                     </ul>
                                                 </div>
                                             </li>
@@ -1784,22 +1693,6 @@
                                                     <li>
                                                         <a href="{{ url('ebayTwoAnalysis') }}">Ebay 2's Analytics</a>
                                                     </li>
-                                                    {{-- <li>
-                                                        <a href="{{ route('zero.ebay2') }}">Ebay 2's 0 View</a>
-                                                    </li> --}}
-                                                 
-                                                        <li>
-                                                            <a href="{{ route('ebay2.low.visibility.view') }}">Ebay
-                                                                2's Low Visibility</a>
-                                                        </li>
-                                                 
-
-                                                  
-                                                        <li>
-                                                            <a href="{{ route('zero.ebay2') }}">Ebay 2's 0
-                                                                view</a>
-                                                        </li>
-                                                
                                                 </ul>
                                             </div>
                                         </li>
@@ -1836,18 +1729,6 @@
                                                         <a href="{{ url('ebayThreeAnalysis') }}">Ebay 3's
                                                             Analytics</a>
                                                     </li>
-                                                    {{-- <li>
-                                                        <a href="{{ route('zero.ebay3') }}">Ebay 3's 0 View</a>
-                                                    </li> --}}
-                                                        <li>
-                                                            <a href="{{ route('ebay3.low.visibility.view') }}">Ebay
-                                                                3's Low Visibility</a>
-                                                        </li>
-
-                                                        <li>
-                                                            <a href="{{ route('zero.ebay3') }}">Ebay 3's 0
-                                                                view</a>
-                                                        </li>
                                                 </ul>
                                             </div>
                                         </li>
@@ -1919,10 +1800,6 @@
                                             <a href="{{ url('aliexpressAnalysis') }}">Aliexpress Analytics</a>
                                         </li>
 
-                                        <li>
-                                            <a href="{{ route('zero.aliexpress') }}">Aliexpress 0 view</a>
-                                        </li>
-
                                             <li><a href="{{ route('listing.aliexpress') }}">Listing Aliexpress</a>
                                             </li>
 
@@ -1956,27 +1833,6 @@
                                     </ul>
                                 </div>
                             </li> --}}
-                            <!-- Shopify wholesale/DS -->
-                            <li class="side-nav-item">
-                                <a data-bs-toggle="collapse" href="#sidebarShopifyWholesale" aria-expanded="false"
-                                    aria-controls="sidebarShopifyWholesale">
-                                    <span>Shopify wholesale/DS</span>
-                                    <span class="menu-arrow"></span>
-                                </a>
-                                <div class="collapse" id="sidebarShopifyWholesale">
-                                    <ul class="side-nav-third-level">
-                                        <li><a href="#">Shopify Wholesale Analytics</a></li>
-
-                                            <li>
-                                                <a href="{{ route('zero.shopifywholesale') }}">Shopify Wholesale 0
-                                                    view</a>
-                                            </li>
-
-                                            <li><a href="{{ route('listing.shopifywholesale') }}">Listing Shopify
-                                                    wholesale/DS</a></li>
-                                    </ul>
-                                </div>
-                            </li>
                             <!-- Faire -->
                             <li class="side-nav-item">
                                 <a data-bs-toggle="collapse" href="#sidebarFaire" aria-expanded="false"
@@ -1988,8 +1844,6 @@
                                     <ul class="side-nav-third-level">
                                             <li><a href="{{ url('faireAnalysis') }}">Faire dashboard</a></li>
                                             <li><a href="{{ route('faire.pricing.view') }}">Faire Analytics</a></li>
-                                            <li><a href="{{ route('zero.faire') }}">Faire 0 view</a></li>
-                                            <li><a href="{{ route('listing.faire') }}">Listing Faire</a></li>
                                     </ul>
                                 </div>
                             </li>
@@ -2002,30 +1856,8 @@
                                 </a>
                                 <div class="collapse" id="sidebarTiktokShop">
                                     <ul class="side-nav-third-level">
-                                        <li>
-                                            <a href="{{ route('zero.tiktokshop') }}">Tiktok Shop 0 view</a>
-                                        </li>
-
                                             <li><a href="{{ route('listing.tiktokshop') }}">Listing Tiktok Shop</a>
                                             </li>
-                                    </ul>
-                                </div>
-                            </li>
-                            <!-- Mercari w Ship -->
-                            <li class="side-nav-item">
-                                <a data-bs-toggle="collapse" href="#sidebarMercariWShip" aria-expanded="false"
-                                    aria-controls="sidebarMercariWShip">
-                                    <span>Mercari w Ship</span>
-                                    <span class="menu-arrow"></span>
-                                </a>
-                                <div class="collapse" id="sidebarMercariWShip">
-                                    <ul class="side-nav-third-level">
-                                            <li>
-                                                <a href="{{ route('zero.mercariwship') }}">Mercari w Ship 0 view</a>
-                                            </li>
-
-                                            <li><a href="{{ route('listing.mercariwship') }}">Listing Mercari w
-                                                    Ship</a></li>
                                     </ul>
                                 </div>
                             </li>
@@ -2038,32 +1870,8 @@
                                 </a>
                                 <div class="collapse" id="sidebarFBMarketplace">
                                     <ul class="side-nav-third-level">
-                                            <li>
-                                                <a href="{{ route('zero.fbmarketplace') }}">FB Marketplace 0
-                                                    view</a>
-                                            </li>
-
                                             <li><a href="{{ route('listing.fbmarketplace') }}">Listing FB
                                                     Marketplace</a></li>
-                                    </ul>
-                                </div>
-                            </li>
-                            <!-- Business 5Core -->
-                            <li class="side-nav-item">
-                                <a data-bs-toggle="collapse" href="#sidebarBusiness5Core" aria-expanded="false"
-                                    aria-controls="sidebarBusiness5Core">
-                                    <span>Business 5Core</span>
-                                    <span class="menu-arrow"></span>
-                                </a>
-                                <div class="collapse" id="sidebarBusiness5Core">
-                                    <ul class="side-nav-third-level">
-                                            <li>
-                                                <a href="{{ route('zero.business5core') }}">Business 5Core 0
-                                                    view</a>
-                                            </li>
-
-                                            <li><a href="{{ route('listing.business5core') }}">Listing Business
-                                                    5Core</a></li>
                                     </ul>
                                 </div>
                             </li>
@@ -2076,10 +1884,6 @@
                                 </a>
                                 <div class="collapse" id="sidebarPLS">
                                     <ul class="side-nav-third-level">
-                                            <li>
-                                                <a href="{{ route('zero.pls') }}">PLS 0 view</a>
-                                            </li>
-
                                             <li><a href="{{ route('listing.pls') }}">Listing PLS</a></li>
                                     </ul>
                                 </div>
@@ -2116,11 +1920,6 @@
                                 </a>
                                 <div class="collapse" id="sidebarMercariWoShip">
                                     <ul class="side-nav-third-level">
-                                            <li>
-                                                <a href="{{ route('zero.mercariwoship') }}">Mercari w/o Ship 0
-                                                    view</a>
-                                            </li>
-
                                             <li><a href="{{ route('listing.mercariwoship') }}">Listing Mercari w/o
                                                     Ship</a></li>
                                     </ul>
@@ -2158,10 +1957,6 @@
                                 </a>
                                 <div class="collapse" id="sidebarTiendamia">
                                     <ul class="side-nav-third-level">
-                                            <li>
-                                                <a href="{{ route('zero.tiendamia') }}">Tiendamia 0 view</a>
-                                            </li>
-
                                             <li><a href="{{ route('listing.tiendamia') }}">Listing Tiendamia</a>
                                             </li>
                                             <li><a href="{{ route('tiendamia.pricing') }}">Tiendamia Pricing</a></li>
@@ -2177,7 +1972,6 @@
                                 </a>
                                 <div class="collapse" id="sidebarShein">
                                     <ul class="side-nav-third-level">
-                                            <li><a href="{{ route('zero.shein') }}">Shein 0 view</a></li>
                                             <li><a href="{{ route('listing.shein') }}">Listing Shein</a></li>
                                     </ul>
                                 </div>
@@ -2358,25 +2152,6 @@
                                     </ul>
                                 </div>
                             </li> -->
-                            <!-- DHGate -->
-                            <li class="side-nav-item">
-                                <a data-bs-toggle="collapse" href="#sidebarDHGate" aria-expanded="false"
-                                    aria-controls="sidebarDHGate">
-                                    <span>DHGate</span>
-                                    <span class="menu-arrow"></span>
-                                </a>
-                                <div class="collapse" id="sidebarDHGate">
-                                    <ul class="side-nav-third-level">
-                                     
-                                            <li><a href="{{ route('zero.dhgate') }}">DHGate 0 view</a></li>
-                                       
-
-                                      
-                                            <li><a href="{{ route('listing.dhgate') }}">Listing DHGate</a></li>
-                                     
-                                    </ul>
-                                </div>
-                            </li>
                             <!-- Bestbuy USA -->
                             <li class="side-nav-item">
                                 <a data-bs-toggle="collapse" href="#sidebarBestbuyUSA" aria-expanded="false"

@@ -51,23 +51,36 @@
     <div class="toast-container"></div>
     <div class="row">
         <div class="card shadow-sm">
-            <div class="card-body py-3">
-                <div class="d-flex align-items-center flex-wrap gap-2">
+            <div class="card-body py-2">
+                <!-- Summary Stats + filters (single wrapping row) -->
+                <div id="summary-stats" class="d-flex align-items-center flex-wrap gap-1">
+                    <span class="badge bg-success fs-6 p-2" id="total-pft-amt-badge" style="color: black; font-weight: bold; display: none;">PFT: $0</span>
+                    <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-badge" style="color: black; font-weight: bold;">Sales: $0</span>
+                    <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge" style="color: black; font-weight: bold;">GPFT: 0%</span>
+                    <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold; display: none;">Price: $0</span>
+                    <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter 0 sold items">0 Sold: 0</span>
+                    <span class="badge fs-6 p-2" id="more-sold-count-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter items with sales">&gt; 0 Sold: 0</span>
+                    <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: black; font-weight: bold;">ROI%: 0%</span>
+                    <span class="badge bg-danger fs-6 p-2" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amazon">&lt; Amz: 0</span>
+                    <span class="badge fs-6 p-2" id="more-amz-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices greater than Amazon">&gt; Amz: 0</span>
+                    <span class="badge bg-danger fs-6 p-2" id="missing-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter missing prices">Miss: 0</span>
+                    <span class="badge bg-danger fs-6 p-2" id="mapping-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter inventory mapping issues">N Map: 0</span>
+
                     <select id="inventory-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
-                        <option value="all">All Inventory</option>
-                        <option value="zero">0 Inventory</option>
-                        <option value="more" selected>More than 0</option>
+                        <option value="all">All INV</option>
+                        <option value="zero">INV = 0</option>
+                        <option value="more" selected>INV &gt; 0</option>
                     </select>
 
                     <select id="nrl-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
-                        <option value="all">All Status</option>
-                        <option value="REQ" selected>REQ Only</option>
-                        <option value="NR">NR Only</option>
+                        <option value="all">Status</option>
+                        <option value="REQ" selected>REQ</option>
+                        <option value="NR">NR</option>
                     </select>
 
-                    <div class="d-flex flex-column gap-1" style="width: auto;" title="CVR = MC L30 ÷ OV L30">
+                    <div class="d-flex gap-1" style="width: auto;" title="CVR = MC L30 ÷ OV L30">
                         <select id="gpft-filter" class="form-select form-select-sm"
                             style="width: auto; display: inline-block;">
                             <option value="all">GPFT%</option>
@@ -81,7 +94,7 @@
                         </select>
                         <select id="cvr-filter" class="form-select form-select-sm"
                             style="width: auto; display: inline-block;">
-                            <option value="all">All CVR%</option>
+                            <option value="all">CVR%</option>
                             <option value="0-0">0%</option>
                             <option value="0-3">0-3%</option>
                             <option value="3-7">3-7%</option>
@@ -116,8 +129,8 @@
                     </select>
 
                     <select id="dil-filter" class="form-select form-select-sm"
-                        style="width: auto; display: inline-block;">
-                        <option value="all">All DIL%</option>
+                        style="width: 90px; display: inline-block;">
+                        <option value="all">DIL%</option>
                         <option value="red">Red (&lt;16.7%)</option>
                         <option value="yellow">Yellow (16.7-25%)</option>
                         <option value="green">Green (25-50%)</option>
@@ -127,115 +140,61 @@
                     <!-- Column Visibility Dropdown -->
                     <div class="dropdown d-inline-block">
                         <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
-                            id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="fa fa-eye"></i> Columns
+                            id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false"
+                            title="Columns">
+                            <i class="fa fa-eye"></i>
                         </button>
                         <ul class="dropdown-menu" aria-labelledby="columnVisibilityDropdown" id="column-dropdown-menu"
                             style="max-height: 400px; overflow-y: auto;">
                             <!-- Columns will be populated by JavaScript -->
                         </ul>
                     </div>
-                    <button id="show-all-columns-btn" class="btn btn-sm btn-outline-secondary">
-                        <i class="fa fa-eye"></i> Show All
+
+                    <button id="export-btn" class="btn btn-sm btn-info" title="Export CSV">
+                        <i class="fas fa-file-excel"></i>
                     </button>
 
-                    <a href="{{ route('all.marketplace.master') }}" class="btn btn-sm btn-outline-primary"
-                        title="Channel overview — Macys Map / Miss / NMap use the same live rules as this page">
-                        <i class="fas fa-th-large"></i> All Marketplace Master
-                    </a>
-
-                    <button id="export-btn" class="btn btn-sm btn-info">
-                        <i class="fas fa-file-excel"></i> Export CSV
+                    <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#uploadPriceModal" title="Upload Price">
+                        <i class="fa fa-upload"></i> Prc
                     </button>
 
-                    <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#uploadPriceModal">
-                        <i class="fa fa-dollar-sign"></i> Upload Price
-                    </button>
-
-                    <button id="sugg-amz-prc-btn" class="btn btn-sm btn-info">
-                        <i class="fas fa-copy"></i> Sugg Amz Prc
-                    </button>
-
-                    <button id="decrease-btn" class="btn btn-sm btn-warning">
-                        <i class="fas fa-arrow-down"></i> Decrease Mode
-                    </button>
-                    
-                    <button id="increase-btn" class="btn btn-sm btn-success">
-                        <i class="fas fa-arrow-up"></i> Increase Mode
-                    </button>
-
-                    <button id="same-price-btn" class="btn btn-sm btn-info" title="Apply ONE price (entered in the box) to every selected SKU">
-                        <i class="fas fa-equals"></i> Same Price Mode
+                    <button id="mode-toggle-btn" class="btn btn-sm btn-secondary"
+                        title="Click to cycle: Prc Mode → Decrease → Increase → Same Price">
+                        Prc Mode
                     </button>
 
                     {{-- Target ROI% bulk control — back-solves S PRC for selected rows so SROI = Target ROI%.
                          Formula: sprice = (LP × (1 + ROI%/100) + Ship) / margin   (margin = 0.80 for Macys) --}}
-                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
+                    <div class="d-inline-flex align-items-center gap-1 ms-2 px-1 border rounded bg-light"
                         id="target-roi-controls"
                         title="Target ROI% — sets S PRC = (LP × (1 + Target ROI%/100) + Ship) / 0.80 on every selected row (back-solves so SROI column equals the target)">
                         <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
-                            Target ROI%:
+                            <i class="fas fa-bullseye text-danger"></i> ROI%:
                         </label>
                         <input type="number" id="target-roi-input" class="form-control form-control-sm text-end"
-                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
+                            placeholder="30" step="0.1" style="width: 56px;"
                             title="Target ROI% applied to all selected rows when you click 'Apply S PRC'">
                         <button id="apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
                             title="Compute & save S PRC = (LP × (1 + Target ROI%/100) + Ship) / 0.80 for every selected row">
-                            <i class="fas fa-calculator"></i> Apply S PRC
+                            <i class="fas fa-calculator"></i>
                         </button>
                     </div>
 
                     {{-- Target GPFT% bulk control — back-solves S PRC for selected rows so SGPFT = Target GPFT%.
                          Formula: sprice = (LP + Ship) / (margin − GPFT%/100). Target GPFT% must be < margin*100 (else denominator ≤ 0). --}}
-                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
+                    <div class="d-inline-flex align-items-center gap-1 ms-2 px-1 border rounded bg-light"
                         id="target-gpft-controls"
                         title="Target GPFT% — sets S PRC = (LP + Ship) / (0.80 − Target GPFT%/100) on every selected row (back-solves so SGPFT column equals the target)">
                         <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
-                            Target GPFT%:
+                            <i class="fas fa-bullseye text-danger"></i> GPFT%:
                         </label>
                         <input type="number" id="target-gpft-input" class="form-control form-control-sm text-end"
-                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
+                            placeholder="30" step="0.1" style="width: 56px;"
                             title="Target GPFT% applied to all selected rows when you click 'Apply S PRC'. Must be less than the Macys take-home margin (< 80%).">
                         <button id="apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
                             title="Compute & save S PRC = (LP + Ship) / (0.80 − Target GPFT%/100) for every selected row">
-                            <i class="fas fa-calculator"></i> Apply S PRC
+                            <i class="fas fa-calculator"></i>
                         </button>
-                    </div>
-                </div>
-
-                <!-- Summary: L30 order-line row + pricing-table badges -->
-                <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
-                    <h6 class="mb-3">Summary ({{ $macysPercentage }}% Margin)</h6>
-                    <div class="d-flex flex-wrap gap-2 macys-ds-badge-row">
-                        <span class="badge bg-primary fs-6 p-2 macys-ds-summary-badge macys-ds-aggregate" data-role="orders"
-                            style="color: white; font-weight: bold;">Orders: …</span>
-                        <span class="badge bg-success fs-6 p-2 macys-ds-summary-badge macys-ds-aggregate" data-role="quantity"
-                            style="color: white; font-weight: bold;">Quantity: …</span>
-                        <span class="badge fs-6 p-2 macys-ds-summary-badge macys-ds-aggregate" data-role="sales"
-                            style="background-color: #17a2b8; color: white; font-weight: bold;">Sales: …</span>
-                        <span class="badge bg-danger fs-6 p-2 macys-ds-summary-badge macys-ds-aggregate" data-role="gpft-pct"
-                            style="color: white; font-weight: bold;">GPFT %: …</span>
-                        <span class="badge fs-6 p-2 macys-ds-summary-badge macys-ds-aggregate" data-role="roi-pct"
-                            style="background-color: purple; color: white; font-weight: bold;">ROI %: …</span>
-                        <span class="badge bg-warning fs-6 p-2 macys-ds-summary-badge macys-ds-aggregate" data-role="avg-price"
-                            style="color: black; font-weight: bold;">Avg Price: …</span>
-                        <span class="badge bg-dark fs-6 p-2 macys-ds-summary-badge macys-ds-aggregate" data-role="pft-total"
-                            style="color: white; font-weight: bold;">GPFT Total: …</span>
-                        <span class="badge bg-primary fs-6 p-2 macys-ds-summary-badge macys-ds-aggregate" data-role="cogs"
-                            style="color: white; font-weight: bold;">Total COGS: …</span>
-                    </div>
-                    <div class="d-flex flex-wrap gap-2 mt-2">
-                        <span class="badge bg-success fs-6 p-2 d-none" id="total-pft-amt-badge" style="color: black; font-weight: bold;" aria-hidden="true">Total PFT: $0</span>
-                        <span class="badge bg-warning fs-6 p-2 d-none" id="avg-price-badge" style="color: black; font-weight: bold;" aria-hidden="true">Avg Price: $0</span>
-                        <span class="badge bg-primary fs-6 p-2 d-none" id="total-inv-badge" style="color: black; font-weight: bold;" aria-hidden="true">Total INV: 0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter 0 sold items">0 Sold: 0</span>
-                        <span class="badge fs-6 p-2" id="more-sold-count-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter items with sales">&gt; 0 Sold: 0</span>
-                        <span class="badge bg-warning fs-6 p-2 d-none" id="avg-dil-badge" style="color: black; font-weight: bold;" aria-hidden="true">DIL%: 0%</span>
-                        <span class="badge bg-info fs-6 p-2 d-none" id="total-cogs-badge" style="color: black; font-weight: bold;" aria-hidden="true">COGS: $0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amazon">&lt; Amz: 0</span>
-                        <span class="badge fs-6 p-2" id="more-amz-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices greater than Amazon">&gt; Amz: 0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="missing-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter missing prices">Missing L: 0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="mapping-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter inventory mapping issues">Missing M: 0</span>
                     </div>
                 </div>
             </div>
@@ -254,14 +213,17 @@
                         <input type="number" id="discount-percentage-input" class="form-control form-control-sm" 
                             placeholder="Enter %" step="0.01" style="width: 100px;">
                         <button id="apply-discount-btn" class="btn btn-primary btn-sm">Apply</button>
+                        <button id="sugg-amz-prc-btn" class="btn btn-sm btn-info">
+                            <i class="fas fa-copy"></i> Sugg Amz Prc
+                        </button>
                         <button id="clear-sprice-btn" class="btn btn-danger btn-sm">
                             <i class="fas fa-eraser"></i> Clear SPRICE
                         </button>
                     </div>
                 </div>
-                <div id="macys-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
+                <div id="macys-table-wrapper" style="height: calc(100vh - 160px); display: flex; flex-direction: column;">
                     <!-- SKU & Parent Search -->
-                    <div class="p-2 bg-light border-bottom d-flex flex-wrap gap-2 align-items-center">
+                    <div class="px-2 py-1 bg-light border-bottom d-flex flex-wrap gap-2 align-items-center">
                         <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU..." style="max-width: 220px;">
                         <input type="text" id="parent-search" class="form-control form-control-sm" placeholder="Search Parent..." style="max-width: 220px;">
                     </div>
@@ -418,7 +380,8 @@
     }
 
     $(document).ready(function() {
-        loadMacysDailySalesSummary();
+        // Aggregate daily-sales badge row was removed (badges now match BestBuy); no fetch needed.
+        // loadMacysDailySalesSummary();
 
         // Mode button visual resets — keep each in their idle styling.
         function resetDecreaseBtn() {
@@ -454,65 +417,30 @@
         // Keep placeholder in sync when the user toggles % vs $.
         $('#discount-type-select').on('change', function() { syncDiscountInputUi(); });
 
-        // Decrease Mode Toggle
-        $('#decrease-btn').on('click', function() {
-            decreaseModeActive = !decreaseModeActive;
-            increaseModeActive = false;
-            samePriceModeActive = false;
+        // Single toggle that cycles: Prc Mode (off) → Decrease → Increase → Same Price → off
+        $('#mode-toggle-btn').on('click', function() {
             const selectColumn = table.getColumn('_select');
+            const $btn = $(this);
 
-            resetIncreaseBtn();
-            resetSamePriceBtn();
-            if (decreaseModeActive) {
-                $(this).removeClass('btn-warning').addClass('btn-danger')
-                    .html('<i class="fas fa-arrow-down"></i> Decrease ON');
+            if (!decreaseModeActive && !increaseModeActive && !samePriceModeActive) {
+                // off → Decrease
+                decreaseModeActive = true; increaseModeActive = false; samePriceModeActive = false;
+                $btn.removeClass('btn-secondary btn-success btn-info').addClass('btn-danger').text('Decrease ON');
+                selectColumn.show();
+            } else if (decreaseModeActive) {
+                // Decrease → Increase
+                decreaseModeActive = false; increaseModeActive = true; samePriceModeActive = false;
+                $btn.removeClass('btn-secondary btn-danger btn-info').addClass('btn-success').text('Increase ON');
+                selectColumn.show();
+            } else if (increaseModeActive) {
+                // Increase → Same Price
+                decreaseModeActive = false; increaseModeActive = false; samePriceModeActive = true;
+                $btn.removeClass('btn-secondary btn-danger btn-success').addClass('btn-info').text('Same Price ON');
                 selectColumn.show();
             } else {
-                resetDecreaseBtn();
-                selectColumn.hide();
-                selectedSkus.clear();
-                updateSelectedCount();
-            }
-            syncDiscountInputUi();
-        });
-
-        // Increase Mode Toggle
-        $('#increase-btn').on('click', function() {
-            increaseModeActive = !increaseModeActive;
-            decreaseModeActive = false;
-            samePriceModeActive = false;
-            const selectColumn = table.getColumn('_select');
-
-            resetDecreaseBtn();
-            resetSamePriceBtn();
-            if (increaseModeActive) {
-                $(this).removeClass('btn-success').addClass('btn-danger')
-                    .html('<i class="fas fa-arrow-up"></i> Increase ON');
-                selectColumn.show();
-            } else {
-                resetIncreaseBtn();
-                selectColumn.hide();
-                selectedSkus.clear();
-                updateSelectedCount();
-            }
-            syncDiscountInputUi();
-        });
-
-        // Same Price Mode Toggle — entered price applies to ALL selected SKUs.
-        $('#same-price-btn').on('click', function() {
-            samePriceModeActive = !samePriceModeActive;
-            decreaseModeActive = false;
-            increaseModeActive = false;
-            const selectColumn = table.getColumn('_select');
-
-            resetDecreaseBtn();
-            resetIncreaseBtn();
-            if (samePriceModeActive) {
-                $(this).removeClass('btn-info').addClass('btn-danger')
-                    .html('<i class="fas fa-equals"></i> Same Price ON');
-                selectColumn.show();
-            } else {
-                resetSamePriceBtn();
+                // Same Price → off
+                decreaseModeActive = false; increaseModeActive = false; samePriceModeActive = false;
+                $btn.removeClass('btn-danger btn-success btn-info').addClass('btn-secondary').text('Prc Mode');
                 selectColumn.hide();
                 selectedSkus.clear();
                 updateSelectedCount();
@@ -1091,53 +1019,11 @@
             showToast(`SPRICE cleared for ${clearedCount} SKU(s)`, 'success');
         }
 
-        // SAVE SPRICE to database with retry
-        function saveSpriceWithRetry(sku, sprice, row, retryCount = 0) {
-            const maxRetries = 3;
-            
-            $.ajax({
-                url: '/macys-save-sprice-tabulator',
-                method: 'POST',
-                data: {
-                    sku: sku,
-                    sprice: sprice,
-                    _token: '{{ csrf_token() }}'
-                },
-                success: function(response) {
-                    showToast(`SPRICE saved for ${sku}`, 'success');
-                    if (response.price_push_success !== undefined) {
-                        const codeSuffix = response.price_push_status_code ? ` [code: ${response.price_push_status_code}]` : '';
-                        if (response.price_push_success) {
-                            showToast(`Macy price pushed for ${sku}${codeSuffix}`, 'success');
-                        } else {
-                            showToast(`Macy push failed for ${sku}${codeSuffix}: ${response.price_push_message || 'Unknown error'}`, 'warning');
-                        }
-                    }
-                    if (response.spft_percent !== undefined) {
-                        row.update({ SPFT: response.spft_percent });
-                    }
-                    if (response.sroi_percent !== undefined) {
-                        row.update({ SROI: response.sroi_percent });
-                    }
-                    if (response.sgpft_percent !== undefined) {
-                        row.update({ SGPFT: response.sgpft_percent });
-                    }
-                },
-                error: function(xhr) {
-                    if (retryCount < maxRetries) {
-                        setTimeout(() => saveSpriceWithRetry(sku, sprice, row, retryCount + 1), 2000);
-                    } else {
-                        showToast(`Failed to save SPRICE for ${sku}`, 'error');
-                    }
-                }
-            });
-        }
-
         // Initialize Tabulator
         table = new Tabulator("#macys-table", {
             ajaxURL: "/macys-data-json",
             ajaxSorting: false,
-            layout: "fitDataStretch",
+            layout: "fitColumns",
             pagination: true,
             paginationSize: 100,
             paginationSizeSelector: [10, 25, 50, 100, 200],
@@ -1563,30 +1449,6 @@
                     width: 80
                 },
                 {
-                    title: "Send",
-                    field: "_send_price",
-                    hozAlign: "center",
-                    headerSort: false,
-                    width: 75,
-                    formatter: function() {
-                        return '<button type="button" class="btn btn-sm btn-primary" style="padding:2px 8px;">Send</button>';
-                    },
-                    cellClick: function(e, cell) {
-                        e.stopPropagation();
-                        const row = cell.getRow();
-                        const rowData = row.getData();
-                        const sku = rowData['(Child) sku'];
-                        const sprice = parseFloat(rowData.SPRICE) || 0;
-
-                        if (sprice <= 0) {
-                            showToast(`Enter valid SPRICE for ${sku} before push`, 'warning');
-                            return;
-                        }
-
-                        saveSpriceWithRetry(sku, sprice, row);
-                    }
-                },
-                {
                     title: "SGPFT",
                     field: "SGPFT",
                     hozAlign: "center",
@@ -1709,7 +1571,7 @@
                     SROI: sroi,
                     has_custom_sprice: true
                 });
-                showToast(`SPRICE updated for ${sku}. Click Send to push.`, 'info');
+                showToast(`SPRICE updated for ${sku}.`, 'info');
             }
         });
 
@@ -1861,14 +1723,21 @@
                 return !(row.Parent && row.Parent.startsWith('PARENT'));
             });
 
-            let totalPft = 0, totalPrice = 0, priceCount = 0;
+            let totalPft = 0, totalSales = 0, totalPrice = 0, priceCount = 0;
             let totalInv = 0, zeroSoldCount = 0, moreSoldCount = 0, totalDil = 0, dilCount = 0;
-            let totalCogs = 0;
+            let totalCogs = 0, totalRoi = 0, roiCount = 0;
             let missingCount = 0, mappingCount = 0;
             let lessAmzCount = 0, moreAmzCount = 0;
 
             data.forEach(row => {
                 totalPft += parseFloat(row.Profit) || 0;
+                totalSales += parseFloat(row['Sales L30']) || 0;
+
+                const roi = parseFloat(row['ROI%']) || 0;
+                if (roi !== 0) {
+                    totalRoi += roi;
+                    roiCount++;
+                }
 
                 const price = parseFloat(row['MC Price']) || 0;
                 const amazonPrice = parseFloat(row['A Price']) || 0;
@@ -1920,15 +1789,23 @@
 
             const avgPrice = priceCount > 0 ? totalPrice / priceCount : 0;
             const avgDil = dilCount > 0 ? totalDil / dilCount : 0;
-            $('#total-pft-amt-badge').text(`Total PFT: $${Math.round(totalPft).toLocaleString()}`);
-            $('#avg-price-badge').text(`Avg Price: $${Math.round(avgPrice).toLocaleString()}`);
+            // ROI% = average of per-row ROI% — same formula as the BestBuy page (per-row ROI%
+            // is computed with the Normal ship: (price*margin − lp − ship) / lp * 100).
+            const avgRoi = roiCount > 0 ? totalRoi / roiCount : 0;
+            // GPFT% = (Total PFT / Total Sales) * 100 — same aggregate formula as the eBay/BestBuy pages.
+            const avgGpft = totalSales > 0 ? (totalPft / totalSales) * 100 : 0;
+            $('#total-pft-amt-badge').text(`PFT: $${Math.round(totalPft).toLocaleString()}`);
+            $('#total-sales-amt-badge').text(`Sales: $${Math.round(totalSales).toLocaleString()}`);
+            $('#avg-gpft-badge').text(`GPFT: ${Math.round(avgGpft)}%`);
+            $('#roi-percent-badge').text(`ROI%: ${Math.round(avgRoi)}%`);
+            $('#avg-price-badge').text(`Price: $${Math.round(avgPrice).toLocaleString()}`);
             $('#total-inv-badge').text(`Total INV: ${Math.round(totalInv).toLocaleString()}`);
             $('#zero-sold-count-badge').text(`0 Sold: ${zeroSoldCount}`);
             $('#more-sold-count-badge').text(`> 0 Sold: ${moreSoldCount.toLocaleString()}`);
             $('#avg-dil-badge').text(`DIL%: ${Math.round(avgDil * 100)}%`);
             $('#total-cogs-badge').text(`COGS: $${Math.round(totalCogs).toLocaleString()}`);
-            $('#missing-badge').text(`Missing L: ${missingCount}`);
-            $('#mapping-badge').text(`Missing M: ${mappingCount}`);
+            $('#missing-badge').text(`Miss: ${missingCount}`);
+            $('#mapping-badge').text(`N Map: ${mappingCount}`);
             $('#less-amz-badge').text(`< Amz: ${lessAmzCount.toLocaleString()}`);
             $('#more-amz-badge').text(`> Amz: ${moreAmzCount.toLocaleString()}`);
         }
@@ -1936,7 +1813,12 @@
         // Build Column Visibility Dropdown
         function buildColumnDropdown() {
             const columns = table.getColumns();
-            let html = '';
+            let html = `<li>
+                    <button type="button" id="show-all-columns-item" class="dropdown-item fw-bold">
+                        <i class="fa fa-eye"></i> Show All Columns
+                    </button>
+                </li>
+                <li><hr class="dropdown-divider"></li>`;
             
             columns.forEach(col => {
                 const field = col.getField();
@@ -2042,8 +1924,11 @@
             }
         });
 
-        // Show All Columns button
-        document.getElementById("show-all-columns-btn").addEventListener("click", function() {
+        // Show All Columns — now an item inside the Columns dropdown (delegated, menu is rebuilt dynamically)
+        document.getElementById("column-dropdown-menu").addEventListener("click", function(e) {
+            const showAll = e.target.closest('#show-all-columns-item');
+            if (!showAll) return;
+            e.preventDefault();
             table.getColumns().forEach(col => {
                 if (col.getField() !== '_select' && FORCED_HIDDEN_COLUMNS.indexOf(col.getField()) === -1) {
                     col.show();

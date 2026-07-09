@@ -277,58 +277,6 @@ class GoogleAdsController extends Controller
         return ADVMastersData::getAdvShopifyGShoppingSaveDataProceed($request);
     }
 
-    public function googlePmaxView(){
-        $thirtyDaysAgo = \Carbon\Carbon::now()->subDays(30)->format('Y-m-d');
-        $today = \Carbon\Carbon::now()->format('Y-m-d');
-
-        $data = DB::table('google_ads_campaigns')
-            ->selectRaw('
-                date,
-                SUM(metrics_clicks) as clicks, 
-                SUM(metrics_cost_micros) / 1000000 as spend, 
-                SUM(ga4_actual_sold_units) as orders, 
-                SUM(ga4_ad_sales) as sales
-            ')
-            ->whereDate('date', '>=', $thirtyDaysAgo)
-            ->where('advertising_channel_type', 'PERFORMANCE_MAX')
-            ->groupBy('date')
-            ->orderBy('date', 'asc')
-            ->get()
-            ->keyBy('date');
-
-        // Fill in missing dates with zeros
-        $dates = [];
-        $clicks = [];
-        $spend = [];
-        $orders = [];
-        $sales = [];
-
-        for ($i = 30; $i >= 0; $i--) {
-            $date = \Carbon\Carbon::now()->subDays($i)->format('Y-m-d');
-            $dates[] = $date;
-            
-            if (isset($data[$date])) {
-                $clicks[] = (int) $data[$date]->clicks;
-                $spend[] = (float) $data[$date]->spend;
-                $orders[] = (int) $data[$date]->orders;
-                $sales[] = (float) $data[$date]->sales;
-            } else {
-                $clicks[] = 0;
-                $spend[] = 0.0;
-                $orders[] = 0;
-                $sales[] = 0.0;
-            }
-        }
-
-        return view('campaign.google-shopping-ads-pmax', [
-            'dates' => $dates,
-            'clicks' => collect($clicks),
-            'spend' => collect($spend),
-            'orders' => collect($orders),
-            'sales' => collect($sales)
-        ]);
-    }
-
     public function getGoogleShoppingAdsData(){
 
         // Get all product masters excluding soft deleted ones (similar to Amazon)
@@ -1090,11 +1038,6 @@ class GoogleAdsController extends Controller
     public function filterGoogleShoppingReportChart(Request $request)
     {
         return $this->getChartData($request);
-    }
-
-    public function filterGooglePmaxChart(Request $request)
-    {
-        return $this->getChartData($request, ['advertising_channel_type' => 'PERFORMANCE_MAX']);
     }
 
     private function getChartData(Request $request, array $additionalFilters = [])
