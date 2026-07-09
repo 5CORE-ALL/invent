@@ -1174,11 +1174,11 @@ class AliexpressDetailFormatter
 
     protected function extractOrderImageFilename(string $url): ?string
     {
-        if (preg_match('#/([^/?#]+\.(?:jpg|jpeg|png|gif|webp))(?:\?.*)?$#i', $url, $matches)) {
+        if (preg_match('~/([^/?#]+\.(?:jpg|jpeg|png|gif|webp))(?:\?.*)?$~i', $url, $matches)) {
             return $matches[1];
         }
 
-        if (preg_match('#^[^/]+\.(?:jpg|jpeg|png|gif|webp)$#i', $url)) {
+        if (preg_match('~^[^/]+\.(?:jpg|jpeg|png|gif|webp)$~i', $url)) {
             return $url;
         }
 
