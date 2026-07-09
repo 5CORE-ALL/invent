@@ -138,7 +138,7 @@ class AliexpressDetailFormatter
                 'name' => $buyer['first_name'] ?? $addr['contact_person'] ?? $order['buyer_signer_fullname'] ?? null,
                 'last_name' => $buyer['last_name'] ?? null,
                 'login_id' => $buyer['login_id'] ?? $order['buyerloginid'] ?? $order['buyer_login_id'] ?? null,
-                'email' => $buyer['email'] ?? $addr['email'] ?? null,
+                'email' => $this->resolveBuyerEmail($buyer, $addr, $order),
                 'phone' => $phone,
                 'country' => $buyer['country'] ?? $addr['country'] ?? $addr['country_name'] ?? null,
             ],
@@ -153,7 +153,7 @@ class AliexpressDetailFormatter
                 'country' => $addr['country'] ?? null,
                 'country_name' => $addr['country_name'] ?? null,
                 'localized_address' => $addr['localized_address'] ?? null,
-                'email' => $addr['email'] ?? $buyer['email'] ?? null,
+                'email' => $this->resolveBuyerEmail($buyer, $addr, $order),
                 'phone' => $phone,
                 'tax_number' => $addr['tax_number'] ?? $addr['cpf'] ?? $addr['passport_no'] ?? null,
                 'full_address' => $this->joinAddress($addr),
@@ -245,9 +245,15 @@ class AliexpressDetailFormatter
             $noteLines[] = 'Tax number: '.$shipping['tax_number'];
         }
 
+        [$firstName, $lastName] = $this->splitShopifyCustomerName($detail, $recipient);
+        [$shopifyEmail, $emailIsPlaceholder] = $this->resolveShopifyCustomerEmail($orderRef, $shipping['email'] ?? null);
+
         $noteAttrs = [
             ['name' => 'aliexpress_order_id', 'value' => $orderRef],
         ];
+        if ($emailIsPlaceholder) {
+            $noteAttrs[] = ['name' => 'aliexpress_email_is_placeholder', 'value' => 'true'];
+        }
         foreach ([
             'aliexpress_buyer_login' => $summary['buyer_login_id'] ?? null,
             'aliexpress_payment_method' => $payment['method'] ?? null,
@@ -262,6 +268,12 @@ class AliexpressDetailFormatter
             }
         }
 
+        $customerFields = array_filter([
+            'first_name' => $firstName,
+            'last_name' => $lastName !== '' ? $lastName : null,
+            'email' => $shopifyEmail,
+        ], fn ($value) => $value !== null && $value !== '');
+
         $payload = [
             'line_items' => [],
             'financial_status' => 'paid',
@@ -270,11 +282,7 @@ class AliexpressDetailFormatter
             'note' => implode("\n", $noteLines),
             'source_name' => 'aliexpress',
             'note_attributes' => $noteAttrs,
-            'customer' => array_filter([
-                'first_name' => $firstName,
-                'last_name' => $lastName,
-                'email' => $shipping['email'] ?? null,
-            ]),
+            'customer' => $customerFields,
         ];
 
         $shippingCost = (float) ($amounts['shipping_cost'] ?? 0);
@@ -292,9 +300,12 @@ class AliexpressDetailFormatter
         }
 
         if ($address1 !== '') {
-            $payload['shipping_address'] = array_filter([
+            $addressName = array_filter([
                 'first_name' => $firstName,
-                'last_name' => $lastName,
+                'last_name' => $lastName !== '' ? $lastName : null,
+            ], fn ($value) => $value !== null && $value !== '');
+
+            $payload['shipping_address'] = array_filter(array_merge($addressName, [
                 'address1' => $address1,
                 'address2' => $shipping['address_line_2'] ?? null,
                 'city' => $shipping['city'] ?? null,
@@ -302,7 +313,7 @@ class AliexpressDetailFormatter
                 'country_code' => $this->normalizeCountryCode($shipping['country'] ?? $shipping['country_name'] ?? null),
                 'zip' => $shipping['zip'] ?? null,
                 'phone' => $shipping['phone'] ?? null,
-            ]);
+            ]));
             $payload['billing_address'] = $payload['shipping_address'];
         }
 
@@ -337,11 +348,66 @@ class AliexpressDetailFormatter
             return ['AliExpress', 'Customer'];
         }
 
-        $parts = preg_split('/\s+/', $fullName, 2) ?: [];
+        $parts = preg_split('/\s+/u', $fullName, 2) ?: [];
         $firstName = (string) ($parts[0] ?? 'AliExpress');
-        $lastName = (string) ($parts[1] ?? 'Customer');
+        if (! isset($parts[1])) {
+            return [$firstName, ''];
+        }
 
-        return [$firstName, $lastName];
+        return [$firstName, (string) $parts[1]];
+    }
+
+    /**
+     * @return array{0: string, 1: bool} email, is_placeholder
+     */
+    public function resolveShopifyCustomerEmail(string $orderRef, ?string $rawEmail): array
+    {
+        $email = $this->normalizeEmail($rawEmail);
+        if ($email !== null) {
+            return [$email, false];
+        }
+
+        $domain = (string) env('ALIEXPRESS_SHOPIFY_PLACEHOLDER_EMAIL_DOMAIN', 'import.5coremanagement.com');
+        $slug = preg_replace('/[^a-zA-Z0-9]/', '', $orderRef) ?: 'order';
+
+        return ['aliexpress-'.$slug.'@'.$domain, true];
+    }
+
+    /**
+     * @param  array<string, mixed>  $buyer
+     * @param  array<string, mixed>  $addr
+     * @param  array<string, mixed>  $order
+     */
+    protected function resolveBuyerEmail(array $buyer, array $addr, array $order): ?string
+    {
+        foreach ([
+            $addr['email'] ?? null,
+            $buyer['email'] ?? null,
+            $order['buyer_email'] ?? null,
+            $order['email'] ?? null,
+            $buyer['buyer_email'] ?? null,
+        ] as $candidate) {
+            $email = $this->normalizeEmail($candidate);
+            if ($email !== null) {
+                return $email;
+            }
+        }
+
+        return null;
+    }
+
+    protected function normalizeEmail(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $email = strtolower(trim((string) $value));
+        if ($email === '') {
+            return null;
+        }
+
+        return filter_var($email, FILTER_VALIDATE_EMAIL) ? $email : null;
     }
 
     protected function cleanPersonName(string $name): string

@@ -149,7 +149,9 @@ class AliexpressOrderPushService
         if (empty($orderPayload['shipping_address']['address1'] ?? null)) {
             $warnings[] = 'No shipping address — Shopify order will be created without shipping_address.';
         }
-        if (empty($shipping['email'] ?? null) && empty($orderPayload['customer']['email'] ?? null)) {
+        if ($this->payloadUsesPlaceholderEmail($orderPayload)) {
+            $warnings[] = 'AliExpress did not provide a buyer email — a placeholder email will be used for Shopify.';
+        } elseif (empty($shipping['email'] ?? null) && empty($orderPayload['customer']['email'] ?? null)) {
             $warnings[] = 'No buyer email on AliExpress order.';
         }
         if (empty($shipping['phone'] ?? null)) {
@@ -188,8 +190,9 @@ class AliexpressOrderPushService
 
         return [
             'customer' => [
-                'name' => trim(($customer['first_name'] ?? '').' '.($customer['last_name'] ?? '')),
+                'name' => trim(trim((string) ($customer['first_name'] ?? '')).' '.trim((string) ($customer['last_name'] ?? ''))),
                 'email' => $customer['email'] ?? null,
+                'email_is_placeholder' => $this->payloadUsesPlaceholderEmail($orderPayload),
                 'phone' => $shipping['phone'] ?? null,
             ],
             'shipping_address' => [
@@ -472,5 +475,19 @@ class AliexpressOrderPushService
         }
 
         return array_values(array_unique($cleaned));
+    }
+
+    /**
+     * @param  array<string, mixed>  $orderPayload
+     */
+    protected function payloadUsesPlaceholderEmail(array $orderPayload): bool
+    {
+        foreach ($orderPayload['note_attributes'] ?? [] as $attr) {
+            if (($attr['name'] ?? '') === 'aliexpress_email_is_placeholder' && ($attr['value'] ?? '') === 'true') {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
