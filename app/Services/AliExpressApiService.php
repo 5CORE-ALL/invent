@@ -1044,6 +1044,57 @@ class AliExpressApiService
     }
 
     /**
+     * Single order detail — aliexpress.solution.order.info.get (buyer, address, logistics, funds).
+     */
+    public function getOrderInfo(string $orderId): array
+    {
+        $raw = $this->callRestGateway('aliexpress.solution.order.info.get', [
+            'param1' => $this->encodeRequestPayload(['order_id' => (string) $orderId]),
+        ]);
+
+        if (empty($raw['success'])) {
+            return $raw;
+        }
+
+        $payload = $this->unwrapSolutionEnvelope($raw['data'] ?? []);
+        $result = is_array($payload['result'] ?? null) ? $payload['result'] : $payload;
+        if (isset($result['data']) && is_array($result['data'])) {
+            $result = $result['data'];
+        }
+
+        return [
+            'success' => true,
+            'status' => $raw['status'] ?? 200,
+            'data' => is_array($result) ? $result : [],
+            'request_id' => $raw['request_id'] ?? null,
+        ];
+    }
+
+    /**
+     * Shipping receipt address — aliexpress.solution.order.receiptinfo.get.
+     */
+    public function getOrderReceiptInfo(string $orderId): array
+    {
+        $raw = $this->callRestGateway('aliexpress.solution.order.receiptinfo.get', [
+            'param1' => $this->encodeRequestPayload(['order_id' => (string) $orderId]),
+        ]);
+
+        if (empty($raw['success'])) {
+            return $raw;
+        }
+
+        $payload = $this->unwrapSolutionEnvelope($raw['data'] ?? []);
+        $result = is_array($payload['result'] ?? null) ? $payload['result'] : $payload;
+
+        return [
+            'success' => true,
+            'status' => $raw['status'] ?? 200,
+            'data' => is_array($result) ? $result : [],
+            'request_id' => $raw['request_id'] ?? null,
+        ];
+    }
+
+    /**
      * Daily sales for one product (last 30 days) — aliexpress.data.redefining.queryproductsalesinfoeverydaybyid.
      */
     public function getProductDailySales(string $productId, string $startDate, string $endDate, int $page = 1, int $pageSize = 50): array

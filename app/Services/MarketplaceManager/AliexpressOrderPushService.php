@@ -5,6 +5,7 @@ namespace App\Services\MarketplaceManager;
 use App\Models\AliexpressOrderMetric;
 use App\Models\MarketplaceSyncSettings;
 use App\Services\ShopifyStoreSelector;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -14,11 +15,31 @@ class AliexpressOrderPushService
 
     public ?int $lastApiStatus = null;
 
+    public function __construct(
+        protected AliexpressOrderDetailService $orderDetailService,
+        protected AliexpressDetailFormatter $formatter
+    ) {}
+
     public function importToShopify(AliexpressOrderMetric $order): ?string
     {
         if ($order->shopify_order_id) {
             return (string) $order->shopify_order_id;
         }
+
+        $detailResult = $this->orderDetailService->fetchAndPersistOrderDetail((string) $order->order_id);
+        if (empty($detailResult['success'])) {
+            $this->lastFailureReason = $detailResult['message'] ?? 'Could not load AliExpress order details before Shopify push.';
+
+            return null;
+        }
+
+        $lines = AliexpressOrderMetric::query()
+            ->where('order_id', (string) $order->order_id)
+            ->orderBy('id')
+            ->get();
+
+        $orderRoot = $this->orderDetailService->resolveOrderRoot($order->fresh() ?? $order);
+        $detail = $this->formatter->formatOrder($orderRoot, $lines, $order);
 
         $settings = MarketplaceSyncSettings::getFor('aliexpress');
         $tags = array_values(array_unique(array_merge(
@@ -26,78 +47,112 @@ class AliexpressOrderPushService
             $settings['order']['shopify_order_tags'] ?? []
         )));
 
-        $variantId = $order->sku && $order->sku !== '__order__' && $order->sku !== '__unknown__'
-            ? $this->findShopifyVariantIdBySku($order->sku)
-            : null;
+        $orderPayload = $this->formatter->buildShopifyOrderPayload($detail, $lines, $this->cleanTags($tags));
+        $orderPayload = $this->resolveLineItemsForShopify($orderPayload, $lines);
 
-        if ($variantId) {
-            $shopifyOrderId = $this->createWithVariant($order, (int) $variantId, $tags);
-            if ($shopifyOrderId) {
-                return $shopifyOrderId;
+        $shopifyOrderId = $this->postOrder($this->shopifyConfig(), ['order' => $orderPayload]);
+        if (! $shopifyOrderId) {
+            return null;
+        }
+
+        $tracking = (string) (($detail['shipment']['tracking'] ?? '') ?: '');
+        $carrier = (string) (($detail['shipment']['service'] ?? '') ?: 'AliExpress');
+        if ($tracking !== '') {
+            $this->addFulfillmentTracking($shopifyOrderId, $tracking, $carrier);
+        }
+
+        AliexpressOrderMetric::query()
+            ->where('order_id', (string) $order->order_id)
+            ->update([
+                'shopify_order_id' => $shopifyOrderId,
+                'pushed_to_shopify_at' => now(),
+                'import_status' => 'imported',
+            ]);
+
+        return $shopifyOrderId;
+    }
+
+    /**
+     * @param  array<string, mixed>  $orderPayload
+     * @param  Collection<int, AliexpressOrderMetric>  $lines
+     * @return array<string, mixed>
+     */
+    protected function resolveLineItemsForShopify(array $orderPayload, Collection $lines): array
+    {
+        $resolved = [];
+        $sourceItems = $orderPayload['line_items'] ?? [];
+
+        if ($sourceItems === []) {
+            foreach ($lines as $line) {
+                $sku = (string) $line->sku;
+                if (in_array($sku, ['__order__', '__unknown__', ''], true)) {
+                    continue;
+                }
+                $sourceItems[] = [
+                    'sku' => $sku,
+                    'title' => (string) ($line->display_title ?: $sku),
+                    'quantity' => max(1, (int) ($line->quantity ?? 1)),
+                    'price' => number_format((float) ($line->amount ?? 0), 2, '.', ''),
+                ];
             }
         }
 
-        return $this->createWithCustomItem($order, $variantId ? 'Variant create failed' : 'SKU not found in Shopify', $tags);
-    }
+        foreach ($sourceItems as $item) {
+            $sku = (string) ($item['sku'] ?? '');
+            $variantId = $sku !== '' ? $this->findShopifyVariantIdBySku($sku) : null;
+            $quantity = max(1, (int) ($item['quantity'] ?? 1));
+            $price = (string) ($item['price'] ?? '0.00');
 
-    protected function createWithVariant(AliexpressOrderMetric $order, int $variantId, array $tags): ?string
-    {
-        $config = $this->shopifyConfig();
-        $price = number_format((float) ($order->amount ?? 0), 2, '.', '');
-        $quantity = max(1, (int) ($order->quantity ?? 1));
-        $orderRef = (string) ($order->order_number ?? $order->order_id);
+            if ($variantId) {
+                $line = ['variant_id' => $variantId, 'quantity' => $quantity];
+                if ((float) $price > 0) {
+                    $line['price'] = $price;
+                }
+                $resolved[] = $line;
+                continue;
+            }
 
-        $payload = [
-            'order' => [
-                'line_items' => [['variant_id' => $variantId, 'quantity' => $quantity, 'price' => $price]],
-                'financial_status' => 'paid',
-                'inventory_behaviour' => 'decrement_obeying_policy',
-                'tags' => implode(', ', $this->cleanTags($tags)),
-                'note' => 'Imported from AliExpress Order #'.$orderRef,
-                'source_name' => 'aliexpress',
-                'note_attributes' => [['name' => 'aliexpress_order_id', 'value' => $orderRef]],
-            ],
-        ];
-
-        $response = $this->postOrder($config, $payload);
-
-        return $response;
-    }
-
-    protected function createWithCustomItem(AliexpressOrderMetric $order, string $reason, array $tags): ?string
-    {
-        $config = $this->shopifyConfig();
-        $orderRef = (string) ($order->order_number ?? $order->order_id);
-        $title = mb_substr(trim((string) ($order->display_title ?: $order->sku ?: 'AliExpress item')), 0, 255);
-        $price = number_format(max(0, (float) ($order->amount ?? 0)), 2, '.', '');
-        $quantity = max(1, (int) ($order->quantity ?? 1));
-
-        $lineItem = [
-            'title' => $title !== '' ? $title : 'AliExpress order item',
-            'price' => $price,
-            'quantity' => $quantity,
-        ];
-        if ($order->sku && ! in_array($order->sku, ['__order__', '__unknown__'], true)) {
-            $lineItem['properties'] = [['name' => 'SKU', 'value' => mb_substr($order->sku, 0, 255)]];
+            $title = mb_substr(trim((string) ($item['title'] ?? $sku ?: 'AliExpress item')), 0, 255);
+            $custom = [
+                'title' => $title !== '' ? $title : 'AliExpress order item',
+                'price' => $price,
+                'quantity' => $quantity,
+            ];
+            if ($sku !== '') {
+                $custom['sku'] = $sku;
+                $custom['properties'] = [['name' => 'SKU', 'value' => mb_substr($sku, 0, 255)]];
+            }
+            $resolved[] = $custom;
         }
 
-        $payload = [
-            'order' => [
-                'line_items' => [$lineItem],
-                'financial_status' => 'paid',
-                'inventory_behaviour' => 'bypass',
-                'tags' => implode(', ', $this->cleanTags(array_merge($tags, ['SKU Missing']))),
-                'note' => 'Imported from AliExpress Order #'.$orderRef."\n".$reason,
-                'source_name' => 'aliexpress',
-                'note_attributes' => [['name' => 'aliexpress_order_id', 'value' => $orderRef]],
-            ],
-        ];
+        if ($resolved === []) {
+            $line = $lines->first();
+            $resolved[] = [
+                'title' => (string) ($line?->display_title ?: 'AliExpress order item'),
+                'price' => number_format((float) ($line?->amount ?? 0), 2, '.', ''),
+                'quantity' => max(1, (int) ($line?->quantity ?? 1)),
+            ];
+        }
 
-        return $this->postOrder($config, $payload);
+        $orderPayload['line_items'] = $resolved;
+
+        if (! str_contains((string) ($orderPayload['note'] ?? ''), 'SKU not found')) {
+            $missing = collect($sourceItems)->filter(function ($item) {
+                $sku = (string) ($item['sku'] ?? '');
+
+                return $sku !== '' && ! $this->findShopifyVariantIdBySku($sku);
+            });
+            if ($missing->isNotEmpty()) {
+                $orderPayload['tags'] = trim((string) ($orderPayload['tags'] ?? '').', SKU Missing', ', ');
+            }
+        }
+
+        return $orderPayload;
     }
 
     /**
      * @param  array{store_url: string, token: string}  $config
+     * @param  array<string, mixed>  $payload
      */
     protected function postOrder(array $config, array $payload): ?string
     {
@@ -134,6 +189,52 @@ class AliexpressOrderPushService
             Log::error('AliexpressOrderPushService: exception', ['error' => $e->getMessage()]);
 
             return null;
+        }
+    }
+
+    protected function addFulfillmentTracking(string $shopifyOrderId, string $trackingNumber, string $carrier): void
+    {
+        $config = $this->shopifyConfig();
+        $storeUrl = $config['store_url'];
+        $token = $config['token'];
+
+        try {
+            $response = Http::withHeaders([
+                'X-Shopify-Access-Token' => $token,
+            ])->timeout(30)->get("https://{$storeUrl}/admin/api/2024-01/orders/{$shopifyOrderId}/fulfillment_orders.json");
+
+            if (! $response->successful()) {
+                return;
+            }
+
+            $lineItems = [];
+            foreach ($response->json('fulfillment_orders') ?? [] as $fo) {
+                if (! empty($fo['id'])) {
+                    $lineItems[] = ['fulfillment_order_id' => $fo['id']];
+                }
+            }
+            if ($lineItems === []) {
+                return;
+            }
+
+            Http::withHeaders([
+                'X-Shopify-Access-Token' => $token,
+                'Content-Type' => 'application/json',
+            ])->timeout(30)->post("https://{$storeUrl}/admin/api/2024-01/fulfillments.json", [
+                'fulfillment' => [
+                    'line_items_by_fulfillment_order' => $lineItems,
+                    'tracking_info' => [
+                        'number' => $trackingNumber,
+                        'company' => mb_substr($carrier, 0, 100),
+                    ],
+                    'notify_customer' => false,
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('AliexpressOrderPushService: fulfillment tracking failed', [
+                'shopify_order_id' => $shopifyOrderId,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 

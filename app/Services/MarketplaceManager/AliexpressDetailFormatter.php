@@ -113,8 +113,10 @@ class AliexpressDetailFormatter
         $buyer = $this->arr($order['buyer_info'] ?? []);
         $addr = $this->arr($order['receipt_address'] ?? []);
         $amounts = $this->extractOrderAmounts($order, $lines);
+        $funds = $this->extractOrderFunds($order);
         $logistics = $this->extractLogisticsList($order);
         $apiLines = $this->extractRichOrderLines($order, $lines);
+        $phone = $this->formatOrderPhone($addr);
 
         return [
             'summary' => [
@@ -122,32 +124,41 @@ class AliexpressDetailFormatter
                 'order_number' => $order['order_number'] ?? $primaryLine->order_number ?? null,
                 'status' => $order['order_status'] ?? $order['status'] ?? $primaryLine->status,
                 'buyer_remark' => $order['buyer_remark'] ?? $order['memo'] ?? null,
-                'seller_remark' => $order['seller_remark'] ?? null,
+                'seller_remark' => $order['seller_remark'] ?? $order['memo'] ?? null,
+                'buyer_login_id' => $buyer['login_id'] ?? $order['buyerloginid'] ?? $order['buyer_login_id'] ?? null,
                 'created' => $order['gmt_create'] ?? $order['create_time'] ?? $primaryLine->order_date,
-                'paid' => $order['gmt_pay_time'] ?? $order['pay_time'] ?? null,
-                'sent' => $order['gmt_send_goods_time'] ?? null,
-                'finished' => $order['gmt_receive_goods_time'] ?? $order['end_time'] ?? null,
+                'paid' => $order['gmt_pay_time'] ?? $order['gmt_pay_success'] ?? $order['pay_time'] ?? null,
+                'sent' => $order['gmt_send_goods_time'] ?? $this->firstLogisticsField($logistics, 'shipped_at'),
+                'finished' => $order['gmt_receive_goods_time'] ?? $order['end_time'] ?? $order['gmt_trade_end'] ?? null,
                 'modified' => $order['gmt_modified'] ?? null,
             ],
             'amounts' => $amounts,
+            'funds' => $funds,
             'buyer' => [
                 'name' => $buyer['first_name'] ?? $addr['contact_person'] ?? $order['buyer_signer_fullname'] ?? null,
                 'last_name' => $buyer['last_name'] ?? null,
-                'login_id' => $buyer['login_id'] ?? $order['buyer_login_id'] ?? null,
+                'login_id' => $buyer['login_id'] ?? $order['buyerloginid'] ?? $order['buyer_login_id'] ?? null,
                 'email' => $buyer['email'] ?? $addr['email'] ?? null,
-                'phone' => $addr['mobile_no'] ?? $addr['phone_number'] ?? $addr['phone'] ?? null,
-                'country' => $buyer['country'] ?? $addr['country'] ?? null,
+                'phone' => $phone,
+                'country' => $buyer['country'] ?? $addr['country'] ?? $addr['country_name'] ?? null,
             ],
             'shipping' => [
                 'recipient' => $addr['contact_person'] ?? $addr['receiver'] ?? null,
-                'address_line_1' => $addr['address'] ?? $addr['detail_address'] ?? null,
+                'detail_address' => $addr['detail_address'] ?? null,
+                'address_line_1' => $addr['address'] ?? null,
                 'address_line_2' => $addr['address2'] ?? null,
                 'city' => $addr['city'] ?? null,
                 'province' => $addr['province'] ?? $addr['state'] ?? null,
                 'zip' => $addr['zip'] ?? $addr['zip_code'] ?? null,
                 'country' => $addr['country'] ?? null,
+                'country_name' => $addr['country_name'] ?? null,
+                'localized_address' => $addr['localized_address'] ?? null,
+                'email' => $addr['email'] ?? $buyer['email'] ?? null,
+                'phone' => $phone,
+                'tax_number' => $addr['tax_number'] ?? $addr['cpf'] ?? $addr['passport_no'] ?? null,
                 'full_address' => $this->joinAddress($addr),
             ],
+            'shipment' => $this->extractShipmentSummary($order, $logistics),
             'logistics' => $logistics,
             'line_items' => $apiLines,
             'shopify' => [
@@ -157,9 +168,272 @@ class AliexpressDetailFormatter
             ],
             'payment' => [
                 'method' => $order['payment_type'] ?? $order['pay_type'] ?? null,
-                'currency' => $this->moneyCurrency($order['order_amount'] ?? $order['pay_amount'] ?? null),
+                'currency' => $this->moneyCurrency($order['order_amount'] ?? $order['pay_amount'] ?? null) ?? ($amounts['currency'] ?? null),
+                'paid_at' => $order['gmt_pay_time'] ?? $order['gmt_pay_success'] ?? null,
+                'total_paid' => $this->money($order['pay_amount'] ?? $order['pay_amount_by_settlement_cur'] ?? null)
+                    ?? $funds['amount_paid']
+                    ?? $amounts['pay_amount'],
             ],
         ];
+    }
+
+    /**
+     * Build Shopify REST order payload from formatted AliExpress order detail.
+     *
+     * @param  array<string, mixed>  $detail
+     * @param  Collection<int, AliexpressOrderMetric>  $lines
+     * @param  array<int, string>  $tags
+     * @return array<string, mixed>
+     */
+    public function buildShopifyOrderPayload(array $detail, Collection $lines, array $tags): array
+    {
+        $summary = $detail['summary'] ?? [];
+        $shipping = $detail['shipping'] ?? [];
+        $payment = $detail['payment'] ?? [];
+        $amounts = $detail['amounts'] ?? [];
+        $shipment = $detail['shipment'] ?? [];
+        $orderRef = (string) ($summary['order_id'] ?? '');
+
+        $lineItems = [];
+        foreach ($detail['line_items'] ?? [] as $item) {
+            $sku = (string) ($item['sku'] ?? '');
+            if (in_array($sku, ['__order__', '__unknown__', ''], true)) {
+                continue;
+            }
+            $lineItems[] = [
+                'sku' => $sku,
+                'title' => (string) ($item['title'] ?? $sku),
+                'quantity' => max(1, (int) ($item['quantity'] ?? 1)),
+                'price' => number_format((float) ($item['unit_price'] ?? 0), 2, '.', ''),
+            ];
+        }
+
+        if ($lineItems === []) {
+            foreach ($lines as $line) {
+                $sku = (string) $line->sku;
+                if (in_array($sku, ['__order__', '__unknown__', ''], true)) {
+                    continue;
+                }
+                $lineItems[] = [
+                    'sku' => $sku,
+                    'title' => (string) ($line->display_title ?: $sku),
+                    'quantity' => max(1, (int) ($line->quantity ?? 1)),
+                    'price' => number_format((float) ($line->amount ?? 0), 2, '.', ''),
+                ];
+            }
+        }
+
+        $recipient = trim((string) ($shipping['recipient'] ?? ''));
+        $nameParts = $recipient !== '' ? preg_split('/\s+/', $recipient, 2) : [];
+        $firstName = (string) ($nameParts[0] ?? 'AliExpress');
+        $lastName = (string) ($nameParts[1] ?? 'Customer');
+
+        $noteLines = [
+            'Imported from AliExpress Order #'.$orderRef,
+        ];
+        if (! empty($payment['method'])) {
+            $noteLines[] = 'Payment method: '.$payment['method'];
+        }
+        if (! empty($payment['paid_at'])) {
+            $noteLines[] = 'Payment time: '.$payment['paid_at'];
+        }
+        if (! empty($shipment['tracking'])) {
+            $noteLines[] = 'Tracking: '.$shipment['tracking'];
+        }
+        if (! empty($shipment['service'])) {
+            $noteLines[] = 'Shipping method: '.$shipment['service'];
+        }
+        if (! empty($shipping['tax_number'])) {
+            $noteLines[] = 'Tax number: '.$shipping['tax_number'];
+        }
+
+        $noteAttrs = [
+            ['name' => 'aliexpress_order_id', 'value' => $orderRef],
+        ];
+        foreach ([
+            'aliexpress_buyer_login' => $summary['buyer_login_id'] ?? null,
+            'aliexpress_payment_method' => $payment['method'] ?? null,
+            'aliexpress_tracking_number' => $shipment['tracking'] ?? null,
+            'aliexpress_shipping_method' => $shipment['service'] ?? null,
+            'aliexpress_tax_number' => $shipping['tax_number'] ?? null,
+            'aliexpress_buyer_email' => $shipping['email'] ?? null,
+            'aliexpress_buyer_phone' => $shipping['phone'] ?? null,
+        ] as $name => $value) {
+            if ($value !== null && $value !== '') {
+                $noteAttrs[] = ['name' => $name, 'value' => (string) $value];
+            }
+        }
+
+        $payload = [
+            'line_items' => [],
+            'financial_status' => 'paid',
+            'inventory_behaviour' => 'decrement_obeying_policy',
+            'tags' => implode(', ', array_values(array_unique(array_filter($tags)))),
+            'note' => implode("\n", $noteLines),
+            'source_name' => 'aliexpress',
+            'note_attributes' => $noteAttrs,
+            'customer' => array_filter([
+                'first_name' => $firstName,
+                'last_name' => $lastName,
+                'email' => $shipping['email'] ?? null,
+            ]),
+        ];
+
+        $shippingCost = (float) ($amounts['shipping_cost'] ?? 0);
+        if ($shippingCost > 0) {
+            $payload['shipping_lines'] = [[
+                'title' => (string) ($shipment['service'] ?? 'AliExpress shipping'),
+                'price' => number_format($shippingCost, 2, '.', ''),
+                'code' => 'aliexpress',
+            ]];
+        }
+
+        $address1 = trim((string) ($shipping['address_line_1'] ?? ''));
+        if ($address1 === '' && ! empty($shipping['detail_address'])) {
+            $address1 = (string) $shipping['detail_address'];
+        }
+
+        if ($address1 !== '') {
+            $payload['shipping_address'] = array_filter([
+                'first_name' => $firstName,
+                'last_name' => $lastName,
+                'address1' => $address1,
+                'address2' => $shipping['address_line_2'] ?? null,
+                'city' => $shipping['city'] ?? null,
+                'province' => $shipping['province'] ?? null,
+                'country_code' => $this->normalizeCountryCode($shipping['country'] ?? $shipping['country_name'] ?? null),
+                'zip' => $shipping['zip'] ?? null,
+                'phone' => $shipping['phone'] ?? null,
+            ]);
+            $payload['billing_address'] = $payload['shipping_address'];
+        }
+
+        $payload['line_items'] = $lineItems;
+
+        return $payload;
+    }
+
+    protected function normalizeCountryCode(?string $country): ?string
+    {
+        if ($country === null || trim($country) === '') {
+            return null;
+        }
+        $country = trim($country);
+        if (strlen($country) === 2) {
+            return strtoupper($country);
+        }
+        $map = [
+            'united states' => 'US',
+            'usa' => 'US',
+            'united kingdom' => 'GB',
+            'great britain' => 'GB',
+        ];
+        $key = strtolower($country);
+
+        return $map[$key] ?? $country;
+    }
+
+    /**
+     * @param  array<string, mixed>  $addr
+     */
+    protected function formatOrderPhone(array $addr): ?string
+    {
+        $mobile = trim((string) ($addr['mobile_no'] ?? ''));
+        $phone = trim((string) ($addr['phone_number'] ?? $addr['phone'] ?? ''));
+        $country = trim((string) ($addr['phone_country'] ?? ''));
+        $area = trim((string) ($addr['phone_area'] ?? ''));
+
+        if ($mobile !== '') {
+            if ($country !== '' && ! str_starts_with($mobile, '+')) {
+                return trim($country.' '.$mobile);
+            }
+
+            return $mobile;
+        }
+
+        if ($phone !== '') {
+            $prefix = trim($country.' '.$area);
+
+            return $prefix !== '' ? trim($prefix.' '.$phone) : $phone;
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $order
+     * @return array<string, mixed>
+     */
+    protected function extractOrderFunds(array $order): array
+    {
+        $childOrders = $this->list(
+            $order['child_order_list']['global_aeop_tp_child_order_dto']
+            ?? $order['child_order_list']
+            ?? []
+        );
+
+        $productTotal = null;
+        if ($childOrders !== []) {
+            $sum = 0.0;
+            foreach ($childOrders as $child) {
+                $child = $this->arr($child);
+                $price = $this->money($child['product_price'] ?? $child['init_order_amt'] ?? null);
+                $qty = max(1, (int) ($child['product_count'] ?? 1));
+                if ($price !== null) {
+                    $sum += $price * $qty;
+                }
+            }
+            if ($sum > 0) {
+                $productTotal = $sum;
+            }
+        }
+
+        return [
+            'product_total' => $productTotal ?? $this->money($order['init_oder_amount'] ?? $order['init_order_amt'] ?? null),
+            'shipping_cost' => $this->money($order['logistics_amount'] ?? null),
+            'adjustment' => $this->money($order['adjust_fee'] ?? $order['adjustment_amount'] ?? null),
+            'store_promotion' => $this->money($order['promotion_amount'] ?? $order['seller_discount_amount'] ?? null),
+            'order_amount' => $this->money($order['order_amount'] ?? $order['total_amount'] ?? null),
+            'platform_commission' => $this->money($order['escrow_fee'] ?? $order['platform_commission'] ?? null),
+            'affiliate_commission' => $this->money($order['affiliate_fee'] ?? $order['affiliate_commission'] ?? null),
+            'cashback_paid_by_seller' => $this->money($order['cashback_fee'] ?? $order['seller_cashback'] ?? null),
+            'transaction_service_fee' => $this->money($order['service_fee'] ?? $order['transaction_fee'] ?? null),
+            'platform_offer_tax' => $this->money($order['tax_amount'] ?? $order['platform_tax'] ?? null),
+            'amount_paid' => $this->money($order['pay_amount'] ?? $order['pay_amount_by_settlement_cur'] ?? ($this->arr($order['loan_info'] ?? [])['loan_amount'] ?? null)),
+            'currency' => $this->moneyCurrency($order['order_amount'] ?? $order['pay_amount'] ?? null)
+                ?? $this->str($order['settlement_currency'] ?? null),
+        ];
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $logistics
+     * @return array<string, mixed>
+     */
+    protected function extractShipmentSummary(array $order, array $logistics): array
+    {
+        $first = $logistics[0] ?? [];
+
+        return [
+            'shipped_at' => $first['shipped_at'] ?? $order['gmt_send_goods_time'] ?? null,
+            'service' => $first['service'] ?? $this->str($order['logistics_type'] ?? null),
+            'tracking' => $first['tracking'] ?? $this->str($order['logistics_no'] ?? null),
+            'status' => $first['status'] ?? $this->str($order['logistics_status'] ?? null),
+            'status_message' => $first['status_message'] ?? null,
+        ];
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $logistics
+     */
+    protected function firstLogisticsField(array $logistics, string $field): ?string
+    {
+        foreach ($logistics as $row) {
+            if (! empty($row[$field])) {
+                return (string) $row[$field];
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -729,7 +1003,10 @@ class AliexpressDetailFormatter
     {
         $out = [];
         $list = $this->list(
-            $order['logistics_info_list']['aeop_tp_logistics_info_dto']
+            $order['logistic_info_list']['global_aeop_tp_logistic_info_dto']
+            ?? $order['logistic_info_list']['aeop_tp_logistics_info_dto']
+            ?? $order['logistics_info_list']['aeop_tp_logistics_info_dto']
+            ?? $order['logistic_info_list']
             ?? $order['logistics_info_list']
             ?? $order['child_order_list']
             ?? []
@@ -740,9 +1017,12 @@ class AliexpressDetailFormatter
             $out[] = [
                 'service' => $this->str($row['logistics_service_name'] ?? $row['logistics_type'] ?? null),
                 'tracking' => $this->str($row['logistics_no'] ?? $row['tracking_number'] ?? null),
-                'status' => $this->str($row['logistics_status'] ?? null),
-                'send_type' => $this->str($row['send_type'] ?? null),
+                'status' => $this->str($row['logistics_status'] ?? $row['receive_status'] ?? null),
+                'status_message' => $this->str($row['recv_status_desc'] ?? $row['status_desc'] ?? null),
+                'send_type' => $this->str($row['send_type'] ?? $row['logistics_type_code'] ?? null),
                 'receive_status' => $this->str($row['receive_status'] ?? null),
+                'shipped_at' => $this->str($row['gmt_send'] ?? null),
+                'received_at' => $this->str($row['gmt_received'] ?? null),
             ];
         }
 
@@ -770,6 +1050,8 @@ class AliexpressDetailFormatter
             $order['product_list']['order_product_dto']
             ?? $order['product_list']['aeop_order_product_dto']
             ?? $order['product_list']
+            ?? $order['child_order_list']['global_aeop_tp_child_order_dto']
+            ?? $order['child_order_list']
             ?? []
         );
 
@@ -781,9 +1063,9 @@ class AliexpressDetailFormatter
         $out = [];
         foreach ($apiProducts as $product) {
             $product = $this->arr($product);
-            $sku = $this->str($product['sku_code'] ?? $product['sku'] ?? null) ?: '__unknown__';
+            $sku = $this->str($product['sku_code'] ?? $product['sku'] ?? $product['skuCode'] ?? null) ?: '__unknown__';
             $db = $bySku[$sku] ?? null;
-            $unit = $product['product_unit_price'] ?? $product['total_product_amount'] ?? null;
+            $unit = $product['product_unit_price'] ?? $product['product_price'] ?? $product['total_product_amount'] ?? null;
 
             $out[] = [
                 'sku' => $sku,
@@ -792,7 +1074,7 @@ class AliexpressDetailFormatter
                 'quantity' => (int) ($product['product_count'] ?? $product['quantity'] ?? $db?->quantity ?? 1),
                 'unit_price' => $this->money($unit),
                 'line_total' => $this->multiplyMoney($this->money($unit), (int) ($product['product_count'] ?? 1)),
-                'image' => $this->str($product['product_img_url'] ?? $product['snapshot_small_photo_path'] ?? $product['product_image'] ?? null),
+                'image' => $this->resolveOrderLineImage($product, $db),
                 'child_order_id' => $this->str($product['child_order_id'] ?? $product['order_sort_id'] ?? null),
                 'status' => $this->str($product['order_status'] ?? $product['logistics_status'] ?? null),
                 'import_status' => $db?->import_status,
@@ -810,7 +1092,7 @@ class AliexpressDetailFormatter
                     'quantity' => $line->quantity ?? 1,
                     'unit_price' => is_numeric($line->amount) ? (float) $line->amount : null,
                     'line_total' => is_numeric($line->amount) ? (float) $line->amount * max(1, (int) $line->quantity) : null,
-                    'image' => $this->str($rawLine['product_img_url'] ?? $rawLine['snapshot_small_photo_path'] ?? null),
+                    'image' => $this->resolveOrderLineImage($rawLine, $line),
                     'child_order_id' => null,
                     'status' => $line->status,
                     'import_status' => $line->import_status,
@@ -820,6 +1102,141 @@ class AliexpressDetailFormatter
         }
 
         return $out;
+    }
+
+    /**
+     * @param  array<string, mixed>  $product
+     */
+    protected function resolveOrderLineImage(array $product, ?AliexpressOrderMetric $db = null): ?string
+    {
+        foreach ([
+            $product['snapshot_small_photo_path'] ?? null,
+            $product['product_img_url'] ?? null,
+            $product['product_image'] ?? null,
+            $product['sku_image'] ?? null,
+            $product['image_url'] ?? null,
+        ] as $candidate) {
+            $normalized = $this->normalizeOrderImageUrl(is_string($candidate) ? $candidate : null);
+            if ($normalized) {
+                return $normalized;
+            }
+        }
+
+        $fromAttrs = $this->extractImageFromProductAttributes($product['product_attributes'] ?? null);
+        if ($fromAttrs) {
+            return $fromAttrs;
+        }
+
+        $sku = $this->str($product['sku_code'] ?? $product['sku'] ?? $db?->sku);
+        $productId = $this->str($product['product_id'] ?? $db?->product_id);
+
+        return $this->resolveOrderLineImageFallback($sku, $productId);
+    }
+
+    protected function normalizeOrderImageUrl(?string $url): ?string
+    {
+        if ($url === null) {
+            return null;
+        }
+
+        $url = trim(str_replace('\\', '/', $url));
+        if ($url === '') {
+            return null;
+        }
+
+        // Shopify / other non-AE CDNs — keep as-is.
+        if (preg_match('#^https?://#i', $url)
+            && ! str_contains($url, 'alicdn.com')
+            && ! str_contains($url, 'aliexpress-media.com')
+            && ! str_contains($url, 'aliexpress.com')) {
+            return filter_var($url, FILTER_VALIDATE_URL) ? $url : null;
+        }
+
+        $filename = $this->extractOrderImageFilename($url);
+        if ($filename) {
+            return $this->buildAliexpressMediaImageUrl($filename);
+        }
+
+        if (preg_match_all('#https?://[^\s"\'<>]+#i', $url, $matches) && $matches[0] !== []) {
+            $url = (string) end($matches[0]);
+            $filename = $this->extractOrderImageFilename($url);
+            if ($filename) {
+                return $this->buildAliexpressMediaImageUrl($filename);
+            }
+        }
+
+        if (str_starts_with($url, '//')) {
+            $url = 'https:'.$url;
+        }
+
+        return filter_var($url, FILTER_VALIDATE_URL) ? $url : null;
+    }
+
+    protected function extractOrderImageFilename(string $url): ?string
+    {
+        if (preg_match('~/([^/?#]+\.(?:jpg|jpeg|png|gif|webp))(?:\?.*)?$~i', $url, $matches)) {
+            return $matches[1];
+        }
+
+        if (preg_match('~^[^/]+\.(?:jpg|jpeg|png|gif|webp)$~i', $url)) {
+            return $url;
+        }
+
+        return null;
+    }
+
+    protected function buildAliexpressMediaImageUrl(string $filename): string
+    {
+        return 'https://ae-pic-a1.aliexpress-media.com/kf/'.ltrim($filename, '/');
+    }
+
+    protected function extractImageFromProductAttributes(mixed $raw): ?string
+    {
+        if (! is_string($raw) || trim($raw) === '') {
+            return null;
+        }
+
+        $decoded = json_decode($raw, true);
+        if (! is_array($decoded)) {
+            return null;
+        }
+
+        foreach ($this->list($decoded['sku'] ?? []) as $skuRow) {
+            $skuRow = $this->arr($skuRow);
+            $img = $skuRow['skuImg'] ?? $skuRow['sku_image'] ?? $skuRow['image'] ?? null;
+            if (! is_string($img) || trim($img) === '') {
+                continue;
+            }
+            $img = trim($img);
+            $normalized = $this->normalizeOrderImageUrl($img);
+            if ($normalized) {
+                return $normalized;
+            }
+        }
+
+        return null;
+    }
+
+    protected function resolveOrderLineImageFallback(?string $sku, ?string $productId): ?string
+    {
+        if ($sku && ! in_array($sku, ['__order__', '__unknown__'], true)) {
+            $shopify = ShopifySku::firstForProductSku($sku);
+            if ($shopify?->image_src) {
+                return $this->normalizeOrderImageUrl($shopify->image_src);
+            }
+        }
+
+        if ($productId) {
+            $metric = AliexpressMetric::query()->where('product_id', $productId)->first();
+            if ($metric && Schema::hasTable('shopify_skus')) {
+                $shopify = ShopifySku::firstForProductSku($metric->sku);
+                if ($shopify?->image_src) {
+                    return $this->normalizeOrderImageUrl($shopify->image_src);
+                }
+            }
+        }
+
+        return null;
     }
 
     /**
