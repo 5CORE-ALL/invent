@@ -62,12 +62,16 @@ class AliexpressInventorySyncService
         foreach ($metrics as $metric) {
             $sku = (string) $metric->sku;
             $productId = (string) $metric->product_id;
-            if ($productId === '' || ! array_key_exists($sku, $shopifyQty)) {
+            if ($productId === '') {
                 $skipped++;
                 continue;
             }
 
-            $shopifyStock = (int) $shopifyQty[$sku];
+            $shopifyStock = $this->resolveShopifyQty($shopifyQty, $sku);
+            if ($shopifyStock === null) {
+                $skipped++;
+                continue;
+            }
             $qty = (int) floor($shopifyStock * ($qtyPercent / 100));
             if ($qty < $minQty) {
                 $qty = $minQty;
@@ -201,19 +205,26 @@ class AliexpressInventorySyncService
             }
 
             if ($settings['inventory']['inventory_sync'] ?? false) {
-                $shopifyStock = (int) ($shopifyQty[$sku] ?? 0);
-                $qty = (int) floor($shopifyStock * ($qtyPercent / 100));
-                if ($qty < $minQty) {
-                    $qty = $minQty;
+                $shopifyStock = $this->resolveShopifyQty($shopifyQty, $sku);
+                // Never invent stock: if Shopify API did not return this SKU, skip it.
+                // (Previously missing SKUs became 0 → min_quantity 1 and overwrote AE.)
+                if ($shopifyStock === null) {
+                    $skipped++;
+                } else {
+                    $qty = (int) floor($shopifyStock * ($qtyPercent / 100));
+                    if ($qty < $minQty) {
+                        $qty = $minQty;
+                    }
+                    if ($maxQty !== null && $maxQty !== '') {
+                        $qty = min($qty, (int) $maxQty);
+                    }
+                    $inventoryRows[] = [
+                        'product_id' => $productId,
+                        'sku_code' => $sku,
+                        'inventory' => max(0, $qty),
+                        'shopify_qty' => $shopifyStock,
+                    ];
                 }
-                if ($maxQty !== null && $maxQty !== '') {
-                    $qty = min($qty, (int) $maxQty);
-                }
-                $inventoryRows[] = [
-                    'product_id' => $productId,
-                    'sku_code' => $sku,
-                    'inventory' => max(0, $qty),
-                ];
             }
 
             if ($settings['pricing']['price_sync'] ?? false) {
@@ -370,6 +381,25 @@ class AliexpressInventorySyncService
     protected function normalizeStoreUrl(string $url): string
     {
         return strtolower(rtrim(str_replace(['https://', 'http://'], '', trim($url)), '/'));
+    }
+
+    /**
+     * @param  array<string, int>  $shopifyQty
+     */
+    protected function resolveShopifyQty(array $shopifyQty, string $sku): ?int
+    {
+        if (array_key_exists($sku, $shopifyQty)) {
+            return (int) $shopifyQty[$sku];
+        }
+
+        $needle = strtoupper(trim($sku));
+        foreach ($shopifyQty as $key => $qty) {
+            if (strtoupper(trim((string) $key)) === $needle) {
+                return (int) $qty;
+            }
+        }
+
+        return null;
     }
 
     /**
