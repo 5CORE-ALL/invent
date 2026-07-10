@@ -615,11 +615,10 @@ class AliexpressDetailFormatter
      */
     protected function extractOrderFunds(array $order): array
     {
-        $childOrders = $this->list(
-            $order['child_order_list']['global_aeop_tp_child_order_dto']
-            ?? $order['child_order_list']
-            ?? []
-        );
+        $fundContext = $this->resolveFundContext($order);
+        $order = $fundContext['order'];
+        $childOrders = $fundContext['child_orders'];
+        $loanSonOrders = $fundContext['loan_son_orders'];
 
         $productTotal = null;
         if ($childOrders !== []) {
@@ -639,10 +638,9 @@ class AliexpressDetailFormatter
 
         $orderAmount = $this->money($order['order_amount'] ?? $order['total_amount'] ?? null);
         $escrowRate = $this->resolveEscrowFeeRate($order, $childOrders);
-        $platformCommission = $this->money($order['escrow_fee'] ?? $order['platform_commission'] ?? null);
-        if ($platformCommission === null && $orderAmount !== null && $escrowRate !== null) {
-            $platformCommission = round($orderAmount * $escrowRate, 2);
-        }
+
+        $platformCommission = $this->sumLoanSonMoney($loanSonOrders, 'escrow_fee')
+            ?? $this->money($order['escrow_fee'] ?? $order['platform_commission'] ?? null);
         if ($platformCommission === null) {
             foreach ($childOrders as $child) {
                 $child = $this->arr($child);
@@ -654,10 +652,22 @@ class AliexpressDetailFormatter
                 $platformCommission = null;
             }
         }
+        if ($platformCommission === null && $orderAmount !== null && $escrowRate !== null) {
+            $platformCommission = round($orderAmount * $escrowRate, 2);
+        }
 
-        $transactionFee = $this->money($order['service_fee'] ?? $order['transaction_fee'] ?? $order['transaction_service_fee'] ?? null);
-        $platformTax = $this->money($order['tax_amount'] ?? $order['platform_tax'] ?? $order['platform_offer_tax'] ?? null);
-        $affiliateCommission = $this->money($order['affiliate_fee'] ?? $order['affiliate_commission'] ?? null);
+        $transactionFee = $this->firstFundMoney(
+            $order,
+            $loanSonOrders,
+            ['transaction_service_fee', 'service_fee', 'transaction_fee']
+        );
+        $platformTax = $this->firstFundMoney(
+            $order,
+            $loanSonOrders,
+            ['platform_offer_tax', 'platform_tax', 'tax_amount', 'offer_tax']
+        );
+        $affiliateCommission = $this->sumLoanSonMoney($loanSonOrders, 'affiliate_commission')
+            ?? $this->money($order['affiliate_fee'] ?? $order['affiliate_commission'] ?? null);
         $cashbackPaidBySeller = $this->money($order['cashback_fee'] ?? $order['seller_cashback'] ?? null);
 
         $platformPromotion = $this->sumDiscountsByOwner($childOrders, 'PLATFORM');
@@ -668,6 +678,7 @@ class AliexpressDetailFormatter
         $sellerAmountPaid = $this->resolveSellerPaidAmount(
             $order,
             $childOrders,
+            $loanSonOrders,
             $orderAmount,
             $platformCommission,
             $transactionFee,
@@ -692,9 +703,142 @@ class AliexpressDetailFormatter
             'customer_total_paid' => $customerTotalPaid,
             'amount_paid' => $customerTotalPaid,
             'seller_amount_paid' => $sellerAmountPaid,
+            'loan_status' => $this->str($order['loan_status'] ?? null),
+            'fund_status' => $this->str($order['fund_status'] ?? null),
             'currency' => $this->moneyCurrency($order['order_amount'] ?? $order['pay_amount'] ?? null)
                 ?? $this->str($order['settlement_currency'] ?? null),
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $order
+     * @return array{order: array<string, mixed>, child_orders: array<int, array<string, mixed>>, loan_son_orders: array<int, array<string, mixed>>}
+     */
+    protected function resolveFundContext(array $order): array
+    {
+        $sources = $this->arr($order['fund_sources'] ?? []);
+        $tradeDetail = $this->arr($sources['trade_detail'] ?? $order['trade_detail'] ?? []);
+        $loanFund = $this->arr($sources['loan_fund'] ?? $order['loan_fund'] ?? []);
+        $loanSonOrders = $this->list($loanFund['son_orders'] ?? []);
+
+        if ($loanSonOrders === []) {
+            $firstLoan = $this->arr($loanFund['first'] ?? []);
+            $loanSonOrders = $this->list($firstLoan['son_order_list']['son_order_loan_vo'] ?? $firstLoan['son_order_list'] ?? []);
+        }
+
+        $childOrders = $this->list(
+            $order['child_order_list']['global_aeop_tp_child_order_dto']
+            ?? $order['child_order_list']
+            ?? []
+        );
+
+        if ($tradeDetail !== []) {
+            $tradeChildren = $this->list(
+                $tradeDetail['child_order_list']['aeop_tp_child_order_dto']
+                ?? $tradeDetail['child_order_list']['global_aeop_tp_child_order_dto']
+                ?? $tradeDetail['child_order_list']
+                ?? []
+            );
+            if ($tradeChildren !== []) {
+                $childOrders = $tradeChildren;
+            }
+
+            $order = array_replace($order, array_filter([
+                'pay_amount_by_settlement_cur' => $tradeDetail['pay_amount_by_settlement_cur'] ?? null,
+                'settlement_currency' => $tradeDetail['settlement_currency'] ?? null,
+                'loan_status' => $tradeDetail['loan_status'] ?? null,
+                'fund_status' => $tradeDetail['fund_status'] ?? null,
+                'escrow_fee' => $tradeDetail['escrow_fee'] ?? null,
+                'escrow_fee_rate' => $tradeDetail['escrow_fee_rate'] ?? null,
+                'gmt_pay_success' => $tradeDetail['gmt_pay_success'] ?? null,
+                'gmt_pay_time' => $tradeDetail['gmt_pay_time'] ?? null,
+                'loan_info' => $tradeDetail['loan_info'] ?? null,
+            ], fn ($value) => $value !== null && $value !== '' && $value !== []));
+        }
+
+        return [
+            'order' => $order,
+            'child_orders' => $childOrders,
+            'loan_son_orders' => $loanSonOrders,
+        ];
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $loanSonOrders
+     */
+    protected function sumLoanSonMoney(array $loanSonOrders, string $field): ?float
+    {
+        $sum = 0.0;
+        $found = false;
+        foreach ($loanSonOrders as $row) {
+            $amount = $this->money($this->arr($row)[$field] ?? null);
+            if ($amount !== null && $amount > 0) {
+                $sum += $amount;
+                $found = true;
+            }
+        }
+
+        return $found ? round($sum, 2) : null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $order
+     * @param  array<int, array<string, mixed>>  $loanSonOrders
+     * @param  array<int, string>  $keys
+     */
+    protected function firstFundMoney(array $order, array $loanSonOrders, array $keys): ?float
+    {
+        foreach ($keys as $key) {
+            if (($amount = $this->money($order[$key] ?? null)) !== null) {
+                return $amount;
+            }
+        }
+
+        foreach ($loanSonOrders as $row) {
+            $row = $this->arr($row);
+            foreach ($keys as $key) {
+                if (($amount = $this->money($row[$key] ?? null)) !== null) {
+                    return $amount;
+                }
+            }
+        }
+
+        $sources = $this->arr($order['fund_sources'] ?? []);
+        foreach (['trade_detail', 'loan_fund'] as $bucket) {
+            if (($amount = $this->findFundMoneyByKeys($this->arr($sources[$bucket] ?? []), $keys)) !== null) {
+                return $amount;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @param  array<int, string>  $keys
+     */
+    protected function findFundMoneyByKeys(array $data, array $keys, int $depth = 0): ?float
+    {
+        if ($depth > 8 || $data === []) {
+            return null;
+        }
+
+        foreach ($keys as $key) {
+            if (array_key_exists($key, $data) && ($amount = $this->money($data[$key])) !== null) {
+                return $amount;
+            }
+        }
+
+        foreach ($data as $value) {
+            if (! is_array($value)) {
+                continue;
+            }
+            if (($amount = $this->findFundMoneyByKeys($this->arr($value), $keys, $depth + 1)) !== null) {
+                return $amount;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -860,6 +1004,7 @@ class AliexpressDetailFormatter
     protected function resolveSellerPaidAmount(
         array $order,
         array $childOrders,
+        array $loanSonOrders,
         ?float $orderAmount,
         ?float $platformCommission,
         ?float $transactionFee,
@@ -867,6 +1012,10 @@ class AliexpressDetailFormatter
         ?float $affiliateCommission,
         ?float $cashbackPaidBySeller
     ): ?float {
+        if (($sellerPaid = $this->sumLoanSonMoney($loanSonOrders, 'real_loan_amount')) !== null) {
+            return $sellerPaid;
+        }
+
         foreach ([$this->arr($order['loan_info'] ?? [])] as $loanInfo) {
             if (($loanAmount = $this->money($loanInfo['loan_amount'] ?? null)) !== null) {
                 return $loanAmount;
@@ -880,8 +1029,24 @@ class AliexpressDetailFormatter
             }
         }
 
-        // Payout is only shown when AE provides loan_amount; partial fee fields are often missing until settlement.
-        return null;
+        if (($loanAmount = $this->sumLoanSonMoney($loanSonOrders, 'loan_amount')) !== null) {
+            return $loanAmount;
+        }
+
+        if ($orderAmount === null) {
+            return null;
+        }
+
+        $fees = array_values(array_filter(
+            [$platformCommission, $transactionFee, $platformTax, $affiliateCommission, $cashbackPaidBySeller],
+            fn ($fee) => $fee !== null && $fee > 0
+        ));
+
+        if ($fees === []) {
+            return null;
+        }
+
+        return round(max(0, $orderAmount - array_sum($fees)), 2);
     }
 
     /**

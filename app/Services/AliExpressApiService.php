@@ -1095,6 +1095,110 @@ class AliExpressApiService
     }
 
     /**
+     * Trade order detail — aliexpress.trade.new.redefining.findorderbyid.
+     * Includes loan_info, escrow_fee, pay_amount_by_settlement_cur after payment.
+     *
+     * @return array{success: bool, message?: string, data?: array<string, mixed>, request_id?: string|null}
+     */
+    public function getOrderTradeDetail(string $orderId): array
+    {
+        $raw = $this->callRestGateway('aliexpress.trade.new.redefining.findorderbyid', [
+            'param1' => $this->encodeRequestPayload([
+                'order_id' => (string) $orderId,
+                'ext_info_bit_flag' => 31,
+            ]),
+        ]);
+
+        if (empty($raw['success'])) {
+            return $raw;
+        }
+
+        $payload = $this->unwrapSolutionEnvelope($raw['data'] ?? []);
+
+        return [
+            'success' => true,
+            'status' => $raw['status'] ?? 200,
+            'data' => $this->parseTradeOrderDetailResponse($payload),
+            'request_id' => $raw['request_id'] ?? null,
+        ];
+    }
+
+    /**
+     * Order loan / settlement fund rows — aliexpress.trade.redefining.findloanlistquery.
+     * Returns escrow_fee, affiliate_commission, real_loan_amount when AE has released funds.
+     *
+     * @return array{success: bool, message?: string, data?: array<string, mixed>, request_id?: string|null}
+     */
+    public function getOrderLoanFundList(string $orderId, int $page = 1, int $pageSize = 20): array
+    {
+        $raw = $this->callRestGateway('aliexpress.trade.redefining.findloanlistquery', [
+            'param1' => $this->encodeRequestPayload([
+                'order_id' => (int) $orderId,
+                'page' => max(1, $page),
+                'page_size' => min(200, max(1, $pageSize)),
+            ]),
+        ]);
+
+        if (empty($raw['success'])) {
+            return $raw;
+        }
+
+        $payload = $this->unwrapSolutionEnvelope($raw['data'] ?? []);
+
+        return [
+            'success' => true,
+            'status' => $raw['status'] ?? 200,
+            'data' => $this->parseOrderLoanFundResponse($payload),
+            'request_id' => $raw['request_id'] ?? null,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    protected function parseTradeOrderDetailResponse(array $payload): array
+    {
+        $result = is_array($payload['result'] ?? null) ? $payload['result'] : $payload;
+        $target = $result['target'] ?? $result['data'] ?? $result;
+
+        return is_array($target) ? $target : [];
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    protected function parseOrderLoanFundResponse(array $payload): array
+    {
+        $result = is_array($payload['result'] ?? null) ? $payload['result'] : $payload;
+        $orderList = $result['order_list']['order_loan_item_vo']
+            ?? $result['order_list']
+            ?? [];
+        $orders = $this->normalizeList($orderList);
+        $sonOrders = [];
+
+        foreach ($orders as $orderRow) {
+            if (! is_array($orderRow)) {
+                continue;
+            }
+            $sons = $this->normalizeList($orderRow['son_order_list']['son_order_loan_vo'] ?? $orderRow['son_order_list'] ?? []);
+            foreach ($sons as $son) {
+                if (is_array($son)) {
+                    $sonOrders[] = $son;
+                }
+            }
+        }
+
+        return [
+            'total_item' => $result['total_item'] ?? count($orders),
+            'orders' => $orders,
+            'first' => $orders[0] ?? null,
+            'son_orders' => $sonOrders,
+        ];
+    }
+
+    /**
      * Daily sales for one product (last 30 days) — aliexpress.data.redefining.queryproductsalesinfoeverydaybyid.
      */
     public function getProductDailySales(string $productId, string $startDate, string $endDate, int $page = 1, int $pageSize = 50): array
