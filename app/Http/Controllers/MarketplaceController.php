@@ -151,4 +151,13 @@ class MarketplaceController extends Controller
         }
         return response()->json(['success' => false], 404);
     }
+
+    public function deleteReadyOrder(Request $request, string $marketplace): JsonResponse
+    {
+        if (strtolower($marketplace) === 'aliexpress') {
+            return app(AliexpressSyncController::class)->deleteReadyOrder($request);
+        }
+
+        return response()->json(['success' => false, 'message' => 'Delete ready order is only available for AliExpress.'], 404);
+    }
 }

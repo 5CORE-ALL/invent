@@ -525,6 +525,40 @@ class AliexpressSyncController extends Controller
         return response()->json(['success' => true, 'message' => 'Import queued. Ensure queue worker is running.']);
     }
 
+    /**
+     * Delete a local AliExpress order that is still ready for Shopify import
+     * (not yet imported). Removes all line rows for that AE order_id.
+     */
+    public function deleteReadyOrder(Request $request): JsonResponse
+    {
+        $id = (int) $request->input('id');
+        $order = AliexpressOrderMetric::find($id);
+
+        if (! $order) {
+            return response()->json(['success' => false, 'message' => 'Order not found.'], 404);
+        }
+
+        if (! empty($order->shopify_order_id)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This order is already imported to Shopify and cannot be deleted here.',
+            ], 422);
+        }
+
+        $orderId = (string) $order->order_id;
+        $deleted = AliexpressOrderMetric::query()
+            ->where('order_id', $orderId)
+            ->whereNull('shopify_order_id')
+            ->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => "Removed AliExpress order {$orderId} from ready-for-import ({$deleted} row(s)).",
+            'deleted' => $deleted,
+            'order_id' => $orderId,
+        ]);
+    }
+
     public function syncSettings(Request $request): View
     {
         return view('marketplace.aliexpress.settings', [

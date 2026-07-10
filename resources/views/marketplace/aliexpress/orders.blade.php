@@ -80,7 +80,10 @@
                                         @if($o->shopify_order_id)
                                             —
                                         @else
-                                            <button type="button" class="btn btn-sm btn-warning btn-push-order" data-id="{{ $o->id }}" onclick="event.stopPropagation();">Push to Shopify</button>
+                                            <div class="d-flex gap-1 flex-wrap" onclick="event.stopPropagation();">
+                                                <button type="button" class="btn btn-sm btn-warning btn-push-order" data-id="{{ $o->id }}">Push to Shopify</button>
+                                                <button type="button" class="btn btn-sm btn-outline-danger btn-delete-ready-order" data-id="{{ $o->id }}" data-order-id="{{ $o->order_id }}" title="Remove from ready-for-import">Delete</button>
+                                            </div>
                                         @endif
                                     </td>
                                 </tr>
@@ -151,6 +154,37 @@ document.querySelectorAll('.btn-push-order').forEach(function (btn) {
         })
         .catch(function () { alert('Request failed.'); })
         .finally(function () { btn.disabled = false; }.bind(this));
+    });
+});
+
+document.querySelectorAll('.btn-delete-ready-order').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+        var id = this.getAttribute('data-id');
+        var orderId = this.getAttribute('data-order-id') || id;
+        if (!id) return;
+        if (!confirm('Delete AliExpress order ' + orderId + ' from ready-for-import?\n\nThis only removes it from our platform. It does not delete the order on AliExpress or Shopify.')) {
+            return;
+        }
+        this.disabled = true;
+        fetch('{{ route('marketplace.orders.delete-ready', 'aliexpress') }}', {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ id: id }),
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            alert(data.message || (data.success ? 'Deleted' : 'Failed'));
+            if (data.success) location.reload();
+            else btn.disabled = false;
+        })
+        .catch(function () {
+            alert('Request failed.');
+            btn.disabled = false;
+        });
     });
 });
 </script>

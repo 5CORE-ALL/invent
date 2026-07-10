@@ -521,6 +521,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/settings', [\App\Http\Controllers\MarketplaceController::class, 'settings'])->name('marketplace.settings');
         Route::post('/settings', [\App\Http\Controllers\MarketplaceController::class, 'saveSettings'])->name('marketplace.settings.save');
         Route::post('/orders/push', [\App\Http\Controllers\MarketplaceController::class, 'pushOrderToShopify'])->name('marketplace.orders.push');
+        Route::post('/orders/delete-ready', [\App\Http\Controllers\MarketplaceController::class, 'deleteReadyOrder'])->name('marketplace.orders.delete-ready');
     });
 
     // TopDawg Sales Dashboard (topdawg_order_metrics, margin 0.95, no ship)
