@@ -11,6 +11,7 @@ use App\Http\Controllers\AdvertisementMaster\MetaParent\ProductWiseMetaParentCon
 use App\Http\Controllers\AdvertisementMaster\Prod_Target_Advt\ProdTargetAmazonController;
 use App\Http\Controllers\AdvertisementMaster\Promoted_Advt\PromotedEbayController;
 use App\Http\Controllers\AdvertisementMaster\Shopping_Advt\GoogleShoppingController;
+use App\Http\Controllers\AdvertisementMaster\VariationsAdsController;
 use App\Http\Controllers\AmazonAdsController;
 use App\Http\Controllers\AmazonAds\AmazonAdsPushLogController;
 use App\Http\Controllers\ArrivedContainerController;
@@ -4020,6 +4021,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/advertisement-master', [AdvertisementMasterController::class, 'index'])->name('advertisement.master');
     Route::get('/advertisement-master/data', [AdvertisementMasterController::class, 'data'])->name('advertisement.master.data');
     Route::get('/advertisement-master/history', [AdvertisementMasterController::class, 'history'])->name('advertisement.master.history');
+    Route::get('/variations-ads', [VariationsAdsController::class, 'index'])->name('advertisement.variations.ads');
+    Route::get('/variations-ads/data', [VariationsAdsController::class, 'data'])->name('advertisement.variations.ads.data');
+    Route::post('/variations-ads/save', [VariationsAdsController::class, 'save'])->name('advertisement.variations.ads.save');
+    Route::get('/variations-ads/history', [VariationsAdsController::class, 'history'])->name('advertisement.variations.ads.history');
     Route::get('/kw-amazon', [KwAmazonController::class, 'Amazon'])->name('advertisment.kw.amazon');
     Route::post('/update-checkbox-flag', [KwAmazonController::class, 'updateCheckboxes']);
     Route::get('/kw-ebay', [KwEbayController::class, 'Ebay'])->name('advertisment.kw.eBay');

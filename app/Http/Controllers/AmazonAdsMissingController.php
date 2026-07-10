@@ -65,7 +65,9 @@ class AmazonAdsMissingController extends Controller
             ->get()
             ->groupBy(fn ($l) => (string) $l->sku);
 
-        $data = collect($parents)->map(function ($parent, $parentKey) use ($linksBySku, $inventoryByParent) {
+        $statusMap = $this->campaignStatusMap();
+
+        $data = collect($parents)->map(function ($parent, $parentKey) use ($linksBySku, $inventoryByParent, $statusMap) {
             $sku = 'PARENT '.$parent;
             $links = $linksBySku->get($sku, collect());
 
@@ -75,8 +77,8 @@ class AmazonAdsMissingController extends Controller
                 'is_parent' => true,
                 'inventory' => (int) round($inventoryByParent[$parentKey] ?? 0),
                 'campaign_pick' => '',
-                'pt' => $this->linkListForType($links, 'PT'),
-                'kw' => $this->linkListForType($links, 'KW'),
+                'pt' => $this->linkListForType($links, 'PT', $statusMap),
+                'kw' => $this->linkListForType($links, 'KW', $statusMap),
             ];
         })->values();
 
@@ -198,29 +200,91 @@ class AmazonAdsMissingController extends Controller
     private function linksResponseForSku(string $sku): array
     {
         $links = AmazonAdsMissingLink::where('sku', $sku)->orderBy('id')->get();
+        $statusMap = $this->campaignStatusMap();
 
         return [
             'ok' => true,
             'sku' => $sku,
-            'pt' => $this->linkListForType($links, 'PT'),
-            'kw' => $this->linkListForType($links, 'KW'),
+            'pt' => $this->linkListForType($links, 'PT', $statusMap),
+            'kw' => $this->linkListForType($links, 'KW', $statusMap),
         ];
     }
 
     /**
      * @param  \Illuminate\Support\Collection  $links
-     * @return array<int, array{id: int, campaign_id: ?string, campaign_name: string}>
+     * @param  array<string, string>  $statusMap  normalized campaign name => ENABLED/PAUSED
+     * @return array<int, array{id: int, campaign_id: ?string, campaign_name: string, status: string, dot: string}>
      */
-    private function linkListForType($links, string $type): array
+    private function linkListForType($links, string $type, array $statusMap = []): array
     {
         return $links
             ->filter(fn ($l) => (string) $l->type === $type)
-            ->map(fn ($l) => [
-                'id' => (int) $l->id,
-                'campaign_id' => $l->campaign_id,
-                'campaign_name' => (string) $l->campaign_name,
-            ])
+            ->map(function ($l) use ($statusMap) {
+                $name = (string) $l->campaign_name;
+                $status = $statusMap[$this->normalizeCampaignName($name)] ?? '';
+                $dot = $status === 'ENABLED' ? 'green' : ($status !== '' ? 'red' : '');
+
+                return [
+                    'id' => (int) $l->id,
+                    'campaign_id' => $l->campaign_id,
+                    'campaign_name' => $name,
+                    'status' => $status,
+                    'dot' => $dot,
+                ];
+            })
             ->values()
             ->all();
+    }
+
+    /**
+     * Latest campaignStatus (ENABLED / PAUSED / …) per SP campaign, keyed by normalized campaign name.
+     * Same source as /amazon-ads/all so the dot beside each linked campaign matches that page's status.
+     *
+     * @return array<string, string>
+     */
+    private function campaignStatusMap(): array
+    {
+        if (! Schema::hasTable(self::SP_TABLE)
+            || ! Schema::hasColumn(self::SP_TABLE, 'campaignName')
+            || ! Schema::hasColumn(self::SP_TABLE, 'campaignStatus')) {
+            return [];
+        }
+
+        // Latest row per campaign name (highest id) carries the current status.
+        $latestIds = DB::table(self::SP_TABLE)
+            ->whereNotNull('campaignName')
+            ->where('campaignName', '!=', '')
+            ->selectRaw('MAX(id) AS max_id')
+            ->groupBy('campaignName')
+            ->pluck('max_id')
+            ->filter()
+            ->map(fn ($v) => (int) $v)
+            ->all();
+
+        if ($latestIds === []) {
+            return [];
+        }
+
+        $map = [];
+        DB::table(self::SP_TABLE)
+            ->whereIn('id', $latestIds)
+            ->get(['campaignName', 'campaignStatus'])
+            ->each(function ($row) use (&$map) {
+                $key = $this->normalizeCampaignName((string) ($row->campaignName ?? ''));
+                if ($key === '') {
+                    return;
+                }
+                $map[$key] = strtoupper(trim((string) ($row->campaignStatus ?? '')));
+            });
+
+        return $map;
+    }
+
+    /**
+     * Normalize a campaign name for status lookups: collapse whitespace, drop a trailing period, upper-case.
+     */
+    private function normalizeCampaignName(string $name): string
+    {
+        return strtoupper(rtrim(preg_replace('/\s+/', ' ', trim($name)), '.'));
     }
 }

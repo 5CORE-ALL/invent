@@ -6,6 +6,48 @@
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <style>
+        /* Compact filter dropdowns — size each to its own content */
+        #amazon-filter-bar .form-select {
+            width: auto !important;
+            max-width: 130px;
+            padding-right: 1.35rem !important;
+            padding-left: 0.5rem !important;
+            background-position: right 0.35rem center !important;
+        }
+
+        /* Match ROI% / GPFT% inputs to the S PRC dropdown width */
+        #amazon-filter-bar #sprice-filter { width: 90px !important; }
+
+        /* Give room between items without inflating control height */
+        #amazon-filter-bar { gap: 8px 10px !important; }
+        #summary-stats {
+            order: -1;
+            padding: 0.5rem 0.7rem !important;
+            margin-top: 0 !important;
+            margin-bottom: 0.5rem !important;
+        }
+        #summary-stats .d-flex { gap: 8px !important; }
+
+        /* Column visibility dropdown — show options in multiple columns */
+        .column-dropdown-multicol {
+            min-width: 460px;
+            padding: 6px 4px;
+            column-count: 3;
+            column-gap: 4px;
+        }
+        .column-dropdown-multicol > li {
+            break-inside: avoid;
+            -webkit-column-break-inside: avoid;
+            page-break-inside: avoid;
+        }
+        .column-dropdown-multicol .dropdown-item {
+            padding: 3px 10px;
+            white-space: nowrap;
+        }
+        @media (max-width: 768px) {
+            .column-dropdown-multicol { min-width: 320px; column-count: 2; }
+        }
+
         /* Image column hover preview */
         #image-hover-preview {
             transition: opacity 0.2s ease;
@@ -253,9 +295,9 @@
     <div class="toast-container"></div>
     <div class="row">
         <div class="card shadow-sm">
-            <div class="card-body py-3">
+            <div class="card-body py-2 d-flex flex-column">
                 
-                <div class="d-flex align-items-center flex-wrap gap-2">
+                <div class="d-flex align-items-center flex-wrap gap-2" id="amazon-filter-bar">
                     <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU..." style="width: 180px; display: inline-block;">
                     <input type="text" id="parent-search" class="form-control form-control-sm" placeholder="Search Parent..." style="width: 180px; display: inline-block;">
 
@@ -276,7 +318,7 @@
                     <select id="gpft-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="all">GPFT%</option>
-                        <option value="negative">Negative (&lt;0%)</option>
+                        <option value="negative">Negative</option>
                         <option value="0-10">0-10%</option>
                         <option value="10-20">10-20%</option>
                         <option value="20-30">20-30%</option>
@@ -285,7 +327,7 @@
                     </select>
                     <select id="cvr-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
-                        <option value="all">All CVR%</option>
+                        <option value="all">CVR%</option>
                         <option value="0-0">0%</option>
                         <option value="0-3">0-3%</option>
                         <option value="3-7">3-7%</option>
@@ -295,11 +337,12 @@
 
                     <select id="roi-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
-                        <option value="all">ROI%</option>
+                        <option value="all">GROI%</option>
                         <option value="lt40">&lt; 40%</option>
-                        <option value="40-75">40–75%</option>
-                        <option value="75-125">75–125%</option>
-                        <option value="gt125">&gt; 125%</option>
+                        <option value="40-60">40–60%</option>
+                        <option value="60-80">60–80%</option>
+                        <option value="80-100">80–100%</option>
+                        <option value="gt100">100%+</option>
                     </select>
 
                     <select id="diff-filter" class="form-select form-select-sm"
@@ -320,8 +363,7 @@
 
                     <select id="dil-filter" class="form-select form-select-sm" style="width: auto; display: inline-block;">
                         <option value="all">DIL%</option>
-                        <option value="red">Red &lt;16.7%</option>
-                        <option value="yellow">Yellow 16.7-25%</option>
+                        <option value="red">Red &lt;25%</option>
                         <option value="green">Green 25-50%</option>
                         <option value="pink">Pink 50%+</option>
                     </select>
@@ -354,12 +396,7 @@
                         <option value="error">Error</option>
                     </select>
 
-                    <select id="sold-filter" class="form-select form-select-sm"
-                        style="width: auto; display: inline-block;">
-                        <option value="all">Sold</option>
-                        <option value="sold">Sold >0</option>
-                        <option value="zero">0 Sold</option>
-                    </select>
+                    <input type="hidden" id="sold-filter" value="all">
 
                     <select id="sprice-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
@@ -373,14 +410,14 @@
                         id="target-roi-controls"
                         title="Target ROI% — sets S PRC = (LP × (1 + Target ROI%/100) + Ship) / margin on every selected row (accounts for Amazon fees + shipping)">
                         <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
-                            Target ROI%:
+                            <span style="font-size:1em;" aria-hidden="true">🎯</span> ROI%:
                         </label>
                         <input type="number" id="target-roi-input" class="form-control form-control-sm text-end"
-                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
+                            placeholder="30" step="0.1" style="width: 90px;"
                             title="Target ROI% applied to all selected rows when you click 'Apply S PRC'">
                         <button id="apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
                             title="Compute & save S PRC = (LP \u00d7 (1 + Target ROI%/100) + Ship) / margin for every selected row">
-                            <i class="fas fa-calculator"></i> Apply S PRC
+                            <i class="fas fa-calculator"></i>
                         </button>
                     </div>
 
@@ -390,14 +427,14 @@
                         id="target-gpft-controls"
                         title="Target GPFT% — sets S PRC = (LP + Ship) / (margin − Target GPFT%/100) on every selected row (back-solves so SGPFT column equals the target)">
                         <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
-                            Target GPFT%:
+                            <span style="font-size:1em;" aria-hidden="true">🎯</span> GPFT%:
                         </label>
                         <input type="number" id="target-gpft-input" class="form-control form-control-sm text-end"
-                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
+                            placeholder="30" step="0.1" style="width: 90px;"
                             title="Target GPFT% applied to all selected rows when you click 'Apply S PRC'. Must be less than the Amazon take-home margin (e.g. < 80%).">
                         <button id="apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
                             title="Compute & save S PRC = (LP + Ship) / (margin \u2212 Target GPFT%/100) for every selected row">
-                            <i class="fas fa-calculator"></i> Apply S PRC
+                            <i class="fas fa-calculator"></i>
                         </button>
                     </div>
 
@@ -412,8 +449,8 @@
                     <!-- Bulk Actions Dropdown -->
                     <div class="dropdown d-inline-block ms-2" id="bulk-actions-container" style="display: none;">
                         <button class="btn btn-sm btn-warning dropdown-toggle" type="button"
-                            id="bulkActionsDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="fas fa-tasks"></i> Bulk Actions
+                            id="bulkActionsDropdown" data-bs-toggle="dropdown" aria-expanded="false" title="Bulk Actions">
+                            <i class="fas fa-upload"></i>
                         </button>
                         <ul class="dropdown-menu" aria-labelledby="bulkActionsDropdown" style="min-width: 250px;">
                             <li><a class="dropdown-item bulk-action-item" href="#" data-action="NRA">Mark as NRA</a></li>
@@ -451,10 +488,10 @@
                     <!-- Column Visibility Dropdown -->
                     <div class="dropdown d-inline-block">
                         <button class="btn btn-sm btn-outline-primary dropdown-toggle" type="button"
-                            id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="fas fa-columns"></i> Col
+                            id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false" title="Columns">
+                            <i class="fas fa-columns"></i>
                         </button>
-                        <ul class="dropdown-menu" id="column-dropdown-menu" aria-labelledby="columnVisibilityDropdown">
+                        <ul class="dropdown-menu column-dropdown-multicol" id="column-dropdown-menu" aria-labelledby="columnVisibilityDropdown">
                             <!-- Populated dynamically -->
                         </ul>
                     </div>
@@ -466,25 +503,21 @@
                         <strong>ROI%:</strong> <span id="roi-calc">0.00%</span>
                     </span> --}}
 
-                    <a href="{{ url('/amazon-export-pricing-cvr') }}" class="btn btn-sm btn-success">
-                        <i class="fas fa-file-csv"></i> Export
-                    </a>
-
-                    <button id="section-export-btn" class="btn btn-sm btn-primary">
-                        <i class="fas fa-download"></i> Export view
-                    </button>
-
-                    <button id="export-lmp-btn" class="btn btn-sm btn-warning">
-                        <i class="fas fa-file-export"></i> Export LMP
-                    </button>
-
-                    <a href="{{ url('/amazon-export-sprice-upload') }}" class="btn btn-sm btn-info">
-                        <i class="fas fa-download"></i> SPRICE N Upload
-                    </a>
+                    <div class="btn-group">
+                        <button type="button" class="btn btn-sm btn-success dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false" title="Export">
+                            <i class="fas fa-file-export"></i>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><a class="dropdown-item" href="{{ url('/amazon-export-pricing-cvr') }}"><i class="fas fa-file-csv text-success"></i> Export</a></li>
+                            <li><a class="dropdown-item" href="#" id="section-export-btn"><i class="fas fa-download text-primary"></i> Export view</a></li>
+                            <li><a class="dropdown-item" href="#" id="export-lmp-btn"><i class="fas fa-file-export text-warning"></i> Export LMP</a></li>
+                            <li><a class="dropdown-item" href="{{ url('/amazon-export-sprice-upload') }}"><i class="fas fa-download text-info"></i> SPRICE N Upload</a></li>
+                        </ul>
+                    </div>
                     
                     <div class="btn-group">
                         <button type="button" id="price-pct-btn" class="btn btn-sm btn-primary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="fas fa-percent"></i> Price %
+                            <i class="fas fa-percent"></i> Prc Mode
                         </button>
                         <ul class="dropdown-menu dropdown-menu-end" id="price-pct-dropdown">
                             <li><a class="dropdown-item" href="#" data-mode="decrease"><i class="fas fa-minus-circle text-warning"></i> Decrease</a></li>
@@ -505,8 +538,32 @@
 
                 <!-- Summary Stats -->
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
-                    <h6 class="mb-3">Summary (INV > 0)</h6>
                     <div class="d-flex flex-wrap gap-2">
+                        <!-- Filtered row count -->
+                        <span class="badge bg-dark fs-6 p-2" id="rows-count-badge" style="color: white; font-weight: bold;" title="Number of rows currently shown (after filters)">Row: 0</span>
+
+                        <!-- Financial Metrics -->
+                        <span class="badge bg-success fs-6 p-2 amz-badge-chart" data-metric="total_pft" id="total-pft-amt-badge" style="color: black; font-weight: bold; cursor:pointer; display: none;" title="View trend">PFT: $0.00</span>
+                        <span class="badge bg-primary fs-6 p-2 amz-badge-chart" data-metric="total_sales" id="total-sales-amt-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">Sales: $0.00</span>
+                        
+                        <!-- Percentage Metrics -->
+                        <span class="badge bg-info fs-6 p-2 amz-badge-chart" data-metric="gpft_pct" id="avg-gpft-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">GPFT: 0%</span>
+
+                        <!-- Ads% (from /all-marketplace-master — Amazon channel) -->
+                        <span class="badge fs-6 p-2" id="amazon-ads-badge" style="background-color: #fd7e14; color: white; font-weight: bold;" title="Amazon Ads% (Total Ad Spend / L30 Sales) — from /all-marketplace-master">Ads: {{ $amazonAdsPercent !== null ? round($amazonAdsPercent, 1) . '%' : 'N/A' }}</span>
+                        <span class="badge bg-info fs-6 p-2 amz-badge-chart" data-metric="npft_pct" id="avg-pft-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">PFT: 0%</span>
+                        <span class="badge fs-6 p-2 amz-badge-chart" data-metric="groi_pct" id="groi-percent-badge" style="background-color: #6f42c1; color: white; font-weight: bold; cursor:pointer;" title="View trend">GROI: 0%</span>
+                        <span class="badge fs-6 p-2" id="nroi-percent-badge" style="background-color: #6f42c1; color: white; font-weight: bold;" title="Net ROI = (Total PFT − Ad Spend) / COGS. Ad Spend from /all-marketplace-master Amazon Ads%">NROI: 0%</span>
+                        
+                        <!-- Amazon Metrics -->
+                        <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Price: $0.00</span>
+                        <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;">Views: 0</span>
+                        <span class="badge bg-success fs-6 p-2" id="avg-cvr-badge" style="color: black; font-weight: bold;">CVR: 0%</span>
+
+                        <!-- Mapping / Listing Badges (Clickable filter — same logic as /map-issues) -->
+                        <span class="badge bg-secondary fs-6 p-2" id="nmap-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter N Map (listed, REQ, INV>0, INV vs Amazon stock mismatch)">N Map: <span id="nmap-count">0</span></span>
+                        <span class="badge bg-secondary fs-6 p-2" id="ml-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter ML — Missing Listing (INV>0, not listed on Amazon, REQ)">ML: <span id="ml-count">0</span></span>
+
                         <!-- Sold Filter Badges (Clickable + Hover for chart) -->
                         <span class="badge bg-success fs-6 p-2 sold-filter-badge amz-hover-chart" data-filter="all" data-metric="sold_count" data-source="badge" style="color: black; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for trend">
                             Sold >0: <span id="total-sold-count">0</span>
@@ -514,44 +571,11 @@
                         <span class="badge bg-danger fs-6 p-2 sold-filter-badge amz-hover-chart" data-filter="zero" data-metric="zero_sold_count" data-source="badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for trend">
                             0 Sold: <span id="zero-sold-count">0</span>
                         </span>
-                        
-                        <!-- Inventory Mapping Badges (Clickable + Hover for chart) -->
-                        <span class="badge bg-danger fs-6 p-2 map-filter-badge amz-hover-chart" data-filter="nmapped" data-metric="nmap_count" data-source="badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for trend">
-                             Missing M: <span id="nmap-count">0</span>
-                        </span>
-                        <span class="badge bg-secondary fs-6 p-2 missing-amz-fba-filter-badge" id="missing-amazon-fba-badge" data-filter="missing-amazon-fba" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: Missing L FBA">
-                            Missing L FBA: <span id="missing-amazon-fba-count">0</span>
-                        </span>
-                        <span class="badge bg-success fs-6 p-2 missing-amz-nonfba-filter-badge" id="missing-amazon-nonfba-badge" data-filter="missing-amazon-nonfba" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: Missing M FBM">
-                            Missing M FBM: <span id="missing-amazon-nonfba-count">0</span>
-                        </span>
-                        <span class="badge bg-dark fs-6 p-2 missing-l-amz-filter-badge" id="missing-l-amz-badge" data-filter="missing-l-amz" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: Missing L (not listed on Amazon, REQ, INV > 0) — same as /map-issues">
-                            Missing L: <span id="missing-l-amz-count">0</span>
-                        </span>
-                        <span class="badge bg-success fs-6 p-2" id="variation-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Variation (NRL count)">
-                            Variation: <span id="variation-count">0</span>
-                        </span>
-                        
+
                         <!-- Price Comparison Badge -->
                         <span class="badge bg-danger fs-6 p-2 price-filter-badge amz-hover-chart" data-filter="prc-gt-lmp" data-metric="prc_gt_lmp_count" data-source="badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for trend">
                             Prc > LMP: <span id="prc-gt-lmp-count">0</span>
                         </span>
-                        
-                        <!-- Financial Metrics -->
-                        <span class="badge bg-success fs-6 p-2 amz-badge-chart" data-metric="total_pft" id="total-pft-amt-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">PFT: $0.00</span>
-                        <span class="badge bg-primary fs-6 p-2 amz-badge-chart" data-metric="total_sales" id="total-sales-amt-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">Sales: $0.00</span>
-                        
-                        <!-- Percentage Metrics -->
-                        <span class="badge bg-info fs-6 p-2 amz-badge-chart" data-metric="gpft_pct" id="avg-gpft-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">GPFT: 0%</span>
-                        <span class="badge bg-info fs-6 p-2 amz-badge-chart" data-metric="npft_pct" id="avg-pft-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">PFT: 0%</span>
-                        <span class="badge bg-light fs-6 p-2 amz-badge-chart border" data-metric="groi_pct" id="groi-percent-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">GROI: 0%</span>
-                        
-                        <!-- Amazon Metrics -->
-                        <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>
-                        <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;">Views: 0</span>
-                        <span class="badge bg-info fs-6 p-2" id="avg-views-badge" style="color: black; font-weight: bold;">Avg Views: 0</span>
-                        <span class="badge bg-success fs-6 p-2" id="avg-cvr-badge" style="color: black; font-weight: bold;">CVR: 0%</span>
-                        <span class="badge bg-primary fs-6 p-2" id="total-amazon-inv-badge" style="color: black; font-weight: bold;">INV: 0</span>
                     </div>
                 </div>
             </div>
@@ -574,9 +598,6 @@
                         </button>
                         <span id="selected-skus-count" class="text-muted ms-2"></span>
                     </div>
-                </div>
-                <div class="d-flex align-items-center justify-content-end mb-1">
-                    <span id="table-row-counter" style="font-size:15px;color:#334155;font-weight:600;"></span>
                 </div>
                 <div class="d-flex align-items-center mb-2">
                     <div class="btn-group time-navigation-group" role="group" aria-label="Parent navigation">
@@ -837,6 +858,8 @@
         let missingAmazonFbaFilterActive = false;    // Track Missing L FBA filter
         let missingAmazonNonFbaFilterActive = false; // Track Missing M FBM (non-FBA listing) filter
         let missingLAmzFilterActive = false;         // Track Missing L (all) — same as /map-issues
+        let nMapFilterActive = false;                // Track N Map (mapping mismatch) badge filter
+        let mlFilterActive = false;                  // Track ML (Missing Listing) badge filter
 
         // Escape string for safe use in HTML attribute (fixes SKUs with " e.g. WF 8"-890 1PC)
         function escAttr(s) {
@@ -925,6 +948,30 @@
             // "Not listed on Amazon" = no live price (price <= 0), same rule as Reverb (RV Price <= 0).
             const price = parseFloat(rowData['price'] || 0) || 0;
             return price <= 0;
+        }
+
+        /**
+         * Missing M / N Map — same rule as /map-issues N Map (mapping mismatch):
+         * listed on Amazon (has price), REQ, INV > 0, INV_AMZ > 0, non-FBA, and INV vs INV_AMZ
+         * is OUTSIDE the map tolerance.
+         */
+        function isAmazonMissingM(rowData) {
+            if (!rowData) return false;
+            if (rowData.is_parent_summary === true || rowData.is_parent_summary === 1) return false;
+            const sku = String(rowData['(Child) sku'] || rowData['Parent'] || '').trim().toUpperCase();
+            if (sku.indexOf('PARENT ') === 0 || sku === 'PARENT') return false;
+            const nr = String(rowData.NR || '').trim().toUpperCase();
+            if (nr !== 'REQ') return false;
+            // Listed on Amazon: not flagged missing and has a live price.
+            const isMissingAmazon = rowData.is_missing_amazon || false;
+            if (isMissingAmazon) return false;
+            const price = parseFloat(rowData['price'] || 0) || 0;
+            if (price <= 0) return false;
+            const inv = parseFloat(rowData['INV'] || 0) || 0;
+            if (inv <= 0) return false;
+            const invAmz = parseFloat(rowData['INV_AMZ'] || 0) || 0;
+            if (invAmz <= 0) return false; // same as /map-issues: both sides must have stock
+            return !amazonRowIsFba(rowData) && !amazonInvWithinMapTolerance(inv, invAmz);
         }
 
         /** Parent group key: Parent/parent field, or "PARENT xxx" pseudo-SKU on summary rows (matches table filters). */
@@ -1203,11 +1250,11 @@
         const amzMetricLabels = {
             'l30_sales': 'L30 Sales', 'l30_orders': 'L30 Orders', 'qty': 'Total Qty',
             'gprofit': 'Gprofit%', 'groi': 'G ROI%',
-            'npft': 'N PFT%', 'missing_l': 'Missing',
-            'nmap': 'Missing M',
+            'npft': 'N PFT%', 'missing_l': 'Miss',
+            'nmap': 'Miss M',
             // Badge-stat metrics (daily snapshot counts)
             'sold_count': 'Sold >0', 'zero_sold_count': '0 Sold',
-            'map_count': 'Missing M', 'nmap_count': 'Missing M', 'missing_count': 'Missing L',
+            'map_count': 'Miss M', 'nmap_count': 'Miss M', 'missing_count': 'Miss L',
             'prc_gt_lmp_count': 'Prc > LMP',
             'total_pft': 'PFT', 'total_sales': 'Sales',
             'gpft_pct': 'GPFT%', 'npft_pct': 'PFT%', 'groi_pct': 'GROI%',
@@ -2079,17 +2126,22 @@
             // Initialize charts
             initSkuMetricsChart();
 
-            // Sold filter badge click handlers
+            // Sold filter badge click handlers (toggle: click again returns to "show all")
             $('.sold-filter-badge').on('click', function() {
                 const filter = $(this).data('filter');
-                
-                // Update dropdown value
-                if (filter === 'all') {
-                    $('#sold-filter').val('sold'); // Show only sold items
-                } else if (filter === 'zero') {
-                    $('#sold-filter').val('zero'); // Show only 0-sold items
+                // "Sold >0" badge → 'sold', "0 Sold" badge → 'zero'
+                const targetVal = (filter === 'zero') ? 'zero' : 'sold';
+                const current = $('#sold-filter').val();
+
+                // Toggle off if this filter is already active, otherwise apply it
+                $('#sold-filter').val(current === targetVal ? 'all' : targetVal);
+
+                // Visual active state for the sold badges
+                $('.sold-filter-badge').css({ 'outline': '', 'outline-offset': '' });
+                if ($('#sold-filter').val() === targetVal) {
+                    $(this).css({ 'outline': '2px solid #212529', 'outline-offset': '1px' });
                 }
-                
+
                 // Re-apply filters
                 applyFilters();
             });
@@ -2110,119 +2162,33 @@
                 applyFilters();
             });
 
-            // Map filter badge click handlers
-            $('.map-filter-badge').on('click', function() {
-                const filter = $(this).data('filter');
-                
-                // Toggle filter state
-                if (mapFilterActive === filter) {
-                    // If clicking the same filter, turn it off
-                    mapFilterActive = 'all';
-                    // Reset badge appearance
-                    $('.map-filter-badge').each(function() {
-                        const badgeFilter = $(this).data('filter');
-                        if (badgeFilter === 'mapped') {
-                            $(this).removeClass('bg-warning').addClass('bg-success').css('color', 'black');
-                        } else {
-                            $(this).removeClass('bg-warning').addClass('bg-danger').css('color', 'white');
-                        }
-                    });
-                } else {
-                    // Set new filter
-                    mapFilterActive = filter;
-                    // Map badge is mutually exclusive with the Missing L (all) badge
-                    missingLAmzFilterActive = false;
-                    $('#missing-l-amz-badge').removeClass('bg-info').addClass('bg-dark').css('color', 'white');
-                    // Update badge appearance
-                    $('.map-filter-badge').each(function() {
-                        const badgeFilter = $(this).data('filter');
-                        if (badgeFilter === filter) {
-                            $(this).removeClass('bg-success bg-danger').addClass('bg-warning').css('color', 'black');
-                        } else {
-                            if (badgeFilter === 'mapped') {
-                                $(this).removeClass('bg-warning').addClass('bg-success').css('color', 'black');
-                            } else {
-                                $(this).removeClass('bg-warning').addClass('bg-danger').css('color', 'white');
-                            }
-                        }
-                    });
+            // Sync N Map / ML badge colors + the Miss M / Miss L columns with the active filter state.
+            // Activating a badge reveals its column (even if hidden via the Col dropdown); turning it
+            // off hides the column again.
+            function syncMapListingBadges() {
+                $('#nmap-count-badge').toggleClass('bg-secondary', !nMapFilterActive).toggleClass('bg-danger', nMapFilterActive);
+                $('#ml-count-badge').toggleClass('bg-secondary', !mlFilterActive).toggleClass('bg-danger', mlFilterActive);
+                if (table) {
+                    try { nMapFilterActive ? table.showColumn('inv_map') : table.hideColumn('inv_map'); } catch (e) {}
+                    try { mlFilterActive ? table.showColumn('is_missing') : table.hideColumn('is_missing'); } catch (e) {}
+                    // Persist so the show/hide survives a page refresh
+                    try { saveColumnVisibilityToServer(); } catch (e) {}
                 }
-                
-                // Re-apply filters
+            }
+
+            // N Map badge — toggle filter to mapping-mismatch rows (same logic as /map-issues N Map)
+            $('#nmap-count-badge').on('click', function() {
+                nMapFilterActive = !nMapFilterActive;
+                if (nMapFilterActive) { mlFilterActive = false; }
+                syncMapListingBadges();
                 applyFilters();
             });
 
-            // Missing L FBA badge click — show only not-listed-on-Amazon rows that are FBA
-            $(document).on('click', '.missing-amz-fba-filter-badge', function() {
-                missingAmazonFbaFilterActive = !missingAmazonFbaFilterActive;
-                if (missingAmazonFbaFilterActive) {
-                    missingAmazonNonFbaFilterActive = false;
-                    missingAmazonFilterActive = false;
-                    missingLAmzFilterActive = false;
-                    $('#missing-l-amz-badge').removeClass('bg-info').addClass('bg-dark').css('color', 'white');
-                    $(this).removeClass('bg-secondary bg-warning').addClass('bg-info').css('color', 'black');
-                    $('#missing-amazon-nonfba-badge').removeClass('bg-info').addClass('bg-success').css('color', 'white');
-                    mapFilterActive = 'all';
-                    $('.map-filter-badge').each(function() {
-                        const badgeFilter = $(this).data('filter');
-                        if (badgeFilter === 'mapped') $(this).removeClass('bg-warning').addClass('bg-success').css('color', 'black');
-                        else $(this).removeClass('bg-warning').addClass('bg-danger').css('color', 'white');
-                    });
-                } else {
-                    $(this).removeClass('bg-info').addClass('bg-secondary').css('color', 'white');
-                }
-                applyFilters();
-            });
-
-            // Missing M FBM badge click — show only not-listed-on-Amazon rows that are non-FBA (FBM)
-            $(document).on('click', '.missing-amz-nonfba-filter-badge', function() {
-                missingAmazonNonFbaFilterActive = !missingAmazonNonFbaFilterActive;
-                if (missingAmazonNonFbaFilterActive) {
-                    missingAmazonFbaFilterActive = false;
-                    missingAmazonFilterActive = false;
-                    missingLAmzFilterActive = false;
-                    $('#missing-l-amz-badge').removeClass('bg-info').addClass('bg-dark').css('color', 'white');
-                    $(this).removeClass('bg-success bg-warning').addClass('bg-info').css('color', 'black');
-                    $('#missing-amazon-fba-badge').removeClass('bg-info').addClass('bg-secondary').css('color', 'white');
-                    mapFilterActive = 'all';
-                    $('.map-filter-badge').each(function() {
-                        const badgeFilter = $(this).data('filter');
-                        if (badgeFilter === 'mapped') $(this).removeClass('bg-warning').addClass('bg-success').css('color', 'black');
-                        else $(this).removeClass('bg-warning').addClass('bg-danger').css('color', 'white');
-                    });
-                } else {
-                    $(this).removeClass('bg-info').addClass('bg-success').css('color', 'white');
-                }
-                applyFilters();
-            });
-
-            // Missing L (all) badge click — show not-listed-on-Amazon rows (REQ, INV > 0), same as /map-issues
-            $(document).on('click', '.missing-l-amz-filter-badge', function() {
-                missingLAmzFilterActive = !missingLAmzFilterActive;
-                if (missingLAmzFilterActive) {
-                    // Deactivate the other mutually-exclusive missing/map filters
-                    missingAmazonFbaFilterActive = false;
-                    missingAmazonNonFbaFilterActive = false;
-                    missingAmazonFilterActive = false;
-                    mapFilterActive = 'all';
-                    $('#missing-amazon-fba-badge').removeClass('bg-info').addClass('bg-secondary').css('color', 'white');
-                    $('#missing-amazon-nonfba-badge').removeClass('bg-info').addClass('bg-success').css('color', 'white');
-                    $('.map-filter-badge').each(function() {
-                        const badgeFilter = $(this).data('filter');
-                        if (badgeFilter === 'mapped') $(this).removeClass('bg-warning').addClass('bg-success').css('color', 'black');
-                        else $(this).removeClass('bg-warning').addClass('bg-danger').css('color', 'white');
-                    });
-                    $(this).removeClass('bg-dark').addClass('bg-info').css('color', 'black');
-                } else {
-                    $(this).removeClass('bg-info').addClass('bg-dark').css('color', 'white');
-                }
-                applyFilters();
-            });
-
-            // Variation badge click: filter to NRL (red) rows only; click again to show all
-            $(document).on('click', '#variation-count-badge', function() {
-                var current = $('#nrl-filter').val();
-                $('#nrl-filter').val(current === 'nr' ? 'all' : 'nr');
+            // ML badge — toggle filter to Missing Listing rows (not listed on Amazon, REQ, INV > 0)
+            $('#ml-count-badge').on('click', function() {
+                mlFilterActive = !mlFilterActive;
+                if (mlFilterActive) { nMapFilterActive = false; }
+                syncMapListingBadges();
                 applyFilters();
             });
 
@@ -2255,7 +2221,7 @@
                 $('#discount-input-container').hide();
                 $('#clear-sprice-btn').hide();
                 $('#price-pct-btn').removeClass('btn-danger btn-warning btn-success btn-info').addClass('btn-primary')
-                    .html('<i class="fas fa-percent"></i> Price %');
+                    .html('<i class="fas fa-percent"></i> Prc Mode');
                 $('#apply-discount-btn').html('<i class="fas fa-check"></i> Apply');
                 $('#discount-type-select-wrap').show();
                 $('#discount-input-label').text('By how much:');
@@ -3164,7 +3130,7 @@
                 let errorCount = 0;
                 const total = rowsToProcess.length;
 
-                $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Applying...');
+                $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
 
                 rowsToProcess.forEach(function(item) {
                     $.ajax({
@@ -3190,7 +3156,7 @@
                         },
                         complete: function() {
                             if (successCount + errorCount === total) {
-                                $btn.prop('disabled', false).html('<i class="fas fa-calculator"></i> Apply S PRC');
+                                $btn.prop('disabled', false).html('<i class="fas fa-calculator"></i>');
                                 if (errorCount === 0) {
                                     showToast('success', `S PRC saved for ${successCount} SKU(s) @ Target ROI ${targetRoiPct}%`);
                                 } else {
@@ -3313,7 +3279,7 @@
                 let errorCount = 0;
                 const total = rowsToProcess.length;
 
-                $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Applying...');
+                $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
 
                 rowsToProcess.forEach(function(item) {
                     $.ajax({
@@ -3339,7 +3305,7 @@
                         },
                         complete: function() {
                             if (successCount + errorCount === total) {
-                                $btn.prop('disabled', false).html('<i class="fas fa-calculator"></i> Apply S PRC');
+                                $btn.prop('disabled', false).html('<i class="fas fa-calculator"></i>');
                                 if (errorCount === 0) {
                                     showToast('success', `S PRC saved for ${successCount} SKU(s) @ Target GPFT ${targetGpftPct}%`);
                                 } else {
@@ -4265,7 +4231,7 @@
                         cellClick: function(e, cell) { e.stopPropagation(); }
                     },
                     {
-                        title: "Missing L <span class='missing-l-header-red-dot' style='display:inline-block;width:8px;height:8px;border-radius:50%;background:#dc3545;cursor:pointer;margin-left:3px;vertical-align:middle;' title='Show only red (Missing L) rows'></span>",
+                        title: "Miss L <span class='missing-l-header-red-dot' style='display:inline-block;width:8px;height:8px;border-radius:50%;background:#dc3545;cursor:pointer;margin-left:3px;vertical-align:middle;' title='Show only red (Missing L) rows'></span>",
                         field: "is_missing",
                         hozAlign: "center",
                         width: 65,
@@ -4286,7 +4252,7 @@
                     },
 
                     {
-                        title: "Missing M <span class='missing-m-header-red-dot' style='display:inline-block;width:8px;height:8px;border-radius:50%;background:#dc3545;cursor:pointer;margin-left:3px;vertical-align:middle;' title='Show only red (mismatched) rows'></span>",
+                        title: "Miss M <span class='missing-m-header-red-dot' style='display:inline-block;width:8px;height:8px;border-radius:50%;background:#dc3545;cursor:pointer;margin-left:3px;vertical-align:middle;' title='Show only red (mismatched) rows'></span>",
                         field: "inv_map",
                         hozAlign: "center",
                         width: 60,
@@ -5807,7 +5773,7 @@
                         if (data.is_parent_summary) return parentRowsBypassDataFilters;
                         const roiVal = parseFloat(data['GROI%']) || 0;
                         if (roiFilter === 'lt40') return roiVal < 40;
-                        if (roiFilter === 'gt125') return roiVal > 125;
+                        if (roiFilter === 'gt100') return roiVal > 100;
                         const [min, max] = roiFilter.split('-').map(Number);
                         return roiVal >= min && roiVal <= max;
                     });
@@ -5870,8 +5836,7 @@
                         const l30 = parseFloat(data['L30']) || 0;
                         const dil = inv === 0 ? 0 : (l30 / inv) * 100;
 
-                        if (dilFilter === 'red') return dil < 16.66;
-                        if (dilFilter === 'yellow') return dil >= 16.66 && dil < 25;
+                        if (dilFilter === 'red') return dil < 25;
                         if (dilFilter === 'green') return dil >= 25 && dil < 50;
                         if (dilFilter === 'pink') return dil >= 50;
                         return true;
@@ -6059,6 +6024,20 @@
                 }
                 // Missing L (all) badge — same rule as /map-issues: not listed, REQ, INV > 0 (FBA + FBM).
                 if (missingLAmzFilterActive) {
+                    table.addFilter(function(data) {
+                        return isAmazonMissingL(data);
+                    });
+                }
+
+                // N Map badge — mapping mismatch (same as /map-issues N Map)
+                if (nMapFilterActive) {
+                    table.addFilter(function(data) {
+                        return isAmazonMissingM(data);
+                    });
+                }
+
+                // ML badge — Missing Listing (not listed on Amazon, REQ, INV > 0)
+                if (mlFilterActive) {
                     table.addFilter(function(data) {
                         return isAmazonMissingL(data);
                     });
@@ -6275,7 +6254,7 @@
                     }
                 });
                 const avgPrice = totalL30 > 0 ? totalWeightedPrice / totalL30 : 0;
-                $('#avg-price-badge').text('Avg Price: $' + Math.round(avgPrice));
+                $('#avg-price-badge').text('Price: $' + Math.round(avgPrice));
 
                 let totalViews = 0;
                 data.forEach(row => {
@@ -6287,55 +6266,44 @@
                 const avgViews = totalSkuCount > 0 ? Math.round(totalViews / totalSkuCount) : 0;
                 $('#avg-cvr-badge').text('CVR: ' + avgCVR.toFixed(1) + '%');
                 $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
-                $('#avg-views-badge').text('Avg Views: ' + avgViews.toLocaleString());
-                
                 // Update sold counts
                 $('#total-sold-count').text(totalSoldCount.toLocaleString());
                 $('#zero-sold-count').text(zeroSoldCount.toLocaleString());
-                
-                // Update Map and Missing M counts (inventory sync for items that exist in Amazon)
-$('#nmap-count').text(missingCount.toLocaleString());
 
-                // Update Missing L FBA and Missing M FBM counts
-                $('#missing-amazon-fba-count').text(missingAmazonFbaCount.toLocaleString());
-                $('#missing-amazon-nonfba-count').text(missingAmazonNonFbaCount.toLocaleString());
-
-                // Missing L (all, same as /map-issues): not listed on Amazon, REQ, INV > 0 (FBA + FBM).
-                // Counted over the FULL dataset so not-listed rows hidden by active filters are included.
-                table.getData().forEach(function(row) {
-                    if (isAmazonMissingL(row)) missingLAmzCount++;
-                });
-                $('#missing-l-amz-count').text(missingLAmzCount.toLocaleString());
-                var $missingFbaBadge = $('#missing-amazon-fba-badge');
-                var $missingNonFbaBadge = $('#missing-amazon-nonfba-badge');
-                if (missingAmazonFbaCount > 0) {
-                    $missingFbaBadge.removeClass('bg-success bg-warning').addClass('bg-danger').css('color', 'white');
-                } else {
-                    $missingFbaBadge.removeClass('bg-danger bg-warning').addClass('bg-secondary').css('color', 'white');
-                }
-                if (missingAmazonNonFbaCount > 0) {
-                    $missingNonFbaBadge.removeClass('bg-success bg-warning').addClass('bg-danger').css('color', 'white');
-                } else {
-                    $missingNonFbaBadge.removeClass('bg-danger bg-warning').addClass('bg-success').css('color', 'white');
-                }
-                
-                // Update Variation count badge (NRL / red dot rows)
-                $('#variation-count').text(variationCount.toLocaleString());
-                var $variationBadge = $('#variation-count-badge');
-                if (variationCount > 0) {
-                    $variationBadge.removeClass('bg-success bg-warning').addClass('bg-danger').css('color', 'white');
-                } else {
-                    $variationBadge.removeClass('bg-danger bg-warning').addClass('bg-success').css('color', 'white');
-                }
                 
                 // Update Prc > LMP count
                 $('#prc-gt-lmp-count').text(prcGtLmpCount.toLocaleString());
+
+                // Filtered (active) row count — exclude parent summary rows
+                const visibleRowCount = data.filter(function(row) {
+                    if (row['is_parent_summary']) return false;
+                    const sku = String(row['(Child) sku'] || row['Parent'] || '').trim().toUpperCase();
+                    return !(sku.indexOf('PARENT ') === 0 || sku === 'PARENT');
+                }).length;
+                $('#rows-count-badge').text('Row: ' + visibleRowCount.toLocaleString());
+
+                // N Map (mapping mismatch) + ML (Missing Listing) counts — over the FULL dataset
+                // so they stay stable regardless of active filters (same as /map-issues).
+                let nMapCount = 0;
+                let mlCount = 0;
+                table.getData().forEach(function(row) {
+                    if (isAmazonMissingM(row)) nMapCount++;
+                    if (isAmazonMissingL(row)) mlCount++;
+                });
+                $('#nmap-count').text(nMapCount.toLocaleString());
+                $('#ml-count').text(mlCount.toLocaleString());
                 
+                // Ads% (from /all-marketplace-master, Amazon channel).
+                const amazonAdsPercent = {{ $amazonAdsPercent !== null ? (float) $amazonAdsPercent : 0 }};
+
                 // GROI% = (Total PFT / Total COGS) * 100
                 const groiPercent = totalLpAmt > 0 ? ((totalPftAmt / totalLpAmt) * 100) : 0;
                 $('#groi-percent-badge').text('GROI: ' + Math.round(groiPercent) + '%');
+
+                // NROI% = GROI% − Ads%
+                const nroiPercent = groiPercent - amazonAdsPercent;
+                $('#nroi-percent-badge').text('NROI: ' + Math.round(nroiPercent) + '%');
                 
-                $('#total-amazon-inv-badge').text('INV: ' + Math.round(totalAmazonInv).toLocaleString());
                 $('#total-pft-amt-badge').text('PFT: $' + Math.round(totalPftAmt));
                 $('#total-sales-amt-badge').text('Sales: $' + Math.round(totalSalesAmt));
                 
@@ -6343,8 +6311,8 @@ $('#nmap-count').text(missingCount.toLocaleString());
                 const avgGpft = totalSalesAmt > 0 ? ((totalPftAmt / totalSalesAmt) * 100) : 0;
                 $('#avg-gpft-badge').text('GPFT: ' + Math.round(avgGpft) + '%');
                 
-                // AVG PFT% = GPFT% (Net Profit % - same as gross since no ads)
-                const avgPft = avgGpft;
+                // AVG PFT% (Net Profit %) = GPFT% − Ads%  (Ads% from /all-marketplace-master, Amazon channel)
+                const avgPft = avgGpft - amazonAdsPercent;
                 $('#avg-pft-badge').text('PFT: ' + Math.round(avgPft) + '%');
                 
                 // Save badge stats daily (fire-and-forget, once per page load)
@@ -7485,7 +7453,8 @@ $('#nmap-count').text(missingCount.toLocaleString());
 
     <script>
         // Table export (filtered rows)
-        $('#section-export-btn').on('click', function() {
+        $('#section-export-btn').on('click', function(e) {
+            e.preventDefault();
             if (!table) {
                 alert('Table not loaded');
                 return;
@@ -7545,7 +7514,8 @@ $('#nmap-count').text(missingCount.toLocaleString());
         });
 
         // Export LMP — flatten all competitor entries for every SKU into one CSV
-        $('#export-lmp-btn').on('click', function() {
+        $('#export-lmp-btn').on('click', function(e) {
+            e.preventDefault();
             if (!table) {
                 alert('Table not loaded');
                 return;

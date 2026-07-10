@@ -2232,7 +2232,17 @@ class OverallAmazonController extends Controller
 
     public function amazonTabulatorView(Request $request)
     {
-        return view("market-places.amazon_tabulator_view");
+        // Amazon Ads% (Total Ad Spend / L30 Sales) — same value shown on /all-marketplace-master.
+        $amazonAdsPercent = \App\Models\ChannelMasterCalculatedData::where('channel', 'Amazon')
+            ->value('ads_percentage');
+        if ($amazonAdsPercent === null) {
+            $amazonAdsPercent = \App\Models\ChannelMasterCalculatedData::where('channel', 'like', 'Amazon%')
+                ->value('ads_percentage');
+        }
+
+        return view("market-places.amazon_tabulator_view", [
+            'amazonAdsPercent' => $amazonAdsPercent,
+        ]);
     }
 
     public function amazonPricingCvrTabular(Request $request)

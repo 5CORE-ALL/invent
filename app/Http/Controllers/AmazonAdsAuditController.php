@@ -138,6 +138,7 @@ class AmazonAdsAuditController extends Controller
             $data[] = [
                 'campaign_id' => $campaignId,
                 'campaign_name' => $campaignName,
+                'spl30' => $spend !== null ? round($spend) : null,
                 'cvr' => $cvr,
                 'cpc' => $cpc,
                 'acos' => $acos,

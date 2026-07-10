@@ -844,6 +844,9 @@
                         <li>
                             <a href="{{ route('shopify.ads.master') }}">Shopify Ads Master</a>
                         </li>
+                        <li>
+                            <a href="{{ route('advertisement.variations.ads') }}">Variations Ads</a>
+                        </li>
                     </ul>
                 </div>
             </li>

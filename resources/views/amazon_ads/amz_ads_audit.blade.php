@@ -16,14 +16,23 @@
             display: inline-flex;
             align-items: center;
             gap: 0.35rem;
-            border-radius: 8px;
-            padding: 0.3rem 0.65rem;
+            border-radius: 6px;
+            padding: 0.3rem 0.6rem;
             font-size: 0.8rem;
-            font-weight: 700;
+            font-weight: 600;
             line-height: 1.2;
             white-space: nowrap;
-            background-color: #dc2626;
             color: #fff;
+        }
+        .amz-ads-audit .amz-ads-audit-badge-red {
+            background-color: #dc2626;
+        }
+        .amz-ads-audit .amz-ads-audit-badge-green {
+            background-color: #16a34a;
+        }
+        .amz-ads-audit .amz-ads-audit-badge .audit-dot {
+            cursor: default;
+            border-color: rgba(255, 255, 255, 0.6);
         }
         .amz-ads-audit .audit-dot {
             display: inline-block;
@@ -68,10 +77,19 @@
         <div class="col-12">
             <div class="card">
                 <div class="card-body p-2">
-                    <div class="d-flex flex-wrap align-items-center gap-1 mb-2">
-                        <div class="amz-ads-audit-badge" id="amzAdsAuditPendingWrap" title="Pending Audit: number of campaigns with a red dot (not audited in the last 30 days).">
-                            <span>Pending Audit</span>
+                    <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                        <div class="amz-ads-audit-badge amz-ads-audit-badge-red" id="amzAdsAuditPendingWrap" title="Pending Audit: number of campaigns with a red dot (not audited in the last 30 days).">
+                            <span>Pending</span>
                             <span class="tabular-nums" id="amzAdsAuditPendingValue">0</span>
+                        </div>
+                        <div class="amz-ads-audit-badge amz-ads-audit-badge-green" id="amzAdsAuditAuditedWrap" title="Audited: number of campaigns with a green dot (audited in the last 30 days).">
+                            <span>Audited</span>
+                            <span class="tabular-nums" id="amzAdsAuditAuditedValue">0</span>
+                        </div>
+                        <div class="btn-group btn-group-sm ms-auto" role="group" aria-label="Filter by ad type" id="amzAdsAuditTypeFilter">
+                            <button type="button" class="btn btn-primary" data-adtype="ALL">All</button>
+                            <button type="button" class="btn btn-outline-primary" data-adtype="KW" title="Keyword targeting campaigns">KW</button>
+                            <button type="button" class="btn btn-outline-primary" data-adtype="PT" title="Product targeting campaigns (campaign name ends with PT)">PT</button>
                         </div>
                     </div>
                     <div id="amzAdsAuditTable"></div>
@@ -157,6 +175,7 @@
                 placeholder: 'No campaigns',
                 columns: [
                     { title: 'Campaign', field: 'campaign_name', headerFilter: 'input', widthGrow: 3, tooltip: true, formatter: function (c) { return esc(c.getValue()); } },
+                    { title: 'SPL30', field: 'spl30', hozAlign: 'center', headerHozAlign: 'center', width: 90, formatter: function (c) { var v = c.getValue(); return (v === null || v === undefined || v === '') ? '<span class="text-muted">--</span>' : '<span class="fw-semibold">' + Number(v).toLocaleString('en-US') + '</span>'; } },
                     { title: 'Cvr', field: 'cvr', hozAlign: 'center', headerHozAlign: 'center', width: 90, formatter: function (c) { return fmtPct(c.getValue()); } },
                     { title: 'CPC L30', field: 'cpc', hozAlign: 'center', headerHozAlign: 'center', width: 100, formatter: function (c) { return fmtMoney(c.getValue()); } },
                     { title: 'ACOS', field: 'acos', hozAlign: 'center', headerHozAlign: 'center', width: 90, formatter: function (c) { return fmtPct(c.getValue()); } },
@@ -185,12 +204,54 @@
             });
 
             function updatePending() {
-                var rows = table.getData();
-                var pending = rows.reduce(function (n, r) { return n + (r && r.dot === 'red' ? 1 : 0); }, 0);
-                var el = document.getElementById('amzAdsAuditPendingValue');
-                if (el) { el.textContent = Number(pending).toLocaleString('en-US'); }
+                // Count only the rows currently visible under the active ad-type filter.
+                var rows = table.getData('active');
+                var pending = 0, audited = 0;
+                rows.forEach(function (r) {
+                    if (!r) { return; }
+                    if (r.dot === 'green') { audited++; } else { pending++; }
+                });
+                var pEl = document.getElementById('amzAdsAuditPendingValue');
+                if (pEl) { pEl.textContent = Number(pending).toLocaleString('en-US'); }
+                var aEl = document.getElementById('amzAdsAuditAuditedValue');
+                if (aEl) { aEl.textContent = Number(audited).toLocaleString('en-US'); }
             }
             table.on('dataProcessed', updatePending);
+            table.on('dataFiltered', updatePending);
+
+            // Classify a campaign from its name: PT = name ends with " PT" (product targeting), else KW.
+            function adTypeFromName(name) {
+                var n = String(name == null ? '' : name).replace(/\s+/g, ' ').trim().toUpperCase().replace(/\.+$/, '');
+                return /\sPT$/.test(n) ? 'PT' : 'KW';
+            }
+
+            // Ad-type filter (All / KW / PT) derived from the campaign name.
+            (function () {
+                var wrap = document.getElementById('amzAdsAuditTypeFilter');
+                if (!wrap) { return; }
+                wrap.addEventListener('click', function (e) {
+                    var btn = e.target.closest('button[data-adtype]');
+                    if (!btn) { return; }
+                    var type = btn.getAttribute('data-adtype');
+
+                    wrap.querySelectorAll('button[data-adtype]').forEach(function (b) {
+                        var active = b === btn;
+                        b.classList.toggle('btn-primary', active);
+                        b.classList.toggle('btn-outline-primary', !active);
+                    });
+
+                    if (type === 'ALL') {
+                        // Clears programmatic filters only; the Campaign header filter is unaffected.
+                        table.clearFilter();
+                    } else {
+                        table.setFilter(function (data) {
+                            return adTypeFromName(data.campaign_name) === type;
+                        });
+                    }
+                    // Refresh the Pending / Audited counts for the newly filtered subset immediately.
+                    updatePending();
+                });
+            })();
 
             function openAuditModal(row) {
                 document.getElementById('amzAdsAuditCampaignId').value = row.campaign_id || '';

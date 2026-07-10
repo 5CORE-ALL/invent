@@ -26,13 +26,11 @@
         .amz-ads-missing .amz-missing-badge {
             display: inline-flex;
             align-items: center;
-            justify-content: center;
-            flex: 1 1 0;
-            gap: 0.7rem;
-            border-radius: 12px;
-            padding: 0.6rem 1.3rem;
-            font-size: 1.6rem;
-            font-weight: 700;
+            gap: 0.35rem;
+            border-radius: 6px;
+            padding: 0.3rem 0.6rem;
+            font-size: 0.8rem;
+            font-weight: 600;
             line-height: 1.2;
             white-space: nowrap;
             color: #fff;
@@ -99,6 +97,20 @@
         .amz-ads-missing .link-chip .chip-x {
             cursor: pointer;
             color: #e03131;
+        }
+        .amz-ads-missing .campaign-dot {
+            display: inline-block;
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            border: 1px solid rgba(0, 0, 0, 0.15);
+            flex: 0 0 auto;
+        }
+        .amz-ads-missing .campaign-dot-green {
+            background-color: #16a34a;
+        }
+        .amz-ads-missing .campaign-dot-red {
+            background-color: #dc2626;
         }
         .amz-ads-missing .link-add-btn {
             border: 1px solid #adb5bd;
@@ -243,12 +255,22 @@
                     .join(', ');
             }
 
+            function statusDot(c) {
+                var dot = c && c.dot;
+                if (dot !== 'green' && dot !== 'red') { return ''; }
+                var status = c.status || (dot === 'green' ? 'ENABLED' : 'PAUSED');
+                var title = dot === 'green' ? 'Enabled' : 'Paused';
+                if (status) { title = status.charAt(0) + status.slice(1).toLowerCase(); }
+                return '<span class="campaign-dot campaign-dot-' + dot + '" title="' + esc(title) + '"></span>';
+            }
+
             function chipsFormatter(type) {
                 return function (cell) {
                     var d = cell.getData();
                     var list = (type === 'PT' ? d.pt : d.kw) || [];
                     var chips = list.map(function (c) {
                         return '<span class="link-chip" title="' + esc(c.campaign_name) + '">'
+                            + statusDot(c)
                             + esc(c.campaign_name)
                             + ' <i class="fa fa-times chip-x" data-id="' + c.id + '" data-sku="' + esc(d.sku) + '"></i></span>';
                     }).join('');
