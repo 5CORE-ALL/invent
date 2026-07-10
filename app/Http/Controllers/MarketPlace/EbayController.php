@@ -126,7 +126,7 @@ class EbayController extends Controller
             return response()->json(['error' => 'Invalid rule data'], 422);
         }
 
-        $allowedMethods = ['groi', 'gpft', 'lmp', 'fixed'];
+        $allowedMethods = ['groi', 'groi_lmp98', 'gpft', 'lmp', 'fixed'];
         $clean = [];
         foreach ($rules as $r) {
             if (!is_array($r)) continue;

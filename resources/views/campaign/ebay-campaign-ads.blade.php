@@ -129,6 +129,12 @@
     <style>
         #sbidRuleModal .modal-dialog { max-width: 98vw; width: 98vw; margin: 0.5rem auto; }
         #sbid-slab-rule-table thead th { background-color: #fff9c4 !important; color: #000 !important; }
+        /* Hide number-input spinner arrows */
+        #sbidRuleModal input[type=number]::-webkit-inner-spin-button,
+        #sbidRuleModal input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+        #sbidRuleModal input[type=number] { -moz-appearance: textfield; appearance: textfield; }
+        /* Rounded inputs */
+        #sbidRuleModal .form-control, #sbidRuleModal .form-select { border-radius: 0.6rem; }
     </style>
     <div class="modal-dialog">
         <div class="modal-content">
@@ -183,7 +189,7 @@
                     <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
                     <button type="button" class="btn btn-sm btn-success" id="sbid-slab-apply-btn"
                             title="Push each visible row's computed S Bid to its eBay campaign">
-                        <i class="fas fa-bolt me-1"></i>Apply to Visible Rows
+                        <i class="fas fa-bolt me-1"></i>Push to Ebay
                     </button>
                     <button type="button" class="btn btn-sm btn-primary" id="sbid-slab-rule-save-btn">
                         <i class="fas fa-save me-1"></i>Save Rule
@@ -1027,13 +1033,13 @@ document.getElementById('sbid-slab-apply-btn').addEventListener('click', functio
         data: JSON.stringify({ skus: skus }),
         success: function(resp) {
             btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-bolt me-1"></i>Apply to Visible Rows';
+            btn.innerHTML = '<i class="fas fa-bolt me-1"></i>Push to Ebay';
             const s = resp.success || 0, f = resp.failed || 0, sk = resp.skipped || 0;
             if (statusEl) statusEl.textContent = `Pushed: ${s} · Failed: ${f} · Skipped: ${sk}`;
         },
         error: function(xhr) {
             btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-bolt me-1"></i>Apply to Visible Rows';
+            btn.innerHTML = '<i class="fas fa-bolt me-1"></i>Push to Ebay';
             errEl.textContent = 'Error: ' + ((xhr.responseJSON && xhr.responseJSON.error) || xhr.responseText);
             errEl.classList.remove('d-none');
         }

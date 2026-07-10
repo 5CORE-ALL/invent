@@ -549,6 +549,9 @@
                             style="color: black; font-weight: bold;">GPFT: 0%</span>
                         <span class="badge bg-secondary fs-6 p-2" id="groi-percent-badge"
                             style="color: white; font-weight: bold;">GROI: 0%</span>
+                        <span class="badge fs-6 p-2" id="ads-percent-badge"
+                            style="background-color: #d63384; color: white; font-weight: bold;"
+                            title="eBay channel Ads% (Total Ad Spend / L30 Sales × 100) — same as the Ads % column">Ads: {{ number_format((float) ($channelAdsPercent ?? 0), 1) }}%</span>
 
                         <!-- eBay Metrics -->
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge"
@@ -885,6 +888,12 @@
         <style>
             #spriceRuleModal .modal-dialog { max-width: 98vw; width: 98vw; margin: 0.5rem auto; }
             #sprice-rule-table thead th { background-color: #fff9c4 !important; color: #000 !important; }
+            /* Hide number-input spinner arrows */
+            #spriceRuleModal input[type=number]::-webkit-inner-spin-button,
+            #spriceRuleModal input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+            #spriceRuleModal input[type=number] { -moz-appearance: textfield; appearance: textfield; }
+            /* Rounded inputs */
+            #spriceRuleModal .form-control, #spriceRuleModal .form-select { border-radius: 0.6rem; }
         </style>
         <div class="modal-dialog">
             <div class="modal-content">
@@ -951,6 +960,12 @@
         <style>
             #sbidRuleModal .modal-dialog { max-width: 98vw; width: 98vw; margin: 0.5rem auto; }
             #sbid-slab-rule-table thead th { background-color: #fff9c4 !important; color: #000 !important; }
+            /* Hide number-input spinner arrows */
+            #sbidRuleModal input[type=number]::-webkit-inner-spin-button,
+            #sbidRuleModal input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+            #sbidRuleModal input[type=number] { -moz-appearance: textfield; appearance: textfield; }
+            /* Rounded inputs */
+            #sbidRuleModal .form-control, #sbidRuleModal .form-select { border-radius: 0.6rem; }
         </style>
         <div class="modal-dialog">
             <div class="modal-content">
@@ -1006,7 +1021,7 @@
                         <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
                         <button type="button" class="btn btn-sm btn-success" id="sbid-slab-apply-btn"
                                 title="Push each visible row's computed S Bid to its eBay campaign">
-                            <i class="fas fa-bolt me-1"></i>Apply to Visible Rows
+                            <i class="fas fa-bolt me-1"></i>Push to Ebay
                         </button>
                         <button type="button" class="btn btn-sm btn-primary" id="sbid-slab-rule-save-btn">
                             <i class="fas fa-save me-1"></i>Save Rule
@@ -1029,6 +1044,10 @@
          *  formula so the page CVR is computed against orders-API ground truth instead
          *  of the laggier ebay_metrics.ebay_l30 sum. */
         const ORDERS_L30_TOTAL_QTY = {{ (int) ($ordersL30TotalQty ?? 0) }};
+        /** eBay channel-level Ads% (TACOS) — Total Ad Spend / L30 Sales × 100.
+         *  Same value shown for eBay on /all-marketplace-master (per-SKU spend isn't
+         *  available in this page's data, so the Ads % column shows the channel figure). */
+        const EBAY_CHANNEL_ADS_PCT = {{ (float) ($channelAdsPercent ?? 0) }};
         /** App base path (XAMPP subdir / public): root-relative "/ebay-data-json" would 404 */
         const EBAY_DATA_JSON_URL = @json(url('/ebay-data-json'));
         let skuMetricsChart = null;
@@ -3790,6 +3809,23 @@
                         width: 65
                     },
 
+                    {
+                        // Channel-level eBay Ads% (TACOS). Same value for every row —
+                        // per-SKU ad spend isn't in this page's data; mirrors the eBay
+                        // Ads % shown on /all-marketplace-master.
+                        title: "Ads %",
+                        field: "_ads_pct",
+                        hozAlign: "center",
+                        headerSort: false,
+                        headerTooltip: "eBay channel Ads% (Total Ad Spend / L30 Sales × 100). Channel-level — same value on /all-marketplace-master.",
+                        formatter: function() {
+                            const pct = parseFloat(EBAY_CHANNEL_ADS_PCT) || 0;
+                            let color = pct < 5 ? '#28a745' : (pct <= 10 ? '#ffc107' : '#a00211');
+                            return `<span style="color: ${color}; font-weight: 600;">${pct.toFixed(1)}%</span>`;
+                        },
+                        width: 65
+                    },
+
 
                     {
                         title: "LMP",
@@ -5960,7 +5996,8 @@
             let currentSpriceRules = [];
 
             const METHODS = [
-                { v: 'groi',  label: 'GROI% target' },
+                { v: 'groi',       label: 'GROI% target' },
+                { v: 'groi_lmp98', label: 'GROI% (cap LMP×0.98)' },
             ];
 
             function numAttr(v) {
@@ -6146,6 +6183,16 @@
                         const denom = margin - (v / 100);
                         if (denom <= 0) return { skip: 'GPFT% ≥ margin' };
                         return { sprice: (lp + ship) / denom };
+                    }
+                    case 'groi_lmp98': {
+                        // GROI% target, but if the computed SPRICE is above LMP, cap it at LMP × 0.98.
+                        if (lp <= 0) return { skip: 'no LP' };
+                        const groiSprice = (lp * (1 + v / 100) + ship) / margin;
+                        const lmp = parseFloat(rd.lmp_price) || 0;
+                        if (lmp > 0 && groiSprice > lmp) {
+                            return { sprice: lmp * 0.98 };
+                        }
+                        return { sprice: groiSprice };
                     }
                     case 'groi':
                     default: {
@@ -6439,7 +6486,7 @@
                     data: JSON.stringify({ skus: skus }),
                     success: function(resp) {
                         btn.disabled = false;
-                        btn.innerHTML = '<i class="fas fa-bolt me-1"></i>Apply to Visible Rows';
+                        btn.innerHTML = '<i class="fas fa-bolt me-1"></i>Push to Ebay';
                         const s = resp.success || 0, f = resp.failed || 0, sk = resp.skipped || 0;
                         if (statusEl) statusEl.textContent = `Pushed: ${s} · Failed: ${f} · Skipped: ${sk}`;
                         if (typeof showToast === 'function') {
@@ -6449,7 +6496,7 @@
                     },
                     error: function(xhr) {
                         btn.disabled = false;
-                        btn.innerHTML = '<i class="fas fa-bolt me-1"></i>Apply to Visible Rows';
+                        btn.innerHTML = '<i class="fas fa-bolt me-1"></i>Push to Ebay';
                         errEl.textContent = 'Error: ' + ((xhr.responseJSON && xhr.responseJSON.error) || xhr.responseText);
                         errEl.classList.remove('d-none');
                     }
