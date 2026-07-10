@@ -52,6 +52,7 @@
         'Product ID' => $ae['product_id'] ?? $l['product_id'] ?? null,
         'Title' => $ae['title'] ?? $l['title'] ?? null,
         'Status' => $ae['status'] ?? null,
+        'AE Qty' => $ae['stock'] ?? $l['ae_stock'] ?? null,
         'Category ID' => $ae['category_id'] ?? null,
         'Currency' => $ae['currency'] ?? null,
         'Product unit' => $ae['unit'] ?? null,
@@ -111,6 +112,25 @@
 
         <div class="alert alert-info py-2 small mb-3">
             <strong>Read-only view.</strong> This page compares Shopify (source) with AliExpress side by side. Nothing is pushed from here.
+        </div>
+
+        <div class="row g-3 mb-3">
+            <div class="col-md-6">
+                <div class="card h-100">
+                    <div class="card-body py-3">
+                        <div class="text-muted small">Shopify Qty</div>
+                        <div class="fs-4 fw-semibold">{{ $s['available_to_sell'] ?? $s['on_hand'] ?? '—' }}</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card h-100">
+                    <div class="card-body py-3">
+                        <div class="text-muted small">AliExpress Qty</div>
+                        <div class="fs-4 fw-semibold">{{ $ae['stock'] ?? $l['ae_stock'] ?? '—' }}</div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         @if($aeLiveError)
