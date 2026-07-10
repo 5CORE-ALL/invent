@@ -18,11 +18,12 @@
                 <span class="badge bg-primary">{{ $orders->total() }} orders</span>
                 <div class="d-flex gap-2 align-items-center flex-wrap">
                     <select id="fetch-days" class="form-select form-select-sm" style="width:auto;">
-                        <option value="0" selected>All orders (2 years)</option>
+                        <option value="from:2026-07-07" selected>From July 7, 2026 onward</option>
                         <option value="7">Last 7 days</option>
                         <option value="30">Last 30 days</option>
                         <option value="90">Last 90 days</option>
                         <option value="365">Last 365 days</option>
+                        <option value="0">All orders (2 years)</option>
                     </select>
                     <button type="button" class="btn btn-sm btn-outline-primary" id="btn-fetch-orders">
                         <i class="ri-download-cloud-line"></i> Fetch from AliExpress
@@ -80,7 +81,10 @@
                                         @if($o->shopify_order_id)
                                             —
                                         @else
-                                            <button type="button" class="btn btn-sm btn-warning btn-push-order" data-id="{{ $o->id }}" onclick="event.stopPropagation();">Push to Shopify</button>
+                                            <div class="d-flex gap-1 flex-wrap" onclick="event.stopPropagation();">
+                                                <button type="button" class="btn btn-sm btn-warning btn-push-order" data-id="{{ $o->id }}">Push to Shopify</button>
+                                                <button type="button" class="btn btn-sm btn-outline-danger btn-delete-ready-order" data-id="{{ $o->id }}" data-order-id="{{ $o->order_id }}" title="Remove from ready-for-import">Delete</button>
+                                            </div>
                                         @endif
                                     </td>
                                 </tr>
@@ -105,10 +109,23 @@
 <script>
 document.getElementById('btn-fetch-orders')?.addEventListener('click', function () {
     var btn = this;
-    var days = parseInt(document.getElementById('fetch-days')?.value || '0', 10);
-    if (!confirm(days === 0
-        ? 'Fetch all AliExpress orders (up to 2 years)? This may take several minutes.'
-        : 'Fetch orders from the last ' + days + ' days?')) {
+    var selected = document.getElementById('fetch-days')?.value || '0';
+    var body = { import: false };
+    var confirmMsg = '';
+
+    if (selected.indexOf('from:') === 0) {
+        var fromDate = selected.slice(5);
+        body.from_date = fromDate;
+        confirmMsg = 'Fetch AliExpress orders from ' + fromDate + ' onward?\n\nThis will NOT auto-push to Shopify (avoids duplicates for orders already entered).';
+    } else {
+        var days = parseInt(selected, 10);
+        body.days = days;
+        confirmMsg = days === 0
+            ? 'Fetch all AliExpress orders (up to 2 years)? This may take several minutes.\n\nThis will NOT auto-push to Shopify.'
+            : 'Fetch orders from the last ' + days + ' days?\n\nThis will NOT auto-push to Shopify.';
+    }
+
+    if (!confirm(confirmMsg)) {
         return;
     }
     btn.disabled = true;
@@ -119,7 +136,7 @@ document.getElementById('btn-fetch-orders')?.addEventListener('click', function 
             'Accept': 'application/json',
             'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ days: days, import: true }),
+        body: JSON.stringify(body),
     })
     .then(function (r) { return r.json(); })
     .then(function (data) {
@@ -151,6 +168,37 @@ document.querySelectorAll('.btn-push-order').forEach(function (btn) {
         })
         .catch(function () { alert('Request failed.'); })
         .finally(function () { btn.disabled = false; }.bind(this));
+    });
+});
+
+document.querySelectorAll('.btn-delete-ready-order').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+        var id = this.getAttribute('data-id');
+        var orderId = this.getAttribute('data-order-id') || id;
+        if (!id) return;
+        if (!confirm('Delete AliExpress order ' + orderId + ' from ready-for-import?\n\nThis only removes it from our platform. It does not delete the order on AliExpress or Shopify.')) {
+            return;
+        }
+        this.disabled = true;
+        fetch('{{ route('marketplace.orders.delete-ready', 'aliexpress') }}', {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ id: id }),
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            alert(data.message || (data.success ? 'Deleted' : 'Failed'));
+            if (data.success) location.reload();
+            else btn.disabled = false;
+        })
+        .catch(function () {
+            alert('Request failed.');
+            btn.disabled = false;
+        });
     });
 });
 </script>

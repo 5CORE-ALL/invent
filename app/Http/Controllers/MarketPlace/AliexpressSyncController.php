@@ -462,22 +462,33 @@ class AliexpressSyncController extends Controller
 
     public function fetchOrders(Request $request): JsonResponse
     {
-        $daysInput = $request->input('days', 0);
-        $days = $daysInput === 'all' || (int) $daysInput === 0
-            ? 0
-            : max(1, min(730, (int) $daysInput));
-
         @set_time_limit(0);
 
-        $result = app(AliexpressOrderSyncService::class)->fetchAndStore($days);
+        $fromDate = trim((string) $request->input('from_date', ''));
+        $sync = app(AliexpressOrderSyncService::class);
 
+        if ($fromDate !== '') {
+            $result = $sync->fetchAndStoreFromDate($fromDate);
+        } else {
+            $daysInput = $request->input('days', 0);
+            $days = $daysInput === 'all' || (int) $daysInput === 0
+                ? 0
+                : max(1, min(730, (int) $daysInput));
+            $result = $sync->fetchAndStore($days);
+        }
+
+        // Only auto-queue Shopify imports when explicitly requested.
+        // Prefer from_date fetches without import when older orders already exist on Shopify.
         if ($request->boolean('import')) {
-            $dispatched = app(AliexpressOrderSyncService::class)->dispatchImportsForNewOrders();
+            $dispatched = $sync->dispatchImportsForNewOrders();
             $result['message'] .= " Dispatched {$dispatched} import job(s).";
         }
 
         return response()->json([
-            'success' => str_contains(strtolower($result['message']), 'missing') ? false : true,
+            'success' => str_contains(strtolower($result['message']), 'missing')
+                || str_contains(strtolower($result['message']), 'invalid')
+                ? false
+                : true,
             'message' => $result['message'],
             'fetched' => $result['fetched'] ?? 0,
             'stored' => $result['stored'] ?? 0,
@@ -523,6 +534,40 @@ class AliexpressSyncController extends Controller
         $order->update(['import_status' => 'queued']);
 
         return response()->json(['success' => true, 'message' => 'Import queued. Ensure queue worker is running.']);
+    }
+
+    /**
+     * Delete a local AliExpress order that is still ready for Shopify import
+     * (not yet imported). Removes all line rows for that AE order_id.
+     */
+    public function deleteReadyOrder(Request $request): JsonResponse
+    {
+        $id = (int) $request->input('id');
+        $order = AliexpressOrderMetric::find($id);
+
+        if (! $order) {
+            return response()->json(['success' => false, 'message' => 'Order not found.'], 404);
+        }
+
+        if (! empty($order->shopify_order_id)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This order is already imported to Shopify and cannot be deleted here.',
+            ], 422);
+        }
+
+        $orderId = (string) $order->order_id;
+        $deleted = AliexpressOrderMetric::query()
+            ->where('order_id', $orderId)
+            ->whereNull('shopify_order_id')
+            ->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => "Removed AliExpress order {$orderId} from ready-for-import ({$deleted} row(s)).",
+            'deleted' => $deleted,
+            'order_id' => $orderId,
+        ]);
     }
 
     public function syncSettings(Request $request): View

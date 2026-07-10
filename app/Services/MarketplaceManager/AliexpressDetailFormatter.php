@@ -615,11 +615,10 @@ class AliexpressDetailFormatter
      */
     protected function extractOrderFunds(array $order): array
     {
-        $childOrders = $this->list(
-            $order['child_order_list']['global_aeop_tp_child_order_dto']
-            ?? $order['child_order_list']
-            ?? []
-        );
+        $fundContext = $this->resolveFundContext($order);
+        $order = $fundContext['order'];
+        $childOrders = $fundContext['child_orders'];
+        $loanSonOrders = $fundContext['loan_son_orders'];
 
         $productTotal = null;
         if ($childOrders !== []) {
@@ -639,33 +638,54 @@ class AliexpressDetailFormatter
 
         $orderAmount = $this->money($order['order_amount'] ?? $order['total_amount'] ?? null);
         $escrowRate = $this->resolveEscrowFeeRate($order, $childOrders);
-        $platformCommission = $this->money($order['escrow_fee'] ?? $order['platform_commission'] ?? null);
+
+        $platformCommission = $this->sumLoanSonMoney($loanSonOrders, 'escrow_fee')
+            ?? $this->money($order['escrow_fee'] ?? $order['platform_commission'] ?? null);
+        if ($platformCommission === null) {
+            foreach ($childOrders as $child) {
+                $child = $this->arr($child);
+                if (($fee = $this->money($child['escrow_fee'] ?? null)) !== null) {
+                    $platformCommission = ($platformCommission ?? 0) + $fee;
+                }
+            }
+            if ($platformCommission !== null && $platformCommission <= 0) {
+                $platformCommission = null;
+            }
+        }
         if ($platformCommission === null && $orderAmount !== null && $escrowRate !== null) {
             $platformCommission = round($orderAmount * $escrowRate, 2);
         }
 
-        $transactionFee = $this->money($order['service_fee'] ?? $order['transaction_fee'] ?? $order['transaction_service_fee'] ?? null);
-        $platformTax = $this->money($order['tax_amount'] ?? $order['platform_tax'] ?? $order['platform_offer_tax'] ?? null);
-        $affiliateCommission = $this->money($order['affiliate_fee'] ?? $order['affiliate_commission'] ?? null);
+        $transactionFee = $this->firstFundMoney(
+            $order,
+            $loanSonOrders,
+            ['transaction_service_fee', 'service_fee', 'transaction_fee']
+        );
+        $platformTax = $this->firstFundMoney(
+            $order,
+            $loanSonOrders,
+            ['platform_offer_tax', 'platform_tax', 'tax_amount', 'offer_tax']
+        );
+        $affiliateCommission = $this->sumLoanSonMoney($loanSonOrders, 'affiliate_commission')
+            ?? $this->money($order['affiliate_fee'] ?? $order['affiliate_commission'] ?? null);
         $cashbackPaidBySeller = $this->money($order['cashback_fee'] ?? $order['seller_cashback'] ?? null);
 
-        if ($transactionFee === null && $platformTax === null && $orderAmount !== null) {
-            [$transactionFee, $platformTax] = $this->estimateSettlementFees($orderAmount);
-        }
-
-        $platformPromotion = $this->sumPlatformDiscounts($order, $childOrders);
-        $platformOffer = $this->resolvePlatformOfferAmount($order, $childOrders, $platformPromotion);
-        $storePromotion = $this->money($order['promotion_amount'] ?? $order['seller_discount_amount'] ?? null);
+        $platformPromotion = $this->sumDiscountsByOwner($childOrders, 'PLATFORM');
+        $storePromotion = $this->extractStorePromotion($order, $childOrders, $productTotal, $orderAmount);
+        $platformOffer = $this->resolvePlatformOfferAmount($order, $childOrders, $platformPromotion, $orderAmount);
         $shippingCost = $this->money($order['logistics_amount'] ?? null) ?? 0.0;
         $customerTotalPaid = $this->resolveCustomerPaidAmount($order, $orderAmount, $platformPromotion, $platformOffer, $shippingCost);
         $sellerAmountPaid = $this->resolveSellerPaidAmount(
             $order,
+            $childOrders,
+            $loanSonOrders,
             $orderAmount,
             $platformCommission,
             $transactionFee,
             $platformTax,
             $affiliateCommission,
-            $cashbackPaidBySeller
+            $cashbackPaidBySeller,
+            $platformOffer
         );
 
         return [
@@ -684,9 +704,136 @@ class AliexpressDetailFormatter
             'customer_total_paid' => $customerTotalPaid,
             'amount_paid' => $customerTotalPaid,
             'seller_amount_paid' => $sellerAmountPaid,
+            'loan_status' => $this->str($order['loan_status'] ?? null),
+            'fund_status' => $this->str($order['fund_status'] ?? null),
             'currency' => $this->moneyCurrency($order['order_amount'] ?? $order['pay_amount'] ?? null)
                 ?? $this->str($order['settlement_currency'] ?? null),
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $order
+     * @return array{order: array<string, mixed>, child_orders: array<int, array<string, mixed>>, loan_son_orders: array<int, array<string, mixed>>}
+     */
+    protected function resolveFundContext(array $order): array
+    {
+        $sources = $this->arr($order['fund_sources'] ?? []);
+        $tradeDetail = $this->arr($sources['trade_detail'] ?? $order['trade_detail'] ?? []);
+        $loanFund = $this->arr($sources['loan_fund'] ?? $order['loan_fund'] ?? []);
+        $loanSonOrders = $this->list($loanFund['son_orders'] ?? []);
+
+        if ($loanSonOrders === []) {
+            $firstLoan = $this->arr($loanFund['first'] ?? []);
+            $loanSonOrders = $this->list($firstLoan['son_order_list']['son_order_loan_vo'] ?? $firstLoan['son_order_list'] ?? []);
+        }
+
+        $childOrders = $this->list(
+            $order['child_order_list']['global_aeop_tp_child_order_dto']
+            ?? $order['child_order_list']
+            ?? []
+        );
+
+        if ($tradeDetail !== []) {
+            $order = array_replace($order, array_filter([
+                'pay_amount_by_settlement_cur' => $tradeDetail['pay_amount_by_settlement_cur'] ?? null,
+                'settlement_currency' => $tradeDetail['settlement_currency'] ?? null,
+                'loan_status' => $tradeDetail['loan_status'] ?? null,
+                'fund_status' => $tradeDetail['fund_status'] ?? null,
+                'escrow_fee' => $tradeDetail['escrow_fee'] ?? null,
+                'escrow_fee_rate' => $tradeDetail['escrow_fee_rate'] ?? null,
+                'gmt_pay_success' => $tradeDetail['gmt_pay_success'] ?? null,
+                'gmt_pay_time' => $tradeDetail['gmt_pay_time'] ?? null,
+                'loan_info' => $tradeDetail['loan_info'] ?? null,
+                'payment_amount' => $tradeDetail['payment_amount'] ?? null,
+                'promotion_fee' => $tradeDetail['promotion_fee'] ?? null,
+                'seller_order_amount' => $tradeDetail['seller_order_amount'] ?? null,
+                'new_seller_order_amount' => $tradeDetail['new_seller_order_amount'] ?? null,
+            ], fn ($value) => $value !== null && $value !== '' && $value !== []));
+        }
+
+        return [
+            'order' => $order,
+            'child_orders' => $childOrders,
+            'loan_son_orders' => $loanSonOrders,
+        ];
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $loanSonOrders
+     */
+    protected function sumLoanSonMoney(array $loanSonOrders, string $field): ?float
+    {
+        $sum = 0.0;
+        $found = false;
+        foreach ($loanSonOrders as $row) {
+            $amount = $this->money($this->arr($row)[$field] ?? null);
+            if ($amount !== null && $amount > 0) {
+                $sum += $amount;
+                $found = true;
+            }
+        }
+
+        return $found ? round($sum, 2) : null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $order
+     * @param  array<int, array<string, mixed>>  $loanSonOrders
+     * @param  array<int, string>  $keys
+     */
+    protected function firstFundMoney(array $order, array $loanSonOrders, array $keys): ?float
+    {
+        foreach ($keys as $key) {
+            if (($amount = $this->money($order[$key] ?? null)) !== null) {
+                return $amount;
+            }
+        }
+
+        foreach ($loanSonOrders as $row) {
+            $row = $this->arr($row);
+            foreach ($keys as $key) {
+                if (($amount = $this->money($row[$key] ?? null)) !== null) {
+                    return $amount;
+                }
+            }
+        }
+
+        $sources = $this->arr($order['fund_sources'] ?? []);
+        foreach (['trade_detail', 'loan_fund'] as $bucket) {
+            if (($amount = $this->findFundMoneyByKeys($this->arr($sources[$bucket] ?? []), $keys)) !== null) {
+                return $amount;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @param  array<int, string>  $keys
+     */
+    protected function findFundMoneyByKeys(array $data, array $keys, int $depth = 0): ?float
+    {
+        if ($depth > 8 || $data === []) {
+            return null;
+        }
+
+        foreach ($keys as $key) {
+            if (array_key_exists($key, $data) && ($amount = $this->money($data[$key])) !== null) {
+                return $amount;
+            }
+        }
+
+        foreach ($data as $value) {
+            if (! is_array($value)) {
+                continue;
+            }
+            if (($amount = $this->findFundMoneyByKeys($this->arr($value), $keys, $depth + 1)) !== null) {
+                return $amount;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -711,26 +858,75 @@ class AliexpressDetailFormatter
     }
 
     /**
+     * Sum discount rows from child_order_discount_detail_list for a promotion owner.
+     *
      * @param  array<int, array<string, mixed>>  $childOrders
      */
-    protected function sumPlatformDiscounts(array $order, array $childOrders = []): float
+    protected function sumDiscountsByOwner(array $childOrders, string $owner): float
     {
-        $detailTotal = 0.0;
+        $owner = strtoupper(trim($owner));
+        $total = 0.0;
+
         foreach ($childOrders as $child) {
             $child = $this->arr($child);
             foreach ($this->list($child['child_order_discount_detail_list'] ?? []) as $row) {
                 $row = $this->arr($row);
-                if (strtoupper((string) ($row['promotion_owner'] ?? '')) !== 'PLATFORM') {
+                if (strtoupper((string) ($row['promotion_owner'] ?? '')) !== $owner) {
                     continue;
                 }
-                $detailTotal += $this->money($row['discount_detail'] ?? null) ?? 0.0;
+                $total += $this->money($row['discount_detail'] ?? null) ?? 0.0;
             }
         }
-        if ($detailTotal > 0) {
-            return round($detailTotal, 2);
+
+        return $total > 0 ? round($total, 2) : 0.0;
+    }
+
+    /**
+     * Store / seller coupon discounts (shopCoupon with promotion_owner SELLER).
+     *
+     * @param  array<int, array<string, mixed>>  $childOrders
+     */
+    protected function extractStorePromotion(
+        array $order,
+        array $childOrders,
+        ?float $productTotal,
+        ?float $orderAmount
+    ): ?float {
+        $fromDetails = $this->sumDiscountsByOwner($childOrders, 'SELLER');
+        if ($fromDetails > 0) {
+            return $fromDetails;
         }
 
-        return $this->money($order['order_discount_info'] ?? null) ?? 0.0;
+        $promotionFee = $this->money($order['promotion_fee'] ?? null);
+        if ($promotionFee !== null && $promotionFee > 0 && $this->sumDiscountsByOwner($childOrders, 'PLATFORM') <= 0) {
+            return $promotionFee;
+        }
+
+        foreach ([
+            $order['promotion_amount'] ?? null,
+            $order['seller_discount_amount'] ?? null,
+        ] as $candidate) {
+            if (($amount = $this->money($candidate)) !== null && $amount > 0) {
+                return $amount;
+            }
+        }
+
+        foreach ($childOrders as $child) {
+            $child = $this->arr($child);
+            if (($amount = $this->money($child['child_order_discount_info'] ?? null)) !== null && $amount > 0) {
+                $hasPlatform = $this->sumDiscountsByOwner([$child], 'PLATFORM') > 0;
+                $hasSeller = $this->sumDiscountsByOwner([$child], 'SELLER') > 0;
+                if ($hasSeller && ! $hasPlatform) {
+                    return $amount;
+                }
+            }
+        }
+
+        if ($productTotal !== null && $orderAmount !== null && $productTotal > $orderAmount) {
+            return round($productTotal - $orderAmount, 2);
+        }
+
+        return null;
     }
 
     /**
@@ -738,8 +934,12 @@ class AliexpressDetailFormatter
      *
      * @param  array<int, array<string, mixed>>  $childOrders
      */
-    protected function resolvePlatformOfferAmount(array $order, array $childOrders, float $platformPromotion): ?float
-    {
+    protected function resolvePlatformOfferAmount(
+        array $order,
+        array $childOrders,
+        float $platformPromotion,
+        ?float $orderAmount
+    ): ?float {
         foreach ([
             $order['platform_offer_amount'] ?? null,
             $order['platform_offer'] ?? null,
@@ -757,7 +957,7 @@ class AliexpressDetailFormatter
                 if (strtoupper((string) ($row['promotion_owner'] ?? '')) !== 'PLATFORM') {
                     continue;
                 }
-                if (($amount = $this->money($row['platform_offer_amount'] ?? $row['seller_discount'] ?? null)) !== null) {
+                if (($amount = $this->money($row['platform_offer_amount'] ?? null)) !== null) {
                     return $amount;
                 }
             }
@@ -767,7 +967,17 @@ class AliexpressDetailFormatter
             return null;
         }
 
-        // AE seller UI rounds platform coupon down to the nearest $0.10 (2.93 -> 2.90).
+        $paymentAmount = $this->money($order['payment_amount'] ?? null);
+        $settlementPay = $this->money($order['pay_amount_by_settlement_cur'] ?? null);
+        if ($paymentAmount !== null && $settlementPay !== null && $settlementPay > $paymentAmount) {
+            return round($settlementPay - $paymentAmount, 2);
+        }
+
+        if ($settlementPay === null || $orderAmount === null || $settlementPay <= $orderAmount) {
+            return null;
+        }
+
+        // Platform subsidy orders: AE seller UI rounds platform coupon down to nearest $0.10 (2.93 -> 2.90).
         return floor(round($platformPromotion, 2) * 10) / 10;
     }
 
@@ -778,45 +988,75 @@ class AliexpressDetailFormatter
         ?float $platformOffer,
         float $shippingCost = 0.0
     ): ?float {
+        if (($paid = $this->money($order['payment_amount'] ?? null)) !== null) {
+            return $paid;
+        }
+
         if (($paid = $this->money($order['pay_amount'] ?? null)) !== null) {
             return $paid;
         }
 
         $settlementPay = $this->money($order['pay_amount_by_settlement_cur'] ?? null);
-        if ($orderAmount !== null && $settlementPay !== null && $platformOffer !== null && $settlementPay > $orderAmount) {
-            // Matches AE payment details: customer paid = settlement pay - platform offer.
-            $customerPaid = round($settlementPay - $platformOffer, 2);
-            if ($customerPaid > 0 && $customerPaid <= $orderAmount + $shippingCost) {
-                return $customerPaid;
-            }
+        if ($settlementPay !== null && $platformOffer !== null && $platformOffer > 0 && $settlementPay > ($orderAmount ?? 0)) {
+            // Platform subsidy: customer paid = settlement pay - platform offer.
+            return round($settlementPay - $platformOffer, 2);
         }
 
-        if ($orderAmount !== null && $settlementPay !== null && $platformPromotion > 0 && $settlementPay > $orderAmount) {
-            $settlementPremium = max(0, round($settlementPay - $orderAmount - $shippingCost, 2));
-            $offer = $platformOffer ?? $platformPromotion;
-            $buyerDiscount = max(0, round($offer - $settlementPremium, 2));
-
-            return round(max(0, $orderAmount + $shippingCost - $buyerDiscount), 2);
+        if ($orderAmount !== null) {
+            // Store coupons are already reflected in order_amount; buyer pays order total + shipping.
+            return round($orderAmount + $shippingCost, 2);
         }
 
-        if ($orderAmount !== null && $platformPromotion > 0) {
-            return round(max(0, $orderAmount + $shippingCost - $platformPromotion), 2);
-        }
-
-        return $orderAmount !== null ? round($orderAmount + $shippingCost, 2) : $settlementPay;
+        return $settlementPay;
     }
 
     protected function resolveSellerPaidAmount(
         array $order,
+        array $childOrders,
+        array $loanSonOrders,
         ?float $orderAmount,
         ?float $platformCommission,
         ?float $transactionFee,
         ?float $platformTax,
         ?float $affiliateCommission,
-        ?float $cashbackPaidBySeller
+        ?float $cashbackPaidBySeller,
+        ?float $platformOffer = null
     ): ?float {
-        $loanAmount = $this->money($this->arr($order['loan_info'] ?? [])['loan_amount'] ?? null);
-        if ($loanAmount !== null) {
+        if (($sellerPaid = $this->sumLoanSonMoney($loanSonOrders, 'real_loan_amount')) !== null) {
+            return $sellerPaid;
+        }
+
+        foreach ([
+            $order['new_seller_order_amount'] ?? null,
+            $order['seller_order_amount'] ?? null,
+        ] as $candidate) {
+            $sellerOrderAmount = $this->money($candidate);
+            if ($sellerOrderAmount === null) {
+                continue;
+            }
+            $fees = array_values(array_filter(
+                [$platformCommission, $transactionFee, $platformTax, $affiliateCommission, $cashbackPaidBySeller],
+                fn ($fee) => $fee !== null && $fee > 0
+            ));
+            if ($fees !== [] && $orderAmount !== null && $sellerOrderAmount < $orderAmount) {
+                return round(max(0, $sellerOrderAmount - array_sum($fees)), 2);
+            }
+        }
+
+        foreach ([$this->arr($order['loan_info'] ?? [])] as $loanInfo) {
+            if (($loanAmount = $this->money($loanInfo['loan_amount'] ?? null)) !== null) {
+                return $loanAmount;
+            }
+        }
+
+        foreach ($childOrders as $child) {
+            $child = $this->arr($child);
+            if (($loanAmount = $this->money($this->arr($child['loan_info'] ?? [])['loan_amount'] ?? null)) !== null) {
+                return $loanAmount;
+            }
+        }
+
+        if (($loanAmount = $this->sumLoanSonMoney($loanSonOrders, 'loan_amount')) !== null) {
             return $loanAmount;
         }
 
@@ -824,27 +1064,24 @@ class AliexpressDetailFormatter
             return null;
         }
 
-        $deductions = 0.0;
-        foreach ([$platformCommission, $transactionFee, $platformTax, $affiliateCommission, $cashbackPaidBySeller] as $fee) {
-            if ($fee !== null && $fee > 0) {
-                $deductions += $fee;
-            }
+        $fees = array_values(array_filter(
+            [$platformCommission, $transactionFee, $platformTax, $affiliateCommission, $cashbackPaidBySeller],
+            fn ($fee) => $fee !== null && $fee > 0
+        ));
+
+        if ($fees === []) {
+            return null;
         }
 
-        return round(max(0, $orderAmount - $deductions), 2);
-    }
+        // Platform-subsidy orders deduct transaction service fee and platform offer tax in AE
+        // seller UI; those amounts are not exposed until loan settlement in the Open API.
+        if ($platformOffer !== null && $platformOffer > 0
+            && ($transactionFee === null || $platformTax === null)
+            && $this->str($order['loan_status'] ?? null) === 'loan_none') {
+            return null;
+        }
 
-    /**
-     * Estimate AE settlement fees when the order detail API omits explicit fee amounts.
-     *
-     * @return array{0: float, 1: float}
-     */
-    protected function estimateSettlementFees(float $orderAmount): array
-    {
-        return [
-            round($orderAmount * 0.025, 2),
-            round($orderAmount * 0.01305, 2),
-        ];
+        return round(max(0, $orderAmount - array_sum($fees)), 2);
     }
 
     /**

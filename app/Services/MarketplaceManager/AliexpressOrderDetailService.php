@@ -36,6 +36,17 @@ class AliexpressOrderDetailService
             $order = $this->mergeReceiptAddress($order, $receipt['data']);
         }
 
+        $trade = $this->aliExpressApi->getOrderTradeDetail($orderId);
+        $loan = $this->aliExpressApi->getOrderLoanFundList($orderId);
+        $order['fund_sources'] = [
+            'trade_detail' => ! empty($trade['success']) && is_array($trade['data'] ?? null) ? $trade['data'] : null,
+            'loan_fund' => ! empty($loan['success']) && is_array($loan['data'] ?? null) ? $loan['data'] : null,
+            'trade_detail_error' => empty($trade['success']) ? ($trade['message'] ?? null) : null,
+            'loan_fund_error' => empty($loan['success']) ? ($loan['message'] ?? null) : null,
+        ];
+        $order['fund_sources_fetched_at'] = now()->toIso8601String();
+        $order = $this->mergeFundSnapshotsIntoOrder($order);
+
         $lines = AliexpressOrderMetric::query()
             ->where('order_id', $orderId)
             ->get();
@@ -82,6 +93,55 @@ class AliexpressOrderDetailService
         }
 
         $order['receipt_address'] = $existing;
+
+        return $order;
+    }
+
+    /**
+     * Copy settlement fields from trade / loan APIs onto the solution order snapshot.
+     *
+     * @param  array<string, mixed>  $order
+     * @return array<string, mixed>
+     */
+    protected function mergeFundSnapshotsIntoOrder(array $order): array
+    {
+        $sources = is_array($order['fund_sources'] ?? null) ? $order['fund_sources'] : [];
+        $trade = is_array($sources['trade_detail'] ?? null) ? $sources['trade_detail'] : [];
+
+        foreach ([
+            'pay_amount_by_settlement_cur',
+            'settlement_currency',
+            'loan_status',
+            'escrow_fee',
+            'escrow_fee_rate',
+            'fund_status',
+            'gmt_pay_success',
+            'gmt_pay_time',
+            'payment_amount',
+            'promotion_fee',
+            'seller_order_amount',
+            'new_seller_order_amount',
+        ] as $key) {
+            if (! array_key_exists($key, $order) || $order[$key] === null || $order[$key] === '' || $order[$key] === []) {
+                if (array_key_exists($key, $trade) && $trade[$key] !== null && $trade[$key] !== '' && $trade[$key] !== []) {
+                    $order[$key] = $trade[$key];
+                }
+            }
+        }
+
+        if (! empty($trade['loan_info']) && is_array($trade['loan_info'])) {
+            $existingLoan = is_array($order['loan_info'] ?? null) ? $order['loan_info'] : [];
+            $loanAmount = $trade['loan_info']['loan_amount'] ?? null;
+            if ($loanAmount !== null && $loanAmount !== '' && $loanAmount !== []) {
+                $existingLoan['loan_amount'] = $loanAmount;
+            }
+            if (($trade['loan_info']['loan_time'] ?? null) !== null) {
+                $existingLoan['loan_time'] = $trade['loan_info']['loan_time'];
+            }
+            if ($existingLoan !== []) {
+                $order['loan_info'] = $existingLoan;
+            }
+        }
 
         return $order;
     }

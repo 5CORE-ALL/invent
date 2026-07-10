@@ -273,6 +273,9 @@
                                     <button type="button" class="btn btn-sm btn-warning" id="btn-push-order" data-id="{{ $line->id }}">
                                         Push to Shopify
                                     </button>
+                                    <button type="button" class="btn btn-sm btn-outline-danger" id="btn-delete-ready-order" data-id="{{ $line->id }}" data-order-id="{{ $summary['order_id'] ?? $orderId }}">
+                                        Delete from ready-for-import
+                                    </button>
                                 </div>
                             @endif
                         </td></tr>
@@ -410,6 +413,39 @@ document.getElementById('btn-push-order')?.addEventListener('click', function ()
     })
     .catch(function () { alert('Request failed.'); })
     .finally(function () { btn.disabled = false; });
+});
+
+document.getElementById('btn-delete-ready-order')?.addEventListener('click', function () {
+    var btn = this;
+    var id = btn.getAttribute('data-id');
+    var orderId = btn.getAttribute('data-order-id') || id;
+    if (!id) return;
+    if (!confirm('Delete AliExpress order ' + orderId + ' from ready-for-import?\n\nThis only removes it from our platform. It does not delete the order on AliExpress or Shopify.')) {
+        return;
+    }
+    btn.disabled = true;
+    fetch('{{ route('marketplace.orders.delete-ready', 'aliexpress') }}', {
+        method: 'POST',
+        headers: {
+            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ id: id }),
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+        alert(data.message || (data.success ? 'Deleted' : 'Failed'));
+        if (data.success) {
+            window.location = '{{ route('marketplace.orders', 'aliexpress') }}';
+        } else {
+            btn.disabled = false;
+        }
+    })
+    .catch(function () {
+        alert('Request failed.');
+        btn.disabled = false;
+    });
 });
 </script>
 @endsection

@@ -5,8 +5,11 @@ namespace App\Services\MarketplaceManager;
 use App\Models\AliexpressMetric;
 use App\Models\AliexpressPricingPrice;
 use App\Models\MarketplaceSyncSettings;
+use App\Models\ProductStockMapping;
+use App\Models\ShopifySku;
 use App\Services\AliExpressApiService;
 use App\Services\ShopifyApiService;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
@@ -16,6 +19,105 @@ class AliexpressInventorySyncService
         protected AliExpressApiService $aliExpressApi,
         protected ShopifyApiService $shopifyApi
     ) {}
+
+    /**
+     * Immediately sync specific SKUs from Shopify → AliExpress and refresh local qty fields.
+     * Used after an AliExpress order is pushed to Shopify so AE stock matches the decrement.
+     *
+     * @param  array<int, string>  $skus
+     * @param  array{store_url?: string, token?: string}|null  $shopifyConfig
+     * @return array{updated: int, failed: int, skipped: int, message: string}
+     */
+    public function syncSkusFromShopify(array $skus, ?array $shopifyConfig = null): array
+    {
+        $skus = array_values(array_unique(array_filter(array_map(
+            static fn ($sku) => trim((string) $sku),
+            $skus
+        ), static fn ($sku) => $sku !== '' && ! in_array($sku, ['__order__', '__unknown__'], true))));
+
+        if ($skus === []) {
+            return ['updated' => 0, 'failed' => 0, 'skipped' => 0, 'message' => 'No SKUs to sync.'];
+        }
+
+        if (empty($this->aliExpressApi->getAccessToken())) {
+            return ['updated' => 0, 'failed' => 0, 'skipped' => 0, 'message' => 'ALIEXPRESS_ACCESS_TOKEN missing.'];
+        }
+
+        $settings = MarketplaceSyncSettings::getFor('aliexpress');
+        $qtyPercent = max(0, min(100, (int) ($settings['inventory']['quantity_calc_percent'] ?? 100)));
+        $minQty = max(0, (int) ($settings['inventory']['min_quantity'] ?? 0));
+        $maxQty = $settings['inventory']['max_quantity'] ?? null;
+
+        $shopifyQty = $this->fetchLiveShopifyQuantities($skus, $shopifyConfig);
+        $metrics = AliexpressMetric::query()
+            ->whereIn('sku', $skus)
+            ->whereNotNull('product_id')
+            ->where('sku', '!=', '')
+            ->whereColumn('sku', '!=', 'product_id')
+            ->get();
+
+        $inventoryRows = [];
+        $skipped = 0;
+
+        foreach ($metrics as $metric) {
+            $sku = (string) $metric->sku;
+            $productId = (string) $metric->product_id;
+            if ($productId === '' || ! array_key_exists($sku, $shopifyQty)) {
+                $skipped++;
+                continue;
+            }
+
+            $shopifyStock = (int) $shopifyQty[$sku];
+            $qty = (int) floor($shopifyStock * ($qtyPercent / 100));
+            if ($qty < $minQty) {
+                $qty = $minQty;
+            }
+            if ($maxQty !== null && $maxQty !== '') {
+                $qty = min($qty, (int) $maxQty);
+            }
+
+            $inventoryRows[] = [
+                'product_id' => $productId,
+                'sku_code' => $sku,
+                'inventory' => max(0, $qty),
+                'shopify_qty' => $shopifyStock,
+            ];
+        }
+
+        if ($inventoryRows === []) {
+            return [
+                'updated' => 0,
+                'failed' => 0,
+                'skipped' => $skipped + (count($skus) - $metrics->count()),
+                'message' => 'No linked AliExpress SKUs found for inventory sync.',
+            ];
+        }
+
+        $invResult = $this->aliExpressApi->batchUpdateInventory($inventoryRows);
+        if (empty($invResult['success'])) {
+            Log::warning('AliexpressInventorySyncService: post-order SKU inventory sync failed', [
+                'skus' => $skus,
+                'result' => $invResult,
+            ]);
+
+            return [
+                'updated' => 0,
+                'failed' => count($inventoryRows),
+                'skipped' => $skipped,
+                'message' => $invResult['message'] ?? 'AliExpress inventory update failed.',
+            ];
+        }
+
+        $this->updateLocalStock($inventoryRows);
+        $this->updateLocalPlatformQuantities($inventoryRows);
+
+        return [
+            'updated' => count($inventoryRows),
+            'failed' => 0,
+            'skipped' => $skipped,
+            'message' => 'Synced '.count($inventoryRows).' SKU(s) to AliExpress and local platform.',
+        ];
+    }
 
     /**
      * @return array{updated: int, failed: int, skipped: int, price_updated: int, message: string}
@@ -149,6 +251,7 @@ class AliexpressInventorySyncService
             if (! empty($invResult['success'])) {
                 $updated = count($inventoryRows);
                 $this->updateLocalStock($inventoryRows);
+                $this->updateLocalPlatformQuantities($inventoryRows);
             } else {
                 $failed = count($inventoryRows);
                 Log::warning('AliexpressInventorySyncService: inventory batch failed', $invResult);
@@ -197,7 +300,77 @@ class AliexpressInventorySyncService
     }
 
     /**
-     * @param  array<int, array{product_id: string, sku_code: string, inventory: int}>  $rows
+     * @param  array<int, string>  $skus
+     * @param  array{store_url?: string, token?: string}|null  $shopifyConfig
+     * @return array<string, int>
+     */
+    protected function fetchLiveShopifyQuantities(array $skus, ?array $shopifyConfig = null): array
+    {
+        $storeUrl = $this->normalizeStoreUrl((string) ($shopifyConfig['store_url'] ?? ''));
+        $token = (string) ($shopifyConfig['token'] ?? '');
+
+        if ($storeUrl === '' || $token === '') {
+            return $this->shopifyApi->getInventoryQuantitiesBySku($skus);
+        }
+
+        $map = [];
+        foreach ($skus as $sku) {
+            $variantId = null;
+            $local = ShopifySku::firstForProductSku($sku);
+            if ($local && ! empty($local->variant_id)) {
+                $variantId = (int) $local->variant_id;
+            }
+
+            if ($variantId) {
+                try {
+                    $response = Http::withHeaders([
+                        'X-Shopify-Access-Token' => $token,
+                    ])->timeout(30)->get("https://{$storeUrl}/admin/api/2024-01/variants/{$variantId}.json");
+
+                    if ($response->successful()) {
+                        $map[$sku] = (int) ($response->json('variant.inventory_quantity') ?? 0);
+                        continue;
+                    }
+                } catch (\Throwable $e) {
+                    Log::warning('AliexpressInventorySyncService: variant qty fetch failed', [
+                        'sku' => $sku,
+                        'variant_id' => $variantId,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+
+            try {
+                $response = Http::withHeaders([
+                    'X-Shopify-Access-Token' => $token,
+                ])->timeout(30)->get('https://'.$storeUrl.'/admin/api/2024-01/variants.json', [
+                    'sku' => $sku,
+                    'limit' => 1,
+                ]);
+                if ($response->successful()) {
+                    $variants = $response->json('variants') ?? [];
+                    if (is_array($variants) && $variants !== []) {
+                        $map[$sku] = (int) ($variants[0]['inventory_quantity'] ?? 0);
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning('AliexpressInventorySyncService: sku qty fetch failed', [
+                    'sku' => $sku,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return $map;
+    }
+
+    protected function normalizeStoreUrl(string $url): string
+    {
+        return strtolower(rtrim(str_replace(['https://', 'http://'], '', trim($url)), '/'));
+    }
+
+    /**
+     * @param  array<int, array{product_id: string, sku_code: string, inventory: int, shopify_qty?: int}>  $rows
      */
     protected function updateLocalStock(array $rows): void
     {
@@ -214,6 +387,44 @@ class AliexpressInventorySyncService
                 ['sku' => $sku],
                 ['ae_stock' => (int) $row['inventory']]
             );
+        }
+    }
+
+    /**
+     * Keep marketplace UI qty columns in sync after AE inventory push.
+     *
+     * @param  array<int, array{product_id: string, sku_code: string, inventory: int, shopify_qty?: int}>  $rows
+     */
+    protected function updateLocalPlatformQuantities(array $rows): void
+    {
+        foreach ($rows as $row) {
+            $sku = trim((string) $row['sku_code']);
+            if ($sku === '') {
+                continue;
+            }
+
+            $aeQty = (int) $row['inventory'];
+            $shopifyQty = array_key_exists('shopify_qty', $row) ? (int) $row['shopify_qty'] : $aeQty;
+
+            $shopifyRow = ShopifySku::firstForProductSku($sku);
+            if ($shopifyRow) {
+                $shopifyRow->fill([
+                    'available_to_sell' => $shopifyQty,
+                    'inv' => $shopifyQty,
+                    'on_hand' => $shopifyQty,
+                ])->save();
+            }
+
+            if (Schema::hasTable('product_stock_mappings')) {
+                ProductStockMapping::query()
+                    ->where(function ($q) use ($sku) {
+                        $q->where('sku', $sku)->orWhere('sku', strtoupper($sku));
+                    })
+                    ->update([
+                        'inventory_aliexpress' => $aeQty,
+                        'inventory_shopify' => $shopifyQty,
+                    ]);
+            }
         }
     }
 
