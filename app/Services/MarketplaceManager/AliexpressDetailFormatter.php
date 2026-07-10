@@ -880,20 +880,8 @@ class AliexpressDetailFormatter
             }
         }
 
-        if ($orderAmount === null) {
-            return null;
-        }
-
-        $fees = array_values(array_filter(
-            [$platformCommission, $transactionFee, $platformTax, $affiliateCommission, $cashbackPaidBySeller],
-            fn ($fee) => $fee !== null && $fee > 0
-        ));
-
-        if ($fees === []) {
-            return null;
-        }
-
-        return round(max(0, $orderAmount - array_sum($fees)), 2);
+        // Payout is only shown when AE provides loan_amount; partial fee fields are often missing until settlement.
+        return null;
     }
 
     /**
