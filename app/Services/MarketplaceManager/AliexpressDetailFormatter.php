@@ -733,16 +733,6 @@ class AliexpressDetailFormatter
         );
 
         if ($tradeDetail !== []) {
-            $tradeChildren = $this->list(
-                $tradeDetail['child_order_list']['aeop_tp_child_order_dto']
-                ?? $tradeDetail['child_order_list']['global_aeop_tp_child_order_dto']
-                ?? $tradeDetail['child_order_list']
-                ?? []
-            );
-            if ($tradeChildren !== []) {
-                $childOrders = $tradeChildren;
-            }
-
             $order = array_replace($order, array_filter([
                 'pay_amount_by_settlement_cur' => $tradeDetail['pay_amount_by_settlement_cur'] ?? null,
                 'settlement_currency' => $tradeDetail['settlement_currency'] ?? null,
