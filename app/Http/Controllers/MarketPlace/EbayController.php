@@ -668,6 +668,17 @@ class EbayController extends Controller
             Log::warning('Could not fetch LMP data from ebay_sku_competitors: ' . $e->getMessage());
         }
 
+        // Sku Link LMP — build the linked-SKU groups (shared lmp_sku_links table) so a
+        // row's LMP merges competitors across every SKU linked to it (same as Amazon).
+        $lmpGroupService = new \App\Services\LmpSkuGroupService();
+        try {
+            $lmpGroupService->prepareForSkus(
+                $productMasters->pluck('sku')->filter()->map(fn($s) => (string) $s)->all()
+            );
+        } catch (\Throwable $e) {
+            Log::warning('LmpSkuGroupService prepare failed (eBay): ' . $e->getMessage());
+        }
+
         // 5. Marketplace percentage
         $marketplaceData = MarketplacePercentage::where('marketplace', 'Ebay')->first();
 
@@ -788,15 +799,42 @@ class EbayController extends Controller
             $row['ca_suggested_bid']  = $caRow->suggested_bid  ?? null;
             $row['ca_promote_with_ad'] = $caRow->promote_with_ad ?? null;
 
-            // LMP data - lowest entry plus all competitors
-            // Use uppercase and trimmed SKU for lookup (case-insensitive)
-            $skuLookupKey = strtoupper(trim($pm->sku));
-            $lmpEntries = $lmpDetailsLookup->get($skuLookupKey);
-            if (!$lmpEntries instanceof \Illuminate\Support\Collection) {
-                $lmpEntries = collect();
+            // LMP data — merged across the Sku Link LMP group so linked SKUs share LMP.
+            // Group members come from lmp_sku_links; competitor rows are matched with the
+            // SAME normalization used to group them (uppercase + trim + collapse whitespace),
+            // which also fixes SKUs like `WF 8"-890 4PC` that have irregular spacing.
+            $linkedGroup = $lmpGroupService->groupContaining((string) $pm->sku);
+            if (empty($linkedGroup)) {
+                $linkedGroup = [(string) $pm->sku];
             }
+            $seenLinked = [];
+            $linkedLmpSkus = [];
+            foreach ($linkedGroup as $member) {
+                $display = trim((string) $member);
+                $normMember = strtoupper($display);
+                if ($normMember === '' || isset($seenLinked[$normMember])) {
+                    continue;
+                }
+                $seenLinked[$normMember] = true;
+                $linkedLmpSkus[] = $display;
+            }
+            $row['linked_lmp_skus'] = $linkedLmpSkus;
 
-            $lowestLmp = $lmpLowestLookup->get($skuLookupKey);
+            $lmpEntries = collect();
+            foreach ($linkedLmpSkus as $linkedSku) {
+                $key = strtoupper(preg_replace('/\s+/', ' ', trim($linkedSku)));
+                $entries = $lmpDetailsLookup->get($key);
+                if ($entries instanceof \Illuminate\Support\Collection) {
+                    $lmpEntries = $lmpEntries->merge($entries);
+                }
+            }
+            // Dedupe by competitor item_id, then order by total_price ascending.
+            $lmpEntries = $lmpEntries
+                ->unique(fn($e) => $e->item_id ?? spl_object_id($e))
+                ->sortBy('total_price')
+                ->values();
+
+            $lowestLmp = $lmpEntries->first();
             $row['lmp_price'] = ($lowestLmp && isset($lowestLmp->total_price))
                 ? (is_numeric($lowestLmp->total_price) ? floatval($lowestLmp->total_price) : null)
                 : null;
@@ -1194,6 +1232,7 @@ class EbayController extends Controller
             $parentRow->lmp_title = null;
             $parentRow->lmp_entries = [];
             $parentRow->lmp_entries_total = 0;
+            $parentRow->linked_lmp_skus = [];
             $parentRow->{'E Dil%'} = 0;
             $parentRow->AD_Spend_L30 = array_sum(array_map(function ($c) { return (float) ($c->AD_Spend_L30 ?? 0); }, $children));
             $parentRow->kw_spend_L30 = array_sum(array_map(function ($c) { return (float) ($c->kw_spend_L30 ?? 0); }, $children));
