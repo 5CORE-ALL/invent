@@ -17,10 +17,23 @@ class AliexpressOrderSyncService
     /** Max history when fetching all orders (days = 0). */
     private const MAX_LOOKBACK_DAYS = 730;
 
+    /**
+     * Hard cutoff: never fetch/store/auto-import AE orders created before this date (America/Los_Angeles).
+     * Older orders were already entered on Shopify manually.
+     */
+    public const MIN_ORDER_DATE = '2026-07-07';
+
     public function __construct(
         protected AliExpressApiService $aliExpressApi
     ) {}
 
+    /**
+     * Earliest allowed order create time (start of day, AE seller timezone).
+     */
+    public function minOrderDate(): Carbon
+    {
+        return Carbon::parse(self::MIN_ORDER_DATE, 'America/Los_Angeles')->startOfDay();
+    }
     /**
      * Fetch orders from AliExpress and upsert into aliexpress_order_metrics.
      *
@@ -43,14 +56,31 @@ class AliexpressOrderSyncService
             return $this->fetchAllOrders($pageSize);
         }
 
-        $dateRange = $this->aliExpressApi->buildOrderDateRange($days);
+        $end = Carbon::now('America/Los_Angeles');
+        $start = $end->copy()->subDays(max(1, $days));
+        $min = $this->minOrderDate();
+        if ($start->lt($min)) {
+            $start = $min->copy();
+        }
+        if ($start->gt($end)) {
+            return [
+                'fetched' => 0,
+                'stored' => 0,
+                'message' => 'No orders to fetch after cutoff '.self::MIN_ORDER_DATE.'.',
+            ];
+        }
+
+        $dateRange = [
+            'create_date_start' => $start->format('Y-m-d H:i:s'),
+            'create_date_end' => $end->format('Y-m-d H:i:s'),
+        ];
         $result = $this->fetchOrdersInDateRange($dateRange, $pageSize);
 
         return [
             'fetched' => $result['fetched'],
             'stored' => $result['stored'],
             'message' => $result['error']
-                ?? "Fetched {$result['fetched']} order(s), stored/updated {$result['stored']} line(s) (last {$days} days).",
+                ?? "Fetched {$result['fetched']} order(s), stored/updated {$result['stored']} line(s) from {$start->toDateString()} onward.",
         ];
     }
 
@@ -73,6 +103,11 @@ class AliexpressOrderSyncService
             $start = Carbon::parse($fromDate, 'America/Los_Angeles')->startOfDay();
         } catch (\Throwable $e) {
             return ['fetched' => 0, 'stored' => 0, 'message' => 'Invalid from_date. Use YYYY-MM-DD.'];
+        }
+
+        $min = $this->minOrderDate();
+        if ($start->lt($min)) {
+            $start = $min->copy();
         }
 
         $end = Carbon::now('America/Los_Angeles');
@@ -133,7 +168,7 @@ class AliexpressOrderSyncService
         $chunks = 0;
 
         $chunkEnd = Carbon::now('America/Los_Angeles');
-        $lookbackStart = $chunkEnd->copy()->subDays(self::MAX_LOOKBACK_DAYS);
+        $lookbackStart = $this->minOrderDate();
 
         while ($chunkEnd->gt($lookbackStart)) {
             $chunkStart = $chunkEnd->copy()->subDays(self::DATE_CHUNK_DAYS);
@@ -166,7 +201,7 @@ class AliexpressOrderSyncService
         return [
             'fetched' => $fetched,
             'stored' => $stored,
-            'message' => "Fetched {$fetched} order(s), stored/updated {$stored} line(s) across {$chunks} date chunk(s) (up to ".self::MAX_LOOKBACK_DAYS.' days).',
+            'message' => "Fetched {$fetched} order(s), stored/updated {$stored} line(s) across {$chunks} date chunk(s) from ".self::MIN_ORDER_DATE.' onward.',
         ];
     }
 
@@ -248,6 +283,17 @@ class AliexpressOrderSyncService
         }
 
         $orderDate = $order['gmt_create'] ?? $order['create_time'] ?? null;
+        if ($orderDate) {
+            try {
+                $parsed = Carbon::parse($orderDate, 'America/Los_Angeles');
+                if ($parsed->lt($this->minOrderDate())) {
+                    return 0;
+                }
+            } catch (\Throwable $e) {
+                // Continue and store if date cannot be parsed.
+            }
+        }
+
         $status = (string) ($order['order_status'] ?? $order['status'] ?? '');
         $lines = $this->aliExpressApi->extractOrderProductLines($order);
         $count = 0;
@@ -323,9 +369,16 @@ class AliexpressOrderSyncService
 
         $orders = AliexpressOrderMetric::query()
             ->whereNull('shopify_order_id')
+            ->where('order_date', '>=', self::MIN_ORDER_DATE.' 00:00:00')
             ->where(function ($q) {
                 $q->whereNull('import_status')
-                    ->orWhereNotIn('import_status', ['imported', 'pending_shopify', 'import_failed']);
+                    ->orWhereNotIn('import_status', [
+                        'imported',
+                        'pending_shopify',
+                        'import_failed',
+                        'queued',
+                        'skipped_pre_july7',
+                    ]);
             })
             ->orderBy('id')
             ->limit(50)

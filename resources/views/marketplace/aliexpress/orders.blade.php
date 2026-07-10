@@ -19,11 +19,8 @@
                 <div class="d-flex gap-2 align-items-center flex-wrap">
                     <select id="fetch-days" class="form-select form-select-sm" style="width:auto;">
                         <option value="from:2026-07-07" selected>From July 7, 2026 onward</option>
-                        <option value="7">Last 7 days</option>
-                        <option value="30">Last 30 days</option>
-                        <option value="90">Last 90 days</option>
-                        <option value="365">Last 365 days</option>
-                        <option value="0">All orders (2 years)</option>
+                        <option value="7">Last 7 days (from July 7 min)</option>
+                        <option value="30">Last 30 days (from July 7 min)</option>
                     </select>
                     <button type="button" class="btn btn-sm btn-outline-primary" id="btn-fetch-orders">
                         <i class="ri-download-cloud-line"></i> Fetch from AliExpress
