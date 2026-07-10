@@ -674,6 +674,13 @@
         background: #fff7ed;
     }
 
+    .comparison-roi-table .comparison-roi-input-cell input.comparison-roi-input-readonly {
+        border-color: #cbd5e1;
+        background: #eef2f7;
+        color: #475569;
+        cursor: not-allowed;
+    }
+
     .comparison-roi-table .comparison-roi-calc-cell {
         background: #e5e7eb;
         font-weight: 600;
@@ -4205,20 +4212,26 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function buildRoiChannelRow(channel, cells, metrics, slabShipping, lmpRates) {
         const fromSheet = readCostCalculatorRowFromSheet(cells, channel, metrics.specCol);
-        const cbm = fromSheet.cbm
-            ? formatRoiCbm(fromSheet.cbm)
-            : (metrics.cbm != null ? formatRoiCbm(metrics.cbm) : '');
+        // CBM must use the EXACT value from the sheet's "CBM" spec row (metrics.cbm),
+        // not the cost-calculator channel row's own CBM cell (fromSheet.cbm), which can
+        // hold a stale/imported value that overrides the real per-unit CBM.
+        const cbm = metrics.cbm != null
+            ? formatRoiCbm(metrics.cbm)
+            : (fromSheet.cbm ? formatRoiCbm(fromSheet.cbm) : '');
         const lmpSale = getChannelLmpSale(channel, lmpRates);
         const rawLmp = getChannelRawLmp(channel, lmpRates);
         const row = {
             channel,
             cp: fromSheet.cp || (metrics.cp != null ? formatRoiNumber(metrics.cp) : ''),
             cbm,
-            freight: computeFreightFromCbm(fromSheet.cbm || (metrics.cbm != null ? metrics.cbm : cbm)),
+            freight: computeFreightFromCbm(metrics.cbm != null ? metrics.cbm : (fromSheet.cbm || cbm)),
             gw: fromSheet.gw || (metrics.gw != null ? formatRoiNumber(metrics.gw) : ''),
-            shipping: fromSheet.shipping || (slabShipping != null && slabShipping !== ''
+            // Shipping is always sourced from the Shipping Master (weight-based slab rate),
+            // never from the comparison sheet. This prevents stale/imported sheet values
+            // (e.g. a manually typed or Google-synced number) from overriding the master.
+            shipping: (slabShipping != null && slabShipping !== '')
                 ? formatRoiNumber(slabShipping)
-                : ''),
+                : '',
             sale: fromSheet.sale || lmpSale || '',
             lmp: rawLmp,
         };
@@ -4255,16 +4268,20 @@ document.addEventListener('DOMContentLoaded', function () {
         tbody.innerHTML = rows.map((row, rowIndex) => {
             const inputCell = (field, value) =>
                 `<td class="comparison-roi-input-cell"><input type="text" class="comparison-roi-input" data-row="${rowIndex}" data-field="${field}" value="${escapeHtmlAttr(value || '')}"></td>`;
+            const readonlyInputCell = (field, value) =>
+                `<td class="comparison-roi-input-cell"><input type="text" class="comparison-roi-input comparison-roi-input-readonly" data-row="${rowIndex}" data-field="${field}" value="${escapeHtmlAttr(value || '')}" readonly tabindex="-1" title="Auto from Shipping Master (based on GW LB). Not editable."></td>`;
 
             return `<tr>
                 <td class="comparison-roi-channel">${escapeHtml(row.channel)}</td>
                 ${inputCell('cp', row.cp)}
                 ${inputCell('cbm', row.cbm)}
+                ${roiCalcCellHtml(rowIndex, 'freight', row.freight)}
                 ${inputCell('gw', row.gw)}
-                ${inputCell('shipping', row.shipping)}
+                ${readonlyInputCell('shipping', row.shipping)}
                 ${inputCell('sale', row.sale)}
                 ${roiLmpCellHtml(rowIndex, row)}
                 ${roiCalcCellHtml(rowIndex, 'pPct', row.pPct)}
+                ${roiCalcCellHtml(rowIndex, 'profit', row.profit)}
                 ${roiCalcCellHtml(rowIndex, 'roi', row.roi)}
             </tr>`;
         }).join('');
@@ -6639,11 +6656,13 @@ document.addEventListener('DOMContentLoaded', function () {
                                 <th>cost calculator</th>
                                 <th>CP</th>
                                 <th>CBM</th>
+                                <th>Freight</th>
                                 <th>GW LB</th>
                                 <th>Shipping</th>
                                 <th>Sale</th>
                                 <th>lmp</th>
                                 <th>P%</th>
+                                <th>Profit</th>
                                 <th>ROI (G)</th>
                             </tr>
                         </thead>
