@@ -920,6 +920,149 @@ class GoogleShoppingCampaignsController extends Controller
     }
 
     /**
+     * Audit-history channel key for the "Revised" negative-keywords review page. Kept
+     * separate from {@see channelKey()} so its red/green status + history don't mix with
+     * the Shopping campaign audit.
+     */
+    protected function revisedChannelKey(): string
+    {
+        return 'negatives';
+    }
+
+    /**
+     * "Revised" page — one row per campaign with its stored negative-keyword count and an
+     * amazon-ads/audit-style red/green status (green = audited within 30 days) plus history.
+     */
+    public function revisedPage()
+    {
+        return view('campaign.google-negatives-revised');
+    }
+
+    /**
+     * Rows for the Revised page: campaign name, negative-keyword count, red/green audit dot,
+     * and audit history. Ordered never-audited / oldest-audited first (same shape as
+     * {@see auditPageData()}).
+     */
+    public function revisedPageData(Request $request): JsonResponse
+    {
+        // Negative-keyword counts per campaign (campaign-level + ad group-level).
+        $negCounts = DB::table('google_ads_negative_keywords')
+            ->whereIn('level', [
+                GoogleAdsNegativeKeyword::LEVEL_CAMPAIGN,
+                GoogleAdsNegativeKeyword::LEVEL_AD_GROUP,
+            ])
+            ->whereNotNull('campaign_id')
+            ->where('campaign_id', '!=', '')
+            ->selectRaw('campaign_id, COUNT(*) as c')
+            ->groupBy('campaign_id')
+            ->pluck('c', 'campaign_id');
+
+        // All campaigns — latest name/status per campaign_id from google_ads_campaigns.
+        $latest = DB::table('google_ads_campaigns')
+            ->whereNotNull('campaign_id')
+            ->where('campaign_id', '!=', '')
+            ->selectRaw('campaign_id, MAX(`date`) as md')
+            ->groupBy('campaign_id');
+
+        $campaigns = DB::table('google_ads_campaigns as g')
+            ->joinSub($latest, 'l', function ($join) {
+                $join->on('g.campaign_id', '=', 'l.campaign_id')
+                    ->on('g.date', '=', 'l.md');
+            })
+            ->selectRaw('g.campaign_id, g.campaign_name, g.campaign_status')
+            ->get();
+
+        $histByCid = \App\Models\GoogleAdsAuditHistory::where('channel', $this->revisedChannelKey())
+            ->orderBy('created_at')
+            ->get()
+            ->groupBy(fn ($h) => (string) $h->campaign_id);
+
+        $now = Carbon::now();
+        $greenDays = 30;
+        $data = [];
+        $seen = [];
+
+        foreach ($campaigns as $c) {
+            $cid = trim((string) ($c->campaign_id ?? ''));
+            if ($cid === '' || isset($seen[$cid])) {
+                continue;
+            }
+            $seen[$cid] = true;
+
+            $hist = $histByCid->get($cid, collect());
+            $historyArr = [];
+            foreach ($hist as $h) {
+                $historyArr[] = [
+                    'fixed' => (bool) $h->fixed,
+                    'details' => (string) $h->details,
+                    'created_at' => optional($h->created_at)->format('Y-m-d H:i'),
+                ];
+            }
+            $latestAudit = $hist->last();
+            $latestAt = $latestAudit && $latestAudit->created_at ? $latestAudit->created_at : null;
+            $isGreen = $latestAt !== null && $latestAt->gt($now->copy()->subDays($greenDays));
+
+            $data[] = [
+                'campaign_id' => $cid,
+                'campaign_name' => (string) ($c->campaign_name ?? ''),
+                'campaign_status' => (string) ($c->campaign_status ?? ''),
+                'neg_count' => (int) ($negCounts[$cid] ?? 0),
+                'dot' => $isGreen ? 'green' : 'red',
+                'latest_audit_at' => $latestAt ? $latestAt->format('Y-m-d H:i') : null,
+                'latest_audit_ts' => $latestAt ? $latestAt->getTimestamp() : 0,
+                'history' => $historyArr,
+            ];
+        }
+
+        usort($data, fn ($a, $b) => $a['latest_audit_ts'] <=> $b['latest_audit_ts']);
+
+        return response()->json(['data' => $data]);
+    }
+
+    /**
+     * Record a Revised-page audit submission for a campaign (both fields mandatory),
+     * stored under the dedicated negatives channel.
+     */
+    public function revisedPageSave(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'campaign_id' => ['required', 'string', 'max:255'],
+            'campaign_name' => ['nullable', 'string', 'max:255'],
+            'fixed' => ['required', 'boolean'],
+            'details' => ['required', 'string'],
+        ]);
+
+        \App\Models\GoogleAdsAuditHistory::create([
+            'channel' => $this->revisedChannelKey(),
+            'campaign_id' => $validated['campaign_id'],
+            'campaign_name' => $validated['campaign_name'] ?? null,
+            'fixed' => (bool) $validated['fixed'],
+            'details' => $validated['details'],
+            'user_id' => auth()->id(),
+            'created_at' => Carbon::now(),
+        ]);
+
+        $hist = \App\Models\GoogleAdsAuditHistory::where('channel', $this->revisedChannelKey())
+            ->where('campaign_id', $validated['campaign_id'])
+            ->orderBy('created_at')->get();
+        $historyArr = $hist->map(fn ($h) => [
+            'fixed' => (bool) $h->fixed,
+            'details' => (string) $h->details,
+            'created_at' => optional($h->created_at)->format('Y-m-d H:i'),
+        ])->all();
+        $latest = $hist->last();
+        $latestAt = $latest && $latest->created_at ? $latest->created_at : null;
+        $isGreen = $latestAt !== null && $latestAt->gt(Carbon::now()->subDays(30));
+
+        return response()->json([
+            'ok' => true,
+            'dot' => $isGreen ? 'green' : 'red',
+            'latest_audit_at' => $latestAt ? $latestAt->format('Y-m-d H:i') : null,
+            'history' => $historyArr,
+        ]);
+    }
+
+    /**
      * Row counts by U7% band for the current filters (same as the grid except the U7% filter is ignored).
      */
     public function u7Distribution(Request $request): JsonResponse

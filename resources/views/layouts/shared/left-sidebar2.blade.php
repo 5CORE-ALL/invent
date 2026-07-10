@@ -397,6 +397,7 @@
                                                                     <div class="collapse" id="ppcGroup1">
                                                                         <ul class="side-nav-fifth-level">
                                                                             <li><a href="{{ route('google.serp.campaigns') }}">Google SERP</a></li>
+                                                                            <li><a href="{{ route('google.shopping.campaigns.revised') }}">Revised (Neg KW)</a></li>
                                                                         </ul>
                                                                     </div>
                                                                 </li>
