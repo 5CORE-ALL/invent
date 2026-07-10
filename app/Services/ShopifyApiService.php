@@ -1927,15 +1927,27 @@ class ShopifyApiService
         $map = [];
         $pageInfo = null;
         $hasMore = true;
-        $limitToLookup = $limitToSkus ? array_flip(array_map('trim', $limitToSkus)) : null;
+        $limitToLookup = null;
+        $remaining = null;
+        if ($limitToSkus) {
+            $limitToLookup = [];
+            foreach ($limitToSkus as $sku) {
+                $trimmed = trim((string) $sku);
+                if ($trimmed === '') {
+                    continue;
+                }
+                $limitToLookup[strtoupper($trimmed)] = $trimmed;
+            }
+            $remaining = count($limitToLookup);
+        }
 
         while ($hasMore) {
-            $queryParams = [
-                'limit' => 250,
-                'fields' => 'id,variants',
-            ];
+            // Shopify cursor pagination only allows limit + page_info (no other filters/fields).
+            $queryParams = ['limit' => 250];
             if ($pageInfo) {
                 $queryParams['page_info'] = $pageInfo;
+            } else {
+                $queryParams['fields'] = 'id,variants';
             }
 
             $request = Http::withHeaders([
@@ -1952,6 +1964,10 @@ class ShopifyApiService
             );
 
             if (! $response->successful()) {
+                Log::warning('ShopifyApiService: getInventoryQuantitiesBySku page failed', [
+                    'status' => $response->status(),
+                    'body' => substr($response->body(), 0, 300),
+                ]);
                 break;
             }
 
@@ -1962,11 +1978,24 @@ class ShopifyApiService
                     if ($sku === '' || stripos($sku, 'PARENT') !== false) {
                         continue;
                     }
-                    if ($limitToLookup !== null && ! isset($limitToLookup[$sku])) {
+                    $skuKey = strtoupper($sku);
+                    if ($limitToLookup !== null && ! isset($limitToLookup[$skuKey])) {
                         continue;
                     }
+                    if (! array_key_exists($sku, $map) && $remaining !== null) {
+                        $remaining--;
+                    }
                     $map[$sku] = (int) ($variant['inventory_quantity'] ?? 0);
+                    // Also index by the requested casing so callers can look up AE metric SKUs directly.
+                    if ($limitToLookup !== null) {
+                        $requested = $limitToLookup[$skuKey];
+                        $map[$requested] = $map[$sku];
+                    }
                 }
+            }
+
+            if ($remaining === 0) {
+                break;
             }
 
             $pageInfo = $this->getNextPageInfo($response);

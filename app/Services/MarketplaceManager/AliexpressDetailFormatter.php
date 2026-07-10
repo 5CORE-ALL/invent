@@ -4,6 +4,7 @@ namespace App\Services\MarketplaceManager;
 
 use App\Models\AliexpressMetric;
 use App\Models\AliexpressOrderMetric;
+use App\Models\AliexpressPricingPrice;
 use App\Models\MarketplaceSyncSettings;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
@@ -36,6 +37,7 @@ class AliexpressDetailFormatter
         $cachedPrice = $this->money($metric?->price);
         $minPrice = $this->money($ae['product_min_price'] ?? null) ?? $cachedPrice;
         $maxPrice = $this->money($ae['product_max_price'] ?? null) ?? $cachedPrice;
+        $aeStock = $this->resolveProductAeStock($variants, $metric, (string) ($shopify->sku ?? ''));
 
         return [
             'shopify' => [
@@ -76,6 +78,7 @@ class AliexpressDetailFormatter
                 'l60' => $metric?->l60,
                 'last_order_date' => $metric?->last_order_date,
                 'bullet_points' => $metric?->bullet_points,
+                'ae_stock' => $aeStock,
             ],
             'aliexpress' => [
                 'product_id' => $this->str($ae['product_id'] ?? $metric?->product_id),
@@ -93,6 +96,7 @@ class AliexpressDetailFormatter
                 'min_price' => $minPrice,
                 'max_price' => $maxPrice,
                 'cached_price' => $cachedPrice,
+                'stock' => $aeStock,
                 'images' => $aeImages,
                 'main_image' => $aeImages[0] ?? null,
                 'descriptions' => $descriptions,
@@ -1594,7 +1598,7 @@ class AliexpressDetailFormatter
             $variants[] = [
                 'sku' => $this->str($metric->sku),
                 'price' => $this->money($metric->price),
-                'stock' => null,
+                'stock' => $this->localAeStockForSku((string) $metric->sku),
                 'image' => null,
                 'ean' => null,
                 'properties' => [],
@@ -1615,6 +1619,68 @@ class AliexpressDetailFormatter
         }
 
         return $variants;
+    }
+
+    /**
+     * Prefer live/API variant stock for this SKU, else local ae_stock from pricing sync.
+     *
+     * @param  array<int, array<string, mixed>>  $variants
+     */
+    protected function resolveProductAeStock(array $variants, ?AliexpressMetric $metric, string $shopifySku): ?int
+    {
+        $targets = array_values(array_filter([
+            strtoupper(trim($shopifySku)),
+            strtoupper(trim((string) ($metric?->sku ?? ''))),
+        ]));
+
+        foreach ($variants as $variant) {
+            if (($variant['source'] ?? '') === 'shopify') {
+                continue;
+            }
+            $sku = strtoupper(trim((string) ($variant['sku'] ?? '')));
+            if ($sku === '' || ($targets !== [] && ! in_array($sku, $targets, true))) {
+                continue;
+            }
+            if (isset($variant['stock']) && $variant['stock'] !== null && $variant['stock'] !== '') {
+                return (int) $variant['stock'];
+            }
+        }
+
+        foreach ($targets as $sku) {
+            if (($stock = $this->localAeStockForSku($sku)) !== null) {
+                return $stock;
+            }
+        }
+
+        $aeOnly = array_values(array_filter(
+            $variants,
+            static fn ($v) => ($v['source'] ?? '') !== 'shopify'
+        ));
+        if (count($aeOnly) === 1 && isset($aeOnly[0]['stock']) && $aeOnly[0]['stock'] !== null && $aeOnly[0]['stock'] !== '') {
+            return (int) $aeOnly[0]['stock'];
+        }
+
+        return null;
+    }
+
+    protected function localAeStockForSku(string $sku): ?int
+    {
+        $sku = strtoupper(trim($sku));
+        if ($sku === '' || ! Schema::hasTable('aliexpress_pricing_prices')) {
+            return null;
+        }
+
+        $row = AliexpressPricingPrice::query()
+            ->where(function ($q) use ($sku) {
+                $q->where('sku', $sku)->orWhere('sku', trim($sku));
+            })
+            ->first();
+
+        if (! $row || $row->ae_stock === null) {
+            return null;
+        }
+
+        return (int) $row->ae_stock;
     }
 
     /**

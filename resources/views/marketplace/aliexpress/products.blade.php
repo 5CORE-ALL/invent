@@ -82,6 +82,7 @@
                                 <th>{{ ($linkTab ?? '') === 'not_in_shopify' ? 'Title (AE)' : 'Title (Shopify)' }}</th>
                                 <th>AliExpress ID</th>
                                 <th>Shopify Qty</th>
+                                <th>AE Qty</th>
                                 <th>Shopify Price</th>
                                 <th>AE Price</th>
                                 <th>Link</th>
@@ -119,6 +120,7 @@
                                     </td>
                                     <td class="small">{{ $p->product_id ?? '—' }}</td>
                                     <td>{{ $p->shopify_quantity ?? '—' }}</td>
+                                    <td>{{ $p->ae_quantity ?? $p->quantity ?? '—' }}</td>
                                     <td>{{ isset($p->shopify_price) ? number_format((float)$p->shopify_price, 2) : '—' }}</td>
                                     <td>{{ isset($p->price) ? number_format((float)$p->price, 2) : '—' }}</td>
                                     <td>
@@ -133,7 +135,7 @@
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="8" class="text-center text-muted py-4">
+                                    <td colspan="9" class="text-center text-muted py-4">
                                         @if(($linkTab ?? 'all') === 'not_in_shopify')
                                             No AliExpress listings found without a matching Shopify SKU.
                                         @else

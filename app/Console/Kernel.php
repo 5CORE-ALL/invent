@@ -1160,7 +1160,7 @@ class Kernel extends ConsoleKernel
         // AliExpress Marketplace Manager: inventory/price from Shopify, orders to Shopify
         // Not wrapped in $ist() — orders can arrive overnight and must still auto-import.
         $schedule->command('aliexpress:sync-inventory-from-shopify')
-            ->everyThirtyMinutes()
+            ->everyFifteenMinutes()
             ->timezone('Asia/Kolkata')
             ->name('aliexpress-sync-inventory')
             ->withoutOverlapping()

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Jobs\ImportAliexpressOrderToShopify;
 use App\Models\AliexpressMetric;
 use App\Models\AliexpressOrderMetric;
+use App\Models\AliexpressPricingPrice;
 use App\Models\MarketplaceSyncSettings;
 use App\Models\ShopifySku;
 use App\Services\AliExpressApiService;
@@ -209,13 +210,15 @@ class AliexpressSyncController extends Controller
         $paginator = $query->orderBy('sku')->paginate($perPage, ['*'], 'page', $page)->withQueryString();
         $skus = collect($paginator->items())->pluck('sku')->filter()->values()->all();
         $aeMap = $this->aliexpressMetricMapForSkus($skus);
+        $aeStockMap = $this->aliexpressStockMapForSkus($skus);
 
-        $enriched = collect($paginator->items())->map(function (ShopifySku $row) use ($aeMap) {
+        $enriched = collect($paginator->items())->map(function (ShopifySku $row) use ($aeMap, $aeStockMap) {
             $sku = (string) $row->sku;
             $metric = $aeMap[$sku] ?? null;
             $linked = $this->isShopifySkuLinkedOnAliexpress($metric, $sku);
             $shopifyQty = $row->available_to_sell ?? $row->inv ?? $row->on_hand ?? null;
             $shopifyPrice = $row->b2c_price ?? $row->price ?? null;
+            $aeQty = $linked ? ($aeStockMap[strtoupper(trim($sku))] ?? null) : null;
 
             return (object) [
                 'shopify_sku_id' => $row->id,
@@ -226,7 +229,8 @@ class AliexpressSyncController extends Controller
                 'image_src' => $row->image_src ?? null,
                 'price' => $linked ? ($metric->price ?? null) : null,
                 'shopify_price' => $shopifyPrice,
-                'quantity' => null,
+                'quantity' => $aeQty,
+                'ae_quantity' => $aeQty,
                 'shopify_quantity' => $shopifyQty,
                 'linked' => $linked,
                 'listing_status' => $linked ? 'linked' : 'unlinked',
@@ -773,17 +777,22 @@ class AliexpressSyncController extends Controller
         })->values();
 
         $total = $rows->count();
-        $slice = $rows->slice(($page - 1) * $perPage, $perPage)->map(function (AliexpressMetric $metric) {
+        $sliceSkus = $rows->slice(($page - 1) * $perPage, $perPage)->pluck('sku')->map(fn ($s) => (string) $s)->all();
+        $aeStockMap = $this->aliexpressStockMapForSkus($sliceSkus);
+        $slice = $rows->slice(($page - 1) * $perPage, $perPage)->map(function (AliexpressMetric $metric) use ($aeStockMap) {
+            $sku = (string) $metric->sku;
+
             return (object) [
                 'shopify_sku_id' => null,
                 'product_id' => $metric->product_id,
-                'sku' => (string) $metric->sku,
+                'sku' => $sku,
                 'title' => $metric->product_name ?? $metric->sku,
                 'aliexpress_title' => null,
                 'image_src' => null,
                 'price' => $metric->price ?? null,
                 'shopify_price' => null,
-                'quantity' => null,
+                'quantity' => $aeStockMap[strtoupper(trim($sku))] ?? null,
+                'ae_quantity' => $aeStockMap[strtoupper(trim($sku))] ?? null,
                 'shopify_quantity' => null,
                 'linked' => false,
                 'listing_status' => 'not_in_shopify',
@@ -848,6 +857,43 @@ class AliexpressSyncController extends Controller
         }
 
         return $out;
+    }
+
+    /**
+     * Local AE stock from aliexpress_pricing_prices (updated by inventory sync).
+     *
+     * @param  array<int, string>  $skus
+     * @return array<string, int> keyed by uppercase SKU
+     */
+    protected function aliexpressStockMapForSkus(array $skus): array
+    {
+        if ($skus === [] || ! Schema::hasTable('aliexpress_pricing_prices')) {
+            return [];
+        }
+
+        $keys = [];
+        foreach ($skus as $sku) {
+            $trim = trim((string) $sku);
+            if ($trim === '') {
+                continue;
+            }
+            $keys[] = $trim;
+            $keys[] = strtoupper($trim);
+        }
+        $keys = array_values(array_unique($keys));
+
+        $map = [];
+        AliexpressPricingPrice::query()
+            ->whereIn('sku', $keys)
+            ->get(['sku', 'ae_stock'])
+            ->each(function (AliexpressPricingPrice $row) use (&$map) {
+                $key = strtoupper(trim((string) $row->sku));
+                if ($key !== '' && $row->ae_stock !== null) {
+                    $map[$key] = (int) $row->ae_stock;
+                }
+            });
+
+        return $map;
     }
 
     protected function isShopifySkuLinkedOnAliexpress(?AliexpressMetric $metric, string $shopifySku): bool
