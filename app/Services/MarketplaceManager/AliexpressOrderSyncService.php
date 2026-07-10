@@ -5,19 +5,26 @@ namespace App\Services\MarketplaceManager;
 use App\Models\AliexpressOrderMetric;
 use App\Models\MarketplaceSyncSettings;
 use App\Services\AliExpressApiService;
-use App\Services\ShopifyStoreSelector;
 use Carbon\Carbon;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 class AliexpressOrderSyncService
 {
+    /** AliExpress order list queries are safest in ~30-day windows. */
+    private const DATE_CHUNK_DAYS = 30;
+
+    /** Max history when fetching all orders (days = 0). */
+    private const MAX_LOOKBACK_DAYS = 730;
+
     public function __construct(
         protected AliExpressApiService $aliExpressApi
     ) {}
 
     /**
+     * Fetch orders from AliExpress and upsert into aliexpress_order_metrics.
+     *
+     * @param  int  $days  Number of days back, or 0 to fetch all available history (chunked).
      * @return array{fetched: int, stored: int, message: string}
      */
     public function fetchAndStore(int $days = 7, int $pageSize = 50): array
@@ -30,24 +37,103 @@ class AliexpressOrderSyncService
             return ['fetched' => 0, 'stored' => 0, 'message' => 'Run migrations for aliexpress_order_metrics.'];
         }
 
+        $pageSize = max(1, min(50, $pageSize));
+
+        if ($days <= 0) {
+            return $this->fetchAllOrders($pageSize);
+        }
+
         $dateRange = $this->aliExpressApi->buildOrderDateRange($days);
+        $result = $this->fetchOrdersInDateRange($dateRange, $pageSize);
+
+        return [
+            'fetched' => $result['fetched'],
+            'stored' => $result['stored'],
+            'message' => $result['error']
+                ?? "Fetched {$result['fetched']} order(s), stored/updated {$result['stored']} line(s) (last {$days} days).",
+        ];
+    }
+
+    /**
+     * Walk back in date chunks to fetch full order history.
+     *
+     * @return array{fetched: int, stored: int, message: string}
+     */
+    protected function fetchAllOrders(int $pageSize): array
+    {
+        $fetched = 0;
+        $stored = 0;
+        $chunks = 0;
+
+        $chunkEnd = Carbon::now('America/Los_Angeles');
+        $lookbackStart = $chunkEnd->copy()->subDays(self::MAX_LOOKBACK_DAYS);
+
+        while ($chunkEnd->gt($lookbackStart)) {
+            $chunkStart = $chunkEnd->copy()->subDays(self::DATE_CHUNK_DAYS);
+            if ($chunkStart->lt($lookbackStart)) {
+                $chunkStart = $lookbackStart->copy();
+            }
+
+            $dateRange = [
+                'create_date_start' => $chunkStart->format('Y-m-d H:i:s'),
+                'create_date_end' => $chunkEnd->format('Y-m-d H:i:s'),
+            ];
+
+            $result = $this->fetchOrdersInDateRange($dateRange, $pageSize);
+            $fetched += $result['fetched'];
+            $stored += $result['stored'];
+            $chunks++;
+
+            if ($result['error'] !== null) {
+                return [
+                    'fetched' => $fetched,
+                    'stored' => $stored,
+                    'message' => $result['error']." (partial: {$fetched} order(s) fetched).",
+                ];
+            }
+
+            $chunkEnd = $chunkStart->copy()->subSecond();
+            usleep(200000);
+        }
+
+        return [
+            'fetched' => $fetched,
+            'stored' => $stored,
+            'message' => "Fetched {$fetched} order(s), stored/updated {$stored} line(s) across {$chunks} date chunk(s) (up to ".self::MAX_LOOKBACK_DAYS.' days).',
+        ];
+    }
+
+    /**
+     * @param  array{create_date_start: string, create_date_end: string}  $dateRange
+     * @return array{fetched: int, stored: int, error: ?string}
+     */
+    protected function fetchOrdersInDateRange(array $dateRange, int $pageSize): array
+    {
         $page = 1;
         $fetched = 0;
         $stored = 0;
+        $totalPages = null;
 
         while (true) {
             $result = $this->aliExpressApi->getOrders($page, $pageSize, $dateRange);
+
             if (empty($result['success'])) {
                 return [
                     'fetched' => $fetched,
                     'stored' => $stored,
-                    'message' => $result['message'] ?? 'Order fetch failed on page '.$page,
+                    'error' => $result['message'] ?? 'Order fetch failed on page '.$page,
                 ];
             }
 
-            $orders = $result['data']['orders'] ?? [];
+            $parsed = $result['data'] ?? [];
+            $orders = $parsed['orders'] ?? [];
+
             if ($orders === []) {
                 break;
+            }
+
+            if ($totalPages === null && isset($parsed['total_page'])) {
+                $totalPages = max(1, (int) $parsed['total_page']);
             }
 
             foreach ($orders as $order) {
@@ -58,14 +144,29 @@ class AliexpressOrderSyncService
                 $stored += $this->storeOrder($order);
             }
 
+            if (count($orders) < $pageSize) {
+                break;
+            }
+
+            if ($totalPages !== null && $page >= $totalPages) {
+                break;
+            }
+
             $page++;
             usleep(150000);
         }
 
+        Log::info('[AliExpressOrderSync] Date range complete', [
+            'start' => $dateRange['create_date_start'] ?? null,
+            'end' => $dateRange['create_date_end'] ?? null,
+            'fetched' => $fetched,
+            'pages' => $page,
+        ]);
+
         return [
             'fetched' => $fetched,
             'stored' => $stored,
-            'message' => "Fetched {$fetched} order(s), stored/updated {$stored} line(s).",
+            'error' => null,
         ];
     }
 

@@ -15,12 +15,28 @@
 
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-                <span class="badge bg-primary">{{ $products->total() }} Shopify SKU(s)</span>
+                <span class="badge bg-primary">
+                    @if(($linkTab ?? 'all') === 'not_in_shopify')
+                        {{ $products->total() }} on AliExpress, not in Shopify
+                    @else
+                        {{ $products->total() }} Shopify SKU(s)
+                    @endif
+                </span>
                 <div class="d-flex gap-2 flex-wrap">
                     <button type="button" class="btn btn-sm btn-outline-primary" id="btn-refresh-api">
                         <i class="ri-refresh-line"></i> Sync AE link map
                     </button>
                 </div>
+            </div>
+            <div id="link-map-progress" class="card-body border-bottom py-3" style="display:none;">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span id="link-map-status" class="small text-muted">Starting…</span>
+                    <span id="link-map-pct" class="small fw-semibold">0%</span>
+                </div>
+                <div class="progress" style="height: 18px;">
+                    <div id="link-map-bar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%;">0%</div>
+                </div>
+                <div id="link-map-counts" class="small text-muted mt-2"></div>
             </div>
             <div class="card-body">
                 <form method="get" class="mb-3">
@@ -41,7 +57,7 @@
                     </div>
                 </form>
 
-                @php $counts = $counts ?? ['all' => 0, 'linked' => 0, 'unlinked' => 0]; @endphp
+                @php $counts = $counts ?? ['all' => 0, 'linked' => 0, 'unlinked' => 0, 'not_in_shopify' => 0]; @endphp
                 <ul class="nav nav-tabs nav-bordered mb-3" role="tablist">
                     <li class="nav-item">
                         <a href="{{ request()->url() }}?link=all&search_name={{ urlencode($searchName) }}&search_sku={{ urlencode($searchSku) }}" class="nav-link {{ ($linkTab ?? 'all') === 'all' ? 'active' : '' }}">All {{ $counts['all'] ?? 0 }}</a>
@@ -52,6 +68,9 @@
                     <li class="nav-item">
                         <a href="{{ request()->url() }}?link=unlinked&search_name={{ urlencode($searchName) }}&search_sku={{ urlencode($searchSku) }}" class="nav-link {{ ($linkTab ?? '') === 'unlinked' ? 'active' : '' }}">Not on AE {{ $counts['unlinked'] ?? 0 }}</a>
                     </li>
+                    <li class="nav-item">
+                        <a href="{{ request()->url() }}?link=not_in_shopify&search_name={{ urlencode($searchName) }}&search_sku={{ urlencode($searchSku) }}" class="nav-link {{ ($linkTab ?? '') === 'not_in_shopify' ? 'active' : '' }}">Not in Shopify {{ $counts['not_in_shopify'] ?? 0 }}</a>
+                    </li>
                 </ul>
 
                 <div class="table-responsive">
@@ -60,7 +79,7 @@
                             <tr>
                                 <th style="width: 64px;">Image</th>
                                 <th>SKU</th>
-                                <th>Title (Shopify)</th>
+                                <th>{{ ($linkTab ?? '') === 'not_in_shopify' ? 'Title (AE)' : 'Title (Shopify)' }}</th>
                                 <th>AliExpress ID</th>
                                 <th>Shopify Qty</th>
                                 <th>Shopify Price</th>
@@ -103,7 +122,9 @@
                                     <td>{{ isset($p->shopify_price) ? number_format((float)$p->shopify_price, 2) : '—' }}</td>
                                     <td>{{ isset($p->price) ? number_format((float)$p->price, 2) : '—' }}</td>
                                     <td>
-                                        @if($p->linked)
+                                        @if(($p->listing_status ?? '') === 'not_in_shopify')
+                                            <span class="badge bg-warning-subtle text-warning">Not in Shopify</span>
+                                        @elseif($p->linked)
                                             <span class="badge bg-success-subtle text-success">Linked</span>
                                         @else
                                             <span class="badge bg-light text-muted">Not linked</span>
@@ -113,9 +134,15 @@
                             @empty
                                 <tr>
                                     <td colspan="8" class="text-center text-muted py-4">
-                                        No Shopify SKUs found.
+                                        @if(($linkTab ?? 'all') === 'not_in_shopify')
+                                            No AliExpress listings found without a matching Shopify SKU.
+                                        @else
+                                            No Shopify SKUs found.
+                                        @endif
                                         @if(($linkTab ?? 'all') === 'linked')
                                             None linked yet — click <strong>Sync AE link map</strong> after SKUs exist in AliExpress.
+                                        @elseif(($linkTab ?? 'all') === 'not_in_shopify')
+                                            All synced AE SKUs appear to exist in your Shopify catalog, or run <strong>Sync AE link map</strong> first.
                                         @elseif($connected)
                                             Your Shopify catalog may be empty, or filters excluded all rows.
                                         @else
@@ -139,27 +166,83 @@
 <script>
 document.getElementById('btn-refresh-api')?.addEventListener('click', function () {
     var btn = this;
+    var progress = document.getElementById('link-map-progress');
+    var bar = document.getElementById('link-map-bar');
+    var statusEl = document.getElementById('link-map-status');
+    var pctEl = document.getElementById('link-map-pct');
+    var countsEl = document.getElementById('link-map-counts');
+    var url = '{{ route('marketplace.manager.aliexpress.refresh') }}';
+    var page = 1;
+
+    function setProgress(pageNum, totalPage, totalUpserted, message, totalCount) {
+        var pct = 0;
+        if (totalPage && totalPage > 0) {
+            pct = Math.min(100, Math.round((pageNum / totalPage) * 100));
+        } else if (pageNum > 1) {
+            pct = Math.min(95, pageNum * 5);
+        }
+        bar.style.width = pct + '%';
+        bar.textContent = pct + '%';
+        pctEl.textContent = pct + '%';
+        statusEl.textContent = message || ('Syncing page ' + pageNum + (totalPage ? ' of ' + totalPage : '') + '…');
+        var extra = totalCount ? ' (' + totalCount + ' products on AliExpress)' : '';
+        countsEl.textContent = totalUpserted + ' SKU link(s) saved so far' + extra;
+    }
+
+    function syncNext(reset) {
+        return fetch(url, {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ page: page, reset: !!reset }),
+        }).then(function (r) { return r.json(); });
+    }
+
+    if (!confirm('Sync all AliExpress listings and refresh SKU ↔ product_id mappings? This may take a few minutes.')) {
+        return;
+    }
+
     btn.disabled = true;
     btn.innerHTML = '<i class="ri-loader-4-line"></i> Syncing…';
-    fetch('{{ route('marketplace.manager.aliexpress.refresh') }}', {
-        method: 'POST',
-        headers: {
-            'X-CSRF-TOKEN': '{{ csrf_token() }}',
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({}),
-    })
-    .then(function (r) { return r.json(); })
-    .then(function (data) {
-        alert(data.message || (data.success ? 'Done' : 'Failed'));
-        if (data.success) location.reload();
-    })
-    .catch(function () { alert('Request failed.'); })
-    .finally(function () {
-        btn.disabled = false;
-        btn.innerHTML = '<i class="ri-refresh-line"></i> Sync AE link map';
-    });
+    progress.style.display = '';
+    setProgress(0, null, 0, 'Starting sync…');
+
+    function runPage(reset) {
+        syncNext(reset).then(function (data) {
+            if (!data.success && data.done) {
+                alert(data.message || 'Sync failed.');
+                progress.style.display = 'none';
+                btn.disabled = false;
+                btn.innerHTML = '<i class="ri-refresh-line"></i> Sync AE link map';
+                return;
+            }
+
+            setProgress(data.page || page, data.total_page || null, data.total_upserted || 0, data.message, data.total_count || null);
+
+            if (data.done) {
+                bar.classList.remove('progress-bar-animated');
+                bar.style.width = '100%';
+                bar.textContent = '100%';
+                pctEl.textContent = '100%';
+                statusEl.textContent = data.message || 'Done';
+                setTimeout(function () { location.reload(); }, 800);
+                return;
+            }
+
+            page = (data.page || page) + 1;
+            setTimeout(function () { runPage(false); }, 500);
+        }).catch(function () {
+            alert('Request failed.');
+            progress.style.display = 'none';
+            btn.disabled = false;
+            btn.innerHTML = '<i class="ri-refresh-line"></i> Sync AE link map';
+        });
+    }
+
+    runPage(true);
 });
 </script>
 @endsection

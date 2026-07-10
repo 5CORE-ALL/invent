@@ -1256,8 +1256,9 @@ class AliExpressApiService
         return [
             'orders' => $orders,
             'total_count' => $result['total_count'] ?? $result['totalCount'] ?? null,
-            'current_page' => $result['current_page'] ?? null,
-            'page_size' => $result['page_size'] ?? null,
+            'total_page' => $result['total_page'] ?? $result['totalPage'] ?? null,
+            'current_page' => $result['current_page'] ?? $result['currentPage'] ?? null,
+            'page_size' => $result['page_size'] ?? $result['pageSize'] ?? null,
         ];
     }
 
