@@ -1678,14 +1678,20 @@ class AliExpressApiService
             $payload = [];
             foreach ($chunk as $productId => $skus) {
                 $payload[] = [
-                    'product_id' => (string) $productId,
+                    'product_id' => ctype_digit((string) $productId) ? (int) $productId : (string) $productId,
                     'multiple_sku_update_list' => array_values($skus),
                 ];
             }
 
-            $raw = $this->callSync('aliexpress.solution.batch.product.inventory.update', [
+            // Prefer REST gateway (same signing as order APIs). Sync gateway returns IncompleteSignature.
+            $raw = $this->callRestGateway('aliexpress.solution.batch.product.inventory.update', [
                 'mutiple_product_update_list' => $this->encodeRequestPayload($payload),
             ]);
+            if (empty($raw['success'])) {
+                $raw = $this->callSync('aliexpress.solution.batch.product.inventory.update', [
+                    'mutiple_product_update_list' => $this->encodeRequestPayload($payload),
+                ]);
+            }
 
             if (empty($raw['success'])) {
                 $errors[] = $raw['message'] ?? 'Batch inventory update failed.';
@@ -1741,14 +1747,19 @@ class AliExpressApiService
             $payload = [];
             foreach ($chunk as $productId => $skus) {
                 $payload[] = [
-                    'product_id' => (string) $productId,
+                    'product_id' => ctype_digit((string) $productId) ? (int) $productId : (string) $productId,
                     'multiple_sku_update_list' => array_values($skus),
                 ];
             }
 
-            $raw = $this->callSync('aliexpress.solution.batch.product.price.update', [
+            $raw = $this->callRestGateway('aliexpress.solution.batch.product.price.update', [
                 'mutiple_product_update_list' => $this->encodeRequestPayload($payload),
             ]);
+            if (empty($raw['success'])) {
+                $raw = $this->callSync('aliexpress.solution.batch.product.price.update', [
+                    'mutiple_product_update_list' => $this->encodeRequestPayload($payload),
+                ]);
+            }
 
             if (empty($raw['success'])) {
                 $errors[] = $raw['message'] ?? 'Batch price update failed.';

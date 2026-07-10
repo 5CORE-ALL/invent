@@ -94,28 +94,31 @@ class AliexpressInventorySyncService
         }
 
         $invResult = $this->aliExpressApi->batchUpdateInventory($inventoryRows);
-        if (empty($invResult['success'])) {
-            Log::warning('AliexpressInventorySyncService: post-order SKU inventory sync failed', [
-                'skus' => $skus,
-                'result' => $invResult,
-            ]);
+        if (! empty($invResult['success'])) {
+            $this->updateLocalStock($inventoryRows);
+            $this->updateLocalPlatformQuantities($inventoryRows);
 
             return [
-                'updated' => 0,
-                'failed' => count($inventoryRows),
+                'updated' => count($inventoryRows),
+                'failed' => 0,
                 'skipped' => $skipped,
-                'message' => $invResult['message'] ?? 'AliExpress inventory update failed.',
+                'message' => 'Synced '.count($inventoryRows).' SKU(s) to AliExpress and local platform.',
             ];
         }
 
-        $this->updateLocalStock($inventoryRows);
-        $this->updateLocalPlatformQuantities($inventoryRows);
+        // Still refresh Shopify qty on our platform even if AE API push failed.
+        $this->updateLocalPlatformQuantities($inventoryRows, false);
+
+        Log::warning('AliexpressInventorySyncService: post-order SKU inventory sync failed', [
+            'skus' => $skus,
+            'result' => $invResult,
+        ]);
 
         return [
-            'updated' => count($inventoryRows),
-            'failed' => 0,
+            'updated' => 0,
+            'failed' => count($inventoryRows),
             'skipped' => $skipped,
-            'message' => 'Synced '.count($inventoryRows).' SKU(s) to AliExpress and local platform.',
+            'message' => $invResult['message'] ?? 'AliExpress inventory update failed.',
         ];
     }
 
@@ -395,7 +398,7 @@ class AliexpressInventorySyncService
      *
      * @param  array<int, array{product_id: string, sku_code: string, inventory: int, shopify_qty?: int}>  $rows
      */
-    protected function updateLocalPlatformQuantities(array $rows): void
+    protected function updateLocalPlatformQuantities(array $rows, bool $updateAeStock = true): void
     {
         foreach ($rows as $row) {
             $sku = trim((string) $row['sku_code']);
@@ -416,14 +419,15 @@ class AliexpressInventorySyncService
             }
 
             if (Schema::hasTable('product_stock_mappings')) {
+                $payload = ['inventory_shopify' => $shopifyQty];
+                if ($updateAeStock) {
+                    $payload['inventory_aliexpress'] = $aeQty;
+                }
                 ProductStockMapping::query()
                     ->where(function ($q) use ($sku) {
                         $q->where('sku', $sku)->orWhere('sku', strtoupper($sku));
                     })
-                    ->update([
-                        'inventory_aliexpress' => $aeQty,
-                        'inventory_shopify' => $shopifyQty,
-                    ]);
+                    ->update($payload);
             }
         }
     }
