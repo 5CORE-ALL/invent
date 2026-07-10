@@ -673,6 +673,9 @@
                         aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
+                    <!-- SKU metrics (CVR / Price / Views / Sold) for context -->
+                    <div id="lmpStats" class="d-flex flex-wrap gap-2 mb-3"></div>
+
                     <!-- Add New Competitor Form -->
                     <div class="card mb-4">
                         <div class="card-header bg-success text-white">
@@ -5328,6 +5331,16 @@
                     .catch(() => {});
             }
 
+            // Re-apply filters after any sort so hidden parent (summary) rows never
+            // reappear when sorting by a column (View = SKU keeps them hidden).
+            let ebaySortReapplyGuard = false;
+            table.on('dataSorted', function() {
+                if (ebaySortReapplyGuard) return;
+                ebaySortReapplyGuard = true;
+                applyFilters();
+                setTimeout(function() { ebaySortReapplyGuard = false; }, 0);
+            });
+
             table.on('tableBuilt', function() {
                 applySectionColumnVisibility('all');
                 applyColumnVisibilityFromServer();
@@ -5787,8 +5800,45 @@
         $(document).on('click', '.view-lmp-competitors', function(e) {
             e.preventDefault();
             const sku = $(this).data('sku');
+            renderLmpModalStats(sku);
             loadEbayCompetitorsModal(sku);
         });
+
+        // Show the SKU's CVR / Price / Views / Sold in the LMP competitors modal.
+        function renderLmpModalStats(sku) {
+            const el = document.getElementById('lmpStats');
+            if (!el) return;
+            let rowData = null;
+            if (table && table.getRows) {
+                const r = table.getRows().find(row => row.getData()['(Child) sku'] === sku);
+                if (r) rowData = r.getData();
+            }
+            if (!rowData) { el.innerHTML = ''; return; }
+            const cvr = parseFloat(rowData.SCVR) || 0;
+            const price = parseFloat(rowData['eBay Price']) || 0;
+            const views = parseFloat(rowData.views) || 0;
+            const sold = parseFloat(rowData['eBay L30']) || 0;
+            const lmp = parseFloat(rowData.lmp_price) || 0;
+            const badge = (label, value, bg) =>
+                `<span class="badge fs-6 p-2" style="background:${bg};color:#fff;font-weight:600;">${label}: ${value}</span>`;
+            let html =
+                badge('CVR', cvr.toFixed(1) + '%', '#dc3545') +
+                badge('Price', '$' + price.toFixed(2), '#ffc107').replace('color:#fff', 'color:#000') +
+                badge('Views', Math.round(views).toLocaleString(), '#17a2b8') +
+                badge('Sold', Math.round(sold).toLocaleString(), '#6f42c1');
+
+            // % difference of our price vs the lowest competitor price (LMP).
+            // Negative = we're cheaper (green), positive = we're higher (red).
+            if (price > 0 && lmp > 0) {
+                const diffPct = ((price - lmp) / lmp) * 100;
+                const sign = diffPct > 0 ? '+' : '';
+                const bg = diffPct > 0 ? '#a00211' : '#28a745';
+                const tip = diffPct > 0 ? 'higher than' : 'lower than';
+                html += `<span class="badge fs-6 p-2" style="background:${bg};color:#fff;font-weight:600;"
+                    title="Our price is ${Math.abs(diffPct).toFixed(1)}% ${tip} the lowest competitor (LMP $${lmp.toFixed(2)})">vs LMP: ${sign}${diffPct.toFixed(1)}%</span>`;
+            }
+            el.innerHTML = html;
+        }
 
         // Add Competitor Form Submission
         $('#addCompetitorForm').on('submit', function(e) {
