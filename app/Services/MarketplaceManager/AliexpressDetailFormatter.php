@@ -684,7 +684,8 @@ class AliexpressDetailFormatter
             $transactionFee,
             $platformTax,
             $affiliateCommission,
-            $cashbackPaidBySeller
+            $cashbackPaidBySeller,
+            $platformOffer
         );
 
         return [
@@ -1018,7 +1019,8 @@ class AliexpressDetailFormatter
         ?float $transactionFee,
         ?float $platformTax,
         ?float $affiliateCommission,
-        ?float $cashbackPaidBySeller
+        ?float $cashbackPaidBySeller,
+        ?float $platformOffer = null
     ): ?float {
         if (($sellerPaid = $this->sumLoanSonMoney($loanSonOrders, 'real_loan_amount')) !== null) {
             return $sellerPaid;
@@ -1068,6 +1070,14 @@ class AliexpressDetailFormatter
         ));
 
         if ($fees === []) {
+            return null;
+        }
+
+        // Platform-subsidy orders deduct transaction service fee and platform offer tax in AE
+        // seller UI; those amounts are not exposed until loan settlement in the Open API.
+        if ($platformOffer !== null && $platformOffer > 0
+            && ($transactionFee === null || $platformTax === null)
+            && $this->str($order['loan_status'] ?? null) === 'loan_none') {
             return null;
         }
 
