@@ -117,6 +117,10 @@ class AliexpressOrderDetailService
             'fund_status',
             'gmt_pay_success',
             'gmt_pay_time',
+            'payment_amount',
+            'promotion_fee',
+            'seller_order_amount',
+            'new_seller_order_amount',
         ] as $key) {
             if (! array_key_exists($key, $order) || $order[$key] === null || $order[$key] === '' || $order[$key] === []) {
                 if (array_key_exists($key, $trade) && $trade[$key] !== null && $trade[$key] !== '' && $trade[$key] !== []) {

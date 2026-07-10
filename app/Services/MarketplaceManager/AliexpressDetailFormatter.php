@@ -753,6 +753,10 @@ class AliexpressDetailFormatter
                 'gmt_pay_success' => $tradeDetail['gmt_pay_success'] ?? null,
                 'gmt_pay_time' => $tradeDetail['gmt_pay_time'] ?? null,
                 'loan_info' => $tradeDetail['loan_info'] ?? null,
+                'payment_amount' => $tradeDetail['payment_amount'] ?? null,
+                'promotion_fee' => $tradeDetail['promotion_fee'] ?? null,
+                'seller_order_amount' => $tradeDetail['seller_order_amount'] ?? null,
+                'new_seller_order_amount' => $tradeDetail['new_seller_order_amount'] ?? null,
             ], fn ($value) => $value !== null && $value !== '' && $value !== []));
         }
 
@@ -902,6 +906,11 @@ class AliexpressDetailFormatter
             return $fromDetails;
         }
 
+        $promotionFee = $this->money($order['promotion_fee'] ?? null);
+        if ($promotionFee !== null && $promotionFee > 0 && $this->sumDiscountsByOwner($childOrders, 'PLATFORM') <= 0) {
+            return $promotionFee;
+        }
+
         foreach ([
             $order['promotion_amount'] ?? null,
             $order['seller_discount_amount'] ?? null,
@@ -967,7 +976,12 @@ class AliexpressDetailFormatter
             return null;
         }
 
+        $paymentAmount = $this->money($order['payment_amount'] ?? null);
         $settlementPay = $this->money($order['pay_amount_by_settlement_cur'] ?? null);
+        if ($paymentAmount !== null && $settlementPay !== null && $settlementPay > $paymentAmount) {
+            return round($settlementPay - $paymentAmount, 2);
+        }
+
         if ($settlementPay === null || $orderAmount === null || $settlementPay <= $orderAmount) {
             return null;
         }
@@ -983,6 +997,10 @@ class AliexpressDetailFormatter
         ?float $platformOffer,
         float $shippingCost = 0.0
     ): ?float {
+        if (($paid = $this->money($order['payment_amount'] ?? null)) !== null) {
+            return $paid;
+        }
+
         if (($paid = $this->money($order['pay_amount'] ?? null)) !== null) {
             return $paid;
         }
@@ -1014,6 +1032,23 @@ class AliexpressDetailFormatter
     ): ?float {
         if (($sellerPaid = $this->sumLoanSonMoney($loanSonOrders, 'real_loan_amount')) !== null) {
             return $sellerPaid;
+        }
+
+        foreach ([
+            $order['new_seller_order_amount'] ?? null,
+            $order['seller_order_amount'] ?? null,
+        ] as $candidate) {
+            $sellerOrderAmount = $this->money($candidate);
+            if ($sellerOrderAmount === null) {
+                continue;
+            }
+            $fees = array_values(array_filter(
+                [$platformCommission, $transactionFee, $platformTax, $affiliateCommission, $cashbackPaidBySeller],
+                fn ($fee) => $fee !== null && $fee > 0
+            ));
+            if ($fees !== [] && $orderAmount !== null && $sellerOrderAmount < $orderAmount) {
+                return round(max(0, $sellerOrderAmount - array_sum($fees)), 2);
+            }
         }
 
         foreach ([$this->arr($order['loan_info'] ?? [])] as $loanInfo) {
