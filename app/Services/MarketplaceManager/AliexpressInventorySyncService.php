@@ -185,6 +185,20 @@ class AliexpressInventorySyncService
 
         $skus = $metrics->pluck('sku')->unique()->values()->all();
         $shopifyQty = $this->shopifyApi->getInventoryQuantitiesBySku($skus);
+
+        // Fill gaps with direct variant lookups (bulk product pagination can miss SKUs).
+        $missing = [];
+        foreach ($skus as $sku) {
+            if ($this->resolveShopifyQty($shopifyQty, (string) $sku) === null) {
+                $missing[] = (string) $sku;
+            }
+        }
+        if ($missing !== []) {
+            foreach ($this->fetchLiveShopifyQuantities($missing) as $sku => $qty) {
+                $shopifyQty[$sku] = $qty;
+            }
+        }
+
         $shopifyDetails = $this->shopifyApi->getProductDetailsBySkuMap($skus);
 
         $qtyPercent = max(0, min(100, (int) ($settings['inventory']['quantity_calc_percent'] ?? 100)));
@@ -322,6 +336,11 @@ class AliexpressInventorySyncService
     {
         $storeUrl = $this->normalizeStoreUrl((string) ($shopifyConfig['store_url'] ?? ''));
         $token = (string) ($shopifyConfig['token'] ?? '');
+
+        if ($storeUrl === '' || $token === '') {
+            $storeUrl = $this->normalizeStoreUrl((string) config('services.shopify.store_url', ''));
+            $token = (string) (config('services.shopify.access_token') ?: config('services.shopify.password') ?: '');
+        }
 
         if ($storeUrl === '' || $token === '') {
             return $this->shopifyApi->getInventoryQuantitiesBySku($skus);
