@@ -637,6 +637,13 @@
                             </button>
                         </div>
                         <div style="min-width: 200px; position: relative;">
+                            <i class="fa fa-sitemap"
+                                style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #aaa; font-size: 13px;"></i>
+                            <input type="text" id="parent-search" class="form-control form-control-sm"
+                                style="padding-left: 32px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 13px;"
+                                placeholder="Search Parent...">
+                        </div>
+                        <div style="min-width: 200px; position: relative;">
                             <i class="fa fa-search"
                                 style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #aaa; font-size: 13px;"></i>
                             <input type="text" id="sku-search" class="form-control form-control-sm"
@@ -1810,11 +1817,10 @@
                 const $inp = $('#discount-percentage-input');
                 if (samePriceModeActive) {
                     $('#ebay-discount-type-block').addClass('d-none');
-                    $('#discount-input-label').text('eBay price:');
-                    $inp.attr('placeholder', 'Each row — click Apply');
-                    $inp.prop('disabled', true);
+                    $('#discount-input-label').text('Same price:');
+                    $inp.attr('placeholder', 'Enter price for all selected');
+                    $inp.prop('disabled', false);
                     $inp.removeAttr('max');
-                    $inp.val('');
                 } else {
                     $('#ebay-discount-type-block').removeClass('d-none');
                     $('#discount-input-label').text('Value:');
@@ -2923,11 +2929,16 @@
                 const inputValue = parseFloat(String(rawInput || '').replace(',', '.'));
                 const discountType = $('#discount-type-select').val();
 
-                if (!samePriceModeActive) {
-                    if (rawInput === '' || rawInput == null) {
-                        showToast('Please enter a value (% or $)', 'error');
+                if (rawInput === '' || rawInput == null) {
+                    showToast(samePriceModeActive ? 'Please enter a price' : 'Please enter a value (% or $)', 'error');
+                    return;
+                }
+                if (samePriceModeActive) {
+                    if (isNaN(inputValue) || inputValue <= 0) {
+                        showToast('Please enter a valid positive price', 'error');
                         return;
                     }
+                } else {
                     if (isNaN(inputValue) || inputValue < 0) {
                         showToast('Please enter a valid positive number', 'error');
                         return;
@@ -2951,17 +2962,16 @@
                     const sku = row['(Child) sku'];
                     if (selectedSkus.has(sku)) {
                         const originalPrice = parseFloat(row['eBay Price']) || 0;
-                        if (originalPrice <= 0) {
+                        // Same Price mode applies a flat entered price to every selected row,
+                        // so it doesn't need an existing eBay price; other modes do.
+                        if (!samePriceModeActive && originalPrice <= 0) {
                             return;
                         }
 
                         let newPriceNum;
                         if (samePriceModeActive) {
-                            let newSPrice = roundToRetailPrice(originalPrice);
-                            if (newSPrice.toFixed(2) === originalPrice.toFixed(2)) {
-                                newSPrice = roundToRetailPrice49(newSPrice);
-                            }
-                            newPriceNum = parseFloat(newSPrice.toFixed(2));
+                            // Apply the exact price the user typed to all selected rows.
+                            newPriceNum = parseFloat(inputValue.toFixed(2));
                         } else {
                             let newSPrice;
                             if (discountType === 'percentage') {
@@ -3006,7 +3016,7 @@
                                     if (errorCount === 0) {
                                         showToast(
                                             appliedAsSamePrice ?
-                                            `SPRICE set to eBay price for ${updatedCount} SKU(s)` :
+                                            `SPRICE set to $${inputValue.toFixed(2)} for ${updatedCount} SKU(s)` :
                                             `Discount applied to ${updatedCount} SKU(s)`,
                                             'success'
                                         );
@@ -4329,8 +4339,13 @@
                         sorter: "number",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
-                            const percent = parseFloat(rowData.SGPFT || 0);
-                            if (isNaN(percent)) return '';
+                            // S PFT = S GPFT − Ads% (net of channel ad spend).
+                            const rawGpft = rowData.SGPFT;
+                            if (rawGpft === null || rawGpft === undefined || rawGpft === '') return '';
+                            const sgpft = parseFloat(rawGpft);
+                            if (isNaN(sgpft)) return '';
+                            const ads = parseFloat(EBAY_CHANNEL_ADS_PCT) || 0;
+                            const percent = sgpft - ads;
 
                             let color = '';
                             // Same as PFT% color logic
@@ -4372,10 +4387,14 @@
                         hozAlign: "center",
                         sorter: "number",
                         formatter: function(cell) {
-                            const value = cell.getValue();
-                            if (value === null || value === undefined) return '';
-                            const percent = parseFloat(value);
-                            if (isNaN(percent)) return '';
+                            const rowData = cell.getRow().getData();
+                            // SROI = S GROI − Ads% (net of channel ad spend).
+                            const rawGroi = rowData.SGROI;
+                            if (rawGroi === null || rawGroi === undefined || rawGroi === '') return '';
+                            const sgroi = parseFloat(rawGroi);
+                            if (isNaN(sgroi)) return '';
+                            const ads = parseFloat(EBAY_CHANNEL_ADS_PCT) || 0;
+                            const percent = sgroi - ads;
 
                             let color = '';
                             // Same as ROI% color logic
@@ -4483,9 +4502,10 @@
                 );
             });
 
-            // SKU Search functionality
-            $('#sku-search').on('keyup', function() {
+            // Parent & SKU Search functionality
+            $('#parent-search, #sku-search').on('keyup', function() {
                 table.setFilter([
+                    { field: 'Parent', type: 'like', value: $('#parent-search').val() || '' },
                     { field: '(Child) sku', type: 'like', value: $('#sku-search').val() || '' }
                 ]);
                 setTimeout(function() {
@@ -5047,7 +5067,7 @@
             });
 
             // Columns that should ALWAYS stay hidden, regardless of saved state.
-            var alwaysHiddenColumns = ['CVR_60', 'CVR_45', 'eBay L60', 'eBay L45', 'SGPFT', 'SPFT'];
+            var alwaysHiddenColumns = ['CVR_60', 'CVR_45', 'eBay L60', 'eBay L45'];
             function enforceAlwaysHiddenColumns() {
                 alwaysHiddenColumns.forEach(function(col) {
                     try { table.hideColumn(col); } catch (e) {}

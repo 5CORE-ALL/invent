@@ -499,8 +499,13 @@ class EbayController extends Controller
             Log::warning('eBay getViewEbayData: ebay_campaign_ads unavailable: ' . $e->getMessage());
         }
 
-        // Latest NR/REQ + links from Listing eBay page (source of truth)
-        $nrValues = EbayDataView::whereIn("sku", $skus)->pluck("value", "sku");
+        // Latest NR/REQ + links from Listing eBay page (source of truth).
+        // Key by a normalized SKU (UPPER + trim) so saved rows — which saveSpriceToDatabase
+        // stores uppercased/trimmed — are still matched on read regardless of the SKU's
+        // original case/spacing (otherwise manual SPRICE would appear "not saved" on refresh).
+        $nrValues = EbayDataView::whereIn("sku", $skus)->get()
+            ->keyBy(fn($r) => strtoupper(trim((string) $r->sku)))
+            ->map(fn($r) => $r->value);
         
         // Legacy listing status data for nr_req field (used as fallback)
         // Key listing status by lowercase SKU for case-insensitive lookup (UI sends upper/lower mixed)
@@ -707,8 +712,8 @@ class EbayController extends Controller
             
             // ==== Rating from EbayDataView ====
             $row['rating'] = null;
-            if (isset($nrValues[$pm->sku])) {
-                $raw = $nrValues[$pm->sku];
+            if (isset($nrValues[strtoupper(trim((string) $pm->sku))])) {
+                $raw = $nrValues[strtoupper(trim((string) $pm->sku))];
                 if (!is_array($raw)) {
                     $raw = json_decode($raw, true) ?? [];
                 }
@@ -724,8 +729,8 @@ class EbayController extends Controller
             $row['S Link'] = '';
 
             // 1) Prefer data from EbayDataView (Listing eBay page) via NRL field
-            if (isset($nrValues[$pm->sku])) {
-                $raw = $nrValues[$pm->sku];
+            if (isset($nrValues[strtoupper(trim((string) $pm->sku))])) {
+                $raw = $nrValues[strtoupper(trim((string) $pm->sku))];
 
                 if (!is_array($raw)) {
                     $raw = json_decode($raw, true) ?? [];
@@ -1062,8 +1067,8 @@ class EbayController extends Controller
             $row['Live'] = null;
             $row['APlus'] = null;
             $row['spend_l30'] = null;
-            if (isset($nrValues[$pm->sku])) {
-                $raw = $nrValues[$pm->sku];
+            if (isset($nrValues[strtoupper(trim((string) $pm->sku))])) {
+                $raw = $nrValues[strtoupper(trim((string) $pm->sku))];
                 if (!is_array($raw)) {
                     $raw = json_decode($raw, true);
                 }
@@ -1097,8 +1102,8 @@ class EbayController extends Controller
                 
                 // Check if there's a saved SPRICE that differs from calculated
                 $savedSprice = null;
-                if (isset($nrValues[$pm->sku])) {
-                    $raw = $nrValues[$pm->sku];
+                if (isset($nrValues[strtoupper(trim((string) $pm->sku))])) {
+                    $raw = $nrValues[strtoupper(trim((string) $pm->sku))];
                     if (!is_array($raw)) {
                         $raw = json_decode($raw, true);
                     }
@@ -1109,8 +1114,8 @@ class EbayController extends Controller
                 
                 // Check for SPRICE_STATUS in database (pushed/applied/error)
                 $savedStatus = null;
-                if (isset($nrValues[$pm->sku])) {
-                    $raw = $nrValues[$pm->sku];
+                if (isset($nrValues[strtoupper(trim((string) $pm->sku))])) {
+                    $raw = $nrValues[strtoupper(trim((string) $pm->sku))];
                     if (!is_array($raw)) {
                         $raw = json_decode($raw, true);
                     }
@@ -1516,7 +1521,8 @@ class EbayController extends Controller
         Log::info('Using percentage', ['percentage' => $percentage]);
 
         // Get ProductMaster for lp and ship
-        $pm = ProductMaster::where('sku', $sku)->first();
+        $pm = ProductMaster::whereRaw('UPPER(TRIM(sku)) = ?', [$sku])->first()
+            ?? ProductMaster::where('sku', $sku)->first();
         if (!$pm) {
             Log::error('SKU not found in ProductMaster', ['sku' => $sku]);
             return response()->json(['error' => 'SKU not found in ProductMaster.'], 404);
