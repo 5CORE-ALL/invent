@@ -5560,6 +5560,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/google/shopping/google-shopping/sbgt-history', 'sbgtHistory')->name('google.shopping.campaigns.sbgt.history');
         Route::post('/google/shopping/google-shopping/u7-distribution', 'u7Distribution')->name('google.shopping.campaigns.u7.distribution');
         Route::post('/google/shopping/google-shopping/u7-distribution-history', 'u7DistributionHistory')->name('google.shopping.campaigns.u7.history');
+        Route::get('/google/shopping/google-shopping/negative-keywords', 'negativeKeywords')->name('google.shopping.campaigns.negatives');
 
         // Google Shopping Ads Audit page (amazon-style: Fixed? + details, red/green 30-day dot + history)
         Route::get('/google/shopping/google-shopping/audit', 'auditPage')->name('google.shopping.audit');

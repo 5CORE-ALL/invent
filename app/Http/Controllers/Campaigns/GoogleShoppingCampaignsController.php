@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Campaigns;
 
 use App\Http\Controllers\Controller;
+use App\Models\GoogleAdsNegativeKeyword;
 use App\Services\GoogleAdsSbidService;
 use App\Support\GoogleShoppingCampaignsRawRule;
 use Carbon\Carbon;
@@ -861,6 +862,60 @@ class GoogleShoppingCampaignsController extends Controller
             'campaign_id' => $cid,
             'days' => $days,
             'data' => $out,
+        ]);
+    }
+
+    /**
+     * Stored Google Ads negative keywords for one campaign — the campaign-level negatives
+     * plus every ad group-level negative that belongs to that campaign. Populated by
+     * `app:fetch-google-ads-negative-keywords`. Read-only; newest keyword text first
+     * within each level. GET ?campaign_id=123
+     */
+    public function negativeKeywords(Request $request): JsonResponse
+    {
+        $cid = preg_replace('/\D/', '', (string) $request->input('campaign_id', ''));
+        if ($cid === '' || strlen($cid) > 32) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'Invalid campaign_id.',
+                'data' => [],
+            ], 422);
+        }
+
+        $rows = GoogleAdsNegativeKeyword::query()
+            ->where('campaign_id', $cid)
+            ->whereIn('level', [
+                GoogleAdsNegativeKeyword::LEVEL_CAMPAIGN,
+                GoogleAdsNegativeKeyword::LEVEL_AD_GROUP,
+            ])
+            ->orderByRaw("FIELD(level, ?, ?)", [
+                GoogleAdsNegativeKeyword::LEVEL_CAMPAIGN,
+                GoogleAdsNegativeKeyword::LEVEL_AD_GROUP,
+            ])
+            ->orderBy('ad_group_name')
+            ->orderBy('keyword_text')
+            ->get(['level', 'campaign_name', 'ad_group_name', 'keyword_text', 'match_type', 'status']);
+
+        $campaignName = optional($rows->first(fn ($r) => ! empty($r->campaign_name)))->campaign_name;
+
+        $data = $rows->map(fn ($r) => [
+            'level' => $r->level,
+            'ad_group_name' => $r->ad_group_name,
+            'keyword_text' => $r->keyword_text,
+            'match_type' => $r->match_type,
+            'status' => $r->status,
+        ])->values();
+
+        return response()->json([
+            'ok' => true,
+            'campaign_id' => $cid,
+            'campaign_name' => $campaignName,
+            'counts' => [
+                'campaign' => $rows->where('level', GoogleAdsNegativeKeyword::LEVEL_CAMPAIGN)->count(),
+                'ad_group' => $rows->where('level', GoogleAdsNegativeKeyword::LEVEL_AD_GROUP)->count(),
+                'total' => $rows->count(),
+            ],
+            'data' => $data,
         ]);
     }
 

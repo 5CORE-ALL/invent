@@ -652,6 +652,27 @@
             </div>
         </div>
     </div>
+
+    {{-- Negative keywords for a campaign (campaign-level + ad group-level), populated by app:fetch-google-ads-negative-keywords --}}
+    <div class="modal fade" id="gacRawNegKwModal" tabindex="-1" aria-labelledby="gacRawNegKwModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h6 class="modal-title" id="gacRawNegKwModalLabel">
+                        <i class="fas fa-ban" style="color:#ef4444;"></i>
+                        Negative keywords — <span id="gacRawNegKwCid" class="text-muted"></span>
+                    </h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body py-2" id="gacRawNegKwBody" style="max-height:60vh;overflow:auto;">
+                    <p class="text-muted small mb-0">Loading…</p>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script-bottom')
@@ -669,6 +690,7 @@
             const gacRawSbgtHistoryUrl = @json(route('google.shopping.campaigns.sbgt.history'));
             const gacRawU7PieDistribUrl = @json(route('google.shopping.campaigns.u7.distribution'));
             const gacRawU7PieHistoryUrl = @json(route('google.shopping.campaigns.u7.history'));
+            const gacRawNegKwUrl = @json(route('google.shopping.campaigns.negatives'));
             window.gacRawRule = @json($googleShoppingRule);
             let table;
             let gacRawU7PieChart = null;
@@ -776,6 +798,75 @@
                           + '<td class="text-end">' + Math.round(d.sbgt).toLocaleString() + '</td>'
                           + '<td class="text-center" style="color:' + color + ';font-weight:700;">' + arrow + '</td>'
                           + '<td class="text-end">' + (d.acos != null ? Math.round(d.acos) + '%' : '—') + '</td></tr>';
+                });
+                html += '</tbody></table>';
+                body.innerHTML = html;
+            }
+
+            // ---- Negative keywords modal --------------------------------------------------
+            function gacRawEscHtml(s) {
+                return String(s === null || s === undefined ? '' : s)
+                    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+            }
+            function gacRawOpenNegKw(campaignId, campaignName) {
+                var cid = String(campaignId || '').replace(/\D/g, '');
+                if (!cid) return;
+                var modalEl = document.getElementById('gacRawNegKwModal');
+                var body = document.getElementById('gacRawNegKwBody');
+                var titleCid = document.getElementById('gacRawNegKwCid');
+                if (titleCid) {
+                    titleCid.textContent = (campaignName ? campaignName + ' ' : '') + '(' + cid + ')';
+                }
+                if (body) body.innerHTML = '<p class="text-muted small mb-0">Loading…</p>';
+                if (modalEl && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                }
+                fetch(gacRawNegKwUrl + '?campaign_id=' + encodeURIComponent(cid), {
+                    credentials: 'same-origin',
+                    headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+                }).then(function(r) { return r.json(); }).then(function(resp) {
+                    gacRawRenderNegKw(resp || {});
+                }).catch(function() {
+                    if (body) body.innerHTML = '<p class="text-danger small mb-0">Failed to load negative keywords.</p>';
+                });
+            }
+            function gacRawRenderNegKw(resp) {
+                var body = document.getElementById('gacRawNegKwBody');
+                if (!body) return;
+                var rows = Array.isArray(resp.data) ? resp.data : [];
+                var counts = resp.counts || {};
+                if (!rows.length) {
+                    body.innerHTML = '<p class="text-muted small mb-0">No negative keywords stored for this campaign. '
+                                   + 'Run <code>app:fetch-google-ads-negative-keywords</code> to sync from Google Ads.</p>';
+                    return;
+                }
+                var summary = '<div class="small text-muted mb-2">'
+                            + 'Campaign-level: <strong>' + (counts.campaign || 0) + '</strong> · '
+                            + 'Ad group-level: <strong>' + (counts.ad_group || 0) + '</strong> · '
+                            + 'Total: <strong>' + (counts.total || rows.length) + '</strong></div>';
+                var matchBadge = function(m) {
+                    var u = String(m || '').toUpperCase();
+                    var bg = u === 'EXACT' ? '#0d6efd' : (u === 'PHRASE' ? '#6f42c1' : (u === 'BROAD' ? '#20c997' : '#6c757d'));
+                    return '<span style="display:inline-block;padding:1px 6px;border-radius:10px;font-size:11px;color:#fff;background:' + bg + ';">' + gacRawEscHtml(u || '—') + '</span>';
+                };
+                var levelBadge = function(l) {
+                    var isCamp = String(l).toUpperCase() === 'CAMPAIGN';
+                    var bg = isCamp ? '#334155' : '#0891b2';
+                    var txt = isCamp ? 'Campaign' : 'Ad group';
+                    return '<span style="display:inline-block;padding:1px 6px;border-radius:10px;font-size:11px;color:#fff;background:' + bg + ';">' + txt + '</span>';
+                };
+                var html = summary
+                         + '<table class="table table-sm table-hover mb-0"><thead><tr>'
+                         + '<th>Level</th><th>Ad group</th><th>Negative keyword</th><th class="text-center">Match</th>'
+                         + '</tr></thead><tbody>';
+                rows.forEach(function(d) {
+                    html += '<tr>'
+                          + '<td>' + levelBadge(d.level) + '</td>'
+                          + '<td>' + (d.ad_group_name ? gacRawEscHtml(d.ad_group_name) : '<span class="text-muted">—</span>') + '</td>'
+                          + '<td>' + gacRawEscHtml(d.keyword_text) + '</td>'
+                          + '<td class="text-center">' + matchBadge(d.match_type) + '</td>'
+                          + '</tr>';
                 });
                 html += '</tbody></table>';
                 body.innerHTML = html;
@@ -1256,6 +1347,17 @@
                     e.preventDefault();
                     gacRawOpenSbgtHistory(dot.getAttribute('data-sbgt-cid'));
                 });
+                // Click the red ban icon in the campaign name cell → open that campaign's negatives.
+                document.addEventListener('click', function (e) {
+                    var icon = e.target.closest ? e.target.closest('.gac-neg-kw') : null;
+                    if (!icon) return;
+                    e.stopPropagation();
+                    e.preventDefault();
+                    var nameAttr = icon.getAttribute('data-neg-name') || '';
+                    var tmp = document.createElement('textarea');
+                    tmp.innerHTML = nameAttr;
+                    gacRawOpenNegKw(icon.getAttribute('data-neg-cid'), tmp.value);
+                });
             })();
 
             table = new Tabulator('#google-ads-campaigns-raw-table', {
@@ -1419,9 +1521,15 @@
                         var attr = esc.replace(/'/g, '&#39;');
                         var copy = '<i class="fas fa-copy gac-copy-name" role="button" tabindex="0" title="Copy campaign name"'
                                  + ' data-copy="' + attr + '" style="margin-left:6px;color:#94a3b8;cursor:pointer;flex-shrink:0;"></i>';
+                        var row = c.getRow().getData();
+                        var cid = (row.campaign_id != null) ? String(row.campaign_id).replace(/[^0-9]/g, '') : '';
+                        var neg = '<i class="fas fa-ban gac-neg-kw" role="button" tabindex="0" title="View negative keywords"'
+                                + ' data-neg-cid="' + cid + '"'
+                                + ' data-neg-name="' + attr + '"'
+                                + ' style="margin-left:6px;color:#ef4444;cursor:pointer;flex-shrink:0;"></i>';
                         return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:2px;max-width:100%;">'
                              + '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc + '</span>'
-                             + copy + '</span>';
+                             + copy + neg + '</span>';
                     };
                     /** Server-side sort whitelist — keep in sync with applyRawGridSort() in the controller. */
                     var sortableFields = {

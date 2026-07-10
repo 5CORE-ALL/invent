@@ -83,6 +83,7 @@ class Kernel extends ConsoleKernel
         AmazonSbCampaignReports::class,
         AmazonSdCampaignReports::class,
         FetchGoogleAdsCampaigns::class,
+        \App\Console\Commands\FetchGoogleAdsNegativeKeywords::class,
         \App\Console\Commands\SyncMetaAllAds::class,
         \App\Console\Commands\MetaAdsSyncCommand::class,
         \App\Console\Commands\MetaAdsImportRawCommand::class,
@@ -929,6 +930,11 @@ class Kernel extends ConsoleKernel
         // the L30 Sales window backfilled even when a prior afternoon run was
         // missed; ga4:fetch-campaign-data is upsert-safe.
         $retryFiveTimesUntil('ga4:fetch-campaign-data --days=30', 'ga4-fetch-campaign-data', '17:30');
+
+        // Negative keywords (campaign + ad group + shared negative lists). Idempotent
+        // upsert by criterion resource name; --prune drops negatives removed in Google Ads.
+        // 5 afternoon retries (final slot 17:15 IST) alongside the campaign/GA4 fetches.
+        $retryFiveTimesUntil('app:fetch-google-ads-negative-keywords --prune', 'fetch-google-ads-negative-keywords', '17:15');
 
         $ist($schedule->command('sbid:update')
             ->dailyAt('17:48')

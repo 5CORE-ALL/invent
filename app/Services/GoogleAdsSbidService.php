@@ -113,6 +113,29 @@ class GoogleAdsSbidService
         return $results;
     }
 
+    /**
+     * Run a GAQL query and invoke $onRow for each returned row without buffering the
+     * full result set in memory. Use for large reads (e.g. account-wide negative
+     * keywords) where accumulating every row would exhaust memory.
+     *
+     * @param  callable(array<string, mixed>): void  $onRow
+     */
+    public function streamQuery($customerId, $query, callable $onRow): void
+    {
+        $googleAdsService = $this->getClient()->getGoogleAdsServiceClient();
+
+        $request = new SearchGoogleAdsStreamRequest([
+            'customer_id' => $customerId,
+            'query' => $query,
+        ]);
+
+        $stream = $googleAdsService->searchStream($request);
+
+        foreach ($stream->iterateAllElements() as $row) {
+            $onRow(json_decode($row->serializeToJsonString(), true));
+        }
+    }
+
 
     /**
      * Update Ad Group SBID
