@@ -169,11 +169,9 @@ class AliexpressDetailFormatter
             ],
             'payment' => [
                 'method' => $order['payment_type'] ?? $order['pay_type'] ?? null,
-                'currency' => $this->moneyCurrency($order['order_amount'] ?? $order['pay_amount'] ?? null) ?? ($amounts['currency'] ?? null),
+                'currency' => $funds['currency'] ?? $this->moneyCurrency($order['order_amount'] ?? $order['pay_amount'] ?? null) ?? ($amounts['currency'] ?? null),
                 'paid_at' => $order['gmt_pay_time'] ?? $order['gmt_pay_success'] ?? null,
-                'total_paid' => $this->money($order['pay_amount'] ?? $order['pay_amount_by_settlement_cur'] ?? null)
-                    ?? $funds['amount_paid']
-                    ?? $amounts['pay_amount'],
+                'total_paid' => $funds['customer_total_paid'] ?? $amounts['pay_amount'],
             ],
         ];
     }
@@ -226,6 +224,10 @@ class AliexpressDetailFormatter
 
         $recipient = trim((string) ($shipping['recipient'] ?? ''));
         [$firstName, $lastName] = $this->splitShopifyCustomerName($detail, $recipient);
+        $lastName = $this->ensureShopifyLastName($lastName);
+        $funds = $detail['funds'] ?? [];
+        $currency = (string) ($payment['currency'] ?? $funds['currency'] ?? 'USD');
+        $customerPaid = isset($payment['total_paid']) ? (float) $payment['total_paid'] : null;
 
         $noteLines = [
             'Imported from AliExpress Order #'.$orderRef,
@@ -235,6 +237,24 @@ class AliexpressDetailFormatter
         }
         if (! empty($payment['paid_at'])) {
             $noteLines[] = 'Payment time: '.$payment['paid_at'];
+        }
+        if (isset($funds['order_amount'])) {
+            $noteLines[] = sprintf('Order amount: %s %.2f', $currency, (float) $funds['order_amount']);
+        }
+        if ($customerPaid !== null) {
+            $noteLines[] = sprintf('Customer paid: %s %.2f', $currency, $customerPaid);
+        }
+        if (isset($funds['seller_amount_paid'])) {
+            $noteLines[] = sprintf('Seller amount paid: %s %.2f', $currency, (float) $funds['seller_amount_paid']);
+        }
+        foreach ([
+            'Platform commission' => $funds['platform_commission'] ?? null,
+            'Transaction service fee' => $funds['transaction_service_fee'] ?? null,
+            'Platform offer tax' => $funds['platform_offer_tax'] ?? null,
+        ] as $label => $value) {
+            if ($value !== null) {
+                $noteLines[] = sprintf('%s: %s %.2f', $label, $currency, (float) $value);
+            }
         }
         if (! empty($shipment['tracking'])) {
             $noteLines[] = 'Tracking: '.$shipment['tracking'];
@@ -246,7 +266,6 @@ class AliexpressDetailFormatter
             $noteLines[] = 'Tax number: '.$shipping['tax_number'];
         }
 
-        [$firstName, $lastName] = $this->splitShopifyCustomerName($detail, $recipient);
         [$shopifyEmail, $emailIsPlaceholder] = $this->resolveShopifyCustomerEmail($orderRef, $shipping['email'] ?? null);
 
         $noteAttrs = [
@@ -263,17 +282,25 @@ class AliexpressDetailFormatter
             'aliexpress_tax_number' => $shipping['tax_number'] ?? null,
             'aliexpress_buyer_email' => $shipping['email'] ?? null,
             'aliexpress_buyer_phone' => $shipping['phone'] ?? null,
+            'aliexpress_platform_promotion' => isset($funds['platform_promotion']) ? number_format((float) $funds['platform_promotion'], 2, '.', '') : null,
+            'aliexpress_platform_offer' => isset($funds['platform_offer']) ? number_format((float) $funds['platform_offer'], 2, '.', '') : null,
+            'aliexpress_order_amount' => isset($funds['order_amount']) ? number_format((float) $funds['order_amount'], 2, '.', '') : null,
+            'aliexpress_customer_paid' => $customerPaid !== null ? number_format($customerPaid, 2, '.', '') : null,
+            'aliexpress_seller_amount_paid' => isset($funds['seller_amount_paid']) ? number_format((float) $funds['seller_amount_paid'], 2, '.', '') : null,
+            'aliexpress_platform_commission' => isset($funds['platform_commission']) ? number_format((float) $funds['platform_commission'], 2, '.', '') : null,
+            'aliexpress_transaction_service_fee' => isset($funds['transaction_service_fee']) ? number_format((float) $funds['transaction_service_fee'], 2, '.', '') : null,
+            'aliexpress_platform_offer_tax' => isset($funds['platform_offer_tax']) ? number_format((float) $funds['platform_offer_tax'], 2, '.', '') : null,
         ] as $name => $value) {
             if ($value !== null && $value !== '') {
                 $noteAttrs[] = ['name' => $name, 'value' => (string) $value];
             }
         }
 
-        $customerFields = array_filter([
+        $customerFields = [
             'first_name' => $firstName,
-            'last_name' => $lastName !== '' ? $lastName : null,
+            'last_name' => $lastName,
             'email' => $shopifyEmail,
-        ], fn ($value) => $value !== null && $value !== '');
+        ];
 
         $payload = [
             'line_items' => [],
@@ -301,24 +328,50 @@ class AliexpressDetailFormatter
         }
 
         if ($address1 !== '') {
-            $addressName = array_filter([
+            $countryCode = $this->normalizeCountryCode($shipping['country'] ?? $shipping['country_name'] ?? null);
+            $province = trim((string) ($shipping['province'] ?? ''));
+            $address = array_filter([
                 'first_name' => $firstName,
-                'last_name' => $lastName !== '' ? $lastName : null,
-            ], fn ($value) => $value !== null && $value !== '');
-
-            $payload['shipping_address'] = array_filter(array_merge($addressName, [
+                'last_name' => $lastName,
                 'address1' => $address1,
                 'address2' => $shipping['address_line_2'] ?? null,
                 'city' => $shipping['city'] ?? null,
-                'province' => $shipping['province'] ?? null,
-                'country_code' => $this->normalizeCountryCode($shipping['country'] ?? $shipping['country_name'] ?? null),
+                'province' => $province !== '' ? $province : null,
+                'province_code' => $this->resolveProvinceCode($province, $countryCode),
+                'country_code' => $countryCode,
                 'zip' => $shipping['zip'] ?? null,
                 'phone' => $shipping['phone'] ?? null,
-            ]));
-            $payload['billing_address'] = $payload['shipping_address'];
+            ], fn ($value) => $value !== null && $value !== '');
+
+            $payload['shipping_address'] = $address;
+            $payload['billing_address'] = $address;
         }
 
         $payload['line_items'] = $lineItems;
+
+        $lineSubtotal = 0.0;
+        foreach ($lineItems as $item) {
+            $lineSubtotal += ((float) ($item['price'] ?? 0)) * max(1, (int) ($item['quantity'] ?? 1));
+        }
+        $lineSubtotal += $shippingCost;
+
+        if ($customerPaid !== null && $lineSubtotal > 0 && $customerPaid < $lineSubtotal) {
+            $payload['discount_codes'] = [[
+                'code' => 'AliExpress promotion',
+                'amount' => number_format(round($lineSubtotal - $customerPaid, 2), 2, '.', ''),
+                'type' => 'fixed_amount',
+            ]];
+        }
+
+        if ($customerPaid !== null && $customerPaid > 0) {
+            $payload['transactions'] = [[
+                'kind' => 'sale',
+                'status' => 'success',
+                'amount' => number_format($customerPaid, 2, '.', ''),
+                'gateway' => 'aliexpress',
+                'currency' => $currency,
+            ]];
+        }
 
         return $payload;
     }
@@ -352,10 +405,51 @@ class AliexpressDetailFormatter
         $parts = preg_split('/\s+/u', $fullName, 2) ?: [];
         $firstName = (string) ($parts[0] ?? 'AliExpress');
         if (! isset($parts[1])) {
-            return [$firstName, ''];
+            return [$firstName, $this->ensureShopifyLastName('')];
         }
 
-        return [$firstName, (string) $parts[1]];
+        return [$firstName, $this->ensureShopifyLastName((string) $parts[1])];
+    }
+
+    protected function ensureShopifyLastName(string $lastName): string
+    {
+        $lastName = trim($lastName);
+
+        return $lastName !== '' ? $lastName : '.';
+    }
+
+    protected function resolveProvinceCode(string $province, ?string $countryCode): ?string
+    {
+        $province = trim($province);
+        if ($province === '') {
+            return null;
+        }
+
+        if (strlen($province) === 2 && ctype_alpha($province)) {
+            return strtoupper($province);
+        }
+
+        if ($countryCode !== 'US') {
+            return null;
+        }
+
+        $map = [
+            'alabama' => 'AL', 'alaska' => 'AK', 'arizona' => 'AZ', 'arkansas' => 'AR',
+            'california' => 'CA', 'colorado' => 'CO', 'connecticut' => 'CT', 'delaware' => 'DE',
+            'florida' => 'FL', 'georgia' => 'GA', 'hawaii' => 'HI', 'idaho' => 'ID',
+            'illinois' => 'IL', 'indiana' => 'IN', 'iowa' => 'IA', 'kansas' => 'KS',
+            'kentucky' => 'KY', 'louisiana' => 'LA', 'maine' => 'ME', 'maryland' => 'MD',
+            'massachusetts' => 'MA', 'michigan' => 'MI', 'minnesota' => 'MN', 'mississippi' => 'MS',
+            'missouri' => 'MO', 'montana' => 'MT', 'nebraska' => 'NE', 'nevada' => 'NV',
+            'new hampshire' => 'NH', 'new jersey' => 'NJ', 'new mexico' => 'NM', 'new york' => 'NY',
+            'north carolina' => 'NC', 'north dakota' => 'ND', 'ohio' => 'OH', 'oklahoma' => 'OK',
+            'oregon' => 'OR', 'pennsylvania' => 'PA', 'rhode island' => 'RI', 'south carolina' => 'SC',
+            'south dakota' => 'SD', 'tennessee' => 'TN', 'texas' => 'TX', 'utah' => 'UT',
+            'vermont' => 'VT', 'virginia' => 'VA', 'washington' => 'WA', 'west virginia' => 'WV',
+            'wisconsin' => 'WI', 'wyoming' => 'WY', 'district of columbia' => 'DC',
+        ];
+
+        return $map[strtolower($province)] ?? null;
     }
 
     /**
@@ -543,20 +637,213 @@ class AliexpressDetailFormatter
             }
         }
 
+        $orderAmount = $this->money($order['order_amount'] ?? $order['total_amount'] ?? null);
+        $escrowRate = $this->resolveEscrowFeeRate($order, $childOrders);
+        $platformCommission = $this->money($order['escrow_fee'] ?? $order['platform_commission'] ?? null);
+        if ($platformCommission === null && $orderAmount !== null && $escrowRate !== null) {
+            $platformCommission = round($orderAmount * $escrowRate, 2);
+        }
+
+        $transactionFee = $this->money($order['service_fee'] ?? $order['transaction_fee'] ?? $order['transaction_service_fee'] ?? null);
+        $platformTax = $this->money($order['tax_amount'] ?? $order['platform_tax'] ?? $order['platform_offer_tax'] ?? null);
+        $affiliateCommission = $this->money($order['affiliate_fee'] ?? $order['affiliate_commission'] ?? null);
+        $cashbackPaidBySeller = $this->money($order['cashback_fee'] ?? $order['seller_cashback'] ?? null);
+
+        if ($transactionFee === null && $platformTax === null && $orderAmount !== null) {
+            [$transactionFee, $platformTax] = $this->estimateSettlementFees($orderAmount);
+        }
+
+        $platformPromotion = $this->sumPlatformDiscounts($order, $childOrders);
+        $platformOffer = $this->resolvePlatformOfferAmount($order, $childOrders, $platformPromotion);
+        $storePromotion = $this->money($order['promotion_amount'] ?? $order['seller_discount_amount'] ?? null);
+        $shippingCost = $this->money($order['logistics_amount'] ?? null) ?? 0.0;
+        $customerTotalPaid = $this->resolveCustomerPaidAmount($order, $orderAmount, $platformPromotion, $platformOffer, $shippingCost);
+        $sellerAmountPaid = $this->resolveSellerPaidAmount(
+            $order,
+            $orderAmount,
+            $platformCommission,
+            $transactionFee,
+            $platformTax,
+            $affiliateCommission,
+            $cashbackPaidBySeller
+        );
+
         return [
             'product_total' => $productTotal ?? $this->money($order['init_oder_amount'] ?? $order['init_order_amt'] ?? null),
             'shipping_cost' => $this->money($order['logistics_amount'] ?? null),
             'adjustment' => $this->money($order['adjust_fee'] ?? $order['adjustment_amount'] ?? null),
-            'store_promotion' => $this->money($order['promotion_amount'] ?? $order['seller_discount_amount'] ?? null),
-            'order_amount' => $this->money($order['order_amount'] ?? $order['total_amount'] ?? null),
-            'platform_commission' => $this->money($order['escrow_fee'] ?? $order['platform_commission'] ?? null),
-            'affiliate_commission' => $this->money($order['affiliate_fee'] ?? $order['affiliate_commission'] ?? null),
-            'cashback_paid_by_seller' => $this->money($order['cashback_fee'] ?? $order['seller_cashback'] ?? null),
-            'transaction_service_fee' => $this->money($order['service_fee'] ?? $order['transaction_fee'] ?? null),
-            'platform_offer_tax' => $this->money($order['tax_amount'] ?? $order['platform_tax'] ?? null),
-            'amount_paid' => $this->money($order['pay_amount'] ?? $order['pay_amount_by_settlement_cur'] ?? ($this->arr($order['loan_info'] ?? [])['loan_amount'] ?? null)),
+            'store_promotion' => $storePromotion,
+            'platform_promotion' => $platformPromotion > 0 ? $platformPromotion : null,
+            'platform_offer' => $platformOffer,
+            'order_amount' => $orderAmount,
+            'platform_commission' => $platformCommission,
+            'affiliate_commission' => $affiliateCommission,
+            'cashback_paid_by_seller' => $cashbackPaidBySeller,
+            'transaction_service_fee' => $transactionFee,
+            'platform_offer_tax' => $platformTax,
+            'customer_total_paid' => $customerTotalPaid,
+            'amount_paid' => $customerTotalPaid,
+            'seller_amount_paid' => $sellerAmountPaid,
             'currency' => $this->moneyCurrency($order['order_amount'] ?? $order['pay_amount'] ?? null)
                 ?? $this->str($order['settlement_currency'] ?? null),
+        ];
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $childOrders
+     */
+    protected function resolveEscrowFeeRate(array $order, array $childOrders = []): ?float
+    {
+        $rates = [];
+        foreach ([$order['escrow_fee_rate'] ?? null] as $rate) {
+            if ($rate !== null && $rate !== '') {
+                $rates[] = (float) $rate;
+            }
+        }
+        foreach ($childOrders as $child) {
+            $child = $this->arr($child);
+            if (($child['escrow_fee_rate'] ?? null) !== null && $child['escrow_fee_rate'] !== '') {
+                $rates[] = (float) $child['escrow_fee_rate'];
+            }
+        }
+
+        return $rates !== [] ? max($rates) : null;
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $childOrders
+     */
+    protected function sumPlatformDiscounts(array $order, array $childOrders = []): float
+    {
+        $detailTotal = 0.0;
+        foreach ($childOrders as $child) {
+            $child = $this->arr($child);
+            foreach ($this->list($child['child_order_discount_detail_list'] ?? []) as $row) {
+                $row = $this->arr($row);
+                if (strtoupper((string) ($row['promotion_owner'] ?? '')) !== 'PLATFORM') {
+                    continue;
+                }
+                $detailTotal += $this->money($row['discount_detail'] ?? null) ?? 0.0;
+            }
+        }
+        if ($detailTotal > 0) {
+            return round($detailTotal, 2);
+        }
+
+        return $this->money($order['order_discount_info'] ?? null) ?? 0.0;
+    }
+
+    /**
+     * Platform subsidy shown in AE fund UI ("Platform offer" / expected available).
+     *
+     * @param  array<int, array<string, mixed>>  $childOrders
+     */
+    protected function resolvePlatformOfferAmount(array $order, array $childOrders, float $platformPromotion): ?float
+    {
+        foreach ([
+            $order['platform_offer_amount'] ?? null,
+            $order['platform_offer'] ?? null,
+            $order['platform_subsidy'] ?? null,
+        ] as $candidate) {
+            if (($amount = $this->money($candidate)) !== null) {
+                return $amount;
+            }
+        }
+
+        foreach ($childOrders as $child) {
+            $child = $this->arr($child);
+            foreach ($this->list($child['child_order_discount_detail_list'] ?? []) as $row) {
+                $row = $this->arr($row);
+                if (strtoupper((string) ($row['promotion_owner'] ?? '')) !== 'PLATFORM') {
+                    continue;
+                }
+                if (($amount = $this->money($row['platform_offer_amount'] ?? $row['seller_discount'] ?? null)) !== null) {
+                    return $amount;
+                }
+            }
+        }
+
+        if ($platformPromotion <= 0) {
+            return null;
+        }
+
+        // AE seller UI rounds platform coupon down to the nearest $0.10 (2.93 -> 2.90).
+        return floor(round($platformPromotion, 2) * 10) / 10;
+    }
+
+    protected function resolveCustomerPaidAmount(
+        array $order,
+        ?float $orderAmount,
+        float $platformPromotion,
+        ?float $platformOffer,
+        float $shippingCost = 0.0
+    ): ?float {
+        if (($paid = $this->money($order['pay_amount'] ?? null)) !== null) {
+            return $paid;
+        }
+
+        $settlementPay = $this->money($order['pay_amount_by_settlement_cur'] ?? null);
+        if ($orderAmount !== null && $settlementPay !== null && $platformOffer !== null && $settlementPay > $orderAmount) {
+            // Matches AE payment details: customer paid = settlement pay - platform offer.
+            $customerPaid = round($settlementPay - $platformOffer, 2);
+            if ($customerPaid > 0 && $customerPaid <= $orderAmount + $shippingCost) {
+                return $customerPaid;
+            }
+        }
+
+        if ($orderAmount !== null && $settlementPay !== null && $platformPromotion > 0 && $settlementPay > $orderAmount) {
+            $settlementPremium = max(0, round($settlementPay - $orderAmount - $shippingCost, 2));
+            $offer = $platformOffer ?? $platformPromotion;
+            $buyerDiscount = max(0, round($offer - $settlementPremium, 2));
+
+            return round(max(0, $orderAmount + $shippingCost - $buyerDiscount), 2);
+        }
+
+        if ($orderAmount !== null && $platformPromotion > 0) {
+            return round(max(0, $orderAmount + $shippingCost - $platformPromotion), 2);
+        }
+
+        return $orderAmount !== null ? round($orderAmount + $shippingCost, 2) : $settlementPay;
+    }
+
+    protected function resolveSellerPaidAmount(
+        array $order,
+        ?float $orderAmount,
+        ?float $platformCommission,
+        ?float $transactionFee,
+        ?float $platformTax,
+        ?float $affiliateCommission,
+        ?float $cashbackPaidBySeller
+    ): ?float {
+        $loanAmount = $this->money($this->arr($order['loan_info'] ?? [])['loan_amount'] ?? null);
+        if ($loanAmount !== null) {
+            return $loanAmount;
+        }
+
+        if ($orderAmount === null) {
+            return null;
+        }
+
+        $deductions = 0.0;
+        foreach ([$platformCommission, $transactionFee, $platformTax, $affiliateCommission, $cashbackPaidBySeller] as $fee) {
+            if ($fee !== null && $fee > 0) {
+                $deductions += $fee;
+            }
+        }
+
+        return round(max(0, $orderAmount - $deductions), 2);
+    }
+
+    /**
+     * Estimate AE settlement fees when the order detail API omits explicit fee amounts.
+     *
+     * @return array{0: float, 1: float}
+     */
+    protected function estimateSettlementFees(float $orderAmount): array
+    {
+        return [
+            round($orderAmount * 0.025, 2),
+            round($orderAmount * 0.01305, 2),
         ];
     }
 

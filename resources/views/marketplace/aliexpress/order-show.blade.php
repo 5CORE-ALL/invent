@@ -100,13 +100,16 @@
                     'Shipping cost' => isset($funds['shipping_cost']) ? $fmt($funds['shipping_cost']) : null,
                     'Adjustment' => isset($funds['adjustment']) ? $fmt($funds['adjustment']) : null,
                     'Store promotion' => isset($funds['store_promotion']) ? $fmt($funds['store_promotion']) : null,
+                    'Platform promotion' => isset($funds['platform_promotion']) ? $fmt($funds['platform_promotion']) : null,
+                    'Platform offer' => isset($funds['platform_offer']) ? $fmt($funds['platform_offer']) : null,
                     'Order amount' => isset($funds['order_amount']) ? $fmt($funds['order_amount']) : null,
                     'Platform commission' => isset($funds['platform_commission']) ? $fmt($funds['platform_commission']) : null,
                     'Affiliate commission' => isset($funds['affiliate_commission']) ? $fmt($funds['affiliate_commission']) : null,
                     'Cashback paid by seller' => isset($funds['cashback_paid_by_seller']) ? $fmt($funds['cashback_paid_by_seller']) : null,
                     'Transaction service fee' => isset($funds['transaction_service_fee']) ? $fmt($funds['transaction_service_fee']) : null,
                     'Platform offer tax' => isset($funds['platform_offer_tax']) ? $fmt($funds['platform_offer_tax']) : null,
-                    'Amount paid' => isset($funds['amount_paid']) ? $fmt($funds['amount_paid']) : null,
+                    'Amount paid' => isset($funds['amount_paid']) ? $fmt($funds['amount_paid']) : (isset($funds['customer_total_paid']) ? $fmt($funds['customer_total_paid']) : null),
+                    'Seller amount paid' => isset($funds['seller_amount_paid']) ? $fmt($funds['seller_amount_paid']) : null,
                 ]])
             </div>
         </div>
