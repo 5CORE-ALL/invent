@@ -68,7 +68,49 @@ class AliexpressOrderPushService
                 'import_status' => 'imported',
             ]);
 
+        $this->syncInventoryAfterPush($order);
+
         return $shopifyOrderId;
+    }
+
+    /**
+     * After Shopify decrements stock for the imported order, push live qty to AliExpress
+     * and refresh local AE/Shopify quantity fields used by the platform UI.
+     */
+    protected function syncInventoryAfterPush(AliexpressOrderMetric $order): void
+    {
+        $skus = AliexpressOrderMetric::query()
+            ->where('order_id', (string) $order->order_id)
+            ->pluck('sku')
+            ->map(static fn ($sku) => trim((string) $sku))
+            ->filter(static fn ($sku) => $sku !== '' && ! in_array($sku, ['__order__', '__unknown__'], true))
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($skus === []) {
+            return;
+        }
+
+        // Give Shopify a moment to apply inventory_behaviour decrement.
+        usleep(1500000);
+
+        try {
+            $result = app(AliexpressInventorySyncService::class)
+                ->syncSkusFromShopify($skus, $this->shopifyConfig());
+
+            Log::info('AliexpressOrderPushService: post-push inventory sync', [
+                'order_id' => $order->order_id,
+                'skus' => $skus,
+                'result' => $result,
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('AliexpressOrderPushService: post-push inventory sync failed', [
+                'order_id' => $order->order_id,
+                'skus' => $skus,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**
