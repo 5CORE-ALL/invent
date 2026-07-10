@@ -15,7 +15,13 @@
 
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-                <span class="badge bg-primary">{{ $products->total() }} Shopify SKU(s)</span>
+                <span class="badge bg-primary">
+                    @if(($linkTab ?? 'all') === 'not_in_shopify')
+                        {{ $products->total() }} on AliExpress, not in Shopify
+                    @else
+                        {{ $products->total() }} Shopify SKU(s)
+                    @endif
+                </span>
                 <div class="d-flex gap-2 flex-wrap">
                     <button type="button" class="btn btn-sm btn-outline-primary" id="btn-refresh-api">
                         <i class="ri-refresh-line"></i> Sync AE link map
@@ -51,7 +57,7 @@
                     </div>
                 </form>
 
-                @php $counts = $counts ?? ['all' => 0, 'linked' => 0, 'unlinked' => 0]; @endphp
+                @php $counts = $counts ?? ['all' => 0, 'linked' => 0, 'unlinked' => 0, 'not_in_shopify' => 0]; @endphp
                 <ul class="nav nav-tabs nav-bordered mb-3" role="tablist">
                     <li class="nav-item">
                         <a href="{{ request()->url() }}?link=all&search_name={{ urlencode($searchName) }}&search_sku={{ urlencode($searchSku) }}" class="nav-link {{ ($linkTab ?? 'all') === 'all' ? 'active' : '' }}">All {{ $counts['all'] ?? 0 }}</a>
@@ -62,6 +68,9 @@
                     <li class="nav-item">
                         <a href="{{ request()->url() }}?link=unlinked&search_name={{ urlencode($searchName) }}&search_sku={{ urlencode($searchSku) }}" class="nav-link {{ ($linkTab ?? '') === 'unlinked' ? 'active' : '' }}">Not on AE {{ $counts['unlinked'] ?? 0 }}</a>
                     </li>
+                    <li class="nav-item">
+                        <a href="{{ request()->url() }}?link=not_in_shopify&search_name={{ urlencode($searchName) }}&search_sku={{ urlencode($searchSku) }}" class="nav-link {{ ($linkTab ?? '') === 'not_in_shopify' ? 'active' : '' }}">Not in Shopify {{ $counts['not_in_shopify'] ?? 0 }}</a>
+                    </li>
                 </ul>
 
                 <div class="table-responsive">
@@ -70,7 +79,7 @@
                             <tr>
                                 <th style="width: 64px;">Image</th>
                                 <th>SKU</th>
-                                <th>Title (Shopify)</th>
+                                <th>{{ ($linkTab ?? '') === 'not_in_shopify' ? 'Title (AE)' : 'Title (Shopify)' }}</th>
                                 <th>AliExpress ID</th>
                                 <th>Shopify Qty</th>
                                 <th>Shopify Price</th>
@@ -113,7 +122,9 @@
                                     <td>{{ isset($p->shopify_price) ? number_format((float)$p->shopify_price, 2) : '—' }}</td>
                                     <td>{{ isset($p->price) ? number_format((float)$p->price, 2) : '—' }}</td>
                                     <td>
-                                        @if($p->linked)
+                                        @if(($p->listing_status ?? '') === 'not_in_shopify')
+                                            <span class="badge bg-warning-subtle text-warning">Not in Shopify</span>
+                                        @elseif($p->linked)
                                             <span class="badge bg-success-subtle text-success">Linked</span>
                                         @else
                                             <span class="badge bg-light text-muted">Not linked</span>
@@ -123,9 +134,15 @@
                             @empty
                                 <tr>
                                     <td colspan="8" class="text-center text-muted py-4">
-                                        No Shopify SKUs found.
+                                        @if(($linkTab ?? 'all') === 'not_in_shopify')
+                                            No AliExpress listings found without a matching Shopify SKU.
+                                        @else
+                                            No Shopify SKUs found.
+                                        @endif
                                         @if(($linkTab ?? 'all') === 'linked')
                                             None linked yet — click <strong>Sync AE link map</strong> after SKUs exist in AliExpress.
+                                        @elseif(($linkTab ?? 'all') === 'not_in_shopify')
+                                            All synced AE SKUs appear to exist in your Shopify catalog, or run <strong>Sync AE link map</strong> first.
                                         @elseif($connected)
                                             Your Shopify catalog may be empty, or filters excluded all rows.
                                         @else
