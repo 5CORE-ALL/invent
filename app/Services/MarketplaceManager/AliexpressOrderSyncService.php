@@ -325,7 +325,13 @@ class AliexpressOrderSyncService
             ->whereNull('shopify_order_id')
             ->where(function ($q) {
                 $q->whereNull('import_status')
-                    ->orWhereNotIn('import_status', ['imported', 'pending_shopify', 'import_failed']);
+                    ->orWhereNotIn('import_status', [
+                        'imported',
+                        'pending_shopify',
+                        'import_failed',
+                        'queued',
+                        'skipped_pre_july7',
+                    ]);
             })
             ->orderBy('id')
             ->limit(50)
