@@ -346,7 +346,7 @@ class AliexpressSyncController extends Controller
             return response()->json(['success' => false, 'message' => 'AliExpress not connected.']);
         }
 
-        @set_time_limit(120);
+        @set_time_limit(300);
 
         $page = max(1, (int) $request->input('page', 1));
         $reset = $request->boolean('reset', $page === 1);

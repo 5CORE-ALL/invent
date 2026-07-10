@@ -79,6 +79,7 @@ class AliexpressLinkMapSyncService
 
         $items = $result['data']['products'] ?? [];
         $totalPage = $this->intOrNull($result['data']['total_page'] ?? null);
+        $totalCount = $this->intOrNull($result['data']['total_count'] ?? null);
         $pageUpserted = $this->upsertItems($items);
 
         $totalUpserted = (int) ($state['total_upserted'] ?? 0) + $pageUpserted;
@@ -86,13 +87,14 @@ class AliexpressLinkMapSyncService
         $done = $this->isLastPage($page, $itemCount, $pageSize, $totalPage);
 
         $message = $done
-            ? "Updated {$totalUpserted} SKU link(s) from AliExpress ({$page} API page(s)). No new listings were created on AliExpress."
+            ? "Updated {$totalUpserted} SKU link(s) from AliExpress ({$page} API page(s)".($totalCount ? ", {$totalCount} products on AE" : '').'). No new listings were created on AliExpress.'
             : "Page {$page}".($totalPage ? " of {$totalPage}" : '').": {$pageUpserted} SKU link(s) saved…";
 
         $this->updateProgress([
             'running' => ! $done,
             'page' => $page,
             'total_page' => $totalPage,
+            'total_count' => $totalCount,
             'total_upserted' => $totalUpserted,
             'message' => $message,
             'done' => $done,
@@ -111,6 +113,7 @@ class AliexpressLinkMapSyncService
             'message' => $message,
             'page' => $page,
             'total_page' => $totalPage,
+            'total_count' => $totalCount,
             'page_upserted' => $pageUpserted,
             'total_upserted' => $totalUpserted,
             'done' => $done,
@@ -196,7 +199,13 @@ class AliexpressLinkMapSyncService
                 continue;
             }
 
-            foreach ($this->aliExpressApi->extractSkuRowsFromListItem($item, fetchDetail: false) as $row) {
+            $rows = $this->aliExpressApi->extractSkuRowsFromListItem($item, fetchDetail: false);
+            if (! $this->rowsHaveRealSku($rows)) {
+                $rows = $this->aliExpressApi->extractSkuRowsFromListItem($item, fetchDetail: true);
+                usleep(100000);
+            }
+
+            foreach ($rows as $row) {
                 $sku = trim((string) ($row['sku'] ?? ''));
                 $productId = (string) ($row['product_id'] ?? '');
                 if ($productId === '' || $sku === '' || $sku === $productId) {
@@ -218,6 +227,22 @@ class AliexpressLinkMapSyncService
         return $upserted;
     }
 
+    /**
+     * @param  array<int, array<string, mixed>>  $rows
+     */
+    protected function rowsHaveRealSku(array $rows): bool
+    {
+        foreach ($rows as $row) {
+            $sku = trim((string) ($row['sku'] ?? ''));
+            $productId = (string) ($row['product_id'] ?? '');
+            if ($sku !== '' && $productId !== '' && $sku !== $productId) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     protected function isLastPage(int $page, int $itemCount, int $pageSize, ?int $totalPage): bool
     {
         if ($itemCount === 0) {
@@ -228,7 +253,10 @@ class AliexpressLinkMapSyncService
             return true;
         }
 
-        // Partial page = last page. Full pages always continue (API total_page is often wrong).
+        if ($totalPage !== null && $totalPage > 0 && $page >= $totalPage) {
+            return true;
+        }
+
         return $itemCount < $pageSize;
     }
 

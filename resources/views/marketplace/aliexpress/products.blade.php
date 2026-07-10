@@ -157,7 +157,7 @@ document.getElementById('btn-refresh-api')?.addEventListener('click', function (
     var url = '{{ route('marketplace.manager.aliexpress.refresh') }}';
     var page = 1;
 
-    function setProgress(pageNum, totalPage, totalUpserted, message) {
+    function setProgress(pageNum, totalPage, totalUpserted, message, totalCount) {
         var pct = 0;
         if (totalPage && totalPage > 0) {
             pct = Math.min(100, Math.round((pageNum / totalPage) * 100));
@@ -168,7 +168,8 @@ document.getElementById('btn-refresh-api')?.addEventListener('click', function (
         bar.textContent = pct + '%';
         pctEl.textContent = pct + '%';
         statusEl.textContent = message || ('Syncing page ' + pageNum + (totalPage ? ' of ' + totalPage : '') + '…');
-        countsEl.textContent = totalUpserted + ' SKU link(s) saved so far';
+        var extra = totalCount ? ' (' + totalCount + ' products on AliExpress)' : '';
+        countsEl.textContent = totalUpserted + ' SKU link(s) saved so far' + extra;
     }
 
     function syncNext(reset) {
@@ -202,7 +203,7 @@ document.getElementById('btn-refresh-api')?.addEventListener('click', function (
                 return;
             }
 
-            setProgress(data.page || page, data.total_page || null, data.total_upserted || 0, data.message);
+            setProgress(data.page || page, data.total_page || null, data.total_upserted || 0, data.message, data.total_count || null);
 
             if (data.done) {
                 bar.classList.remove('progress-bar-animated');
@@ -215,7 +216,7 @@ document.getElementById('btn-refresh-api')?.addEventListener('click', function (
             }
 
             page = (data.page || page) + 1;
-            setTimeout(function () { runPage(false); }, 200);
+            setTimeout(function () { runPage(false); }, 500);
         }).catch(function () {
             alert('Request failed.');
             progress.style.display = 'none';
