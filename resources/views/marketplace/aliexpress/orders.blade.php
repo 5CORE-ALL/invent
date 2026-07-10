@@ -16,7 +16,14 @@
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <span class="badge bg-primary">{{ $orders->total() }} orders</span>
-                <div class="d-flex gap-2">
+                <div class="d-flex gap-2 align-items-center flex-wrap">
+                    <select id="fetch-days" class="form-select form-select-sm" style="width:auto;">
+                        <option value="0" selected>All orders (2 years)</option>
+                        <option value="7">Last 7 days</option>
+                        <option value="30">Last 30 days</option>
+                        <option value="90">Last 90 days</option>
+                        <option value="365">Last 365 days</option>
+                    </select>
                     <button type="button" class="btn btn-sm btn-outline-primary" id="btn-fetch-orders">
                         <i class="ri-download-cloud-line"></i> Fetch from AliExpress
                     </button>
@@ -98,6 +105,12 @@
 <script>
 document.getElementById('btn-fetch-orders')?.addEventListener('click', function () {
     var btn = this;
+    var days = parseInt(document.getElementById('fetch-days')?.value || '0', 10);
+    if (!confirm(days === 0
+        ? 'Fetch all AliExpress orders (up to 2 years)? This may take several minutes.'
+        : 'Fetch orders from the last ' + days + ' days?')) {
+        return;
+    }
     btn.disabled = true;
     fetch('{{ route('marketplace.manager.aliexpress.fetch.orders') }}', {
         method: 'POST',
@@ -106,7 +119,7 @@ document.getElementById('btn-fetch-orders')?.addEventListener('click', function 
             'Accept': 'application/json',
             'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ days: 14, import: true }),
+        body: JSON.stringify({ days: days, import: true }),
     })
     .then(function (r) { return r.json(); })
     .then(function (data) {

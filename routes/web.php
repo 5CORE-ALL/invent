@@ -502,6 +502,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/aliexpress/connect', [\App\Http\Controllers\MarketPlace\AliexpressSyncController::class, 'connect'])->name('aliexpress.connect');
         Route::post('/aliexpress/test-connection', [\App\Http\Controllers\MarketPlace\AliexpressSyncController::class, 'testConnection'])->name('aliexpress.test');
         Route::post('/aliexpress/refresh-products', [\App\Http\Controllers\MarketPlace\AliexpressSyncController::class, 'refreshProducts'])->name('aliexpress.refresh');
+        Route::get('/aliexpress/refresh-products/status', [\App\Http\Controllers\MarketPlace\AliexpressSyncController::class, 'refreshProductsStatus'])->name('aliexpress.refresh.status');
         Route::post('/aliexpress/fetch-orders', [\App\Http\Controllers\MarketPlace\AliexpressSyncController::class, 'fetchOrders'])->name('aliexpress.fetch.orders');
         Route::post('/aliexpress/sync-inventory', [\App\Http\Controllers\MarketPlace\AliexpressSyncController::class, 'syncInventoryNow'])->name('aliexpress.sync.inventory');
         Route::get('/{marketplace}', [\App\Http\Controllers\MarketplaceManager\MarketplaceManagerController::class, 'show'])

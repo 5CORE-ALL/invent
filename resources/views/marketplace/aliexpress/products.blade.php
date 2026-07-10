@@ -22,6 +22,16 @@
                     </button>
                 </div>
             </div>
+            <div id="link-map-progress" class="card-body border-bottom py-3" style="display:none;">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span id="link-map-status" class="small text-muted">Starting…</span>
+                    <span id="link-map-pct" class="small fw-semibold">0%</span>
+                </div>
+                <div class="progress" style="height: 18px;">
+                    <div id="link-map-bar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%;">0%</div>
+                </div>
+                <div id="link-map-counts" class="small text-muted mt-2"></div>
+            </div>
             <div class="card-body">
                 <form method="get" class="mb-3">
                     <div class="row g-2 align-items-end flex-wrap">
@@ -139,27 +149,82 @@
 <script>
 document.getElementById('btn-refresh-api')?.addEventListener('click', function () {
     var btn = this;
+    var progress = document.getElementById('link-map-progress');
+    var bar = document.getElementById('link-map-bar');
+    var statusEl = document.getElementById('link-map-status');
+    var pctEl = document.getElementById('link-map-pct');
+    var countsEl = document.getElementById('link-map-counts');
+    var url = '{{ route('marketplace.manager.aliexpress.refresh') }}';
+    var page = 1;
+
+    function setProgress(pageNum, totalPage, totalUpserted, message) {
+        var pct = 0;
+        if (totalPage && totalPage > 0) {
+            pct = Math.min(100, Math.round((pageNum / totalPage) * 100));
+        } else if (pageNum > 1) {
+            pct = Math.min(95, pageNum * 5);
+        }
+        bar.style.width = pct + '%';
+        bar.textContent = pct + '%';
+        pctEl.textContent = pct + '%';
+        statusEl.textContent = message || ('Syncing page ' + pageNum + (totalPage ? ' of ' + totalPage : '') + '…');
+        countsEl.textContent = totalUpserted + ' SKU link(s) saved so far';
+    }
+
+    function syncNext(reset) {
+        return fetch(url, {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ page: page, reset: !!reset }),
+        }).then(function (r) { return r.json(); });
+    }
+
+    if (!confirm('Sync all AliExpress listings and refresh SKU ↔ product_id mappings? This may take a few minutes.')) {
+        return;
+    }
+
     btn.disabled = true;
     btn.innerHTML = '<i class="ri-loader-4-line"></i> Syncing…';
-    fetch('{{ route('marketplace.manager.aliexpress.refresh') }}', {
-        method: 'POST',
-        headers: {
-            'X-CSRF-TOKEN': '{{ csrf_token() }}',
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({}),
-    })
-    .then(function (r) { return r.json(); })
-    .then(function (data) {
-        alert(data.message || (data.success ? 'Done' : 'Failed'));
-        if (data.success) location.reload();
-    })
-    .catch(function () { alert('Request failed.'); })
-    .finally(function () {
-        btn.disabled = false;
-        btn.innerHTML = '<i class="ri-refresh-line"></i> Sync AE link map';
-    });
+    progress.style.display = '';
+    setProgress(0, null, 0, 'Starting sync…');
+
+    function runPage(reset) {
+        syncNext(reset).then(function (data) {
+            if (!data.success && data.done) {
+                alert(data.message || 'Sync failed.');
+                progress.style.display = 'none';
+                btn.disabled = false;
+                btn.innerHTML = '<i class="ri-refresh-line"></i> Sync AE link map';
+                return;
+            }
+
+            setProgress(data.page || page, data.total_page || null, data.total_upserted || 0, data.message);
+
+            if (data.done) {
+                bar.classList.remove('progress-bar-animated');
+                bar.style.width = '100%';
+                bar.textContent = '100%';
+                pctEl.textContent = '100%';
+                statusEl.textContent = data.message || 'Done';
+                setTimeout(function () { location.reload(); }, 800);
+                return;
+            }
+
+            page = (data.page || page) + 1;
+            setTimeout(function () { runPage(false); }, 200);
+        }).catch(function () {
+            alert('Request failed.');
+            progress.style.display = 'none';
+            btn.disabled = false;
+            btn.innerHTML = '<i class="ri-refresh-line"></i> Sync AE link map';
+        });
+    }
+
+    runPage(true);
 });
 </script>
 @endsection

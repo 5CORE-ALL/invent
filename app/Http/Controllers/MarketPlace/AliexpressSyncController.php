@@ -12,6 +12,7 @@ use App\Services\AliExpressApiService;
 use App\Services\AliExpressAuthService;
 use App\Services\MarketplaceManager\AliexpressDetailFormatter;
 use App\Services\MarketplaceManager\AliexpressInventorySyncService;
+use App\Services\MarketplaceManager\AliexpressLinkMapSyncService;
 use App\Services\MarketplaceManager\AliexpressOrderDetailService;
 use App\Services\MarketplaceManager\AliexpressOrderPushService;
 use App\Services\MarketplaceManager\AliexpressOrderSyncService;
@@ -345,74 +346,25 @@ class AliexpressSyncController extends Controller
             return response()->json(['success' => false, 'message' => 'AliExpress not connected.']);
         }
 
-        $upserted = 0;
-        $pagesSynced = 0;
-        $maxPages = 50;
+        @set_time_limit(120);
 
-        Log::info('Aliexpress link map sync started', ['max_pages' => $maxPages]);
+        $page = max(1, (int) $request->input('page', 1));
+        $reset = $request->boolean('reset', $page === 1);
 
-        for ($p = 1; $p <= $maxPages; $p++) {
-            $result = $this->aliExpressApi->getInventory($p, 50);
-            if (empty($result['success'])) {
-                Log::warning('Aliexpress link map sync API error', [
-                    'page' => $p,
-                    'message' => $result['message'] ?? null,
-                    'network_error' => $result['network_error'] ?? false,
-                ]);
-                if ($pagesSynced === 0) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => $result['message'] ?? 'Failed to fetch products from AliExpress.',
-                    ]);
-                }
+        Log::info('Aliexpress link map sync page', ['page' => $page, 'reset' => $reset]);
 
-                break;
-            }
+        $result = app(AliexpressLinkMapSyncService::class)->syncPage($page, 50, $reset);
 
-            $items = $result['data']['products'] ?? [];
-            if ($items === []) {
-                break;
-            }
+        return response()->json($result);
+    }
 
-            foreach ($items as $item) {
-                foreach ($this->aliExpressApi->extractSkuRowsFromListItem($item, fetchDetail: $p === 1) as $row) {
-                    if (! Schema::hasTable('aliexpress_metric')) {
-                        break 3;
-                    }
-                    $sku = trim((string) ($row['sku'] ?? ''));
-                    $productId = (string) ($row['product_id'] ?? '');
-                    if ($productId === '' || $sku === '' || $sku === $productId) {
-                        continue;
-                    }
-                    AliexpressMetric::updateOrCreate(
-                        ['sku' => $sku],
-                        [
-                            'product_id' => $productId,
-                            'product_name' => $row['product_name'] ?? null,
-                            'price' => $row['price'] ?? 0,
-                        ]
-                    );
-                    $upserted++;
-                }
-            }
-
-            $pagesSynced++;
-            $totalPage = (int) ($result['data']['total_page'] ?? 0);
-            if ($totalPage > 0 && $p >= $totalPage) {
-                break;
-            }
-        }
-
-        Log::info('Aliexpress link map sync finished', [
-            'pages_synced' => $pagesSynced,
-            'upserted' => $upserted,
-            'create_products_setting' => MarketplaceSyncSettings::aliexpressCanCreateProducts(),
-        ]);
+    public function refreshProductsStatus(): JsonResponse
+    {
+        $progress = app(AliexpressLinkMapSyncService::class)->getProgress();
 
         return response()->json([
             'success' => true,
-            'message' => "Updated {$upserted} Shopify SKU link(s) from AliExpress ({$pagesSynced} API page(s)). No new listings were created on AliExpress.",
-            'upserted' => $upserted,
+            'progress' => $progress,
         ]);
     }
 
@@ -494,7 +446,13 @@ class AliexpressSyncController extends Controller
 
     public function fetchOrders(Request $request): JsonResponse
     {
-        $days = max(1, min(60, (int) $request->input('days', 7)));
+        $daysInput = $request->input('days', 0);
+        $days = $daysInput === 'all' || (int) $daysInput === 0
+            ? 0
+            : max(1, min(730, (int) $daysInput));
+
+        @set_time_limit(0);
+
         $result = app(AliexpressOrderSyncService::class)->fetchAndStore($days);
 
         if ($request->boolean('import')) {
