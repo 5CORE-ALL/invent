@@ -55,6 +55,73 @@ class AliexpressOrderSyncService
     }
 
     /**
+     * Fetch orders created on/after a specific date (inclusive) through now.
+     *
+     * @return array{fetched: int, stored: int, message: string}
+     */
+    public function fetchAndStoreFromDate(string $fromDate, int $pageSize = 50): array
+    {
+        if (empty($this->aliExpressApi->getAccessToken())) {
+            return ['fetched' => 0, 'stored' => 0, 'message' => 'ALIEXPRESS_ACCESS_TOKEN missing.'];
+        }
+
+        if (! Schema::hasTable('aliexpress_order_metrics')) {
+            return ['fetched' => 0, 'stored' => 0, 'message' => 'Run migrations for aliexpress_order_metrics.'];
+        }
+
+        try {
+            $start = Carbon::parse($fromDate, 'America/Los_Angeles')->startOfDay();
+        } catch (\Throwable $e) {
+            return ['fetched' => 0, 'stored' => 0, 'message' => 'Invalid from_date. Use YYYY-MM-DD.'];
+        }
+
+        $end = Carbon::now('America/Los_Angeles');
+        if ($start->gt($end)) {
+            return ['fetched' => 0, 'stored' => 0, 'message' => 'from_date cannot be in the future.'];
+        }
+
+        $pageSize = max(1, min(50, $pageSize));
+        $fetched = 0;
+        $stored = 0;
+        $chunks = 0;
+        $chunkEnd = $end->copy();
+
+        while ($chunkEnd->gt($start)) {
+            $chunkStart = $chunkEnd->copy()->subDays(self::DATE_CHUNK_DAYS);
+            if ($chunkStart->lt($start)) {
+                $chunkStart = $start->copy();
+            }
+
+            $dateRange = [
+                'create_date_start' => $chunkStart->format('Y-m-d H:i:s'),
+                'create_date_end' => $chunkEnd->format('Y-m-d H:i:s'),
+            ];
+
+            $result = $this->fetchOrdersInDateRange($dateRange, $pageSize);
+            $fetched += $result['fetched'];
+            $stored += $result['stored'];
+            $chunks++;
+
+            if ($result['error'] !== null) {
+                return [
+                    'fetched' => $fetched,
+                    'stored' => $stored,
+                    'message' => $result['error']." (partial: {$fetched} order(s) fetched from {$fromDate}).",
+                ];
+            }
+
+            $chunkEnd = $chunkStart->copy()->subSecond();
+            usleep(200000);
+        }
+
+        return [
+            'fetched' => $fetched,
+            'stored' => $stored,
+            'message' => "Fetched {$fetched} order(s), stored/updated {$stored} line(s) from {$start->toDateString()} onward ({$chunks} chunk(s)).",
+        ];
+    }
+
+    /**
      * Walk back in date chunks to fetch full order history.
      *
      * @return array{fetched: int, stored: int, message: string}

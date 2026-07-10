@@ -462,22 +462,33 @@ class AliexpressSyncController extends Controller
 
     public function fetchOrders(Request $request): JsonResponse
     {
-        $daysInput = $request->input('days', 0);
-        $days = $daysInput === 'all' || (int) $daysInput === 0
-            ? 0
-            : max(1, min(730, (int) $daysInput));
-
         @set_time_limit(0);
 
-        $result = app(AliexpressOrderSyncService::class)->fetchAndStore($days);
+        $fromDate = trim((string) $request->input('from_date', ''));
+        $sync = app(AliexpressOrderSyncService::class);
 
+        if ($fromDate !== '') {
+            $result = $sync->fetchAndStoreFromDate($fromDate);
+        } else {
+            $daysInput = $request->input('days', 0);
+            $days = $daysInput === 'all' || (int) $daysInput === 0
+                ? 0
+                : max(1, min(730, (int) $daysInput));
+            $result = $sync->fetchAndStore($days);
+        }
+
+        // Only auto-queue Shopify imports when explicitly requested.
+        // Prefer from_date fetches without import when older orders already exist on Shopify.
         if ($request->boolean('import')) {
-            $dispatched = app(AliexpressOrderSyncService::class)->dispatchImportsForNewOrders();
+            $dispatched = $sync->dispatchImportsForNewOrders();
             $result['message'] .= " Dispatched {$dispatched} import job(s).";
         }
 
         return response()->json([
-            'success' => str_contains(strtolower($result['message']), 'missing') ? false : true,
+            'success' => str_contains(strtolower($result['message']), 'missing')
+                || str_contains(strtolower($result['message']), 'invalid')
+                ? false
+                : true,
             'message' => $result['message'],
             'fetched' => $result['fetched'] ?? 0,
             'stored' => $result['stored'] ?? 0,

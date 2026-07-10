@@ -9,14 +9,18 @@ class SyncAliexpressOrders extends Command
 {
     protected $signature = 'aliexpress:sync-orders
                             {--days=0 : Days of order history (0 = all available, up to 2 years)}
+                            {--from= : Fetch orders from this date onward (YYYY-MM-DD); overrides --days}
                             {--import : Dispatch import jobs for new orders after fetch}';
 
     protected $description = 'Fetch AliExpress orders from API and store in aliexpress_order_metrics.';
 
     public function handle(AliexpressOrderSyncService $sync): int
     {
-        $days = max(0, (int) $this->option('days'));
-        $result = $sync->fetchAndStore($days);
+        $from = trim((string) $this->option('from'));
+        $result = $from !== ''
+            ? $sync->fetchAndStoreFromDate($from)
+            : $sync->fetchAndStore(max(0, (int) $this->option('days')));
+
         $this->info($result['message']);
 
         if ($this->option('import')) {
@@ -24,6 +28,6 @@ class SyncAliexpressOrders extends Command
             $this->info("Dispatched {$dispatched} import job(s) to Shopify.");
         }
 
-        return ($result['fetched'] ?? 0) >= 0 ? self::SUCCESS : self::FAILURE;
+        return self::SUCCESS;
     }
 }
