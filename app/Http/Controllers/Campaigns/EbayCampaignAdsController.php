@@ -524,6 +524,11 @@ class EbayCampaignAdsController extends Controller
         $success = 0;
         $failed  = 0;
 
+        // Listings whose ad already exists on eBay (create returns "already exists").
+        // We retry these as a bid update by listing_id after the loop so bulk enroll
+        // still works even when our local table is out of sync with eBay.
+        $retryUpdate = [];
+
         $skipped = 0;
         foreach ($listingIds as $lid) {
             $lid    = (string)$lid;
@@ -585,13 +590,87 @@ class EbayCampaignAdsController extends Controller
                     $results[] = ['listing_id' => $lid, 'sku' => $metric?->sku, 'status' => 'enrolled', 'bid' => $bid . '%'];
                     $success++;
                 } else {
-                    $errMsg = $resp->json()['errors'][0]['message'] ?? $resp->status();
-                    $results[] = ['listing_id' => $lid, 'sku' => $metric?->sku, 'status' => 'failed', 'reason' => $errMsg];
-                    $failed++;
+                    $errMsg = $resp->json()['errors'][0]['message'] ?? (string) $resp->status();
+                    // "An ad for listing Id ... already exists" — the ad is already in this
+                    // campaign (our table just wasn't synced). Retry as a bid update below.
+                    if (stripos((string) $errMsg, 'already exists') !== false) {
+                        $retryUpdate[] = [
+                            'listingId'     => $lid,
+                            'bidPercentage' => (string) $bid,
+                            'sku'           => $metric?->sku,
+                            'bid'           => $bid,
+                        ];
+                    } else {
+                        $results[] = ['listing_id' => $lid, 'sku' => $metric?->sku, 'status' => 'failed', 'reason' => $errMsg];
+                        $failed++;
+                    }
                 }
             } catch (\Exception $e) {
                 $results[] = ['listing_id' => $lid, 'sku' => $metric?->sku, 'status' => 'failed', 'reason' => $e->getMessage()];
                 $failed++;
+            }
+        }
+
+        // Retry the "already exists" listings as a single bulk bid update on the
+        // campaign. Ones that update successfully are synced locally and counted as
+        // enrolled; ones that still fail (e.g. ad lives in a different campaign) are
+        // reported as failed.
+        if (!empty($retryUpdate)) {
+            $payload = array_map(fn($r) => [
+                'listingId'     => $r['listingId'],
+                'bidPercentage' => $r['bidPercentage'],
+            ], $retryUpdate);
+
+            try {
+                $resp = \Illuminate\Support\Facades\Http::withToken($token)
+                    ->withHeaders(['Content-Type' => 'application/json'])
+                    ->post("https://api.ebay.com/sell/marketing/v1/ad_campaign/{$campaignId}/bulk_update_ads_bid_by_listing_id",
+                        ['requests' => $payload]);
+
+                if ($resp->successful()) {
+                    // Map per-listing outcomes from the bulk response (when provided).
+                    $perListing = [];
+                    foreach (($resp->json()['responses'] ?? []) as $r) {
+                        $rid = (string) ($r['listingId'] ?? '');
+                        if ($rid === '') continue;
+                        $code = (int) ($r['statusCode'] ?? 200);
+                        $ok   = $code >= 200 && $code < 300 && empty($r['errors']);
+                        $perListing[$rid] = $ok ? true : ($r['errors'][0]['message'] ?? 'Bid update failed');
+                    }
+
+                    foreach ($retryUpdate as $r) {
+                        $rid = (string) $r['listingId'];
+                        $outcome = $perListing[$rid] ?? true; // 200 with no detail → assume ok
+                        if ($outcome === true) {
+                            DB::table('ebay_campaign_ads')
+                                ->where('listing_id', $rid)
+                                ->update([
+                                    'campaign_id'      => $campaignId,
+                                    'funding_strategy' => 'COST_PER_SALE',
+                                    'campaign_status'  => 'RUNNING',
+                                    'bid_percentage'   => $r['bid'],
+                                    'promote_with_ad'  => 'AD_ALREADY_CREATED',
+                                    'updated_at'       => now(),
+                                ]);
+                            $results[] = ['listing_id' => $rid, 'sku' => $r['sku'], 'status' => 'enrolled', 'bid' => $r['bid'] . '%'];
+                            $success++;
+                        } else {
+                            $results[] = ['listing_id' => $rid, 'sku' => $r['sku'], 'status' => 'failed', 'reason' => $outcome];
+                            $failed++;
+                        }
+                    }
+                } else {
+                    $reason = 'Already exists; bid update failed (HTTP ' . $resp->status() . ')';
+                    foreach ($retryUpdate as $r) {
+                        $results[] = ['listing_id' => $r['listingId'], 'sku' => $r['sku'], 'status' => 'failed', 'reason' => $reason];
+                        $failed++;
+                    }
+                }
+            } catch (\Exception $e) {
+                foreach ($retryUpdate as $r) {
+                    $results[] = ['listing_id' => $r['listingId'], 'sku' => $r['sku'], 'status' => 'failed', 'reason' => $e->getMessage()];
+                    $failed++;
+                }
             }
         }
 
