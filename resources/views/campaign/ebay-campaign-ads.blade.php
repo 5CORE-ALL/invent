@@ -656,7 +656,9 @@ document.getElementById('enroll-confirm-btn').addEventListener('click', function
         const rows = table ? table.getRows() : [];
         for (let r of rows) {
             const d = r.getData();
-            if (d.listing_id == lid && !d.campaign_id) return true;
+            // Eligible = not already in a campaign and not a known-ended listing.
+            if (d.listing_id == lid && !d.campaign_id
+                && String(d.campaign_status || '').toUpperCase() !== 'ENDED') return true;
         }
         return false;
     });

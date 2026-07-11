@@ -600,6 +600,14 @@ class EbayCampaignAdsController extends Controller
                             'sku'           => $metric?->sku,
                             'bid'           => $bid,
                         ];
+                    } elseif ($this->isEndedOrInvalidListing($errMsg)) {
+                        // Listing is no longer active on eBay — can't be enrolled. Mark
+                        // as skipped (not a real failure) and flag it locally so it can
+                        // be filtered/cleaned up.
+                        DB::table('ebay_campaign_ads')->where('listing_id', $lid)
+                            ->update(['campaign_status' => 'ENDED', 'updated_at' => now()]);
+                        $results[] = ['listing_id' => $lid, 'sku' => $metric?->sku, 'status' => 'skipped', 'reason' => $errMsg];
+                        $skipped++;
                     } else {
                         $results[] = ['listing_id' => $lid, 'sku' => $metric?->sku, 'status' => 'failed', 'reason' => $errMsg];
                         $failed++;
@@ -654,6 +662,11 @@ class EbayCampaignAdsController extends Controller
                                 ]);
                             $results[] = ['listing_id' => $rid, 'sku' => $r['sku'], 'status' => 'enrolled', 'bid' => $r['bid'] . '%'];
                             $success++;
+                        } elseif ($this->isEndedOrInvalidListing((string) $outcome)) {
+                            DB::table('ebay_campaign_ads')->where('listing_id', $rid)
+                                ->update(['campaign_status' => 'ENDED', 'updated_at' => now()]);
+                            $results[] = ['listing_id' => $rid, 'sku' => $r['sku'], 'status' => 'skipped', 'reason' => $outcome];
+                            $skipped++;
                         } else {
                             $results[] = ['listing_id' => $rid, 'sku' => $r['sku'], 'status' => 'failed', 'reason' => $outcome];
                             $failed++;
@@ -680,6 +693,16 @@ class EbayCampaignAdsController extends Controller
             'skipped' => $skipped,
             'results' => $results,
         ]);
+    }
+
+    /** True when an eBay error message indicates the listing has ended / is invalid. */
+    private function isEndedOrInvalidListing(string $msg): bool
+    {
+        $m = strtolower($msg);
+        return str_contains($m, 'has ended')
+            || str_contains($m, 'is invalid')
+            || str_contains($m, 'invalid or has ended')
+            || str_contains($m, 'no longer active');
     }
 
     public function pushSbid()
