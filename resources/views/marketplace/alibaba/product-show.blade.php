@@ -67,6 +67,9 @@
         'Created' => $ae['gmt_create'] ?? null,
         'Modified' => $ae['gmt_modified'] ?? null,
         'Last order' => !empty($l['last_order_date']) ? \Carbon\Carbon::parse($l['last_order_date'])->format('M d, Y H:i') : null,
+        'Last synced' => !empty($l['last_synced_at']) ? \Carbon\Carbon::parse($l['last_synced_at'])->timezone(config('app.timezone'))->format('M d, Y H:i') : null,
+        'Link map synced' => !empty($l['link_synced_at']) ? \Carbon\Carbon::parse($l['link_synced_at'])->timezone(config('app.timezone'))->format('M d, Y H:i') : null,
+        'Inventory synced' => !empty($l['inventory_synced_at']) ? \Carbon\Carbon::parse($l['inventory_synced_at'])->timezone(config('app.timezone'))->format('M d, Y H:i') : null,
     ];
 
     ob_start();
@@ -96,6 +99,13 @@
                         <span class="badge bg-warning-subtle text-warning source-pill">Alibaba data: cached map</span>
                     @else
                         <span class="badge bg-light text-muted source-pill">Alibaba data: not loaded</span>
+                    @endif
+                    @if(!empty($l['last_synced_at']))
+                        <span class="badge bg-secondary-subtle text-secondary source-pill" title="Latest of link-map or inventory/price sync">
+                            Last synced: {{ \Carbon\Carbon::parse($l['last_synced_at'])->timezone(config('app.timezone'))->format('M d, Y H:i') }}
+                        </span>
+                    @else
+                        <span class="badge bg-light text-muted source-pill">Last synced: —</span>
                     @endif
                 </div>
             </div>

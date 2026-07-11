@@ -79,6 +79,9 @@ class AlibabaDetailFormatter
                 'last_order_date' => $metric?->last_order_date,
                 'bullet_points' => $metric?->bullet_points,
                 'ab_stock' => $aeStock,
+                'last_synced_at' => $this->resolveListingLastSyncedAt($metric, (string) ($shopify->sku ?? '')),
+                'link_synced_at' => $metric?->updated_at,
+                'inventory_synced_at' => $this->pricingSyncedAt((string) ($shopify->sku ?? '')),
             ],
             'alibaba' => [
                 'product_id' => $this->str($ae['product_id'] ?? $metric?->product_id),
@@ -1684,6 +1687,40 @@ class AlibabaDetailFormatter
         }
 
         return null;
+    }
+
+    /**
+     * Latest of link-map sync and inventory/price sync for this listing.
+     */
+    protected function resolveListingLastSyncedAt(?AlibabaMetric $metric, string $shopifySku): ?\Carbon\Carbon
+    {
+        $candidates = array_filter([
+            $metric?->updated_at,
+            $this->pricingSyncedAt($shopifySku),
+        ]);
+
+        if ($candidates === []) {
+            return null;
+        }
+
+        return collect($candidates)->sortByDesc(fn ($dt) => $dt->getTimestamp())->first();
+    }
+
+    protected function pricingSyncedAt(string $shopifySku): ?\Carbon\Carbon
+    {
+        $sku = trim($shopifySku);
+        if ($sku === '' || ! Schema::hasTable('alibaba_pricing_prices')) {
+            return null;
+        }
+
+        $row = AlibabaPricingPrice::query()
+            ->where(function ($q) use ($sku) {
+                $q->where('sku', $sku)->orWhere('sku', strtoupper($sku));
+            })
+            ->orderByDesc('updated_at')
+            ->first(['updated_at']);
+
+        return $row?->updated_at;
     }
 
     protected function localAeStockForSku(string $sku): ?int

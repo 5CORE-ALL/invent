@@ -75,6 +75,9 @@
         'Listing URL' => !empty($ae['listing_url']) ? '<a href="'.e($ae['listing_url']).'" target="_blank" rel="noopener">Open on Reverb</a>' : null,
         'L30 / L60' => isset($l['l30']) ? ($l['l30'].' / '.($l['l60'] ?? '—')) : null,
         'Last order' => !empty($l['last_order_date']) ? \Carbon\Carbon::parse($l['last_order_date'])->format('M d, Y H:i') : null,
+        'Last synced' => !empty($l['last_synced_at']) ? \Carbon\Carbon::parse($l['last_synced_at'])->timezone(config('app.timezone'))->format('M d, Y H:i') : null,
+        'Link map synced' => !empty($l['link_synced_at']) ? \Carbon\Carbon::parse($l['link_synced_at'])->timezone(config('app.timezone'))->format('M d, Y H:i') : null,
+        'Inventory synced' => !empty($l['inventory_synced_at']) ? \Carbon\Carbon::parse($l['inventory_synced_at'])->timezone(config('app.timezone'))->format('M d, Y H:i') : null,
     ];
 
     ob_start();
@@ -104,6 +107,13 @@
                         <span class="badge bg-warning-subtle text-warning source-pill">Reverb data: cached map</span>
                     @else
                         <span class="badge bg-light text-muted source-pill">Reverb data: not loaded</span>
+                    @endif
+                    @if(!empty($l['last_synced_at']))
+                        <span class="badge bg-secondary-subtle text-secondary source-pill" title="Latest of link-map or inventory/price sync">
+                            Last synced: {{ \Carbon\Carbon::parse($l['last_synced_at'])->timezone(config('app.timezone'))->format('M d, Y H:i') }}
+                        </span>
+                    @else
+                        <span class="badge bg-light text-muted source-pill">Last synced: —</span>
                     @endif
                 </div>
             </div>
