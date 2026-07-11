@@ -17,8 +17,9 @@ class MarketplaceSyncSettings extends Model
     public static function getFor(string $marketplace): array
     {
         $row = self::where('marketplace', $marketplace)->first();
+        $settings = $row ? (array) $row->settings : self::defaults($marketplace);
 
-        return $row ? (array) $row->settings : self::defaults();
+        return array_replace_recursive(self::defaults($marketplace), $settings);
     }
 
     public static function setFor(string $marketplace, array $settings): void
@@ -36,8 +37,18 @@ class MarketplaceSyncSettings extends Model
         return (bool) ($settings['listings']['create_products_on_aliexpress'] ?? false);
     }
 
-    public static function defaults(): array
+    public static function alibabaCanCreateProducts(?array $settings = null): bool
     {
+        $settings ??= self::getFor('alibaba');
+
+        return (bool) ($settings['listings']['create_products_on_alibaba'] ?? false);
+    }
+
+    public static function defaults(?string $marketplace = null): array
+    {
+        $marketplace = strtolower((string) $marketplace);
+        $isAlibaba = $marketplace === 'alibaba';
+
         return [
             'pricing' => [
                 'price_sync' => false,
@@ -59,12 +70,13 @@ class MarketplaceSyncSettings extends Model
                 'keep_order_number_from_channel' => true,
                 'shopify_order_tags' => [],
                 'shopify_store' => 'main',
-                'shopify_source_name' => 'aliexpress',
-                'shopify_source_display_name' => 'AliExpress',
+                'shopify_source_name' => $isAlibaba ? 'alibaba' : 'aliexpress',
+                'shopify_source_display_name' => $isAlibaba ? 'Alibaba' : 'AliExpress',
             ],
             'listings' => [
                 'auto_link_by_sku' => true,
                 'create_products_on_aliexpress' => false,
+                'create_products_on_alibaba' => false,
                 'sync_title' => false,
                 'sync_images' => false,
             ],

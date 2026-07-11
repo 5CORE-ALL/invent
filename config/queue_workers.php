@@ -59,6 +59,10 @@ return [
             'timeout' => 900,
             'max_time' => 7200,
         ],
+        'alibaba' => [
+            'timeout' => 900,
+            'max_time' => 7200,
+        ],
     ],
 
 ];

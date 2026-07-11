@@ -1,6 +1,7 @@
-@extends('layouts.vertical', ['title' => $title ?? 'AliExpress', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => $title ?? ($channel['label'] ?? 'Marketplace'), 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
 @section('content')
+@php $slug = $channel['slug'] ?? 'aliexpress'; @endphp
 <div class="row">
     <div class="col-12">
         <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
@@ -18,7 +19,7 @@
             </div>
         </div>
 
-        @include('marketplace.aliexpress._nav', ['active' => 'overview'])
+        @include('marketplace.'.$slug.'._nav', ['active' => 'overview'])
 
         <div class="row g-3">
             <div class="col-md-3">
@@ -58,11 +59,13 @@
         <div class="card mt-3">
             <div class="card-header"><h5 class="card-title mb-0">Quick actions</h5></div>
             <div class="card-body d-flex flex-wrap gap-2">
-                <a href="{{ route('marketplace.manager.aliexpress.connect') }}" class="btn btn-outline-secondary"><i class="ri-plug-line me-1"></i> Connection</a>
-                <a href="{{ route('marketplace.products', 'aliexpress') }}" class="btn btn-outline-primary"><i class="ri-list-check me-1"></i> Listings</a>
-                <a href="{{ route('marketplace.orders', 'aliexpress') }}" class="btn btn-outline-primary"><i class="ri-shopping-bag-line me-1"></i> Orders</a>
-                <a href="{{ route('marketplace.settings', 'aliexpress') }}" class="btn btn-outline-primary"><i class="ri-settings-3-line me-1"></i> Sync Settings</a>
-                <a href="{{ route('listing.aliexpress') }}" class="btn btn-outline-secondary" target="_blank"><i class="ri-external-link-line me-1"></i> Listing Aliexpress (legacy)</a>
+                <a href="{{ route('marketplace.manager.'.$slug.'.connect') }}" class="btn btn-outline-secondary"><i class="ri-plug-line me-1"></i> Connection</a>
+                <a href="{{ route('marketplace.products', $slug) }}" class="btn btn-outline-primary"><i class="ri-list-check me-1"></i> Listings</a>
+                <a href="{{ route('marketplace.orders', $slug) }}" class="btn btn-outline-primary"><i class="ri-shopping-bag-line me-1"></i> Orders</a>
+                <a href="{{ route('marketplace.settings', $slug) }}" class="btn btn-outline-primary"><i class="ri-settings-3-line me-1"></i> Sync Settings</a>
+                @if($slug === 'aliexpress')
+                    <a href="{{ route('listing.aliexpress') }}" class="btn btn-outline-secondary" target="_blank"><i class="ri-external-link-line me-1"></i> Listing Aliexpress (legacy)</a>
+                @endif
             </div>
         </div>
     </div>
