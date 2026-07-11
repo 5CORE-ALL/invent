@@ -3295,6 +3295,23 @@ class ChannelMasterController extends Controller
                     $ptC = (int) $ptData->sum('clicks'); $ptS = (float) $ptData->sum('sales7d'); $ptU = (int) $ptData->sum('purchases7d'); $ptSp = (float) $ptData->sum('spend');
                     $hlC = (int) $hlData->sum('clicks'); $hlS = (float) $hlData->sum('sales'); $hlU = (int) $hlData->sum('purchases'); $hlSp = (float) $hlData->sum('cost');
 
+                    // Spend is sourced from the /amazon-ads/all campaign aggregation
+                    // (SP reports for KW/PT, SB reports for HL) — the only page that
+                    // holds the real campaign data. Falls back to the campaign-table
+                    // sums above if the live pull fails. Clicks/sales/sold stay as-is.
+                    try {
+                        $adsRows = app(\App\Http\Controllers\AmazonAdsController::class)->getAdvertisementMasterChannelRows();
+                        foreach (($adsRows[0]['_children'] ?? []) as $child) {
+                            switch ($child['source'] ?? '') {
+                                case 'amazon_kw': $kwSp = (float) ($child['spend'] ?? $kwSp); break;
+                                case 'amazon_pt': $ptSp = (float) ($child['spend'] ?? $ptSp); break;
+                                case 'amazon_hl': $hlSp = (float) ($child['spend'] ?? $hlSp); break;
+                            }
+                        }
+                    } catch (\Throwable $e) {
+                        Log::warning('Amazon KW/PT/HL spend fell back to campaign tables: ' . $e->getMessage());
+                    }
+
                     $totalSpend = round($kwSp + $ptSp + $hlSp, 2);
 
                     return [
@@ -6127,10 +6144,25 @@ class ChannelMasterController extends Controller
         $nPft = $metrics?->n_pft ?? 0;
         $nRoi = $metrics?->n_roi ?? 0;
         
-        // Get ad spend from marketplace_daily_metrics (pre-calculated from UpdateMarketplaceDailyMetrics)
-        $kwSpent = $metrics?->kw_spent ?? 0;
-        $ptSpent = $metrics?->pmt_spent ?? 0; // Note: stored as pmt_spent in metrics table
-        $hlSpent = $metrics?->hl_spent ?? 0;
+        // Ad spend is sourced live from the /amazon-ads/all campaign aggregation
+        // (SP reports for KW/PT, SB reports for HL) — the only page that holds the
+        // real campaign data — instead of the stored marketplace_daily_metrics
+        // columns. Falls back to the stored metrics if the live pull fails.
+        $kwSpent = (float) ($metrics?->kw_spent ?? 0);
+        $ptSpent = (float) ($metrics?->pmt_spent ?? 0); // Note: stored as pmt_spent in metrics table
+        $hlSpent = (float) ($metrics?->hl_spent ?? 0);
+        try {
+            $amazonAdsRows = app(\App\Http\Controllers\AmazonAdsController::class)->getAdvertisementMasterChannelRows();
+            foreach (($amazonAdsRows[0]['_children'] ?? []) as $child) {
+                switch ($child['source'] ?? '') {
+                    case 'amazon_kw': $kwSpent = (float) ($child['spend'] ?? 0); break;
+                    case 'amazon_pt': $ptSpent = (float) ($child['spend'] ?? 0); break;
+                    case 'amazon_hl': $hlSpent = (float) ($child['spend'] ?? 0); break;
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Amazon ad spend fell back to marketplace_daily_metrics: ' . $e->getMessage());
+        }
         $totalAdSpend = round($kwSpent + $ptSpent + $hlSpent, 2);
         
         // Calculate growth: ((L30 - L60) / L60) * 100

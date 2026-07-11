@@ -544,7 +544,7 @@
 
                         <!-- Financial Metrics -->
                         <span class="badge bg-success fs-6 p-2 amz-badge-chart" data-metric="total_pft" id="total-pft-amt-badge" style="color: black; font-weight: bold; cursor:pointer; display: none;" title="View trend">PFT: $0.00</span>
-                        <span class="badge bg-primary fs-6 p-2 amz-badge-chart" data-metric="total_sales" id="total-sales-amt-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">Sales: $0.00</span>
+                        <span class="badge bg-primary fs-6 p-2 amz-badge-chart" data-metric="total_sales" id="total-sales-amt-badge" style="color: black; font-weight: bold; cursor:pointer;" title="30-day sales from real Amazon orders (same source as /amazon/daily-sales). Click for trend.">Sales: ${{ number_format((float) ($amazonSalesL30 ?? 0)) }}</span>
                         
                         <!-- Percentage Metrics -->
                         <span class="badge bg-info fs-6 p-2 amz-badge-chart" data-metric="gpft_pct" id="avg-gpft-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">GPFT: 0%</span>
@@ -558,6 +558,7 @@
                         <!-- Amazon Metrics -->
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Price: $0.00</span>
                         <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;">Views: 0</span>
+                        <span class="badge fs-6 p-2" id="total-qty-sold-badge" style="background-color: #20c997; color: black; font-weight: bold;" title="Total Amazon units sold in the last 30 days from real Amazon orders (Pacific, through yesterday) — same source as /amazon/daily-sales">Qty: {{ number_format((int) ($amazonUnitsSoldL30 ?? 0)) }}</span>
                         <span class="badge bg-success fs-6 p-2" id="avg-cvr-badge" style="color: black; font-weight: bold;">CVR: 0%</span>
 
                         <!-- Mapping / Listing Badges (Clickable filter — same logic as /map-issues) -->
@@ -6253,8 +6254,13 @@
                         totalL30 += l30;
                     }
                 });
-                const avgPrice = totalL30 > 0 ? totalWeightedPrice / totalL30 : 0;
-                $('#avg-price-badge').text('Price: $' + Math.round(avgPrice));
+                // Real-orders 30-day sales + units (server-computed, same source as /amazon/daily-sales).
+                const SERVER_AMZ_SALES_L30 = {{ (float) ($amazonSalesL30 ?? 0) }};
+                const SERVER_AMZ_QTY_L30 = {{ (int) ($amazonUnitsSoldL30 ?? 0) }};
+
+                // Avg Price = orders Sales ÷ orders Qty (matches the daily-sales basis).
+                const avgPrice = SERVER_AMZ_QTY_L30 > 0 ? (SERVER_AMZ_SALES_L30 / SERVER_AMZ_QTY_L30) : 0;
+                $('#avg-price-badge').text('Price: $' + avgPrice.toFixed(2));
 
                 let totalViews = 0;
                 data.forEach(row => {
@@ -6262,10 +6268,21 @@
                         totalViews += parseFloat(row['Sess30'] || 0);
                     }
                 });
-                const avgCVR = totalViews > 0 ? (totalL30 / totalViews * 100) : 0;
+                // Store-wide views (full dataset) so CVR pairs with the global orders Qty.
+                let totalViewsAll = 0;
+                allData.forEach(row => {
+                    if (!row['is_parent_summary'] && parseFloat(row['INV']) > 0) {
+                        totalViewsAll += parseFloat(row['Sess30'] || 0);
+                    }
+                });
+                // CVR = orders Qty ÷ store views × 100.
+                const avgCVR = totalViewsAll > 0 ? (SERVER_AMZ_QTY_L30 / totalViewsAll * 100) : 0;
                 const avgViews = totalSkuCount > 0 ? Math.round(totalViews / totalSkuCount) : 0;
                 $('#avg-cvr-badge').text('CVR: ' + avgCVR.toFixed(1) + '%');
                 $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
+                // Qty Sold badge is driven from real Amazon orders (server-computed, same source as
+                // /amazon/daily-sales) so it matches that page — do NOT overwrite it with the per-SKU
+                // A_L30 sum here.
                 // Update sold counts
                 $('#total-sold-count').text(totalSoldCount.toLocaleString());
                 $('#zero-sold-count').text(zeroSoldCount.toLocaleString());
@@ -6305,7 +6322,8 @@
                 $('#nroi-percent-badge').text('NROI: ' + Math.round(nroiPercent) + '%');
                 
                 $('#total-pft-amt-badge').text('PFT: $' + Math.round(totalPftAmt));
-                $('#total-sales-amt-badge').text('Sales: $' + Math.round(totalSalesAmt));
+                // Sales badge = real-orders 30-day sales (matches /amazon/daily-sales). Not filter-dependent.
+                $('#total-sales-amt-badge').text('Sales: $' + Math.round(SERVER_AMZ_SALES_L30).toLocaleString('en-US'));
                 
                 // AVG GPFT% = (Total_pft / Total_Sales) * 100 (Gross Profit % - before ads)
                 const avgGpft = totalSalesAmt > 0 ? ((totalPftAmt / totalSalesAmt) * 100) : 0;
@@ -6330,7 +6348,7 @@
                         missing_nonfba_count: missingAmazonNonFbaCount,
                         prc_gt_lmp_count: prcGtLmpCount,
                         total_pft: Math.round(totalPftAmt),
-                        total_sales: Math.round(totalSalesAmt),
+                        total_sales: Math.round(SERVER_AMZ_SALES_L30),
                         gpft_pct: Math.round(avgGpft),
                         npft_pct: Math.round(avgPft),
                         groi_pct: Math.round(groiPercent)

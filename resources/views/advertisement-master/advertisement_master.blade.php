@@ -343,9 +343,9 @@
 
             const channelLinks = {
                 'Amazon': "{{ route('amazon.ads.all') }}",
-                'Amazon · KW': "{{ route('amazon.kw.ads') }}",
-                'Amazon · PT': "{{ route('amazon.pt.ads') }}",
-                'Amazon · HL': "{{ route('amazon.hl.ads') }}",
+                'Amazon · KW': "{{ route('amazon.ads.all') }}?search=KW",
+                'Amazon · PT': "{{ route('amazon.ads.all') }}?search=PT",
+                'Amazon · HL': "{{ route('amazon.ads.all') }}?source=sb_reports",
                 'eBay': "{{ route('ebay.campaign.ads') }}",
                 'eBay 2': "{{ route('ebay2.campaign.ads') }}",
                 'eBay 3': "{{ route('ebay3.campaign.ads') }}",

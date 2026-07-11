@@ -1058,7 +1058,7 @@
                         </tr>
 
                         <tr class="accordion-body">
-                            <td class="text-center"><a href="{{ route('amazon.kw.ads') }}" target="_blank" style="text-decoration:none;">AMZ KW</a></td>
+                            <td class="text-center">AMZ KW</td>
                             <td class="text-center"></td>
                             <td class="text-center"><a href="#" class="adv-l60-tab-link text-primary" title="View L60 Data">L60</a></td>
                             <td class="text-center"><a href="#" class="adv-l60-graph-link text-success" title="View L60 Graph">📈</a></td>
@@ -1217,7 +1217,7 @@
                         </tr>
 
                          <tr class="accordion-body">
-                            <td class="text-center"><a href="{{ route('amazon.pt.ads') }}" target="_blank" style="text-decoration:none;">AMZ PT</a></td>
+                            <td class="text-center">AMZ PT</td>
                             <td class="text-center"></td>
                             <td class="text-center"><a href="#" class="adv-l60-tab-link text-primary" title="View L60 Data">L60</a></td>
                             <td class="text-center"><a href="#" class="adv-l60-graph-link text-success" title="View L60 Graph">📈</a></td>
@@ -1376,7 +1376,7 @@
                         </tr>
 
                         <tr class="accordion-body">
-                            <td class="text-center"><a href="{{ route('amazon.hl.ads') }}" target="_blank" style="text-decoration:none;">AMZ HL</a></td>
+                            <td class="text-center">AMZ HL</td>
                             <td class="text-center"></td>
                             <td class="text-center"><a href="#" class="adv-l60-tab-link text-primary" title="View L60 Data">L60</a></td>
                             <td class="text-center"><a href="#" class="adv-l60-graph-link text-success" title="View L60 Graph">📈</a></td>

@@ -61,7 +61,7 @@ class AmazonSalesController extends Controller
         $endDate = $yesterdayPacific->copy()->endOfDay();
         $startWindow = $yesterdayPacific->copy()->subDays($windowDays - 1)->startOfDay();
 
-        // Total Sales badge: AMAZON_SALES_TOTAL_MODE (default order_greatest ≈ Seller Central order revenue)
+        // Total Sales badge: AMAZON_SALES_TOTAL_MODE (default lines = Seller Central "Ordered Product Sales", tax excluded)
         $amazonSalesTotal = AmazonOrder::badgeTotalSalesByOrderDate($startWindow, $endDate);
 
         // 8 Feb to yesterday (separate badge, fixed start) — same formula as main badge

@@ -13,8 +13,8 @@ class AmazonOrder extends Model
 
     /**
      * Total Sales mode for the daily sales page (see badgeTotalSalesByOrderDate).
-     * - order_greatest (default): Σ per order max(line sums, total_amount, JSON OrderTotal) — closest to many Seller Central “sales” views.
-     * - lines: Σ line price only (ordered-product style).
+     * - lines (default): Σ line price only — matches Seller Central "Ordered Product Sales" (tax excluded).
+     * - order_greatest: Σ per order max(line sums, total_amount, JSON OrderTotal) — includes tax/shipping.
      * - qty_times_price: legacy Σ (quantity × price).
      */
     public const SALES_TOTAL_MODE_ORDER_GREATEST = 'order_greatest';
@@ -45,12 +45,15 @@ class AmazonOrder extends Model
 
     public static function salesTotalMode(): string
     {
-        $m = strtolower(trim((string) env('AMAZON_SALES_TOTAL_MODE', self::SALES_TOTAL_MODE_ORDER_GREATEST)));
+        // Default to `lines` (Σ item price, tax excluded) so the 30-day Total Sales badge
+        // matches Amazon Seller Central "Ordered Product Sales" — same formula as the Y Sales
+        // badge (productSalesByOrderDate). `order_greatest` inflated totals with tax/shipping.
+        $m = strtolower(trim((string) env('AMAZON_SALES_TOTAL_MODE', self::SALES_TOTAL_MODE_LINES)));
 
         return match ($m) {
-            self::SALES_TOTAL_MODE_LINES, 'sum_lines', 'ordered_product_sales' => self::SALES_TOTAL_MODE_LINES,
+            self::SALES_TOTAL_MODE_ORDER_GREATEST, 'greatest', 'order_total' => self::SALES_TOTAL_MODE_ORDER_GREATEST,
             self::SALES_TOTAL_MODE_QTY_TIMES_PRICE, 'legacy', 'original' => self::SALES_TOTAL_MODE_QTY_TIMES_PRICE,
-            default => self::SALES_TOTAL_MODE_ORDER_GREATEST,
+            default => self::SALES_TOTAL_MODE_LINES,
         };
     }
 

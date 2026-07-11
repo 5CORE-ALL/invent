@@ -18,7 +18,6 @@ use App\Http\Controllers\ArrivedContainerController;
 use App\Http\Controllers\Auth\UserController;
 use App\Http\Controllers\Kpi\KpiShippingController;
 use App\Http\Controllers\Campaigns\AmazonAdRunningController;
-use App\Http\Controllers\Campaigns\AmazonCampaignReportsController;
 use App\Http\Controllers\Campaigns\AmazonCPCZeroController;
 use App\Http\Controllers\Campaigns\AmazonFbaAcosController;
 use App\Http\Controllers\Campaigns\AmazonPinkDilAdController;
@@ -5304,25 +5303,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/amazon-fba/acos-kw-control-data', 'amazonFbaAcosKwControlData')->name('amazon.fba.acos.kw.control.data');
         Route::get('/amazon-fba/acos-pt-control', 'amazonFbaAcosPtView')->name('amazon.fba.acos.pt.control');
         Route::get('/amazon-fba/acos-pt-control-data', 'amazonFbaAcosPtControlData')->name('amazon.fba.acos.pt.control.data');
-    });
-
-    Route::controller(AmazonCampaignReportsController::class)->group(function () {
-        Route::get('/amazon/campaign/reports', 'index')->name('amazon.campaign.reports');
-        Route::get('/amazon/kw/ads', 'amazonKwAdsView')->name('amazon.kw.ads');
-        Route::get('/amazon/kw/ads/data', 'getAmazonKwAdsData');
-        Route::get('/amazon-kw-ads/filter', 'filterKwAds')->name('amazonKwAds.filter');
-        Route::get('/amazon/campaign/chart-data', 'getCampaignChartData');
-
-        Route::get('/amazon/pt/ads', 'amazonPtAdsView')->name('amazon.pt.ads');
-
-        Route::get('/amazon/pt/ads/data', 'getAmazonPtAdsData');
-        Route::get('/amazon-pt-ads/filter', 'filterPtAds')->name('amazonPtAds.filter');
-        Route::get('/amazon/hl/ads', 'amazonHlAdsView')->name('amazon.hl.ads');
-        Route::get('/amazon/hl/ads/data', 'getAmazonHlAdsData');
-        Route::get('/amazon-hl-ads/filter', 'filterHlAds')->name('amazonHlAds.filter');
-        Route::get('/amazon/hl/campaign/chart-data', 'getHlCampaignChartData');
-
-        Route::get('/amazon/campaign/reports/data', 'getAmazonCampaignsData');
     });
 
     // Amazon FBA bid automation health endpoint (last command run info; public for monitoring).

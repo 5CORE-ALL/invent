@@ -81,10 +81,10 @@
                 <p class="text-muted small mb-2" id="date-range-info">
                     Date range (Pacific): {{ $amazonSalesWindowStart ?? '—' }} – {{ $amazonSalesWindowEnd ?? '—' }}
                     — {{ (int) ($amazonSalesWindowDays ?? \App\Http\Controllers\Sales\AmazonSalesController::DAILY_SALES_WINDOW_DAYS) }} days through yesterday (today excluded).
-                    <strong>Total Sales</strong> uses mode <code>{{ $amazonSalesTotalMode ?? 'order_greatest' }}</code>
+                    <strong>Total Sales</strong> uses mode <code>{{ $amazonSalesTotalMode ?? 'lines' }}</code>
                     (<code>AMAZON_SALES_TOTAL_MODE</code> in <code>.env</code>):
-                    <code>order_greatest</code> = Σ per order max(line prices, <code>total_amount</code>, JSON OrderTotal) — default, closest to many Amazon totals;
-                    <code>lines</code> = Σ line <code>price</code> only;
+                    <code>lines</code> = Σ line <code>price</code> only — default, matches Seller Central "Ordered Product Sales" (tax excluded);
+                    <code>order_greatest</code> = Σ per order max(line prices, <code>total_amount</code>, JSON OrderTotal) — includes tax/shipping;
                     <code>qty_times_price</code> = legacy Σ (quantity × price).
                     Canceled / Cancelled excluded.
                 </p>

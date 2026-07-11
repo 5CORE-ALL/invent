@@ -2240,8 +2240,33 @@ class OverallAmazonController extends Controller
                 ->value('ads_percentage');
         }
 
+        // Authoritative 30-day units sold from real Amazon orders — SAME window + query the
+        // /amazon/daily-sales page uses (Σ i.quantity, Pacific through yesterday, exclude
+        // Canceled/Cancelled). The per-SKU A_L30 column comes from a different (datasheet)
+        // source, so this badge is driven from orders to match daily-sales exactly.
+        $yesterdayPacific = \Carbon\Carbon::yesterday('America/Los_Angeles');
+        $unitsEnd = $yesterdayPacific->copy()->endOfDay();
+        $unitsStart = $yesterdayPacific->copy()
+            ->subDays(\App\Http\Controllers\Sales\AmazonSalesController::DAILY_SALES_WINDOW_DAYS - 1)
+            ->startOfDay();
+        $amazonUnitsSoldL30 = (int) (DB::table('amazon_orders as o')
+            ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
+            ->where('o.order_date', '>=', $unitsStart)
+            ->where('o.order_date', '<=', $unitsEnd)
+            ->where(function ($q) {
+                $q->whereNull('o.status')
+                    ->orWhereNotIn('o.status', ['Canceled', 'Cancelled']);
+            })
+            ->sum(DB::raw('COALESCE(i.quantity, 0)')));
+
+        // Authoritative 30-day sales from real Amazon orders — identical to the /amazon/daily-sales
+        // "Total Sales" badge (AMAZON_SALES_TOTAL_MODE, default = Ordered Product Sales).
+        $amazonSalesL30 = (float) \App\Models\AmazonOrder::badgeTotalSalesByOrderDate($unitsStart, $unitsEnd);
+
         return view("market-places.amazon_tabulator_view", [
-            'amazonAdsPercent' => $amazonAdsPercent,
+            'amazonAdsPercent'   => $amazonAdsPercent,
+            'amazonUnitsSoldL30' => $amazonUnitsSoldL30,
+            'amazonSalesL30'     => $amazonSalesL30,
         ]);
     }
 

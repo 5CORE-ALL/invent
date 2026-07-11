@@ -1322,7 +1322,14 @@
                     var s = document.getElementById('amz-filter-search');
                     if (s) s.value = deepSearch;
                 }
-                amzSetDatesToLatestForSource('sp_reports');
+                var deepSource = params.get('source');
+                if (deepSource && rawSources[deepSource]) {
+                    var rt = document.getElementById('amazonAdsFilterReportType');
+                    if (rt) rt.value = deepSource;
+                    amzSwitchSource(deepSource);
+                } else {
+                    amzSetDatesToLatestForSource('sp_reports');
+                }
                 amzUpdatePushButtons();
                 amzUpdatePieButton();
                 amzUpdateSourceLabel();
