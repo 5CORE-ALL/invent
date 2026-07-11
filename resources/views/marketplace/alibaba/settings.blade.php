@@ -14,7 +14,7 @@
 <div class="row">
     <div class="col-12">
         <a href="{{ route('marketplace.manager.show', 'alibaba') }}" class="text-muted small"><i class="ri-arrow-left-line"></i> Alibaba Manager</a>
-        <h4 class="mt-2 mb-1">Alibaba Sync Settings</h4>
+        @include('marketplace._page-heading', ['slug' => 'alibaba', 'heading' => 'Alibaba Sync Settings'])
         <p class="text-muted mb-3">Configure how Shopify (source) syncs with Alibaba for pricing, inventory, and orders.</p>
 
         @include('marketplace.alibaba._nav', ['active' => 'settings'])

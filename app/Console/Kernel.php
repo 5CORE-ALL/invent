@@ -1201,6 +1201,23 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo($log);
+
+        // Reverb Marketplace Manager (same cadence as AE/Alibaba)
+        $schedule->command('reverb:manager-sync-inventory')
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('reverb-manager-sync-inventory')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('reverb:manager-sync-orders --from=2026-07-07 --import')
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('reverb-manager-sync-orders')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
         // $schedule->command('shopify:retry-pending-orders')
             //     ->hourly()
             //     ->timezone('UTC')

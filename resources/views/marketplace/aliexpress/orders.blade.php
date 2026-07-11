@@ -4,7 +4,7 @@
 <div class="row">
     <div class="col-12">
         <a href="{{ route('marketplace.manager.show', 'aliexpress') }}" class="text-muted small"><i class="ri-arrow-left-line"></i> AliExpress Manager</a>
-        <h4 class="mt-2 mb-1">AliExpress Orders</h4>
+        @include('marketplace._page-heading', ['slug' => 'aliexpress', 'heading' => 'AliExpress Orders'])
         <p class="text-muted mb-3">Orders stored locally from AliExpress API. Push to Shopify manually or enable auto-import in <a href="{{ route('marketplace.settings', 'aliexpress') }}">Settings</a>.</p>
 
         @include('marketplace.aliexpress._nav', ['active' => 'orders'])
@@ -64,7 +64,11 @@
                                     <td>{{ is_numeric($o->amount) ? number_format((float)$o->amount, 2) : '—' }}</td>
                                     <td>
                                         @if($o->shopify_order_id)
-                                            <span class="badge bg-success">Imported</span>
+                                            @if(str_starts_with((string) $o->shopify_order_id, 'manual'))
+                                                <span class="badge bg-success">Already imported</span>
+                                            @else
+                                                <span class="badge bg-success">Imported</span>
+                                            @endif
                                             <small class="d-block text-muted">{{ $o->shopify_order_id }}</small>
                                         @elseif(($o->import_status ?? '') === 'queued')
                                             <span class="badge bg-info">Queued</span>
@@ -80,6 +84,7 @@
                                         @else
                                             <div class="d-flex gap-1 flex-wrap" onclick="event.stopPropagation();">
                                                 <button type="button" class="btn btn-sm btn-warning btn-push-order" data-id="{{ $o->id }}">Push to Shopify</button>
+                                                <button type="button" class="btn btn-sm btn-outline-success btn-mark-imported" data-id="{{ $o->id }}" data-order-id="{{ $o->order_id }}" title="Mark as already imported / entered manually">Already imported</button>
                                                 <button type="button" class="btn btn-sm btn-outline-danger btn-delete-ready-order" data-id="{{ $o->id }}" data-order-id="{{ $o->order_id }}" title="Remove from ready-for-import">Delete</button>
                                             </div>
                                         @endif
@@ -189,6 +194,38 @@ document.querySelectorAll('.btn-delete-ready-order').forEach(function (btn) {
         .then(function (r) { return r.json(); })
         .then(function (data) {
             alert(data.message || (data.success ? 'Deleted' : 'Failed'));
+            if (data.success) location.reload();
+            else btn.disabled = false;
+        })
+        .catch(function () {
+            alert('Request failed.');
+            btn.disabled = false;
+        });
+    });
+});
+
+document.querySelectorAll('.btn-mark-imported').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+        var id = this.getAttribute('data-id');
+        var orderId = this.getAttribute('data-order-id') || id;
+        if (!id) return;
+        if (!confirm('Mark AliExpress order ' + orderId + ' as already imported?\n\nUse this if the order was already entered in Shopify manually. No new Shopify order will be created.')) {
+            return;
+        }
+        var shopifyOrderId = prompt('Optional Shopify order ID (leave blank if entered manually):', '') || '';
+        this.disabled = true;
+        fetch('{{ route('marketplace.orders.mark-imported', 'aliexpress') }}', {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ id: id, shopify_order_id: shopifyOrderId }),
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            alert(data.message || (data.success ? 'Marked' : 'Failed'));
             if (data.success) location.reload();
             else btn.disabled = false;
         })

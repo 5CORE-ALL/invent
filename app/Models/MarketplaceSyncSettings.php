@@ -44,10 +44,28 @@ class MarketplaceSyncSettings extends Model
         return (bool) ($settings['listings']['create_products_on_alibaba'] ?? false);
     }
 
+    public static function reverbCanCreateProducts(?array $settings = null): bool
+    {
+        $settings ??= self::getFor('reverb');
+
+        return (bool) ($settings['listings']['create_products_on_reverb'] ?? false);
+    }
+
     public static function defaults(?string $marketplace = null): array
     {
         $marketplace = strtolower((string) $marketplace);
         $isAlibaba = $marketplace === 'alibaba';
+        $isReverb = $marketplace === 'reverb';
+
+        $sourceName = 'aliexpress';
+        $sourceDisplay = 'AliExpress';
+        if ($isAlibaba) {
+            $sourceName = 'alibaba';
+            $sourceDisplay = 'Alibaba';
+        } elseif ($isReverb) {
+            $sourceName = 'reverb';
+            $sourceDisplay = 'Reverb';
+        }
 
         return [
             'pricing' => [
@@ -70,13 +88,14 @@ class MarketplaceSyncSettings extends Model
                 'keep_order_number_from_channel' => true,
                 'shopify_order_tags' => [],
                 'shopify_store' => 'main',
-                'shopify_source_name' => $isAlibaba ? 'alibaba' : 'aliexpress',
-                'shopify_source_display_name' => $isAlibaba ? 'Alibaba' : 'AliExpress',
+                'shopify_source_name' => $sourceName,
+                'shopify_source_display_name' => $sourceDisplay,
             ],
             'listings' => [
                 'auto_link_by_sku' => true,
                 'create_products_on_aliexpress' => false,
                 'create_products_on_alibaba' => false,
+                'create_products_on_reverb' => false,
                 'sync_title' => false,
                 'sync_images' => false,
             ],

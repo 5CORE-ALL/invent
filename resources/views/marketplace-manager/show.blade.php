@@ -7,7 +7,7 @@
         <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
             <div>
                 <a href="{{ route('marketplace.manager.index') }}" class="text-muted small"><i class="ri-arrow-left-line"></i> Marketplace Manager</a>
-                <h4 class="mb-1 mt-1">{{ $channel['label'] }}</h4>
+                @include('marketplace._page-heading', ['slug' => $slug, 'heading' => $channel['label'], 'mb' => 'mb-1'])
                 <p class="text-muted mb-0">Source shop: <strong>{{ $channel['source_shop'] }}</strong></p>
             </div>
             <div>

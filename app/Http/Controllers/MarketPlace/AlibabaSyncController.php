@@ -574,6 +574,50 @@ class AlibabaSyncController extends Controller
         ]);
     }
 
+    /**
+     * Mark a marketplace order as already imported / entered manually in Shopify
+     * so it leaves the ready-for-import queue without creating a new Shopify order.
+     */
+    public function markOrderAlreadyImported(Request $request): JsonResponse
+    {
+        $id = (int) $request->input('id');
+        $order = AlibabaOrderMetric::find($id);
+
+        if (! $order) {
+            return response()->json(['success' => false, 'message' => 'Order not found.'], 404);
+        }
+
+        if (! empty($order->shopify_order_id)) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Already marked as imported.',
+                'shopify_order_id' => $order->shopify_order_id,
+            ]);
+        }
+
+        $orderId = (string) $order->order_id;
+        $shopifyOrderId = trim((string) $request->input('shopify_order_id', ''));
+        if ($shopifyOrderId === '') {
+            $shopifyOrderId = 'manual:'.$orderId;
+        }
+
+        $updated = AlibabaOrderMetric::query()
+            ->where('order_id', $orderId)
+            ->whereNull('shopify_order_id')
+            ->update([
+                'shopify_order_id' => $shopifyOrderId,
+                'import_status' => 'imported',
+                'pushed_to_shopify_at' => now(),
+            ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => "Marked Alibaba order {$orderId} as already imported ({$updated} row(s)).",
+            'shopify_order_id' => $shopifyOrderId,
+            'updated' => $updated,
+        ]);
+    }
+
     public function syncSettings(Request $request): View
     {
         return view('marketplace.alibaba.settings', [

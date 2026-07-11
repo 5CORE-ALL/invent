@@ -258,6 +258,7 @@ class AliexpressOrderPushService
             'note' => $orderPayload['note'] ?? null,
             'note_attributes' => $orderPayload['note_attributes'] ?? [],
             'shipping_lines' => $orderPayload['shipping_lines'] ?? [],
+            'tax_lines' => $orderPayload['tax_lines'] ?? [],
             'channel' => [
                 'display_name' => $this->formatter->shopifySourceDisplayName(),
                 'source_name' => $orderPayload['source_name'] ?? null,

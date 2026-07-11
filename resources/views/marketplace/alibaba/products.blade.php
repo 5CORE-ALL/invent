@@ -4,7 +4,7 @@
 <div class="row">
     <div class="col-12">
         <a href="{{ route('marketplace.manager.show', 'alibaba') }}" class="text-muted small"><i class="ri-arrow-left-line"></i> Alibaba Manager</a>
-        <h4 class="mt-2 mb-1">Alibaba Listings</h4>
+        @include('marketplace._page-heading', ['slug' => 'alibaba', 'heading' => 'Alibaba Listings'])
         <p class="text-muted mb-3">Shopify catalog from <code>shopify_skus</code> (your synced Shopify inventory), with Alibaba link status from <code>alibaba_metrics</code>. Use <strong>Sync Alibaba link map</strong> to refresh SKU ↔ product_id mappings from Alibaba.</p>
 
         @include('marketplace.alibaba._nav', ['active' => 'products'])

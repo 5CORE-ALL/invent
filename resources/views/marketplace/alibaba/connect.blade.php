@@ -12,7 +12,7 @@
 <div class="row">
     <div class="col-12">
         <a href="{{ route('marketplace.manager.index') }}" class="text-muted small"><i class="ri-arrow-left-line"></i> Marketplace Manager</a>
-        <h4 class="mt-2 mb-3">Alibaba — Connect</h4>
+        @include('marketplace._page-heading', ['slug' => 'alibaba', 'heading' => 'Alibaba — Connect', 'mb' => 'mb-3'])
 
         @include('marketplace.alibaba._nav', ['active' => 'connect'])
 

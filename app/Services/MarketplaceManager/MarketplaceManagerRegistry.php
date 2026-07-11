@@ -8,8 +8,11 @@ namespace App\Services\MarketplaceManager;
  */
 class MarketplaceManagerRegistry
 {
+    /** Shared Laravel queue for all Marketplace Manager jobs (orders + inventory). */
+    public const QUEUE = 'marketplace-manager';
+
     /**
-     * @return array<int, array{slug: string, label: string, short: string, source_shop: string, enabled: bool}>
+     * @return array<int, array{slug: string, label: string, short: string, source_shop: string, logo: string, enabled: bool}>
      */
     public static function channels(): array
     {
@@ -19,6 +22,7 @@ class MarketplaceManagerRegistry
                 'label' => 'AliExpress',
                 'short' => 'AE',
                 'source_shop' => 'Shopify B2C',
+                'logo' => 'uploads/aliexpress.png',
                 'enabled' => true,
             ],
             [
@@ -26,9 +30,29 @@ class MarketplaceManagerRegistry
                 'label' => 'Alibaba',
                 'short' => 'AB',
                 'source_shop' => 'Shopify B2C',
+                'logo' => 'uploads/alibaba.svg',
+                'enabled' => true,
+            ],
+            [
+                'slug' => 'reverb',
+                'label' => 'Reverb',
+                'short' => 'RV',
+                'source_shop' => 'Shopify B2C',
+                'logo' => 'uploads/reverb.png',
                 'enabled' => true,
             ],
         ];
+    }
+
+    public static function logoUrl(string $slug): ?string
+    {
+        $channel = self::find($slug);
+
+        if ($channel === null || empty($channel['logo'])) {
+            return null;
+        }
+
+        return asset($channel['logo']);
     }
 
     public static function slugs(): array

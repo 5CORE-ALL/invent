@@ -82,7 +82,7 @@
 
         <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mt-2 mb-3">
             <div>
-                <h4 class="mb-1">{{ $displayTitle }}</h4>
+                @include('marketplace._page-heading', ['slug' => 'alibaba', 'heading' => $displayTitle, 'mt' => ''])
                 <div class="sku-hero"><code>{{ $s['sku'] ?? '—' }}</code></div>
                 <div class="mt-2 d-flex flex-wrap gap-2 align-items-center">
                     @if($linked)

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Jobs\SyncInventoryToAlibaba;
 use App\Jobs\SyncInventoryToAliexpress;
 use App\Jobs\SyncInventoryToReverb;
+use App\Jobs\SyncInventoryToReverbManager;
 use App\Models\MarketplaceSyncSettings;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -37,18 +38,27 @@ class ShopifyWebhookController extends Controller
 
         Log::info('ShopifyWebhookController: inventory update received, dispatching marketplace sync jobs');
 
-        SyncInventoryToReverb::dispatch()->onQueue('reverb');
-
         if (Schema::hasTable('marketplace_sync_settings')) {
             $aliexpressSettings = MarketplaceSyncSettings::getFor('aliexpress');
             if ($aliexpressSettings['inventory']['inventory_sync'] ?? false) {
-                SyncInventoryToAliexpress::dispatch()->onQueue('aliexpress');
+                SyncInventoryToAliexpress::dispatch();
             }
 
             $alibabaSettings = MarketplaceSyncSettings::getFor('alibaba');
             if ($alibabaSettings['inventory']['inventory_sync'] ?? false) {
-                SyncInventoryToAlibaba::dispatch()->onQueue('alibaba');
+                SyncInventoryToAlibaba::dispatch();
             }
+
+            $reverbMmSettings = MarketplaceSyncSettings::getFor('reverb');
+            if ($reverbMmSettings['inventory']['inventory_sync'] ?? false) {
+                // Marketplace Manager path (shared marketplace-manager queue)
+                SyncInventoryToReverbManager::dispatch();
+            } else {
+                // Legacy Reverb inventory sync (pre–Marketplace Manager, queue: reverb)
+                SyncInventoryToReverb::dispatch()->onQueue('reverb');
+            }
+        } else {
+            SyncInventoryToReverb::dispatch()->onQueue('reverb');
         }
 
         return response()->json(['ok' => true]);
