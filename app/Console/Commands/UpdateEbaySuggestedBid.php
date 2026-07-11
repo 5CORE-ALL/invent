@@ -156,6 +156,24 @@ class UpdateEbaySuggestedBid extends Command
         $sbidSlabs = $slabRow ? (json_decode($slabRow->rule, true)['rules'] ?? []) : [];
         $this->info('SBID slab rules loaded: ' . count($sbidSlabs) . ' (CVR / Dil / Esold / Views L30 → S Bid)');
 
+        // Sbid (Views) — daily ±%/day adjustment of the base S Bid by L7 View colour
+        // band, clamped to Min/Max caps (same rule the UI shows). The colour band
+        // needs the average l7_views across the listings this command processes.
+        $sbidViewsSettings = \App\Support\SbidViewsRule::settings();
+        $l7Sum = 0.0; $l7Count = 0;
+        foreach ($ebayMetricsNormalized as $m) {
+            if ($m && $m->item_id && $campaignListings->has($m->item_id)) {
+                $l7Sum += (float) ($m->l7_views ?? 0);
+                $l7Count++;
+            }
+        }
+        $avgL7Views = $l7Count > 0 ? ($l7Sum / $l7Count) : 0.0;
+        $this->info("Sbid (Views): avg L7 across {$l7Count} processed listing(s) = " . round($avgL7Views, 2)
+            . " | caps [{$sbidViewsSettings['min_cap']}, {$sbidViewsSettings['max_cap']}]"
+            . " | pink {$sbidViewsSettings['pink_dir']} {$sbidViewsSettings['pink_step']}"
+            . " | green {$sbidViewsSettings['green_dir']} {$sbidViewsSettings['green_step']}"
+            . " | red {$sbidViewsSettings['red_dir']} {$sbidViewsSettings['red_step']}");
+
         // Process ProductMaster data in chunks and update campaign listings
         $this->info('Processing bid updates based on Sbid Rule slabs...');
         $updatedListings = 0;
@@ -169,6 +187,8 @@ class UpdateEbaySuggestedBid extends Command
                 $ebayMetricsNormalized, 
                 $campaignListings,
                 $sbidSlabs,
+                $sbidViewsSettings,
+                $avgL7Views,
                 $ebayGeneralL30, 
                 &$updatedListings,
                 $normalizeSku
@@ -190,16 +210,21 @@ class UpdateEbaySuggestedBid extends Command
                         $qty = (float) ($shopify->quantity ?? 0);
                         $dil = $inv > 0 ? ($qty / $inv) * 100 : 0;
 
-                        // Resolve S Bid from the slab rules (first matching slab wins).
-                        $newBid = $this->resolveSlabBid($scvr, $dil, $soldL30, $views, $sbidSlabs);
+                        // Sbid (Views): adjust the CURRENT C Bid (bid_percentage) by the
+                        // row's L7 View colour band (direction + step), clamped to the
+                        // Min/Max caps. Green = no change (keep current C Bid). No current
+                        // C Bid → skip (nothing to adjust).
+                        $baseBid = (float) ($listing->bid_percentage ?? 0);
+                        $l7views = (float) ($ebayMetric->l7_views ?? 0);
+                        $newBid  = \App\Support\SbidViewsRule::apply($baseBid, $l7views, $avgL7Views, $sbidViewsSettings);
 
                         $listing->new_bid = $newBid;
                         $listing->sku = $pm->sku;
 
                         if ($newBid <= 0) {
-                            $this->warn("SKU: {$pm->sku} | Listing ID: {$ebayMetric->item_id} | CVR: " . round($scvr, 2) . "% DIL: " . round($dil, 2) . "% Esold: {$soldL30} Views: {$views} → No matching slab (skipped)");
+                            $this->warn("SKU: {$pm->sku} | Listing ID: {$ebayMetric->item_id} | Views: {$views} | L7: {$l7views} | C Bid: {$baseBid} → No current C Bid (skipped)");
                         } else {
-                            $this->info("SKU: {$pm->sku} | Listing ID: {$ebayMetric->item_id} | CVR: " . round($scvr, 2) . "% | DIL: " . round($dil, 2) . "% | Esold: {$soldL30} | Views: {$views} | SBID: {$newBid}");
+                            $this->info("SKU: {$pm->sku} | Listing ID: {$ebayMetric->item_id} | Views: {$views} | L7: {$l7views} | C Bid: {$baseBid} | SBID (Views): {$newBid}");
                             $updatedListings++;
                         }
                     }

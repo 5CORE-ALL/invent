@@ -1818,7 +1818,7 @@
                             }
                             const dotColor = getMetricDotColor(channel, 'cvr');
                             const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="cvr" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View CVR trend"></i>`;
-                            return `<span style="font-weight:600;color:${dotColor};">${pct.toFixed(2)}%</span>${chartIcon}`;
+                            return `<span style="font-weight:600;color:${dotColor};">${pct.toFixed(1)}%</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains('metric-chart-icon')) {
@@ -1840,7 +1840,7 @@
                                 totalViews += parseNumber(row['Total Views'] || 0);
                             });
                             if (totalViews === 0) return '-';
-                            return '<strong>' + ((totalQty / totalViews) * 100).toFixed(2) + '%</strong>';
+                            return '<strong>' + ((totalQty / totalViews) * 100).toFixed(1) + '%</strong>';
                         }
                     },
                     {

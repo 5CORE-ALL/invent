@@ -40,6 +40,36 @@ class EbaySalesController extends Controller
 
         $data = [];
         foreach ($orders as $order) {
+            // eBay "Total sales (includes taxes)" per order = pricingSummary.total (the
+            // amount the buyer paid, after discounts) PLUS eBay's collect-and-remit tax,
+            // which the Fulfillment API reports at the line-item level
+            // (lineItems[].ebayCollectAndRemitTaxes) — it is NOT in pricingSummary.
+            // The stored total_amount column is stale (old fetches saved the wrong key),
+            // so compute the figure straight from raw_data to mirror Seller Hub.
+            $raw = is_array($order->raw_data) ? $order->raw_data : json_decode((string) $order->raw_data, true);
+
+            // eBay's "Total sales" excludes cancelled orders (they never completed).
+            // Refunded orders ARE still counted as sales, so only skip CANCELED.
+            if (is_array($raw) && ($raw['cancelStatus']['cancelState'] ?? '') === 'CANCELED') {
+                continue;
+            }
+
+            $orderTotal = (float) ($order->total_amount ?? 0);
+            if (is_array($raw)) {
+                $base = (float) ($raw['pricingSummary']['total']['value'] ?? 0);
+                $carTax = 0.0;
+                foreach (($raw['lineItems'] ?? []) as $li) {
+                    foreach (($li['ebayCollectAndRemitTaxes'] ?? []) as $t) {
+                        $carTax += (float) ($t['amount']['value'] ?? 0);
+                    }
+                }
+                $computed = $base + $carTax;
+                if ($computed > 0) {
+                    $orderTotal = $computed;
+                }
+            }
+            $orderTotal = round($orderTotal, 2);
+
             foreach ($order->items as $item) {
                 $pm = $productMasters[$item->sku] ?? null;
 
@@ -104,7 +134,7 @@ class EbaySalesController extends Controller
                     'quantity' => $item->quantity,
                     'sale_amount' => round($price, 2),
                     'price' => $quantity > 0 ? round($price / $quantity, 2) : 0,
-                    'total_amount' => $order->total_amount,
+                    'total_amount' => $orderTotal,
                     'currency' => $order->currency,
                     'order_date' => $order->order_date,
                     'status' => $order->status,

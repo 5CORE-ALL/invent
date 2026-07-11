@@ -487,11 +487,22 @@
                 let totalWeightedPrice = 0;
                 let totalQuantityForPrice = 0;
                 let totalCogs = 0;
+                // eBay "Total sales (includes taxes)" = sum of each order's grand total
+                // (order.total_amount includes shipping + tax), counted once per order.
+                // Item price (lineItemCost) is merchandise-only, so it under-reports.
+                let totalOrderSales = 0;
+                const seenOrders = new Set();
 
                 data.forEach(row => {
                     // Skip rows with empty SKU or order_id
                     if (!row.sku || row.sku === '' || !row.order_id || row.order_id === '') {
                         return;
+                    }
+
+                    // Add the order grand total once per unique order (matches eBay Total Sales)
+                    if (!seenOrders.has(row.order_id)) {
+                        seenOrders.add(row.order_id);
+                        totalOrderSales += parseFloat(row.total_amount) || 0;
                     }
 
                     totalOrders++;
@@ -537,8 +548,8 @@
                 // Update badges
                 $('#total-orders-badge').text('Total Orders: ' + totalOrders.toLocaleString());
                 $('#total-quantity-badge').text('Total Quantity: ' + totalQuantity.toLocaleString());
-                $('#total-sales-badge').text('Total Sales: $' + totalRevenue.toFixed(2));
-                $('#total-revenue-badge').text('Total Revenue: $' + totalRevenue.toFixed(2));
+                $('#total-sales-badge').text('Total Sales: $' + totalOrderSales.toFixed(2));
+                $('#total-revenue-badge').text('Total Revenue: $' + totalOrderSales.toFixed(2));
                 $('#pft-percentage-badge').text('GPFT %: ' + pftPercentage.toFixed(1) + '%');
                 $('#roi-percentage-badge').text('ROI %: ' + roiPercentage.toFixed(1) + '%');
                 $('#avg-price-badge').text('Avg Price: $' + avgPrice.toFixed(2));

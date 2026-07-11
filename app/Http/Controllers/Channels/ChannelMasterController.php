@@ -3295,10 +3295,7 @@ class ChannelMasterController extends Controller
                     $ptC = (int) $ptData->sum('clicks'); $ptS = (float) $ptData->sum('sales7d'); $ptU = (int) $ptData->sum('purchases7d'); $ptSp = (float) $ptData->sum('spend');
                     $hlC = (int) $hlData->sum('clicks'); $hlS = (float) $hlData->sum('sales'); $hlU = (int) $hlData->sum('purchases'); $hlSp = (float) $hlData->sum('cost');
 
-                    // Spend is sourced from the /amazon-ads/all campaign aggregation
-                    // (SP reports for KW/PT, SB reports for HL) — the only page that
-                    // holds the real campaign data. Falls back to the campaign-table
-                    // sums above if the live pull fails. Clicks/sales/sold stay as-is.
+                    
                     try {
                         $adsRows = app(\App\Http\Controllers\AmazonAdsController::class)->getAdvertisementMasterChannelRows();
                         foreach (($adsRows[0]['_children'] ?? []) as $child) {

@@ -219,6 +219,28 @@ class EbayController extends Controller
         return response()->json(['success' => true, 'rule' => $rule]);
     }
 
+    /**
+     * Sbid (Views) settings — Min/Max caps + per-colour daily direction/step used
+     * by the Sbid (Views) column and applied on push (button + ebay:update-suggestedbid
+     * cron). Shared across users under key `ebay1_sbid_views` in ebay_sbid_rules.
+     */
+    public function getSbidViewsRule()
+    {
+        return response()->json(\App\Support\SbidViewsRule::settings());
+    }
+
+    public function saveSbidViewsRule(Request $request)
+    {
+        $settings = \App\Support\SbidViewsRule::sanitize($request->all());
+
+        DB::table('ebay_sbid_rules')->updateOrInsert(
+            ['key' => \App\Support\SbidViewsRule::KEY],
+            ['rule' => json_encode($settings), 'updated_at' => now()]
+        );
+
+        return response()->json(['success' => true, 'rule' => $settings]);
+    }
+
        public function ebayViewData(Request $request)
     {
         return view("market-places.ebay_pricing_data");

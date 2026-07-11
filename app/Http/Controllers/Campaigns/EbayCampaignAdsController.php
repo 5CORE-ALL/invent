@@ -134,6 +134,16 @@ class EbayCampaignAdsController extends Controller
         // Shopify inv/quantity for DIL, keyed by normalized SKU
         $shopifyMap = $this->shopifyByNormSku($metrics->pluck('sku')->filter()->unique()->values()->all());
 
+        // Sbid (Views): settings + avg L7 views (prefer the UI's avg to match screen).
+        $sbidViewsSettings = \App\Support\SbidViewsRule::settings();
+        $avgL7Views = $request->input('avg_l7_views');
+        if (!is_numeric($avgL7Views)) {
+            $l7Sum = 0.0; $l7Count = 0;
+            foreach ($metrics as $m) { $l7Sum += (float) ($m->l7_views ?? 0); $l7Count++; }
+            $avgL7Views = $l7Count > 0 ? ($l7Sum / $l7Count) : 0.0;
+        }
+        $avgL7Views = (float) $avgL7Views;
+
         // Load campaign ads for these listings
         $ads = DB::table('ebay_campaign_ads')
             ->whereIn('listing_id', $listingIds)
@@ -166,20 +176,14 @@ class EbayCampaignAdsController extends Controller
                 continue;
             }
 
-            // Calculate S Bid from the slab rules (CVR / Dil / Esold / Views L30).
-            $metric = $metrics->get($lid);
-            $views  = (float)($metric?->views ?? 0);
-            $l30    = (float)($metric?->ebay_l30 ?? 0);
-            $scvr   = $views > 0 ? ($l30 / $views) * 100 : 0;
-
-            $shop = $metric ? ($shopifyMap[$this->normSku($metric->sku)] ?? null) : null;
-            $inv  = (float)($shop->inv ?? 0);
-            $qty  = (float)($shop->quantity ?? 0);
-            $dil  = $inv > 0 ? ($qty / $inv) * 100 : 0;
-
-            $newBid = $this->resolveSlabBid($scvr, $dil, $l30, $views, $slabs);
+            // Sbid (Views): adjust the current C Bid (bid_percentage) by the row's
+            // L7 View band (direction/step), clamped to caps. No C Bid → skip.
+            $metric  = $metrics->get($lid);
+            $baseBid = (float) ($ad->bid_percentage ?? 0);
+            $l7views = (float) ($metric?->l7_views ?? 0);
+            $newBid  = \App\Support\SbidViewsRule::apply($baseBid, $l7views, $avgL7Views, $sbidViewsSettings);
             if ($newBid <= 0) {
-                $results[] = ['listing_id' => $lid, 'status' => 'skipped', 'reason' => 'No matching slab'];
+                $results[] = ['listing_id' => $lid, 'status' => 'skipped', 'reason' => 'No current C Bid to adjust'];
                 $skipped++;
                 continue;
             }
@@ -233,17 +237,21 @@ class EbayCampaignAdsController extends Controller
             return response()->json(['error' => 'No SKUs provided'], 422);
         }
 
-        // Load slab rules.
-        $slabRow = DB::table('ebay_sbid_rules')->where('key', 'ebay1_sbid_slabs')->first();
-        $slabs   = $slabRow ? (json_decode($slabRow->rule, true)['rules'] ?? []) : [];
-        if (empty($slabs)) {
-            return response()->json(['error' => 'No Sbid Rule slabs configured'], 422);
-        }
-
-        // Metrics keyed by normalized SKU (for factor values + item_id).
+        // Metrics keyed by normalized SKU (for l7_views + item_id).
         $metrics = \App\Models\EbayMetric::whereIn('sku', $skus)->get()
             ->keyBy(fn($m) => $this->normSku($m->sku));
-        $shopifyMap = $this->shopifyByNormSku($skus);
+
+        // Sbid (Views): adjustment settings + the average L7 views used for colour
+        // bands. Prefer the avg the UI computed (so the pushed value matches the
+        // screen); otherwise average l7_views across the SKUs in this request.
+        $sbidViewsSettings = \App\Support\SbidViewsRule::settings();
+        $avgL7Views = $request->input('avg_l7_views');
+        if (!is_numeric($avgL7Views)) {
+            $l7Sum = 0.0; $l7Count = 0;
+            foreach ($metrics as $m) { $l7Sum += (float) ($m->l7_views ?? 0); $l7Count++; }
+            $avgL7Views = $l7Count > 0 ? ($l7Sum / $l7Count) : 0.0;
+        }
+        $avgL7Views = (float) $avgL7Views;
 
         // Campaign ads keyed by listing_id (item_id).
         $itemIds = $metrics->pluck('item_id')->filter()->unique()->values()->all();
@@ -281,17 +289,13 @@ class EbayCampaignAdsController extends Controller
                 continue;
             }
 
-            $esold = (float) ($metric->ebay_l30 ?? 0);
-            $views = (float) ($metric->views ?? 0);
-            $cvr   = $views > 0 ? ($esold / $views) * 100 : 0;
-            $shop  = $shopifyMap[$norm] ?? null;
-            $inv   = (float) ($shop->inv ?? 0);
-            $qty   = (float) ($shop->quantity ?? 0);
-            $dil   = $inv > 0 ? ($qty / $inv) * 100 : 0;
-
-            $bid = $this->resolveSlabBid($cvr, $dil, $esold, $views, $slabs);
+            // Sbid (Views): adjust the current C Bid (bid_percentage) by the row's
+            // L7 View band (direction/step), clamped to caps. No C Bid → skip.
+            $baseBid = (float) ($ad->bid_percentage ?? 0);
+            $l7      = (float) ($metric->l7_views ?? 0);
+            $bid     = \App\Support\SbidViewsRule::apply($baseBid, $l7, $avgL7Views, $sbidViewsSettings);
             if ($bid <= 0) {
-                $results[] = ['sku' => $sku, 'status' => 'skipped', 'reason' => 'No matching slab'];
+                $results[] = ['sku' => $sku, 'status' => 'skipped', 'reason' => 'No current C Bid to adjust'];
                 $skipped++;
                 continue;
             }

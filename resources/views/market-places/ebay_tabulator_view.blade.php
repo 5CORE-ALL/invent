@@ -206,16 +206,13 @@
             background-color: #0d6efd;
         }
 
-        /* Summary badges: same layout as Ebay 2 Analytics — one row, equal flex share, scaled text */
+        /* Summary badges: wrap onto multiple rows, size to content so they never crowd */
         #summary-stats .ebay2-summary-badge-row {
             display: flex;
-            flex-wrap: nowrap;
+            flex-wrap: wrap;
             align-items: stretch;
-            gap: clamp(0.2rem, 0.5vw, 0.45rem);
+            gap: 0.4rem;
             width: 100%;
-            overflow-x: auto;
-            -webkit-overflow-scrolling: touch;
-            scrollbar-width: thin;
         }
 
         /* Image column hover preview (same pattern as forecast.analysis) */
@@ -226,10 +223,9 @@
         }
 
         #summary-stats .ebay2-summary-badge-row>.badge {
-            flex: 1 1 0;
-            min-width: 0;
-            font-size: clamp(0.62rem, 0.35rem + 0.85vw, 1.05rem);
-            padding: clamp(0.28rem, 0.4vw, 0.5rem) clamp(0.2rem, 0.5vw, 0.5rem);
+            flex: 0 0 auto;
+            font-size: 0.8rem;
+            padding: 0.35rem 0.6rem;
             font-weight: bold;
             box-sizing: border-box;
             display: inline-flex;
@@ -524,6 +520,15 @@
                             title="Build rules on CVR / Dil / Esold / Views L30 that set the S Bid column">
                         <i class="fas fa-sliders-h me-1"></i>Sbid Rule
                     </button>
+
+                    {{-- Sbid (Views) button — sets the Min/Max caps and per-colour daily
+                         step (%/day) used by the Sbid (Views) column. --}}
+                    <button type="button" class="btn btn-sm pricing-filter-item"
+                            style="border:1px solid #6610f2; color:#6610f2;"
+                            data-bs-toggle="modal" data-bs-target="#sbidViewsRuleModal"
+                            title="Configure Min/Max caps and the daily ±%/day step per L7 View colour for the Sbid (Views) column">
+                        <i class="fas fa-eye me-1"></i>Sbid (Views)
+                    </button>
                 </div>
 
                 <!-- Summary Stats (layout matches Ebay 2 Analytics summary row) -->
@@ -571,6 +576,9 @@
                             title="CVR = (S Qty / Σ Views) × 100. Numerator is the orders-API L30 units (same value the S Qty badge shows, same source /ebay/daily-sales uses). Denominator is the sum of 'views' across rows with E Stock > 0.">CVR: 0%</span>
                         <span class="badge bg-info fs-6 p-2" id="total-views-badge"
                             style="color: black; font-weight: bold;">Views: 0</span>
+                        <span class="badge fs-6 p-2" id="avg-l7-views-badge"
+                            style="background-color: #0dcaf0; color: black; font-weight: bold;"
+                            title="Average L7 views across rows with E Stock > 0 (Σ L7 View / row count).">Avg L7: 0</span>
 
                         <!-- Badge Filters -->
                         <span class="badge bg-secondary fs-6 p-2" id="missing-l-count-badge"
@@ -1037,6 +1045,85 @@
         </div>
     </div>
 
+    {{-- Sbid (Views) Modal — Min/Max caps + per-colour daily step for the Sbid (Views) column. --}}
+    <div class="modal fade" id="sbidViewsRuleModal" tabindex="-1" aria-labelledby="sbidViewsRuleModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title" id="sbidViewsRuleModalLabel">
+                        <i class="fas fa-eye me-2" style="color:#6610f2;"></i>Sbid (Views)
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small mb-3">
+                        The <strong>Sbid (Views)</strong> column adjusts each row's current <strong>C BID</strong> once per day based on
+                        its <strong>L7 View</strong> colour (green = keep C Bid), then clamps the result between the Min and Max caps.
+                    </p>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-6">
+                            <label class="form-label mb-1" for="sbid-views-min-cap">Min Cap %</label>
+                            <input type="number" step="0.1" id="sbid-views-min-cap" class="form-control form-control-sm">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label mb-1" for="sbid-views-max-cap">Max Cap %</label>
+                            <input type="number" step="0.1" id="sbid-views-max-cap" class="form-control form-control-sm">
+                        </div>
+                    </div>
+
+                    <div class="border rounded p-2">
+                        <div class="small fw-bold mb-2">Daily action per L7 View colour (direction + %/day)</div>
+                        <div class="row g-3">
+                            <div class="col-4">
+                                <label class="form-label mb-1">
+                                    <span style="color:#d63384; font-weight:700;">Pink</span> (high views)
+                                </label>
+                                <select id="sbid-views-pink-dir" class="form-select form-select-sm mb-1">
+                                    <option value="dec">Decrease</option>
+                                    <option value="inc">Increase</option>
+                                    <option value="none">No change</option>
+                                </select>
+                                <input type="number" step="0.1" id="sbid-views-pink-step" class="form-control form-control-sm"
+                                       title="Points/day to apply for Pink L7 (≥ 2× avg)">
+                            </div>
+                            <div class="col-4">
+                                <label class="form-label mb-1">
+                                    <span style="color:#28a745; font-weight:700;">Green</span> (mid views)
+                                </label>
+                                <select id="sbid-views-green-dir" class="form-select form-select-sm mb-1">
+                                    <option value="none">No change</option>
+                                    <option value="inc">Increase</option>
+                                    <option value="dec">Decrease</option>
+                                </select>
+                                <input type="number" step="0.1" id="sbid-views-green-step" class="form-control form-control-sm"
+                                       title="Points/day to apply for Green L7 (avg..2× avg)">
+                            </div>
+                            <div class="col-4">
+                                <label class="form-label mb-1">
+                                    <span style="color:#a00211; font-weight:700;">Red</span> (low views)
+                                </label>
+                                <select id="sbid-views-red-dir" class="form-select form-select-sm mb-1">
+                                    <option value="inc">Increase</option>
+                                    <option value="dec">Decrease</option>
+                                    <option value="none">No change</option>
+                                </select>
+                                <input type="number" step="0.1" id="sbid-views-red-step" class="form-control form-control-sm"
+                                       title="Points/day to apply for Red L7 (< avg)">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-sm btn-primary" id="sbid-views-save-btn">
+                        <i class="fas fa-save me-1"></i>Save
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     {{-- Sku Link LMP Modal (same as /amazon-tabulator-view; shared endpoints/table) --}}
     <div class="modal fade" id="skuLinkLmpModal" tabindex="-1" aria-labelledby="skuLinkLmpModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
@@ -1086,20 +1173,80 @@
         let skuMetricsChart = null;
         let currentSku = null;
         let table = null; // Global table reference
+        /** Average L7 views (rows with E Stock > 0) — drives the L7 View column colours
+         *  and the "Avg L7" badge. Recomputed in updateSummary(). */
+        let avgL7ViewsGlobal = 0;
+
+        /** L7 View colour band for a value, relative to the current average:
+         *  red   = below avg, green = avg..2x avg, pink = 2x avg and above.
+         *  Returned as {key, color}; key drives the Sbid (Views) daily step. */
+        function l7ViewBand(value) {
+            const v = parseFloat(value) || 0;
+            const avg = avgL7ViewsGlobal || 0;
+            if (avg <= 0) return { key: '', color: '' };
+            if (v < avg) return { key: 'red', color: '#a00211' };
+            if (v < avg * 2) return { key: 'green', color: '#28a745' };
+            return { key: 'pink', color: '#d63384' };
+        }
+
+        /** Sbid (Views) settings — Min/Max caps + per-colour daily step (%/day).
+         *  All entered in the Sbid (Views) modal and persisted in localStorage so they
+         *  survive reloads. The Sbid (Views) column clamps its result to [min,max]. */
+        function sbidViewsNum(key, fallback) {
+            const v = parseFloat(localStorage.getItem(key));
+            return isFinite(v) ? v : fallback;
+        }
+        function sbidViewsDir(key, fallback) {
+            const v = localStorage.getItem(key);
+            return (v === 'inc' || v === 'dec' || v === 'none') ? v : fallback;
+        }
+        let sbidViewsMinCap   = sbidViewsNum('ebay1_sbid_views_min_cap', 1);
+        let sbidViewsMaxCap   = sbidViewsNum('ebay1_sbid_views_max_cap', 20);
+        let sbidViewsPinkDir  = sbidViewsDir('ebay1_sbid_views_pink_dir', 'dec');
+        let sbidViewsPinkStep = sbidViewsNum('ebay1_sbid_views_pink_step', 1);
+        let sbidViewsGreenDir = sbidViewsDir('ebay1_sbid_views_green_dir', 'none');
+        let sbidViewsGreenStep = sbidViewsNum('ebay1_sbid_views_green_step', 0);
+        let sbidViewsRedDir   = sbidViewsDir('ebay1_sbid_views_red_dir', 'inc');
+        let sbidViewsRedStep  = sbidViewsNum('ebay1_sbid_views_red_step', 1);
+
+        /**
+         * Sbid (Views): daily one-step adjustment of the S BID based on the row's
+         * L7 View colour band, clamped to the manual Min/Max caps. Each colour's
+         * direction (increase / decrease / no change) and step are configurable in
+         * the Sbid (Views) modal.
+         * Returns { bid, color, skip }. skip=true when there is no base S Bid.
+         */
+        function sbidViewsApplyStep(base, dir, step) {
+            const s = isFinite(step) ? step : 0;
+            if (dir === 'inc') return base + s;
+            if (dir === 'dec') return base - s;
+            return base; // 'none'
+        }
+        function computeSbidViews(rowData) {
+            // Base = current C Bid (live eBay bid). No C Bid → skip.
+            const cbid = parseFloat(rowData.ca_bid_percentage);
+            if (!isFinite(cbid) || cbid <= 0) {
+                return { bid: 0, color: '#6c757d', skip: true };
+            }
+            const band = l7ViewBand(rowData.l7_views);
+            let bid = cbid;
+            if (band.key === 'pink') bid = sbidViewsApplyStep(cbid, sbidViewsPinkDir, sbidViewsPinkStep);
+            else if (band.key === 'green') bid = sbidViewsApplyStep(cbid, sbidViewsGreenDir, sbidViewsGreenStep);
+            else if (band.key === 'red') bid = sbidViewsApplyStep(cbid, sbidViewsRedDir, sbidViewsRedStep);
+
+            const min = isFinite(sbidViewsMinCap) ? sbidViewsMinCap : -Infinity;
+            const max = isFinite(sbidViewsMaxCap) ? sbidViewsMaxCap : Infinity;
+            if (bid < min) bid = min;
+            if (bid > max) bid = max;
+
+            return { bid: bid, color: band.color || '#0d6efd', skip: false };
+        }
         let decreaseModeActive = false; // Track decrease mode state
         let increaseModeActive = false; // Track increase mode state
         let samePriceModeActive = false;
         let selectedSkus = new Set(); // Track selected SKUs across all pages
         /** Shared with /ebay/campaign-ads SBID Rule (ebay_sbid_rules.key = ebay1). */
-        let currentSbidRule = { l7_views_threshold: 70, l30_sold_es_bid_max: 0, bands: [] };
-
-        function shouldUseEsBid(sold, l7, rule) {
-            const l30Max = parseFloat(rule && rule.l30_sold_es_bid_max);
-            const l7Thr = parseFloat(rule && rule.l7_views_threshold);
-            const l30Limit = isFinite(l30Max) ? l30Max : 0;
-            const l7Limit = isFinite(l7Thr) ? l7Thr : 70;
-            return sold <= l30Limit || l7 < l7Limit;
-        }
+        let currentSbidRule = { bands: [] };
 
         function esBidResult(esBidRaw) {
             if (!isFinite(esBidRaw) || esBidRaw <= 0) {
@@ -2106,6 +2253,79 @@
             });
             $('#target-gpft-input').on('keypress', function(e) {
                 if (e.which === 13) $('#apply-target-gpft-btn').click();
+            });
+
+            // Sbid (Views) modal — seed inputs from stored settings each time it opens,
+            // then persist + repaint the Sbid (Views) column when Save is clicked.
+            function seedSbidViewsInputs() {
+                $('#sbid-views-min-cap').val(isFinite(sbidViewsMinCap) ? sbidViewsMinCap : '');
+                $('#sbid-views-max-cap').val(isFinite(sbidViewsMaxCap) ? sbidViewsMaxCap : '');
+                $('#sbid-views-pink-dir').val(sbidViewsPinkDir);
+                $('#sbid-views-pink-step').val(isFinite(sbidViewsPinkStep) ? sbidViewsPinkStep : '');
+                $('#sbid-views-green-dir').val(sbidViewsGreenDir);
+                $('#sbid-views-green-step').val(isFinite(sbidViewsGreenStep) ? sbidViewsGreenStep : '');
+                $('#sbid-views-red-dir').val(sbidViewsRedDir);
+                $('#sbid-views-red-step').val(isFinite(sbidViewsRedStep) ? sbidViewsRedStep : '');
+            }
+            // Apply a settings object (from DB) to the globals so the column + push use it.
+            function applySbidViewsSettings(s) {
+                if (!s || typeof s !== 'object') return;
+                if (isFinite(parseFloat(s.min_cap)))    sbidViewsMinCap   = parseFloat(s.min_cap);
+                if (isFinite(parseFloat(s.max_cap)))    sbidViewsMaxCap   = parseFloat(s.max_cap);
+                if (s.pink_dir)  sbidViewsPinkDir  = s.pink_dir;
+                if (isFinite(parseFloat(s.pink_step)))  sbidViewsPinkStep = parseFloat(s.pink_step);
+                if (s.green_dir) sbidViewsGreenDir = s.green_dir;
+                if (isFinite(parseFloat(s.green_step))) sbidViewsGreenStep = parseFloat(s.green_step);
+                if (s.red_dir)   sbidViewsRedDir   = s.red_dir;
+                if (isFinite(parseFloat(s.red_step)))   sbidViewsRedStep  = parseFloat(s.red_step);
+            }
+            // Load shared settings from the DB (source of truth; the cron uses the same).
+            $.get(@json(url('/ebay-one/sbid-views-rule')), function(s) {
+                applySbidViewsSettings(s);
+                seedSbidViewsInputs();
+                if (table) table.redraw(false);
+            });
+
+            seedSbidViewsInputs();
+            $('#sbidViewsRuleModal').on('show.bs.modal', seedSbidViewsInputs);
+
+            $('#sbid-views-save-btn').on('click', function() {
+                const num = function(sel, dflt) {
+                    const v = parseFloat($(sel).val());
+                    return isFinite(v) ? v : dflt;
+                };
+                const dir = function(sel, dflt) {
+                    let v = $(sel).val();
+                    return (v === 'inc' || v === 'dec' || v === 'none') ? v : dflt;
+                };
+                const payload = {
+                    min_cap:    num('#sbid-views-min-cap', 1),
+                    max_cap:    num('#sbid-views-max-cap', 20),
+                    pink_dir:   dir('#sbid-views-pink-dir', 'dec'),
+                    pink_step:  num('#sbid-views-pink-step', 1),
+                    green_dir:  dir('#sbid-views-green-dir', 'none'),
+                    green_step: num('#sbid-views-green-step', 0),
+                    red_dir:    dir('#sbid-views-red-dir', 'inc'),
+                    red_step:   num('#sbid-views-red-step', 1),
+                };
+                $.ajax({
+                    url: @json(url('/ebay-one/sbid-views-rule')),
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                    contentType: 'application/json',
+                    data: JSON.stringify(payload),
+                    success: function(resp) {
+                        applySbidViewsSettings(resp && resp.rule ? resp.rule : payload);
+                        if (table) table.redraw(false);
+                        if (typeof showToast === 'function') showToast('success', 'Sbid (Views) settings saved');
+                        const modalEl = document.getElementById('sbidViewsRuleModal');
+                        const inst = bootstrap.Modal.getInstance(modalEl);
+                        if (inst) inst.hide();
+                    },
+                    error: function(xhr) {
+                        if (typeof showToast === 'function') showToast('error', 'Save failed: ' + xhr.status);
+                    }
+                });
             });
 
             // Badge click handlers for filtering
@@ -3843,7 +4063,9 @@
                         sorter: "number",
                         formatter: function(cell) {
                             var value = parseInt(cell.getValue() || 0);
-                            return value.toLocaleString();
+                            var color = l7ViewBand(value).color;
+                            var style = color ? ` style="color: ${color}; font-weight: 600;"` : '';
+                            return `<span${style}>${value.toLocaleString()}</span>`;
                         },
                         width: 70
                     },
@@ -4444,16 +4666,16 @@
                         field: "ca_suggested_bid",
                         hozAlign: "center",
                         width: 90,
-                        headerTooltip: "S Bid from the Sbid Rule slabs (CVR / Dil / Esold / Views L30 → S Bid). Configure via the 'Sbid Rule' button.",
+                        headerTooltip: "Daily adjustment of the current C BID by L7 View band — green keeps C Bid, pink/red apply the direction + %/day set in the 'Sbid (Views)' button — clamped to the Min/Max caps. No C Bid → —.",
                         sorter: function(a, b, aRow, bRow) {
-                            return getCombinedSbid(aRow.getData()).bid - getCombinedSbid(bRow.getData()).bid;
+                            return computeSbidViews(aRow.getData()).bid - computeSbidViews(bRow.getData()).bid;
                         },
                         formatter: function(cell) {
-                            const match = getCombinedSbid(cell.getRow().getData());
-                            if (match.skip) {
-                                return '<span class="text-muted" title="No SBID — l7_views below threshold and no ES Bid available" style="font-size:11px;">—</span>';
+                            const res = computeSbidViews(cell.getRow().getData());
+                            if (res.skip) {
+                                return '<span class="text-muted" title="No S Bid — no current C Bid to adjust" style="font-size:11px;">—</span>';
                             }
-                            return `<span style="color:${match.color}; font-weight:700;">${match.bid.toFixed(1)}%</span>`;
+                            return `<span style="color:${res.color}; font-weight:700;">${res.bid.toFixed(1)}%</span>`;
                         }
                     },
                     {
@@ -5165,11 +5387,20 @@
                 const avgPrice = totalL30 > 0 ? totalWeightedPrice / totalL30 : 0;
 
                 let totalViews = 0;
+                let totalL7Views = 0;
+                let l7ViewsCount = 0;
                 filteredData.forEach(row => {
                     if (rowEbayStockQty(row) > 0) {
                         totalViews += parseFloat(row.views || 0);
+                        totalL7Views += parseFloat(row.l7_views || 0);
+                        l7ViewsCount++;
                     }
                 });
+                const avgL7Views = l7ViewsCount > 0 ? (totalL7Views / l7ViewsCount) : 0;
+                // Expose to the L7 View column formatter so its colour thresholds
+                // (< avg red, 2x green, 4x pink) track the current average.
+                const prevAvgL7Views = avgL7ViewsGlobal;
+                avgL7ViewsGlobal = avgL7Views;
                 // CVR = (orders-API L30 units sold / Σ views) × 100. Numerator is the
                 // same fixed value the S Qty badge shows (Σ ebay_order_items.quantity
                 // for period='l30') — same source /ebay/daily-sales uses, so the two
@@ -5195,6 +5426,11 @@
                 $('#avg-price-badge').text('Price: $' + avgPrice.toFixed(2));
                 $('#avg-cvr-badge').text('CVR: ' + avgCVR.toFixed(1) + '%');
                 $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
+                $('#avg-l7-views-badge').text('Avg L7: ' + avgL7Views.toFixed(1));
+                // Repaint the L7 View column so its colour thresholds reflect the new avg.
+                if (table && Math.abs(prevAvgL7Views - avgL7Views) > 0.0001) {
+                    table.redraw(false);
+                }
 
                 // Count of rows currently shown after filters (exclude parent summary rows)
                 const visibleRowCount = filteredData.filter(row =>
@@ -6058,7 +6294,7 @@
 
         // ════════════════════════════════════════════════════════════════════
         // SBID Rule modal (shared with /ebay/campaign-ads; same endpoints)
-        // Edits L7 views threshold + SCVR band lookup + dynamic sub-rules for the S BID column.
+        // Edits SCVR band lookup + dynamic sub-rules for the S BID column.
         // ════════════════════════════════════════════════════════════════════
         (function() {
             const ruleGetUrl  = '/ebay/campaign-ads/rule';
@@ -6740,7 +6976,7 @@
                     return;
                 }
 
-                // Collect visible (filtered) rows whose factors match a slab with S Bid > 0.
+                // Collect visible (filtered) rows with a valid Sbid (Views) value.
                 const rows = table.getRows('active');
                 const skus = [];
                 rows.forEach(function(r) {
@@ -6749,7 +6985,7 @@
                     if (!sku) return;
                     if (rd.is_parent_summary || rd.is_parent_row) return;
                     if (rd.Parent && String(rd.Parent).toUpperCase().startsWith('PARENT')) return;
-                    const res = getCombinedSbid(rd);
+                    const res = computeSbidViews(rd);
                     if (res && !res.skip && res.bid > 0) skus.push(sku);
                 });
 
@@ -6770,7 +7006,7 @@
                     method: 'POST',
                     headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
                     contentType: 'application/json',
-                    data: JSON.stringify({ skus: skus }),
+                    data: JSON.stringify({ skus: skus, avg_l7_views: avgL7ViewsGlobal }),
                     success: function(resp) {
                         btn.disabled = false;
                         btn.innerHTML = '<i class="fas fa-bolt me-1"></i>Push to Ebay';
