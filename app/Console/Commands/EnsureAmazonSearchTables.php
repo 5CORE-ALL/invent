@@ -94,6 +94,29 @@ class EnsureAmazonSearchTables extends Command
                     $columnsAdded[] = 'amazon_competitor_asins.delivery';
                 }
             });
+
+            // Widen title/image to TEXT: Amazon titles and image CDN URLs
+            // routinely exceed the original VARCHAR(255) and trigger
+            // SQLSTATE[22001] "Data too long for column 'title'".
+            if ($driver === 'mysql') {
+                foreach (['title', 'image'] as $col) {
+                    if (!Schema::hasColumn('amazon_competitor_asins', $col)) {
+                        continue;
+                    }
+                    try {
+                        $info = DB::selectOne(
+                            "SELECT DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'amazon_competitor_asins' AND COLUMN_NAME = ?",
+                            [$col]
+                        );
+                        if ($info && strtolower($info->DATA_TYPE ?? '') !== 'text') {
+                            DB::statement("ALTER TABLE `amazon_competitor_asins` MODIFY COLUMN `{$col}` TEXT NULL");
+                            $columnsAdded[] = "amazon_competitor_asins.{$col} (widened to TEXT)";
+                        }
+                    } catch (\Throwable $e) {
+                        $this->warn("Could not widen {$col} on amazon_competitor_asins: " . $e->getMessage());
+                    }
+                }
+            }
         }
 
         if (!empty($created)) {
