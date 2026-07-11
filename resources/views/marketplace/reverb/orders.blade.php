@@ -48,7 +48,7 @@
                                 @php $orderUrl = route('marketplace.orders.show', ['marketplace' => 'reverb', 'order' => $o->id]); @endphp
                                 <tr style="cursor: pointer;" onclick="window.location='{{ $orderUrl }}'">
                                     <td>
-                                        <a href="{{ $orderUrl }}" class="text-decoration-none" onclick="event.stopPropagation();">{{ $o->order_id }}</a>
+                                        <a href="{{ $orderUrl }}" class="text-decoration-none" onclick="event.stopPropagation();">{{ $o->order_id ?: $o->order_number ?: '—' }}</a>
                                     </td>
                                     <td class="small">
                                         @if($o->order_date)
@@ -84,8 +84,8 @@
                                         @else
                                             <div class="d-flex gap-1 flex-wrap" onclick="event.stopPropagation();">
                                                 <button type="button" class="btn btn-sm btn-warning btn-push-order" data-id="{{ $o->id }}">Push to Shopify</button>
-                                                <button type="button" class="btn btn-sm btn-outline-success btn-mark-imported" data-id="{{ $o->id }}" data-order-id="{{ $o->order_id }}" title="Mark as already imported / entered manually">Already imported</button>
-                                                <button type="button" class="btn btn-sm btn-outline-danger btn-delete-ready-order" data-id="{{ $o->id }}" data-order-id="{{ $o->order_id }}" title="Remove from ready-for-import">Delete</button>
+                                                <button type="button" class="btn btn-sm btn-outline-success btn-mark-imported" data-id="{{ $o->id }}" data-order-id="{{ $o->order_id ?: $o->order_number }}" title="Mark as already imported / entered manually">Already imported</button>
+                                                <button type="button" class="btn btn-sm btn-outline-danger btn-delete-ready-order" data-id="{{ $o->id }}" data-order-id="{{ $o->order_id ?: $o->order_number }}" title="Remove from ready-for-import">Delete</button>
                                             </div>
                                         @endif
                                     </td>

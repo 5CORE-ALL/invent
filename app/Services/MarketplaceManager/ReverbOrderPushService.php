@@ -61,7 +61,10 @@ class ReverbOrderPushService
         }
 
         ReverbOrderMetric::query()
-            ->where('order_id', (string) $order->order_id)
+            ->where(function ($q) use ($order) {
+                $ref = $order->orderRef();
+                $q->where('order_id', $ref)->orWhere('order_number', $ref);
+            })
             ->update([
                 'shopify_order_id' => $shopifyOrderId,
                 'pushed_to_shopify_at' => now(),
@@ -80,7 +83,10 @@ class ReverbOrderPushService
     protected function syncInventoryAfterPush(ReverbOrderMetric $order): void
     {
         $skus = ReverbOrderMetric::query()
-            ->where('order_id', (string) $order->order_id)
+            ->where(function ($q) use ($order) {
+                $ref = $order->orderRef();
+                $q->where('order_id', $ref)->orWhere('order_number', $ref);
+            })
             ->pluck('sku')
             ->map(static fn ($sku) => trim((string) $sku))
             ->filter(static fn ($sku) => $sku !== '' && ! in_array($sku, ['__order__', '__unknown__'], true))
@@ -126,7 +132,15 @@ class ReverbOrderPushService
             ];
         }
 
-        $detailResult = $this->orderDetailService->fetchAndPersistOrderDetail((string) $order->order_id);
+        $orderRef = $order->orderRef();
+        if ($orderRef === '') {
+            return [
+                'success' => false,
+                'message' => 'Order ID is missing on this row (order_id/order_number empty).',
+            ];
+        }
+
+        $detailResult = $this->orderDetailService->fetchAndPersistOrderDetail($orderRef);
         if (empty($detailResult['success'])) {
             return [
                 'success' => false,
@@ -134,17 +148,22 @@ class ReverbOrderPushService
             ];
         }
 
+        $order->refresh();
+        $orderRef = $order->orderRef() ?: $orderRef;
+
         $lines = ReverbOrderMetric::query()
-            ->where('order_id', (string) $order->order_id)
+            ->where(function ($q) use ($orderRef) {
+                $q->where('order_id', $orderRef)->orWhere('order_number', $orderRef);
+            })
             ->orderBy('id')
             ->get();
 
-        $orderRoot = $this->orderDetailService->resolveOrderRoot($order->fresh() ?? $order);
+        $orderRoot = $this->orderDetailService->resolveOrderRoot($order);
         $detail = $this->formatter->formatOrder($orderRoot, $lines, $order);
 
         $settings = MarketplaceSyncSettings::getFor('reverb');
         $tags = array_values(array_unique(array_merge(
-            ['reverb', 'reverb-'.($order->order_number ?? $order->order_id)],
+            ['reverb', 'reverb-'.$orderRef],
             $settings['order']['shopify_order_tags'] ?? []
         )));
 
@@ -159,7 +178,7 @@ class ReverbOrderPushService
 
         return [
             'success' => true,
-            'reverb_order_id' => (string) $order->order_id,
+            'reverb_order_id' => $orderRef,
             'shopify_store' => $config['store_url'],
             'shopify_store_key' => $config['store_key'] ?? null,
             'payload' => $orderPayload,

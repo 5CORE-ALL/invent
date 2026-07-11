@@ -212,8 +212,16 @@ class ReverbDetailFormatter
 
         return [
             'summary' => [
-                'order_id' => (string) ($order['order_number'] ?? $order['order_id'] ?? $order['id'] ?? $primaryLine->order_id),
-                'order_number' => $order['order_number'] ?? $primaryLine->order_number ?? null,
+                'order_id' => (string) (
+                    $order['order_number']
+                    ?? $order['order_id']
+                    ?? $primaryLine->orderRef()
+                    ?: ($order['id'] ?? '')
+                ),
+                'order_number' => $order['order_number']
+                    ?? $primaryLine->order_number
+                    ?? $primaryLine->order_id
+                    ?? null,
                 'status' => $order['status'] ?? $order['order_status'] ?? $primaryLine->status,
                 'buyer_remark' => $this->str(
                     is_array($order['order_notes'] ?? null) && $order['order_notes'] !== []
@@ -613,7 +621,7 @@ class ReverbDetailFormatter
         $urlTemplate = (string) (
             $settings['order']['shopify_source_url_template']
             ?? config('services.reverb.shopify_source_url_template')
-            ?? 'https://csp.reverb.com/m_apps/order-manage/order_detail?orderId={order_id}'
+            ?? 'https://reverb.com/my/selling/orders/{order_id}'
         );
 
         return [

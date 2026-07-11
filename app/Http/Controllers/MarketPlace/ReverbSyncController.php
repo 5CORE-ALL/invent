@@ -415,22 +415,35 @@ class ReverbSyncController extends Controller
     public function showOrder(int $id): View
     {
         $line = ReverbOrderMetric::query()->findOrFail($id);
-        $orderId = (string) $line->order_id;
+        $orderId = $line->orderRef();
 
-        $lines = ReverbOrderMetric::query()
-            ->where('order_id', $orderId)
-            ->orderBy('id')
-            ->get();
+        $lines = $orderId !== ''
+            ? ReverbOrderMetric::query()
+                ->where(function ($q) use ($orderId) {
+                    $q->where('order_id', $orderId)->orWhere('order_number', $orderId);
+                })
+                ->orderBy('id')
+                ->get()
+            : collect([$line]);
 
         $aeLiveError = null;
         $aeDataSource = 'cached';
         $detailService = app(ReverbOrderDetailService::class);
 
-        if ($this->apiConfig->isConfigured('reverb')) {
+        if ($orderId === '') {
+            $aeLiveError = 'Order ID is missing on this row. Reverb order_number and order_id should be the same — re-fetch orders or open a row that has order_number filled.';
+        } elseif ($this->apiConfig->isConfigured('reverb')) {
             $pull = $detailService->fetchAndPersistOrderDetail($orderId);
             if (! empty($pull['success'])) {
                 $aeDataSource = 'api';
                 $line->refresh();
+                $orderId = $line->orderRef() ?: $orderId;
+                $lines = ReverbOrderMetric::query()
+                    ->where(function ($q) use ($orderId) {
+                        $q->where('order_id', $orderId)->orWhere('order_number', $orderId);
+                    })
+                    ->orderBy('id')
+                    ->get();
             } else {
                 $aeLiveError = $pull['message'] ?? 'Could not refresh live Reverb order details.';
             }
@@ -440,8 +453,8 @@ class ReverbSyncController extends Controller
         $detail = app(ReverbDetailFormatter::class)->formatOrder($orderRoot, $lines, $line);
 
         return view('marketplace.reverb.order-show', [
-            'title' => 'Reverb Order — '.$orderId,
-            'orderId' => $orderId,
+            'title' => 'Reverb Order — '.($orderId !== '' ? $orderId : '#'.$line->id),
+            'orderId' => $orderId !== '' ? $orderId : (string) $line->id,
             'line' => $line,
             'detail' => $detail,
             'aeLiveError' => $aeLiveError,
@@ -457,7 +470,12 @@ class ReverbSyncController extends Controller
         }
 
         $line = ReverbOrderMetric::query()->findOrFail($id);
-        $result = app(ReverbOrderDetailService::class)->fetchAndPersistOrderDetail((string) $line->order_id);
+        $orderId = $line->orderRef();
+        if ($orderId === '') {
+            return response()->json(['success' => false, 'message' => 'Order ID is missing on this row.']);
+        }
+
+        $result = app(ReverbOrderDetailService::class)->fetchAndPersistOrderDetail($orderId);
 
         return response()->json([
             'success' => ! empty($result['success']),
@@ -561,9 +579,15 @@ class ReverbSyncController extends Controller
             ], 422);
         }
 
-        $orderId = (string) $order->order_id;
+        $orderId = $order->orderRef();
+        if ($orderId === '') {
+            return response()->json(['success' => false, 'message' => 'Order ID is missing on this row.'], 422);
+        }
+
         $deleted = ReverbOrderMetric::query()
-            ->where('order_id', $orderId)
+            ->where(function ($q) use ($orderId) {
+                $q->where('order_id', $orderId)->orWhere('order_number', $orderId);
+            })
             ->whereNull('shopify_order_id')
             ->delete();
 
@@ -596,18 +620,21 @@ class ReverbSyncController extends Controller
             ]);
         }
 
-        $orderId = (string) ($order->order_id ?: $order->order_number);
+        $orderId = $order->orderRef();
+        if ($orderId === '') {
+            return response()->json(['success' => false, 'message' => 'Order ID is missing on this row.'], 422);
+        }
+
         $shopifyOrderId = trim((string) $request->input('shopify_order_id', ''));
         if ($shopifyOrderId === '') {
             $shopifyOrderId = 'manual:'.$orderId;
         }
 
-        $query = ReverbOrderMetric::query()->whereNull('shopify_order_id');
-        if ($order->order_id) {
-            $query->where('order_id', $order->order_id);
-        } else {
-            $query->where('id', $order->id);
-        }
+        $query = ReverbOrderMetric::query()
+            ->whereNull('shopify_order_id')
+            ->where(function ($q) use ($orderId) {
+                $q->where('order_id', $orderId)->orWhere('order_number', $orderId);
+            });
 
         $updated = $query->update([
             'shopify_order_id' => $shopifyOrderId,

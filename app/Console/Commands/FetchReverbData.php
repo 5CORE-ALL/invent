@@ -358,6 +358,7 @@ class FetchReverbData extends Command
                 $paidAtCarbon = Carbon::parse($paidAt, 'America/Los_Angeles');
                 $bulkOrders[] = [
                     'order_number' => $order['order_number'],
+                    'order_id' => (string) ($order['order_number'] ?? ''),
                     'order_date' => $paidAtCarbon->toDateString(),
                     'order_paid_at' => $paidAtCarbon->toDateTimeString(),
                     'status' => $order['status'] ?? null,

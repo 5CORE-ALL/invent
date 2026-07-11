@@ -31,6 +31,11 @@ class ReverbOrderDetailService
         }
 
         $order = is_array($info['data'] ?? null) ? $info['data'] : [];
+        // Reverb sometimes nests the payload under "order".
+        if (isset($order['order']) && is_array($order['order']) && ! isset($order['order_number'])) {
+            $order = $order['order'];
+        }
+
         $receipt = $this->aliExpressApi->getOrderReceiptInfo($orderId);
         if (! empty($receipt['success']) && is_array($receipt['data'] ?? null)) {
             $order = $this->mergeReceiptAddress($order, $receipt['data']);
@@ -47,8 +52,20 @@ class ReverbOrderDetailService
         $order['fund_sources_fetched_at'] = now()->toIso8601String();
         $order = $this->mergeFundSnapshotsIntoOrder($order);
 
+        $canonicalId = trim((string) ($order['order_number'] ?? $order['order_id'] ?? $orderId));
+        if ($canonicalId === '') {
+            $canonicalId = $orderId;
+        }
+
         $lines = ReverbOrderMetric::query()
-            ->where('order_id', $orderId)
+            ->where(function ($q) use ($orderId, $canonicalId) {
+                $q->where('order_id', $orderId)
+                    ->orWhere('order_number', $orderId);
+                if ($canonicalId !== $orderId) {
+                    $q->orWhere('order_id', $canonicalId)
+                        ->orWhere('order_number', $canonicalId);
+                }
+            })
             ->get();
 
         if ($lines->isEmpty()) {
@@ -62,11 +79,15 @@ class ReverbOrderDetailService
             if (is_array($raw['line'] ?? null)) {
                 // keep per-line snapshot
             }
-            $line->update(['raw_payload' => $raw]);
+            $line->update([
+                'raw_payload' => $raw,
+                'order_id' => $canonicalId,
+                'order_number' => $canonicalId,
+            ]);
         }
 
         Log::info('ReverbOrderDetailService: persisted order detail', [
-            'order_id' => $orderId,
+            'order_id' => $canonicalId,
             'lines' => $lines->count(),
         ]);
 

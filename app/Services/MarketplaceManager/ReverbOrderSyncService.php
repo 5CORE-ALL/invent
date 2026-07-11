@@ -277,7 +277,9 @@ class ReverbOrderSyncService
      */
     protected function storeOrder(array $order): int
     {
-        $orderId = (string) ($order['order_id'] ?? $order['order_number'] ?? $order['id'] ?? $order['uuid'] ?? '');
+        // Reverb's public order id is order_number (same value used in /my/orders/selling/{id}).
+        // Prefer it over uuid so we never store a UUID that the detail API cannot resolve.
+        $orderId = (string) ($order['order_number'] ?? $order['order_id'] ?? $order['id'] ?? '');
         if ($orderId === '') {
             return 0;
         }
@@ -313,19 +315,16 @@ class ReverbOrderSyncService
         $count = 0;
 
         if ($lines === []) {
-            ReverbOrderMetric::updateOrCreate(
-                ['order_id' => $orderId, 'sku' => '__order__'],
-                [
-                    'order_number' => $orderId,
-                    'order_date' => $parsedDate,
-                    'order_paid_at' => $paidAt,
-                    'status' => $status,
-                    'display_sku' => '__order__',
-                    'quantity' => 1,
-                    'amount' => $this->extractOrderAmount($order),
-                    'raw_payload' => $order,
-                ]
-            );
+            $this->upsertOrderLine($orderId, '__order__', [
+                'order_number' => $orderId,
+                'order_date' => $parsedDate,
+                'order_paid_at' => $paidAt,
+                'status' => $status,
+                'display_sku' => '__order__',
+                'quantity' => 1,
+                'amount' => $this->extractOrderAmount($order),
+                'raw_payload' => $order,
+            ]);
 
             return 1;
         }
@@ -337,25 +336,48 @@ class ReverbOrderSyncService
             }
             $title = (string) ($line['display_title'] ?? $line['product_name'] ?? $line['title'] ?? '');
 
-            ReverbOrderMetric::updateOrCreate(
-                ['order_id' => $orderId, 'sku' => $sku],
-                [
-                    'order_number' => $orderId,
-                    'order_date' => $parsedDate,
-                    'order_paid_at' => $paidAt,
-                    'status' => $status,
-                    'product_id' => (string) ($line['product_id'] ?? ''),
-                    'display_sku' => $sku,
-                    'display_title' => $title,
-                    'quantity' => max(1, (int) ($line['quantity'] ?? $line['product_count'] ?? 1)),
-                    'amount' => $this->extractLineAmount($line, $order),
-                    'raw_payload' => ['order' => $order, 'line' => $line],
-                ]
-            );
+            $this->upsertOrderLine($orderId, $sku, [
+                'order_number' => $orderId,
+                'order_date' => $parsedDate,
+                'order_paid_at' => $paidAt,
+                'status' => $status,
+                'product_id' => (string) ($line['product_id'] ?? ''),
+                'display_sku' => $sku,
+                'display_title' => $title,
+                'quantity' => max(1, (int) ($line['quantity'] ?? $line['product_count'] ?? 1)),
+                'amount' => $this->extractLineAmount($line, $order),
+                'raw_payload' => ['order' => $order, 'line' => $line],
+            ]);
             $count++;
         }
 
         return $count;
+    }
+
+    /**
+     * @param  array<string, mixed>  $attributes
+     */
+    protected function upsertOrderLine(string $orderId, string $sku, array $attributes): void
+    {
+        $existing = ReverbOrderMetric::query()
+            ->where('sku', $sku)
+            ->where(function ($q) use ($orderId) {
+                $q->where('order_id', $orderId)->orWhere('order_number', $orderId);
+            })
+            ->orderByDesc('id')
+            ->first();
+
+        $attributes['order_id'] = $orderId;
+        $attributes['order_number'] = $orderId;
+        $attributes['sku'] = $sku;
+
+        if ($existing) {
+            $existing->update($attributes);
+
+            return;
+        }
+
+        ReverbOrderMetric::create($attributes);
     }
 
     protected function extractOrderAmount(array $order): ?float
