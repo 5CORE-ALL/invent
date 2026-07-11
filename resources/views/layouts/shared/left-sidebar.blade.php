@@ -85,46 +85,10 @@
 
             {{-- Marketplace Manager (Shopify ↔ marketplace sync hub) --}}
             <li class="side-nav-item">
-                <a data-bs-toggle="collapse" href="#sidebarMarketplaceManager" aria-expanded="false" aria-controls="sidebarMarketplaceManager" class="side-nav-link">
+                <a href="{{ route('marketplace.manager.index') }}" class="side-nav-link">
                     <i class="ri-links-line"></i>
                     <span>Marketplace Manager</span>
-                    <span class="menu-arrow"></span>
                 </a>
-                <div class="collapse" id="sidebarMarketplaceManager">
-                    <ul class="side-nav-second-level">
-                        <li><a href="{{ route('marketplace.manager.index') }}">Dashboard</a></li>
-                        <li class="side-nav-item">
-                            <a data-bs-toggle="collapse" href="#sidebarManagerAliexpress" aria-expanded="false" aria-controls="sidebarManagerAliexpress">
-                                <span>AliExpress</span>
-                                <span class="menu-arrow"></span>
-                            </a>
-                            <div class="collapse" id="sidebarManagerAliexpress">
-                                <ul class="side-nav-third-level">
-                                    <li><a href="{{ route('marketplace.manager.show', 'aliexpress') }}">Overview</a></li>
-                                    <li><a href="{{ route('marketplace.manager.aliexpress.connect') }}">Connect</a></li>
-                                    <li><a href="{{ route('marketplace.products', 'aliexpress') }}">Listings</a></li>
-                                    <li><a href="{{ route('marketplace.orders', 'aliexpress') }}">Orders</a></li>
-                                    <li><a href="{{ route('marketplace.settings', 'aliexpress') }}">Sync Settings</a></li>
-                                </ul>
-                            </div>
-                        </li>
-                        <li class="side-nav-item">
-                            <a data-bs-toggle="collapse" href="#sidebarManagerAlibaba" aria-expanded="false" aria-controls="sidebarManagerAlibaba">
-                                <span>Alibaba</span>
-                                <span class="menu-arrow"></span>
-                            </a>
-                            <div class="collapse" id="sidebarManagerAlibaba">
-                                <ul class="side-nav-third-level">
-                                    <li><a href="{{ route('marketplace.manager.show', 'alibaba') }}">Overview</a></li>
-                                    <li><a href="{{ route('marketplace.manager.alibaba.connect') }}">Connect</a></li>
-                                    <li><a href="{{ route('marketplace.products', 'alibaba') }}">Listings</a></li>
-                                    <li><a href="{{ route('marketplace.orders', 'alibaba') }}">Orders</a></li>
-                                    <li><a href="{{ route('marketplace.settings', 'alibaba') }}">Sync Settings</a></li>
-                                </ul>
-                            </div>
-                        </li>
-                    </ul>
-                </div>
             </li>
 
             <li class="side-nav-item">
