@@ -51,6 +51,13 @@ class MarketplaceSyncSettings extends Model
         return (bool) ($settings['listings']['create_products_on_reverb'] ?? false);
     }
 
+    public static function canFetchOrders(string $marketplace, ?array $settings = null): bool
+    {
+        $settings ??= self::getFor($marketplace);
+
+        return (bool) ($settings['order']['fetch_orders'] ?? true);
+    }
+
     public static function defaults(?string $marketplace = null): array
     {
         $marketplace = strtolower((string) $marketplace);
@@ -84,6 +91,7 @@ class MarketplaceSyncSettings extends Model
                 'out_of_stock_threshold' => 0,
             ],
             'order' => [
+                'fetch_orders' => true,
                 'auto_import_to_shopify' => false,
                 'keep_order_number_from_channel' => true,
                 'shopify_order_tags' => [],

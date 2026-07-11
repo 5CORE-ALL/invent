@@ -66,10 +66,16 @@
                                         @endif
                                     </td>
                                     <td>
-                                        @if($ch['sync_settings']['order']['auto_import_to_shopify'] ?? false)
-                                            <span class="badge bg-success-subtle text-success">Auto</span>
+                                        @php
+                                            $fetchOn = $ch['sync_settings']['order']['fetch_orders'] ?? true;
+                                            $autoOn = $ch['sync_settings']['order']['auto_import_to_shopify'] ?? false;
+                                        @endphp
+                                        @if(! $fetchOn)
+                                            <span class="badge bg-light text-muted">Fetch Off</span>
+                                        @elseif($autoOn)
+                                            <span class="badge bg-success-subtle text-success">Fetch + Auto</span>
                                         @else
-                                            <span class="badge bg-light text-muted">Manual</span>
+                                            <span class="badge bg-info-subtle text-info">Fetch only</span>
                                         @endif
                                     </td>
                                     <td class="text-end">

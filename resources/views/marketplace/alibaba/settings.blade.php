@@ -67,6 +67,13 @@
                 <div class="settings-section-body">
                     <div class="sync-toggle-row">
                         <label class="form-check form-switch mb-0">
+                            <input class="form-check-input" type="checkbox" name="order[fetch_orders]" value="1" {{ ($settings['order']['fetch_orders'] ?? true) ? 'checked' : '' }}>
+                            <span class="form-check-label">Fetch orders from Alibaba on schedule</span>
+                        </label>
+                        <div class="form-text ms-4">When on, the 15‑minute schedule pulls Alibaba orders into our DB. Manual <strong>Fetch from Alibaba</strong> on the Orders page always works.</div>
+                    </div>
+                    <div class="sync-toggle-row">
+                        <label class="form-check form-switch mb-0">
                             <input class="form-check-input" type="checkbox" name="order[auto_import_to_shopify]" value="1" {{ ($settings['order']['auto_import_to_shopify'] ?? false) ? 'checked' : '' }}>
                             <span class="form-check-label">Automatically import Alibaba orders to Shopify</span>
                         </label>

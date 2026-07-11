@@ -638,7 +638,7 @@ class AliexpressSyncController extends Controller
             'inventory_sync',
         ]);
         $order = $this->mergeSettingsSection($current['order'] ?? [], $request->input('order', []), [
-            'auto_import_to_shopify', 'keep_order_number_from_channel',
+            'fetch_orders', 'auto_import_to_shopify', 'keep_order_number_from_channel',
         ]);
         $listings = $this->mergeSettingsSection($current['listings'] ?? [], $request->input('listings', []), [
             'auto_link_by_sku', 'create_products_on_aliexpress', 'sync_title', 'sync_images',
