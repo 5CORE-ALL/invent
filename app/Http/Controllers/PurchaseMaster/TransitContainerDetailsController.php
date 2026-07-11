@@ -12,7 +12,6 @@ use App\Models\ShopifySku;
 use App\Models\ReadyToShip;
 use App\Services\SupplierCategorySync;
 use App\Services\ToOrderSupplierSync;
-use App\Support\SuperAdminAccess;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -20,15 +19,10 @@ use Illuminate\Support\Facades\Log;
 
 class TransitContainerDetailsController extends Controller
 {
-    /** @var list<string> */
-    private const EDIT_DELETE_ALLOWED_EMAILS = [
-        'president@5core.com',
-        'inventory@5core.com',
-    ];
-
     protected function canEditDeleteTransit(): bool
     {
-        return SuperAdminAccess::allows(Auth::user(), self::EDIT_DELETE_ALLOWED_EMAILS);
+        // Edit/delete access is granted to all authenticated users.
+        return true;
     }
 
     protected function logHistory(string $actionType, ?int $detailId = null, ?string $fromTab = null, ?string $toTab = null, ?string $ourSku = null, $details = null): void
