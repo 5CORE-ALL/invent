@@ -380,33 +380,53 @@ class AliexpressOrderPushService
     protected function postOrder(array $config, array $payload): ?string
     {
         $url = 'https://'.$config['store_url'].'/admin/api/2024-01/orders.json';
+        $maxAttempts = 5;
+        $backoff = [2, 4, 8, 16, 30];
 
         try {
-            $response = Http::withHeaders([
-                'X-Shopify-Access-Token' => $config['token'],
-                'Content-Type' => 'application/json',
-            ])->timeout(60)->post($url, $payload);
+            for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+                $response = Http::withHeaders([
+                    'X-Shopify-Access-Token' => $config['token'],
+                    'Content-Type' => 'application/json',
+                ])->timeout(60)->post($url, $payload);
 
-            $this->lastApiStatus = $response->status();
+                $this->lastApiStatus = $response->status();
 
-            if (! $response->successful()) {
+                if ($response->successful()) {
+                    $id = (string) ($response->json('order.id') ?? '');
+                    if ($id === '') {
+                        $this->lastFailureReason = 'Shopify returned no order id';
+
+                        return null;
+                    }
+
+                    return $id;
+                }
+
+                $retryable = $response->status() === 429 || $response->status() >= 500;
+                if ($retryable && $attempt < $maxAttempts) {
+                    $wait = $backoff[$attempt - 1] ?? 30;
+                    Log::warning('AliexpressOrderPushService: Shopify order create retrying', [
+                        'status' => $response->status(),
+                        'attempt' => $attempt,
+                        'wait' => $wait,
+                    ]);
+                    sleep($wait);
+
+                    continue;
+                }
+
                 $this->lastFailureReason = 'HTTP '.$response->status().': '.mb_substr($response->body(), 0, 300);
                 Log::error('AliexpressOrderPushService: Shopify order create failed', [
                     'status' => $response->status(),
                     'body' => mb_substr($response->body(), 0, 500),
+                    'attempts' => $attempt,
                 ]);
 
                 return null;
             }
 
-            $id = (string) ($response->json('order.id') ?? '');
-            if ($id === '') {
-                $this->lastFailureReason = 'Shopify returned no order id';
-
-                return null;
-            }
-
-            return $id;
+            return null;
         } catch (\Throwable $e) {
             $this->lastFailureReason = $e->getMessage();
             Log::error('AliexpressOrderPushService: exception', ['error' => $e->getMessage()]);

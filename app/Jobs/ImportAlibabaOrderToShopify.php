@@ -11,6 +11,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
+use RuntimeException;
 
 class ImportAlibabaOrderToShopify implements ShouldQueue
 {
@@ -66,10 +67,33 @@ class ImportAlibabaOrderToShopify implements ShouldQueue
             return;
         }
 
+        $status = $pushService->lastApiStatus;
+        if ($status === 429 || ($status !== null && $status >= 500)) {
+            Log::warning('ImportAlibabaOrderToShopify: temporary Shopify error, will retry', [
+                'order_id' => $order->order_id,
+                'status' => $status,
+                'reason' => $pushService->lastFailureReason,
+            ]);
+
+            throw new RuntimeException($pushService->lastFailureReason ?: "Shopify HTTP {$status}");
+        }
+
         $order->update(['import_status' => 'import_failed']);
         Log::error('ImportAlibabaOrderToShopify: failed', [
             'order_id' => $order->order_id,
             'reason' => $pushService->lastFailureReason,
+        ]);
+    }
+
+    public function failed(\Throwable $exception): void
+    {
+        $order = AlibabaOrderMetric::find($this->alibabaOrderMetricId);
+        if ($order && ! $order->shopify_order_id) {
+            $order->update(['import_status' => 'import_failed']);
+        }
+        Log::error('ImportAlibabaOrderToShopify: job failed after all retries', [
+            'order_id' => $this->alibabaOrderMetricId,
+            'error' => $exception->getMessage(),
         ]);
     }
 }
