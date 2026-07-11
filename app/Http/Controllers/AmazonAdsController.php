@@ -36,6 +36,26 @@ class AmazonAdsController extends Controller
         'bid_caps' => 'amazon_bid_caps',
         'sd_reports' => 'amazon_sd_campaign_reports',
         'fbm_targeting' => 'amazon_fbm_targeting_checks',
+        'sp_keywords' => 'amazon_sp_keyword_reports',
+        'sp_negatives' => 'amazon_sp_negative_keywords',
+    ];
+
+    /**
+     * Curated, fixed display columns for the keyword performance / negative keyword sources.
+     * These tables have a keyword-level shape (not the campaign-report shape), so they skip the
+     * campaign overlays (U7/U2/U1, BGT/SBGT, L-spends, CPC block) applied to SP/SB reports and
+     * show their own columns in a fixed order instead.
+     *
+     * @var array<string, array<int, string>>
+     */
+    private const KEYWORD_SOURCE_DISPLAY_COLUMNS = [
+        'amazon_sp_keyword_reports' => [
+            'id', 'campaignName', 'adGroupName', 'keyword', 'matchType', 'report_date_range',
+            'impressions', 'clicks', 'cost', 'costPerClick', 'purchases30d', 'sales30d', 'acosClicks14d',
+        ],
+        'amazon_sp_negative_keywords' => [
+            'id', 'level', 'campaignName', 'campaign_id', 'ad_group_id', 'keywordText', 'matchType', 'state',
+        ],
     ];
 
     /**
@@ -136,6 +156,20 @@ class AmazonAdsController extends Controller
      */
     private static function displayColumnsForTable(string $table): array
     {
+        // Keyword performance / negative keyword sources use a fixed keyword-level column set
+        // (not the campaign-report overlays). Only keep columns that actually exist on the table.
+        if (isset(self::KEYWORD_SOURCE_DISPLAY_COLUMNS[$table])) {
+            if (! Schema::hasTable($table)) {
+                return [];
+            }
+            $existing = Schema::getColumnListing($table);
+
+            return array_values(array_filter(
+                self::KEYWORD_SOURCE_DISPLAY_COLUMNS[$table],
+                static fn (string $c): bool => in_array($c, $existing, true)
+            ));
+        }
+
         $ordered = self::orderedColumnsForTable($table);
         if ($ordered === []) {
             return [];
@@ -2435,6 +2469,10 @@ class AmazonAdsController extends Controller
             'columns' => self::displayColumnsForTable('amazon_sp_campaign_reports'),
         ];
         $defaultReportRangeDates['all_reports'] = self::latestAvailableReportDayYmd('amazon_sp_campaign_reports');
+
+        // Negative keywords have no report date/range — don't pin the calendar date for them
+        // (otherwise the grid would filter to only negatives whose created_at matches that day).
+        $defaultReportRangeDates['sp_negatives'] = null;
 
         return view('amazon_ads.all', [
             'rawSources' => $rawSources,

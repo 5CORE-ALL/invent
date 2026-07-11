@@ -132,6 +132,8 @@
                                     <option value="sp_reports" selected>SP reports</option>
                                     <option value="sb_reports">SB reports</option>
                                     <option value="sd_reports">SD reports</option>
+                                    <option value="sp_keywords">SP keywords</option>
+                                    <option value="sp_negatives">SP negatives</option>
                                     <option value="bid_caps">Bid caps</option>
                                     <option value="fbm_targeting">FBM targeting</option>
                                 </select>
@@ -538,6 +540,17 @@
                 if (u === 'SPONSORED_BRANDS') return 'SB';
                 return amzEsc(String(v).trim());
             }
+            function fmtMatchType(cell) {
+                var v = cell.getValue();
+                if (v === null || v === undefined || String(v).trim() === '') return '<span class="text-muted">—</span>';
+                var map = {
+                    'BROAD': 'Broad', 'PHRASE': 'Phrase', 'EXACT': 'Exact',
+                    'NEGATIVE_EXACT': 'Neg Exact', 'NEGATIVE_PHRASE': 'Neg Phrase',
+                    'TARGETING_EXPRESSION': 'Target', 'TARGETING_EXPRESSION_PREDEFINED': 'Auto'
+                };
+                var u = String(v).trim().toUpperCase();
+                return amzEsc(map[u] || String(v).trim());
+            }
             function fmtCampaignName(cell) {
                 var v = cell.getValue();
                 var s = (v === null || v === undefined) ? '' : String(v);
@@ -554,6 +567,17 @@
                 if (c === 'campaignName') { col.formatter = fmtCampaignName; col.minWidth = 200; col.widthGrow = 4; col.hozAlign = 'left'; return; }
                 if (c === 'campaignStatus') { col.title = 'Stat'; col.formatter = fmtCampaignStatus; col.width = 48; col.minWidth = 44; return; }
                 if (c === 'ad_type') { col.formatter = fmtAdType; return; }
+                if (c === 'adGroupName') { col.title = 'Ad Group'; col.hozAlign = 'left'; col.minWidth = 150; col.widthGrow = 2; return; }
+                if (c === 'keyword') { col.title = 'Keyword'; col.hozAlign = 'left'; col.minWidth = 180; col.widthGrow = 3; return; }
+                if (c === 'keywordText') { col.title = 'Negative KW'; col.hozAlign = 'left'; col.minWidth = 180; col.widthGrow = 3; return; }
+                if (c === 'matchType') { col.title = 'Match'; col.formatter = fmtMatchType; col.minWidth = 90; return; }
+                if (c === 'level') { col.title = 'Level'; col.minWidth = 80; return; }
+                if (c === 'state') { col.title = 'State'; col.formatter = fmtCampaignStatus; col.width = 56; col.minWidth = 48; return; }
+                if (c === 'campaign_id') { col.title = 'Camp ID'; col.minWidth = 100; return; }
+                if (c === 'ad_group_id') { col.title = 'AdGrp ID'; col.minWidth = 100; return; }
+                if (c === 'report_date_range') { col.title = 'Range'; col.minWidth = 80; return; }
+                if (c === 'acosClicks14d') { col.title = 'ACOS14'; col.formatter = fmtAcos; return; }
+                if (c === 'purchases30d') { col.title = 'Sold'; col.formatter = fmtDashInt; return; }
                 if (c === 'impressions') { col.title = 'Impr'; col.formatter = fmtDashInt; return; }
                 if (c === 'last_sbid') { col.title = 'Lbid'; col.formatter = fmtSbid; return; }
                 if (c === 'sbid') { col.title = 'SBID'; col.formatter = fmtSbid; return; }

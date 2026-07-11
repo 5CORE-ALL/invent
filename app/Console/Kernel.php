@@ -5,6 +5,8 @@ namespace App\Console;
 use App\Console\Commands\AmazonSbCampaignReports;
 use App\Console\Commands\AmazonSdCampaignReports;
 use App\Console\Commands\AmazonSpCampaignReports;
+use App\Console\Commands\AmazonSpKeywordReports;
+use App\Console\Commands\AmazonSpNegativeKeywords;
 use App\Console\Commands\FetchGoogleAdsCampaigns;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
@@ -82,6 +84,8 @@ class Kernel extends ConsoleKernel
         AmazonSpCampaignReports::class,
         AmazonSbCampaignReports::class,
         AmazonSdCampaignReports::class,
+        AmazonSpKeywordReports::class,
+        AmazonSpNegativeKeywords::class,
         FetchGoogleAdsCampaigns::class,
         \App\Console\Commands\FetchGoogleAdsNegativeKeywords::class,
         \App\Console\Commands\SyncMetaAllAds::class,
@@ -369,6 +373,12 @@ class Kernel extends ConsoleKernel
         $retryFiveTimesUntil('app:amazon-sp-campaign-reports', 'amazon-sp-campaign-reports', '18:00');
         $retryFiveTimesUntil('app:amazon-sb-campaign-reports', 'amazon-sb-campaign-reports', '18:05');
         $retryFiveTimesUntil('app:amazon-sd-campaign-reports', 'amazon-sd-campaign-reports', '18:10');
+
+        // SP keyword/targeting performance + negative keywords — run after the campaign reports
+        // (18:00 final slot) so the negative-keyword campaign-name lookup can read fresh SP rows.
+        // Same five-attempt afternoon pattern; negatives use --prune to drop keywords removed in Amazon.
+        $retryFiveTimesUntil('app:amazon-sp-keyword-reports', 'amazon-sp-keyword-reports', '18:15');
+        $retryFiveTimesUntil('app:amazon-sp-negative-keywords --prune', 'amazon-sp-negative-keywords', '18:20');
 
         /*
         |--------------------------------------------------------------------------
