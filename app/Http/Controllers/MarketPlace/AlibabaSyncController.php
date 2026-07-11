@@ -1,0 +1,913 @@
+<?php
+
+namespace App\Http\Controllers\MarketPlace;
+
+use App\Http\Controllers\Controller;
+use App\Jobs\ImportAlibabaOrderToShopify;
+use App\Models\AlibabaMetric;
+use App\Models\AlibabaOrderMetric;
+use App\Models\AlibabaPricingPrice;
+use App\Models\MarketplaceSyncSettings;
+use App\Models\ShopifySku;
+use App\Services\AlibabaApiService;
+use App\Services\AlibabaAuthService;
+use App\Services\MarketplaceManager\AlibabaDetailFormatter;
+use App\Services\MarketplaceManager\AlibabaInventorySyncService;
+use App\Services\MarketplaceManager\AlibabaLinkMapSyncService;
+use App\Services\MarketplaceManager\AlibabaOrderDetailService;
+use App\Services\MarketplaceManager\AlibabaOrderPushService;
+use App\Services\MarketplaceManager\AlibabaOrderSyncService;
+use App\Services\ShopifyApiService;
+use App\Services\Support\MarketplaceApiConfigService;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\View\View;
+
+class AlibabaSyncController extends Controller
+{
+    public function __construct(
+        protected AlibabaApiService $aliExpressApi,
+        protected AlibabaAuthService $aliExpressAuth,
+        protected ShopifyApiService $shopifyApi,
+        protected MarketplaceApiConfigService $apiConfig
+    ) {}
+
+    public function connect(Request $request): View
+    {
+        $appKey = (string) config('services.alibaba.app_key');
+        $appSecret = (string) config('services.alibaba.app_secret');
+        $accessToken = (string) config('services.alibaba.access_token');
+        $refreshToken = (string) env('ALIBABA_REFRESH_TOKEN', '');
+        $apiBase = (string) config('services.alibaba.api_base');
+        $credentialsReady = filled($appKey) && filled($appSecret) && filled($accessToken);
+
+        return view('marketplace.alibaba.connect', [
+            'title' => 'Alibaba — Connect',
+            'connected' => $this->apiConfig->isConfigured('alibaba'),
+            'credentialsReady' => $credentialsReady,
+            'authorizeUrl' => $this->aliExpressAuth->getAuthorizeUrl(),
+            'hasAppKey' => filled($appKey),
+            'hasAppSecret' => filled($appSecret),
+            'hasToken' => filled($accessToken),
+            'hasRefreshToken' => filled($refreshToken),
+            'maskedAppKey' => $this->maskCredential($appKey),
+            'maskedAppSecret' => $this->maskCredential($appSecret, 2, 2),
+            'maskedAccessToken' => $this->maskCredential($accessToken, 4, 4),
+            'apiBase' => $apiBase !== '' ? rtrim($apiBase, '/').(str_ends_with(strtolower($apiBase), '/sync') ? '' : '/sync') : 'https://api-sg.alibaba.com/sync',
+            'redirectUri' => (string) (config('services.alibaba.redirect_uri') ?: config('app.url')),
+            'gateway' => config('services.alibaba.gateway', env('ALIBABA_GATEWAY', 'sync')),
+            'restBase' => config('services.alibaba.rest_base', env('ALIBABA_REST_BASE', 'https://api-sg.alibaba.com/rest')),
+        ]);
+    }
+
+    public function testConnection(): JsonResponse
+    {
+        if (! $this->apiConfig->isConfigured('alibaba')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Alibaba API credentials missing. Set ALIBABA_APP_KEY, ALIBABA_APP_SECRET, and ALIBABA_ACCESS_TOKEN in .env.',
+            ]);
+        }
+
+        try {
+            $result = $this->aliExpressApi->getInventory(1, 1);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Connection test failed: '.$e->getMessage(),
+            ]);
+        }
+
+        if (! empty($result['network_error'])) {
+            return response()->json([
+                'success' => false,
+                'network_error' => true,
+                'message' => $result['message'] ?? 'Could not reach Alibaba API (network timeout).',
+                'detail' => $result['detail'] ?? null,
+                'tips' => [
+                    'Your PC cannot open TCP to api-sg.alibaba.com:443 — this is a network/firewall issue, not missing .env keys.',
+                    'Try: mobile hotspot, VPN, disable antivirus HTTPS scanning, or test from your production server.',
+                    'Whitelist your server public IP in the Alibaba app console (not only your home IP).',
+                    'Optional .env: ALIBABA_GATEWAY=sync, ALIBABA_RESOLVE_IPV4=true, ALIBABA_HTTP_PROXY=http://host:port',
+                ],
+            ]);
+        }
+
+        if (empty($result['success'])) {
+            $message = $result['message'] ?? 'API call failed.';
+            if (str_contains(strtolower($message), 'token') || str_contains(strtolower($message), 'session')) {
+                $message .= ' Your access token may be expired — use OAuth authorize to get a new one.';
+            }
+
+            return response()->json([
+                'success' => false,
+                'message' => $message,
+                'response' => $result['response'] ?? null,
+            ]);
+        }
+
+        $total = $result['data']['total_count'] ?? count($result['data']['products'] ?? []);
+        $sample = $result['data']['products'][0] ?? null;
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Connected successfully. Alibaba product list API responded.',
+            'total_products' => $total,
+            'sample_product_id' => is_array($sample) ? ($sample['product_id'] ?? $sample['id'] ?? null) : null,
+        ]);
+    }
+
+    protected function maskCredential(string $value, int $showStart = 3, int $showEnd = 4): string
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return '—';
+        }
+        $len = strlen($value);
+        if ($len <= $showStart + $showEnd) {
+            return str_repeat('•', $len);
+        }
+
+        return substr($value, 0, $showStart)
+            .str_repeat('•', min(12, $len - $showStart - $showEnd))
+            .substr($value, -$showEnd);
+    }
+
+    public function syncProducts(Request $request): View
+    {
+        $searchSku = trim((string) $request->input('search_sku', ''));
+        $searchName = trim((string) $request->input('search_name', ''));
+        $linkTab = strtolower((string) $request->input('link', 'all'));
+        if (! in_array($linkTab, ['all', 'linked', 'unlinked', 'not_in_shopify'], true)) {
+            $linkTab = 'all';
+        }
+        $page = max(1, (int) $request->input('page', 1));
+        $perPage = 50;
+        $apiError = null;
+
+        if (! Schema::hasTable('shopify_skus')) {
+            $apiError = 'shopify_skus table missing. Run Shopify inventory sync first.';
+            $products = new LengthAwarePaginator([], 0, $perPage, $page);
+            $counts = ['all' => 0, 'linked' => 0, 'unlinked' => 0, 'not_in_shopify' => 0];
+
+            return view('marketplace.alibaba.products', [
+                'products' => $products,
+                'title' => 'Alibaba — Listings',
+                'searchSku' => $searchSku,
+                'searchName' => $searchName,
+                'linkTab' => $linkTab,
+                'counts' => $counts,
+                'apiError' => $apiError,
+                'connected' => $this->apiConfig->isConfigured('alibaba'),
+            ]);
+        }
+
+        $linkedSkus = $this->linkedAlibabaSkus();
+        $shopifyNormKeys = $this->shopifyNormalizedSkuKeys();
+        $counts = $this->shopifyListingCounts($linkedSkus, $shopifyNormKeys);
+
+        if ($linkTab === 'not_in_shopify') {
+            $paginator = $this->paginateAeNotInShopify($searchSku, $searchName, $shopifyNormKeys, $page, $perPage);
+
+            return view('marketplace.alibaba.products', [
+                'products' => $paginator,
+                'title' => 'Alibaba — Listings',
+                'searchSku' => $searchSku,
+                'searchName' => $searchName,
+                'linkTab' => $linkTab,
+                'counts' => $counts,
+                'apiError' => $apiError,
+                'connected' => $this->apiConfig->isConfigured('alibaba'),
+            ]);
+        }
+
+        $query = ShopifySku::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '');
+
+        if ($searchSku !== '') {
+            $query->where('sku', 'like', '%'.$searchSku.'%');
+        }
+        if ($searchName !== '') {
+            $query->where(function ($q) use ($searchName) {
+                $q->where('product_title', 'like', '%'.$searchName.'%')
+                    ->orWhere('variant_title', 'like', '%'.$searchName.'%')
+                    ->orWhere('sku', 'like', '%'.$searchName.'%');
+            });
+        }
+
+        if ($linkTab === 'linked' && $linkedSkus !== []) {
+            $query->whereIn('sku', $linkedSkus);
+        } elseif ($linkTab === 'unlinked' && $linkedSkus !== []) {
+            $query->whereNotIn('sku', $linkedSkus);
+        } elseif ($linkTab === 'linked') {
+            $query->whereRaw('1 = 0');
+        }
+
+        $paginator = $query->orderBy('sku')->paginate($perPage, ['*'], 'page', $page)->withQueryString();
+        $skus = collect($paginator->items())->pluck('sku')->filter()->values()->all();
+        $aeMap = $this->alibabaMetricMapForSkus($skus);
+        $aeStockMap = $this->alibabaStockMapForSkus($skus);
+
+        $enriched = collect($paginator->items())->map(function (ShopifySku $row) use ($aeMap, $aeStockMap) {
+            $sku = (string) $row->sku;
+            $metric = $aeMap[$sku] ?? null;
+            $linked = $this->isShopifySkuLinkedOnAlibaba($metric, $sku);
+            $shopifyQty = $row->available_to_sell ?? $row->inv ?? $row->on_hand ?? null;
+            $shopifyPrice = $row->b2c_price ?? $row->price ?? null;
+            $aeQty = $linked ? ($aeStockMap[strtoupper(trim($sku))] ?? null) : null;
+
+            return (object) [
+                'shopify_sku_id' => $row->id,
+                'product_id' => $linked ? ($metric->product_id ?? null) : null,
+                'sku' => $sku,
+                'title' => trim(($row->product_title ?? '').($row->variant_title ? ' — '.$row->variant_title : '')) ?: $sku,
+                'alibaba_title' => $metric->product_name ?? null,
+                'image_src' => $row->image_src ?? null,
+                'price' => $linked ? ($metric->price ?? null) : null,
+                'shopify_price' => $shopifyPrice,
+                'quantity' => $aeQty,
+                'ae_quantity' => $aeQty,
+                'shopify_quantity' => $shopifyQty,
+                'linked' => $linked,
+                'listing_status' => $linked ? 'linked' : 'unlinked',
+            ];
+        });
+
+        $paginator->setCollection($enriched);
+
+        return view('marketplace.alibaba.products', [
+            'products' => $paginator,
+            'title' => 'Alibaba — Listings',
+            'searchSku' => $searchSku,
+            'searchName' => $searchName,
+            'linkTab' => $linkTab,
+            'counts' => $counts,
+            'apiError' => $apiError,
+            'connected' => $this->apiConfig->isConfigured('alibaba'),
+        ]);
+    }
+
+    public function showProduct(int $shopifySkuId): View
+    {
+        $shopifyRow = ShopifySku::query()->findOrFail($shopifySkuId);
+        $sku = (string) $shopifyRow->sku;
+        $aeMap = $this->alibabaMetricMapForSkus([$sku]);
+        $metric = $aeMap[$sku] ?? null;
+        $linked = $this->isShopifySkuLinkedOnAlibaba($metric, $sku);
+
+        $aeLive = null;
+        $aeLiveError = null;
+        $aeDataSource = 'none';
+        $productId = $metric?->product_id ? (string) $metric->product_id : null;
+        $canFetchAe = $productId && $productId !== (string) $metric?->sku && $this->apiConfig->isConfigured('alibaba');
+
+        if ($canFetchAe) {
+            $info = $this->aliExpressApi->getProductInfo($productId);
+            if (! empty($info['success'])) {
+                $aeLive = $info['data'] ?? null;
+                $aeDataSource = 'api';
+            } else {
+                $aeLiveError = $info['message'] ?? 'Could not load live Alibaba product details.';
+                $aeDataSource = 'cached';
+            }
+        } elseif ($metric?->product_id) {
+            $aeDataSource = 'cached';
+        }
+
+        $aeSkuRows = [];
+        if (is_array($aeLive)) {
+            $aeSkuRows = $this->aliExpressApi->extractSkuRowsFromProductInfo(
+                $aeLive,
+                (string) ($metric->product_id ?? ''),
+                $metric->product_name ?? null
+            );
+        }
+
+        $title = trim(($shopifyRow->product_title ?? '').($shopifyRow->variant_title ? ' — '.$shopifyRow->variant_title : '')) ?: $sku;
+
+        $detail = app(AlibabaDetailFormatter::class)->formatProduct(
+            is_array($aeLive) ? $aeLive : null,
+            $metric,
+            $shopifyRow,
+            $aeSkuRows
+        );
+
+        return view('marketplace.alibaba.product-show', [
+            'title' => 'Alibaba Listing — '.$sku,
+            'shopifySkuId' => $shopifySkuId,
+            'linked' => $linked,
+            'displayTitle' => $title,
+            'detail' => $detail,
+            'aeLiveError' => $aeLiveError,
+            'aeDataSource' => $aeDataSource,
+            'connected' => $this->apiConfig->isConfigured('alibaba'),
+        ]);
+    }
+
+    public function pullProductFromAlibaba(int $shopifySkuId): JsonResponse
+    {
+        if (! $this->apiConfig->isConfigured('alibaba')) {
+            return response()->json(['success' => false, 'message' => 'Alibaba not connected.']);
+        }
+
+        $shopifyRow = ShopifySku::query()->findOrFail($shopifySkuId);
+        $sku = (string) $shopifyRow->sku;
+        $metric = $this->alibabaMetricMapForSkus([$sku])[$sku] ?? null;
+
+        if (! $metric?->product_id || (string) $metric->product_id === (string) $metric->sku) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No Alibaba product_id mapped for this SKU. Run Sync AE link map on Listings first.',
+            ]);
+        }
+
+        $info = $this->aliExpressApi->getProductInfo((string) $metric->product_id);
+        if (empty($info['success'])) {
+            return response()->json([
+                'success' => false,
+                'message' => $info['message'] ?? 'Failed to pull product details from Alibaba.',
+            ]);
+        }
+
+        $aeData = is_array($info['data'] ?? null) ? $info['data'] : [];
+        $rows = $this->aliExpressApi->extractSkuRowsFromProductInfo(
+            $aeData,
+            (string) $metric->product_id,
+            $metric->product_name
+        );
+        $matched = collect($rows)->first(function ($row) use ($sku) {
+            return ShopifySku::normalizeSkuForShopifyLookup((string) ($row['sku'] ?? ''))
+                === ShopifySku::normalizeSkuForShopifyLookup($sku);
+        }) ?? ($rows[0] ?? null);
+
+        $metric->update([
+            'product_name' => trim((string) (
+                $aeData['subject']
+                ?? $aeData['product_name']
+                ?? $metric->product_name
+                ?? ''
+            )) ?: $metric->product_name,
+            'price' => $matched['price'] ?? $metric->price,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Pulled latest Alibaba details for '.$sku.'. Nothing was pushed to Shopify or Alibaba.',
+        ]);
+    }
+
+    public function refreshProducts(Request $request): JsonResponse
+    {
+        if (! $this->apiConfig->isConfigured('alibaba')) {
+            return response()->json(['success' => false, 'message' => 'Alibaba not connected.']);
+        }
+
+        @set_time_limit(300);
+
+        $page = max(1, (int) $request->input('page', 1));
+        $reset = $request->boolean('reset', $page === 1);
+
+        Log::info('Alibaba link map sync page', ['page' => $page, 'reset' => $reset]);
+
+        $result = app(AlibabaLinkMapSyncService::class)->syncPage($page, 50, $reset);
+
+        return response()->json($result);
+    }
+
+    public function refreshProductsStatus(): JsonResponse
+    {
+        $progress = app(AlibabaLinkMapSyncService::class)->getProgress();
+
+        return response()->json([
+            'success' => true,
+            'progress' => $progress,
+        ]);
+    }
+
+    public function syncOrders(Request $request): View
+    {
+        $apiError = null;
+
+        if (Schema::hasTable('alibaba_order_metrics')) {
+            $orders = AlibabaOrderMetric::query()
+                ->orderByDesc('order_date')
+                ->orderByDesc('id')
+                ->paginate(50)
+                ->withQueryString();
+        } else {
+            $orders = new LengthAwarePaginator([], 0, 50, 1);
+            $apiError = 'Run migrations: php artisan migrate';
+        }
+
+        return view('marketplace.alibaba.orders', [
+            'orders' => $orders,
+            'title' => 'Alibaba — Orders',
+            'apiError' => $apiError,
+            'connected' => $this->apiConfig->isConfigured('alibaba'),
+        ]);
+    }
+
+    public function showOrder(int $id): View
+    {
+        $line = AlibabaOrderMetric::query()->findOrFail($id);
+        $orderId = (string) $line->order_id;
+
+        $lines = AlibabaOrderMetric::query()
+            ->where('order_id', $orderId)
+            ->orderBy('id')
+            ->get();
+
+        $aeLiveError = null;
+        $aeDataSource = 'cached';
+        $detailService = app(AlibabaOrderDetailService::class);
+
+        if ($this->apiConfig->isConfigured('alibaba')) {
+            $pull = $detailService->fetchAndPersistOrderDetail($orderId);
+            if (! empty($pull['success'])) {
+                $aeDataSource = 'api';
+                $line->refresh();
+            } else {
+                $aeLiveError = $pull['message'] ?? 'Could not refresh live Alibaba order details.';
+            }
+        }
+
+        $orderRoot = $detailService->resolveOrderRoot($line);
+        $detail = app(AlibabaDetailFormatter::class)->formatOrder($orderRoot, $lines, $line);
+
+        return view('marketplace.alibaba.order-show', [
+            'title' => 'Alibaba Order — '.$orderId,
+            'orderId' => $orderId,
+            'line' => $line,
+            'detail' => $detail,
+            'aeLiveError' => $aeLiveError,
+            'aeDataSource' => $aeDataSource,
+            'connected' => $this->apiConfig->isConfigured('alibaba'),
+        ]);
+    }
+
+    public function pullOrderFromAlibaba(int $id): JsonResponse
+    {
+        if (! $this->apiConfig->isConfigured('alibaba')) {
+            return response()->json(['success' => false, 'message' => 'Alibaba not connected.']);
+        }
+
+        $line = AlibabaOrderMetric::query()->findOrFail($id);
+        $result = app(AlibabaOrderDetailService::class)->fetchAndPersistOrderDetail((string) $line->order_id);
+
+        return response()->json([
+            'success' => ! empty($result['success']),
+            'message' => $result['message'] ?? ($result['success'] ? 'Order details updated from Alibaba.' : 'Failed to pull order details.'),
+        ]);
+    }
+
+    public function fetchOrders(Request $request): JsonResponse
+    {
+        @set_time_limit(0);
+
+        $fromDate = trim((string) $request->input('from_date', ''));
+        $sync = app(AlibabaOrderSyncService::class);
+
+        if ($fromDate !== '') {
+            $result = $sync->fetchAndStoreFromDate($fromDate);
+        } else {
+            $daysInput = $request->input('days', 0);
+            $days = $daysInput === 'all' || (int) $daysInput === 0
+                ? 0
+                : max(1, min(730, (int) $daysInput));
+            $result = $sync->fetchAndStore($days);
+        }
+
+        // Only auto-queue Shopify imports when explicitly requested.
+        // Prefer from_date fetches without import when older orders already exist on Shopify.
+        if ($request->boolean('import')) {
+            $dispatched = $sync->dispatchImportsForNewOrders();
+            $result['message'] .= " Dispatched {$dispatched} import job(s).";
+        }
+
+        return response()->json([
+            'success' => str_contains(strtolower($result['message']), 'missing')
+                || str_contains(strtolower($result['message']), 'invalid')
+                ? false
+                : true,
+            'message' => $result['message'],
+            'fetched' => $result['fetched'] ?? 0,
+            'stored' => $result['stored'] ?? 0,
+        ]);
+    }
+
+    public function syncInventoryNow(): JsonResponse
+    {
+        $result = app(AlibabaInventorySyncService::class)->syncFromShopify(false);
+
+        return response()->json([
+            'success' => ($result['failed'] ?? 0) === 0,
+            'message' => $result['message'],
+            'updated' => $result['updated'] ?? 0,
+            'price_updated' => $result['price_updated'] ?? 0,
+        ]);
+    }
+
+    public function pushOrderToShopify(Request $request): JsonResponse
+    {
+        $id = (int) $request->input('id');
+        $order = AlibabaOrderMetric::find($id);
+
+        if (! $order) {
+            return response()->json(['success' => false, 'message' => 'Order not found.'], 404);
+        }
+
+        if ($request->boolean('dry_run')) {
+            $preview = app(AlibabaOrderPushService::class)->previewShopifyPush($order);
+
+            return response()->json($preview);
+        }
+
+        if ($order->shopify_order_id) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Already imported.',
+                'shopify_order_id' => $order->shopify_order_id,
+            ]);
+        }
+
+        ImportAlibabaOrderToShopify::dispatch($order->id);
+        $order->update(['import_status' => 'queued']);
+
+        return response()->json(['success' => true, 'message' => 'Import queued. Ensure queue worker is running.']);
+    }
+
+    /**
+     * Delete a local Alibaba order that is still ready for Shopify import
+     * (not yet imported). Removes all line rows for that AE order_id.
+     */
+    public function deleteReadyOrder(Request $request): JsonResponse
+    {
+        $id = (int) $request->input('id');
+        $order = AlibabaOrderMetric::find($id);
+
+        if (! $order) {
+            return response()->json(['success' => false, 'message' => 'Order not found.'], 404);
+        }
+
+        if (! empty($order->shopify_order_id)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This order is already imported to Shopify and cannot be deleted here.',
+            ], 422);
+        }
+
+        $orderId = (string) $order->order_id;
+        $deleted = AlibabaOrderMetric::query()
+            ->where('order_id', $orderId)
+            ->whereNull('shopify_order_id')
+            ->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => "Removed Alibaba order {$orderId} from ready-for-import ({$deleted} row(s)).",
+            'deleted' => $deleted,
+            'order_id' => $orderId,
+        ]);
+    }
+
+    public function syncSettings(Request $request): View
+    {
+        return view('marketplace.alibaba.settings', [
+            'settings' => MarketplaceSyncSettings::getFor('alibaba'),
+            'title' => 'Alibaba — Sync Settings',
+            'connected' => $this->apiConfig->isConfigured('alibaba'),
+        ]);
+    }
+
+    public function saveSettings(Request $request): JsonResponse
+    {
+        $current = MarketplaceSyncSettings::getFor('alibaba');
+
+        $pricing = $this->mergeSettingsSection($current['pricing'] ?? [], $request->input('pricing', []), [
+            'price_sync', 'use_sale_price', 'currency_conversion',
+        ]);
+        $inventory = $this->mergeSettingsSection($current['inventory'] ?? [], $request->input('inventory', []), [
+            'inventory_sync',
+        ]);
+        $order = $this->mergeSettingsSection($current['order'] ?? [], $request->input('order', []), [
+            'auto_import_to_shopify', 'keep_order_number_from_channel',
+        ]);
+        $listings = $this->mergeSettingsSection($current['listings'] ?? [], $request->input('listings', []), [
+            'auto_link_by_sku', 'create_products_on_alibaba', 'sync_title', 'sync_images',
+        ]);
+
+        if ($request->has('order.shopify_order_tags')) {
+            $tags = $request->input('order.shopify_order_tags');
+            $order['shopify_order_tags'] = is_array($tags)
+                ? $tags
+                : array_values(array_filter(array_map('trim', explode(',', (string) $tags))));
+        }
+
+        if ($request->filled('order.shopify_store')) {
+            $store = (string) $request->input('order.shopify_store');
+            $allowed = ['main', '5core', 'business', 'prolightsounds'];
+            if (in_array($store, $allowed, true)) {
+                $order['shopify_store'] = $store;
+            }
+        }
+
+        if ($request->filled('order.shopify_source_name')) {
+            $order['shopify_source_name'] = trim((string) $request->input('order.shopify_source_name'));
+        }
+
+        if ($request->filled('order.shopify_source_display_name')) {
+            $order['shopify_source_display_name'] = trim((string) $request->input('order.shopify_source_display_name'));
+        }
+
+        MarketplaceSyncSettings::setFor('alibaba', [
+            'pricing' => $pricing,
+            'inventory' => $inventory,
+            'order' => $order,
+            'listings' => $listings,
+        ]);
+
+        return response()->json(['success' => true, 'message' => 'Alibaba sync settings saved.']);
+    }
+
+    /**
+     * @param  array<string, mixed>  $current
+     * @param  array<string, mixed>  $input
+     * @param  array<int, string>  $booleanKeys
+     * @return array<string, mixed>
+     */
+    protected function mergeSettingsSection(array $current, array $input, array $booleanKeys): array
+    {
+        $merged = array_merge($current, $input);
+
+        if ($input !== []) {
+            foreach ($booleanKeys as $key) {
+                $merged[$key] = array_key_exists($key, $input)
+                    ? filter_var($input[$key], FILTER_VALIDATE_BOOLEAN)
+                    : false;
+            }
+        }
+
+        return $merged;
+    }
+
+    /**
+     * SKUs in alibaba_metric that map to a real Shopify SKU (not product_id placeholders).
+     *
+     * @return array<int, string>
+     */
+    protected function linkedAlibabaSkus(): array
+    {
+        if (! Schema::hasTable('alibaba_metrics')) {
+            return [];
+        }
+
+        return AlibabaMetric::query()
+            ->whereNotNull('sku')
+            ->whereNotNull('product_id')
+            ->where('sku', '!=', '')
+            ->where('product_id', '!=', '')
+            ->whereColumn('sku', '!=', 'product_id')
+            ->pluck('sku')
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  array<int, string>  $linkedSkus
+     * @param  array<string, true>  $shopifyNormKeys
+     * @return array{all: int, linked: int, unlinked: int, not_in_shopify: int}
+     */
+    protected function shopifyListingCounts(array $linkedSkus, array $shopifyNormKeys = []): array
+    {
+        $base = ShopifySku::query()->whereNotNull('sku')->where('sku', '!=', '');
+        $all = (clone $base)->count();
+        $linked = $linkedSkus === [] ? 0 : (clone $base)->whereIn('sku', $linkedSkus)->count();
+
+        return [
+            'all' => $all,
+            'linked' => $linked,
+            'unlinked' => max(0, $all - $linked),
+            'not_in_shopify' => $this->countAeNotInShopify($shopifyNormKeys),
+        ];
+    }
+
+    /**
+     * @return array<string, true>
+     */
+    protected function shopifyNormalizedSkuKeys(): array
+    {
+        $keys = [];
+        ShopifySku::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->select(['id', 'sku'])
+            ->orderBy('id')
+            ->chunkById(2000, function ($rows) use (&$keys) {
+                foreach ($rows as $row) {
+                    $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $row->sku);
+                    if ($norm !== '') {
+                        $keys[$norm] = true;
+                    }
+                }
+            });
+
+        return $keys;
+    }
+
+    /**
+     * @param  array<string, true>  $shopifyNormKeys
+     */
+    protected function countAeNotInShopify(array $shopifyNormKeys): int
+    {
+        if (! Schema::hasTable('alibaba_metrics')) {
+            return 0;
+        }
+
+        $count = 0;
+        $this->aeMetricsWithRealSkuQuery()
+            ->select(['id', 'sku'])
+            ->orderBy('id')
+            ->chunkById(500, function ($rows) use ($shopifyNormKeys, &$count) {
+                foreach ($rows as $metric) {
+                    $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $metric->sku);
+                    if ($norm !== '' && ! isset($shopifyNormKeys[$norm])) {
+                        $count++;
+                    }
+                }
+            });
+
+        return $count;
+    }
+
+    /**
+     * @param  array<string, true>  $shopifyNormKeys
+     */
+    protected function paginateAeNotInShopify(
+        string $searchSku,
+        string $searchName,
+        array $shopifyNormKeys,
+        int $page,
+        int $perPage
+    ): LengthAwarePaginator {
+        if (! Schema::hasTable('alibaba_metrics')) {
+            return new LengthAwarePaginator([], 0, $perPage, $page);
+        }
+
+        $rows = $this->aeMetricsWithRealSkuQuery()->orderBy('sku')->get()->filter(function (AlibabaMetric $metric) use ($shopifyNormKeys, $searchSku, $searchName) {
+            $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $metric->sku);
+            if ($norm === '' || isset($shopifyNormKeys[$norm])) {
+                return false;
+            }
+            if ($searchSku !== '' && ! str_contains(strtoupper((string) $metric->sku), strtoupper($searchSku))) {
+                return false;
+            }
+            if ($searchName !== '') {
+                $haystack = strtoupper((string) (($metric->product_name ?? '').' '.$metric->sku));
+                if (! str_contains($haystack, strtoupper($searchName))) {
+                    return false;
+                }
+            }
+
+            return true;
+        })->values();
+
+        $total = $rows->count();
+        $sliceSkus = $rows->slice(($page - 1) * $perPage, $perPage)->pluck('sku')->map(fn ($s) => (string) $s)->all();
+        $aeStockMap = $this->alibabaStockMapForSkus($sliceSkus);
+        $slice = $rows->slice(($page - 1) * $perPage, $perPage)->map(function (AlibabaMetric $metric) use ($aeStockMap) {
+            $sku = (string) $metric->sku;
+
+            return (object) [
+                'shopify_sku_id' => null,
+                'product_id' => $metric->product_id,
+                'sku' => $sku,
+                'title' => $metric->product_name ?? $metric->sku,
+                'alibaba_title' => null,
+                'image_src' => null,
+                'price' => $metric->price ?? null,
+                'shopify_price' => null,
+                'quantity' => $aeStockMap[strtoupper(trim($sku))] ?? null,
+                'ae_quantity' => $aeStockMap[strtoupper(trim($sku))] ?? null,
+                'shopify_quantity' => null,
+                'linked' => false,
+                'listing_status' => 'not_in_shopify',
+            ];
+        });
+
+        return new LengthAwarePaginator(
+            $slice,
+            $total,
+            $perPage,
+            $page,
+            ['path' => request()->url(), 'query' => request()->query()]
+        );
+    }
+
+    protected function aeMetricsWithRealSkuQuery()
+    {
+        return AlibabaMetric::query()
+            ->whereNotNull('sku')
+            ->whereNotNull('product_id')
+            ->where('sku', '!=', '')
+            ->where('product_id', '!=', '')
+            ->whereColumn('sku', '!=', 'product_id');
+    }
+
+    /**
+     * @param  array<int, string>  $skus
+     * @return array<string, AlibabaMetric>
+     */
+    protected function alibabaMetricMapForSkus(array $skus): array
+    {
+        if ($skus === [] || ! Schema::hasTable('alibaba_metrics')) {
+            return [];
+        }
+
+        $exact = AlibabaMetric::query()->whereIn('sku', $skus)->get()->keyBy('sku');
+        $byNorm = [];
+        foreach (AlibabaMetric::query()
+            ->whereNotNull('sku')
+            ->whereNotNull('product_id')
+            ->where('sku', '!=', '')
+            ->where('product_id', '!=', '')
+            ->whereColumn('sku', '!=', 'product_id')
+            ->get() as $metric) {
+            $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $metric->sku);
+            if ($norm !== '' && ! isset($byNorm[$norm])) {
+                $byNorm[$norm] = $metric;
+            }
+        }
+
+        $out = [];
+        foreach ($skus as $sku) {
+            if ($exact->has($sku)) {
+                $out[$sku] = $exact->get($sku);
+
+                continue;
+            }
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+            if ($norm !== '' && isset($byNorm[$norm])) {
+                $out[$sku] = $byNorm[$norm];
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Local AE stock from alibaba_pricing_prices (updated by inventory sync).
+     *
+     * @param  array<int, string>  $skus
+     * @return array<string, int> keyed by uppercase SKU
+     */
+    protected function alibabaStockMapForSkus(array $skus): array
+    {
+        if ($skus === [] || ! Schema::hasTable('alibaba_pricing_prices')) {
+            return [];
+        }
+
+        $keys = [];
+        foreach ($skus as $sku) {
+            $trim = trim((string) $sku);
+            if ($trim === '') {
+                continue;
+            }
+            $keys[] = $trim;
+            $keys[] = strtoupper($trim);
+        }
+        $keys = array_values(array_unique($keys));
+
+        $map = [];
+        AlibabaPricingPrice::query()
+            ->whereIn('sku', $keys)
+            ->get(['sku', 'ab_stock'])
+            ->each(function (AlibabaPricingPrice $row) use (&$map) {
+                $key = strtoupper(trim((string) $row->sku));
+                if ($key !== '' && $row->ab_stock !== null) {
+                    $map[$key] = (int) $row->ab_stock;
+                }
+            });
+
+        return $map;
+    }
+
+    protected function isShopifySkuLinkedOnAlibaba(?AlibabaMetric $metric, string $shopifySku): bool
+    {
+        if (! $metric || empty($metric->product_id)) {
+            return false;
+        }
+
+        $mappedSku = trim((string) $metric->sku);
+        if ($mappedSku === '' || $mappedSku === (string) $metric->product_id) {
+            return false;
+        }
+
+        return ShopifySku::normalizeSkuForShopifyLookup($mappedSku)
+            === ShopifySku::normalizeSkuForShopifyLookup($shopifySku);
+    }
+}

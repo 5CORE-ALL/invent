@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\MarketPlace\AlibabaSyncController;
 use App\Http\Controllers\MarketPlace\AliexpressSyncController;
 use App\Http\Controllers\MarketPlace\ReverbSyncController;
 use App\Http\Controllers\MarketPlace\TopDawgSyncController;
@@ -16,7 +17,7 @@ use Illuminate\View\View;
 class MarketplaceController extends Controller
 {
     /** Supported marketplace slugs (lowercase). */
-    public const SUPPORTED_MARKETPLACES = ['reverb', 'amazon', 'ebay', 'walmart', 'topdawg', 'aliexpress'];
+    public const SUPPORTED_MARKETPLACES = ['reverb', 'amazon', 'ebay', 'walmart', 'topdawg', 'aliexpress', 'alibaba'];
 
     protected function getController(string $marketplace): ?object
     {
@@ -24,6 +25,7 @@ class MarketplaceController extends Controller
             'reverb' => app(ReverbSyncController::class),
             'topdawg' => app(TopDawgSyncController::class),
             'aliexpress' => app(AliexpressSyncController::class),
+            'alibaba' => app(AlibabaSyncController::class),
             'amazon', 'ebay', 'walmart' => null,
             default => null,
         };
@@ -62,21 +64,27 @@ class MarketplaceController extends Controller
     public function pullProduct(Request $request, string $marketplace, int $shopifySku): JsonResponse
     {
         $marketplace = strtolower($marketplace);
-        if ($marketplace !== 'aliexpress') {
-            return response()->json(['success' => false, 'message' => 'Not supported for this marketplace.'], 404);
+        if ($marketplace === 'aliexpress') {
+            return app(AliexpressSyncController::class)->pullProductFromAliexpress($shopifySku);
+        }
+        if ($marketplace === 'alibaba') {
+            return app(AlibabaSyncController::class)->pullProductFromAlibaba($shopifySku);
         }
 
-        return app(AliexpressSyncController::class)->pullProductFromAliexpress($shopifySku);
+        return response()->json(['success' => false, 'message' => 'Not supported for this marketplace.'], 404);
     }
 
     public function pullOrder(Request $request, string $marketplace, int $order): JsonResponse
     {
         $marketplace = strtolower($marketplace);
-        if ($marketplace !== 'aliexpress') {
-            return response()->json(['success' => false, 'message' => 'Not supported for this marketplace.'], 404);
+        if ($marketplace === 'aliexpress') {
+            return app(AliexpressSyncController::class)->pullOrderFromAliexpress($order);
+        }
+        if ($marketplace === 'alibaba') {
+            return app(AlibabaSyncController::class)->pullOrderFromAlibaba($order);
         }
 
-        return app(AliexpressSyncController::class)->pullOrderFromAliexpress($order);
+        return response()->json(['success' => false, 'message' => 'Not supported for this marketplace.'], 404);
     }
 
     public function orders(Request $request, string $marketplace): View
@@ -138,6 +146,9 @@ class MarketplaceController extends Controller
         if ($marketplace === 'aliexpress') {
             return app(AliexpressSyncController::class)->saveSettings($request);
         }
+        if ($marketplace === 'alibaba') {
+            return app(AlibabaSyncController::class)->saveSettings($request);
+        }
         return response()->json(['success' => false], 404);
     }
 
@@ -149,6 +160,9 @@ class MarketplaceController extends Controller
         if (strtolower($marketplace) === 'aliexpress') {
             return app(AliexpressSyncController::class)->pushOrderToShopify($request);
         }
+        if (strtolower($marketplace) === 'alibaba') {
+            return app(AlibabaSyncController::class)->pushOrderToShopify($request);
+        }
         return response()->json(['success' => false], 404);
     }
 
@@ -157,7 +171,10 @@ class MarketplaceController extends Controller
         if (strtolower($marketplace) === 'aliexpress') {
             return app(AliexpressSyncController::class)->deleteReadyOrder($request);
         }
+        if (strtolower($marketplace) === 'alibaba') {
+            return app(AlibabaSyncController::class)->deleteReadyOrder($request);
+        }
 
-        return response()->json(['success' => false, 'message' => 'Delete ready order is only available for AliExpress.'], 404);
+        return response()->json(['success' => false, 'message' => 'Delete ready order is only available for AliExpress and Alibaba.'], 404);
     }
 }

@@ -497,7 +497,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/{product}', [\App\Http\Controllers\SkuImageController::class, 'getImages'])->whereNumber('product')->name('images');
     });
 
-    // Marketplace Manager (LitCommerce-style hub — AliExpress first, more later)
+    // Marketplace Manager (LitCommerce-style hub — AliExpress, Alibaba, more later)
     Route::prefix('marketplace-manager')->name('marketplace.manager.')->group(function () {
         Route::get('/', [\App\Http\Controllers\MarketplaceManager\MarketplaceManagerController::class, 'index'])->name('index');
         Route::get('/aliexpress/connect', [\App\Http\Controllers\MarketPlace\AliexpressSyncController::class, 'connect'])->name('aliexpress.connect');
@@ -506,13 +506,19 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/aliexpress/refresh-products/status', [\App\Http\Controllers\MarketPlace\AliexpressSyncController::class, 'refreshProductsStatus'])->name('aliexpress.refresh.status');
         Route::post('/aliexpress/fetch-orders', [\App\Http\Controllers\MarketPlace\AliexpressSyncController::class, 'fetchOrders'])->name('aliexpress.fetch.orders');
         Route::post('/aliexpress/sync-inventory', [\App\Http\Controllers\MarketPlace\AliexpressSyncController::class, 'syncInventoryNow'])->name('aliexpress.sync.inventory');
+        Route::get('/alibaba/connect', [\App\Http\Controllers\MarketPlace\AlibabaSyncController::class, 'connect'])->name('alibaba.connect');
+        Route::post('/alibaba/test-connection', [\App\Http\Controllers\MarketPlace\AlibabaSyncController::class, 'testConnection'])->name('alibaba.test');
+        Route::post('/alibaba/refresh-products', [\App\Http\Controllers\MarketPlace\AlibabaSyncController::class, 'refreshProducts'])->name('alibaba.refresh');
+        Route::get('/alibaba/refresh-products/status', [\App\Http\Controllers\MarketPlace\AlibabaSyncController::class, 'refreshProductsStatus'])->name('alibaba.refresh.status');
+        Route::post('/alibaba/fetch-orders', [\App\Http\Controllers\MarketPlace\AlibabaSyncController::class, 'fetchOrders'])->name('alibaba.fetch.orders');
+        Route::post('/alibaba/sync-inventory', [\App\Http\Controllers\MarketPlace\AlibabaSyncController::class, 'syncInventoryNow'])->name('alibaba.sync.inventory');
         Route::get('/{marketplace}', [\App\Http\Controllers\MarketplaceManager\MarketplaceManagerController::class, 'show'])
             ->name('show')
-            ->where('marketplace', 'aliexpress');
+            ->where('marketplace', 'aliexpress|alibaba');
     });
 
-    // Marketplace Sync: dynamic routes per marketplace (reverb, amazon, ebay, walmart, aliexpress)
-    Route::prefix('marketplace/{marketplace}')->where(['marketplace' => 'reverb|amazon|ebay|walmart|topdawg|aliexpress'])->group(function () {
+    // Marketplace Sync: dynamic routes per marketplace (reverb, amazon, ebay, walmart, aliexpress, alibaba)
+    Route::prefix('marketplace/{marketplace}')->where(['marketplace' => 'reverb|amazon|ebay|walmart|topdawg|aliexpress|alibaba'])->group(function () {
         Route::get('/products', [\App\Http\Controllers\MarketplaceController::class, 'products'])->name('marketplace.products');
         Route::get('/products/{shopifySku}', [\App\Http\Controllers\MarketplaceController::class, 'showProduct'])->name('marketplace.products.show')->whereNumber('shopifySku');
         Route::post('/products/{shopifySku}/pull', [\App\Http\Controllers\MarketplaceController::class, 'pullProduct'])->name('marketplace.products.pull')->whereNumber('shopifySku');

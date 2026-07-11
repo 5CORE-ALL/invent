@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\MarketplaceManager;
 
 use App\Http\Controllers\Controller;
+use App\Models\AlibabaMetric;
 use App\Models\AliexpressListingStatus;
 use App\Models\AliexpressMetric;
 use App\Models\MarketplaceSyncSettings;
@@ -68,6 +69,9 @@ class MarketplaceManagerController extends Controller
                 : (Schema::hasTable('aliexpress_listing_statuses')
                     ? (int) AliexpressListingStatus::query()->count()
                     : 0),
+            'alibaba' => Schema::hasTable('alibaba_metrics')
+                ? (int) AlibabaMetric::query()->whereNotNull('sku')->count()
+                : 0,
             default => 0,
         };
     }

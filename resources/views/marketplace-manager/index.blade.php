@@ -18,8 +18,8 @@
                 <h4 class="mb-1">Marketplace Manager</h4>
                 <p class="text-muted mb-0">Connect marketplaces to Shopify (source shop). Sync listings, inventory, and orders.</p>
             </div>
-            <a href="{{ route('marketplace.manager.aliexpress.connect') }}" class="btn btn-primary">
-                <i class="ri-plug-line me-1"></i> Connect AliExpress
+            <a href="{{ route('marketplace.manager.index') }}" class="btn btn-primary">
+                <i class="ri-links-line me-1"></i> View channels
             </a>
         </div>
 
@@ -82,7 +82,7 @@
 
         <div class="alert alert-info mt-3 mb-0">
             <i class="ri-information-line me-1"></i>
-            More marketplaces (eBay, Amazon, Macy's, etc.) will be added here after AliExpress is fully wired.
+            AliExpress and Alibaba are available here. More marketplaces can be added the same way.
         </div>
     </div>
 </div>

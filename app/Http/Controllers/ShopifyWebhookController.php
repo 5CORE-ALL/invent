@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\SyncInventoryToAlibaba;
 use App\Jobs\SyncInventoryToAliexpress;
 use App\Jobs\SyncInventoryToReverb;
 use App\Models\MarketplaceSyncSettings;
@@ -42,6 +43,11 @@ class ShopifyWebhookController extends Controller
             $aliexpressSettings = MarketplaceSyncSettings::getFor('aliexpress');
             if ($aliexpressSettings['inventory']['inventory_sync'] ?? false) {
                 SyncInventoryToAliexpress::dispatch()->onQueue('aliexpress');
+            }
+
+            $alibabaSettings = MarketplaceSyncSettings::getFor('alibaba');
+            if ($alibabaSettings['inventory']['inventory_sync'] ?? false) {
+                SyncInventoryToAlibaba::dispatch()->onQueue('alibaba');
             }
         }
 

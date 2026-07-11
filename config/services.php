@@ -664,6 +664,22 @@ return [
         'app_secret' => env('ALIBABA_APP_SECRET'),
         'access_token' => env('ALIBABA_ACCESS_TOKEN'),
         'api_base' => env('ALIBABA_API_BASE', 'https://openapi.alibaba.com'),
+        'gateway' => env('ALIBABA_GATEWAY', env('ALIEXPRESS_GATEWAY', 'rest')),
+        'rest_base' => env('ALIBABA_REST_BASE', env('ALIEXPRESS_REST_BASE', 'https://api-sg.aliexpress.com/rest')),
+        'rest_sign_method' => env('ALIBABA_REST_SIGN_METHOD', env('ALIEXPRESS_REST_SIGN_METHOD', 'hmac')),
+        'connect_timeout' => (int) env('ALIBABA_CONNECT_TIMEOUT', 30),
+        'timeout' => (int) env('ALIBABA_TIMEOUT', 60),
+        'resolve_ipv4' => filter_var(env('ALIBABA_RESOLVE_IPV4', true), FILTER_VALIDATE_BOOL),
+        'http_proxy' => env('ALIBABA_HTTP_PROXY'),
+        'shopify_source_name' => env('ALIBABA_SHOPIFY_SOURCE_NAME', 'alibaba'),
+        'shopify_source_display_name' => env('ALIBABA_SHOPIFY_SOURCE_DISPLAY_NAME', 'Alibaba'),
+        'shopify_source_url_template' => env(
+            'ALIBABA_SHOPIFY_SOURCE_URL_TEMPLATE',
+            'https://www.alibaba.com/trade/order_detail.htm?orderId={order_id}'
+        ),
+        'redirect_uri' => env('ALIBABA_REDIRECT_URI', env('APP_URL')),
+        'auth_base' => env('ALIBABA_AUTH_BASE', 'https://api-sg.aliexpress.com'),
+        'token_url' => env('ALIBABA_TOKEN_URL', 'https://api-sg.aliexpress.com/auth/token/create'),
     ],
 
     'aliexpress' => [

@@ -108,6 +108,21 @@
                                 </ul>
                             </div>
                         </li>
+                        <li class="side-nav-item">
+                            <a data-bs-toggle="collapse" href="#sidebarManagerAlibaba" aria-expanded="false" aria-controls="sidebarManagerAlibaba">
+                                <span>Alibaba</span>
+                                <span class="menu-arrow"></span>
+                            </a>
+                            <div class="collapse" id="sidebarManagerAlibaba">
+                                <ul class="side-nav-third-level">
+                                    <li><a href="{{ route('marketplace.manager.show', 'alibaba') }}">Overview</a></li>
+                                    <li><a href="{{ route('marketplace.manager.alibaba.connect') }}">Connect</a></li>
+                                    <li><a href="{{ route('marketplace.products', 'alibaba') }}">Listings</a></li>
+                                    <li><a href="{{ route('marketplace.orders', 'alibaba') }}">Orders</a></li>
+                                    <li><a href="{{ route('marketplace.settings', 'alibaba') }}">Sync Settings</a></li>
+                                </ul>
+                            </div>
+                        </li>
                     </ul>
                 </div>
             </li>

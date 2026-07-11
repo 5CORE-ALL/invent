@@ -1174,13 +1174,30 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo($log);
+
+        // Alibaba Marketplace Manager: inventory/price from Shopify, orders to Shopify
+        $schedule->command('alibaba:sync-inventory-from-shopify')
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('alibaba-sync-inventory')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('alibaba:sync-orders --from=2026-07-11 --import')
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('alibaba-sync-orders')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
         // $schedule->command('shopify:retry-pending-orders')
-        //     ->hourly()
-        //     ->timezone('UTC')
-        //     ->name('shopify-retry-pending-orders')
-        //     ->withoutOverlapping(30)
-        //     ->runInBackground()
-        //     ->appendOutputTo($log);
+            //     ->hourly()
+            //     ->timezone('UTC')
+            //     ->name('shopify-retry-pending-orders')
+            //     ->withoutOverlapping(30)
+            //     ->runInBackground()
+            //     ->appendOutputTo($log);
 
         /*
         |--------------------------------------------------------------------------

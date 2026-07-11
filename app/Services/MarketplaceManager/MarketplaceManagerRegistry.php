@@ -21,6 +21,13 @@ class MarketplaceManagerRegistry
                 'source_shop' => 'Shopify B2C',
                 'enabled' => true,
             ],
+            [
+                'slug' => 'alibaba',
+                'label' => 'Alibaba',
+                'short' => 'AB',
+                'source_shop' => 'Shopify B2C',
+                'enabled' => true,
+            ],
         ];
     }
 
