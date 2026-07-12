@@ -1218,6 +1218,31 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo($log);
+
+        // Link-map refresh (local SKU ↔ product_id only). Hourly to limit marketplace API load.
+        $schedule->command('aliexpress:sync-link-map')
+            ->hourly()
+            ->timezone('Asia/Kolkata')
+            ->name('aliexpress-sync-link-map')
+            ->withoutOverlapping(55)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('alibaba:sync-link-map')
+            ->hourly()
+            ->timezone('Asia/Kolkata')
+            ->name('alibaba-sync-link-map')
+            ->withoutOverlapping(55)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('reverb:manager-sync-link-map')
+            ->hourly()
+            ->timezone('Asia/Kolkata')
+            ->name('reverb-manager-sync-link-map')
+            ->withoutOverlapping(55)
+            ->runInBackground()
+            ->appendOutputTo($log);
         // $schedule->command('shopify:retry-pending-orders')
             //     ->hourly()
             //     ->timezone('UTC')

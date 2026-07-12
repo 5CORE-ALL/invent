@@ -109,12 +109,13 @@
             <div class="settings-section">
                 <div class="settings-section-header">Listings</div>
                 <div class="settings-section-body">
-                    <p class="text-muted small mb-2">Sync Reverb link map (Listings page) only reads Reverb and saves SKU mappings locally — it never creates listings on Reverb.</p>
+                    <p class="text-muted small mb-2">Sync Reverb link map only reads Reverb and saves SKU mappings locally — it never creates listings on Reverb. When <strong>Auto-link</strong> is on, this also runs hourly on schedule.</p>
                     <div class="sync-toggle-row">
                         <label class="form-check form-switch mb-0">
                             <input class="form-check-input" type="checkbox" name="listings[auto_link_by_sku]" value="1" {{ ($settings['listings']['auto_link_by_sku'] ?? true) ? 'checked' : '' }}>
                             <span class="form-check-label">Auto-link listings by SKU match</span>
                         </label>
+                        <div class="form-text ms-4">When on, refresh Reverb SKU ↔ product_id mappings hourly (same as manual Sync Reverb link map). Manual sync on Listings always works.</div>
                     </div>
                     <div class="sync-toggle-row">
                         <label class="form-check form-switch mb-0">

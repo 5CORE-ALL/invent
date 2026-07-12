@@ -58,6 +58,13 @@ class MarketplaceSyncSettings extends Model
         return (bool) ($settings['order']['fetch_orders'] ?? true);
     }
 
+    public static function canAutoLinkBySku(string $marketplace, ?array $settings = null): bool
+    {
+        $settings ??= self::getFor($marketplace);
+
+        return (bool) ($settings['listings']['auto_link_by_sku'] ?? true);
+    }
+
     public static function defaults(?string $marketplace = null): array
     {
         $marketplace = strtolower((string) $marketplace);
