@@ -168,7 +168,10 @@ class TemuShopifySalesService
    
     public static function getOrdersTableRows(Carbon $startDate, Carbon $endDate): array
     {
-        
+        // FetchTemuOrders stores parent_order_time in Pacific (Temu's reporting tz) and the
+        // app timezone is America/Los_Angeles, so Pacific windows already match the stored
+        // wall-clock. Align boundaries to the app tz anyway so this stays correct even if the
+        // app timezone changes or older rows were written under a different tz.
         $appTz = config('app.timezone');
         $start = $startDate->copy()->setTimezone($appTz);
         $end = $endDate->copy()->setTimezone($appTz);

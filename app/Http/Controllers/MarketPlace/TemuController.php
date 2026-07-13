@@ -2099,7 +2099,62 @@ class TemuController extends Controller
     {
         $mp = MarketplacePercentage::where('marketplace', 'TemuTwo')->first();
         $temu2Pct = $mp && $mp->percentage ? ($mp->percentage / 100) : 0.96;
-        return view('market-places.temu2_tabulator_view', compact('temu2Pct'));
+
+        // Y Sales — base-price sales for the day before the latest uploaded purchase_date
+        // (the last complete day). Also expose that date so the badge shows which day it
+        // reflects — makes it obvious when the Temu 2 upload is behind Seller Central.
+        $temu2YSales = $this->computeTemu2YSales();
+        $latestUpload = Temu2DailyData::whereNotNull('purchase_date')->max('purchase_date');
+        $temu2YDate = $latestUpload ? Carbon::parse($latestUpload)->subDay()->toDateString() : null;
+
+        return view('market-places.temu2_tabulator_view', compact('temu2Pct', 'temu2YSales', 'temu2YDate'));
+    }
+
+    /**
+     * Temu 2 Y Sales: yesterday's BASE-price sales from temu2_daily_data — matches Temu
+     * Seller Central's "Base price sales" daily chart. Anchored to the day before the
+     * latest uploaded purchase_date (a Temu export always includes a partial "today", so
+     * max − 1 day = the last complete day = "yesterday" when uploads are current).
+     *
+     * purchase_date is stored as the Temu export's own (Pacific) date, so it is used as-is
+     * WITHOUT a timezone conversion — converting it shifted the day back incorrectly.
+     */
+    private function computeTemu2YSales(): ?float
+    {
+        try {
+            $latest = Temu2DailyData::whereNotNull('purchase_date')->max('purchase_date');
+            if (! $latest) {
+                return null;
+            }
+
+            $yesterday = Carbon::parse($latest)->subDay();
+            $yStart = $yesterday->copy()->startOfDay();
+            $yEnd = $yesterday->copy()->endOfDay();
+
+            $rows = Temu2DailyData::where('purchase_date', '>=', $yStart)
+                ->where('purchase_date', '<=', $yEnd)
+                ->get(['contribution_sku', 'quantity_purchased', 'base_price_total']);
+
+            $total = 0.0;
+            foreach ($rows as $row) {
+                if (trim((string) ($row->contribution_sku ?? '')) === '') {
+                    continue;
+                }
+                $quantity = (int) ($row->quantity_purchased ?? 0);
+                $basePrice = (float) ($row->base_price_total ?? 0);
+                if ($quantity <= 0 || $basePrice <= 0) {
+                    continue;
+                }
+                // Base price × qty (no FB freight uplift) to mirror Temu's "Base price sales".
+                $total += $basePrice * $quantity;
+            }
+
+            return round($total, 2);
+        } catch (\Throwable $e) {
+            Log::warning('computeTemu2YSales failed: ' . $e->getMessage());
+
+            return null;
+        }
     }
 
     /**

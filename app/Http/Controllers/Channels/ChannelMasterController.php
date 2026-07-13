@@ -4765,9 +4765,11 @@ class ChannelMasterController extends Controller
                 return null;
             }
 
-            $latestPacific = Carbon::parse($latest)->timezone('America/Los_Angeles');
-            $yStartPacific = $latestPacific->copy()->subDay()->startOfDay();
-            $yEndPacific = $latestPacific->copy()->subDay()->endOfDay();
+            // purchase_date is the Temu export's own (Pacific) date — use as-is, no tz shift
+            // (converting it moved the day back incorrectly). max − 1 day = last complete day.
+            $yesterdayAnchor = Carbon::parse($latest)->subDay();
+            $yStartPacific = $yesterdayAnchor->copy()->startOfDay();
+            $yEndPacific = $yesterdayAnchor->copy()->endOfDay();
 
             $normalizeSku = function ($sku) {
                 $sku = strtoupper(trim((string) $sku));
@@ -4829,11 +4831,11 @@ class ChannelMasterController extends Controller
 
                 $quantity = (int) ($row->quantity_purchased ?? 0);
                 $basePrice = (float) ($row->base_price_total ?? 0);
-                // FB Prc: +$2.99 when per-unit base price ≤ $26.99 (matches /temu-decrease and /temu-tabulator).
-                $fbPrice = $basePrice <= 26.99 ? $basePrice + 2.99 : $basePrice;
 
                 if ($quantity > 0 && $basePrice > 0) {
-                    $totalYSales += $fbPrice * $quantity;
+                    // Base price × qty to mirror Temu's "Base price sales" daily chart
+                    // (matches /temu-tabulator + /temu2-tabulator Y Sales).
+                    $totalYSales += $basePrice * $quantity;
                 }
             }
 

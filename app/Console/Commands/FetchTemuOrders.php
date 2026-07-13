@@ -413,7 +413,9 @@ class FetchTemuOrders extends Command
         }
 
         try {
-            return Carbon::createFromTimestamp($ts);
+            // Store in Pacific (Temu's reporting timezone) so day-windows line up with
+            // Seller Central regardless of the server/app timezone.
+            return Carbon::createFromTimestamp($ts, 'America/Los_Angeles');
         } catch (\Throwable $e) {
             return null;
         }
