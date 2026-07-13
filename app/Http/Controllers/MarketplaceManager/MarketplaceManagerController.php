@@ -7,6 +7,8 @@ use App\Models\AlibabaMetric;
 use App\Models\AliexpressListingStatus;
 use App\Models\AliexpressMetric;
 use App\Models\MarketplaceSyncSettings;
+use App\Models\ReverbMetric;
+use App\Models\ReverbProduct;
 use App\Services\MarketplaceManager\MarketplaceManagerRegistry;
 use App\Services\Support\MarketplaceApiConfigService;
 use Illuminate\Support\Facades\Schema;
@@ -31,7 +33,7 @@ class MarketplaceManagerController extends Controller
             $channels[] = array_merge($channel, [
                 'connected' => $this->apiConfig->isConfigured($slug),
                 'listings_count' => $this->listingCount($slug),
-                'sync_settings' => MarketplaceSyncSettings::getFor($slug),
+                'sync_settings' => $this->syncSettingsFor($slug),
             ]);
         }
 
@@ -50,15 +52,21 @@ class MarketplaceManagerController extends Controller
             abort(404, 'Marketplace not found');
         }
 
-        $settings = MarketplaceSyncSettings::getFor($marketplace);
-
         return view('marketplace-manager.show', [
-            'title' => $channel['label'] . ' — Marketplace Manager',
+            'title' => $channel['label'].' — Marketplace Manager',
             'channel' => $channel,
             'connected' => $this->apiConfig->isConfigured($marketplace),
             'listings_count' => $this->listingCount($marketplace),
-            'settings' => $settings,
+            'settings' => $this->syncSettingsFor($marketplace),
         ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function syncSettingsFor(string $slug): array
+    {
+        return MarketplaceSyncSettings::getFor($slug);
     }
 
     protected function listingCount(string $slug): int
@@ -72,6 +80,11 @@ class MarketplaceManagerController extends Controller
             'alibaba' => Schema::hasTable('alibaba_metrics')
                 ? (int) AlibabaMetric::query()->whereNotNull('sku')->count()
                 : 0,
+            'reverb' => Schema::hasTable('reverb_metric')
+                ? (int) ReverbMetric::query()->whereNotNull('sku')->count()
+                : (Schema::hasTable('reverb_products')
+                    ? (int) ReverbProduct::query()->whereNotNull('sku')->where('sku', 'not like', '%Parent%')->count()
+                    : 0),
             default => 0,
         };
     }

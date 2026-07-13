@@ -4,7 +4,7 @@
 <div class="row">
     <div class="col-12">
         <a href="{{ route('marketplace.manager.show', 'aliexpress') }}" class="text-muted small"><i class="ri-arrow-left-line"></i> AliExpress Manager</a>
-        <h4 class="mt-2 mb-1">AliExpress Listings</h4>
+        @include('marketplace._page-heading', ['slug' => 'aliexpress', 'heading' => 'AliExpress Listings'])
         <p class="text-muted mb-3">Shopify catalog from <code>shopify_skus</code> (your synced Shopify inventory), with AliExpress link status from <code>aliexpress_metric</code>. Use <strong>Sync AE link map</strong> to refresh SKU ↔ product_id mappings from AliExpress.</p>
 
         @include('marketplace.aliexpress._nav', ['active' => 'products'])

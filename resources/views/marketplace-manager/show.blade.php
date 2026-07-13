@@ -7,7 +7,7 @@
         <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
             <div>
                 <a href="{{ route('marketplace.manager.index') }}" class="text-muted small"><i class="ri-arrow-left-line"></i> Marketplace Manager</a>
-                <h4 class="mb-1 mt-1">{{ $channel['label'] }}</h4>
+                @include('marketplace._page-heading', ['slug' => $slug, 'heading' => $channel['label'], 'mb' => 'mb-1'])
                 <p class="text-muted mb-0">Source shop: <strong>{{ $channel['source_shop'] }}</strong></p>
             </div>
             <div>
@@ -42,7 +42,19 @@
                 <div class="card">
                     <div class="card-body">
                         <p class="text-muted mb-1 small">Order import</p>
-                        <h5 class="mb-0">{{ ($settings['order']['auto_import_to_shopify'] ?? false) ? 'Auto → Shopify' : 'Manual' }}</h5>
+                        @php
+                            $fetchOn = $settings['order']['fetch_orders'] ?? true;
+                            $autoOn = $settings['order']['auto_import_to_shopify'] ?? false;
+                        @endphp
+                        <h5 class="mb-0">
+                            @if(! $fetchOn)
+                                Fetch Off
+                            @elseif($autoOn)
+                                Fetch + Auto → Shopify
+                            @else
+                                Fetch only (manual push)
+                            @endif
+                        </h5>
                     </div>
                 </div>
             </div>

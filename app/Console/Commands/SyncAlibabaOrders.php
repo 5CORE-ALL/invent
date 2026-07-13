@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Models\MarketplaceSyncSettings;
 use App\Services\MarketplaceManager\AlibabaOrderSyncService;
 use Illuminate\Console\Command;
 
@@ -10,12 +11,19 @@ class SyncAlibabaOrders extends Command
     protected $signature = 'alibaba:sync-orders
                             {--days=0 : Days of order history (0 = all available, up to 2 years)}
                             {--from= : Fetch orders from this date onward (YYYY-MM-DD); overrides --days}
-                            {--import : Dispatch import jobs for new orders after fetch}';
+                            {--import : Dispatch import jobs for new orders after fetch}
+                            {--force : Run even if Fetch orders setting is Off}';
 
     protected $description = 'Fetch Alibaba orders from API and store in alibaba_order_metrics.';
 
     public function handle(AlibabaOrderSyncService $sync): int
     {
+        if (! $this->option('force') && ! MarketplaceSyncSettings::canFetchOrders('alibaba')) {
+            $this->info('Skipped: Fetch orders is Off in Alibaba Marketplace Manager settings.');
+
+            return self::SUCCESS;
+        }
+
         $from = trim((string) $this->option('from'));
         $result = $from !== ''
             ? $sync->fetchAndStoreFromDate($from)

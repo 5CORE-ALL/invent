@@ -511,9 +511,15 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/alibaba/refresh-products/status', [\App\Http\Controllers\MarketPlace\AlibabaSyncController::class, 'refreshProductsStatus'])->name('alibaba.refresh.status');
         Route::post('/alibaba/fetch-orders', [\App\Http\Controllers\MarketPlace\AlibabaSyncController::class, 'fetchOrders'])->name('alibaba.fetch.orders');
         Route::post('/alibaba/sync-inventory', [\App\Http\Controllers\MarketPlace\AlibabaSyncController::class, 'syncInventoryNow'])->name('alibaba.sync.inventory');
+        Route::get('/reverb/connect', [\App\Http\Controllers\MarketPlace\ReverbSyncController::class, 'connect'])->name('reverb.connect');
+        Route::post('/reverb/test-connection', [\App\Http\Controllers\MarketPlace\ReverbSyncController::class, 'testConnection'])->name('reverb.test');
+        Route::post('/reverb/refresh-products', [\App\Http\Controllers\MarketPlace\ReverbSyncController::class, 'refreshProducts'])->name('reverb.refresh');
+        Route::get('/reverb/refresh-products/status', [\App\Http\Controllers\MarketPlace\ReverbSyncController::class, 'refreshProductsStatus'])->name('reverb.refresh.status');
+        Route::post('/reverb/fetch-orders', [\App\Http\Controllers\MarketPlace\ReverbSyncController::class, 'fetchOrders'])->name('reverb.fetch.orders');
+        Route::post('/reverb/sync-inventory', [\App\Http\Controllers\MarketPlace\ReverbSyncController::class, 'syncInventoryNow'])->name('reverb.sync.inventory');
         Route::get('/{marketplace}', [\App\Http\Controllers\MarketplaceManager\MarketplaceManagerController::class, 'show'])
             ->name('show')
-            ->where('marketplace', 'aliexpress|alibaba');
+            ->where('marketplace', 'aliexpress|alibaba|reverb');
     });
 
     // Marketplace Sync: dynamic routes per marketplace (reverb, amazon, ebay, walmart, aliexpress, alibaba)
@@ -528,6 +534,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/settings', [\App\Http\Controllers\MarketplaceController::class, 'saveSettings'])->name('marketplace.settings.save');
         Route::post('/orders/push', [\App\Http\Controllers\MarketplaceController::class, 'pushOrderToShopify'])->name('marketplace.orders.push');
         Route::post('/orders/delete-ready', [\App\Http\Controllers\MarketplaceController::class, 'deleteReadyOrder'])->name('marketplace.orders.delete-ready');
+        Route::post('/orders/mark-imported', [\App\Http\Controllers\MarketplaceController::class, 'markOrderAlreadyImported'])->name('marketplace.orders.mark-imported');
     });
 
     // TopDawg Sales Dashboard (topdawg_order_metrics, margin 0.95, no ship)

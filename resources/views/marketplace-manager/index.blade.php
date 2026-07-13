@@ -7,6 +7,7 @@
     .mm-status-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
     .mm-status-dot.connected { background: #0ab39c; }
     .mm-status-dot.disconnected { background: #f06548; }
+    .mm-mp-logo { width: 28px; height: 28px; object-fit: contain; flex-shrink: 0; }
 </style>
 @endsection
 
@@ -42,8 +43,14 @@
                             @forelse($channels as $ch)
                                 <tr>
                                     <td>
-                                        <span class="badge bg-dark me-2">{{ $ch['short'] }}</span>
-                                        <strong>{{ $ch['label'] }}</strong>
+                                        <div class="d-flex align-items-center gap-2">
+                                            @if(!empty($ch['logo']))
+                                                <img src="{{ asset($ch['logo']) }}" alt="{{ $ch['label'] }}" class="mm-mp-logo"
+                                                     onerror="this.style.display='none'">
+                                            @endif
+                                            <span class="badge bg-dark">{{ $ch['short'] }}</span>
+                                            <strong>{{ $ch['label'] }}</strong>
+                                        </div>
                                     </td>
                                     <td>{{ $ch['source_shop'] }}</td>
                                     <td>
@@ -59,10 +66,16 @@
                                         @endif
                                     </td>
                                     <td>
-                                        @if($ch['sync_settings']['order']['auto_import_to_shopify'] ?? false)
-                                            <span class="badge bg-success-subtle text-success">Auto</span>
+                                        @php
+                                            $fetchOn = $ch['sync_settings']['order']['fetch_orders'] ?? true;
+                                            $autoOn = $ch['sync_settings']['order']['auto_import_to_shopify'] ?? false;
+                                        @endphp
+                                        @if(! $fetchOn)
+                                            <span class="badge bg-light text-muted">Fetch Off</span>
+                                        @elseif($autoOn)
+                                            <span class="badge bg-success-subtle text-success">Fetch + Auto</span>
                                         @else
-                                            <span class="badge bg-light text-muted">Manual</span>
+                                            <span class="badge bg-info-subtle text-info">Fetch only</span>
                                         @endif
                                     </td>
                                     <td class="text-end">
@@ -82,7 +95,7 @@
 
         <div class="alert alert-info mt-3 mb-0">
             <i class="ri-information-line me-1"></i>
-            AliExpress and Alibaba are available here. More marketplaces can be added the same way.
+            AliExpress, Alibaba, and Reverb are available here. More marketplaces can be added the same way.
         </div>
     </div>
 </div>

@@ -14,7 +14,7 @@
 <div class="row">
     <div class="col-12">
         <a href="{{ route('marketplace.manager.show', 'alibaba') }}" class="text-muted small"><i class="ri-arrow-left-line"></i> Alibaba Manager</a>
-        <h4 class="mt-2 mb-1">Alibaba Sync Settings</h4>
+        @include('marketplace._page-heading', ['slug' => 'alibaba', 'heading' => 'Alibaba Sync Settings'])
         <p class="text-muted mb-3">Configure how Shopify (source) syncs with Alibaba for pricing, inventory, and orders.</p>
 
         @include('marketplace.alibaba._nav', ['active' => 'settings'])
@@ -67,6 +67,13 @@
                 <div class="settings-section-body">
                     <div class="sync-toggle-row">
                         <label class="form-check form-switch mb-0">
+                            <input class="form-check-input" type="checkbox" name="order[fetch_orders]" value="1" {{ ($settings['order']['fetch_orders'] ?? true) ? 'checked' : '' }}>
+                            <span class="form-check-label">Fetch orders from Alibaba on schedule</span>
+                        </label>
+                        <div class="form-text ms-4">When on, the 15‑minute schedule pulls Alibaba orders into our DB. Manual <strong>Fetch from Alibaba</strong> on the Orders page always works.</div>
+                    </div>
+                    <div class="sync-toggle-row">
+                        <label class="form-check form-switch mb-0">
                             <input class="form-check-input" type="checkbox" name="order[auto_import_to_shopify]" value="1" {{ ($settings['order']['auto_import_to_shopify'] ?? false) ? 'checked' : '' }}>
                             <span class="form-check-label">Automatically import Alibaba orders to Shopify</span>
                         </label>
@@ -102,12 +109,13 @@
             <div class="settings-section">
                 <div class="settings-section-header">Listings</div>
                 <div class="settings-section-body">
-                    <p class="text-muted small mb-2">Sync Alibaba link map (Listings page) only reads Alibaba and saves SKU mappings locally — it never creates listings on Alibaba.</p>
+                    <p class="text-muted small mb-2">Sync Alibaba link map only reads Alibaba and saves SKU mappings locally — it never creates listings on Alibaba. When <strong>Auto-link</strong> is on, this also runs hourly on schedule.</p>
                     <div class="sync-toggle-row">
                         <label class="form-check form-switch mb-0">
                             <input class="form-check-input" type="checkbox" name="listings[auto_link_by_sku]" value="1" {{ ($settings['listings']['auto_link_by_sku'] ?? true) ? 'checked' : '' }}>
                             <span class="form-check-label">Auto-link listings by SKU match</span>
                         </label>
+                        <div class="form-text ms-4">When on, refresh Alibaba SKU ↔ product_id mappings hourly (same as manual Sync Alibaba link map). Manual sync on Listings always works.</div>
                     </div>
                     <div class="sync-toggle-row">
                         <label class="form-check form-switch mb-0">

@@ -18,13 +18,24 @@
         return ($currency ? $currency.' ' : '').number_format((float)$value, 2);
     };
     $aeSource = $aeDataSource ?? 'cached';
+    $listingSkuIds = [];
+    foreach ($lineItems as $li) {
+        $sku = trim((string) ($li['sku'] ?? ''));
+        if ($sku === '' || in_array($sku, ['__order__', '__unknown__'], true) || isset($listingSkuIds[$sku])) {
+            continue;
+        }
+        $shopifyRow = \App\Models\ShopifySku::firstForProductSku($sku);
+        if ($shopifyRow) {
+            $listingSkuIds[$sku] = (int) $shopifyRow->id;
+        }
+    }
 @endphp
 <div class="row">
     <div class="col-12">
         <a href="{{ route('marketplace.orders', 'aliexpress') }}" class="text-muted small"><i class="ri-arrow-left-line"></i> Back to Orders</a>
         <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mt-2 mb-1">
             <div>
-                <h4 class="mb-1">Order {{ $summary['order_id'] ?? $orderId }}</h4>
+                @include('marketplace._page-heading', ['slug' => 'aliexpress', 'heading' => 'Order '.($summary['order_id'] ?? $orderId), 'mt' => ''])
                 <p class="text-muted mb-0">
                     @if(!empty($summary['created']))
                         {{ \Carbon\Carbon::parse($summary['created'])->format('M d, Y H:i') }}
@@ -222,7 +233,19 @@
                                             <img src="{{ $item['image'] }}" alt="" class="img-thumbnail" style="max-width:56px; max-height:56px; object-fit:contain;" referrerpolicy="no-referrer" loading="lazy">
                                         @else — @endif
                                     </td>
-                                    <td><code>{{ $item['sku'] ?? '—' }}</code></td>
+                                    <td>
+                                        @php
+                                            $lineSku = $item['sku'] ?? null;
+                                            $listingUrl = (!empty($lineSku) && isset($listingSkuIds[$lineSku]))
+                                                ? route('marketplace.products.show', ['marketplace' => 'aliexpress', 'shopifySku' => $listingSkuIds[$lineSku]])
+                                                : null;
+                                        @endphp
+                                        @if($listingUrl)
+                                            <a href="{{ $listingUrl }}" class="text-decoration-none" onclick="event.stopPropagation();" title="Open listing detail"><code>{{ $lineSku }}</code></a>
+                                        @else
+                                            <code>{{ $lineSku ?? '—' }}</code>
+                                        @endif
+                                    </td>
                                     <td>{{ $item['product_id'] ?? '—' }}</td>
                                     <td>{{ $item['child_order_id'] ?? '—' }}</td>
                                     <td>{{ $item['title'] ?? '—' }}</td>
@@ -272,6 +295,9 @@
                                     </button>
                                     <button type="button" class="btn btn-sm btn-warning" id="btn-push-order" data-id="{{ $line->id }}">
                                         Push to Shopify
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-outline-success" id="btn-mark-imported" data-id="{{ $line->id }}" data-order-id="{{ $summary['order_id'] ?? $orderId }}">
+                                        Already imported
                                     </button>
                                     <button type="button" class="btn btn-sm btn-outline-danger" id="btn-delete-ready-order" data-id="{{ $line->id }}" data-order-id="{{ $summary['order_id'] ?? $orderId }}">
                                         Delete from ready-for-import
@@ -441,6 +467,37 @@ document.getElementById('btn-delete-ready-order')?.addEventListener('click', fun
         } else {
             btn.disabled = false;
         }
+    })
+    .catch(function () {
+        alert('Request failed.');
+        btn.disabled = false;
+    });
+});
+
+document.getElementById('btn-mark-imported')?.addEventListener('click', function () {
+    var btn = this;
+    var id = btn.getAttribute('data-id');
+    var orderId = btn.getAttribute('data-order-id') || id;
+    if (!id) return;
+    if (!confirm('Mark AliExpress order ' + orderId + ' as already imported?\n\nUse this if the order was already entered in Shopify manually. No new Shopify order will be created.')) {
+        return;
+    }
+    var shopifyOrderId = prompt('Optional Shopify order ID (leave blank if entered manually):', '') || '';
+    btn.disabled = true;
+    fetch('{{ route('marketplace.orders.mark-imported', 'aliexpress') }}', {
+        method: 'POST',
+        headers: {
+            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ id: id, shopify_order_id: shopifyOrderId }),
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+        alert(data.message || (data.success ? 'Marked' : 'Failed'));
+        if (data.success) location.reload();
+        else btn.disabled = false;
     })
     .catch(function () {
         alert('Request failed.');

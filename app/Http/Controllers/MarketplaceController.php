@@ -70,6 +70,9 @@ class MarketplaceController extends Controller
         if ($marketplace === 'alibaba') {
             return app(AlibabaSyncController::class)->pullProductFromAlibaba($shopifySku);
         }
+        if ($marketplace === 'reverb') {
+            return app(ReverbSyncController::class)->pullProductFromReverb($shopifySku);
+        }
 
         return response()->json(['success' => false, 'message' => 'Not supported for this marketplace.'], 404);
     }
@@ -82,6 +85,9 @@ class MarketplaceController extends Controller
         }
         if ($marketplace === 'alibaba') {
             return app(AlibabaSyncController::class)->pullOrderFromAlibaba($order);
+        }
+        if ($marketplace === 'reverb') {
+            return app(ReverbSyncController::class)->pullOrderFromReverb($order);
         }
 
         return response()->json(['success' => false, 'message' => 'Not supported for this marketplace.'], 404);
@@ -174,7 +180,20 @@ class MarketplaceController extends Controller
         if (strtolower($marketplace) === 'alibaba') {
             return app(AlibabaSyncController::class)->deleteReadyOrder($request);
         }
+        if (strtolower($marketplace) === 'reverb') {
+            return app(ReverbSyncController::class)->deleteReadyOrder($request);
+        }
 
-        return response()->json(['success' => false, 'message' => 'Delete ready order is only available for AliExpress and Alibaba.'], 404);
+        return response()->json(['success' => false, 'message' => 'Delete ready order is only available for AliExpress, Alibaba, and Reverb.'], 404);
+    }
+
+    public function markOrderAlreadyImported(Request $request, string $marketplace): JsonResponse
+    {
+        return match (strtolower($marketplace)) {
+            'aliexpress' => app(AliexpressSyncController::class)->markOrderAlreadyImported($request),
+            'alibaba' => app(AlibabaSyncController::class)->markOrderAlreadyImported($request),
+            'reverb' => app(ReverbSyncController::class)->markOrderAlreadyImported($request),
+            default => response()->json(['success' => false, 'message' => 'Not supported for this marketplace.'], 404),
+        };
     }
 }

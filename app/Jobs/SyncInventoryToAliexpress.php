@@ -20,7 +20,7 @@ class SyncInventoryToAliexpress implements ShouldQueue
 
     public function __construct()
     {
-        $this->onQueue('aliexpress');
+        $this->onQueue(\App\Services\MarketplaceManager\MarketplaceManagerRegistry::QUEUE);
     }
 
     public function handle(): void

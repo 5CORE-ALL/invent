@@ -14,7 +14,7 @@
 <div class="row">
     <div class="col-12">
         <a href="{{ route('marketplace.manager.show', 'aliexpress') }}" class="text-muted small"><i class="ri-arrow-left-line"></i> AliExpress Manager</a>
-        <h4 class="mt-2 mb-1">AliExpress Sync Settings</h4>
+        @include('marketplace._page-heading', ['slug' => 'aliexpress', 'heading' => 'AliExpress Sync Settings'])
         <p class="text-muted mb-3">Configure how Shopify (source) syncs with AliExpress for pricing, inventory, and orders.</p>
 
         @include('marketplace.aliexpress._nav', ['active' => 'settings'])
@@ -67,6 +67,13 @@
                 <div class="settings-section-body">
                     <div class="sync-toggle-row">
                         <label class="form-check form-switch mb-0">
+                            <input class="form-check-input" type="checkbox" name="order[fetch_orders]" value="1" {{ ($settings['order']['fetch_orders'] ?? true) ? 'checked' : '' }}>
+                            <span class="form-check-label">Fetch orders from AliExpress on schedule</span>
+                        </label>
+                        <div class="form-text ms-4">When on, the 15‑minute schedule pulls AliExpress orders into our DB. Manual <strong>Fetch from AliExpress</strong> on the Orders page always works.</div>
+                    </div>
+                    <div class="sync-toggle-row">
+                        <label class="form-check form-switch mb-0">
                             <input class="form-check-input" type="checkbox" name="order[auto_import_to_shopify]" value="1" {{ ($settings['order']['auto_import_to_shopify'] ?? false) ? 'checked' : '' }}>
                             <span class="form-check-label">Automatically import AliExpress orders to Shopify</span>
                         </label>
@@ -102,12 +109,13 @@
             <div class="settings-section">
                 <div class="settings-section-header">Listings</div>
                 <div class="settings-section-body">
-                    <p class="text-muted small mb-2">Sync AE link map (Listings page) only reads AliExpress and saves SKU mappings locally — it never creates listings on AliExpress.</p>
+                    <p class="text-muted small mb-2">Sync AE link map only reads AliExpress and saves SKU mappings locally — it never creates listings on AliExpress. When <strong>Auto-link</strong> is on, this also runs hourly on schedule.</p>
                     <div class="sync-toggle-row">
                         <label class="form-check form-switch mb-0">
                             <input class="form-check-input" type="checkbox" name="listings[auto_link_by_sku]" value="1" {{ ($settings['listings']['auto_link_by_sku'] ?? true) ? 'checked' : '' }}>
                             <span class="form-check-label">Auto-link listings by SKU match</span>
                         </label>
+                        <div class="form-text ms-4">When on, refresh AliExpress SKU ↔ product_id mappings hourly (same as manual Sync AE link map). Manual sync on Listings always works.</div>
                     </div>
                     <div class="sync-toggle-row">
                         <label class="form-check form-switch mb-0">

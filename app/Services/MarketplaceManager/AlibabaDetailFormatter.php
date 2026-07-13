@@ -79,6 +79,9 @@ class AlibabaDetailFormatter
                 'last_order_date' => $metric?->last_order_date,
                 'bullet_points' => $metric?->bullet_points,
                 'ab_stock' => $aeStock,
+                'last_synced_at' => $this->resolveListingLastSyncedAt($metric, (string) ($shopify->sku ?? '')),
+                'link_synced_at' => $metric?->updated_at,
+                'inventory_synced_at' => $this->pricingSyncedAt((string) ($shopify->sku ?? '')),
             ],
             'alibaba' => [
                 'product_id' => $this->str($ae['product_id'] ?? $metric?->product_id),
@@ -251,6 +254,10 @@ class AlibabaDetailFormatter
         if (isset($funds['seller_amount_paid'])) {
             $noteLines[] = sprintf('Seller amount paid: %s %.2f', $currency, (float) $funds['seller_amount_paid']);
         }
+        $taxAmount = (float) ($amounts['tax'] ?? $funds['tax'] ?? 0);
+        if ($taxAmount > 0) {
+            $noteLines[] = sprintf('Tax: %s %.2f', $currency, $taxAmount);
+        }
         foreach ([
             'Platform commission' => $funds['platform_commission'] ?? null,
             'Transaction service fee' => $funds['transaction_service_fee'] ?? null,
@@ -293,6 +300,7 @@ class AlibabaDetailFormatter
             'alibaba_seller_amount_paid' => isset($funds['seller_amount_paid']) ? number_format((float) $funds['seller_amount_paid'], 2, '.', '') : null,
             'alibaba_platform_commission' => isset($funds['platform_commission']) ? number_format((float) $funds['platform_commission'], 2, '.', '') : null,
             'alibaba_transaction_service_fee' => isset($funds['transaction_service_fee']) ? number_format((float) $funds['transaction_service_fee'], 2, '.', '') : null,
+            'alibaba_tax' => $taxAmount > 0 ? number_format($taxAmount, 2, '.', '') : null,
             'alibaba_platform_offer_tax' => isset($funds['platform_offer_tax']) ? number_format((float) $funds['platform_offer_tax'], 2, '.', '') : null,
         ] as $name => $value) {
             if ($value !== null && $value !== '') {
@@ -317,12 +325,30 @@ class AlibabaDetailFormatter
         ];
         $payload = array_merge($payload, $this->resolveShopifySourceAttribution($orderRef));
 
-        $shippingCost = (float) ($amounts['shipping_cost'] ?? 0);
+        $shippingCost = (float) ($amounts['shipping_cost'] ?? $funds['shipping_cost'] ?? 0);
         if ($shippingCost > 0) {
             $payload['shipping_lines'] = [[
                 'title' => (string) ($shipment['service'] ?? 'Alibaba shipping'),
                 'price' => number_format($shippingCost, 2, '.', ''),
                 'code' => 'alibaba',
+            ]];
+        }
+
+        if ($taxAmount > 0) {
+            $taxableSubtotal = 0.0;
+            foreach ($lineItems as $item) {
+                $taxableSubtotal += ((float) ($item['price'] ?? 0)) * max(1, (int) ($item['quantity'] ?? 1));
+            }
+            $rate = $taxableSubtotal > 0 ? round($taxAmount / $taxableSubtotal, 4) : 0.0;
+            $pctLabel = $rate > 0
+                ? rtrim(rtrim(number_format($rate * 100, 2, '.', ''), '0'), '.')
+                : null;
+            $payload['taxes_included'] = false;
+            $payload['tax_lines'] = [[
+                'title' => $pctLabel !== null && $pctLabel !== '' ? 'TAX '.$pctLabel.'%' : 'Tax',
+                'price' => number_format($taxAmount, 2, '.', ''),
+                'rate' => $rate,
+                'channel_liable' => false,
             ]];
         }
 
@@ -357,7 +383,7 @@ class AlibabaDetailFormatter
         foreach ($lineItems as $item) {
             $lineSubtotal += ((float) ($item['price'] ?? 0)) * max(1, (int) ($item['quantity'] ?? 1));
         }
-        $lineSubtotal += $shippingCost;
+        $lineSubtotal += $shippingCost + max(0.0, $taxAmount);
 
         if ($customerPaid !== null && $lineSubtotal > 0 && $customerPaid < $lineSubtotal) {
             $payload['discount_codes'] = [[
@@ -1661,6 +1687,40 @@ class AlibabaDetailFormatter
         }
 
         return null;
+    }
+
+    /**
+     * Latest of link-map sync and inventory/price sync for this listing.
+     */
+    protected function resolveListingLastSyncedAt(?AlibabaMetric $metric, string $shopifySku): ?\Carbon\Carbon
+    {
+        $candidates = array_filter([
+            $metric?->updated_at,
+            $this->pricingSyncedAt($shopifySku),
+        ]);
+
+        if ($candidates === []) {
+            return null;
+        }
+
+        return collect($candidates)->sortByDesc(fn ($dt) => $dt->getTimestamp())->first();
+    }
+
+    protected function pricingSyncedAt(string $shopifySku): ?\Carbon\Carbon
+    {
+        $sku = trim($shopifySku);
+        if ($sku === '' || ! Schema::hasTable('alibaba_pricing_prices')) {
+            return null;
+        }
+
+        $row = AlibabaPricingPrice::query()
+            ->where(function ($q) use ($sku) {
+                $q->where('sku', $sku)->orWhere('sku', strtoupper($sku));
+            })
+            ->orderByDesc('updated_at')
+            ->first(['updated_at']);
+
+        return $row?->updated_at;
     }
 
     protected function localAeStockForSku(string $sku): ?int
