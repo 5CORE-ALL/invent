@@ -1734,6 +1734,15 @@
             // Show loader immediately
             document.getElementById('rainbow-loader').style.display = 'block';
 
+            // Bind the Excel export via event delegation at the document level so it
+            // is guaranteed to work even if a later init function throws (previously the
+            // click handler was attached inside initializeTable and could be skipped).
+            document.addEventListener('click', function(e) {
+                if (e.target.closest('#downloadExcel')) {
+                    handleExcelExport();
+                }
+            });
+
             // Initialize all components
             initializeTable();
 
@@ -3538,7 +3547,6 @@
                 loadData();
                 setupSearch();
                 setupHeaderColumnSearch();
-                setupExcelExport();
                 setupImport();
                 setupAddProductModal();
                 setupProgressModal();
@@ -4349,10 +4357,9 @@
             // Excel export: always include EVERY column (weight, dimensions, etc.)
             // even if they are hidden in the UI, so users don't have to fill them
             // in manually before re-importing.
-            function setupExcelExport() {
+            function handleExcelExport() {
                 const downloadExcelBtn = document.getElementById('downloadExcel');
-                if (downloadExcelBtn) {
-                    downloadExcelBtn.addEventListener('click', function() {
+                if (!downloadExcelBtn) return;
                     const allColumns = [
                         "Parent", "SKU", "Inventory", "OV L30", "DIL", "STATUS", "Unit", "LP", "CP$",
                         "FRGHT", "SHIP", "TEMU SHIP", "MOQ", "EBAY2 SHIP", "Label QTY", "WT ACT", "WT DECL", "Length", "Width", "Height",
@@ -4653,8 +4660,6 @@
                             '<i class="fas fa-file-excel me-1"></i> Export';
                         downloadExcelBtn.disabled = false;
                     });
-                    });
-                }
             }
 
             // Setup import functionality (Missing Data Only)

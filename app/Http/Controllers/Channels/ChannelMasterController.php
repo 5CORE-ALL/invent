@@ -1239,15 +1239,15 @@ class ChannelMasterController extends Controller
     private function getShopifyDirectLiveMetricsSummary(): ?array
     {
         try {
-            $today = Carbon::now();
+            // L30 window MUST match the /shopify page's Net Sales card exactly, so the
+            // Active Channel "Shopify" row agrees with that page. Use the same canonical
+            // range helper (Pacific, 30 inclusive days ending today = subDays(29)).
+            [$l30Start, $l30End] = \App\Http\Controllers\ShopifyRawDataController::shopifyDirectL30Range();
 
-            // L30 window matches the /shopify page default: today − 30 days … today.
-            $l30Start = $today->copy()->subDays(30)->startOfDay();
-            $l30End   = $today->copy()->endOfDay();
-
-            // L60 = prior period (days 31-60) so Growth on the Active Channel row works.
-            $l60Start = $today->copy()->subDays(60)->startOfDay();
-            $l60End   = $today->copy()->subDays(31)->endOfDay();
+            // L60 = the prior 30-day period (immediately before the L30 window) so Growth
+            // on the Active Channel row works, using the same Pacific day boundaries.
+            $l60End   = $l30Start->copy()->subDay()->endOfDay();
+            $l60Start = $l60End->copy()->subDays(29)->startOfDay();
 
             $l30 = $this->computeShopifyDirectMetricsFromOrders($l30Start, $l30End);
             $l60 = $this->computeShopifyDirectMetricsFromOrders($l60Start, $l60End);
@@ -1306,28 +1306,31 @@ class ChannelMasterController extends Controller
                 return ['total_pft' => 0.0, 'total_cogs' => 0.0];
             }
 
-            // Build the SKU → LP lookup once (same extraction path /shopify uses).
+            // Build the SKU → LP / Ship / Weight lookup once (same extraction path /shopify
+            // uses). Ship + weight are needed so PFT matches the Amazon sales page formula.
             $skus = $rows->pluck('sku')->filter()->unique()->values()->all();
-            $lpBySku = [];
+            $lpBySku = []; $shipBySku = []; $wtBySku = [];
             if (!empty($skus)) {
                 $masters = ProductMaster::whereIn('sku', $skus)->get(['sku', 'Values']);
                 foreach ($masters as $pm) {
                     $values = is_array($pm->Values)
                         ? $pm->Values
                         : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-                    $lp = 0.0;
+                    $lp = 0.0; $ship = 0.0; $wt = 0.0;
                     if (is_array($values)) {
                         foreach ($values as $k => $v) {
-                            if (strtolower((string) $k) === 'lp') {
-                                $lp = (float) $v;
-                                break;
-                            }
+                            $lk = strtolower((string) $k);
+                            if ($lk === 'lp') $lp = (float) $v;
+                            elseif ($lk === 'ship') $ship = (float) $v;
+                            elseif ($lk === 'wt_act') $wt = (float) $v;
                         }
                     }
                     if ($lp <= 0 && isset($pm->lp)) {
                         $lp = (float) $pm->lp;
                     }
                     $lpBySku[$pm->sku] = $lp;
+                    $shipBySku[$pm->sku] = $ship;
+                    $wtBySku[$pm->sku] = $wt;
                 }
             }
 
@@ -1339,9 +1342,18 @@ class ChannelMasterController extends Controller
                 $qty = (int) ($r->quantity ?? 0);
                 $ns  = (float) ($r->net_sales ?? 0);
                 $lp  = (float) ($lpBySku[$sku] ?? 0);
+                $ship = (float) ($shipBySku[$sku] ?? 0);
+                $wt  = (float) ($wtBySku[$sku] ?? 0);
                 $cogs = $lp * $qty;
+                // Ship cost — same rule as the Amazon sales page (per-unit ship divided
+                // across the line only when qty>1 and the line weight is under 20 lb).
+                $tWeight = $wt * $qty;
+                $shipCostUnit = ($qty == 1 || $tWeight >= 20) ? $ship : ($ship / max($qty, 1));
+                $lineShip = $shipCostUnit * $qty;
                 $totalCogs += $cogs;
-                $totalPft  += ($ns * $margin) - $cogs;
+                // GPFT basis matches Amazon sales page: (sale × margin) − LP − ship,
+                // using the Shopify gross margin.
+                $totalPft  += ($ns * $margin) - $cogs - $lineShip;
             }
 
             return [
@@ -1489,36 +1501,17 @@ class ChannelMasterController extends Controller
             $totalPft  = (float) ($live['total_pft']  ?? 0);
             $totalCogs = (float) ($live['total_cogs'] ?? 0);
 
-            // Total Ad Spend + TCOS now come from /shopify-ads-master's rolled-up
-            // total (Google Shopping + Google SERP + Facebook + Instagram, sub-rows
-            // excluded). The previous version used Google-only spend (~$1,594) which
-            // ignored Meta — /shopify-ads-master shows the full picture, so we mirror
-            // that here. The Google-only Shopping/SERP columns still get their
-            // per-source split so the breakdown stays meaningful (the difference
-            // between Total Ad Spend and Shopping+SERP equals the Meta portion).
-            //
-            // TCOS uses the rollup's own tcos_pct (Spend / S Sales) so this row's
-            // "TACOS %" cell is byte-identical with the badge /shopify-ads-master
-            // shows. We keep "Ads%" as the rollup's value too — they're the same
-            // metric on this page.
-            $totalAdSpend = (float) ($live['total_ad_spend'] ?? 0);
-            $rolledTcos   = null;
-            try {
-                $rollup = app(\App\Http\Controllers\MarketPlace\ShopifyAdsMasterController::class)
-                    ->getRolledUpSpend();
-                $totalAdSpend = (float) ($rollup['total_spend'] ?? $totalAdSpend);
-                $rolledTcos   = isset($rollup['tcos_pct']) ? (float) $rollup['tcos_pct'] : null;
-            } catch (\Throwable $e) {
-                Log::warning('Shopify rollup spend fetch failed, falling back to Google-only: ' . $e->getMessage());
-            }
+            // Total Ad Spend + TCOS use Google Ads only (Shopping + Search) — the SAME
+            // source /shopify's TACOS card uses — so this row's Ads%/TACOS matches that
+            // page. (Meta/Facebook+Instagram spend from /shopify-ads-master is intentionally
+            // excluded here to stay consistent with /shopify.)
+            $totalAdSpend  = (float) ($live['total_ad_spend'] ?? 0);
             $shoppingSpend = (float) ($live['shopping_spent'] ?? 0);
             $serpSpend     = (float) ($live['serp_spent']     ?? 0);
 
             $gpftPct  = $l30Sales  > 0 ? ($totalPft / $l30Sales) * 100 : 0.0;
             $groi     = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0.0;
-            $tacosPct = $rolledTcos !== null
-                ? $rolledTcos
-                : ($l30Sales > 0 ? ($totalAdSpend / $l30Sales) * 100 : 0.0);
+            $tacosPct = $l30Sales > 0 ? ($totalAdSpend / $l30Sales) * 100 : 0.0;
             $adsPct   = $tacosPct;                            // same definition on this page
             $nPftPct  = $gpftPct - $tacosPct;
             $netPft   = $totalPft - $totalAdSpend;

@@ -148,7 +148,8 @@ class ShopifyRawDataController extends Controller
             $orderTotal     = $row->order_total    !== null ? round((float) $row->order_total,    2) : null;
             $orderSubtotal  = $row->order_subtotal !== null ? round((float) $row->order_subtotal, 2) : null;
             $sku            = $row->sku ?? '';
-            $lp             = (float) ($lpBySku[$sku] ?? 0);
+            $cost           = $lpBySku[$sku] ?? ['lp' => 0, 'ship' => 0, 'wt' => 0];
+            $lp             = (float) ($cost['lp'] ?? 0);
 
             return [
                 'id'                 => $row->id              ?? '',
@@ -158,6 +159,8 @@ class ShopifyRawDataController extends Controller
                 'product_title'      => $row->product_title   ?? '',
                 'quantity'           => (int) ($row->quantity ?? 0),
                 'price'              => round((float) ($row->price ?? 0), 2),
+                'ship'               => round((float) ($cost['ship'] ?? 0), 2),
+                'wt_act'             => round((float) ($cost['wt'] ?? 0), 2),
                 'total_amount'       => $totalAmount,
                 'discount_codes'     => $row->discount_codes  ?? '',
                 'discount_amount'    => $discountAmount,
@@ -216,19 +219,20 @@ class ShopifyRawDataController extends Controller
             $values = is_array($pm->Values)
                 ? $pm->Values
                 : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-            $lp = 0.0;
+            $lp = 0.0; $ship = 0.0; $wt = 0.0;
             if (is_array($values)) {
                 foreach ($values as $k => $v) {
-                    if (strtolower((string) $k) === 'lp') {
-                        $lp = (float) $v;
-                        break;
-                    }
+                    $lk = strtolower((string) $k);
+                    if ($lk === 'lp') $lp = (float) $v;
+                    elseif ($lk === 'ship') $ship = (float) $v;
+                    elseif ($lk === 'wt_act') $wt = (float) $v;
                 }
             }
             if ($lp <= 0 && isset($pm->lp)) {
                 $lp = (float) $pm->lp;
             }
-            $out[$pm->sku] = $lp;
+            // Keyed map: lp/ship/wt per SKU (ship + weight power the Amazon-style PFT).
+            $out[$pm->sku] = ['lp' => $lp, 'ship' => $ship, 'wt' => $wt];
         }
         return $out;
     }

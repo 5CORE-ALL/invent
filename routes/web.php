@@ -4704,6 +4704,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/shein/pricing-upload-price', [SheinController::class, 'uploadSheinPriceSheet'])->name('shein.pricing.upload.price');
     Route::post('/shein/save-sprice', [SheinController::class, 'saveSheinSpriceUpdates'])->name('shein.pricing.save.sprice');
     Route::post('/shein/save-links', [SheinController::class, 'saveLinks'])->name('shein.pricing.save.links');
+    Route::post('/shein/lmp/add', [SheinController::class, 'saveLmpEntry'])->name('shein.pricing.lmp.add');
+    Route::post('/shein/lmp/delete', [SheinController::class, 'deleteLmpEntry'])->name('shein.pricing.lmp.delete');
     Route::get('/shein/badge-chart-data', [SheinController::class, 'sheinBadgeChartData'])->name('shein.badge.chart');
 
     // faire

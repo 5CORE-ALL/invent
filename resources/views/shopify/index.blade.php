@@ -408,13 +408,21 @@
             const q  = parseInt(r.quantity)        || 0;
             const lp = parseFloat(r.lp)            || 0;
             const ns = parseFloat(r.net_sales)     || 0;
+            const ship = parseFloat(r.ship)        || 0;
+            const wt   = parseFloat(r.wt_act)      || 0;
             qty      += q;
             revenue  += parseFloat(r.total_amount)  || 0;
             discount += parseFloat(r.discount_amount) || 0;
             netSales += ns;
             const cogs    = lp * q;
             totalCogs    += cogs;
-            totalGrossPft += (ns * pageGrossMargin) - cogs;
+            // GPFT basis matches the Amazon sales page: (net_sales × margin) − LP − ship,
+            // using the Shopify gross margin. Ship uses the same per-unit rule as Amazon
+            // (split across the line only when qty>1 and line weight < 20 lb).
+            const tWeight = wt * q;
+            const shipCostUnit = (q === 1 || tWeight >= 20) ? ship : (ship / Math.max(q, 1));
+            const lineShip = shipCostUnit * q;
+            totalGrossPft += (ns * pageGrossMargin) - cogs - lineShip;
         });
 
         // GPFT% / TACOS% / NPFT% / NROI% — same shape /ebay/daily-sales uses.

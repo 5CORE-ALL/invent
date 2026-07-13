@@ -400,6 +400,52 @@
             </div>
         </div>
     </div>
+
+    <!-- LMP Competitors Modal (same as Amazon page) -->
+    <div class="modal fade" id="sheinLmpModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title">
+                        <i class="fa fa-shopping-cart"></i> Competitors for SKU: <span id="sheinLmpSku"></span>
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <!-- Add New Competitor LMP -->
+                    <div class="card mb-3 border-success">
+                        <div class="card-header bg-success text-white py-2">
+                            <strong><i class="fa fa-plus-circle"></i> Add Competitor LMP</strong>
+                            <span class="float-end small">Max 4 per SKU</span>
+                        </div>
+                        <div class="card-body py-2">
+                            <form id="sheinAddLmpForm" class="row g-2 align-items-end">
+                                <div class="col-md-3">
+                                    <label class="form-label mb-1 small"><strong>SKU</strong></label>
+                                    <input type="text" class="form-control form-control-sm" id="sheinAddLmpSku" readonly>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label mb-1 small"><strong>Price</strong> <span class="text-danger">*</span></label>
+                                    <input type="number" class="form-control form-control-sm" id="sheinAddLmpPrice" placeholder="9.99" step="0.01" min="0.01" required>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label mb-1 small"><strong>Product Link</strong></label>
+                                    <input type="url" class="form-control form-control-sm" id="sheinAddLmpLink" placeholder="https://us.shein.com/...">
+                                </div>
+                                <div class="col-md-2">
+                                    <button type="submit" class="btn btn-success btn-sm w-100" id="sheinAddLmpBtn">
+                                        <i class="fa fa-plus"></i> Add
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+
+                    <div id="sheinLmpDataList"></div>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script-bottom')
@@ -1158,6 +1204,31 @@
                             const v = parseFloat(cell.getValue()) || 0;
                             if (v === 0) return '<span style="color:#adb5bd;">–</span>';
                             return `<span style="color:#e83e8c;font-weight:600;">${money(v)}</span>`;
+                        }
+                    },
+                    {
+                        title: "LMP",
+                        field: "lmp_price",
+                        sorter: "number",
+                        hozAlign: "center",
+                        width: 90,
+                        tooltip: "Lowest market price (Shein competitors)",
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
+                            const entries = Array.isArray(d.lmp_entries) ? d.lmp_entries : [];
+                            const total = entries.length;
+                            if (total === 0) return '<span style="color:#adb5bd;">N/A</span>';
+
+                            const lowest = Math.min.apply(null, entries.map(e => parseFloat(e.price) || Infinity));
+                            const myPrice = parseFloat(d.special_offer) || 0;
+                            const priceColor = (myPrice > 0 && lowest < myPrice) ? '#dc3545' : '#28a745';
+
+                            let html = '<div style="display:flex;flex-direction:column;align-items:center;gap:2px;line-height:1.15;">';
+                            html += '<span style="color:' + priceColor + ';font-weight:700;font-size:14px;">' + money(lowest) + '</span>';
+                            html += '<a href="#" class="shein-view-lmp" data-sku="' + String(d.sku || '').replace(/"/g, '&quot;') + '"' + (d.lmp_entries ? ' data-lmp=\'' + JSON.stringify(d.lmp_entries).replace(/'/g, '&#39;') + '\'' : '') + ' style="color:#0d6efd;text-decoration:none;font-size:11px;"><i class="fa fa-eye"></i> View ' + total + '</a>';
+                            html += '</div>';
+                            return html;
                         }
                     },
                     {
@@ -2101,6 +2172,162 @@
             document.getElementById('sheinBuyerLinkInput').value = d['B Link'] || '';
             bootstrap.Modal.getOrCreateInstance(document.getElementById('sheinEditLinksModal')).show();
         }
+
+        // ── LMP competitors modal (same as Amazon page) ──────────────────
+        let sheinLmpCurrentSku = '';
+
+        function renderSheinLmpList(entries) {
+            entries = Array.isArray(entries) ? entries.filter(e => (parseFloat(e.price) || 0) > 0) : [];
+            if (entries.length === 0) {
+                $('#sheinLmpDataList').html('<div class="alert alert-info mb-0"><i class="fa fa-info-circle"></i> No competitors yet. Add your first one above!</div>');
+                return;
+            }
+            const lowest = Math.min.apply(null, entries.map(e => parseFloat(e.price) || Infinity));
+
+            let html = '<div class="table-responsive"><table class="table table-hover table-bordered table-sm align-middle mb-0">';
+            html += '<thead class="table-light"><tr>' +
+                '<th style="width:40px;">#</th>' +
+                '<th style="width:120px;">Price</th>' +
+                '<th>Product Link</th>' +
+                '<th style="width:60px;">Open</th>' +
+                '<th style="width:60px;">Del</th>' +
+                '</tr></thead><tbody>';
+
+            entries.forEach(function(e, i) {
+                const price = parseFloat(e.price) || 0;
+                const isLow = Math.abs(price - lowest) < 0.01;
+                const rowClass = isLow ? 'table-success' : '';
+                const priceBadge = isLow
+                    ? '<span class="badge bg-success">' + money(price) + ' <i class="fa fa-trophy"></i></span>'
+                    : '<strong>' + money(price) + '</strong>';
+                const link = e.link || '';
+                const linkText = link
+                    ? '<a href="' + String(link).replace(/"/g, '&quot;') + '" target="_blank" rel="noopener noreferrer" style="font-size:11px;word-break:break-all;">' + String(link).substring(0, 90) + (String(link).length > 90 ? '…' : '') + '</a>'
+                    : '<span style="color:#999;">—</span>';
+                const openBtn = link
+                    ? '<a href="' + String(link).replace(/"/g, '&quot;') + '" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-info" title="Open competitor"><i class="fa fa-external-link"></i></a>'
+                    : '<span style="color:#999;">—</span>';
+                const delBtn = '<button class="btn btn-sm btn-danger shein-del-lmp" data-slot="' + (e.slot || (i + 1)) + '" title="Remove this LMP"><i class="fa fa-trash"></i></button>';
+                html += '<tr class="' + rowClass + '">' +
+                    '<td class="text-center"><strong>' + (i + 1) + '</strong></td>' +
+                    '<td>' + priceBadge + '</td>' +
+                    '<td>' + linkText + '</td>' +
+                    '<td class="text-center">' + openBtn + '</td>' +
+                    '<td class="text-center">' + delBtn + '</td>' +
+                    '</tr>';
+            });
+            html += '</tbody></table></div>';
+            $('#sheinLmpDataList').html(html);
+        }
+
+        // Refresh the LMP cell of a given SKU row in the grid.
+        function sheinUpdateLmpRow(sku, entries) {
+            if (!table) return;
+            const row = table.getRows().find(r => {
+                const d = r.getData();
+                return String(d.sku) === String(sku) && !d.is_parent;
+            });
+            if (!row) return;
+            const list = Array.isArray(entries) ? entries : [];
+            const lowest = list.length ? Math.min.apply(null, list.map(e => parseFloat(e.price) || Infinity)) : null;
+            row.update({ lmp_entries: list, lmp_price: lowest }).then(function() {
+                row.reformat();
+            }).catch(function() { row.reformat(); });
+        }
+
+        $(document).on('click', '.shein-view-lmp', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const sku = $(this).data('sku');
+            let entries = [];
+            // Prefer entries embedded on the link; fall back to the table row data.
+            const raw = $(this).attr('data-lmp');
+            if (raw) {
+                try { entries = JSON.parse(raw); } catch (err) { entries = []; }
+            }
+            if ((!entries || entries.length === 0) && table) {
+                const match = table.getData().find(r => String(r.sku) === String(sku) && !r.is_parent);
+                if (match && Array.isArray(match.lmp_entries)) entries = match.lmp_entries;
+            }
+            sheinLmpCurrentSku = sku || '';
+            document.getElementById('sheinLmpSku').textContent = sku || '';
+            document.getElementById('sheinAddLmpSku').value = sku || '';
+            document.getElementById('sheinAddLmpPrice').value = '';
+            document.getElementById('sheinAddLmpLink').value = '';
+            renderSheinLmpList(entries);
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('sheinLmpModal')).show();
+        });
+
+        // Add a new competitor LMP.
+        $(document).on('submit', '#sheinAddLmpForm', function(e) {
+            e.preventDefault();
+            const sku = document.getElementById('sheinAddLmpSku').value.trim();
+            const price = document.getElementById('sheinAddLmpPrice').value;
+            const link = document.getElementById('sheinAddLmpLink').value.trim();
+            if (!sku) { sheinLinksNotify('SKU is missing', 'error'); return; }
+            if (!(parseFloat(price) > 0)) { sheinLinksNotify('Enter a valid price', 'error'); return; }
+
+            const $btn = $('#sheinAddLmpBtn');
+            $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Adding...');
+
+            $.ajax({
+                url: '/shein/lmp/add',
+                method: 'POST',
+                data: { sku: sku, price: price, link: link },
+                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                success: function(res) {
+                    if (res && res.success) {
+                        renderSheinLmpList(res.entries || []);
+                        sheinUpdateLmpRow(sku, res.entries || []);
+                        document.getElementById('sheinAddLmpPrice').value = '';
+                        document.getElementById('sheinAddLmpLink').value = '';
+                        sheinLinksNotify('LMP added', 'success');
+                    } else {
+                        sheinLinksNotify((res && res.message) || 'Error adding LMP', 'error');
+                    }
+                },
+                error: function(xhr) {
+                    const msg = (xhr.responseJSON && xhr.responseJSON.message) || 'Error adding LMP';
+                    sheinLinksNotify(msg, 'error');
+                },
+                complete: function() {
+                    $btn.prop('disabled', false).html('<i class="fa fa-plus"></i> Add');
+                }
+            });
+        });
+
+        // Delete a competitor LMP slot.
+        $(document).on('click', '.shein-del-lmp', function() {
+            const slot = $(this).data('slot');
+            const sku = sheinLmpCurrentSku;
+            if (!sku || !slot) return;
+            if (!confirm('Remove this LMP entry?')) return;
+
+            const $btn = $(this);
+            $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i>');
+
+            $.ajax({
+                url: '/shein/lmp/delete',
+                method: 'POST',
+                data: { sku: sku, slot: slot },
+                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                success: function(res) {
+                    if (res && res.success) {
+                        renderSheinLmpList(res.entries || []);
+                        sheinUpdateLmpRow(sku, res.entries || []);
+                        sheinLinksNotify('LMP removed', 'success');
+                    } else {
+                        sheinLinksNotify((res && res.message) || 'Error removing LMP', 'error');
+                        $btn.prop('disabled', false).html('<i class="fa fa-trash"></i>');
+                    }
+                },
+                error: function(xhr) {
+                    const msg = (xhr.responseJSON && xhr.responseJSON.message) || 'Error removing LMP';
+                    sheinLinksNotify(msg, 'error');
+                    $btn.prop('disabled', false).html('<i class="fa fa-trash"></i>');
+                }
+            });
+        });
 
         $(document).on('click', '#sheinSaveLinksBtn', function() {
             if (!sheinEditLinksRow) return;

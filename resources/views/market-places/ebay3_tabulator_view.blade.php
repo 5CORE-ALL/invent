@@ -3119,13 +3119,18 @@
                     width: 50
                 },
                 {
-                    title: "PFT %",
+                    title: "NPFT",
                     field: "PFT %",
                     hozAlign: "center",
-                    sorter: "number",
+                    sorter: function(a, b, aRow, bRow) {
+                        const ads = (typeof EBAY3_CHANNEL_ADS_PCT !== 'undefined') ? (parseFloat(EBAY3_CHANNEL_ADS_PCT) || 0) : 0;
+                        return ((parseFloat(aRow.getData()['GPFT%'] || 0) - ads) - (parseFloat(bRow.getData()['GPFT%'] || 0) - ads));
+                    },
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
-                        const percent = parseFloat(rowData['GPFT%'] || 0);
+                        const ads = (typeof EBAY3_CHANNEL_ADS_PCT !== 'undefined') ? (parseFloat(EBAY3_CHANNEL_ADS_PCT) || 0) : 0;
+                        // NPFT% = GPFT% − Ads% (channel TACOS)
+                        const percent = (parseFloat(rowData['GPFT%'] || 0)) - ads;
                         let color = '';
                         
                         if (percent < 10) color = '#a00211';
@@ -3136,7 +3141,12 @@
                         
                         return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                     },
-                    bottomCalc: "avg",
+                    bottomCalc: function(values, data) {
+                        const ads = (typeof EBAY3_CHANNEL_ADS_PCT !== 'undefined') ? (parseFloat(EBAY3_CHANNEL_ADS_PCT) || 0) : 0;
+                        let sum = 0, n = 0;
+                        data.forEach(r => { const v = parseFloat(r['GPFT%']); if (!isNaN(v)) { sum += (v - ads); n++; } });
+                        return n ? sum / n : 0;
+                    },
                     bottomCalcFormatter: function(cell) {
                         const value = cell.getValue();
                         return `<strong>${parseFloat(value).toFixed(2)}%</strong>`;
@@ -3144,7 +3154,7 @@
                     width: 50
                 },
                 {
-                    title: "ROI%",
+                    title: "GROI%",
                     field: "ROI%",
                     hozAlign: "center",
                     sorter: "number",
@@ -3162,6 +3172,40 @@
                         return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                     },
                     bottomCalc: "avg",
+                    bottomCalcFormatter: function(cell) {
+                        const value = cell.getValue();
+                        return `<strong>${parseFloat(value).toFixed(2)}%</strong>`;
+                    },
+                    width: 65
+                },
+                {
+                    title: "NROI",
+                    field: "NROI",
+                    hozAlign: "center",
+                    sorter: function(a, b, aRow, bRow) {
+                        const ads = (typeof EBAY3_CHANNEL_ADS_PCT !== 'undefined') ? (parseFloat(EBAY3_CHANNEL_ADS_PCT) || 0) : 0;
+                        return ((parseFloat(aRow.getData()['ROI%'] || 0) - ads) - (parseFloat(bRow.getData()['ROI%'] || 0) - ads));
+                    },
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const ads = (typeof EBAY3_CHANNEL_ADS_PCT !== 'undefined') ? (parseFloat(EBAY3_CHANNEL_ADS_PCT) || 0) : 0;
+                        // NROI% = GROI% − Ads% (channel TACOS)
+                        const percent = (parseFloat(rowData['ROI%'] || 0)) - ads;
+                        let color = '';
+                        
+                        if (percent < 40) color = '#a00211';
+                        else if (percent < 75) color = '#ffc107';
+                        else if (percent < 125) color = '#28a745';
+                        else color = '#d63384';
+                        
+                        return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                    },
+                    bottomCalc: function(values, data) {
+                        const ads = (typeof EBAY3_CHANNEL_ADS_PCT !== 'undefined') ? (parseFloat(EBAY3_CHANNEL_ADS_PCT) || 0) : 0;
+                        let sum = 0, n = 0;
+                        data.forEach(r => { const v = parseFloat(r['ROI%']); if (!isNaN(v)) { sum += (v - ads); n++; } });
+                        return n ? sum / n : 0;
+                    },
                     bottomCalcFormatter: function(cell) {
                         const value = cell.getValue();
                         return `<strong>${parseFloat(value).toFixed(2)}%</strong>`;

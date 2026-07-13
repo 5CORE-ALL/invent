@@ -169,48 +169,12 @@ class Kernel extends ConsoleKernel
         $this->schedulerLog = storage_path('logs/scheduler.log');
     }
 
-    /**
-     * Define the application's command schedule.
-     *
-     * HARDENING RULES:
-     * - Every command uses ->withoutOverlapping() to prevent duplicate runs.
-     * - High-frequency jobs use short mutex TTL (5–55 min) so a crashed process
-     *   cannot block the job for 24 hours (Laravel default).
-     * - If a tick fires while the same command is still running, that tick is
-     *   skipped (not queued). Stagger daily jobs and use evening closing pipeline.
-     * - Artisan coforcemmands use ->runInBackground() so the scheduler can proceed.
-     * - between(09:00–20:00) skips new starts outside the window; running jobs
-     *   are never stopped and may finish after 20:00.
-     *
-     * MARKETPLACE JOBS: India 09:00–20:00 IST via istBusinessWindow().
-     * Daily data pipeline targets completion by ~19:30 IST (closing block below).
-     * System heartbeat / CRM reminders run 24/7.
-     */
     protected function schedule(Schedule $schedule)
     {
         $log = $this->schedulerLog;
         $ist = fn ($event) => $this->istBusinessWindow($event);
 
-        /**
-         * Retry-window helper for ad-API data-fetch commands.
-         *
-         * Registers $command 5 times — once at $finalTime IST and 4 earlier hourly
-         * retries (T-4h, T-3h, T-2h, T-1h, T). Each slot uses a unique mutex name so
-         * withoutOverlapping() guards against same-slot stacking without preventing
-         * later slots from running when an earlier one fails. Idempotent fetches
-         * (Google Ads, GA4, Meta, Amazon Advertising, eBay Marketing, Temu Ads, TikTok)
-         * tolerate repeated runs because they upsert by (campaign_id, date) or similar
-         * natural keys — a successful run after a failed run simply overwrites yesterday's
-         * partial state with a complete snapshot, so dependent push / automation jobs
-         * downstream see fresh data.
-         *
-         * Push / automation / mutation commands MUST NOT use this helper because firing
-         * them five times would touch live ad accounts five times.
-         *
-         * Most of the ads-API fetch commands anchor in the morning (final slot 09:00–11:30
-         * IST); a handful (Temu / TikTok) anchor in the afternoon (final slot 15:40–15:50)
-         * — same five-attempt pattern, just shifted later in the day.
-         */
+       
         $retryFiveTimesUntil = function (string $command, string $baseName, string $finalTime) use ($schedule, $log) {
             [$h, $m] = array_map('intval', explode(':', $finalTime));
             for ($offset = 4; $offset >= 0; $offset--) {
@@ -229,9 +193,6 @@ class Kernel extends ConsoleKernel
             }
         };
 
-        // Proof cron + schedule:run work: check storage/logs/scheduler-activity-*.log (one line/minute).
-        // withoutOverlapping(2) guards against the rare case where logging is slow enough that two ticks
-        // would otherwise stack — keeps the heartbeat truly one-per-minute.
         $schedule->call(function () {
             Log::info('Scheduler heartbeat at ' . now());
             Log::channel('scheduler_activity')->info('schedule:run_heartbeat', [
@@ -262,14 +223,9 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(5)
             ->appendOutputTo($log);
 
-        /*
-        |--------------------------------------------------------------------------
-        | TASK MANAGEMENT (office timezone — config/tasks.php, NOT IST business window)
-        |--------------------------------------------------------------------------
-        */
+   
         $taskTz = config('tasks.business_timezone', 'America/Los_Angeles');
 
-        // 24/7: daily instances must exist at start of California day; IST 09–20 window does not apply.
         $schedule->command('tasks:generate-daily-automated')
             ->everyFiveMinutes()
             ->timezone($taskTz)
@@ -278,8 +234,7 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        // Weekly/monthly auto-tasks become missed 144h / 720h after their generated start time.
-        // Hourly so the per-type window is honoured promptly. Automated tasks only.
+       
         $schedule->command('tasks:mark-missed-automated')
             ->hourly()
             ->timezone($taskTz)
@@ -288,10 +243,7 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        // NOTE: Auto-delete of missed daily automated tasks (tasks:expire-daily-automated)
-        // has been removed from the schedule. It can still be run on demand via the
-        // "Missed" button (TaskController::expireDailyAutomatedTasks) or artisan.
-
+        
         $schedule->command('tasks:automated-health-alert')
             ->everyThirtyMinutes()
             ->timezone($taskTz)
@@ -308,8 +260,7 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        // Clear Laravel log periodically. withoutOverlapping prevents a slow truncate
-        // (50MB+ rewrite on disk) from stacking ticks while the file lock is held.
+       
         $schedule->call(function () {
             $logPath = storage_path('logs/laravel.log');
             if (file_exists($logPath) && filesize($logPath) > 50 * 1024 * 1024) { // Only if > 50MB
@@ -355,44 +306,14 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // Reverb: full sync (orders + Shopify→Reverb inventory) every 5 minutes
-        // $schedule->command('reverb:sync-all')
-        //     ->everyThirtyMinutes()
-        //     ->timezone('UTC')
-        //     ->name('reverb-sync-all')
-        //     ->withoutOverlapping(15);
-        // $schedule->command('app:amazon-campaign-reports')
-        //     ->dailyAt('04:00')
-        //     ->timezone('America/Los_Angeles');
-        // Amazon Advertising API — 5 AFTERNOON runs each (final slots 18:00 / 18:05 / 18:10
-        // IST). Aligned with PT (Amazon US accounts run in Pacific Time): a PT day ends at
-        // ~12:30 PM IST, so afternoon retries see fully-finalised PT reports. Earlier morning
-        // runs were querying mid-PT-day and getting only PARTIAL spend / clicks. Downstream
-        // Amazon FBA bid auto-updates also moved to 19:00–19:45 IST so they consume the
-        // freshly-fetched complete reports.
         $retryFiveTimesUntil('app:amazon-sp-campaign-reports', 'amazon-sp-campaign-reports', '18:00');
         $retryFiveTimesUntil('app:amazon-sb-campaign-reports', 'amazon-sb-campaign-reports', '18:05');
         $retryFiveTimesUntil('app:amazon-sd-campaign-reports', 'amazon-sd-campaign-reports', '18:10');
 
-        // SP keyword/targeting performance + negative keywords — run after the campaign reports
-        // (18:00 final slot) so the negative-keyword campaign-name lookup can read fresh SP rows.
-        // Same five-attempt afternoon pattern; negatives use --prune to drop keywords removed in Amazon.
+      
         $retryFiveTimesUntil('app:amazon-sp-keyword-reports', 'amazon-sp-keyword-reports', '18:15');
         $retryFiveTimesUntil('app:amazon-sp-negative-keywords --prune', 'amazon-sp-negative-keywords', '18:20');
 
-        /*
-        |--------------------------------------------------------------------------
-        | AMAZON BIDS / BUDGET AUTO-UPDATE — EVENING IST (PT-aligned)
-        | Bids:    18:30–18:55 IST  (after Amazon SP/SB/SD reports final at 18:10)
-        | Budget:  20:00–20:10 IST  (after Amazon FBA bid push cluster at 19:00–19:45)
-        |
-        | Previously 12:15–12:55 IST — that ran BEFORE the new afternoon report
-        | retries (14:00–18:10 IST) so the pushes were using yesterday's stale or
-        | partial PT-day report data. Shifting to evening means each push consumes
-        | the freshest fully-finalised PT-day report.
-        |--------------------------------------------------------------------------
-        */
-        // KW (keyword) bid pushes
         $ist($schedule->command('amazon:auto-update-over-kw-bids')
             ->dailyAt('18:30')
             ->timezone('Asia/Kolkata')
@@ -409,16 +330,7 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // Pink dilution KW (disabled; left as reference)
-        // $schedule->command('amazon:auto-update-pink-dil-kw-ads')
-        //     ->dailyAt('03:00')
-        //     ->timezone('Asia/Kolkata')
-        //     ->name('amazon-pink-dil-kw')
-        //     ->withoutOverlapping(60)
-        //     ->runInBackground()
-        //     ->appendOutputTo($log);
-
-        // PT (product-targeting) bid pushes
+      
         $ist($schedule->command('amazon:auto-update-over-pt-bids')
             ->dailyAt('18:40')
             ->timezone('Asia/Kolkata')
@@ -435,16 +347,7 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // Pink dilution PT (disabled; left as reference)
-        // $schedule->command('amazon:auto-update-pink-dil-pt-ads')
-        //     ->dailyAt('05:00')
-        //     ->timezone('Asia/Kolkata')
-        //     ->name('amazon-pink-dil-pt')
-        //     ->withoutOverlapping(60)
-        //     ->runInBackground()
-        //     ->appendOutputTo($log);
-
-        // HL (headline) bid pushes
+      
         $ist($schedule->command('amazon:auto-update-over-hl-bids')
             ->dailyAt('18:50')
             ->timezone('Asia/Kolkata')
@@ -461,17 +364,6 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // Pink dilution HL (disabled; left as reference)
-        // $schedule->command('amazon:auto-update-pink-dil-hl-ads')
-        //     ->dailyAt('07:00')
-        //     ->timezone('Asia/Kolkata')
-        //     ->name('amazon-pink-dil-hl')
-        //     ->withoutOverlapping(60)
-        //     ->runInBackground()
-        //     ->appendOutputTo($log);
-
-        // Budget pushes — 20:00–20:10 IST, AFTER the Amazon FBA bid push cluster
-        // at 19:00–19:45 IST so budget changes don't race with bid changes.
         $ist($schedule->command('amazon:auto-update-amz-bgt-kw')
             ->dailyAt('20:00')
             ->timezone('Asia/Kolkata')
@@ -496,15 +388,6 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        /*
-        |--------------------------------------------------------------------------
-        | AMAZON FBA
-        |--------------------------------------------------------------------------
-        */
-        // FBA PT bids: 12:00 & 12:30 PM IST (with standard Amazon PT jobs 12:15–13:00 IST)
-        // Amazon FBA bid pushes — moved to 19:00–19:45 IST so they run AFTER the
-        // Amazon report fetches (final retry 18:10 IST) using fully-finalised PT-day data.
-        // Previously at 13:05/13:10/15:00/15:30 IST with reports still partial.
         $ist($schedule->command('amazon-fba:auto-update-under-pt-bids')
             ->dailyAt('19:00')
             ->timezone('Asia/Kolkata')
@@ -588,39 +471,6 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // $schedule->command('amazon:auto-pause-enable-fba-campaigns')
-        //     ->dailyAt('12:30')
-        //     ->timezone('Asia/Kolkata')
-        //     ->name('fba-auto-pause-enable')
-        //     ->withoutOverlapping()
-        //     ->runInBackground()
-        //     ->appendOutputTo($log);
-
-        // $schedule->command('budget:update-amazon-fba-kw')
-        //     ->dailyAt('09:05')
-        //     ->timezone('Asia/Kolkata')
-        //     ->name('budget-fba-kw')
-        //     ->withoutOverlapping()
-        //     ->runInBackground()
-        //     ->appendOutputTo($log);
-
-        // $schedule->command('budget:update-amazon-fba-pt')
-        //     ->dailyAt('00:06')
-        //     ->timezone('Asia/Kolkata')
-        //     ->name('budget-fba-pt')
-        //     ->withoutOverlapping()
-        //     ->runInBackground()
-        //     ->appendOutputTo($log);
-
-        /*
-        |--------------------------------------------------------------------------
-        | AMAZON UTILIZATION & METRICS
-        |--------------------------------------------------------------------------
-        */
-        // Amazon internal aggregators — all shifted to evening IST so they read from
-        // the freshly-finalised PT-day Amazon report data (reports complete at 18:10 IST,
-        // FBA bid pushes 19:00–19:45 IST). Previously 09:12–13:00 IST when reports were
-        // still partial, so utilization counts and metrics were under-counted.
         $ist($schedule->command('amazon:store-utilization-counts')
             ->dailyAt('18:20')
             ->timezone('Asia/Kolkata')
@@ -637,9 +487,6 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // FBA utilization counts — runs after the FBA bid push cluster (19:00–19:45 IST)
-        // and before the Amazon budget pushes at 20:00 IST so any util-driven budget
-        // decisions see freshly-pushed FBA bid state.
         $ist($schedule->command('amazon-fba:store-utilization-counts')
             ->dailyAt('19:50')
             ->timezone('Asia/Kolkata')
@@ -648,9 +495,6 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // amazon:collect-metrics — aggregates Amazon spend / clicks / conversions from
-        // the freshly-completed report rows. Final retry of Amazon SP reports is 18:00,
-        // so 18:25 leaves 25 min buffer for any slow tail.
         $ist($schedule->command('amazon:collect-metrics')
             ->dailyAt('18:25')
             ->timezone('Asia/Kolkata')
@@ -763,8 +607,6 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // eBay suggested-bid + budget update cluster — 21:20–21:33 IST, after the bid
-        // push above. (Previously 13:23–13:33 IST when reports were still partial.)
         $ist($schedule->command('ebay:update-suggestedbid')
             ->dailyAt('21:20')
             ->timezone('Asia/Kolkata')
@@ -821,11 +663,6 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // eBay utilization counts aggregator — shifted to 21:40 IST so it runs after
-        // the entire eBay push chain completes at 21:33 IST (last budget push). This
-        // aggregator reads from eBay report tables freshly populated 19:10–19:20 IST
-        // and the post-push state from 21:00–21:33 IST. Previously 09:24 IST when
-        // both the reports AND the push state were stale.
         $ist($schedule->command('ebay:store-utilization-counts')
             ->dailyAt('21:40')
             ->timezone('Asia/Kolkata')
@@ -894,41 +731,12 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        /*
-        |--------------------------------------------------------------------------
-        | GOOGLE ADS & SHOPPING — AFTERNOON IST WINDOW (CA-aligned)
-        |--------------------------------------------------------------------------
-        | The Google Ads account runs in California (PT). A CA day ends at
-        | ~12:30 PM IST the next calendar date, after which Google Ads finalizes
-        | the prior day's report data. Earlier morning IST runs were querying
-        | while CA was still mid-day, so we received only PARTIAL spend / clicks
-        | for "yesterday CA". Shifting the entire fetch + push chain to 13:00
-        | onwards IST means every run sees a fully-finalised CA day, which is
-        | what the SBID / BGT pushes need to compute accurate suggestions.
-        |
-        | Schedule (all IST):
-        |   13:00–17:00  app:fetch-google-ads-campaigns retries (5x)
-        |   13:30–17:30  ga4:fetch-campaign-data retries (5x, offset 30m)
-        |   17:47        reset SBID status flag
-        |   17:48–17:52  sbid + budget pushes + utilization counts (sequential, 1m apart)
-        */
-        // 5 afternoon runs (13:00, 14:00, 15:00, 16:00, 17:00 IST). At 13:00 IST
-        // CA is at 00:30 PDT — yesterday CA is fully finalised; subsequent retries
-        // also see a complete day. The 17:00 final-slot leaves 48 minutes of buffer
-        // before the SBID push at 17:48 IST.
         $retryFiveTimesUntil('app:fetch-google-ads-campaigns', 'fetch-google-ads-campaigns', '17:00');
 
-        // GA4 actual purchases / revenue back-fill — 5 retries at 13:30, 14:30,
-        // 15:30, 16:30, 17:30 IST (offset 30m from app:fetch-google-ads-campaigns
-        // so the GA4 API call happens after each Google-Ads run has populated/
-        // refreshed the matching campaign rows it joins by name). --days=30 keeps
-        // the L30 Sales window backfilled even when a prior afternoon run was
-        // missed; ga4:fetch-campaign-data is upsert-safe.
+       
         $retryFiveTimesUntil('ga4:fetch-campaign-data --days=30', 'ga4-fetch-campaign-data', '17:30');
 
-        // Negative keywords (campaign + ad group + shared negative lists). Idempotent
-        // upsert by criterion resource name; --prune drops negatives removed in Google Ads.
-        // 5 afternoon retries (final slot 17:15 IST) alongside the campaign/GA4 fetches.
+     
         $retryFiveTimesUntil('app:fetch-google-ads-negative-keywords --prune', 'fetch-google-ads-negative-keywords', '17:15');
 
         $ist($schedule->command('sbid:update')
@@ -988,35 +796,14 @@ class Kernel extends ConsoleKernel
             ->name('reset-sbid-status')
             ->withoutOverlapping(2);
 
-        /*
-        |--------------------------------------------------------------------------
-        | META / FACEBOOK ADS — AFTERNOON IST WINDOW (US-PT-aligned)
-        |--------------------------------------------------------------------------
-        | Most US Facebook ad accounts use Pacific Time. Shifted from morning IST
-        | to afternoon so each retry sees a fully-finalised PT day for "yesterday"
-        | instead of partial mid-PT-day data. Meta automation rules pushed
-        | accordingly to 20:30 IST so they fire AFTER the freshest sync completes.
-        */
-        // 5 afternoon runs (14:30–18:30 IST). meta:sync-all-ads is the daily Meta
-        // campaigns/ads/insights pull — multiple retries cover Facebook Graph rate-limit
-        // hiccups so the pipeline finishes ahead of meta-ads:run-automation at 20:30 IST.
         $retryFiveTimesUntil('meta:sync-all-ads', 'meta-ads-sync-daily', '18:30');
 
-        // 5 afternoon runs (15:00–19:00 IST). meta-ads:sync is the full Ads-Manager-style
-        // refresh; it shares an API quota with the --insights-only variant below, so the
-        // mutex names diverge by hour to avoid stacking but the two commands intentionally
-        // run on the same hourly cadence.
+   
         $retryFiveTimesUntil('meta-ads:sync', 'meta-ads-manager-full-sync', '19:00');
         $retryFiveTimesUntil('meta-ads:sync --insights-only', 'meta-ads-manager-insights-sync', '19:00');
 
-        // Shopify Meta Campaigns — 5 afternoon runs (15:30, 16:30, 17:30, 18:30, 19:30 IST).
-        // Pulls 7/30/60-day Facebook campaign metrics for Shopify; idempotent upsert by
-        // (channel, campaign_id, window) means a recovered late slot completes prior days.
         $retryFiveTimesUntil('shopify:fetch-meta-campaigns --channel=both', 'fetch-shopify-fb-campaigns-7-30-60-days', '19:30');
 
-        // Meta automation rules push — 20:30 IST, AFTER the 19:30 IST shopify-fb-campaigns
-        // final retry and the 19:00 IST meta-ads:sync final retry, so the rules engine sees
-        // the freshest insights data.
         $ist($schedule->command('meta-ads:run-automation')
             ->dailyAt('20:30')
             ->timezone('Asia/Kolkata')
@@ -1025,8 +812,6 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // Google-Sheets-driven sync of meta:sync-all-ads — different mutex name from the
-        // API retries above, runs once daily at 21:45 IST after the last API retry chain.
         $ist($schedule->command('meta:sync-all-ads')
             ->dailyAt('21:45')
             ->timezone('Asia/Kolkata')
@@ -1035,18 +820,7 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        /*
-        |--------------------------------------------------------------------------
-        | SHOPIFY
-        |--------------------------------------------------------------------------
-        */
-        // shopify:save-daily-inventory — crontab only (see scripts/cron-shopify-save-daily-inventory.sh).
-        // shopify:sync-live-inventory — crontab only (see scripts/cron-shopify-sync-live-inventory.sh).
-
-        // shopify_raw_orders is the LIVE source for /faire-tabulator, /ebay-tabulator and the
-        // all-marketplace-master Faire L30/L60 + Y-sales. If shopify:sync-orders stops running
-        // the table freezes and those pages' sales stop updating. Thin hourly pass keeps the
-        // current day fresh; the daily 60-day pass backfills late edits / refunds for L60.
+     
         $ist($schedule->command('shopify:sync-orders --days=2')
             ->hourly()
             ->name('shopify-sync-orders-recent')
@@ -1104,16 +878,6 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        /*
-        |--------------------------------------------------------------------------
-        | REVERB
-        |--------------------------------------------------------------------------
-        */
-        // Reverb: same daily-morning pattern as eBay (09:35–09:45) so all marketplaces
-        // refresh once in the IST morning. Heavy commands — no need to run every 5 min.
-        // Full run (includes the slow bump-bid loop, ~25–30 min). With the per-row
-        // persistence fix in FetchReverbData, even an interrupted run leaves the
-        // listings table fully populated.
         $ist($schedule->command('reverb:fetch')
             ->dailyAt('09:50')
             ->timezone('Asia/Kolkata')
@@ -1122,12 +886,6 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // Second daily refresh aligned with California morning (Reverb is a US-Pacific
-        // marketplace — prices/inventory move once US sellers come online). Uses
-        // --skip-bump so it finishes in <1 min and never collides with the slow
-        // IST run; bump-bid % is still refreshed once a day by the IST run above.
-        // NOTE: not wrapped in $ist() — that helper forces the IST 09:00–20:00 window,
-        // and 09:00 PT (≈21:30 IST during PDT) falls outside it.
         $schedule->command('reverb:fetch --skip-bump')
             ->dailyAt('09:00')
             ->timezone('America/Los_Angeles')
@@ -1152,8 +910,7 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // AliExpress Marketplace Manager: inventory/price from Shopify, orders to Shopify
-        // Not wrapped in $ist() — orders can arrive overnight and must still auto-import.
+      
         $schedule->command('aliexpress:sync-inventory-from-shopify')
             ->everyFifteenMinutes()
             ->timezone('Asia/Kolkata')
@@ -1170,7 +927,6 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        // Alibaba Marketplace Manager: inventory/price from Shopify, orders to Shopify
         $schedule->command('alibaba:sync-inventory-from-shopify')
             ->everyFifteenMinutes()
             ->timezone('Asia/Kolkata')
@@ -1228,19 +984,7 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(55)
             ->runInBackground()
             ->appendOutputTo($log);
-        // $schedule->command('shopify:retry-pending-orders')
-            //     ->hourly()
-            //     ->timezone('UTC')
-            //     ->name('shopify-retry-pending-orders')
-            //     ->withoutOverlapping(30)
-            //     ->runInBackground()
-            //     ->appendOutputTo($log);
-
-        /*
-        |--------------------------------------------------------------------------
-        | MACY
-        |--------------------------------------------------------------------------
-        */
+       
         $ist($schedule->command('app:fetch-macy-products')
             ->everyFiveMinutes()
             ->name('fetch-macy-products')
@@ -1248,11 +992,7 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        /*
-        |--------------------------------------------------------------------------
-        | WAYFAIR DATA
-        |--------------------------------------------------------------------------
-        */
+     
         $ist($schedule->command('app:fetch-wayfair-data')
             ->everyFiveMinutes()
             ->name('fetch-wayfair-data')
@@ -1260,11 +1000,7 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        /*
-        |--------------------------------------------------------------------------
-        | MIRAKL
-        |--------------------------------------------------------------------------
-        */
+ 
         $ist($schedule->command('mirakl:daily --days=60')
             ->dailyAt('14:15')
             ->timezone('Asia/Kolkata')
@@ -1303,9 +1039,7 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping()
             ->appendOutputTo($log));
 
-        // Temu Ads API — 5 afternoon runs each (final slots 15:40 / 15:50 IST). Different
-        // anchor than the morning Google/Meta/Amazon/eBay fetches because Temu's reporting
-        // window publishes mid-afternoon; the same hourly retry pattern applies.
+     
         $retryFiveTimesUntil('temu:fetch-ads-data --period=L30', 'temu-ads-data-sync-l30', '15:40');
         $retryFiveTimesUntil('temu:fetch-ads-data --period=L60', 'temu-ads-data-sync-l60', '15:50');
 
@@ -1396,10 +1130,7 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // newegg_orders / newegg_order_items are the LIVE source for /newegg/daily-sales and
-        // the all-marketplace-master Newegg L60/L30/L7 + Y sales. Without this pull the table
-        // freezes and those pages stop updating. 60-day window keeps L60 fresh and captures
-        // late void/refund status changes. Must run from a Newegg-whitelisted server.
+     
         $ist($schedule->command('newegg:orders --days=60 --save')
             ->twiceDaily(9, 18)
             ->name('fetch-newegg-orders')
@@ -1421,23 +1152,7 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        /*
-        |--------------------------------------------------------------------------
-        | PRODUCT MASTER — LP / CBM / FRGHT FORMULA SYNC
-        |--------------------------------------------------------------------------
-        | Source-of-truth formula:
-        |   CBM   = (L * 2.54) * (W * 2.54) * (H * 2.54) / 1,000,000
-        |   FRGHT = CBM * 200
-        |   LP    = CP + FRGHT
-        |
-        | The same calculation also runs in App\Models\ProductMaster::booted()
-        | on every save, so this scheduled command is the safety net for rows
-        | that bypass the model (direct DB writes, historical/imported data,
-        | SKUs in CustomLpMappingService whose custom LP changes, etc.).
-        |
-        | Only re-saves a product when LP/CBM/FRGHT actually differ, so
-        | `updated_at` is not churned on every tick.
-        */
+      
         $ist($schedule->command('products:recalc-lp')
             ->hourly()
             ->name('products-recalc-lp')
@@ -1501,23 +1216,7 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        /*
-        |--------------------------------------------------------------------------
-        | CHANNEL MASTER PRE-CALCULATION (New - Performance Optimization)
-        |--------------------------------------------------------------------------
-        */
-        // Channel master pre-calculation.
-        //
-        // /all-marketplace-master serves rows out of channel_master_calculated_data
-        // (see ChannelMasterController::getViewChannelDataFast). The underlying
-        // marketplace_daily_metrics already refreshes every 5 minutes, so doing this
-        // only once a day made the page lag by up to 24 hours behind reality. Run it
-        // hourly with --force so that:
-        //   - L30/L60 sales (Temu, Temu 2, eBay, Amazon, …) reflect the latest sync
-        //   - channel_master_daily_data gets a fresh snapshot for today (drives the
-        //     red/green/gray trend dots on every metric column)
-        //
-        // Each run takes ~50s. Mutex 120 min prevents stack-up; last tick ~19:50 IST.
+     
         $ist($schedule->command('channel:calculate-data --force')
             ->everyTenMinutes()
             ->timezone('Asia/Kolkata')
@@ -1526,22 +1225,10 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        /*
-        |--------------------------------------------------------------------------
-        | TIKTOK
-        |--------------------------------------------------------------------------
-        */
-        // TikTok Ads API — 5 afternoon runs (final slot 15:45 IST), aligned with the
-        // Temu pulls because TikTok's publisher feed updates around the same time.
+      
         $retryFiveTimesUntil('sync:tiktok-api-data', 'sync-tiktok-api-data', '15:45');
 
-        /*
-        |--------------------------------------------------------------------------
-        | FINISH-BY-8PM CLOSING PIPELINE (18:00–19:15 IST)
-        | Runs after afternoon marketplace syncs. In-flight jobs may finish after
-        | 20:00; between() never stops them.
-        |--------------------------------------------------------------------------
-        */
+  
         $ist($schedule->command('stock:update-mapping-daily')
             ->dailyAt('18:00')
             ->timezone('Asia/Kolkata')
@@ -1558,14 +1245,6 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        /*
-        |--------------------------------------------------------------------------
-        | PAGE BADGE SNAPSHOTS (badges_data table)
-        |--------------------------------------------------------------------------
-        | Daily toolbar badge metrics for purchase / ops pages. Each registered
-        | PageBadgeCalculator writes one row (page_name + JSON) so dashboards
-        | can read badges without joining source tables.
-        */
         $ist($schedule->command('badges:save-all')
             ->dailyAt('19:10')
             ->timezone('Asia/Kolkata')
@@ -1600,13 +1279,7 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        /*
-        |--------------------------------------------------------------------------
-        | SHIPMENT TRACKING (All Orders Status column)
-        |--------------------------------------------------------------------------
-        | Refresh live shipment status from the tracking provider every 3 hours.
-        | Runs 24/7 (no IST window) so status stays current; --stale guards quota.
-        */
+   
         $schedule->command('tracking:sync-status --stale=150')
             ->everyThreeHours()
             ->name('shipment-tracking-sync-status')
@@ -1622,14 +1295,7 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        /*
-        |--------------------------------------------------------------------------
-        | DEDICATED QUEUE WORKERS (permanent watchdog)
-        |--------------------------------------------------------------------------
-        | Keeps queue:watchdog running. The daemon ensures each configured
-        | dedicated worker (google-maps-extractor, shopify-*-pull, *-master-push)
-        | stays alive with an explicit --queue flag — never the default queue.
-        */
+      
         $schedule->command('queue:ensure-watchdog-daemon')
             ->everyMinute()
             ->name('queue-ensure-watchdog-daemon')

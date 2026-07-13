@@ -946,6 +946,13 @@ class SheinController extends Controller
             // ── 5b. Buyer / Seller links from shein_listing_statuses
             $linksBySku = \App\Models\SheinListingStatus::all()->keyBy(fn($r) => $normalizeSku($r->sku));
 
+            // ── 5c. LMP competitor prices/links from shein_lmp
+            $lmpBySku = new SupportCollection();
+            if (Schema::hasTable('shein_lmp')) {
+                $lmpBySku = SupportCollection::make(\App\Models\SheinLmp::all()->all())
+                    ->keyBy(fn($r) => $normalizeSku($r->sku));
+            }
+
             $allNormalizedSkus = collect(array_merge(
                 $pricingBySku->keys()->all(),
                 $productMasterBySku->keys()->all()
@@ -1022,6 +1029,17 @@ class SheinController extends Controller
                 // fall back to meta-derived value, then INV-based default.
                 $nrReq = $linkVal['nr_req'] ?? $nr ?? ($inv > 0 ? 'REQ' : 'NR');
 
+                // LMP competitor entries (up to 4 price/url pairs from shein_lmp)
+                $lmpEntries = $this->sheinLmpEntriesFrom($lmpBySku->get($normalizedSku));
+                $lmpPrice = null;
+                $lmpLink  = null;
+                foreach ($lmpEntries as $entry) {
+                    if ($lmpPrice === null || $entry['price'] < $lmpPrice) {
+                        $lmpPrice = $entry['price'];
+                        $lmpLink  = $entry['link'];
+                    }
+                }
+
                 $rows[] = [
                     'sku'          => trim((string) $displaySku),
                     'parent'       => $productMaster ? (trim((string) ($productMaster->parent ?? '')) ?: null) : null,
@@ -1052,6 +1070,9 @@ class SheinController extends Controller
                     'calc_price'       => round($calcPrice, 2),
                     'ov_l30'       => $ovL30,
                     'dil_percent'  => $inv > 0 ? round(($ovL30 / $inv) * 100, 2) : 0,
+                    'lmp_price'    => $lmpPrice,
+                    'lmp_link'     => $lmpLink,
+                    'lmp_entries'  => $lmpEntries,
                 ];
             }
 
@@ -1333,6 +1354,7 @@ class SheinController extends Controller
             'inv'         => (int) $sumInv,  'shein_stock' => (int) $sumSheinStock,
             'ov_l30'      => (int) $sumOvL30,
             'dil_percent' => $sumInv > 0 ? round(($sumOvL30 / $sumInv) * 100, 2) : 0,
+            'lmp_price'   => null, 'lmp_link' => null, 'lmp_entries' => [],
         ];
     }
 
@@ -1421,6 +1443,139 @@ class SheinController extends Controller
             'success' => true,
             'buyer_link' => $existing['buyer_link'],
             'seller_link' => $existing['seller_link'],
+        ]);
+    }
+
+    /**
+     * Build the LMP competitor entries (slot, price, link) from a shein_lmp row.
+     * Only non-empty price slots are returned.
+     *
+     * @return array<int, array{slot:int, price:float, link:string|null}>
+     */
+    private function sheinLmpEntriesFrom($lmpRow): array
+    {
+        $entries = [];
+        if (! $lmpRow) {
+            return $entries;
+        }
+        for ($i = 1; $i <= 4; $i++) {
+            $p = $lmpRow->{'price_' . $i};
+            $u = $lmpRow->{'url_' . $i};
+            if ($p !== null && (float) $p > 0) {
+                $entries[] = [
+                    'slot'  => $i,
+                    'price' => round((float) $p, 2),
+                    'link'  => $u ?: null,
+                ];
+            }
+        }
+        return $entries;
+    }
+
+    /** Locate an existing shein_lmp row by normalized SKU. */
+    private function findSheinLmpRow(string $normalizedSku)
+    {
+        if (! Schema::hasTable('shein_lmp')) {
+            return null;
+        }
+        return \App\Models\SheinLmp::all()
+            ->first(fn($r) => $this->normalizeSheinSkuExact((string) $r->sku) === $normalizedSku);
+    }
+
+    /**
+     * Add a competitor LMP (price + link) into the next free slot for a SKU.
+     * Creates the shein_lmp row if it does not exist yet.
+     */
+    public function saveLmpEntry(Request $request)
+    {
+        $sku   = trim((string) $request->input('sku'));
+        $price = $request->input('price');
+        $link  = trim((string) $request->input('link', ''));
+
+        if ($sku === '') {
+            return response()->json(['success' => false, 'message' => 'SKU is required'], 422);
+        }
+        if (! is_numeric($price) || (float) $price <= 0) {
+            return response()->json(['success' => false, 'message' => 'A valid price greater than 0 is required'], 422);
+        }
+        if ($link !== '' && ! filter_var($link, FILTER_VALIDATE_URL)) {
+            return response()->json(['success' => false, 'message' => 'Invalid product link URL'], 422);
+        }
+        if (! Schema::hasTable('shein_lmp')) {
+            return response()->json(['success' => false, 'message' => 'shein_lmp table does not exist'], 500);
+        }
+
+        $normalized = $this->normalizeSheinSkuExact($sku);
+        $row = $this->findSheinLmpRow($normalized) ?? new \App\Models\SheinLmp(['sku' => $sku]);
+
+        // Find the next empty slot (price_1 … price_4).
+        $slot = null;
+        for ($i = 1; $i <= 4; $i++) {
+            if ($row->{'price_' . $i} === null) {
+                $slot = $i;
+                break;
+            }
+        }
+        if ($slot === null) {
+            return response()->json(['success' => false, 'message' => 'Maximum of 4 LMP entries reached for this SKU'], 422);
+        }
+
+        $row->{'price_' . $slot} = round((float) $price, 2);
+        $row->{'url_' . $slot}   = $link !== '' ? $link : null;
+        $row->is_not_found       = false;
+        $row->save();
+
+        $entries = $this->sheinLmpEntriesFrom($row->fresh());
+        $lowest  = collect($entries)->min('price');
+
+        return response()->json([
+            'success'   => true,
+            'message'   => 'LMP added',
+            'entries'   => $entries,
+            'lmp_price' => $lowest,
+        ]);
+    }
+
+    /** Remove a single competitor LMP slot for a SKU. */
+    public function deleteLmpEntry(Request $request)
+    {
+        $sku  = trim((string) $request->input('sku'));
+        $slot = (int) $request->input('slot');
+
+        if ($sku === '') {
+            return response()->json(['success' => false, 'message' => 'SKU is required'], 422);
+        }
+        if ($slot < 1 || $slot > 4) {
+            return response()->json(['success' => false, 'message' => 'Invalid slot'], 422);
+        }
+
+        $normalized = $this->normalizeSheinSkuExact($sku);
+        $row = $this->findSheinLmpRow($normalized);
+        if (! $row) {
+            return response()->json(['success' => false, 'message' => 'No LMP data found for this SKU'], 404);
+        }
+
+        $row->{'price_' . $slot} = null;
+        $row->{'url_' . $slot}   = null;
+
+        $hasPrice = false;
+        for ($i = 1; $i <= 4; $i++) {
+            if ($row->{'price_' . $i} !== null) {
+                $hasPrice = true;
+                break;
+            }
+        }
+        $row->is_not_found = ! $hasPrice;
+        $row->save();
+
+        $entries = $this->sheinLmpEntriesFrom($row->fresh());
+        $lowest  = collect($entries)->min('price');
+
+        return response()->json([
+            'success'   => true,
+            'message'   => 'LMP removed',
+            'entries'   => $entries,
+            'lmp_price' => $lowest,
         ]);
     }
 }
