@@ -21,8 +21,8 @@ return new class extends Migration
             $table->id();
             $table->string('campaign', 512);
             $table->string('linked_campaign', 512);
-            $table->string('campaign_norm', 512);
-            $table->string('linked_campaign_norm', 512);
+            $table->string('campaign_norm', 191);
+            $table->string('linked_campaign_norm', 191);
             $table->string('updated_by')->nullable();
             $table->timestamps();
 

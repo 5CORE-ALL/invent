@@ -21,8 +21,10 @@ return new class extends Migration
             $table->id();
             $table->string('campaign', 512);
             $table->string('linked_campaign', 512);
-            $table->string('campaign_norm', 512);
-            $table->string('linked_campaign_norm', 512);
+            // Indexed normalized keys — kept at 191 so the composite unique index stays within
+            // MySQL's key-length limit (campaign names are well under this length).
+            $table->string('campaign_norm', 191);
+            $table->string('linked_campaign_norm', 191);
             $table->string('updated_by')->nullable();
             $table->timestamps();
 
