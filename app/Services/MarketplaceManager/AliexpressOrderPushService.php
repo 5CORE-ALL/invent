@@ -306,10 +306,18 @@ class AliexpressOrderPushService
             }
             $quantity = max(1, (int) ($item['quantity'] ?? 1));
             $price = (string) ($item['price'] ?? '0.00');
-            $title = mb_substr(trim((string) ($item['title'] ?? $sku ?: 'AliExpress item')), 0, 255);
+            $title = trim((string) ($item['title'] ?? ''));
+            if ($title === '') {
+                $title = $sku !== '' ? $sku : 'AliExpress order item';
+            }
+            $title = mb_substr($title, 0, 255);
 
             if ($variantId) {
-                $line = ['variant_id' => $variantId, 'quantity' => $quantity];
+                $line = [
+                    'variant_id' => $variantId,
+                    'quantity' => $quantity,
+                    'title' => $title,
+                ];
                 if ((float) $price > 0) {
                     $line['price'] = $price;
                 }

@@ -439,7 +439,8 @@ class ReverbDetailFormatter
         $payload = [
             'line_items' => [],
             'financial_status' => 'paid',
-            'inventory_behaviour' => 'decrement_obeying_policy',
+            // Marketplace sale already happened — do not reject Shopify create when ATS is 0/negative.
+            'inventory_behaviour' => 'decrement_ignoring_policy',
             'tags' => implode(', ', array_values(array_unique(array_filter($tags)))),
             'note' => implode("\n", $noteLines),
             'note_attributes' => $noteAttrs,
