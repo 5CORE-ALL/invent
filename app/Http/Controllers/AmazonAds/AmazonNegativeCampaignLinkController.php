@@ -181,6 +181,7 @@ class AmazonNegativeCampaignLinkController extends Controller
             'success' => $r['ok'],
             'added' => $r['added'],
             'failed' => $r['failed'],
+            'dest_live_count' => $r['dest_live_count'] ?? null,
             'message' => $r['message'],
             'affected' => $this->affectedRows($campaign),
         ], $r['ok'] ? 200 : ($r['status'] ?? 422));
@@ -239,12 +240,16 @@ class AmazonNegativeCampaignLinkController extends Controller
      *
      * @return array{ok: bool, added: int, failed: int, message: string, status?: int}
      */
-    private function pushForCampaign(string $campaign): array
+    /**
+     * Live comparison: negatives the linked group has that the destination is missing, checked
+     * against the destination's LIVE Amazon negatives (campaign + ad-group level).
+     */
+    private function resolveMissing(string $campaign): array
     {
         $group = $this->linkService->groupContaining($campaign);
         $linked = array_values(array_filter($group, fn ($c) => $this->linkService->normalize($c) !== $this->linkService->normalize($campaign)));
         if ($linked === []) {
-            return ['ok' => false, 'added' => 0, 'failed' => 0, 'message' => 'This campaign has no linked campaign to push from.', 'status' => 422];
+            return ['ok' => false, 'message' => 'This campaign has no linked campaign to push from.', 'status' => 422];
         }
 
         $destCampaignId = DB::table(self::SOURCE_TABLE)
@@ -252,12 +257,10 @@ class AmazonNegativeCampaignLinkController extends Controller
             ->whereNotNull('campaign_id')
             ->value('campaign_id');
         if (! $destCampaignId) {
-            return ['ok' => false, 'added' => 0, 'failed' => 0, 'message' => 'Could not resolve the destination campaign id.', 'status' => 422];
+            return ['ok' => false, 'message' => 'Could not resolve the destination campaign id.', 'status' => 422];
         }
         $destCampaignId = (string) $destCampaignId;
 
-        // Target ad group for ad-group-level negatives: prefer the destination's own ad-group
-        // negatives, else fall back to its keyword-report ad group.
         $destAdGroupId = DB::table(self::SOURCE_TABLE)
             ->where('campaignName', $campaign)
             ->where('level', 'AD_GROUP')
@@ -277,7 +280,7 @@ class AmazonNegativeCampaignLinkController extends Controller
         }
         $destAdGroupId = $destAdGroupId ? (string) $destAdGroupId : null;
 
-        // Existing negatives in destination (key = TEXT|MATCH|LEVEL).
+        // Destination existing set (TEXT|MATCH|LEVEL) — report table…
         $existing = [];
         DB::table(self::SOURCE_TABLE)
             ->where('campaignName', $campaign)
@@ -289,16 +292,30 @@ class AmazonNegativeCampaignLinkController extends Controller
                 $existing[$this->negKey($r->keywordText, $r->matchType, $r->level)] = true;
             });
 
-        // Candidates from linked campaigns, split by level, deduped.
+        // …plus the destination's LIVE negatives on Amazon (authoritative).
+        $liveOk = false;
+        $destLiveCount = 0;
+        try {
+            $live = $this->fetchLiveNegativeSet($destCampaignId);
+            $liveOk = true;
+            $destLiveCount = count($live);
+            foreach ($live as $k => $_) {
+                $existing[$k] = true;
+            }
+        } catch (\Throwable) {
+        }
+
+        // Linked group's negatives, split by level, minus what the destination has.
         $campaignNegs = [];
         $adGroupNegs = [];
+        $groupSourceKeys = [];
         DB::table(self::SOURCE_TABLE)
             ->whereIn('campaignName', $linked)
             ->whereNotNull('keywordText')
             ->select('keywordText', 'matchType', 'level')
             ->distinct()
             ->get()
-            ->each(function ($r) use (&$campaignNegs, &$adGroupNegs, $existing) {
+            ->each(function ($r) use (&$campaignNegs, &$adGroupNegs, &$groupSourceKeys, $existing) {
                 $text = trim((string) $r->keywordText);
                 $mt = strtoupper(trim((string) $r->matchType));
                 $level = strtoupper(trim((string) $r->level));
@@ -306,6 +323,7 @@ class AmazonNegativeCampaignLinkController extends Controller
                     return;
                 }
                 $key = $this->negKey($text, $mt, $level);
+                $groupSourceKeys[$key] = true;
                 if (isset($existing[$key])) {
                     return;
                 }
@@ -316,28 +334,91 @@ class AmazonNegativeCampaignLinkController extends Controller
                 }
             });
 
-        $campaignNegs = array_values($campaignNegs);
-        $adGroupNegs = array_values($adGroupNegs);
+        return [
+            'ok' => true,
+            'destCampaignId' => $destCampaignId,
+            'destAdGroupId' => $destAdGroupId,
+            'linked' => $linked,
+            'campaignNegs' => array_values($campaignNegs),
+            'adGroupNegs' => array_values($adGroupNegs),
+            'destLiveCount' => $destLiveCount,
+            'liveOk' => $liveOk,
+            'groupSourceCount' => count($groupSourceKeys),
+        ];
+    }
+
+    /**
+     * Live compare (no writes) for negatives.
+     */
+    public function compare(Request $request): JsonResponse
+    {
+        $campaign = trim((string) $request->input('campaign', ''));
+        if ($campaign === '' || ! Schema::hasTable(self::SOURCE_TABLE)) {
+            return response()->json(['success' => false, 'message' => 'Campaign is required.'], 422);
+        }
+
+        $r = $this->resolveMissing($campaign);
+        if (! $r['ok']) {
+            return response()->json(['success' => false, 'message' => $r['message']], $r['status'] ?? 422);
+        }
+
+        $missing = array_merge($r['campaignNegs'], $r['adGroupNegs']);
+
+        return response()->json([
+            'success' => true,
+            'campaign' => $campaign,
+            'linked_campaigns' => $r['linked'],
+            'dest_live_count' => $r['destLiveCount'],
+            'live_ok' => $r['liveOk'],
+            'group_source_count' => $r['groupSourceCount'],
+            'missing' => $missing,
+            'missing_count' => count($missing),
+        ]);
+    }
+
+    private function pushForCampaign(string $campaign): array
+    {
+        $resolved = $this->resolveMissing($campaign);
+        if (! $resolved['ok']) {
+            return ['ok' => false, 'added' => 0, 'failed' => 0, 'message' => $resolved['message'], 'status' => $resolved['status'] ?? 422];
+        }
+
+        $destCampaignId = $resolved['destCampaignId'];
+        $destAdGroupId = $resolved['destAdGroupId'];
+        $linked = $resolved['linked'];
+        $campaignNegs = $resolved['campaignNegs'];
+        $adGroupNegs = $resolved['adGroupNegs'];
+        $destLiveCount = $resolved['destLiveCount'];
+
         if ($campaignNegs === [] && $adGroupNegs === []) {
-            return ['ok' => true, 'added' => 0, 'failed' => 0, 'message' => 'No new negative keywords to push.'];
+            $where = $resolved['liveOk'] ? ' (verified live on Amazon)' : '';
+            return ['ok' => true, 'added' => 0, 'failed' => 0, 'dest_live_count' => $destLiveCount,
+                'message' => "\"{$campaign}\" already has all negative keywords from its linked campaign(s){$where} — nothing new to add."];
         }
 
         $created = [];
         $failed = 0;
+        $duplicates = 0;
+        $errors = [];
         try {
             if ($campaignNegs !== []) {
                 $r = $this->createCampaignNegatives($destCampaignId, $campaignNegs);
                 $created = array_merge($created, $r['created']);
                 $failed += $r['failed'];
+                $duplicates += $r['duplicates'] ?? 0;
+                $errors = array_merge($errors, $r['errors'] ?? []);
             }
             if ($adGroupNegs !== []) {
                 if ($destAdGroupId) {
                     $r = $this->createAdGroupNegatives($destCampaignId, $destAdGroupId, $adGroupNegs);
                     $created = array_merge($created, $r['created']);
                     $failed += $r['failed'];
+                    $duplicates += $r['duplicates'] ?? 0;
+                    $errors = array_merge($errors, $r['errors'] ?? []);
                 } else {
                     // No ad group to target — count them as skipped/failed.
                     $failed += count($adGroupNegs);
+                    $errors[] = 'No target ad group found for ad-group-level negatives.';
                 }
             }
         } catch (\Throwable $e) {
@@ -362,20 +443,28 @@ class AmazonNegativeCampaignLinkController extends Controller
         }
 
         $added = count($created);
+        $newLiveCount = $destLiveCount + $added;
+        $errText = ! empty($errors) ? ' Reason: '.implode(' | ', array_slice(array_values(array_unique(array_filter($errors))), 0, 3)) : '';
         if ($added === 0) {
-            $msg = $failed > 0
-                ? "No negative keywords were added ({$failed} rejected by Amazon or missing ad group)."
-                : 'No new negative keywords to push.';
+            if ($failed > 0) {
+                return ['ok' => false, 'added' => 0, 'failed' => $failed, 'dest_live_count' => $newLiveCount, 'message' => "No negative keywords were added ({$failed} rejected).".$errText];
+            }
+            if ($duplicates > 0) {
+                return ['ok' => true, 'added' => 0, 'failed' => 0, 'dest_live_count' => $newLiveCount, 'message' => "All {$duplicates} negative keyword(s) already exist in \"{$campaign}\" — nothing new to add."];
+            }
 
-            return ['ok' => $failed === 0, 'added' => 0, 'failed' => $failed, 'message' => $msg];
+            return ['ok' => true, 'added' => 0, 'failed' => 0, 'dest_live_count' => $newLiveCount, 'message' => 'No new negative keywords to push.'];
         }
 
         $msg = "Added {$added} negative keyword(s) to \"{$campaign}\" from ".count($linked).' linked campaign(s).';
+        if ($duplicates > 0) {
+            $msg .= " ({$duplicates} already existed.)";
+        }
         if ($failed > 0) {
-            $msg .= " ({$failed} rejected / skipped.)";
+            $msg .= " ({$failed} rejected.)".$errText;
         }
 
-        return ['ok' => true, 'added' => $added, 'failed' => $failed, 'message' => $msg];
+        return ['ok' => true, 'added' => $added, 'failed' => $failed, 'dest_live_count' => $newLiveCount, 'message' => $msg];
     }
 
     private function negKey(mixed $text, mixed $matchType, mixed $level): string
@@ -437,6 +526,8 @@ class AmazonNegativeCampaignLinkController extends Controller
     {
         $created = [];
         $failed = 0;
+        $duplicates = 0;
+        $errors = [];
         $token = $this->amazonAccessToken();
         $clientId = config('services.amazon_ads.client_id');
         $profileId = config('services.amazon_ads.profile_ids');
@@ -474,13 +565,95 @@ class AmazonNegativeCampaignLinkController extends Controller
                 ];
             }
 
-            $failed += is_array($errorList) ? count($errorList) : 0;
+            if (is_array($errorList)) {
+                foreach ($errorList as $e) {
+                    $msg = $this->extractAmazonError($e);
+                    if (stripos($msg, 'duplicate') !== false) {
+                        $duplicates++;
+                    } else {
+                        $failed++;
+                        $errors[] = $msg;
+                    }
+                }
+            }
             if (! $response->successful() && empty($successList) && empty($errorList)) {
                 $failed += count($batch);
+                $errors[] = 'HTTP '.$response->status().': '.substr((string) $response->body(), 0, 300);
             }
         }
 
-        return ['created' => $created, 'failed' => $failed];
+        return ['created' => $created, 'failed' => $failed, 'duplicates' => $duplicates, 'errors' => array_values(array_unique(array_filter($errors)))];
+    }
+
+    /**
+     * Live negative-keyword set (TEXT|MATCH|LEVEL) for a campaign from Amazon — campaign-level
+     * (sp/campaignNegativeKeywords/list) + ad-group-level (sp/negativeKeywords/list).
+     *
+     * @return array<string, true>
+     */
+    private function fetchLiveNegativeSet(string $campaignId): array
+    {
+        $set = [];
+        $token = $this->amazonAccessToken();
+        $clientId = config('services.amazon_ads.client_id');
+        $profileId = config('services.amazon_ads.profile_ids');
+
+        $endpoints = [
+            ['url' => 'https://advertising-api.amazon.com/sp/campaignNegativeKeywords/list', 'ct' => 'application/vnd.spCampaignNegativeKeyword.v3+json', 'key' => 'campaignNegativeKeywords', 'level' => 'CAMPAIGN'],
+            ['url' => 'https://advertising-api.amazon.com/sp/negativeKeywords/list', 'ct' => 'application/vnd.spNegativeKeyword.v3+json', 'key' => 'negativeKeywords', 'level' => 'AD_GROUP'],
+        ];
+
+        foreach ($endpoints as $ep) {
+            $nextToken = null;
+            $guard = 0;
+            do {
+                $body = ['campaignIdFilter' => ['include' => [$campaignId]], 'maxResults' => 1000];
+                if ($nextToken) {
+                    $body['nextToken'] = $nextToken;
+                }
+
+                $response = Http::timeout(60)
+                    ->withToken($token)
+                    ->withHeaders([
+                        'Amazon-Advertising-API-ClientId' => $clientId,
+                        'Amazon-Advertising-API-Scope' => $profileId,
+                        'Content-Type' => $ep['ct'],
+                        'Accept' => $ep['ct'],
+                    ])
+                    ->post($ep['url'], $body);
+
+                if (! $response->successful()) {
+                    break;
+                }
+
+                foreach (($response->json($ep['key']) ?? []) as $n) {
+                    $text = trim((string) ($n['keywordText'] ?? ''));
+                    $mt = strtoupper(trim((string) ($n['matchType'] ?? '')));
+                    if ($text !== '' && $mt !== '') {
+                        $set[$this->negKey($text, $mt, $ep['level'])] = true;
+                    }
+                }
+
+                $nextToken = $response->json('nextToken');
+            } while (! empty($nextToken) && ++$guard < 50);
+        }
+
+        return $set;
+    }
+
+    private function extractAmazonError(mixed $e): string
+    {
+        if (! is_array($e)) {
+            return trim((string) $e);
+        }
+        $nested = $e['errors'][0] ?? null;
+        $msg = $e['message']
+            ?? $e['details']
+            ?? $e['reason']
+            ?? ($nested['message'] ?? $nested['errorType'] ?? null)
+            ?? ($e['code'] ?? null);
+
+        return $msg ? trim((string) $msg) : trim((string) json_encode($e));
     }
 
     private function amazonAccessToken(): string

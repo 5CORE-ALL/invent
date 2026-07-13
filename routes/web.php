@@ -3003,6 +3003,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/remove', 'removeLink')->name('amazon.ads.campaign-link.remove');
         Route::post('/push', 'pushLinked')->name('amazon.ads.campaign-link.push');
         Route::post('/push-all', 'pushAll')->name('amazon.ads.campaign-link.push-all');
+        Route::get('/compare', 'compare')->name('amazon.ads.campaign-link.compare');
     });
 
     // Amazon SP campaign linking for NEGATIVE keywords.
@@ -3015,6 +3016,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/remove', 'removeLink')->name('amazon.ads.negative-link.remove');
         Route::post('/push', 'pushLinked')->name('amazon.ads.negative-link.push');
         Route::post('/push-all', 'pushAll')->name('amazon.ads.negative-link.push-all');
+        Route::get('/compare', 'compare')->name('amazon.ads.negative-link.compare');
     });
 
     // Amazon Ads Audit page (campaign audit log with red/green dot + history)

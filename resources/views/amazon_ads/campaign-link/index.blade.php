@@ -121,6 +121,40 @@
     </div>
 </div>
 
+<div class="modal fade" id="aclCompareModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header bg-info text-white">
+                <h5 class="modal-title"><i class="fas fa-scale-balanced"></i> Live Compare — <span id="acl-cmp-title"></span></h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="acl-cmp-loading" class="text-center py-4">
+                    <div class="spinner-border text-info" role="status"><span class="visually-hidden">Loading...</span></div>
+                    <p class="mt-2 mb-0">Checking Amazon live…</p>
+                </div>
+                <div id="acl-cmp-error" class="alert alert-danger mb-0 d-none"></div>
+                <div id="acl-cmp-body" class="d-none">
+                    <div id="acl-cmp-summary" class="alert alert-light border mb-3"></div>
+                    <div id="acl-cmp-empty" class="alert alert-success mb-0 d-none"><i class="fa fa-check-circle"></i> Nothing missing — this campaign already has every keyword from its linked campaign(s).</div>
+                    <div id="acl-cmp-table-wrap" class="table-responsive d-none" style="max-height: 55vh;">
+                        <table class="table table-sm table-bordered table-hover mb-0">
+                            <thead class="table-light">
+                                <tr><th>#</th><th>Missing Keyword</th><th style="width: 120px;">Match</th></tr>
+                            </thead>
+                            <tbody id="acl-cmp-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-success d-none" id="acl-cmp-push-btn"><i class="fas fa-cloud-download-alt"></i> Push these now</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
@@ -132,6 +166,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const removeUrl = @json(route('amazon.ads.campaign-link.remove'));
     const pushUrl = @json(route('amazon.ads.campaign-link.push'));
     const pushAllUrl = @json(route('amazon.ads.campaign-link.push-all'));
+    const compareUrl = @json(route('amazon.ads.campaign-link.compare'));
 
     let table = null;
     let modalSource = '';
@@ -139,6 +174,75 @@ document.addEventListener('DOMContentLoaded', function () {
     const selectedInModal = new Set();
     const linkModal = new bootstrap.Modal(document.getElementById('aclLinkModal'));
     const keywordsModal = new bootstrap.Modal(document.getElementById('aclKeywordsModal'));
+    const compareModal = new bootstrap.Modal(document.getElementById('aclCompareModal'));
+    let compareCampaign = '';
+
+    // Update a row's live keyword count in the grid so it stays consistent with Amazon.
+    function updateRowLiveCount(campaign, liveCount) {
+        if (liveCount === null || liveCount === undefined || !table) return;
+        const rowComp = table.getRows().find(r => r.getData().campaign === campaign);
+        if (rowComp) { rowComp.update({ keyword_count: liveCount }); }
+    }
+
+    async function openCompareModal(campaign) {
+        compareCampaign = campaign;
+        document.getElementById('acl-cmp-title').textContent = campaign;
+        const loading = document.getElementById('acl-cmp-loading');
+        const errorEl = document.getElementById('acl-cmp-error');
+        const bodyEl = document.getElementById('acl-cmp-body');
+        const emptyEl = document.getElementById('acl-cmp-empty');
+        const wrap = document.getElementById('acl-cmp-table-wrap');
+        const pushBtn = document.getElementById('acl-cmp-push-btn');
+        loading.classList.remove('d-none');
+        errorEl.classList.add('d-none');
+        bodyEl.classList.add('d-none');
+        emptyEl.classList.add('d-none');
+        wrap.classList.add('d-none');
+        pushBtn.classList.add('d-none');
+        document.getElementById('acl-cmp-tbody').innerHTML = '';
+        compareModal.show();
+        try {
+            const url = new URL(compareUrl, window.location.origin);
+            url.searchParams.set('campaign', campaign);
+            const res = await fetch(url, { headers: { Accept: 'application/json' } });
+            const json = await res.json();
+            if (!json.success) throw new Error(json.message || 'Compare failed.');
+            loading.classList.add('d-none');
+            bodyEl.classList.remove('d-none');
+            const liveTxt = json.live_ok ? (json.dest_live_count + ' (live on Amazon)') : (json.dest_live_count + ' (Amazon check unavailable — using stored data)');
+            document.getElementById('acl-cmp-summary').innerHTML =
+                '<strong>' + escHtml(campaign) + '</strong> currently has <strong>' + liveTxt + '</strong> keyword(s).<br>'
+                + 'Linked campaign(s) [' + (json.linked_campaigns || []).map(escHtml).join(', ') + '] contain <strong>' + json.group_source_count + '</strong> keyword(s).<br>'
+                + '<strong>' + json.missing_count + '</strong> are missing here and would be pushed.';
+            // Keep the grid count consistent with the live number.
+            updateRowLiveCount(campaign, json.dest_live_count);
+            const miss = json.missing || [];
+            if (miss.length === 0) { emptyEl.classList.remove('d-none'); return; }
+            document.getElementById('acl-cmp-tbody').innerHTML = miss.map(function (m, i) {
+                return '<tr><td>' + (i + 1) + '</td><td>' + escHtml(m.keywordText) + '</td><td>' + escHtml(m.matchType) + '</td></tr>';
+            }).join('');
+            wrap.classList.remove('d-none');
+            pushBtn.classList.remove('d-none');
+        } catch (e) {
+            loading.classList.add('d-none');
+            errorEl.textContent = e.message;
+            errorEl.classList.remove('d-none');
+        }
+    }
+
+    document.getElementById('acl-cmp-push-btn').addEventListener('click', async function () {
+        if (!compareCampaign) return;
+        this.disabled = true;
+        const original = this.innerHTML;
+        this.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Pushing...';
+        try {
+            const json = await postJson(pushUrl, { campaign: compareCampaign });
+            alert(json.message || 'Done.');
+            updateRowLiveCount(compareCampaign, json.dest_live_count);
+            compareModal.hide();
+        } catch (err) { alert(err.message); }
+        finally { this.disabled = false; this.innerHTML = original; }
+    });
 
     function escHtml(s) {
         return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
@@ -229,6 +333,8 @@ document.addEventListener('DOMContentLoaded', function () {
         });
         html += '<button type="button" class="btn btn-sm btn-outline-primary acl-link-btn" data-campaign="' + campAttr + '" title="Link a campaign"><i class="fas fa-plus"></i></button>';
         if (others.length > 0) {
+            html += '<button type="button" class="btn btn-sm btn-outline-info acl-compare-btn ms-1" data-campaign="' + campAttr + '" title="Live-check Amazon: what is actually missing vs linked campaign(s)">'
+                 + '<i class="fas fa-scale-balanced"></i> Compare</button>';
             html += '<button type="button" class="btn btn-sm btn-success acl-push-btn ms-1" data-campaign="' + campAttr + '" title="Import all keywords from linked campaign(s) into this campaign">'
                  + '<i class="fas fa-cloud-download-alt"></i> Push</button>';
         }
@@ -378,6 +484,12 @@ document.addEventListener('DOMContentLoaded', function () {
             openLinkModal(campaign, existing);
             return;
         }
+        const cmpBtn = e.target.closest('.acl-compare-btn');
+        if (cmpBtn) {
+            e.stopPropagation();
+            if (cmpBtn.dataset.campaign) openCompareModal(cmpBtn.dataset.campaign);
+            return;
+        }
         const pushBtn = e.target.closest('.acl-push-btn');
         if (pushBtn) {
             e.stopPropagation();
@@ -389,8 +501,8 @@ document.addEventListener('DOMContentLoaded', function () {
             try {
                 const json = await postJson(pushUrl, { campaign: campaign });
                 alert(json.message || 'Done.');
-                // Reload so the Keywords count reflects the newly imported keywords.
-                if (json.added && json.added > 0) { table.setData(); }
+                // Keep the grid count consistent with Amazon's live number.
+                updateRowLiveCount(campaign, json.dest_live_count);
             } catch (err) {
                 alert(err.message);
             } finally {

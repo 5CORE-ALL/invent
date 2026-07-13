@@ -397,6 +397,39 @@
             </div>
         </div>
     </div>
+
+    {{-- Shared live-compare modal for the KW / Neg columns --}}
+    <div class="modal fade" id="amzCompareModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header bg-info text-white">
+                    <h5 class="modal-title"><i class="fas fa-scale-balanced"></i> Live Compare — <span id="amzCmpTitle"></span></h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="amzCmpLoading" class="text-center py-4">
+                        <div class="spinner-border text-info" role="status"><span class="visually-hidden">Loading...</span></div>
+                        <p class="mt-2 mb-0">Checking Amazon live…</p>
+                    </div>
+                    <div id="amzCmpError" class="alert alert-danger mb-0 d-none"></div>
+                    <div id="amzCmpBody" class="d-none">
+                        <div id="amzCmpSummary" class="alert alert-light border mb-3"></div>
+                        <div id="amzCmpEmpty" class="alert alert-success mb-0 d-none"><i class="fa fa-check-circle"></i> Nothing missing — already has everything from its linked campaign(s).</div>
+                        <div id="amzCmpTableWrap" class="table-responsive d-none" style="max-height: 55vh;">
+                            <table class="table table-sm table-bordered table-hover mb-0">
+                                <thead class="table-light"><tr><th>#</th><th>Missing</th><th style="width: 120px;">Match</th><th style="width: 110px;" id="amzCmpLevelHead">Level</th></tr></thead>
+                                <tbody id="amzCmpTbody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-success d-none" id="amzCmpPushBtn"><i class="fas fa-cloud-download-alt"></i> Push these now</button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script')
@@ -428,6 +461,8 @@
             var negPushUrl = @json(route('amazon.ads.negative-link.push'));
             var kwPushAllUrl = @json(route('amazon.ads.campaign-link.push-all'));
             var negPushAllUrl = @json(route('amazon.ads.negative-link.push-all'));
+            var kwCompareUrl = @json(route('amazon.ads.campaign-link.compare'));
+            var negCompareUrl = @json(route('amazon.ads.negative-link.compare'));
 
             var csrfToken = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
             var table = null;
@@ -651,6 +686,7 @@
             function amzLinkColFormatter(mode) {
                 var linkCls = mode === 'neg' ? 'amz-neglink-btn' : 'amz-kwlink-btn';
                 var pushCls = mode === 'neg' ? 'amz-negpush-btn' : 'amz-kwpush-btn';
+                var cmpCls = mode === 'neg' ? 'amz-negcmp-btn' : 'amz-kwcmp-btn';
                 var linkColor = mode === 'neg' ? 'btn-outline-danger' : 'btn-outline-primary';
                 return function (cell) {
                     var c = amzLinkCampaignFromRow(cell);
@@ -658,6 +694,7 @@
                     var attr = String(c).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
                     return '<div class="d-inline-flex gap-1">'
                         + '<button type="button" class="btn btn-sm ' + linkColor + ' ' + linkCls + '" data-campaign="' + attr + '" title="Link campaigns" style="padding:1px 7px;"><i class="fas fa-plus"></i></button>'
+                        + '<button type="button" class="btn btn-sm btn-outline-info ' + cmpCls + '" data-campaign="' + attr + '" title="Live compare vs linked campaign(s)" style="padding:1px 7px;"><i class="fas fa-scale-balanced"></i></button>'
                         + '<button type="button" class="btn btn-sm btn-success ' + pushCls + '" data-campaign="' + attr + '" title="Push linked campaign keywords into this campaign" style="padding:1px 7px;"><i class="fas fa-cloud-download-alt"></i></button>'
                         + '</div>';
                 };
@@ -670,10 +707,10 @@
                     headerSort: false, hozAlign: 'center', headerHozAlign: 'center', width: 40, minWidth: 40
                 }, {
                     title: 'KW Link', field: '__kwlink', headerSort: false, hozAlign: 'center', headerHozAlign: 'center',
-                    width: 92, minWidth: 84, formatter: amzLinkColFormatter('kw')
+                    width: 128, minWidth: 120, formatter: amzLinkColFormatter('kw')
                 }, {
                     title: 'Neg Link', field: '__neglink', headerSort: false, hozAlign: 'center', headerHozAlign: 'center',
-                    width: 92, minWidth: 84, formatter: amzLinkColFormatter('neg')
+                    width: 128, minWidth: 120, formatter: amzLinkColFormatter('neg')
                 }];
                 cols.forEach(function (c) {
                     var col = { field: c, title: c, hozAlign: 'center', headerHozAlign: 'center', minWidth: 56, widthGrow: 0 };
@@ -1527,7 +1564,7 @@
                         .finally(function () { saveBtn.disabled = false; });
                 });
 
-                function amzRunRowPush(btn, url, campaign) {
+                function amzRunRowPush(btn, url, campaign, onDone) {
                     var original = btn.innerHTML;
                     btn.disabled = true;
                     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
@@ -1539,13 +1576,72 @@
                         .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, body: b }; }); })
                         .then(function (out) {
                             alert((out.body && out.body.message) || (out.ok ? 'Done.' : 'Push failed.'));
-                            if (out.body && out.body.added > 0 && table) { table.setData(); }
+                            if (typeof onDone === 'function') onDone(out);
                         })
                         .catch(function (err) { alert(err.message); })
                         .finally(function () { btn.disabled = false; btn.innerHTML = original; });
                 }
 
-                // Delegate link / push clicks from the grid columns.
+                // ---- Live compare modal ----
+                var cmpModalEl = document.getElementById('amzCompareModal');
+                var cmpModal = cmpModalEl ? new bootstrap.Modal(cmpModalEl) : null;
+                var cmpMode = 'kw';
+                var cmpCampaign = '';
+
+                function amzOpenCompare(mode, campaign) {
+                    if (!cmpModal) return;
+                    cmpMode = (mode === 'neg') ? 'neg' : 'kw';
+                    cmpCampaign = campaign;
+                    var isNeg = cmpMode === 'neg';
+                    document.getElementById('amzCmpTitle').textContent = campaign + (isNeg ? '  (negatives)' : '  (keywords)');
+                    document.getElementById('amzCmpLevelHead').style.display = isNeg ? '' : 'none';
+                    var loading = document.getElementById('amzCmpLoading');
+                    var errorEl = document.getElementById('amzCmpError');
+                    var bodyEl = document.getElementById('amzCmpBody');
+                    var emptyEl = document.getElementById('amzCmpEmpty');
+                    var wrap = document.getElementById('amzCmpTableWrap');
+                    var pushBtn = document.getElementById('amzCmpPushBtn');
+                    loading.classList.remove('d-none'); errorEl.classList.add('d-none'); bodyEl.classList.add('d-none');
+                    emptyEl.classList.add('d-none'); wrap.classList.add('d-none'); pushBtn.classList.add('d-none');
+                    document.getElementById('amzCmpTbody').innerHTML = '';
+                    cmpModal.show();
+                    var url = new URL(isNeg ? negCompareUrl : kwCompareUrl, window.location.origin);
+                    url.searchParams.set('campaign', campaign);
+                    fetch(url, { headers: { Accept: 'application/json' } })
+                        .then(function (r) { return r.json(); })
+                        .then(function (json) {
+                            if (!json.success) throw new Error(json.message || 'Compare failed.');
+                            loading.classList.add('d-none'); bodyEl.classList.remove('d-none');
+                            var noun = isNeg ? 'negative(s)' : 'keyword(s)';
+                            var liveTxt = json.live_ok ? (json.dest_live_count + ' (live on Amazon)') : (json.dest_live_count + ' (Amazon check unavailable)');
+                            document.getElementById('amzCmpSummary').innerHTML =
+                                '<strong>' + amzEscHtml(campaign) + '</strong> currently has <strong>' + liveTxt + '</strong> ' + noun + '.<br>'
+                                + 'Linked campaign(s) contain <strong>' + json.group_source_count + '</strong> ' + noun + '.<br>'
+                                + '<strong>' + json.missing_count + '</strong> missing here and would be pushed.';
+                            var miss = json.missing || [];
+                            if (!miss.length) { emptyEl.classList.remove('d-none'); return; }
+                            document.getElementById('amzCmpTbody').innerHTML = miss.map(function (m, i) {
+                                var lvl = isNeg ? ('<td>' + amzEscHtml(m.level === 'CAMPAIGN' ? 'Campaign' : (m.level === 'AD_GROUP' ? 'Ad group' : (m.level || '—'))) + '</td>') : '';
+                                return '<tr><td>' + (i + 1) + '</td><td>' + amzEscHtml(m.keywordText) + '</td><td>' + amzEscHtml(m.matchType) + '</td>' + lvl + '</tr>';
+                            }).join('');
+                            wrap.classList.remove('d-none'); pushBtn.classList.remove('d-none');
+                        })
+                        .catch(function (err) { loading.classList.add('d-none'); errorEl.textContent = err.message; errorEl.classList.remove('d-none'); });
+                }
+                function amzEscHtml(s) {
+                    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; });
+                }
+                var cmpPushBtn = document.getElementById('amzCmpPushBtn');
+                if (cmpPushBtn) {
+                    cmpPushBtn.addEventListener('click', function () {
+                        var btn = this; var original = btn.innerHTML; btn.disabled = true;
+                        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Pushing...';
+                        amzRunRowPush(btn, cmpMode === 'neg' ? negPushUrl : kwPushUrl, cmpCampaign, function () { if (cmpModal) cmpModal.hide(); });
+                        setTimeout(function () { btn.disabled = false; btn.innerHTML = original; }, 100);
+                    });
+                }
+
+                // Delegate link / push / compare clicks from the grid columns.
                 var tableEl = document.getElementById('amz-ads-raw-table');
                 if (tableEl) {
                     tableEl.addEventListener('click', function (e) {
@@ -1553,6 +1649,10 @@
                         if (kw) { e.stopPropagation(); if (kw.dataset.campaign) window.amzOpenLinkModal('kw', kw.dataset.campaign); return; }
                         var neg = e.target.closest('.amz-neglink-btn');
                         if (neg) { e.stopPropagation(); if (neg.dataset.campaign) window.amzOpenLinkModal('neg', neg.dataset.campaign); return; }
+                        var kwc = e.target.closest('.amz-kwcmp-btn');
+                        if (kwc) { e.stopPropagation(); if (kwc.dataset.campaign) amzOpenCompare('kw', kwc.dataset.campaign); return; }
+                        var negc = e.target.closest('.amz-negcmp-btn');
+                        if (negc) { e.stopPropagation(); if (negc.dataset.campaign) amzOpenCompare('neg', negc.dataset.campaign); return; }
                         var kwp = e.target.closest('.amz-kwpush-btn');
                         if (kwp) { e.stopPropagation(); if (kwp.dataset.campaign) amzRunRowPush(kwp, kwPushUrl, kwp.dataset.campaign); return; }
                         var negp = e.target.closest('.amz-negpush-btn');

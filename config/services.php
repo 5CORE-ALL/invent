@@ -394,6 +394,8 @@ return [
         // set, campaign links deep-link straight to the right account.
         'console_base' => env('AMAZON_ADS_CONSOLE_BASE', 'https://advertising.amazon.com'),
         'entity_id' => env('AMAZON_ADS_ENTITY_ID', ''),
+        // Default bid applied when pushing/creating keywords across linked campaigns.
+        'default_keyword_bid' => env('AMAZON_ADS_DEFAULT_KEYWORD_BID', 1.0),
     ],
 
     /*

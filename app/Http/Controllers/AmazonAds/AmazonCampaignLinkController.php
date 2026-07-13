@@ -229,6 +229,7 @@ class AmazonCampaignLinkController extends Controller
             'success' => $r['ok'],
             'added' => $r['added'],
             'failed' => $r['failed'],
+            'dest_live_count' => $r['dest_live_count'] ?? null,
             'message' => $r['message'],
             'affected' => $this->affectedRows($campaign),
         ], $r['ok'] ? 200 : ($r['status'] ?? 422));
@@ -295,16 +296,26 @@ class AmazonCampaignLinkController extends Controller
      *
      * @return array{ok: bool, added: int, failed: int, message: string, status?: int}
      */
-    private function pushForCampaign(string $campaign): array
+    /**
+     * Live comparison between a destination campaign and its linked group. Determines the keywords
+     * the linked campaigns have that the destination is missing — checked against the destination's
+     * LIVE Amazon keyword list (not just our partial report data).
+     *
+     * @return array{
+     *   ok: bool, message?: string, status?: int,
+     *   destCampaignId?: string, destAdGroupId?: string, linked?: list<string>,
+     *   missing?: list<array{keywordText: string, matchType: string}>,
+     *   destLiveCount?: int, liveOk?: bool, groupSourceCount?: int
+     * }
+     */
+    private function resolveMissing(string $campaign): array
     {
-        // Linked group (excluding the destination itself).
         $group = $this->linkService->groupContaining($campaign);
         $linked = array_values(array_filter($group, fn ($c) => $this->linkService->normalize($c) !== $this->linkService->normalize($campaign)));
         if ($linked === []) {
-            return ['ok' => false, 'added' => 0, 'failed' => 0, 'message' => 'This campaign has no linked campaign to push from.', 'status' => 422];
+            return ['ok' => false, 'message' => 'This campaign has no linked campaign to push from.', 'status' => 422];
         }
 
-        // Destination campaign id + target ad group (the ad group holding the most keywords).
         $destInfo = DB::table(self::SOURCE_TABLE)
             ->where('campaignName', $campaign)
             ->whereNotNull('campaign_id')
@@ -317,12 +328,12 @@ class AmazonCampaignLinkController extends Controller
             ->first();
 
         if (! $destInfo || ! $destInfo->campaign_id || ! $destInfo->ad_group_id) {
-            return ['ok' => false, 'added' => 0, 'failed' => 0, 'message' => 'Could not resolve the destination campaign\'s ad group from keyword data.', 'status' => 422];
+            return ['ok' => false, 'message' => 'Could not resolve the destination campaign\'s ad group from keyword data.', 'status' => 422];
         }
         $destCampaignId = (string) $destInfo->campaign_id;
         $destAdGroupId = (string) $destInfo->ad_group_id;
 
-        // Existing keywords in destination (dedupe key = TEXT|MATCHTYPE).
+        // Destination existing set — report table first…
         $existing = [];
         DB::table(self::SOURCE_TABLE)
             ->where('campaignName', $campaign)
@@ -334,8 +345,23 @@ class AmazonCampaignLinkController extends Controller
                 $existing[$this->keywordKey($r->keyword, $r->matchType)] = true;
             });
 
-        // Candidate keywords from the linked campaigns (real keywords only), deduped.
+        // …then the destination's LIVE Amazon keywords (authoritative).
+        $liveOk = false;
+        $destLiveCount = 0;
+        try {
+            $live = $this->fetchLiveCampaignKeywordSet($destCampaignId);
+            $liveOk = true;
+            $destLiveCount = count($live);
+            foreach ($live as $k => $_) {
+                $existing[$k] = true;
+            }
+        } catch (\Throwable) {
+            // fall back to stored set
+        }
+
+        // Linked group's keywords (real keywords only), deduped, minus what the destination has.
         $candidates = [];
+        $groupSourceKeys = [];
         DB::table(self::SOURCE_TABLE)
             ->whereIn('campaignName', $linked)
             ->whereNotNull('keyword_id')
@@ -344,22 +370,77 @@ class AmazonCampaignLinkController extends Controller
             ->select('keyword', 'matchType')
             ->distinct()
             ->get()
-            ->each(function ($r) use (&$candidates, $existing) {
+            ->each(function ($r) use (&$candidates, &$groupSourceKeys, $existing) {
                 $text = trim((string) $r->keyword);
                 $mt = strtoupper(trim((string) $r->matchType));
                 if ($text === '' || $mt === '') {
                     return;
                 }
                 $key = $this->keywordKey($text, $mt);
+                $groupSourceKeys[$key] = true;
                 if (isset($existing[$key]) || isset($candidates[$key])) {
                     return;
                 }
                 $candidates[$key] = ['keywordText' => $text, 'matchType' => $mt];
             });
 
-        $toAdd = array_values($candidates);
+        return [
+            'ok' => true,
+            'destCampaignId' => $destCampaignId,
+            'destAdGroupId' => $destAdGroupId,
+            'linked' => $linked,
+            'missing' => array_values($candidates),
+            'destLiveCount' => $destLiveCount,
+            'liveOk' => $liveOk,
+            'groupSourceCount' => count($groupSourceKeys),
+        ];
+    }
+
+    /**
+     * Live compare (no writes): returns the actual missing keywords + the destination's live count,
+     * so the UI can show exactly why a push would/wouldn't add anything.
+     */
+    public function compare(Request $request): JsonResponse
+    {
+        $campaign = trim((string) $request->input('campaign', ''));
+        if ($campaign === '' || ! Schema::hasTable(self::SOURCE_TABLE)) {
+            return response()->json(['success' => false, 'message' => 'Campaign is required.'], 422);
+        }
+
+        $r = $this->resolveMissing($campaign);
+        if (! $r['ok']) {
+            return response()->json(['success' => false, 'message' => $r['message']], $r['status'] ?? 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'campaign' => $campaign,
+            'linked_campaigns' => $r['linked'],
+            'dest_live_count' => $r['destLiveCount'],
+            'live_ok' => $r['liveOk'],
+            'group_source_count' => $r['groupSourceCount'],
+            'missing' => $r['missing'],
+            'missing_count' => count($r['missing']),
+        ]);
+    }
+
+    private function pushForCampaign(string $campaign): array
+    {
+        $resolved = $this->resolveMissing($campaign);
+        if (! $resolved['ok']) {
+            return ['ok' => false, 'added' => 0, 'failed' => 0, 'message' => $resolved['message'], 'status' => $resolved['status'] ?? 422];
+        }
+
+        $destCampaignId = $resolved['destCampaignId'];
+        $destAdGroupId = $resolved['destAdGroupId'];
+        $linked = $resolved['linked'];
+        $toAdd = $resolved['missing'];
+        $destLiveCount = $resolved['destLiveCount'];
+
         if ($toAdd === []) {
-            return ['ok' => true, 'added' => 0, 'failed' => 0, 'message' => 'No new keywords to push.'];
+            $where = $resolved['liveOk'] ? ' (verified live on Amazon)' : '';
+            return ['ok' => true, 'added' => 0, 'failed' => 0, 'dest_live_count' => $destLiveCount,
+                'message' => "\"{$campaign}\" already has all keywords from its linked campaign(s){$where} — nothing new to add."];
         }
 
         try {
@@ -388,21 +469,30 @@ class AmazonCampaignLinkController extends Controller
 
         $added = count($result['created']);
         $failed = $result['failed'];
+        $duplicates = $result['duplicates'] ?? 0;
+        $newLiveCount = $destLiveCount + $added;
+        $errText = ! empty($result['errors']) ? ' Reason: '.implode(' | ', array_slice($result['errors'], 0, 3)) : '';
 
         if ($added === 0) {
-            $msg = $failed > 0
-                ? "No keywords were added ({$failed} rejected by Amazon). Check match types / campaign state."
-                : 'No new keywords to push.';
+            if ($failed > 0) {
+                return ['ok' => false, 'added' => 0, 'failed' => $failed, 'dest_live_count' => $newLiveCount, 'message' => "No keywords were added ({$failed} rejected by Amazon).".$errText];
+            }
+            if ($duplicates > 0) {
+                return ['ok' => true, 'added' => 0, 'failed' => 0, 'dest_live_count' => $newLiveCount, 'message' => "All {$duplicates} keyword(s) already exist in \"{$campaign}\" — nothing new to add."];
+            }
 
-            return ['ok' => $failed === 0, 'added' => 0, 'failed' => $failed, 'message' => $msg];
+            return ['ok' => true, 'added' => 0, 'failed' => 0, 'dest_live_count' => $newLiveCount, 'message' => 'No new keywords to push.'];
         }
 
         $msg = "Added {$added} keyword(s) to \"{$campaign}\" from ".count($linked).' linked campaign(s).';
+        if ($duplicates > 0) {
+            $msg .= " ({$duplicates} already existed.)";
+        }
         if ($failed > 0) {
-            $msg .= " ({$failed} rejected by Amazon.)";
+            $msg .= " ({$failed} rejected by Amazon.)".$errText;
         }
 
-        return ['ok' => true, 'added' => $added, 'failed' => $failed, 'message' => $msg];
+        return ['ok' => true, 'added' => $added, 'failed' => $failed, 'dest_live_count' => $newLiveCount, 'message' => $msg];
     }
 
     private function keywordKey(mixed $text, mixed $matchType): string
@@ -420,9 +510,12 @@ class AmazonCampaignLinkController extends Controller
     {
         $created = [];
         $failed = 0;
+        $duplicates = 0;
+        $errors = [];
         $token = $this->amazonAccessToken();
         $clientId = config('services.amazon_ads.client_id');
         $profileId = config('services.amazon_ads.profile_ids');
+        $bid = (float) config('services.amazon_ads.default_keyword_bid', 1.0);
 
         foreach (array_chunk($keywords, 100) as $chunk) {
             $payload = ['keywords' => array_map(fn ($k) => [
@@ -431,6 +524,7 @@ class AmazonCampaignLinkController extends Controller
                 'keywordText' => $k['keywordText'],
                 'matchType' => $k['matchType'],
                 'state' => 'ENABLED',
+                'bid' => $bid,
             ], $chunk)];
 
             $response = Http::timeout(60)
@@ -460,15 +554,45 @@ class AmazonCampaignLinkController extends Controller
                 ];
             }
 
-            $failed += is_array($errorList) ? count($errorList) : 0;
+            if (is_array($errorList)) {
+                foreach ($errorList as $e) {
+                    $msg = $this->extractAmazonError($e);
+                    if (stripos($msg, 'duplicate') !== false) {
+                        $duplicates++;   // already exists on Amazon — not a real failure
+                    } else {
+                        $failed++;
+                        $errors[] = $msg;
+                    }
+                }
+            }
 
-            // If the whole request errored (non-2xx and no per-item breakdown), count the chunk as failed.
+            // Whole request errored (non-2xx, no per-item breakdown).
             if (! $response->successful() && empty($successList) && empty($errorList)) {
                 $failed += count($chunk);
+                $errors[] = 'HTTP '.$response->status().': '.substr((string) $response->body(), 0, 300);
             }
         }
 
-        return ['created' => $created, 'failed' => $failed];
+        return ['created' => $created, 'failed' => $failed, 'duplicates' => $duplicates, 'errors' => array_values(array_unique(array_filter($errors)))];
+    }
+
+    /**
+     * Pull a readable message out of a v3 batch error item (shapes vary across endpoints).
+     */
+    private function extractAmazonError(mixed $e): string
+    {
+        if (! is_array($e)) {
+            return trim((string) $e);
+        }
+        // Common shapes: {errors:[{errorType,message}]} or {code, details} or {message}
+        $nested = $e['errors'][0] ?? null;
+        $msg = $e['message']
+            ?? $e['details']
+            ?? $e['reason']
+            ?? ($nested['message'] ?? $nested['errorType'] ?? null)
+            ?? ($e['code'] ?? null);
+
+        return $msg ? trim((string) $msg) : trim((string) json_encode($e));
     }
 
     private function amazonAccessToken(): string
@@ -486,6 +610,56 @@ class AmazonCampaignLinkController extends Controller
         }
 
         return (string) $token;
+    }
+
+    /**
+     * Live keyword set (TEXT|MATCHTYPE) for a campaign, straight from Amazon (sp/keywords/list).
+     * Used so dedup reflects what actually exists on Amazon — our report table only holds keywords
+     * that had activity in the fetched windows, so it under-reports.
+     *
+     * @return array<string, true>
+     */
+    private function fetchLiveCampaignKeywordSet(string $campaignId): array
+    {
+        $set = [];
+        $token = $this->amazonAccessToken();
+        $clientId = config('services.amazon_ads.client_id');
+        $profileId = config('services.amazon_ads.profile_ids');
+        $nextToken = null;
+        $guard = 0;
+
+        do {
+            $body = ['campaignIdFilter' => ['include' => [$campaignId]], 'maxResults' => 1000];
+            if ($nextToken) {
+                $body['nextToken'] = $nextToken;
+            }
+
+            $response = Http::timeout(60)
+                ->withToken($token)
+                ->withHeaders([
+                    'Amazon-Advertising-API-ClientId' => $clientId,
+                    'Amazon-Advertising-API-Scope' => $profileId,
+                    'Content-Type' => 'application/vnd.spKeyword.v3+json',
+                    'Accept' => 'application/vnd.spKeyword.v3+json',
+                ])
+                ->post('https://advertising-api.amazon.com/sp/keywords/list', $body);
+
+            if (! $response->successful()) {
+                break;
+            }
+
+            foreach (($response->json('keywords') ?? []) as $k) {
+                $text = trim((string) ($k['keywordText'] ?? ''));
+                $mt = strtoupper(trim((string) ($k['matchType'] ?? '')));
+                if ($text !== '' && $mt !== '') {
+                    $set[$this->keywordKey($text, $mt)] = true;
+                }
+            }
+
+            $nextToken = $response->json('nextToken');
+        } while (! empty($nextToken) && ++$guard < 50);
+
+        return $set;
     }
 
     public function bulkLink(Request $request): JsonResponse
