@@ -213,13 +213,16 @@ class FetchTemuOrders extends Command
     {
         $recentCutoff = Carbon::now()->subDays(3);
 
+        // Group by parent (not distinct + orderBy) so ordering by the latest order time is
+        // compatible with MySQL ONLY_FULL_GROUP_BY. Recent parents first so a cut-short run
+        // still refreshes the newest orders.
         $parentSns = TemuOrder::whereNotNull('parent_order_sn')
             ->where(function ($q) use ($recentCutoff) {
                 $q->whereNull('amount_fetched_at')
                     ->orWhere('parent_order_time', '>=', $recentCutoff);
             })
-            ->distinct()
-            ->orderBy('parent_order_time', 'desc')
+            ->groupBy('parent_order_sn')
+            ->orderByRaw('MAX(parent_order_time) DESC')
             ->pluck('parent_order_sn')
             ->filter()
             ->values();
