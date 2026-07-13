@@ -121,6 +121,13 @@
                         <button type="button" class="btn btn-sm btn-warning text-dark" id="amazonAdsPushSbidBtn" title="Push the SBID shown on this page for each row (SP/SB only).">
                             <i class="fa fa-cloud-upload-alt"></i> SBID
                         </button>
+                        <span class="vr align-self-center d-none d-md-inline-block mx-1"></span>
+                        <button type="button" class="btn btn-sm btn-success" id="amz-kw-bulk-push" title="Import keywords into every linked campaign at once">
+                            <i class="fas fa-cloud-download-alt"></i> KW Bulk Push
+                        </button>
+                        <button type="button" class="btn btn-sm btn-success" id="amz-neg-bulk-push" title="Import negative keywords into every linked campaign at once">
+                            <i class="fas fa-cloud-download-alt"></i> Neg Bulk Push
+                        </button>
                     </div>
 
                     <div id="amz-raw-filter-bar" class="mb-3">
@@ -365,6 +372,31 @@
             </div>
         </div>
     </div>
+
+    {{-- Shared campaign-link modal (keyword + negative), used by the KW / Neg "+" grid columns --}}
+    <div class="modal fade" id="amzLinkModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header text-white" id="amzLinkModalHeader">
+                    <h5 class="modal-title"><i class="fas fa-link"></i> <span id="amzLinkModalTitle">Link Campaigns</span></h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small mb-2">Link one or more campaigns to <strong id="amzLinkSource"></strong>. <span id="amzLinkHint"></span></p>
+                    <input type="text" id="amzLinkInput" class="form-control" placeholder="Search campaign..." autocomplete="off">
+                    <div id="amzLinkSuggestions" class="list-group mt-2 d-none" style="max-height: 260px; overflow-y: auto;"></div>
+                    <div id="amzLinkSelectedWrap" class="mt-2 d-none">
+                        <div class="small text-muted mb-1">Selected to link (<span id="amzLinkSelectedCount">0</span>):</div>
+                        <div id="amzLinkSelected" class="d-flex flex-wrap gap-1"></div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="amzLinkSaveBtn"><i class="fas fa-link"></i> Link Campaign(s)</button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script')
@@ -386,6 +418,16 @@
             var u7PieHistoryUrl = @json(url('/amazon-ads/u7-distribution-history')) + '/';
             window.amazonAdsBgtRule = @json($amazonAdsBgtRule ?? null);
             window.amazonAdsSbidRule = @json($amazonAdsSbidRule ?? null);
+
+            // Campaign-link (keyword + negative) endpoints for the KW / Neg "+" columns.
+            var kwLinkCampaignsUrl = @json(route('amazon.ads.campaign-link.campaigns'));
+            var kwLinkSaveUrl = @json(route('amazon.ads.campaign-link.link'));
+            var negLinkCampaignsUrl = @json(route('amazon.ads.negative-link.campaigns'));
+            var negLinkSaveUrl = @json(route('amazon.ads.negative-link.link'));
+            var kwPushUrl = @json(route('amazon.ads.campaign-link.push'));
+            var negPushUrl = @json(route('amazon.ads.negative-link.push'));
+            var kwPushAllUrl = @json(route('amazon.ads.campaign-link.push-all'));
+            var negPushAllUrl = @json(route('amazon.ads.negative-link.push-all'));
 
             var csrfToken = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
             var table = null;
@@ -602,11 +644,36 @@
                 if (c === 'clicks') { col.title = 'Click'; col.formatter = fmtDashInt; return; }
             }
 
+            function amzLinkCampaignFromRow(cell) {
+                var d = cell.getRow().getData() || {};
+                return d.campaignName ? String(d.campaignName) : '';
+            }
+            function amzLinkColFormatter(mode) {
+                var linkCls = mode === 'neg' ? 'amz-neglink-btn' : 'amz-kwlink-btn';
+                var pushCls = mode === 'neg' ? 'amz-negpush-btn' : 'amz-kwpush-btn';
+                var linkColor = mode === 'neg' ? 'btn-outline-danger' : 'btn-outline-primary';
+                return function (cell) {
+                    var c = amzLinkCampaignFromRow(cell);
+                    if (!c) return '';
+                    var attr = String(c).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+                    return '<div class="d-inline-flex gap-1">'
+                        + '<button type="button" class="btn btn-sm ' + linkColor + ' ' + linkCls + '" data-campaign="' + attr + '" title="Link campaigns" style="padding:1px 7px;"><i class="fas fa-plus"></i></button>'
+                        + '<button type="button" class="btn btn-sm btn-success ' + pushCls + '" data-campaign="' + attr + '" title="Push linked campaign keywords into this campaign" style="padding:1px 7px;"><i class="fas fa-cloud-download-alt"></i></button>'
+                        + '</div>';
+                };
+            }
+
             function amzBuildColumns(source) {
                 var cols = (rawSources[source] && rawSources[source].columns) ? rawSources[source].columns : [];
                 var defs = [{
                     title: '', field: '__sel', formatter: 'rowSelection', titleFormatter: 'rowSelection',
                     headerSort: false, hozAlign: 'center', headerHozAlign: 'center', width: 40, minWidth: 40
+                }, {
+                    title: 'KW Link', field: '__kwlink', headerSort: false, hozAlign: 'center', headerHozAlign: 'center',
+                    width: 92, minWidth: 84, formatter: amzLinkColFormatter('kw')
+                }, {
+                    title: 'Neg Link', field: '__neglink', headerSort: false, hozAlign: 'center', headerHozAlign: 'center',
+                    width: 92, minWidth: 84, formatter: amzLinkColFormatter('neg')
                 }];
                 cols.forEach(function (c) {
                     var col = { field: c, title: c, hozAlign: 'center', headerHozAlign: 'center', minWidth: 56, widthGrow: 0 };
@@ -1337,6 +1404,183 @@
                         .finally(function () { sbidSaveBtn.disabled = false; });
                 });
             }
+
+            // ---- Campaign link modal (KW / Neg "+" columns) ----
+            (function () {
+                var modalEl = document.getElementById('amzLinkModal');
+                if (!modalEl || typeof bootstrap === 'undefined') return;
+                var linkModal = new bootstrap.Modal(modalEl);
+                var mode = 'kw';               // 'kw' | 'neg'
+                var source = '';
+                var selected = {};             // campaign name -> true
+                var suggestTimer = null, reqId = 0;
+
+                var inputEl = document.getElementById('amzLinkInput');
+                var suggEl = document.getElementById('amzLinkSuggestions');
+                var selWrap = document.getElementById('amzLinkSelectedWrap');
+                var selEl = document.getElementById('amzLinkSelected');
+                var selCountEl = document.getElementById('amzLinkSelectedCount');
+                var saveBtn = document.getElementById('amzLinkSaveBtn');
+                var titleEl = document.getElementById('amzLinkModalTitle');
+                var hintEl = document.getElementById('amzLinkHint');
+                var headerEl = document.getElementById('amzLinkModalHeader');
+                var sourceEl = document.getElementById('amzLinkSource');
+
+                function esc(s) {
+                    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+                        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+                    });
+                }
+                function escAttr(s) { return esc(s).replace(/'/g, '&#39;'); }
+                function campaignsUrl() { return mode === 'neg' ? negLinkCampaignsUrl : kwLinkCampaignsUrl; }
+                function saveUrl() { return mode === 'neg' ? negLinkSaveUrl : kwLinkSaveUrl; }
+
+                function renderChips() {
+                    var arr = Object.keys(selected);
+                    selCountEl.textContent = String(arr.length);
+                    if (!arr.length) { selWrap.classList.add('d-none'); selEl.innerHTML = ''; return; }
+                    selWrap.classList.remove('d-none');
+                    selEl.innerHTML = arr.map(function (c) {
+                        return '<span class="badge bg-light text-dark border" style="font-weight:500;">' + esc(c) +
+                            ' <a href="#" class="amz-link-chip-x text-danger" data-c="' + escAttr(c) + '" style="text-decoration:none;">&times;</a></span>';
+                    }).join('');
+                }
+
+                function renderSuggestions(term) {
+                    var q = String(term || '').trim();
+                    if (q === '') { suggEl.classList.add('d-none'); suggEl.innerHTML = ''; return; }
+                    var myReq = ++reqId;
+                    var url = new URL(campaignsUrl(), window.location.origin);
+                    url.searchParams.set('q', q);
+                    url.searchParams.set('exclude', source);
+                    fetch(url, { headers: { Accept: 'application/json' } })
+                        .then(function (r) { return r.json(); })
+                        .then(function (json) {
+                            if (myReq !== reqId) return;
+                            var srcNorm = source.toUpperCase();
+                            var list = (json.campaigns || []).map(function (c) { return String(c).trim(); })
+                                .filter(function (c) { return c && c.toUpperCase() !== srcNorm; });
+                            if (!list.length) { suggEl.classList.add('d-none'); suggEl.innerHTML = ''; return; }
+                            suggEl.classList.remove('d-none');
+                            suggEl.innerHTML = list.map(function (c) {
+                                var checked = selected[c] ? 'checked' : '';
+                                return '<div class="list-group-item list-group-item-action py-2 d-flex align-items-center gap-2 mb-0 amz-link-sugg" style="cursor:pointer;">' +
+                                    '<input type="checkbox" class="form-check-input amz-link-cb" value="' + escAttr(c) + '" ' + checked + ' style="pointer-events:none;">' +
+                                    '<span class="flex-grow-1">' + esc(c) + '</span></div>';
+                            }).join('');
+                        })
+                        .catch(function () { if (myReq === reqId) { suggEl.classList.add('d-none'); suggEl.innerHTML = ''; } });
+                }
+
+                window.amzOpenLinkModal = function (m, campaign) {
+                    mode = (m === 'neg') ? 'neg' : 'kw';
+                    source = String(campaign || '');
+                    selected = {};
+                    var isNeg = mode === 'neg';
+                    titleEl.textContent = isNeg ? 'Link Campaigns (Negatives)' : 'Link Campaigns (Keywords)';
+                    hintEl.textContent = isNeg ? 'All linked campaigns will share negative keywords.' : 'All linked campaigns will share keywords.';
+                    headerEl.className = 'modal-header text-white ' + (isNeg ? 'bg-danger' : 'bg-primary');
+                    saveBtn.className = 'btn ' + (isNeg ? 'btn-danger' : 'btn-primary');
+                    sourceEl.textContent = source;
+                    inputEl.value = '';
+                    suggEl.classList.add('d-none'); suggEl.innerHTML = '';
+                    renderChips();
+                    linkModal.show();
+                    setTimeout(function () { inputEl.focus(); }, 300);
+                };
+
+                inputEl.addEventListener('input', function () {
+                    if (suggestTimer) clearTimeout(suggestTimer);
+                    var v = this.value;
+                    suggestTimer = setTimeout(function () { renderSuggestions(v); }, 250);
+                });
+                suggEl.addEventListener('click', function (e) {
+                    var item = e.target.closest('.amz-link-sugg'); if (!item) return;
+                    var cb = item.querySelector('.amz-link-cb'); if (!cb) return;
+                    cb.checked = !cb.checked;
+                    if (cb.checked) selected[cb.value] = true; else delete selected[cb.value];
+                    renderChips();
+                });
+                selEl.addEventListener('click', function (e) {
+                    var x = e.target.closest('.amz-link-chip-x'); if (!x) return;
+                    e.preventDefault();
+                    delete selected[x.dataset.c];
+                    suggEl.querySelectorAll('.amz-link-cb').forEach(function (cb) { if (cb.value === x.dataset.c) cb.checked = false; });
+                    renderChips();
+                });
+                saveBtn.addEventListener('click', function () {
+                    var targets = Object.keys(selected);
+                    if (!targets.length) { alert('Select at least one campaign to link.'); return; }
+                    saveBtn.disabled = true;
+                    fetch(saveUrl(), {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrfToken },
+                        body: JSON.stringify({ campaigns: [source].concat(targets) })
+                    })
+                        .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, body: b }; }); })
+                        .then(function (out) {
+                            if (!out.ok || !out.body.success) { throw new Error((out.body && out.body.message) || 'Link failed.'); }
+                            linkModal.hide();
+                            alert(out.body.message || 'Campaigns linked.');
+                        })
+                        .catch(function (err) { alert(err.message); })
+                        .finally(function () { saveBtn.disabled = false; });
+                });
+
+                function amzRunRowPush(btn, url, campaign) {
+                    var original = btn.innerHTML;
+                    btn.disabled = true;
+                    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+                    fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrfToken },
+                        body: JSON.stringify({ campaign: campaign })
+                    })
+                        .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, body: b }; }); })
+                        .then(function (out) {
+                            alert((out.body && out.body.message) || (out.ok ? 'Done.' : 'Push failed.'));
+                            if (out.body && out.body.added > 0 && table) { table.setData(); }
+                        })
+                        .catch(function (err) { alert(err.message); })
+                        .finally(function () { btn.disabled = false; btn.innerHTML = original; });
+                }
+
+                // Delegate link / push clicks from the grid columns.
+                var tableEl = document.getElementById('amz-ads-raw-table');
+                if (tableEl) {
+                    tableEl.addEventListener('click', function (e) {
+                        var kw = e.target.closest('.amz-kwlink-btn');
+                        if (kw) { e.stopPropagation(); if (kw.dataset.campaign) window.amzOpenLinkModal('kw', kw.dataset.campaign); return; }
+                        var neg = e.target.closest('.amz-neglink-btn');
+                        if (neg) { e.stopPropagation(); if (neg.dataset.campaign) window.amzOpenLinkModal('neg', neg.dataset.campaign); return; }
+                        var kwp = e.target.closest('.amz-kwpush-btn');
+                        if (kwp) { e.stopPropagation(); if (kwp.dataset.campaign) amzRunRowPush(kwp, kwPushUrl, kwp.dataset.campaign); return; }
+                        var negp = e.target.closest('.amz-negpush-btn');
+                        if (negp) { e.stopPropagation(); if (negp.dataset.campaign) amzRunRowPush(negp, negPushUrl, negp.dataset.campaign); }
+                    });
+                }
+
+                // Bulk push buttons (toolbar).
+                var kwBulk = document.getElementById('amz-kw-bulk-push');
+                var negBulk = document.getElementById('amz-neg-bulk-push');
+                function amzRunBulk(btn, url, label) {
+                    if (!confirm('Push ' + label + ' into ALL linked campaigns now? This creates them on Amazon.')) return;
+                    var original = btn.innerHTML;
+                    btn.disabled = true;
+                    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Pushing...';
+                    fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrfToken },
+                        body: JSON.stringify({})
+                    })
+                        .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, body: b }; }); })
+                        .then(function (out) { alert((out.body && out.body.message) || 'Done.'); if (table) table.setData(); })
+                        .catch(function (err) { alert(err.message); })
+                        .finally(function () { btn.disabled = false; btn.innerHTML = original; });
+                }
+                if (kwBulk) kwBulk.addEventListener('click', function () { amzRunBulk(this, kwPushAllUrl, 'keywords'); });
+                if (negBulk) negBulk.addEventListener('click', function () { amzRunBulk(this, negPushAllUrl, 'negative keywords'); });
+            })();
 
             // ---- initial state ----
             (function () {

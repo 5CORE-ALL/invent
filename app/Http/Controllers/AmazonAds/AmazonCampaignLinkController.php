@@ -1,0 +1,560 @@
+<?php
+
+namespace App\Http\Controllers\AmazonAds;
+
+use App\Http\Controllers\Controller;
+use App\Services\AmazonCampaignLinkService;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Schema;
+
+/**
+ * Campaign-name linking for Amazon SP campaigns (source: amazon_sp_keyword_reports).
+ * Mirrors /purchase-master/sku-link-lmp: a grid of campaigns where each can be linked into a
+ * group. Linked campaigns will later share keywords when pushed together.
+ */
+class AmazonCampaignLinkController extends Controller
+{
+    private const SOURCE_TABLE = 'amazon_sp_keyword_reports';
+
+    public function __construct(private AmazonCampaignLinkService $linkService)
+    {
+    }
+
+    public function index()
+    {
+        return view('amazon_ads.campaign-link.index');
+    }
+
+    /**
+     * Paginated distinct SP campaigns with keyword counts and their linked-campaign group.
+     */
+    public function getData(Request $request): JsonResponse
+    {
+        try {
+            if (! Schema::hasTable(self::SOURCE_TABLE)) {
+                return response()->json(['success' => true, 'data' => [], 'last_page' => 1, 'total' => 0]);
+            }
+
+            $page = max(1, (int) $request->query('page', 1));
+            $size = min(200, max(1, (int) $request->query('size', 50)));
+            $search = trim((string) $request->query('campaign', ''));
+
+            $base = DB::table(self::SOURCE_TABLE)
+                ->whereNotNull('campaignName')
+                ->where('campaignName', '!=', '');
+
+            if ($search !== '') {
+                $base->whereRaw('LOWER(campaignName) LIKE ?', ['%'.strtolower($search).'%']);
+            }
+
+            $countQuery = (clone $base)
+                ->select('campaignName')
+                ->groupBy('campaignName');
+            $total = (int) DB::query()->fromSub($countQuery, 't')->count();
+
+            $rows = (clone $base)
+                ->select('campaignName', DB::raw('COUNT(DISTINCT keyword_id) AS keyword_count'))
+                ->groupBy('campaignName')
+                ->orderBy('campaignName')
+                ->forPage($page, $size)
+                ->get();
+
+            $groups = $this->linkService->groupsMap();
+
+            $data = $rows->map(function ($row) use ($groups) {
+                $name = (string) $row->campaignName;
+                $group = $groups[$this->linkService->normalize($name)] ?? [$name];
+
+                return [
+                    'campaign' => $name,
+                    'keyword_count' => (int) $row->keyword_count,
+                    'linked_campaigns' => $group,
+                    'linked_count' => max(0, count($group) - 1),
+                ];
+            })->values()->all();
+
+            return response()->json([
+                'success' => true,
+                'data' => $data,
+                'last_page' => max(1, (int) ceil($total / $size)),
+                'total' => $total,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Distinct campaign names for the link modal search (excludes the source campaign).
+     */
+    public function getCampaigns(Request $request): JsonResponse
+    {
+        try {
+            if (! Schema::hasTable(self::SOURCE_TABLE)) {
+                return response()->json(['success' => true, 'campaigns' => []]);
+            }
+
+            $search = trim((string) $request->query('q', ''));
+            $exclude = trim((string) $request->query('exclude', ''));
+
+            $query = DB::table(self::SOURCE_TABLE)
+                ->whereNotNull('campaignName')
+                ->where('campaignName', '!=', '');
+
+            if ($search !== '') {
+                $query->whereRaw('LOWER(campaignName) LIKE ?', ['%'.strtolower($search).'%']);
+            }
+            if ($exclude !== '') {
+                $query->whereRaw('LOWER(campaignName) <> ?', [strtolower($exclude)]);
+            }
+
+            $campaigns = $query->distinct()
+                ->orderBy('campaignName')
+                ->limit(50)
+                ->pluck('campaignName')
+                ->map(fn ($c) => trim((string) $c))
+                ->filter()
+                ->values()
+                ->all();
+
+            return response()->json(['success' => true, 'campaigns' => $campaigns]);
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Keywords for one campaign (for the "click the number" modal). Prefers the L30 summary
+     * row per keyword, else the most recent row, so each keyword shows one line with metrics.
+     */
+    public function getKeywords(Request $request): JsonResponse
+    {
+        try {
+            $campaign = trim((string) $request->query('campaign', ''));
+            if ($campaign === '' || ! Schema::hasTable(self::SOURCE_TABLE)) {
+                return response()->json(['success' => true, 'campaign' => $campaign, 'keywords' => []]);
+            }
+
+            $cols = Schema::getColumnListing(self::SOURCE_TABLE);
+            $has = fn (string $c) => in_array($c, $cols, true);
+
+            // One row per keyword: prefer its L30 summary row, else the latest (highest id).
+            $pickIds = DB::table(self::SOURCE_TABLE)
+                ->where('campaignName', $campaign)
+                ->selectRaw("MAX(CASE WHEN report_date_range = 'L30' THEN id END) AS l30_id, MAX(id) AS latest_id")
+                ->groupBy('keyword_id', 'targeting')
+                ->get()
+                ->map(fn ($r) => $r->l30_id ?? $r->latest_id)
+                ->filter()
+                ->values();
+
+            if ($pickIds->isEmpty()) {
+                return response()->json(['success' => true, 'campaign' => $campaign, 'keywords' => []]);
+            }
+
+            $select = ['keyword', 'targeting', 'matchType', 'keyword_id', 'report_date_range'];
+            foreach (['impressions', 'clicks', 'cost', 'costPerClick', 'purchases30d', 'sales30d', 'acosClicks14d'] as $m) {
+                if ($has($m)) {
+                    $select[] = $m;
+                }
+            }
+
+            $rows = DB::table(self::SOURCE_TABLE)
+                ->whereIn('id', $pickIds)
+                ->orderByRaw("CASE WHEN report_date_range = 'L30' THEN 0 ELSE 1 END")
+                ->orderByDesc('id')
+                ->get($select);
+
+            // De-dupe by keyword text/targeting, preferring the L30 row already ordered first.
+            $seen = [];
+            $keywords = [];
+            foreach ($rows as $r) {
+                $label = trim((string) ($r->keyword ?? $r->targeting ?? ''));
+                if ($label === '') {
+                    continue;
+                }
+                $key = strtoupper($label).'|'.strtoupper((string) ($r->matchType ?? ''));
+                if (isset($seen[$key])) {
+                    continue;
+                }
+                $seen[$key] = true;
+                $keywords[] = [
+                    'keyword' => $label,
+                    'match_type' => $r->matchType ?? null,
+                    'impressions' => isset($r->impressions) ? (int) $r->impressions : null,
+                    'clicks' => isset($r->clicks) ? (int) $r->clicks : null,
+                    'cost' => isset($r->cost) ? round((float) $r->cost, 2) : null,
+                    'cpc' => isset($r->costPerClick) ? round((float) $r->costPerClick, 2) : null,
+                    'sold' => isset($r->purchases30d) ? (int) $r->purchases30d : null,
+                    'sales' => isset($r->sales30d) ? round((float) $r->sales30d, 2) : null,
+                    'acos' => isset($r->acosClicks14d) ? round((float) $r->acosClicks14d, 2) : null,
+                ];
+            }
+
+            usort($keywords, fn ($a, $b) => strcasecmp($a['keyword'], $b['keyword']));
+
+            return response()->json([
+                'success' => true,
+                'campaign' => $campaign,
+                'count' => count($keywords),
+                'keywords' => $keywords,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Push (import) all keywords from a campaign's linked group INTO that campaign.
+     *
+     * Destination = the clicked campaign; sources = its linked campaigns. Missing keywords
+     * (by keyword text + match type, deduped) are created in the destination campaign's ad group
+     * on Amazon via the SP keywords API, then mirrored into amazon_sp_keyword_reports so the grid
+     * count updates immediately. Only real keywords (BROAD / PHRASE / EXACT) are copied.
+     */
+    public function pushLinked(Request $request): JsonResponse
+    {
+        $campaign = trim((string) $request->input('campaign', ''));
+        if ($campaign === '' || ! Schema::hasTable(self::SOURCE_TABLE)) {
+            return response()->json(['success' => false, 'message' => 'Campaign is required.'], 422);
+        }
+
+        $r = $this->pushForCampaign($campaign);
+
+        return response()->json([
+            'success' => $r['ok'],
+            'added' => $r['added'],
+            'failed' => $r['failed'],
+            'message' => $r['message'],
+            'affected' => $this->affectedRows($campaign),
+        ], $r['ok'] ? 200 : ($r['status'] ?? 422));
+    }
+
+    /**
+     * Bulk push: run the import for every campaign that currently has a linked group.
+     */
+    public function pushAll(Request $request): JsonResponse
+    {
+        if (! Schema::hasTable(self::SOURCE_TABLE)) {
+            return response()->json(['success' => false, 'message' => 'Keyword report table missing.'], 422);
+        }
+
+        $groups = $this->linkService->groupsMap();
+        // One representative per group is enough? No — each linked campaign should receive the union.
+        // Push into every campaign that has at least one linked partner.
+        $campaigns = [];
+        foreach ($groups as $members) {
+            if (count($members) < 2) {
+                continue;
+            }
+            foreach ($members as $m) {
+                $campaigns[$m] = true;
+            }
+        }
+        $campaigns = array_keys($campaigns);
+
+        if ($campaigns === []) {
+            return response()->json(['success' => true, 'added' => 0, 'processed' => 0, 'message' => 'No linked campaigns to push.']);
+        }
+
+        $totalAdded = 0;
+        $totalFailed = 0;
+        $processed = 0;
+        $errors = [];
+        foreach ($campaigns as $campaign) {
+            $r = $this->pushForCampaign($campaign);
+            $processed++;
+            $totalAdded += $r['added'];
+            $totalFailed += $r['failed'];
+            if (! $r['ok'] && $r['added'] === 0 && $r['failed'] === 0 && ! str_contains($r['message'], 'No new')) {
+                $errors[] = $campaign.': '.$r['message'];
+            }
+        }
+
+        $msg = "Bulk push complete: added {$totalAdded} keyword(s) across {$processed} campaign(s).";
+        if ($totalFailed > 0) {
+            $msg .= " ({$totalFailed} rejected/skipped.)";
+        }
+
+        return response()->json([
+            'success' => true,
+            'added' => $totalAdded,
+            'failed' => $totalFailed,
+            'processed' => $processed,
+            'message' => $msg,
+            'errors' => array_slice($errors, 0, 10),
+        ]);
+    }
+
+    /**
+     * Core import for one destination campaign. Returns a normalized result array.
+     *
+     * @return array{ok: bool, added: int, failed: int, message: string, status?: int}
+     */
+    private function pushForCampaign(string $campaign): array
+    {
+        // Linked group (excluding the destination itself).
+        $group = $this->linkService->groupContaining($campaign);
+        $linked = array_values(array_filter($group, fn ($c) => $this->linkService->normalize($c) !== $this->linkService->normalize($campaign)));
+        if ($linked === []) {
+            return ['ok' => false, 'added' => 0, 'failed' => 0, 'message' => 'This campaign has no linked campaign to push from.', 'status' => 422];
+        }
+
+        // Destination campaign id + target ad group (the ad group holding the most keywords).
+        $destInfo = DB::table(self::SOURCE_TABLE)
+            ->where('campaignName', $campaign)
+            ->whereNotNull('campaign_id')
+            ->whereNotNull('ad_group_id')
+            ->whereNotNull('keyword_id')
+            ->whereIn(DB::raw('UPPER(matchType)'), ['BROAD', 'PHRASE', 'EXACT'])
+            ->selectRaw('campaign_id, ad_group_id, COUNT(*) AS c')
+            ->groupBy('campaign_id', 'ad_group_id')
+            ->orderByDesc('c')
+            ->first();
+
+        if (! $destInfo || ! $destInfo->campaign_id || ! $destInfo->ad_group_id) {
+            return ['ok' => false, 'added' => 0, 'failed' => 0, 'message' => 'Could not resolve the destination campaign\'s ad group from keyword data.', 'status' => 422];
+        }
+        $destCampaignId = (string) $destInfo->campaign_id;
+        $destAdGroupId = (string) $destInfo->ad_group_id;
+
+        // Existing keywords in destination (dedupe key = TEXT|MATCHTYPE).
+        $existing = [];
+        DB::table(self::SOURCE_TABLE)
+            ->where('campaignName', $campaign)
+            ->whereNotNull('keyword')
+            ->select('keyword', 'matchType')
+            ->distinct()
+            ->get()
+            ->each(function ($r) use (&$existing) {
+                $existing[$this->keywordKey($r->keyword, $r->matchType)] = true;
+            });
+
+        // Candidate keywords from the linked campaigns (real keywords only), deduped.
+        $candidates = [];
+        DB::table(self::SOURCE_TABLE)
+            ->whereIn('campaignName', $linked)
+            ->whereNotNull('keyword_id')
+            ->whereNotNull('keyword')
+            ->whereIn(DB::raw('UPPER(matchType)'), ['BROAD', 'PHRASE', 'EXACT'])
+            ->select('keyword', 'matchType')
+            ->distinct()
+            ->get()
+            ->each(function ($r) use (&$candidates, $existing) {
+                $text = trim((string) $r->keyword);
+                $mt = strtoupper(trim((string) $r->matchType));
+                if ($text === '' || $mt === '') {
+                    return;
+                }
+                $key = $this->keywordKey($text, $mt);
+                if (isset($existing[$key]) || isset($candidates[$key])) {
+                    return;
+                }
+                $candidates[$key] = ['keywordText' => $text, 'matchType' => $mt];
+            });
+
+        $toAdd = array_values($candidates);
+        if ($toAdd === []) {
+            return ['ok' => true, 'added' => 0, 'failed' => 0, 'message' => 'No new keywords to push.'];
+        }
+
+        try {
+            $result = $this->createSpKeywords($destCampaignId, $destAdGroupId, $toAdd);
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'added' => 0, 'failed' => 0, 'message' => 'Amazon push failed: '.$e->getMessage(), 'status' => 500];
+        }
+
+        // Mirror successfully-created keywords into the report table so the count reflects now.
+        $profileId = (string) config('services.amazon_ads.profile_ids');
+        foreach ($result['created'] as $c) {
+            \App\Models\AmazonSpKeywordReport::updateOrCreate(
+                ['profile_id' => $profileId, 'report_date_range' => 'L1', 'keyword_id' => (string) $c['keywordId'], 'targeting' => $c['keywordText']],
+                [
+                    'ad_type' => 'SPONSORED_PRODUCTS',
+                    'campaign_id' => $destCampaignId,
+                    'campaignName' => $campaign,
+                    'ad_group_id' => $destAdGroupId,
+                    'keyword' => $c['keywordText'],
+                    'matchType' => $c['matchType'],
+                    'adKeywordStatus' => 'ENABLED',
+                    'campaignStatus' => 'ENABLED',
+                ]
+            );
+        }
+
+        $added = count($result['created']);
+        $failed = $result['failed'];
+
+        if ($added === 0) {
+            $msg = $failed > 0
+                ? "No keywords were added ({$failed} rejected by Amazon). Check match types / campaign state."
+                : 'No new keywords to push.';
+
+            return ['ok' => $failed === 0, 'added' => 0, 'failed' => $failed, 'message' => $msg];
+        }
+
+        $msg = "Added {$added} keyword(s) to \"{$campaign}\" from ".count($linked).' linked campaign(s).';
+        if ($failed > 0) {
+            $msg .= " ({$failed} rejected by Amazon.)";
+        }
+
+        return ['ok' => true, 'added' => $added, 'failed' => $failed, 'message' => $msg];
+    }
+
+    private function keywordKey(mixed $text, mixed $matchType): string
+    {
+        return strtoupper(trim((string) $text)).'|'.strtoupper(trim((string) $matchType));
+    }
+
+    /**
+     * Create SP keywords in a destination ad group (v3 batch create).
+     *
+     * @param  list<array{keywordText: string, matchType: string}>  $keywords
+     * @return array{created: list<array{keywordId: string, keywordText: string, matchType: string}>, failed: int}
+     */
+    private function createSpKeywords(string $campaignId, string $adGroupId, array $keywords): array
+    {
+        $created = [];
+        $failed = 0;
+        $token = $this->amazonAccessToken();
+        $clientId = config('services.amazon_ads.client_id');
+        $profileId = config('services.amazon_ads.profile_ids');
+
+        foreach (array_chunk($keywords, 100) as $chunk) {
+            $payload = ['keywords' => array_map(fn ($k) => [
+                'campaignId' => $campaignId,
+                'adGroupId' => $adGroupId,
+                'keywordText' => $k['keywordText'],
+                'matchType' => $k['matchType'],
+                'state' => 'ENABLED',
+            ], $chunk)];
+
+            $response = Http::timeout(60)
+                ->withToken($token)
+                ->withHeaders([
+                    'Amazon-Advertising-API-ClientId' => $clientId,
+                    'Amazon-Advertising-API-Scope' => $profileId,
+                    'Content-Type' => 'application/vnd.spKeyword.v3+json',
+                    'Accept' => 'application/vnd.spKeyword.v3+json',
+                ])
+                ->post('https://advertising-api.amazon.com/sp/keywords', $payload);
+
+            $body = $response->json();
+            $successList = data_get($body, 'keywords.success', []);
+            $errorList = data_get($body, 'keywords.error', []);
+
+            foreach ($successList as $s) {
+                $index = (int) ($s['index'] ?? -1);
+                $kwId = $s['keywordId'] ?? data_get($s, 'keyword.keywordId');
+                if ($kwId === null || ! isset($chunk[$index])) {
+                    continue;
+                }
+                $created[] = [
+                    'keywordId' => (string) $kwId,
+                    'keywordText' => $chunk[$index]['keywordText'],
+                    'matchType' => $chunk[$index]['matchType'],
+                ];
+            }
+
+            $failed += is_array($errorList) ? count($errorList) : 0;
+
+            // If the whole request errored (non-2xx and no per-item breakdown), count the chunk as failed.
+            if (! $response->successful() && empty($successList) && empty($errorList)) {
+                $failed += count($chunk);
+            }
+        }
+
+        return ['created' => $created, 'failed' => $failed];
+    }
+
+    private function amazonAccessToken(): string
+    {
+        $response = Http::asForm()->timeout(20)->post('https://api.amazon.com/auth/o2/token', [
+            'grant_type' => 'refresh_token',
+            'refresh_token' => config('services.amazon_ads.refresh_token'),
+            'client_id' => config('services.amazon_ads.client_id'),
+            'client_secret' => config('services.amazon_ads.client_secret'),
+        ]);
+
+        $token = $response->json('access_token');
+        if (! $token) {
+            throw new \RuntimeException('Could not obtain Amazon Ads access token.');
+        }
+
+        return (string) $token;
+    }
+
+    public function bulkLink(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'campaigns' => 'required|array|min:2',
+            'campaigns.*' => 'required|string',
+        ]);
+
+        $campaigns = array_values(array_unique(array_filter(array_map('trim', $validated['campaigns']))));
+        if (count($campaigns) < 2) {
+            return response()->json(['success' => false, 'message' => 'Select at least two campaigns to link.'], 422);
+        }
+
+        $this->linkService->syncFullyConnectedGroup($campaigns, Auth::user()?->name ?? 'N/A');
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Campaigns linked.',
+            'affected' => $this->affectedRows($campaigns[0]),
+        ]);
+    }
+
+    public function removeLink(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'campaign' => 'required|string',
+            'linked_campaign' => 'required|string',
+        ]);
+
+        $campaign = trim($validated['campaign']);
+        $linkedCampaign = trim($validated['linked_campaign']);
+
+        if ($campaign === '' || $linkedCampaign === '') {
+            return response()->json(['success' => false, 'message' => 'Both campaigns are required.'], 422);
+        }
+
+        $beforeGroup = $this->linkService->groupContaining($campaign);
+        $this->linkService->unlinkFromGroup($linkedCampaign, $beforeGroup, Auth::user()?->name ?? 'N/A');
+
+        $affectedByName = [];
+        foreach ($beforeGroup as $member) {
+            foreach ($this->affectedRows($member) as $row) {
+                $affectedByName[$row['campaign']] = $row;
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Campaign unlinked.',
+            'affected' => array_values($affectedByName),
+        ]);
+    }
+
+    /**
+     * @return list<array{campaign: string, linked_campaigns: list<string>, linked_count: int}>
+     */
+    private function affectedRows(string $campaign): array
+    {
+        $group = $this->linkService->groupContaining($campaign);
+        $rows = [];
+        foreach ($group as $member) {
+            $rows[] = [
+                'campaign' => $member,
+                'linked_campaigns' => $group,
+                'linked_count' => max(0, count($group) - 1),
+            ];
+        }
+
+        return $rows;
+    }
+}

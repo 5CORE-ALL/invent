@@ -1389,6 +1389,12 @@
                                                     <a href="{{ route('amazon.ads.all') }}">Ads All Amz</a>
                                                 </li>
                                                 <li>
+                                                    <a href="{{ route('amazon.ads.campaign-link.index') }}">Campaign Link Amz</a>
+                                                </li>
+                                                <li>
+                                                    <a href="{{ route('amazon.ads.negative-link.index') }}">Negative Link Amz</a>
+                                                </li>
+                                                <li>
                                                     <a href="{{ route('amazon.ads.audit') }}">Ads Audit Amz</a>
                                                 </li>
                                                 <li>
