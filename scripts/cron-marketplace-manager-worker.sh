@@ -37,7 +37,7 @@ echo "$(ts) starting queue worker (${QUEUE})" >>"$LOG"
 nohup "$PHP_BIN" "$ROOT/artisan" queue:work database \
   --queue="$QUEUE" \
   --sleep=3 \
-  --tries=1 \
+  --tries=5 \
   --timeout=900 \
   --max-time=7200 \
   >>"$LOG" 2>&1 &
