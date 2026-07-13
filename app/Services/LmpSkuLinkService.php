@@ -62,6 +62,54 @@ class LmpSkuLinkService
     }
 
     /**
+     * Fully detach a SKU from a linked group.
+     *
+     * Linked groups are stored as a fully-connected mesh and rendered as a
+     * connected component, so removing only the single edge between two SKUs
+     * leaves the removed SKU reachable through the other members. This deletes
+     * every edge between $skuToRemove and any group member, then re-links the
+     * remaining members so they stay grouped together.
+     *
+     * @param  list<string>  $groupMembers
+     */
+    public function unlinkFromGroup(string $skuToRemove, array $groupMembers, ?string $user = null): void
+    {
+        $removeNorm = $this->normalize($skuToRemove);
+        if ($removeNorm === '') {
+            return;
+        }
+
+        $memberNorms = [];
+        $remaining = [];
+        foreach ($groupMembers as $member) {
+            $display = trim((string) $member);
+            $norm = $this->normalize($display);
+            if ($norm === '' || $norm === $removeNorm) {
+                continue;
+            }
+            $memberNorms[$norm] = $norm;
+            $remaining[$norm] = $display;
+        }
+
+        $memberNorms = array_values($memberNorms);
+        if ($memberNorms !== []) {
+            LmpSkuLink::query()
+                ->where(function ($query) use ($removeNorm, $memberNorms) {
+                    $query->where('sku_norm', $removeNorm)
+                        ->whereIn('linked_sku_norm', $memberNorms);
+                })
+                ->orWhere(function ($query) use ($removeNorm, $memberNorms) {
+                    $query->where('linked_sku_norm', $removeNorm)
+                        ->whereIn('sku_norm', $memberNorms);
+                })
+                ->delete();
+        }
+
+        // Removing a hub SKU could split the rest; re-link remaining members.
+        $this->syncFullyConnectedGroup(array_values($remaining), $user);
+    }
+
+    /**
      * @param  list<string>  $skus
      */
     public function syncFullyConnectedGroup(array $skus, ?string $user = null): void
