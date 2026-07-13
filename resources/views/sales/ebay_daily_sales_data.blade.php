@@ -108,6 +108,9 @@
                             style="color: white; font-weight: bold;">Total Quantity: 0</span>
                         <span class="badge fs-6 p-2" id="total-sales-badge"
                             style="background-color: #17a2b8; color: white; font-weight: bold;">Total Sales: $0.00</span>
+                        <span class="badge fs-6 p-2" id="y-sales-badge"
+                            style="background-color: #0dcaf0; color: black; font-weight: bold;"
+                            title="Yesterday's sales ({{ $yesterdayLabel ?? '' }} Pacific) from real eBay orders — tax-inclusive, excl. cancelled & fully-refunded.">Y Sales: ${{ number_format((float) ($salesYesterday ?? 0), 2) }}</span>
                         <span class="badge bg-info fs-6 p-2" id="total-revenue-badge"
                             style="color: white; font-weight: bold;">Total Revenue: $0.00</span>
                         <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge"

@@ -312,116 +312,61 @@ class UpdateMarketplaceDailyMetrics extends Command
         ];
     }
 
+    /**
+     * L30 aggregate for an eBay channel from the SAME rows its daily-sales page
+     * builds (SalesController::getData). Guarantees marketplace_daily_metrics — and thus
+     * the all-marketplace-master "active channel" row — matches the order page:
+     *   - sales = Σ per-order total (tax-incl), once per order, excl. CANCELED/FULLY_REFUNDED
+     *   - qty   = Σ item quantity, merch = Σ (qty × unit price) [GPFT denominator]
+     *   - pft / cogs from ProductMaster LP/ship per order item (same as the page)
+     */
+    private function ebaySalesAggregate(string $salesControllerClass): array
+    {
+        $out = ['orders' => 0, 'sales' => 0.0, 'qty' => 0, 'pft' => 0.0, 'cogs' => 0.0, 'merch' => 0.0];
+        try {
+            $rows = app($salesControllerClass)->getData(request())->getData(true);
+            if (!is_array($rows)) return $out;
+            $seen = [];
+            foreach ($rows as $r) {
+                $sku = $r['sku'] ?? '';
+                $orderId = $r['order_id'] ?? '';
+                if ($sku === '' || $orderId === '') continue;
+                if (!isset($seen[$orderId])) {
+                    $seen[$orderId] = true;
+                    $out['sales'] += (float) ($r['total_amount'] ?? 0);
+                    $out['orders']++;
+                }
+                $q = (int) ($r['quantity'] ?? 0);
+                $out['qty'] += $q;
+                $out['pft'] += (float) ($r['pft'] ?? 0);
+                $out['cogs'] += (float) ($r['cogs'] ?? 0);
+                $out['merch'] += $q * (float) ($r['price'] ?? 0);
+            }
+        } catch (\Throwable $e) {
+            \Log::warning("ebaySalesAggregate({$salesControllerClass}) failed: " . $e->getMessage());
+        }
+        return $out;
+    }
+
     private function calculateEbayMetrics($date)
     {
-        // L30 from app:fetch-ebay-orders (period = l30, Pacific window) — same filter as Channel Master
-        $orders = EbayChannelMetricsService::applyActiveOrderFilter(
-            EbayOrder::with('items')->where('period', 'l30')
-        )->get();
-
-        if ($orders->isEmpty()) {
+        // Sales / Qty / PFT / COGS from the same real orders /ebay/daily-sales uses,
+        // so the all-marketplace-master eBay row matches that page (tax-incl order totals,
+        // excl. CANCELED + FULLY_REFUNDED). GPFT% uses merchandise sales as denominator
+        // (same as the daily-sales page); TACOS uses the tax-inclusive order sales.
+        $agg = $this->ebaySalesAggregate(\App\Http\Controllers\Sales\EbaySalesController::class);
+        if ($agg['orders'] === 0) {
             return null;
         }
 
-        $percentageDecimal = EbayChannelMetricsService::percentageDecimal(1);
+        $totalOrders = $agg['orders'];
+        $totalQuantity = $agg['qty'];
+        $totalRevenue = round($agg['merch'], 2);   // merchandise (GPFT% denominator)
+        $orderSales = round($agg['sales'], 2);     // tax-incl order total (the "Sales" figure)
+        $totalCogs = round($agg['cogs'], 2);
+        $totalPft = round($agg['pft'], 2);
 
-        $productMasters = ProductMaster::all()->keyBy(function ($item) {
-            return strtoupper($item->sku);
-        });
-
-        $totalOrders = 0;
-        $totalQuantity = 0;
-        $totalRevenue = 0;
-        $totalCogs = 0;
-        $totalPft = 0;
-        $totalWeightedPrice = 0;
-        $totalQuantityForPrice = 0;
-
-        foreach ($orders as $order) {
-            foreach ($order->items as $item) {
-                if (!$item->sku || $item->sku === '') continue;
-
-                $totalOrders++;
-                $quantity = (int) ($item->quantity ?? 1);
-                $price = (float) ($item->price ?? 0); // This is TOTAL price for all quantity
-                
-                $totalQuantity += $quantity;
-                
-                // price is already total (sale_amount), not per unit
-                $totalRevenue += $price;
-
-                // Unit price for calculations
-                $unitPrice = $quantity > 0 ? $price / $quantity : 0;
-
-                if ($quantity > 0 && $unitPrice > 0) {
-                    $totalWeightedPrice += $unitPrice * $quantity;
-                    $totalQuantityForPrice += $quantity;
-                }
-
-                // Get LP, Ship, and Weight Act from ProductMaster
-                $sku = strtoupper($item->sku);
-                $lp = 0;
-                $ship = 0;
-                $weightAct = 0;
-
-                if (isset($productMasters[$sku])) {
-                    $pm = $productMasters[$sku];
-                    $values = is_array($pm->Values) ? $pm->Values :
-                            (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-                    
-                    // Get LP (check both cases)
-                    foreach ($values as $k => $v) {
-                        if (strtolower($k) === "lp") {
-                            $lp = floatval($v);
-                            break;
-                        }
-                    }
-                    if ($lp === 0 && isset($pm->lp)) {
-                        $lp = floatval($pm->lp);
-                    }
-                    
-                    // Get Ship
-                    if (isset($values['ship'])) {
-                        $ship = (float) $values['ship'];
-                    } elseif (isset($pm->ship)) {
-                        $ship = floatval($pm->ship);
-                    }
-                    
-                    // Get Weight Act
-                    if (isset($values['wt_act'])) {
-                        $weightAct = floatval($values['wt_act']);
-                    }
-                }
-
-                // T Weight = Weight Act * Quantity
-                $tWeight = $weightAct * $quantity;
-
-                // Ship Cost calculation (matching EbaySalesController exactly):
-                // If quantity is 1: ship_cost = ship
-                // If quantity > 1 and t_weight < 20: ship_cost = ship / quantity
-                // Otherwise: ship_cost = ship
-                if ($quantity == 1) {
-                    $shipCost = $ship;
-                } elseif ($quantity > 1 && $tWeight < 20) {
-                    $shipCost = $ship / $quantity;
-                } else {
-                    $shipCost = $ship;
-                }
-
-                // COGS = LP * quantity (same as Amazon, NOT LP+Ship)
-                $cogs = $lp * $quantity;
-                $totalCogs += $cogs;
-
-                // PFT Each = (unitPrice * channel %) - lp - ship_cost
-                $pftEach = ($unitPrice * $percentageDecimal) - $lp - $shipCost;
-
-                // T PFT = pft_each * quantity
-                $pft = $pftEach * $quantity;
-                $totalPft += $pft;
-            }
-        }
-
-        $avgPrice = $totalQuantityForPrice > 0 ? $totalWeightedPrice / $totalQuantityForPrice : 0;
+        $avgPrice = $totalQuantity > 0 ? $totalRevenue / $totalQuantity : 0;
         $pftPercentage = $totalRevenue > 0 ? ($totalPft / $totalRevenue) * 100 : 0;
         $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
 
@@ -461,7 +406,7 @@ class UpdateMarketplaceDailyMetrics extends Command
         $pmtSales = (float) ($pmtRow->sales ?? 0);
         $pmtSold = (int) ($pmtRow->sold ?? 0);
 
-        $tacosPercentage = $totalRevenue > 0 ? (($kwSpent + $pmtSpent) / $totalRevenue) * 100 : 0;
+        $tacosPercentage = $orderSales > 0 ? (($kwSpent + $pmtSpent) / $orderSales) * 100 : 0;
         $nPft = $pftPercentage - $tacosPercentage;
         
         // N ROI = (Net Profit / COGS) * 100 where Net Profit = Gross Profit - Ad Spend
@@ -473,13 +418,13 @@ class UpdateMarketplaceDailyMetrics extends Command
             'total_orders' => $totalOrders,
             'total_quantity' => $totalQuantity,
             'total_revenue' => $totalRevenue,
-            'total_sales' => $totalRevenue,
+            'total_sales' => $orderSales,
             'total_cogs' => $totalCogs,
             'total_pft' => $totalPft,
             'pft_percentage' => $pftPercentage,
             'roi_percentage' => $roiPercentage,
             'avg_price' => $avgPrice,
-            'l30_sales' => $totalRevenue,
+            'l30_sales' => $orderSales,
             'tacos_percentage' => $tacosPercentage,
             'ads_percentage' => $tacosPercentage, // Add ads_percentage for eBay (same as TACOS)
             'n_pft' => $nPft,
@@ -496,128 +441,22 @@ class UpdateMarketplaceDailyMetrics extends Command
 
     private function calculateEbay2Metrics($date)
     {
-        // L30 from app:fetch-ebay2-orders (period = l30) — same active-order filter as Channel Master
-        $orders = EbayChannelMetricsService::applyActiveOrderFilter(
-            Ebay2Order::with('items')->where('period', 'l30')
-        )->get();
-
-        if ($orders->isEmpty()) {
+        // Sales / Qty / PFT / COGS from the same real orders /ebay2/daily-sales uses,
+        // so the all-marketplace-master eBay 2 row matches that page (tax-incl order totals,
+        // excl. CANCELED + FULLY_REFUNDED). GPFT% uses merchandise sales as denominator.
+        $agg = $this->ebaySalesAggregate(\App\Http\Controllers\Sales\Ebay2SalesController::class);
+        if ($agg['orders'] === 0) {
             return null;
         }
 
-        // Get unique SKUs from orders (same as Ebay2SalesController)
-        // For OPEN BOX or USED items, extract the base SKU
-        $skus = [];
-        foreach ($orders as $order) {
-            foreach ($order->items as $item) {
-                $baseSku = $item->sku;
-                if (stripos($item->sku, 'OPEN BOX') !== false) {
-                    $baseSku = trim(str_ireplace('OPEN BOX', '', $item->sku));
-                } elseif (stripos($item->sku, 'USED') !== false) {
-                    $baseSku = trim(str_ireplace('USED', '', $item->sku));
-                }
-                $skus[] = $baseSku;
-            }
-        }
-        $skus = array_unique($skus);
+        $totalOrders = $agg['orders'];
+        $totalQuantity = $agg['qty'];
+        $totalRevenue = round($agg['merch'], 2);   // merchandise (GPFT% denominator)
+        $orderSales = round($agg['sales'], 2);     // tax-incl order total (the "Sales" figure)
+        $totalCogs = round($agg['cogs'], 2);
+        $totalPft = round($agg['pft'], 2);
 
-        // Fetch ProductMaster data using case-insensitive SKU match (same as Ebay2SalesController)
-        $skuLowerMap = [];
-        foreach ($skus as $sku) {
-            $skuLowerMap[strtolower($sku)] = $sku;
-        }
-        
-        $productMastersRaw = ProductMaster::whereRaw('LOWER(sku) IN (' . implode(',', array_fill(0, count($skuLowerMap), '?')) . ')', array_keys($skuLowerMap))->get();
-        
-        // Key by original order SKU (preserving order SKU case)
-        $productMasters = collect();
-        foreach ($productMastersRaw as $pm) {
-            $pmSkuLower = strtolower($pm->sku);
-            if (isset($skuLowerMap[$pmSkuLower])) {
-                $productMasters[$skuLowerMap[$pmSkuLower]] = $pm;
-            }
-        }
-
-        $percentageDecimal = EbayChannelMetricsService::percentageDecimal(2);
-
-        $totalOrders = 0;
-        $totalQuantity = 0;
-        $totalRevenue = 0;
-        $totalCogs = 0;
-        $totalPft = 0;
-        $totalWeightedPrice = 0;
-        $totalQuantityForPrice = 0;
-
-        foreach ($orders as $order) {
-            foreach ($order->items as $item) {
-                if (!$item->sku || $item->sku === '') continue;
-
-                $totalOrders++;
-                $quantity = (int) ($item->quantity ?? 1);
-                $price = (float) ($item->price ?? 0); // This is TOTAL price for all quantity
-                
-                $totalQuantity += $quantity;
-                $totalRevenue += $price;
-
-                // Unit price for calculations
-                $unitPrice = $quantity > 0 ? $price / $quantity : 0;
-
-                if ($quantity > 0 && $unitPrice > 0) {
-                    $totalWeightedPrice += $unitPrice * $quantity;
-                    $totalQuantityForPrice += $quantity;
-                }
-
-                // For OPEN BOX or USED items, use the base SKU to get ProductMaster data
-                $lookupSku = $item->sku;
-                if (stripos($item->sku, 'OPEN BOX') !== false) {
-                    $lookupSku = trim(str_ireplace('OPEN BOX', '', $item->sku));
-                } elseif (stripos($item->sku, 'USED') !== false) {
-                    $lookupSku = trim(str_ireplace('USED', '', $item->sku));
-                }
-
-                // Get LP, Ship, and Weight Act from ProductMaster (using lookup SKU)
-                $pm = $productMasters[$lookupSku] ?? null;
-                $lp = 0;
-                $ship = 0;
-
-                if ($pm) {
-                    $values = is_array($pm->Values) ? $pm->Values :
-                            (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-                    
-                    // Get LP
-                    foreach ($values as $k => $v) {
-                        if (strtolower($k) === "lp") {
-                            $lp = floatval($v);
-                            break;
-                        }
-                    }
-                    if ($lp === 0 && isset($pm->lp)) {
-                        $lp = floatval($pm->lp);
-                    }
-                    
-                    // Get Ship (ebay2_ship or ship)
-                    $ship = isset($values["ebay2_ship"]) && $values["ebay2_ship"] !== null 
-                        ? floatval($values["ebay2_ship"]) 
-                        : (isset($values["ship"]) ? floatval($values["ship"]) : 0);
-                }
-
-                // Ship Cost = ship (NOT divided by quantity, as per Excel formula)
-                $shipCost = $ship;
-
-                // COGS = LP * quantity
-                $cogs = $lp * $quantity;
-                $totalCogs += $cogs;
-
-                // PFT Each = (unitPrice * percentageDecimal) - lp - ship_cost
-                $pftEach = ($unitPrice * $percentageDecimal) - $lp - $shipCost;
-
-                // T PFT = pft_each * quantity
-                $pft = $pftEach * $quantity;
-                $totalPft += $pft;
-            }
-        }
-
-        $avgPrice = $totalQuantityForPrice > 0 ? $totalWeightedPrice / $totalQuantityForPrice : 0;
+        $avgPrice = $totalQuantity > 0 ? $totalRevenue / $totalQuantity : 0;
         $pftPercentage = $totalRevenue > 0 ? ($totalPft / $totalRevenue) * 100 : 0;
         $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
 
@@ -656,7 +495,7 @@ class UpdateMarketplaceDailyMetrics extends Command
         $pmtSales = (float) ($pmtRow->sales ?? 0);
         $pmtSold = (int) ($pmtRow->sold ?? 0);
 
-        $tacosPercentage = $totalRevenue > 0 ? (($kwSpent + $pmtSpent) / $totalRevenue) * 100 : 0;
+        $tacosPercentage = $orderSales > 0 ? (($kwSpent + $pmtSpent) / $orderSales) * 100 : 0;
         $nPft = $pftPercentage - $tacosPercentage;
         
         // N ROI = (Net Profit / COGS) * 100 where Net Profit = Gross Profit - Ad Spend
@@ -668,13 +507,13 @@ class UpdateMarketplaceDailyMetrics extends Command
             'total_orders' => $totalOrders,
             'total_quantity' => $totalQuantity,
             'total_revenue' => $totalRevenue,
-            'total_sales' => $totalRevenue,
+            'total_sales' => $orderSales,
             'total_cogs' => $totalCogs,
             'total_pft' => $totalPft,
             'pft_percentage' => $pftPercentage,
             'roi_percentage' => $roiPercentage,
             'avg_price' => $avgPrice,
-            'l30_sales' => $totalRevenue,
+            'l30_sales' => $orderSales,
             'tacos_percentage' => $tacosPercentage,
             'ads_percentage' => $tacosPercentage, // Add ads_percentage for eBay (same as TACOS)
             'n_pft' => $nPft,
@@ -691,21 +530,22 @@ class UpdateMarketplaceDailyMetrics extends Command
 
     private function calculateEbay3Metrics($date)
     {
-        // L30 from ebay3:daily (period = l30) — shared with Channel Master (EbayChannelMetricsService)
-        $lines = EbayChannelMetricsService::summarizeEbay3L30Lines();
-        if ($lines === null) {
+        // Sales / Qty / PFT / COGS from the same real orders /ebay3/daily-sales uses,
+        // so the all-marketplace-master eBay 3 row matches that page (tax-incl order totals,
+        // excl. CANCELED + FULLY_REFUNDED). GPFT% uses merchandise sales as denominator.
+        $agg = $this->ebaySalesAggregate(\App\Http\Controllers\Sales\Ebay3SalesController::class);
+        if ($agg['orders'] === 0) {
             return null;
         }
 
-        $totalOrders = $lines['total_orders'];
-        $totalQuantity = $lines['total_quantity'];
-        $totalRevenue = $lines['total_revenue'];
-        $totalCogs = $lines['total_cogs'];
-        $totalPft = $lines['total_pft'];
-        $totalWeightedPrice = $lines['total_weighted_price'];
-        $totalQuantityForPrice = $lines['total_quantity_for_price'];
+        $totalOrders = $agg['orders'];
+        $totalQuantity = $agg['qty'];
+        $totalRevenue = round($agg['merch'], 2);   // merchandise (GPFT% denominator)
+        $orderSales = round($agg['sales'], 2);     // tax-incl order total (the "Sales" figure)
+        $totalCogs = round($agg['cogs'], 2);
+        $totalPft = round($agg['pft'], 2);
 
-        $avgPrice = $totalQuantityForPrice > 0 ? $totalWeightedPrice / $totalQuantityForPrice : 0;
+        $avgPrice = $totalQuantity > 0 ? $totalRevenue / $totalQuantity : 0;
         $pftPercentage = $totalRevenue > 0 ? ($totalPft / $totalRevenue) * 100 : 0;
         $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
 
@@ -744,7 +584,7 @@ class UpdateMarketplaceDailyMetrics extends Command
         $pmtSales = (float) ($pmtRow->sales ?? 0);
         $pmtSold = (int) ($pmtRow->sold ?? 0);
 
-        $tacosPercentage = $totalRevenue > 0 ? (($kwSpent + $pmtSpent) / $totalRevenue) * 100 : 0;
+        $tacosPercentage = $orderSales > 0 ? (($kwSpent + $pmtSpent) / $orderSales) * 100 : 0;
         $nPft = $pftPercentage - $tacosPercentage;
         
         // N ROI = (Net Profit / COGS) * 100 where Net Profit = Gross Profit - Ad Spend
@@ -756,13 +596,13 @@ class UpdateMarketplaceDailyMetrics extends Command
             'total_orders' => $totalOrders,
             'total_quantity' => $totalQuantity,
             'total_revenue' => $totalRevenue,
-            'total_sales' => $totalRevenue,
+            'total_sales' => $orderSales,
             'total_cogs' => $totalCogs,
             'total_pft' => $totalPft,
             'pft_percentage' => $pftPercentage,
             'roi_percentage' => $roiPercentage,
             'avg_price' => $avgPrice,
-            'l30_sales' => $totalRevenue,
+            'l30_sales' => $orderSales,
             'tacos_percentage' => $tacosPercentage,
             'ads_percentage' => $tacosPercentage, // Add ads_percentage for eBay (same as TACOS)
             'n_pft' => $nPft,

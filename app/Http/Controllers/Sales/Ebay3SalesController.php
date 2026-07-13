@@ -13,7 +13,36 @@ class Ebay3SalesController extends Controller
 {
     public function index()
     {
-        return view('sales.ebay3_daily_sales_data');
+        // Yesterday's sales (Pacific) from real orders — same per-order total and
+        // exclusions the Total Sales badge uses (total_price + collect-and-remit tax;
+        // skip CANCELED and FULLY_REFUNDED). Mirrors Amazon's / eBay's "Y Sales" badge.
+        // ebay3_daily_data.creation_date is already stored in Pacific time.
+        $tz = 'America/Los_Angeles';
+        $yesterday = \Carbon\Carbon::yesterday($tz)->toDateString();
+        $ySales = 0.0;
+        try {
+            $byOrder = [];
+            Ebay3DailyData::where('period', 'l30')->get()->each(function ($row) use (&$byOrder, $yesterday) {
+                if (($row->cancel_status ?? '') === 'CANCELED' || ($row->order_payment_status ?? '') === 'FULLY_REFUNDED') return;
+                $day = $row->creation_date ? \Carbon\Carbon::parse($row->creation_date)->format('Y-m-d') : null;
+                if ($day !== $yesterday) return;
+                $oid = $row->order_id;
+                if (!isset($byOrder[$oid])) {
+                    $byOrder[$oid] = ['total_price' => (float) ($row->total_price ?? 0), 'car' => 0.0];
+                }
+                $byOrder[$oid]['car'] += (float) ($row->ebay_collect_and_remit_tax ?? 0);
+            });
+            foreach ($byOrder as $v) {
+                $ySales += round($v['total_price'] + $v['car'], 2);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Ebay3 Y Sales failed: ' . $e->getMessage());
+        }
+
+        return view('sales.ebay3_daily_sales_data', [
+            'salesYesterday' => round($ySales, 2),
+            'yesterdayLabel' => \Carbon\Carbon::yesterday($tz)->format('M j, Y'),
+        ]);
     }
 
     public function getData(Request $request)
@@ -39,10 +68,31 @@ class Ebay3SalesController extends Controller
             $parents[$sku] = $pm->parent ?? '';
         }
 
+        // eBay "Total sales (includes taxes)" per order = pricingSummary.total (stored as
+        // total_price, repeated on each line row) + eBay collect-and-remit tax summed across
+        // the order's line items. Precompute the CAR tax per order so it's counted once.
+        $carTaxByOrder = [];
+        foreach ($orders as $order) {
+            $oid = $order->order_id;
+            $carTaxByOrder[$oid] = ($carTaxByOrder[$oid] ?? 0) + (float) ($order->ebay_collect_and_remit_tax ?? 0);
+        }
+
         $data = [];
         foreach ($orders as $order) {
             $sku = $order->sku ?? '';
             if (empty($sku)) continue;
+
+            // eBay's "Total sales" only counts orders that resulted in a completed sale.
+            // It excludes:
+            //   - CANCELED orders (buyer/seller cancelled — the order never happened)
+            //   - FULLY_REFUNDED orders (payment fully reversed — no net sale)
+            // Partially refunded orders are kept (goods partly retained = still a sale).
+            if (($order->cancel_status ?? '') === 'CANCELED' || ($order->order_payment_status ?? '') === 'FULLY_REFUNDED') {
+                continue;
+            }
+
+            // Order grand total (incl. tax), counted once per order via the blade's dedupe.
+            $orderTotal = round((float) ($order->total_price ?? 0) + ($carTaxByOrder[$order->order_id] ?? 0), 2);
 
             $pm = $productMasters[$sku] ?? null;
             $parent = $parents[$sku] ?? '';
@@ -110,6 +160,7 @@ class Ebay3SalesController extends Controller
                 'quantity' => $order->quantity,
                 'sale_amount' => round($saleAmount, 2), // Total for line item
                 'price' => round($perUnitPrice, 2), // Per unit price
+                'total_amount' => $orderTotal, // Order grand total incl. tax (summed once per order)
                 'order_date' => $order->creation_date ? \Carbon\Carbon::parse($order->creation_date)->setTimezone('America/Los_Angeles')->toIso8601String() : null,
                 'status' => $order->order_fulfillment_status,
                 'period' => $order->period,

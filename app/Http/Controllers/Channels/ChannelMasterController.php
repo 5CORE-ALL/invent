@@ -3766,6 +3766,17 @@ class ChannelMasterController extends Controller
         return $l30SalesVal > 0 ? round(($totalAdSpend / $l30SalesVal) * 100, 2) : 0.0;
     }
 
+    /**
+     * eBay 2 channel Total Ad Spend (31-day KW + PMT) — same tables/window as
+     * /ebay2/campaign-ads. Exposed so callers can compute TACOS against their own
+     * sales basis (e.g. the real-orders L30 sales shown on /ebay2-tabulator-view).
+     */
+    public function getEbaytwoMasterAdSpend(): float
+    {
+        $metrics = $this->fetchAdMetricsFromTables('ebaytwo');
+        return (float) ($metrics['Total Ad Spend'] ?? 0);
+    }
+
  
     public function getEbayMasterAdsPercent(): float
     {
@@ -3775,6 +3786,18 @@ class ChannelMasterController extends Controller
         $l30SalesVal = (float) ($m->total_sales ?? 0);
 
         return $l30SalesVal > 0 ? round(($totalAdSpend / $l30SalesVal) * 100, 4) : 0.0;
+    }
+
+    /**
+     * eBay channel Total Ad Spend (31-day KW + PMT) — same tables/window as
+     * /ebay/campaign-ads (ebay_priority_reports + ebay_general_reports). Exposed so
+     * callers can compute TACOS against their own sales basis (e.g. the real-orders
+     * L30 sales shown on /ebay-tabulator-view).
+     */
+    public function getEbayMasterAdSpend(): float
+    {
+        $metrics = $this->fetchAdMetricsFromTables('ebay');
+        return (float) ($metrics['Total Ad Spend'] ?? 0);
     }
 
     /**
@@ -3788,6 +3811,16 @@ class ChannelMasterController extends Controller
         $l30SalesVal = (float) ($m->total_sales ?? 0);
 
         return $l30SalesVal > 0 ? round(($totalAdSpend / $l30SalesVal) * 100, 4) : 0.0;
+    }
+
+    /**
+     * eBay 3 channel Total Ad Spend (31-day KW + PMT) — same tables/window as
+     * /ebay3/campaign-ads. Exposed so callers can compute TACOS against their own sales basis.
+     */
+    public function getEbaythreeMasterAdSpend(): float
+    {
+        $metrics = $this->fetchAdMetricsFromTables('ebaythree');
+        return (float) ($metrics['Total Ad Spend'] ?? 0);
     }
 
     /**
@@ -4828,58 +4861,63 @@ class ChannelMasterController extends Controller
      */
     private function computeEbayYSalesLikeAmazon(int $which): ?float
     {
-        if ($which === 1) {
-            $latestRaw = DB::table('ebay_orders')
-                ->where(function ($q) {
-                    $q->whereNull('status')->orWhere('status', '!=', 'CANCELLED');
-                })
-                ->max('order_date');
-        } elseif ($which === 2) {
-            $latestRaw = DB::table('ebay2_orders')
-                ->where(function ($q) {
-                    $q->whereNull('status')->orWhere('status', '!=', 'CANCELLED');
-                })
-                ->max('order_date');
-        } elseif ($which === 3) {
-            $latestRaw = DB::table('ebay3_daily_data')->max('creation_date');
-        } else {
-            return null;
+        // Yesterday's sales — SAME basis as /ebay{,2,3}/daily-sales "Y Sales":
+        // per-order total (pricingSummary.total + eBay collect-and-remit tax), counted once
+        // per order, excluding CANCELED and FULLY_REFUNDED, for the Pacific calendar day
+        // "yesterday". Keeps the all-marketplace-master eBay Y Sales in step with the order pages.
+        $tz = 'America/Los_Angeles';
+        $yesterday = Carbon::yesterday($tz)->toDateString();
+
+        try {
+            if ($which === 1 || $which === 2) {
+                $model = $which === 1 ? \App\Models\EbayOrder::class : \App\Models\Ebay2Order::class;
+                $total = 0.0;
+                $model::where('period', 'l30')->get()->each(function ($order) use (&$total, $tz, $yesterday) {
+                    $raw = is_array($order->raw_data) ? $order->raw_data : json_decode((string) $order->raw_data, true);
+                    if (!is_array($raw)) return;
+                    $cs = $raw['cancelStatus']['cancelState'] ?? '';
+                    $ps = $raw['orderPaymentStatus'] ?? '';
+                    if ($cs === 'CANCELED' || $ps === 'FULLY_REFUNDED') return;
+                    $created = $raw['creationDate'] ?? $order->order_date;
+                    if (!$created) return;
+                    if (Carbon::parse($created)->setTimezone($tz)->toDateString() !== $yesterday) return;
+                    $base = (float) ($raw['pricingSummary']['total']['value'] ?? 0);
+                    $car = 0.0;
+                    foreach (($raw['lineItems'] ?? []) as $li) {
+                        foreach (($li['ebayCollectAndRemitTaxes'] ?? []) as $t) {
+                            $car += (float) ($t['amount']['value'] ?? 0);
+                        }
+                    }
+                    $total += round($base + $car, 2);
+                });
+                return round($total, 2);
+            }
+
+            if ($which === 3) {
+                // ebay3_daily_data is per line item; creation_date is already stored in Pacific.
+                // Order total = total_price (order-level, repeated per line) + Σ CAR tax per order.
+                $byOrder = [];
+                \App\Models\Ebay3DailyData::where('period', 'l30')->get()->each(function ($row) use (&$byOrder, $yesterday) {
+                    if (($row->cancel_status ?? '') === 'CANCELED' || ($row->order_payment_status ?? '') === 'FULLY_REFUNDED') return;
+                    $day = $row->creation_date ? Carbon::parse($row->creation_date)->format('Y-m-d') : null;
+                    if ($day !== $yesterday) return;
+                    $oid = $row->order_id;
+                    if (!isset($byOrder[$oid])) {
+                        $byOrder[$oid] = ['total_price' => (float) ($row->total_price ?? 0), 'car' => 0.0];
+                    }
+                    $byOrder[$oid]['car'] += (float) ($row->ebay_collect_and_remit_tax ?? 0);
+                });
+                $total = 0.0;
+                foreach ($byOrder as $v) {
+                    $total += round($v['total_price'] + $v['car'], 2);
+                }
+                return round($total, 2);
+            }
+        } catch (\Throwable $e) {
+            Log::warning("computeEbayYSalesLikeAmazon({$which}) failed: " . $e->getMessage());
         }
 
-        if (!$latestRaw) {
-            return null;
-        }
-
-        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
-        $yStartPacific = $latestPacific->copy()->subDay()->startOfDay();
-        $yEndPacific = $latestPacific->copy()->subDay()->endOfDay();
-
-        if ($which === 1) {
-            $sum = (float) DB::table('ebay_orders as o')
-                ->join('ebay_order_items as i', 'o.id', '=', 'i.ebay_order_id')
-                ->where('o.order_date', '>=', $yStartPacific)
-                ->where('o.order_date', '<=', $yEndPacific)
-                ->where(function ($q) {
-                    $q->whereNull('o.status')->orWhere('o.status', '!=', 'CANCELLED');
-                })
-                ->sum('i.price');
-        } elseif ($which === 2) {
-            $sum = (float) DB::table('ebay2_orders as o')
-                ->join('ebay2_order_items as i', 'o.id', '=', 'i.ebay2_order_id')
-                ->where('o.order_date', '>=', $yStartPacific)
-                ->where('o.order_date', '<=', $yEndPacific)
-                ->where(function ($q) {
-                    $q->whereNull('o.status')->orWhere('o.status', '!=', 'CANCELLED');
-                })
-                ->sum('i.price');
-        } else {
-            $sum = (float) DB::table('ebay3_daily_data')
-                ->where('creation_date', '>=', $yStartPacific)
-                ->where('creation_date', '<=', $yEndPacific)
-                ->sum('unit_price');
-        }
-
-        return round($sum, 2);
+        return null;
     }
 
     /**

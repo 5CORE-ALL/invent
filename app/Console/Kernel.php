@@ -680,10 +680,7 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // eBay 3 daily 60-day backfill — shifted to 19:40 IST so it follows the eBay
-        // campaign-reports retries (final 19:20 IST) and lands its data before the
-        // ebay3:auto-update / suggested-bid / budget pushes at 21:06+ IST.
-        // Previously 09:45 IST when reports were still partial PT-day.
+       
         $ist($schedule->command('ebay3:daily --days=60')
             ->dailyAt('19:40')
             ->timezone('Asia/Kolkata')
@@ -700,10 +697,7 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // eBay metrics + table-data fetches — shifted to 19:25–19:35 IST so they run
-        // AFTER the eBay campaign-reports retries (final 19:10–19:20) and BEFORE the
-        // eBay sync-listings cluster (16:30–20:34) and bid-update push at 21:00+.
-        // Previously 09:50 / 10:00 / 10:05 IST when reports were still partial PT-day.
+        
         $ist($schedule->command('app:fetch-ebay-table-data')
             ->dailyAt('19:25')
             ->timezone('Asia/Kolkata')
@@ -728,24 +722,15 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // eBay Marketing API campaign reports — 5 AFTERNOON runs each (final slots 19:10 /
-        // 19:15 / 19:20 IST). Aligned with PT (US eBay reporting day ends ~12:30 PM IST);
-        // pre-shift, morning runs were querying mid-PT-day with partial click/spend data.
-        // Downstream eBay bid auto-updates pushed accordingly to 21:00–21:18 IST.
         $retryFiveTimesUntil('app:ebay-campaign-reports', 'ebay-campaign-reports', '19:10');
         $retryFiveTimesUntil('app:ebay2-campaign-reports', 'ebay2-campaign-reports', '19:15');
         $retryFiveTimesUntil('app:ebay3-campaign-reports', 'ebay3-campaign-reports', '19:20');
 
-        // eBay promoted-listings sync into ebay{,2,3}_campaign_ads — 5 afternoon runs each
-        // (final slots 20:30 / 20:32 / 20:34 IST). The downstream suggested-bid + budget jobs
-        // consume these tables; runs are timed so the freshest listings land in time for the
-        // 21:00–21:18 IST bid push and the 21:20–21:33 IST suggested-bid + budget cluster.
+        
         $retryFiveTimesUntil('ebay:sync-campaign-listings', 'ebay-sync-campaign-listings', '20:30');
         $retryFiveTimesUntil('ebay2:sync-campaign-listings', 'ebay2-sync-campaign-listings', '20:32');
         $retryFiveTimesUntil('ebay3:sync-campaign-listings', 'ebay3-sync-campaign-listings', '20:34');
 
-        // eBay bid pushes — 21:00–21:08 IST, after sync-listings (20:34 IST).
-        // (Previously 13:15–13:21 IST when reports were still partial.)
         $ist($schedule->command('ebay:auto-update-over-bids')
             ->dailyAt('21:00')
             ->timezone('Asia/Kolkata')

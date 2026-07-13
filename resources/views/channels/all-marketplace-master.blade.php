@@ -1818,7 +1818,7 @@
                             }
                             const dotColor = getMetricDotColor(channel, 'cvr');
                             const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="cvr" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View CVR trend"></i>`;
-                            return `<span style="font-weight:600;color:${dotColor};">${pct.toFixed(1)}%</span>${chartIcon}`;
+                            return `<span style="font-weight:600;color:${dotColor};">${Math.round(pct)}%</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains('metric-chart-icon')) {
@@ -1829,18 +1829,14 @@
                             }
                         },
                         bottomCalc: function(values, data) {
-                            // Rolling page-level CVR: sum the underlying components so totals don't
-                            // double-count channels that supply a pre-computed CVR. For server-CVR
-                            // rows (e.g. Temu/Temu 2) we use temu_l30 (sold) and product_clicks (views)
-                            // implicitly via Total Views + Qty when present. We just sum Qty + Views
-                            // across all rows so the page footer stays a stable, comparable %.
+                            
                             let totalQty = 0, totalViews = 0;
                             data.forEach(function(row) {
                                 totalQty += parseNumber(row['Qty'] || 0);
                                 totalViews += parseNumber(row['Total Views'] || 0);
                             });
                             if (totalViews === 0) return '-';
-                            return '<strong>' + ((totalQty / totalViews) * 100).toFixed(1) + '%</strong>';
+                            return '<strong>' + Math.round((totalQty / totalViews) * 100) + '%</strong>';
                         }
                     },
                     {
@@ -3654,7 +3650,7 @@
                 // 2 decimals so the badge value shifts day-over-day instead of holding the same
                 // rounded number for 3+ days (rolling-window CVR moves <0.05% per day).
                 const cvrPct = totalViews > 0 ? (totalQty / totalViews) * 100 : null;
-                $('#cvr-pct-badge').text(cvrPct !== null ? cvrPct.toFixed(2) + '%' : '-');
+                $('#cvr-pct-badge').text(cvrPct !== null ? Math.round(cvrPct) + '%' : '-');
                 // NPFT $ = gross profit $ − total ad spend (= L30 × (G% − Ad Spend/Sales) in aggregate)
                 $('#total-pft').text('$' + Math.round(netProfit).toLocaleString('en-US'));
                 $('#avg-npft').text(avgNpft.toFixed(1) + '%');

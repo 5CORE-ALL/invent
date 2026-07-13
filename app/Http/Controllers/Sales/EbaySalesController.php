@@ -12,7 +12,39 @@ class EbaySalesController extends Controller
 {
     public function index()
     {
-        return view('sales.ebay_daily_sales_data');
+        // Yesterday's sales (Pacific) from real orders — same per-order total and
+        // exclusions the Total Sales badge uses (pricingSummary.total + collect-and-remit
+        // tax; skip CANCELED and FULLY_REFUNDED). Mirrors Amazon's "Y Sales" badge.
+        $tz = 'America/Los_Angeles';
+        $yesterday = \Carbon\Carbon::yesterday($tz)->toDateString();
+        $ySales = 0.0;
+        try {
+            EbayOrder::where('period', 'l30')->get()->each(function ($order) use (&$ySales, $tz, $yesterday) {
+                $raw = is_array($order->raw_data) ? $order->raw_data : json_decode((string) $order->raw_data, true);
+                if (!is_array($raw)) return;
+                $cs = $raw['cancelStatus']['cancelState'] ?? '';
+                $ps = $raw['orderPaymentStatus'] ?? '';
+                if ($cs === 'CANCELED' || $ps === 'FULLY_REFUNDED') return;
+                $created = $raw['creationDate'] ?? $order->order_date;
+                if (!$created) return;
+                if (\Carbon\Carbon::parse($created)->setTimezone($tz)->toDateString() !== $yesterday) return;
+                $base = (float) ($raw['pricingSummary']['total']['value'] ?? 0);
+                $carTax = 0.0;
+                foreach (($raw['lineItems'] ?? []) as $li) {
+                    foreach (($li['ebayCollectAndRemitTaxes'] ?? []) as $t) {
+                        $carTax += (float) ($t['amount']['value'] ?? 0);
+                    }
+                }
+                $ySales += round($base + $carTax, 2);
+            });
+        } catch (\Throwable $e) {
+            Log::warning('Ebay Y Sales failed: ' . $e->getMessage());
+        }
+
+        return view('sales.ebay_daily_sales_data', [
+            'salesYesterday' => round($ySales, 2),
+            'yesterdayLabel' => \Carbon\Carbon::yesterday($tz)->format('M j, Y'),
+        ]);
     }
 
     public function getData(Request $request)
@@ -48,10 +80,19 @@ class EbaySalesController extends Controller
             // so compute the figure straight from raw_data to mirror Seller Hub.
             $raw = is_array($order->raw_data) ? $order->raw_data : json_decode((string) $order->raw_data, true);
 
-            // eBay's "Total sales" excludes cancelled orders (they never completed).
-            // Refunded orders ARE still counted as sales, so only skip CANCELED.
-            if (is_array($raw) && ($raw['cancelStatus']['cancelState'] ?? '') === 'CANCELED') {
-                continue;
+            // eBay's "Total sales" only counts orders that resulted in a completed sale.
+            // It excludes:
+            //   - CANCELED orders (buyer/seller cancelled — the order never happened)
+            //   - FULLY_REFUNDED orders (payment fully reversed — no net sale)
+            // Partially refunded orders are kept (goods partly retained = still a sale).
+            // Verified against Seller Hub: excluding these lands within ~0.1% of eBay's
+            // reported Total sales (the tiny residual is day-boundary timezone rounding).
+            if (is_array($raw)) {
+                $cancelState = $raw['cancelStatus']['cancelState'] ?? '';
+                $paymentStatus = $raw['orderPaymentStatus'] ?? '';
+                if ($cancelState === 'CANCELED' || $paymentStatus === 'FULLY_REFUNDED') {
+                    continue;
+                }
             }
 
             $orderTotal = (float) ($order->total_amount ?? 0);

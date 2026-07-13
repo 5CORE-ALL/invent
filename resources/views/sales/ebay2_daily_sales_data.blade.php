@@ -83,6 +83,9 @@
                             style="color: white; font-weight: bold;">Total Quantity: 0</span>
                         <span class="badge fs-6 p-2" id="total-sales-badge"
                             style="background-color: #17a2b8; color: white; font-weight: bold;">Total Sales: $0.00</span>
+                        <span class="badge fs-6 p-2" id="y-sales-badge"
+                            style="background-color: #0dcaf0; color: black; font-weight: bold;"
+                            title="Yesterday's sales ({{ $yesterdayLabel ?? '' }} Pacific) from real eBay 2 orders — tax-inclusive, excl. cancelled & fully-refunded.">Y Sales: ${{ number_format((float) ($salesYesterday ?? 0), 2) }}</span>
                         <span class="badge bg-info fs-6 p-2" id="total-revenue-badge"
                             style="color: white; font-weight: bold;">Total Revenue: $0.00</span>
                         <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge"
@@ -428,10 +431,20 @@
                 let totalWeightedPrice = 0;
                 let totalQuantityForPrice = 0;
                 let totalCogs = 0;
+                // eBay "Total sales (includes taxes)" = sum of each order's grand total
+                // (total_amount includes shipping + tax), counted once per unique order.
+                let totalOrderSales = 0;
+                const seenOrders = new Set();
 
                 data.forEach(row => {
                     if (!row.sku || row.sku === '' || !row.order_id || row.order_id === '') {
                         return;
+                    }
+
+                    // Add the order grand total once per unique order (matches eBay Total Sales)
+                    if (!seenOrders.has(row.order_id)) {
+                        seenOrders.add(row.order_id);
+                        totalOrderSales += parseFloat(row.total_amount) || 0;
                     }
 
                     totalOrders++;
@@ -466,8 +479,8 @@
 
                 $('#total-orders-badge').text('Total Orders: ' + totalOrders.toLocaleString());
                 $('#total-quantity-badge').text('Total Quantity: ' + totalQuantity.toLocaleString());
-                $('#total-sales-badge').text('Total Sales: $' + totalRevenue.toFixed(2));
-                $('#total-revenue-badge').text('Total Revenue: $' + totalRevenue.toFixed(2));
+                $('#total-sales-badge').text('Total Sales: $' + totalOrderSales.toFixed(2));
+                $('#total-revenue-badge').text('Total Revenue: $' + totalOrderSales.toFixed(2));
                 $('#pft-percentage-badge').text('GPFT %: ' + pftPercentage.toFixed(1) + '%');
                 $('#roi-percentage-badge').text('ROI %: ' + roiPercentage.toFixed(1) + '%');
                 $('#avg-price-badge').text('Avg Price: $' + avgPrice.toFixed(2));

@@ -12,7 +12,39 @@ class Ebay2SalesController extends Controller
 {
     public function index()
     {
-        return view('sales.ebay2_daily_sales_data');
+        // Yesterday's sales (Pacific) from real orders — same per-order total and
+        // exclusions the Total Sales badge uses (pricingSummary.total + collect-and-remit
+        // tax; skip CANCELED and FULLY_REFUNDED). Mirrors Amazon's "Y Sales" badge.
+        $tz = 'America/Los_Angeles';
+        $yesterday = \Carbon\Carbon::yesterday($tz)->toDateString();
+        $ySales = 0.0;
+        try {
+            Ebay2Order::where('period', 'l30')->get()->each(function ($order) use (&$ySales, $tz, $yesterday) {
+                $raw = is_array($order->raw_data) ? $order->raw_data : json_decode((string) $order->raw_data, true);
+                if (!is_array($raw)) return;
+                $cs = $raw['cancelStatus']['cancelState'] ?? '';
+                $ps = $raw['orderPaymentStatus'] ?? '';
+                if ($cs === 'CANCELED' || $ps === 'FULLY_REFUNDED') return;
+                $created = $raw['creationDate'] ?? $order->order_date;
+                if (!$created) return;
+                if (\Carbon\Carbon::parse($created)->setTimezone($tz)->toDateString() !== $yesterday) return;
+                $base = (float) ($raw['pricingSummary']['total']['value'] ?? 0);
+                $carTax = 0.0;
+                foreach (($raw['lineItems'] ?? []) as $li) {
+                    foreach (($li['ebayCollectAndRemitTaxes'] ?? []) as $t) {
+                        $carTax += (float) ($t['amount']['value'] ?? 0);
+                    }
+                }
+                $ySales += round($base + $carTax, 2);
+            });
+        } catch (\Throwable $e) {
+            Log::warning('Ebay2 Y Sales failed: ' . $e->getMessage());
+        }
+
+        return view('sales.ebay2_daily_sales_data', [
+            'salesYesterday' => round($ySales, 2),
+            'yesterdayLabel' => \Carbon\Carbon::yesterday($tz)->format('M j, Y'),
+        ]);
     }
 
     public function getData(Request $request)
@@ -62,6 +94,40 @@ class Ebay2SalesController extends Controller
 
         $data = [];
         foreach ($orders as $order) {
+            $raw = is_array($order->raw_data) ? $order->raw_data : json_decode((string) $order->raw_data, true);
+
+            // eBay's "Total sales" only counts orders that resulted in a completed sale.
+            // It excludes:
+            //   - CANCELED orders (buyer/seller cancelled — the order never happened)
+            //   - FULLY_REFUNDED orders (payment fully reversed — no net sale)
+            // Partially refunded orders are kept (goods partly retained = still a sale).
+            if (is_array($raw)) {
+                $cancelState = $raw['cancelStatus']['cancelState'] ?? '';
+                $paymentStatus = $raw['orderPaymentStatus'] ?? '';
+                if ($cancelState === 'CANCELED' || $paymentStatus === 'FULLY_REFUNDED') {
+                    continue;
+                }
+            }
+
+            // eBay "Total sales (includes taxes)" per order = pricingSummary.total (buyer-paid,
+            // after discounts) + eBay collect-and-remit tax (reported per line item, not in
+            // pricingSummary). The stored total_amount column is stale (0), so compute from raw_data.
+            $orderTotal = (float) ($order->total_amount ?? 0);
+            if (is_array($raw)) {
+                $base = (float) ($raw['pricingSummary']['total']['value'] ?? 0);
+                $carTax = 0.0;
+                foreach (($raw['lineItems'] ?? []) as $li) {
+                    foreach (($li['ebayCollectAndRemitTaxes'] ?? []) as $t) {
+                        $carTax += (float) ($t['amount']['value'] ?? 0);
+                    }
+                }
+                $computed = $base + $carTax;
+                if ($computed > 0) {
+                    $orderTotal = $computed;
+                }
+            }
+            $orderTotal = round($orderTotal, 2);
+
             foreach ($order->items as $item) {
                 // For OPEN BOX or USED items, use the base SKU to get ProductMaster data
                 $lookupSku = $item->sku;
@@ -126,7 +192,7 @@ class Ebay2SalesController extends Controller
                     'quantity' => $item->quantity,
                     'sale_amount' => round($price, 2),
                     'price' => round($unitPrice, 2),
-                    'total_amount' => $order->total_amount,
+                    'total_amount' => $orderTotal,
                     'currency' => $order->currency,
                     'order_date' => \Carbon\Carbon::parse($order->order_date)->setTimezone('America/Los_Angeles')->toIso8601String(),
                     'status' => $order->status,

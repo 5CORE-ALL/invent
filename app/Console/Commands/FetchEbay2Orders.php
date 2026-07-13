@@ -139,13 +139,25 @@ class FetchEbay2Orders extends Command
     private function insertOrders($orders, $period)
     {
         foreach ($orders as $order) {
+            // "Total sales (includes taxes)" = pricingSummary.total (buyer-paid, after
+            // discounts) + eBay collect-and-remit tax (reported per line item, not in
+            // pricingSummary). The Fulfillment API has no top-level `total`, so compute it.
+            $baseTotal = (float) ($order['pricingSummary']['total']['value'] ?? 0);
+            $carTax = 0.0;
+            foreach ($order['lineItems'] ?? [] as $li) {
+                foreach ($li['ebayCollectAndRemitTaxes'] ?? [] as $t) {
+                    $carTax += (float) ($t['amount']['value'] ?? 0);
+                }
+            }
+            $orderTotal = round($baseTotal + $carTax, 2);
+
             // Insert order
             $orderRecord = Ebay2Order::updateOrCreate(
                 ['ebay_order_id' => $order['orderId']],
                 [
                     'order_date' => Carbon::parse($order['creationDate']),
                     'status' => $order['orderFulfillmentStatus'],
-                    'total_amount' => $order['total'] ?? 0,
+                    'total_amount' => $orderTotal,
                     'currency' => $order['totalCurrency'] ?? 'USD',
                     'period' => $period,
                     'raw_data' => json_encode($order),

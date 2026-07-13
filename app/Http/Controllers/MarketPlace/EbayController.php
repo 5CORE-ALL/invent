@@ -63,19 +63,80 @@ class EbayController extends Controller
 
     public function ebayTabulatorView(Request $request)
     {
-        $channelAdsPercent = app(ChannelMasterController::class)->getEbayMasterAdsPercent();
+        // Sales / Qty / PFT / COGS / GPFT% / GROI% — all derived from the SAME real-orders
+        // rows /ebay/daily-sales builds (EbaySalesController::getData), so every summary
+        // badge on this page agrees with that page. The per-SKU datasheet is tax-excluded,
+        // lags the Orders API, and only reflects filtered rows, so it can't match.
+        $agg = $this->fetchEbayL30OrdersAggregate();
 
-        // L30 units sold — same source /ebay/daily-sales uses for its Total
-        // Quantity badge (Σ ebay_order_items.quantity for orders with period='l30').
-        // Static value rendered straight into the Qty Sold badge so this page
-        // always agrees with /ebay/daily-sales and the eBay row on
-        // /all-marketplace-master without any per-SKU plumbing.
-        $ordersL30TotalQty = $this->fetchEbayL30OrderQty();
+        // Ads% badge = TACOS = channel Total Ad Spend (31-day KW+PMT, same source as
+        // /ebay/campaign-ads) ÷ the SAME real-orders L30 sales shown in the Sales badge,
+        // so the Ads% is consistent with this page's Sales (not the marketplace_daily_metrics
+        // sales the /all-marketplace-master value uses).
+        $ebayAdSpend = app(ChannelMasterController::class)->getEbayMasterAdSpend();
+        $channelAdsPercent = $agg['sales'] > 0
+            ? round(($ebayAdSpend / $agg['sales']) * 100, 1)
+            : 0.0;
 
         return view("market-places.ebay_tabulator_view", [
             'channelAdsPercent'   => $channelAdsPercent,
-            'ordersL30TotalQty'   => $ordersL30TotalQty,
+            'ordersL30TotalQty'   => $agg['qty'],
+            'ordersL30TotalSales' => $agg['sales'],
+            'ordersL30Gpft'       => $agg['gpft'],
+            'ordersL30Groi'       => $agg['groi'],
+            'ordersL30Pft'        => $agg['pft'],
+            'ordersL30Cogs'       => $agg['cogs'],
         ]);
+    }
+
+    /**
+     * L30 Sales / Qty / PFT / COGS / GPFT% / GROI% computed from the exact same rows
+     * /ebay/daily-sales renders (EbaySalesController::getData), aggregated the same way
+     * that page's summary does. Guarantees the tabulator badges match /ebay/daily-sales:
+     *   - Sales  = Σ per-order total (tax incl.), once per order, excl. CANCELED/FULLY_REFUNDED
+     *   - Qty    = Σ item quantity (same exclusions)
+     *   - GPFT%  = Σ T PFT / Σ (qty × unit price) × 100
+     *   - GROI%  = Σ T PFT / Σ COGS × 100
+     */
+    private function fetchEbayL30OrdersAggregate(): array
+    {
+        $empty = ['sales' => 0.0, 'qty' => 0, 'pft' => 0.0, 'cogs' => 0.0, 'gpft' => 0.0, 'groi' => 0.0];
+        try {
+            $rows = app(\App\Http\Controllers\Sales\EbaySalesController::class)
+                ->getData(request())->getData(true);
+            if (!is_array($rows)) return $empty;
+
+            $qty = 0; $pft = 0.0; $cogs = 0.0; $l30Sales = 0.0; $orderSales = 0.0;
+            $seenOrders = [];
+            foreach ($rows as $r) {
+                $sku = $r['sku'] ?? '';
+                $orderId = $r['order_id'] ?? '';
+                if ($sku === '' || $orderId === '') continue;
+
+                if (!isset($seenOrders[$orderId])) {
+                    $seenOrders[$orderId] = true;
+                    $orderSales += (float) ($r['total_amount'] ?? 0);
+                }
+
+                $q = (int) ($r['quantity'] ?? 0);
+                $qty += $q;
+                $pft += (float) ($r['pft'] ?? 0);
+                $cogs += (float) ($r['cogs'] ?? 0);
+                $l30Sales += $q * (float) ($r['price'] ?? 0);
+            }
+
+            return [
+                'sales' => round($orderSales, 2),
+                'qty'   => $qty,
+                'pft'   => round($pft, 2),
+                'cogs'  => round($cogs, 2),
+                'gpft'  => $l30Sales > 0 ? round(($pft / $l30Sales) * 100, 1) : 0.0,
+                'groi'  => $cogs > 0 ? round(($pft / $cogs) * 100, 1) : 0.0,
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('fetchEbayL30OrdersAggregate failed: ' . $e->getMessage());
+            return $empty;
+        }
     }
 
     /**

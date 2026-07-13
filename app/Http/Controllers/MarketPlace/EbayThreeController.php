@@ -54,13 +54,70 @@ class EbayThreeController extends Controller
             ->selectRaw('SUM(CAST(REPLACE(REPLACE(ad_fees, "USD ", ""), ",", "") AS DECIMAL(10,2))) as total_spend')
             ->value('total_spend') ?? 0;
 
-        $channelAdsPercent = app(ChannelMasterController::class)->getEbaythreeMasterAdsPercent();
+        // Sales / Qty / GPFT% / GROI% from the same real orders /ebay3/daily-sales uses,
+        // so this page's summary badges match that page (same as eBay 1 & 2 tabulators).
+        $agg = $this->fetchEbay3L30OrdersAggregate();
+
+        // Ads% = TACOS = channel Total Ad Spend ÷ the real-orders L30 sales shown in the
+        // Sales badge (consistent with eBay 1 & 2).
+        $ebayAdSpend = app(ChannelMasterController::class)->getEbaythreeMasterAdSpend();
+        $channelAdsPercent = $agg['sales'] > 0
+            ? round(($ebayAdSpend / $agg['sales']) * 100, 1)
+            : (float) app(ChannelMasterController::class)->getEbaythreeMasterAdsPercent();
 
         return view('market-places.ebay3_tabulator_view', [
             'kwSpent' => (float) $kwSpent,
             'pmtSpent' => (float) $pmtSpent,
             'channelAdsPercent' => $channelAdsPercent,
+            'ordersL30TotalQty' => $agg['qty'],
+            'ordersL30TotalSales' => $agg['sales'],
+            'ordersL30Gpft' => $agg['gpft'],
+            'ordersL30Groi' => $agg['groi'],
         ]);
+    }
+
+    /**
+     * L30 Sales / Qty / PFT / COGS / GPFT% / GROI% from the same real-orders rows
+     * /ebay3/daily-sales builds (Ebay3SalesController::getData) — excludes CANCELED/
+     * FULLY_REFUNDED. Guarantees the tabulator badges match the order page.
+     */
+    private function fetchEbay3L30OrdersAggregate(): array
+    {
+        $empty = ['sales' => 0.0, 'qty' => 0, 'pft' => 0.0, 'cogs' => 0.0, 'gpft' => 0.0, 'groi' => 0.0];
+        try {
+            $rows = app(\App\Http\Controllers\Sales\Ebay3SalesController::class)
+                ->getData(request())->getData(true);
+            if (!is_array($rows)) return $empty;
+
+            $qty = 0; $pft = 0.0; $cogs = 0.0; $l30Sales = 0.0; $orderSales = 0.0;
+            $seenOrders = [];
+            foreach ($rows as $r) {
+                $sku = $r['sku'] ?? '';
+                $orderId = $r['order_id'] ?? '';
+                if ($sku === '' || $orderId === '') continue;
+                if (!isset($seenOrders[$orderId])) {
+                    $seenOrders[$orderId] = true;
+                    $orderSales += (float) ($r['total_amount'] ?? 0);
+                }
+                $q = (int) ($r['quantity'] ?? 0);
+                $qty += $q;
+                $pft += (float) ($r['pft'] ?? 0);
+                $cogs += (float) ($r['cogs'] ?? 0);
+                $l30Sales += $q * (float) ($r['price'] ?? 0);
+            }
+
+            return [
+                'sales' => round($orderSales, 2),
+                'qty'   => $qty,
+                'pft'   => round($pft, 2),
+                'cogs'  => round($cogs, 2),
+                'gpft'  => $l30Sales > 0 ? round(($pft / $l30Sales) * 100, 1) : 0.0,
+                'groi'  => $cogs > 0 ? round(($pft / $cogs) * 100, 1) : 0.0,
+            ];
+        } catch (\Throwable $e) {
+            \Log::warning('fetchEbay3L30OrdersAggregate failed: ' . $e->getMessage());
+            return $empty;
+        }
     }
 
     public function ebay3DataJson(Request $request)

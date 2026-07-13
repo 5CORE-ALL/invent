@@ -133,6 +133,22 @@
             outline-offset: 2px;
         }
 
+        /* Badges above the filter controls + compact filter dropdowns (matches eBay 1 & 2) */
+        #summary-stats {
+            order: -1;
+            padding: 0.5rem 0.7rem !important;
+            margin-top: 0 !important;
+            margin-bottom: 0.5rem !important;
+        }
+        #ebay3-filter-bar .form-select {
+            width: auto !important;
+            max-width: 140px;
+            padding-right: 1.35rem !important;
+            padding-left: 0.5rem !important;
+            background-position: right 0.35rem center !important;
+        }
+        #ebay3-filter-bar { gap: 8px 10px !important; }
+
         /* Match Ebay 2 summary badge row: single row, shared width, scaled text */
         #summary-stats .ebay2-summary-badge-row {
             display: flex;
@@ -215,8 +231,11 @@
     <div class="toast-container"></div>
     <div class="row">
         <div class="card shadow-sm">
-            <div class="card-body py-3">
-                <div class="d-flex align-items-center flex-wrap gap-2">
+            <div class="card-body py-2 d-flex flex-column">
+                <div class="d-flex align-items-center flex-wrap gap-2" id="ebay3-filter-bar">
+                    <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU..." style="width: 160px; display: inline-block;">
+                    <input type="text" id="parent-search" class="form-control form-control-sm" placeholder="Search Parent..." style="width: 160px; display: inline-block;">
+
                     <select id="view-mode-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="sku" selected>SKU Only</option>
@@ -226,14 +245,14 @@
 
                     <select id="inv-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
-                        <option value="all">All Inventory</option>
+                        <option value="all">Inventory</option>
                         <option value="zero">0 Inventory</option>
                         <option value="more" selected>More than 0</option>
                     </select>
 
                     <select id="el30-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
-                        <option value="all" selected>All E L30</option>
+                        <option value="all" selected>E L30</option>
                         <option value="zero">0 E L30</option>
                         <option value="more">E L30 &gt; 0</option>
                     </select>
@@ -250,7 +269,7 @@
                     <select id="growth-sign-filter" class="form-select form-select-sm pricing-filter-item"
                         style="width: auto; display: inline-block;"
                         title="eBay E L30 vs E L60: (L30 − L60) / L60 × 100; L60=0 and L30&gt;0 counts as +100%">
-                        <option value="all" selected>All Growth</option>
+                        <option value="all" selected>Growth</option>
                         <option value="negative">Negative Only</option>
                         <option value="zero">Zero Only</option>
                         <option value="positive">Positive Only</option>
@@ -258,7 +277,7 @@
 
                     <select id="nrl-filter" class="form-select form-select-sm pricing-filter-item"
                         style="width: auto; display: inline-block;">
-                        <option value="all">All Status</option>
+                        <option value="all">Status</option>
                         <option value="REQ" selected>REQ Only</option>
                         <option value="NR">NR Only</option>
                     </select>
@@ -272,12 +291,11 @@
                             <option value="10-20">10-20%</option>
                             <option value="20-30">20-30%</option>
                             <option value="30-40">30-40%</option>
-                            <option value="40-50">40-50%</option>
-                            <option value="50plus">Above 50%</option>
+                            <option value="40plus">Above 40%</option>
                         </select>
                         <select id="cvr-filter" class="form-select form-select-sm"
                             style="width: auto; display: inline-block; flex-shrink: 0;">
-                            <option value="all">All CVR%</option>
+                            <option value="all">CVR%</option>
                             <option value="0-0">0%</option>
                             <option value="0-3">0-3%</option>
                             <option value="3-7">3-7%</option>
@@ -309,24 +327,14 @@
                         <option value="blank">Blank SPRICE only</option>
                     </select>
 
-                    <!-- DIL Filter -->
-                    <div class="manual-dropdown-container pricing-filter-item" id="dil-filter-wrapper">
-                        <button class="btn btn-light btn-sm dropdown-toggle" type="button" id="dilFilterDropdown">
-                            <span class="status-circle default"></span> DIL%
-                        </button>
-                        <ul class="dropdown-menu" aria-labelledby="dilFilterDropdown">
-                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="all">
-                                    <span class="status-circle default"></span> All DIL</a></li>
-                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="red">
-                                    <span class="status-circle red"></span> Red (&lt;16.66%)</a></li>
-                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="yellow">
-                                    <span class="status-circle yellow"></span> Yellow (16.66-25%)</a></li>
-                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="green">
-                                    <span class="status-circle green"></span> Green (25-50%)</a></li>
-                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="pink">
-                                    <span class="status-circle pink"></span> Pink (50%+)</a></li>
-                        </ul>
-                    </div>
+                    <!-- DIL Filter (plain select — matches /amazon & eBay 1/2 dropdown UI) -->
+                    <select id="dil-filter" class="form-select form-select-sm pricing-filter-item"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">DIL%</option>
+                        <option value="red">Red &lt;25%</option>
+                        <option value="green">Green 25-50%</option>
+                        <option value="pink">Pink 50%+</option>
+                    </select>
 
                     <!-- Column Visibility Dropdown -->
                     <div class="dropdown d-inline-block pricing-filter-item">
@@ -358,14 +366,14 @@
                         id="target-roi-controls"
                         title="Target ROI% — sets S PRC = (LP × (1 + Target ROI%/100) + Ship) / 0.85 on every selected row (back-solves so SROI column equals the target)">
                         <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
-                            Target ROI%:
+                            <span style="font-size:1em;" aria-hidden="true">🎯</span> ROI%:
                         </label>
                         <input type="number" id="target-roi-input" class="form-control form-control-sm text-end"
-                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
+                            placeholder="30" step="0.1" style="width: 56px;"
                             title="Target ROI% applied to all selected rows when you click 'Apply S PRC'">
                         <button id="apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
                             title="Compute & save S PRC = (LP × (1 + Target ROI%/100) + Ship) / 0.85 for every selected row">
-                            <i class="fas fa-calculator"></i> Apply S PRC
+                            <i class="fas fa-calculator"></i>
                         </button>
                     </div>
 
@@ -375,14 +383,14 @@
                         id="target-gpft-controls"
                         title="Target GPFT% — sets S PRC = (LP + Ship) / (0.85 − Target GPFT%/100) on every selected row">
                         <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
-                            Target GPFT%:
+                            <span style="font-size:1em;" aria-hidden="true">🎯</span> GPFT%:
                         </label>
                         <input type="number" id="target-gpft-input" class="form-control form-control-sm text-end"
-                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
+                            placeholder="30" step="0.1" style="width: 56px;"
                             title="Target GPFT% applied to all selected rows when you click 'Apply S PRC'. Must be less than the eBay3 take-home margin (< 85%).">
                         <button id="apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
                             title="Compute & save S PRC = (LP + Ship) / (0.85 − Target GPFT%/100) for every selected row">
-                            <i class="fas fa-calculator"></i> Apply S PRC
+                            <i class="fas fa-calculator"></i>
                         </button>
                     </div>
 
@@ -405,20 +413,22 @@
 
                 <!-- Summary Stats — same badge set/order as Ebay 2 Analytics -->
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
-                    <h6 class="mb-3">Summary</h6>
                     <div class="ebay2-summary-badge-row">
                         <span class="badge bg-danger fs-6 p-2 sold-filter-badge ebay3-hover-chart" data-filter="zero" data-metric="zero_sold_count" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for daily trend">0 Sold: <span id="zero-sold-count">0</span></span>
                         <span class="badge fs-6 p-2 sold-filter-badge ebay3-hover-chart" data-filter="sold" data-metric="sold_count" style="background-color: #b6e0fe; color: #0f172a; font-weight: 700; cursor: pointer;" title="Click to filter · Hover for daily trend">&gt; 0 Sold: <span id="more-sold-count">0</span></span>
                         <span class="badge bg-success fs-6 p-2 d-none ebay3-badge-chart ebay3-hover-chart" id="total-pft-amt-badge" data-metric="total_pft_amt" style="color: black; font-weight: bold; cursor: pointer;" aria-hidden="true" title="View trend">Total PFT: $0</span>
                         <span class="badge bg-primary fs-6 p-2 ebay3-badge-chart ebay3-hover-chart" id="total-sales-amt-badge" data-metric="total_sales_amt" style="color: black; font-weight: bold; cursor: pointer;" title="View trend">Sales: $0</span>
+                        <span class="badge fs-6 p-2" id="qty-sold-badge" style="background-color: #6f42c1; color: white; font-weight: bold;" title="L30 units sold (Σ real ebay3 order quantity, excl. cancelled &amp; fully-refunded). Same value /ebay3/daily-sales shows.">Qty: {{ number_format((int) ($ordersL30TotalQty ?? 0)) }}</span>
                         <span class="badge bg-info fs-6 p-2 ebay3-badge-chart ebay3-hover-chart" id="avg-gpft-badge" data-metric="gpft_percent" style="color: black; font-weight: bold; cursor: pointer;" title="View trend">GPFT: 0%</span>
                         <span class="badge bg-secondary fs-6 p-2 ebay3-badge-chart ebay3-hover-chart" id="groi-percent-badge" data-metric="groi_percent" style="color: white; font-weight: bold; cursor: pointer;" title="View trend">GROI: 0%</span>
-                        <span class="badge bg-warning fs-6 p-2 ebay3-badge-chart ebay3-hover-chart" id="avg-price-badge" data-metric="avg_price" style="color: black; font-weight: bold; cursor: pointer;" title="View trend">Price: $0.00</span>
-                        <span class="badge bg-danger fs-6 p-2 ebay3-badge-chart ebay3-hover-chart" id="avg-cvr-badge" data-metric="cvr_percent" style="color: white; font-weight: bold; cursor: pointer;" title="View trend">CVR: 0%</span>
+                        <span class="badge fs-6 p-2" id="ads-percent-badge" style="background-color: #d63384; color: white; font-weight: bold;" title="TACOS = eBay 3 channel Total Ad Spend (31-day KW + PMT from ebay_3_priority_reports + ebay_3_general_reports — same source as /ebay3/campaign-ads) ÷ real-orders L30 Sales × 100.">Ads: {{ number_format((float) ($channelAdsPercent ?? 0), 1) }}%</span>
+                        <span class="badge fs-6 p-2" id="npft-percent-badge" style="background-color: #0f766e; color: white; font-weight: bold;" title="NPFT% = GPFT% − Ads% (net profit margin after ad spend).">NPFT: {{ round((float) ($ordersL30Gpft ?? 0) - (float) ($channelAdsPercent ?? 0)) }}%</span>
+                        <span class="badge fs-6 p-2" id="nroi-percent-badge" style="background-color: #6f42c1; color: white; font-weight: bold;" title="NROI% = GROI% − Ads% (net ROI after ad spend).">NROI: {{ round((float) ($ordersL30Groi ?? 0) - (float) ($channelAdsPercent ?? 0)) }}%</span>
+                        <span class="badge bg-warning fs-6 p-2 ebay3-badge-chart ebay3-hover-chart" id="avg-price-badge" data-metric="avg_price" style="color: black; font-weight: bold; cursor: pointer;" title="View trend">Prc: $0.00</span>
+                        <span class="badge bg-danger fs-6 p-2 ebay3-badge-chart ebay3-hover-chart" id="avg-cvr-badge" data-metric="cvr_percent" style="color: white; font-weight: bold; cursor: pointer;" title="CVR = (real-orders L30 units sold / Σ Views) × 100. Numerator is the orders-API L30 units (same source /ebay3/daily-sales uses), denominator is Σ views across rows with E Stock > 0. Click for trend.">CVR: 0%</span>
                         <span class="badge bg-info fs-6 p-2 ebay3-badge-chart ebay3-hover-chart" id="total-views-badge" data-metric="total_views" style="color: black; font-weight: bold; cursor: pointer;" title="View trend">Views: 0</span>
                         <span class="badge bg-primary fs-6 p-2 d-none" id="total-inv-badge" style="color: black; font-weight: bold;" aria-hidden="true">E Stock: 0</span>
-                        <span class="badge bg-danger fs-6 p-2 ebay3-hover-chart" id="missing-count-badge" data-metric="missing_count" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for daily trend">Missing: 0</span>
-                        <span class="badge bg-success fs-6 p-2 ebay3-hover-chart" id="map-count-badge" data-metric="map_count" style="color: black; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for daily trend">Map: 0</span>
+                        <span class="badge bg-danger fs-6 p-2 ebay3-hover-chart" id="missing-count-badge" data-metric="missing_count" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for daily trend">M L: 0</span>
                         <span class="badge bg-warning fs-6 p-2 ebay3-hover-chart" id="inv-stock-badge" data-metric="nmap_count" style="color: black; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for daily trend">N Map: 0</span>
                     </div>
                 </div>
@@ -447,11 +457,6 @@
                     </div>
                 </div>
                 <div id="ebay3-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
-                    <!-- SKU & Parent Search -->
-                    <div class="p-2 bg-light border-bottom d-flex flex-wrap gap-2 align-items-center">
-                        <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU..." style="max-width: 220px;">
-                        <input type="text" id="parent-search" class="form-control form-control-sm" placeholder="Search Parent..." style="max-width: 220px;">
-                    </div>
                     <!-- Table body (scrollable section) -->
                     <div id="ebay3-table" style="flex: 1;"></div>
                 </div>
@@ -729,6 +734,13 @@
         map_count: 'Map',
         nmap_count: 'N Map',
     };
+    // L30 units sold from real ebay3 orders (same source /ebay3/daily-sales uses) — CVR numerator.
+    const ORDERS_L30_TOTAL_QTY = {{ (int) ($ordersL30TotalQty ?? 0) }};
+    // L30 Sales / GPFT% / GROI% from the same real orders /ebay3/daily-sales uses (fixed server values).
+    const ORDERS_L30_TOTAL_SALES = {{ (float) ($ordersL30TotalSales ?? 0) }};
+    const ORDERS_L30_GPFT = {{ (float) ($ordersL30Gpft ?? 0) }};
+    const ORDERS_L30_GROI = {{ (float) ($ordersL30Groi ?? 0) }};
+    const EBAY3_CHANNEL_ADS_PCT = {{ (float) ($channelAdsPercent ?? 0) }};
     const ebay3BadgeDollarMetrics = ['total_pft_amt', 'total_sales_amt', 'total_spend_l30', 'avg_price'];
     const ebay3BadgePctMetrics = ['gpft_percent', 'npft_percent', 'groi_percent', 'nroi_percent', 'tcos_percent', 'cvr_percent'];
     let ebay3ChartInstance = null;
@@ -3766,7 +3778,7 @@
             const cvrTrendFilter = $('#cvr-trend-filter').val();
             const spriceFilter = $('#sprice-filter').val();
             const variationFilter = $('#variation-filter').val() || 'all';
-            const dilFilter = $('.column-filter[data-column="dil_percent"].active')?.data('color') || 'all';
+            const dilFilter = $('#dil-filter').val() || 'all';
 
             table.clearFilter(true);
             
@@ -3877,8 +3889,7 @@
                     if (gpftFilter === '10-20') return gpft >= 10 && gpft < 20;
                     if (gpftFilter === '20-30') return gpft >= 20 && gpft < 30;
                     if (gpftFilter === '30-40') return gpft >= 30 && gpft < 40;
-                    if (gpftFilter === '40-50') return gpft >= 40 && gpft < 50;
-                    if (gpftFilter === '50plus') return gpft >= 50;
+                    if (gpftFilter === '40plus') return gpft >= 40;
                     return true;
                 });
             }
@@ -3946,8 +3957,8 @@
                     const inv = parseFloat(data.INV) || 0;
                     const l30 = parseFloat(data['L30']) || 0;
                     const dil = inv === 0 ? 0 : (l30 / inv) * 100;
-                    if (dilFilter === 'red') return dil < 16.66;
-                    if (dilFilter === 'yellow') return dil >= 16.66 && dil < 25;
+                    // DIL slabs match eBay 1/2: red <25, green 25-50, pink 50+
+                    if (dilFilter === 'red') return dil < 25;
                     if (dilFilter === 'green') return dil >= 25 && dil < 50;
                     if (dilFilter === 'pink') return dil >= 50;
                     return true;
@@ -4038,7 +4049,7 @@
             }, 100);
         }
 
-        $('#view-mode-filter, #inv-filter, #el30-filter, #variation-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter, #sprice-filter').on('change', function() {
+        $('#view-mode-filter, #inv-filter, #el30-filter, #variation-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter, #sprice-filter, #dil-filter').on('change', function() {
             applyFilters();
         });
 
@@ -4228,33 +4239,6 @@
             });
         });
 
-        // DIL% (pricing): parent `.show` + custom CSS (see `.manual-dropdown-container.pricing-filter-item`)
-        $(document).on('click', '.manual-dropdown-container.pricing-filter-item > .btn', function(e) {
-            e.stopPropagation();
-            const container = $(this).closest('.manual-dropdown-container');
-            $('.manual-dropdown-container.pricing-filter-item').not(container).removeClass('show');
-            container.toggleClass('show');
-        });
-
-        $(document).on('click', '.column-filter[data-column="dil_percent"]', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            const $item = $(this);
-            const container = $item.closest('.manual-dropdown-container');
-            const button = container.find('.btn').first();
-            container.find('.column-filter[data-column="dil_percent"]').removeClass('active');
-            $item.addClass('active');
-            const statusCircle = $item.find('.status-circle').clone();
-            button.html('').append(statusCircle).append(' DIL%');
-            container.removeClass('show');
-            applyFilters();
-        });
-
-        $(document).on('click', function() {
-            $('.manual-dropdown-container.pricing-filter-item').removeClass('show');
-        });
-
-
         // Update calc values
         function updateCalcValues() {
             const data = table.getData("active");
@@ -4336,7 +4320,10 @@
                 }
             });
             const avgPrice = totalL30 > 0 ? totalWeightedPrice / totalL30 : 0;
-            const avgCVR = totalViews > 0 ? (totalL30 / totalViews * 100) : 0;
+            // CVR = (real-orders L30 units sold / Σ views) × 100. Numerator is the orders-API
+            // L30 units (same value /ebay3/daily-sales shows), not the laggier datasheet
+            // "eBay L30" sum — matches the eBay 1 & 2 tabulator CVR.
+            const avgCVR = totalViews > 0 ? (ORDERS_L30_TOTAL_QTY / totalViews * 100) : 0;
 
             if (ebay3ServerSummary) {
                 missingCount = ebay3ServerSummary.missing;
@@ -4344,21 +4331,24 @@
                 invStockCount = ebay3ServerSummary.nMap;
             }
 
-            const groiPercent = totalLpAmt > 0 ? ((totalPftAmt / totalLpAmt) * 100) : 0;
-            const avgGpft = totalSalesAmt > 0 ? ((totalPftAmt / totalSalesAmt) * 100) : 0;
-
             $('#zero-sold-count').text(zeroSoldCount.toLocaleString());
             $('#more-sold-count').text(moreSoldCount.toLocaleString());
             $('#total-pft-amt-badge').text('Total PFT: $' + Math.round(totalPftAmt).toLocaleString());
-            $('#total-sales-amt-badge').text('Sales: $' + Math.round(totalSalesAmt).toLocaleString());
-            $('#avg-gpft-badge').text('GPFT: ' + Math.round(avgGpft) + '%');
-            $('#groi-percent-badge').text('GROI: ' + Math.round(groiPercent) + '%');
-            $('#avg-price-badge').text('Price: $' + avgPrice.toFixed(2));
-            $('#avg-cvr-badge').text('CVR: ' + Math.round(avgCVR) + '%');
+            // Sales / GPFT% / GROI% are fixed server values from the same real L30 orders
+            // /ebay3/daily-sales uses, so this page agrees with that page (the per-SKU datasheet
+            // is tax-excluded, lags the Orders API, and only counts filtered rows).
+            $('#total-sales-amt-badge').text('Sales: $' + Math.round(ORDERS_L30_TOTAL_SALES).toLocaleString());
+            $('#avg-gpft-badge').text('GPFT: ' + Math.round(ORDERS_L30_GPFT) + '%');
+            $('#groi-percent-badge').text('GROI: ' + Math.round(ORDERS_L30_GROI) + '%');
+            // NPFT% = GPFT% − Ads%, NROI% = GROI% − Ads% (net of ad spend).
+            $('#npft-percent-badge').text('NPFT: ' + Math.round(ORDERS_L30_GPFT - EBAY3_CHANNEL_ADS_PCT) + '%');
+            $('#nroi-percent-badge').text('NROI: ' + Math.round(ORDERS_L30_GROI - EBAY3_CHANNEL_ADS_PCT) + '%');
+            $('#avg-price-badge').text('Prc: $' + avgPrice.toFixed(2));
+            $('#avg-cvr-badge').text('CVR: ' + avgCVR.toFixed(1) + '%');
             $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
             $('#total-inv-badge').text('E Stock: ' + Math.round(totalEStockSum).toLocaleString());
 
-            $('#missing-count-badge').text('Missing: ' + missingCount);
+            $('#missing-count-badge').text('M L: ' + missingCount);
             $('#map-count-badge').text('Map: ' + mapCount);
             $('#inv-stock-badge').text('N Map: ' + invStockCount);
         }
