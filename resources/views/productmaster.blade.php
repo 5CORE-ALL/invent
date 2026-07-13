@@ -824,6 +824,12 @@
         .modal.show {
             background-color: transparent !important;
         }
+
+        /* Keep the Export/Import dropdown above the sticky table header (z-index: 10)
+           and the status filter menu (z-index: 4000) so it is never hidden behind them. */
+        .dropdown-menu.show {
+            z-index: 4001;
+        }
     </style>
 @endsection
 
@@ -860,7 +866,7 @@
                                 <i class="fas fa-plus"></i>
                             </button>
                             <div class="btn-group" role="group">
-                                <button type="button" class="btn btn-sm btn-primary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                                <button type="button" id="exportImportDropdown" class="btn btn-sm btn-primary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
                                     <i class="fas fa-file-excel me-1"></i> Export / Import
                                 </button>
                                 <ul class="dropdown-menu">
@@ -1742,6 +1748,19 @@
                     handleExcelExport();
                 }
             });
+
+            // The Export/Import toolbar sits inside a horizontally-scrolling flex row
+            // (overflow-x: auto), which clips the absolutely-positioned dropdown menu.
+            // Render the menu with Popper's "fixed" strategy so it escapes the overflow
+            // container and layers above the sticky table header.
+            (function fixExportDropdownClipping() {
+                const exportToggle = document.getElementById('exportImportDropdown');
+                if (exportToggle && window.bootstrap && bootstrap.Dropdown) {
+                    bootstrap.Dropdown.getOrCreateInstance(exportToggle, {
+                        popperConfig: (defaultConfig) => ({ ...defaultConfig, strategy: 'fixed' })
+                    });
+                }
+            })();
 
             // Initialize all components
             initializeTable();
