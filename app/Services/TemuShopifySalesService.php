@@ -142,10 +142,11 @@ class TemuShopifySalesService
         $start = $yesterday->copy()->startOfDay();
         $end = $yesterday->copy()->endOfDay();
 
-        // Y Sales uses the FB-adjusted price (base + $2.99/unit freight) to match Temu's
-        // daily sales tile, which is freight-inclusive. (L7/L30 use base_sales to match
-        // Temu's "Base price sales" 7-/30-day tiles.)
-        return (float) self::computeMetricsFromOrders($start, $end)['sales'];
+        // Y Sales = yesterday's reported base-price sales, matching Temu Seller Central's
+        // "Base price sales" daily chart (e.g. Jul 12 = $1,814.97) and staying consistent
+        // with L7/L30/L60 + the tabulator, which all use base_sales. Using the FB-adjusted
+        // figure (base + $2.99/unit freight) here inflated Y Sales above what Temu reports.
+        return (float) self::computeMetricsFromOrders($start, $end)['base_sales'];
     }
 
     /** L7 Sales from temu_orders: seven wall-clock Pacific days ending yesterday. */
@@ -164,14 +165,15 @@ class TemuShopifySalesService
         return (float) self::computeMetricsFromOrders($start, $end)['base_sales'];
     }
 
-    /**
-     * Row shape for /temu-tabulator sourced from the temu_orders table (Temu API order-wise data).
-     * Same output fields as getDailyDataRows so the existing page/columns work unchanged.
-     * Unit price comes from temu_pricing (base_price); LP / Temu ship from product_master.
-     */
+   
     public static function getOrdersTableRows(Carbon $startDate, Carbon $endDate): array
     {
-        $orders = TemuOrder::whereBetween('parent_order_time', [$startDate, $endDate])
+        
+        $appTz = config('app.timezone');
+        $start = $startDate->copy()->setTimezone($appTz);
+        $end = $endDate->copy()->setTimezone($appTz);
+
+        $orders = TemuOrder::whereBetween('parent_order_time', [$start, $end])
             ->orderBy('parent_order_time', 'desc')
             ->orderBy('id', 'desc')
             ->get();
@@ -197,8 +199,18 @@ class TemuShopifySalesService
             [$lp, $temuShip] = self::lpAndTemuShip($productMasters, $sku);
             $parent = $pm ? ($pm->parent ?? '') : '';
 
-            $price = (float) ($priceBySku[$sku] ?? 0);
             $quantity = (int) ($o->quantity ?? 0);
+
+            // Prefer Temu's ACTUAL reported base amount (bg.order.amount.query, stored on
+            // temu_orders.order_base_amount) over catalog price × qty — the same principle
+            // as Amazon summing real per-order item price. order_base_amount is the line
+            // total for this sub-order, so per-unit = amount / qty. Fall back to temu_pricing
+            // when the amount hasn't been fetched yet, so nothing regresses.
+            $price = (float) ($priceBySku[$sku] ?? 0);
+            if ($o->order_base_amount !== null && $quantity > 0) {
+                $price = ((float) $o->order_base_amount) / $quantity;
+            }
+
             $fbPrice = self::computeFbPrice($price, $quantity);
             $pftDecimal = $fbPrice > 0 ? (($fbPrice * $margin) - $lp - $temuShip) / $fbPrice : 0;
             $pft = $pftDecimal * $fbPrice * $quantity;

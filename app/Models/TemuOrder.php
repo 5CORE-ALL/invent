@@ -30,6 +30,10 @@ class TemuOrder extends Model
         'quantity',
         'original_order_quantity',
         'canceled_quantity_before_shipment',
+        'order_base_amount',
+        'order_total_amount',
+        'amount_raw_json',
+        'amount_fetched_at',
         'order_status',
         'order_status_text',
         'fulfillment_type',
@@ -49,5 +53,8 @@ class TemuOrder extends Model
         'order_update_time' => 'datetime',
         'order_shipping_time' => 'datetime',
         'fetched_at' => 'datetime',
+        'amount_fetched_at' => 'datetime',
+        'order_base_amount' => 'decimal:2',
+        'order_total_amount' => 'decimal:2',
     ];
 }

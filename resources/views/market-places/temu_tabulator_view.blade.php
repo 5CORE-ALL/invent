@@ -110,7 +110,7 @@
                     <div class="d-flex flex-wrap gap-2">
                         <span class="badge fs-6 p-2" id="y-sales-badge"
                             style="background-color: #6f42c1; color: white; font-weight: bold;"
-                            title="Yesterday's Temu sales (freight-inclusive) — same source as the Temu row on /all-marketplace-master.">Y Sales: ${{ number_format((float) ($temuYSales ?? 0), 2) }}</span>
+                            title="Yesterday's Temu base-price sales — matches Temu Seller Central's 'Base price sales' daily chart and the Temu row on /all-marketplace-master.">Y Sales: ${{ number_format((float) ($temuYSales ?? 0), 2) }}</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-orders-badge" style="color: white; font-weight: bold;">Total Orders: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: white; font-weight: bold;">Total Quantity: 0</span>
                         <span class="badge bg-info fs-6 p-2" id="total-revenue-badge" style="color: white; font-weight: bold;">Total Revenue: $0.00</span>

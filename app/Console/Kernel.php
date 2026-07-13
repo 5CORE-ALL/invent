@@ -1009,12 +1009,7 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        /*
-        |--------------------------------------------------------------------------
-        | TEMU
-        |--------------------------------------------------------------------------]
-        */
-        // Fetch rolling 60-day order-wise raw data (powers /temu-tabulator)
+       
         $ist($schedule->command('app:fetch-temu-orders')
             ->dailyAt('14:15')
             ->timezone('Asia/Kolkata')
@@ -1031,7 +1026,6 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // Populate temu_sku_daily_data for chart history (Price, Views, CVR%, Temu L30)
         $ist($schedule->command('temu:collect-metrics')
             ->dailyAt('14:35')
             ->timezone('Asia/Kolkata')

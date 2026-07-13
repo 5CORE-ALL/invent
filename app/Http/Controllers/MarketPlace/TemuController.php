@@ -1780,9 +1780,13 @@ class TemuController extends Controller
     public function getDailyData(Request $request)
     {
         try {
-            // Source: temu_orders table (Temu API order-wise data), last 30 days.
-            $start = Carbon::now()->subDays(30)->startOfDay();
-            $end = Carbon::now()->endOfDay();
+            // Source: temu_orders table (Temu API order-wise data).
+            // Use the canonical Pacific-aligned 30 inclusive-day window (same as
+            // /all-marketplace-master L30) so /temu-tabulator "Total Revenue" matches
+            // Temu Seller Central's "30 days" base-price sales tile. The old
+            // Carbon::now()->subDays(30) window used the app tz (Asia/Kolkata) and spanned
+            // 31 inclusive days, inflating revenue above Temu's reported figure.
+            [$start, $end] = TemuShopifySalesService::channelMasterL30Window();
             $result = TemuShopifySalesService::getOrdersTableRows($start, $end);
 
             Log::info('Temu daily data fetched from temu_orders', [
@@ -3015,17 +3019,12 @@ class TemuController extends Controller
                 }
             }
             
-            // Fetch shopify data for inventory
             $shopifyData = ShopifySku::mapByProductSkus($skus);
 
-            // L30 = orders matched by SKU (contribution_sku normalized to ProductMaster).
-            // Temu 1 pulls from the temu_orders API table (same source as the tabulator); Temu 2 from temu2_daily_data.
-            // Normalized so "abc" on orders matches "ABC" on ProductMaster
             $normalizedPmSkus = collect($skus)->mapWithKeys(function ($sku) use ($normalizeSku) {
                 return [$normalizeSku($sku) => $sku];
             })->all();
             $l30ByNormalizedSku = array_fill_keys(array_keys($normalizedPmSkus), 0);
-            // Fallback: match by SKU with all spaces removed (e.g. "SKU123" in orders matches "SKU 123" in PM)
             $noSpaceToNormalized = [];
             foreach (array_keys($normalizedPmSkus) as $nk) {
                 $noSpace = str_replace(' ', '', $nk);
@@ -3033,8 +3032,7 @@ class TemuController extends Controller
                     $noSpaceToNormalized[$noSpace] = $nk;
                 }
             }
-            // Temu 1 sources order data from the temu_orders API table (same as /temu-tabulator
-            // and the Channel Master sales badges); Temu 2 keeps using its uploaded temu2_daily_data tables.
+            
             if ($isTemu2Pricing) {
                 $hasL7Rows = $isL7Period
                     && Schema::hasTable('temu2_daily_data_l7')
@@ -3049,9 +3047,14 @@ class TemuController extends Controller
                 $orderRows = $orderRowsQuery->get();
             } else {
                 $hasL7Rows = $isL7Period;
-                [$apiStart, $apiEnd] = $isL7Period
-                    ? [Carbon::now()->subDays(7)->startOfDay(), Carbon::now()->endOfDay()]
-                    : [Carbon::now()->subDays(30)->startOfDay(), Carbon::now()->endOfDay()];
+               
+                if ($isL7Period) {
+                    $todayPst = Carbon::now(TemuShopifySalesService::PST);
+                    $apiStart = $todayPst->copy()->subDays(6)->startOfDay();
+                    $apiEnd = $todayPst->copy()->endOfDay();
+                } else {
+                    [$apiStart, $apiEnd] = TemuShopifySalesService::channelMasterL30Window();
+                }
                 $orderRows = collect(TemuShopifySalesService::getOrdersTableRows($apiStart, $apiEnd))
                     ->map(fn ($r) => (object) $r);
             }
@@ -3102,7 +3105,6 @@ class TemuController extends Controller
                 }
             }
 
-            // Sales summary from same order data as tabulator (Total Orders, Total Quantity, Total Revenue)
             $normalizedPmSet = collect($skus)->mapWithKeys(function ($s) use ($normalizeSku) {
                 return [$normalizeSku($s) => true];
             })->all();
@@ -3139,11 +3141,18 @@ class TemuController extends Controller
                 $qty = (int)($row->quantity_purchased ?? 0);
                 $base = (float)($row->base_price_total ?? 0);
                 $salesTotalQuantity += $qty;
-                
-                // FB Prc: +$2.99 when per-unit base price ≤ $26.99
-                // (matches /temu-decrease, /temu-tabulator, and UpdateMarketplaceDailyMetrics).
-                $fbPrice = $base <= 26.99 ? $base + 2.99 : $base;
-                $salesTotalRevenue += $fbPrice * $qty;
+
+                if ($isTemu2Pricing) {
+                    // Temu 2 revenue mirrors the Temu 2 tabulator: freight-inclusive FB Prc
+                    // (+$2.99/unit when per-unit base price ≤ $26.99).
+                    $fbPrice = $base <= 26.99 ? $base + 2.99 : $base;
+                    $salesTotalRevenue += $fbPrice * $qty;
+                } else {
+                    // Temu 1 revenue mirrors the Temu 1 tabulator + Temu Seller Central's
+                    // "Base price sales" tile: base price × qty (no FB freight uplift). Using
+                    // fbPrice here inflated /temu-decrease sales above /temu-tabulator.
+                    $salesTotalRevenue += $base * $qty;
+                }
             }
             $salesSummary = [
                 'total_orders' => $salesTotalOrders,
