@@ -1209,14 +1209,19 @@ class SheinController extends Controller
             $rows = $this->insertSheinParentRows($rows);
             $rows = $this->sanitizeUtf8Recursive($rows);
 
-            $this->saveSheinPricingSnapshot($rows);
+            $salesPage = SheinShopifySalesService::computeSalesPageTotals();
+            $this->saveSheinPricingSnapshot($rows, $salesPage);
 
             $jsonFlags = JSON_INVALID_UTF8_SUBSTITUTE;
             if (defined('JSON_UNESCAPED_UNICODE')) {
                 $jsonFlags |= JSON_UNESCAPED_UNICODE;
             }
 
-            return response()->json($rows, 200, [], $jsonFlags);
+            // Wrap rows + sales-page totals so pricing badges match /shein-tabulator
+            return response()->json([
+                'data' => $rows,
+                'sales_page' => $salesPage,
+            ], 200, [], $jsonFlags);
         } catch (\Exception $e) {
             Log::error('Shein pricing data error: ' . $e->getMessage());
             $msg = $this->sanitizeUtf8String($e->getMessage());
@@ -1358,10 +1363,13 @@ class SheinController extends Controller
     }
 
     /**
-     * Persist daily summary for badge charts — formulas must match
-     * shein_pricing_view updateSummary() so today's chart point equals the badges.
+     * Persist daily summary for badge charts.
+     * Sales / GPFT / GROI use /shein-tabulator sales_page totals; other counts use pricing rows.
+     *
+     * @param  array<int, array<string, mixed>>  $rows
+     * @param  array<string, mixed>  $salesPage
      */
-    private function saveSheinPricingSnapshot(array $rows): void
+    private function saveSheinPricingSnapshot(array $rows, array $salesPage = []): void
     {
         try {
             $today = now()->toDateString();
@@ -1370,17 +1378,11 @@ class SheinController extends Controller
                 return;
             }
 
-            $totalSales = 0.0;
-            $totalPft = 0.0;
             $totalAl30 = 0.0;
             $zeroSold = 0;
             $moreSold = 0;
             $dilSum = 0.0;
             $dilCount = 0;
-            $gpftSum = 0.0;
-            $gpftCount = 0;
-            $roiSum = 0.0;
-            $roiCount = 0;
             $badgeTotals = self::countSheinPricingBadgeTotals($children);
             $missingCount = $badgeTotals['miss'];
             $mapCount = $badgeTotals['map'];
@@ -1388,16 +1390,8 @@ class SheinController extends Controller
 
             foreach ($children as $row) {
                 $inv = (float) ($row['inv'] ?? 0);
-                $nrValue = strtoupper(trim((string) (($row['nr_req'] ?? '') ?: ($row['NR'] ?? ''))));
-                $isMissingShein = (bool) ($row['is_missing_shein'] ?? false)
-                    || strtoupper(trim((string) ($row['missing'] ?? ''))) === 'M';
-                $rowPrice = (float) ($row['special_offer'] ?? 0);
-                // Missing L — same as sheinRowIsMissingL
-                $isMissingL = $inv > 0 && $nrValue === 'REQ' && ($isMissingShein || $rowPrice <= 0);
-
                 $al30 = (float) ($row['al30'] ?? 0);
                 $ovL30 = (float) ($row['ov_l30'] ?? 0);
-                $profit = (float) ($row['profit'] ?? 0);
 
                 $totalAl30 += $al30;
                 if ($al30 === 0.0) {
@@ -1409,36 +1403,24 @@ class SheinController extends Controller
                     $dilSum += ($ovL30 / $inv) * 100;
                     $dilCount++;
                 }
+            }
 
-                if (! $isMissingL) {
-                    // Same as AliExpress pricing badges / shein_pricing updateSummary
-                    $totalSales += (float) ($row['sales'] ?? 0);
-                    $totalPft += $al30 * $profit;
-
-                    if (isset($row['gpft']) && is_numeric($row['gpft'])) {
-                        $gpftSum += (float) $row['gpft'];
-                        $gpftCount++;
-                    }
-                    if (isset($row['groi']) && is_numeric($row['groi'])) {
-                        $roiSum += (float) $row['groi'];
-                        $roiCount++;
-                    }
-                }
+            if ($salesPage === []) {
+                $salesPage = SheinShopifySalesService::computeSalesPageTotals();
             }
 
             $totalSku = $children->count();
-            $avgGpft = $gpftCount > 0 ? $gpftSum / $gpftCount : 0.0;
-            $avgRoi = $roiCount > 0 ? $roiSum / $roiCount : 0.0;
             $avgDil = $dilCount > 0 ? $dilSum / $dilCount : 0.0;
 
             $summaryData = [
                 'total_sku' => $totalSku,
-                'total_sales' => round($totalSales, 2),
-                'total_pft' => round($totalPft, 2),
-                'total_al30' => round($totalAl30, 2),
-                'avg_gpft' => round($avgGpft, 2),
+                'total_sales' => round((float) ($salesPage['total_sales'] ?? 0), 2),
+                'total_pft' => round((float) ($salesPage['total_pft'] ?? 0), 2),
+                'total_cogs' => round((float) ($salesPage['total_cogs'] ?? 0), 2),
+                'total_al30' => (int) ($salesPage['total_quantity'] ?? round($totalAl30)),
+                'avg_gpft' => round((float) ($salesPage['pft_percentage'] ?? 0), 2),
                 'avg_dil' => round($avgDil, 2),
-                'avg_roi' => round($avgRoi, 2),
+                'avg_roi' => round((float) ($salesPage['roi_percentage'] ?? 0), 2),
                 'missing_count' => $missingCount,
                 'map_count' => $mapCount,
                 'nmap_count' => $nmapCount,
@@ -1449,7 +1431,7 @@ class SheinController extends Controller
 
             AmazonChannelSummary::updateOrCreate(
                 ['channel' => 'shein', 'snapshot_date' => $today],
-                ['summary_data' => $summaryData, 'notes' => 'Auto-saved Shein pricing snapshot']
+                ['summary_data' => $summaryData, 'notes' => 'Auto-saved Shein pricing snapshot (sales-page Sales/GPFT/GROI)']
             );
         } catch (\Exception $e) {
             Log::error('Shein daily snapshot save failed: '.$e->getMessage());

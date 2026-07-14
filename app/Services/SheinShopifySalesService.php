@@ -180,6 +180,29 @@ class SheinShopifySalesService
     }
 
     /**
+     * Sales / PFT% / ROI% totals for /shein-tabulator badges
+     * (uploaded shein_daily_data, product_price × qty).
+     *
+     * @return array{total_orders: int, total_quantity: int, total_sales: float, total_cogs: float, total_pft: float, pft_percentage: float, roi_percentage: float, avg_price: float, total_commission: float}
+     */
+    public static function computeSalesPageTotals(): array
+    {
+        $summary = self::computeChannelSummary();
+
+        return [
+            'total_orders' => (int) ($summary['total_orders'] ?? 0),
+            'total_quantity' => (int) ($summary['total_quantity'] ?? 0),
+            'total_sales' => round((float) ($summary['total_sales'] ?? 0), 2),
+            'total_cogs' => round((float) ($summary['total_cogs'] ?? 0), 2),
+            'total_pft' => round((float) ($summary['total_pft'] ?? 0), 2),
+            'pft_percentage' => round((float) ($summary['pft_percentage'] ?? 0), 1),
+            'roi_percentage' => round((float) ($summary['roi_percentage'] ?? 0), 1),
+            'avg_price' => round((float) ($summary['avg_price'] ?? 0), 2),
+            'total_commission' => round((float) ($summary['total_commission'] ?? 0), 2),
+        ];
+    }
+
+    /**
      * @param  iterable<int, object|array>  $rows
      * @return array{total_orders: int, total_quantity: int, total_sales: float, total_cogs: float, total_pft: float, pft_percentage: float, roi_percentage: float, avg_price: float, total_commission: float}
      */

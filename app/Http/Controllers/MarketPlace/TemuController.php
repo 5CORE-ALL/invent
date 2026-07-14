@@ -3173,9 +3173,20 @@ class TemuController extends Controller
                 // Reuse the same temu_orders window already loaded for the L30/L7 table rows.
                 $salesOrderRows = $orderRows;
             }
+            // ProductMaster lookups for order-level GPFT/GROI (Temu 2 matches /temu2-tabulator).
+            $pmBySku = $productMasters->keyBy('sku');
+            $pmByNormalized = $productMasters->keyBy(function ($pm) use ($normalizeSku) {
+                return $normalizeSku($pm->sku ?? '');
+            });
+            $pmByNoSpace = $productMasters->keyBy(function ($pm) use ($normalizeSku) {
+                return str_replace(' ', '', $normalizeSku($pm->sku ?? ''));
+            });
+
             $salesTotalOrders = 0;
             $salesTotalQuantity = 0;
             $salesTotalRevenue = 0.0;
+            $salesTotalPft = 0.0;
+            $salesTotalCogs = 0.0;
             foreach ($salesOrderRows as $row) {
                 $rawSku = trim((string) ($row->contribution_sku ?? ''));
                 $orderId = trim((string) ($row->order_id ?? ''));
@@ -3198,10 +3209,45 @@ class TemuController extends Controller
                 $salesTotalQuantity += $qty;
 
                 if ($isTemu2Pricing) {
-                    // Temu 2 revenue mirrors the Temu 2 tabulator: freight-inclusive FB Prc
-                    // (+$2.99/unit when per-unit base price ≤ $26.99).
+                    // Temu 2 revenue / GPFT / GROI mirror /temu2-tabulator:
+                    // FB Prc (+$2.99 when base ≤ $26.99), order price × qty, PM LP & temu_ship.
                     $fbPrice = $base <= 26.99 ? $base + 2.99 : $base;
                     $salesTotalRevenue += $fbPrice * $qty;
+
+                    if ($qty > 0 && $base > 0) {
+                        $pm = $pmBySku[$rawSku]
+                            ?? $pmByNormalized[$normalizedRowSku]
+                            ?? $pmByNoSpace[$normalizedRowSkuNoSpace]
+                            ?? null;
+                        $orderLp = 0.0;
+                        $orderTemuShip = 0.0;
+                        if ($pm) {
+                            $values = is_array($pm->Values) ? $pm->Values :
+                                (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                            if (!is_array($values)) {
+                                $values = [];
+                            }
+                            foreach ($values as $k => $v) {
+                                if (strtolower((string) $k) === 'lp') {
+                                    $orderLp = (float) $v;
+                                    break;
+                                }
+                            }
+                            if ($orderLp === 0.0 && isset($pm->lp)) {
+                                $orderLp = (float) $pm->lp;
+                            }
+                            if (isset($values['temu_ship'])) {
+                                $orderTemuShip = (float) $values['temu_ship'];
+                            } elseif (isset($pm->temu_ship)) {
+                                $orderTemuShip = (float) $pm->temu_ship;
+                            }
+                        }
+                        $pftDecimal = $fbPrice > 0
+                            ? ($fbPrice * $percentage - $orderLp - $orderTemuShip) / $fbPrice
+                            : 0.0;
+                        $salesTotalPft += $pftDecimal * $fbPrice * $qty;
+                        $salesTotalCogs += $orderLp * $qty;
+                    }
                 } else {
                     // Temu 1 revenue mirrors the Temu 1 tabulator + Temu Seller Central's
                     // "Base price sales" tile: base price × qty (no FB freight uplift). Using
@@ -3209,10 +3255,16 @@ class TemuController extends Controller
                     $salesTotalRevenue += $base * $qty;
                 }
             }
+            $salesGpftPercent = $salesTotalRevenue > 0 ? ($salesTotalPft / $salesTotalRevenue) * 100 : 0.0;
+            $salesGroiPercent = $salesTotalCogs > 0 ? ($salesTotalPft / $salesTotalCogs) * 100 : 0.0;
             $salesSummary = [
                 'total_orders' => $salesTotalOrders,
                 'total_quantity' => $salesTotalQuantity,
                 'total_revenue' => round($salesTotalRevenue, 2),
+                'total_pft' => round($salesTotalPft, 2),
+                'total_cogs' => round($salesTotalCogs, 2),
+                'gpft_percent' => round($salesGpftPercent, 1),
+                'groi_percent' => round($salesGroiPercent, 1),
             ];
 
             // Fetch all view data (no date filter). Each marketplace has its own

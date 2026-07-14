@@ -342,10 +342,10 @@
                         <div class="shein-summary-badge-row">
                             <span class="badge bg-danger fs-6 p-2" id="ae-zero-sold-badge" style="font-weight:700;cursor:pointer;" title="Click to filter 0 sold items">0 Sold: 0</span>
                             <span class="badge fs-6 p-2" id="ae-more-sold-badge" style="font-weight:700;cursor:pointer;background:#b6e0fe;color:#0f172a;" title="Click to filter sold items">&gt; 0 Sold: 0</span>
-                            <span class="badge bg-primary fs-6 p-2" id="ae-total-sales-badge" style="font-weight:700;color:#111;" title="L30 sales from Shein pricing rows (excludes Missing L)">Sales: $0</span>
-                            <span class="badge bg-warning fs-6 p-2" id="ae-total-al30-badge" style="font-weight:700;color:#111;" title="Sum of Sh L30 qty across child SKUs">Qty: 0</span>
-                            <span class="badge bg-info fs-6 p-2" id="ae-avg-gpft-badge" style="font-weight:700;color:#111;" title="Average of row GPFT% (same as AliExpress pricing)">GPFT: 0%</span>
-                            <span class="badge bg-secondary fs-6 p-2" id="ae-avg-roi-badge" style="font-weight:700;color:#fff;" title="Average of row GROI% (same as AliExpress pricing)">GROI: 0%</span>
+                            <span class="badge bg-primary fs-6 p-2" id="ae-total-sales-badge" style="font-weight:700;color:#111;" title="Same as /shein-tabulator: Σ (product_price × qty) from uploaded orders">Sales: $0</span>
+                            <span class="badge bg-warning fs-6 p-2" id="ae-total-al30-badge" style="font-weight:700;color:#111;" title="Same as /shein-tabulator Total Quantity">Qty: 0</span>
+                            <span class="badge bg-info fs-6 p-2" id="ae-avg-gpft-badge" style="font-weight:700;color:#111;" title="Same as /shein-tabulator PFT%: Σ PFT / Σ Sales (sold product_price)">GPFT: 0%</span>
+                            <span class="badge bg-secondary fs-6 p-2" id="ae-avg-roi-badge" style="font-weight:700;color:#fff;" title="Same as /shein-tabulator ROI%: Σ PFT / Σ (LP × qty)">GROI: 0%</span>
                             <span class="badge bg-success fs-6 p-2 d-none" id="ae-total-pft-badge" style="font-weight:700;color:#111;" aria-hidden="true">PFT: $0</span>
                             <span class="badge bg-secondary fs-6 p-2" id="ae-total-sku-badge" style="font-weight:700;">SKU: 0</span>
                             <span class="badge bg-danger fs-6 p-2" id="ae-missing-badge" style="font-weight:700;cursor:pointer;" title="Click to filter Missing L">M L: 0</span>
@@ -547,6 +547,8 @@
     <script>
         let table = null;
         let summaryDataCache = [];
+        // Sales / GPFT / GROI from /shein-tabulator upload (product_price × qty) — not special_offer
+        let salesPageTotals = null;
 
         // Badge-click filter flags (identical to TikTok pattern)
         let aeMissingActive  = false;
@@ -984,9 +986,6 @@
             }
             if (!rows.length) return;
 
-            let totalSales = 0, totalPft = 0, totalAl30 = 0;
-            let gpftSum = 0, gpftCount = 0;
-            let roiSum = 0, roiCount = 0;
             let missingCount = 0, mapCount = 0, nmapCount = 0;
             let zeroSold = 0, moreSold = 0;
             let dilSum = 0, dilCount = 0;
@@ -1000,19 +999,6 @@
                 const ovL30  = parseFloat(row.ov_l30) || 0;
                 const isMissingL = sheinRowIsMissingL(row);
 
-                if (!isMissingL) {
-                    // Same as AliExpress pricing badges: sum sales/profit, average row GPFT/GROI
-                    totalSales += parseFloat(row.sales) || 0;
-                    totalPft   += al30 * (parseFloat(row.profit) || 0);
-
-                    const gpft = parseFloat(row.gpft);
-                    if (Number.isFinite(gpft)) { gpftSum += gpft; gpftCount++; }
-
-                    const groi = parseFloat(row.groi);
-                    if (Number.isFinite(groi)) { roiSum += groi; roiCount++; }
-                }
-
-                totalAl30 += al30;
                 if (al30 === 0) zeroSold++; else moreSold++;
                 if (inv > 0) { dilSum += (ovL30 / inv) * 100; dilCount++; }
 
@@ -1025,15 +1011,21 @@
                 }
             });
 
-            const avgGpft = gpftCount > 0 ? gpftSum / gpftCount : 0;
-            const avgRoi  = roiCount  > 0 ? roiSum  / roiCount  : 0;
-            const avgDil  = dilCount   > 0   ? dilSum / dilCount             : 0;
+            // Sales / Qty / GPFT / GROI — identical to /shein-tabulator (uploaded order product_price)
+            const sp = salesPageTotals || {};
+            const totalSales = parseFloat(sp.total_sales) || 0;
+            const totalPft   = parseFloat(sp.total_pft) || 0;
+            const totalQty   = parseInt(sp.total_quantity, 10) || 0;
+            const avgGpft    = parseFloat(sp.pft_percentage);
+            const avgRoi     = parseFloat(sp.roi_percentage);
+            const hasSalesTotals = salesPageTotals != null;
+            const avgDil  = dilCount > 0 ? dilSum / dilCount : 0;
 
             $('#ae-total-sku-badge').text(`SKU: ${childCount.toLocaleString()}`);
-            $('#ae-total-sales-badge').text(totalSales > 0 ? `Sales: $${Math.round(totalSales).toLocaleString()}` : 'Sales: –');
-            $('#ae-total-pft-badge').text(totalPft !== 0 || totalSales > 0 ? `PFT: $${Math.round(totalPft).toLocaleString()}` : 'PFT: –');
-            $('#ae-total-al30-badge').text(`Qty: ${totalAl30.toLocaleString()}`);
-            $('#ae-avg-gpft-badge').text(gpftCount  > 0 ? `GPFT: ${Math.round(avgGpft)}%`  : 'GPFT: –');
+            $('#ae-total-sales-badge').text(hasSalesTotals && totalSales > 0 ? `Sales: $${Math.round(totalSales).toLocaleString()}` : (hasSalesTotals ? 'Sales: $0' : 'Sales: –'));
+            $('#ae-total-pft-badge').text(hasSalesTotals ? `PFT: $${Math.round(totalPft).toLocaleString()}` : 'PFT: –');
+            $('#ae-total-al30-badge').text(hasSalesTotals ? `Qty: ${totalQty.toLocaleString()}` : 'Qty: –');
+            $('#ae-avg-gpft-badge').text(hasSalesTotals && Number.isFinite(avgGpft) ? `GPFT: ${Math.round(avgGpft)}%` : 'GPFT: –');
             $('#ae-missing-badge').text(`M L: ${missingCount.toLocaleString()}`);
             $('#ae-map-badge').text(`Map: ${mapCount.toLocaleString()}`);
             $('#ae-nmap-badge').text(`N Map: ${nmapCount.toLocaleString()}`);
@@ -1041,7 +1033,7 @@
             $('#ae-more-sold-badge').text(`> 0 Sold: ${moreSold.toLocaleString()}`);
             $('#ae-avg-dil-badge').text(dilCount > 0 ? `DIL%: ${avgDil.toFixed(1)}%` : 'DIL%: –');
             if ($('#ae-avg-roi-badge').length) {
-                $('#ae-avg-roi-badge').text(roiCount > 0 ? `GROI: ${Math.round(avgRoi)}%` : 'GROI: –');
+                $('#ae-avg-roi-badge').text(hasSalesTotals && Number.isFinite(avgRoi) ? `GROI: ${Math.round(avgRoi)}%` : 'GROI: –');
             }
         }
 
@@ -1245,9 +1237,18 @@
             table = new Tabulator("#shein-pricing-table", {
                 ajaxURL: "/shein/pricing-data",
                 ajaxResponse: function(url, params, response) {
+                    // New shape: { data: rows[], sales_page: {...} } — same Sales/GPFT/GROI as /shein-tabulator
+                    let rows = response;
+                    if (response && !Array.isArray(response) && Array.isArray(response.data)) {
+                        salesPageTotals = response.sales_page || null;
+                        rows = response.data;
+                    } else if (Array.isArray(response)) {
+                        salesPageTotals = null;
+                        rows = response;
+                    }
                     // Hide parent rows — drop them from the dataset entirely
-                    const rows = Array.isArray(response) ?
-                        response.filter(r => !(r && r.is_parent === true)) : response;
+                    rows = Array.isArray(rows) ?
+                        rows.filter(r => !(r && r.is_parent === true)) : rows;
                     summaryDataCache = normalizeRows(rows);
                     updateSummary(summaryDataCache);
                     setTimeout(aeApplyBadgeFilterFromUrl, 0);
