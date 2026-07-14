@@ -108,6 +108,7 @@
         .faas-stat-badge--sales { background: #16a34a; }   /* green   */
         .faas-stat-badge--sold  { background: #8b5cf6; }   /* purple  */
         .faas-stat-badge--acos  { background: #ea580c; }   /* orange  */
+        .faas-stat-badge--tcos  { background: #7c3aed; }   /* violet — matches /advertisement-master */
         .faas-stat-badge--ctr   { background: #0891b2; }   /* cyan    */
         .faas-stat-badge--cvr   { background: #db2777; }   /* pink    */
 
@@ -181,6 +182,12 @@
                         <span id="faasAcosBadge" data-metric="acos" data-label="ACOS"
                               class="faas-stat-badge faas-stat-badge--acos badge-chart-link"
                               title="Click for 32-day trend">Acos:<span id="faasAcosValue">0%</span></span>
+                        @if (($chFilter ?? null) === 'FB')
+                        {{-- TCOS = same Ads%/TACOS as /all-marketplace-master FB Marketplace:
+                             Facebook Ad Spend / Shopify S Sales × 100 --}}
+                        <span id="faasTcosBadge" class="faas-stat-badge faas-stat-badge--tcos"
+                              title="TCOS = Facebook Ad Spend / Shopify S Sales × 100 (same as /all-marketplace-master Ads%)">TCOS:<span id="faasTcosValue">0%</span></span>
+                        @endif
                         <span id="faasCtrBadge" data-metric="ctr" data-label="CTR"
                               class="faas-stat-badge faas-stat-badge--ctr badge-chart-link"
                               title="Click for 32-day trend">CTR:<span id="faasCtrValue">0%</span></span>
@@ -778,6 +785,10 @@
         // Channel lens ('FB' | 'Insta' | null) — sent to the data feed as
         // ?ch=… so the server filters rows by the CH column.
         const CH_FILTER = @json($chFilter);
+        // TCOS = same Ads% as /all-marketplace-master (Spend / Shopify S Sales).
+        let faasMasterTcosPercent = null;
+        let faasShopifyNetSales = 0;
+        let faasFacebookAdSpend = 0;
         // Dropdown choices on this page. On Video/Carousal pages this is a
         // restricted subset so users can't pick a value that would make the
         // row disappear from the page they're currently looking at.
@@ -1112,6 +1123,10 @@
                         return;
                     }
                     updateBatchPill(resp.batch);
+                    faasMasterTcosPercent = (resp.tcos_percent != null && resp.tcos_percent !== undefined)
+                        ? Number(resp.tcos_percent) : null;
+                    faasShopifyNetSales = Number(resp.shopify_net_sales || 0);
+                    faasFacebookAdSpend = Number(resp.facebook_ad_spend || 0);
 
                     // Weighted CTR/CVR averages for the whole dataset — computed once
                     // per load so the cell flag colours are stable while filtering.
@@ -1524,6 +1539,8 @@
             if (activeEl) activeEl.textContent = activeCount.toLocaleString();
             // Match column formatters: Spend & Sales are whole-dollar
             // amounts (controller already rounds them). Sold is a count.
+            // Spend follows the visible row set (default Status=active) —
+            // /all-marketplace-master FB Marketplace uses the same active total.
             imprEl.textContent  = imprSum.toLocaleString();
             clkEl.textContent   = clkSum.toLocaleString();
             spendEl.textContent = '$' + Math.round(spendSum).toLocaleString();
@@ -1534,6 +1551,26 @@
             acosEl.textContent  = divPct(spendSum, salesSum, 0);
             ctrEl.textContent   = divPct(clkSum,   imprSum,  1);
             cvrEl.textContent   = divPct(soldSum,  clkSum,   1);
+
+            // TCOS — same as /all-marketplace-master FB Marketplace Ads%/TACOS %
+            // (Facebook Ad Spend / Shopify S Sales × 100).
+            const tcosEl = document.getElementById('faasTcosValue');
+            if (tcosEl && CH_FILTER === 'FB') {
+                const tcos = (faasMasterTcosPercent != null && isFinite(faasMasterTcosPercent))
+                    ? faasMasterTcosPercent
+                    : (faasShopifyNetSales > 0
+                        ? (faasFacebookAdSpend / faasShopifyNetSales) * 100
+                        : (faasFacebookAdSpend > 0 ? 100 : 0));
+                // 1 decimal — matches master Ads% display (e.g. 33.3%)
+                tcosEl.textContent = (Math.round(tcos * 10) / 10) + '%';
+                const tcosBadge = document.getElementById('faasTcosBadge');
+                if (tcosBadge) {
+                    tcosBadge.title = 'TCOS = Ad Spend $'
+                        + Math.round(faasFacebookAdSpend).toLocaleString()
+                        + ' / Shopify S Sales $' + Math.round(faasShopifyNetSales).toLocaleString()
+                        + ' = ' + (Math.round(tcos * 10) / 10) + '% (same as /all-marketplace-master Ads%)';
+                }
+            }
 
             // Keep the numeric average ACOS (matches the badge: ΣSPEND/ΣSALES,
             // 0 when there are no sales) in sync and repaint the Action column

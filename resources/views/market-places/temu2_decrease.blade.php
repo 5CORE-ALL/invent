@@ -14,6 +14,19 @@
             padding-left: 0.5rem !important;
             background-position: right 0.35rem center !important;
         }
+        /* Compact SPRICE / LMP filter cluster — size to short labels, not longest option */
+        #ebay-filter-bar #sprice-filter,
+        #ebay-filter-bar #sprice-lmp-filter,
+        #ebay-filter-bar #prc-lmp-filter,
+        #ebay-filter-bar #lmp-filter {
+            width: 5.75rem !important;
+            max-width: 5.75rem !important;
+            min-width: 0 !important;
+        }
+        #ebay-filter-bar #sprice-lmp-filter {
+            width: 6.25rem !important;
+            max-width: 6.25rem !important;
+        }
         #ebay-filter-bar { gap: 8px 10px !important; }
         #summary-stats {
             order: -1;
@@ -252,30 +265,31 @@
                     </select>
 
                     <select id="sprice-filter" class="form-select form-select-sm pricing-filter-item"
-                        style="width: auto; display: inline-block;">
+                        style="display: inline-block;"
+                        title="SPRICE: Blank shows only rows with empty SPRICE">
                         <option value="all">SPRICE</option>
-                        <option value="blank">Blank SPRICE only</option>
+                        <option value="blank">Blank</option>
                     </select>
 
                     <select id="sprice-lmp-filter" class="form-select form-select-sm pricing-filter-item"
-                        style="width: auto; display: inline-block;"
-                        title="Sprice/LMP: Red shows only rows where SPRICE is above LMP">
-                        <option value="all">Sprice/LMP</option>
-                        <option value="red">Red (SPRICE &gt; LMP)</option>
+                        style="display: inline-block;"
+                        title="Sprice/LMP: Red = SPRICE &gt; LMP">
+                        <option value="all">S/LMP</option>
+                        <option value="red">Red</option>
                     </select>
 
                     <select id="prc-lmp-filter" class="form-select form-select-sm pricing-filter-item"
-                        style="width: auto; display: inline-block;"
-                        title="Prc/LMP: Red shows only rows where Temu Price is above LMP">
-                        <option value="all">Prc/LMP</option>
-                        <option value="red">Red (Price &gt; LMP)</option>
+                        style="display: inline-block;"
+                        title="Prc/LMP: Red = Temu Price &gt; LMP">
+                        <option value="all">P/LMP</option>
+                        <option value="red">Red</option>
                     </select>
 
                     <select id="lmp-filter" class="form-select form-select-sm pricing-filter-item"
-                        style="width: auto; display: inline-block;"
-                        title="LMP: Red shows only rows that have no LMP value">
+                        style="display: inline-block;"
+                        title="LMP: Red = no LMP value">
                         <option value="all">LMP</option>
-                        <option value="red">Red (No LMP)</option>
+                        <option value="red">Red</option>
                     </select>
 
                     <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light pricing-filter-item"
@@ -361,19 +375,6 @@
                             </li>
                         </ul>
                     </div>
-                    <a href="{{ route('temu2.tabulator') }}" class="btn btn-sm btn-outline-primary pricing-filter-item" title="View Temu 2 order-level sales">
-                        <i class="fa fa-list-alt"></i> Order Data
-                    </a>
-                    <div class="d-inline-flex align-items-center gap-1 flex-shrink-0 border rounded px-2 py-1 bg-light pricing-filter-item" title="L30 / L7 period">
-                        <label for="campaign-period-select" class="mb-0 small fw-semibold text-nowrap text-dark">Period</label>
-                        <select id="campaign-period-select" class="form-select form-select-sm" style="min-width: 72px;">
-                            <option value="L30" selected>L30</option>
-                            <option value="L7">L7</option>
-                        </select>
-                    </div>
-                    <a href="{{ route('temu.lmp') }}" class="btn btn-sm btn-outline-secondary pricing-filter-item" title="Temu LMP">
-                        <i class="fa fa-link"></i> Temu LMP
-                    </a>
                     <div class="dropdown pricing-filter-item">
                         <button type="button" class="btn btn-sm btn-success" id="upload-actions-btn"
                             data-bs-toggle="dropdown" aria-expanded="false" title="Upload">
@@ -428,12 +429,6 @@
                         <span class="badge fs-6 p-2 d-none" id="ads-percent-badge"
                             style="background-color: #d63384; color: white; font-weight: bold;"
                             title="Ads% = Ad Spend / Sales × 100">Ads: 0%</span>
-                        <span class="badge fs-6 p-2" id="npft-percent-badge"
-                            style="background-color: #0f766e; color: white; font-weight: bold;"
-                            title="NPFT% = GPFT% − Ads%">NPFT: 0%</span>
-                        <span class="badge fs-6 p-2" id="nroi-percent-badge"
-                            style="background-color: #6f42c1; color: white; font-weight: bold;"
-                            title="NROI% = GROI% − Ads%">NROI: 0%</span>
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge"
                             style="color: black; font-weight: bold;">Prc: $0.00</span>
                         <span class="badge bg-danger fs-6 p-2 temu-badge-history" id="avg-cvr-badge"
@@ -443,9 +438,6 @@
                         <span class="badge bg-info fs-6 p-2 temu-badge-history" id="total-views-badge"
                             data-badge-metric="total_views" data-badge-label="Views"
                             style="color: black; font-weight: bold; cursor: pointer;">Views: 0</span>
-                        <span class="badge fs-6 p-2" id="avg-l7-views-badge"
-                            style="background-color: #0dcaf0; color: black; font-weight: bold;"
-                            title="Avg L7 views across rows with INV &gt; 0">L7: 0</span>
                         <span class="badge bg-secondary fs-6 p-2" id="missing-l-count-badge"
                             style="color: white; font-weight: bold; cursor: pointer;"
                             title="Click to filter Missing L (INV&gt;0, not listed, REQ)">M L: 0</span>
@@ -2628,8 +2620,6 @@
             let totalSpendL30 = 0;
             let totalViews = 0;
             let totalTemuL30 = 0;
-            let totalL7Views = 0;
-            let l7Count = 0;
             let zeroSoldCount = 0;
             let moreSoldCount = 0;
             let missingCount = 0;
@@ -2669,11 +2659,6 @@
                 totalSpendL30 += parseFloat(row.spend_l30 || 0);
                 totalViews += parseInt(row.product_clicks, 10) || 0;
                 totalTemuL30 += temuL30;
-
-                if (inventory > 0) {
-                    totalL7Views += parseInt(row.product_clicks_l7, 10) || 0;
-                    l7Count++;
-                }
 
                 const missing = row.missing;
                 const temuStock = parseFloat(row.temu_stock) || 0;
@@ -2729,12 +2714,9 @@
             const adsPercentForNpft = (badgeAvgAds != null && badgeAvgAds !== undefined)
                 ? badgeAvgAds
                 : computedAggregateAdsPercent;
-            const avgNpft = avgGprft - adsPercentForNpft;
-            const avgNroi = avgGroi - adsPercentForNpft;
             const cvrTotalViews = totalViews;
             const cvrTotalSold = totalTemuL30;
             const qtyPerViews = cvrTotalViews > 0 ? (cvrTotalSold / cvrTotalViews) * 100 : 0;
-            const avgL7Views = l7Count > 0 ? totalL7Views / l7Count : 0;
 
             $('#rows-count-badge').text('Rows: ' + rowsCount.toLocaleString());
             $('#zero-sold-count-badge').text('0 Sold: ' + zeroSoldCount.toLocaleString());
@@ -2744,12 +2726,9 @@
             $('#avg-gpft-badge').text('GPFT: ' + avgGprft.toFixed(1) + '%');
             $('#groi-percent-badge').text('GROI: ' + avgGroi.toFixed(1) + '%');
             $('#ads-percent-badge').text('Ads: ' + (Number(adsPercentForNpft) || 0).toFixed(1) + '%');
-            $('#npft-percent-badge').text('NPFT: ' + avgNpft.toFixed(1) + '%');
-            $('#nroi-percent-badge').text('NROI: ' + avgNroi.toFixed(1) + '%');
             $('#avg-price-badge').text('Prc: $' + avgPrice.toFixed(2));
             $('#avg-cvr-badge').text('CVR: ' + qtyPerViews.toFixed(1) + '%');
             $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
-            $('#avg-l7-views-badge').text('L7: ' + Math.round(avgL7Views).toLocaleString());
             $('#missing-l-count-badge').text('M L: ' + missingCount.toLocaleString());
             $('#missing-m-count-badge').text('M M: ' + notMappedCount.toLocaleString());
 
@@ -2810,7 +2789,6 @@
                 if (response && Array.isArray(response.data)) {
                     const periodFromResponse = (response.period || currentCampaignPeriod || 'L30').toUpperCase();
                     currentCampaignPeriod = periodFromResponse;
-                    $('#campaign-period-select').val(currentCampaignPeriod);
                     totalCampaignCountFromBackend = parseInt(response.total_campaign_count || 0, 10);
                     salesSummaryFromBackend = response.sales_summary || null;
                     // Use exact aggregate_ads_percent from backend (matches all-marketplace-master)
@@ -4673,28 +4651,6 @@
         function currentPeriodEndpoint() {
             return currentCampaignPeriod === 'L7' ? '/temu2-decrease-data-l7' : '/temu2-decrease-data';
         }
-
-        $('#campaign-period-select').on('change', function() {
-            const $sel = $(this);
-            $sel.prop('disabled', true);
-            const visibilityState = captureColumnVisibilityState();
-            currentCampaignPeriod = ($sel.val() || 'L30').toUpperCase();
-            const endpoint = currentPeriodEndpoint();
-            table.setData(endpoint).then(function() {
-                applyFilters();
-                updateCampaignPeriodUi();
-                applyColumnVisibilityState(visibilityState);
-                buildColumnDropdown();
-                if (typeof updateTemuAdsCounts === 'function') updateTemuAdsCounts();
-            }).catch(function(err) {
-                console.error('Campaign period load failed', err);
-                if (typeof showToast === 'function') {
-                    showToast('Failed to load ' + currentCampaignPeriod + ' data', 'error');
-                }
-            }).finally(function() {
-                $sel.prop('disabled', false);
-            });
-        });
 
         // Export L30 / L7 from icon dropdown — loads period data if needed, then restores current view
         function exportPeriodCsv(period) {

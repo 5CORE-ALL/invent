@@ -49,6 +49,8 @@ use App\Models\AliexpressListingStatus;
 use App\Models\AmazonDatasheet;
 use App\Models\AmazonDataView;
 use App\Http\Controllers\Sales\AmazonSalesController;
+use App\Http\Controllers\Sales\FacebookMarketplaceController;
+use App\Http\Controllers\MarketPlace\ShopifyAdsMasterController;
 use App\Models\AmazonOrder;
 use App\Models\AmazonOrderItem;
 use App\Models\AmazonSpCampaignReport;
@@ -1471,6 +1473,82 @@ class ChannelMasterController extends Controller
      * Net Sales card. Without this overlay the row shows 0 because channel_master only
      * knows about "Shopify B2C" / "Shopify B2B" controllers.
      */
+    /**
+     * Overlay /facebook-marketplace Sales / GPFT / ROI + /facebook-ads spend onto the
+     * "FB Marketplace" Active Channel row so /all-marketplace-master matches those pages.
+     */
+    private function overlayLiveFbMarketplaceMetricsOnChannelRows(array $rows): array
+    {
+        try {
+            $live = FacebookMarketplaceController::computeLiveMetrics()['summary'] ?? null;
+        } catch (\Throwable $e) {
+            Log::warning('FB Marketplace live metrics overlay failed: ' . $e->getMessage());
+            return $rows;
+        }
+
+        if (!is_array($live) || empty($live)) {
+            return $rows;
+        }
+
+        $l30Sales = (float) ($live['total_sales'] ?? 0);
+        $totalPft = (float) ($live['total_pft'] ?? 0);
+        $totalCogs = (float) ($live['total_cogs'] ?? 0);
+        $gpftPct = (float) ($live['gpft_percent'] ?? 0);
+        $roiPct = (float) ($live['roi_percent'] ?? 0);
+        $qty = (int) ($live['total_quantity'] ?? 0);
+        $orders = (int) ($live['total_orders'] ?? 0);
+
+        // Facebook ads — same TCOS as /facebook-ads + /shopify-ads-master:
+        // Spend / Shopify S Sales (not FB Marketplace sales).
+        $adSpend = 0.0;
+        $shopifyNetSales = 0.0;
+        try {
+            $adSpend = (float) (app(ShopifyAdsMasterController::class)->getFacebookChannelSpend()['spend'] ?? 0);
+        } catch (\Throwable $e) {
+            Log::warning('FB Marketplace ads spend overlay failed: ' . $e->getMessage());
+        }
+        try {
+            $shopifyNetSales = (float) ShopifyAdsMasterController::advertisementMasterNetSales();
+        } catch (\Throwable $e) {
+            Log::warning('FB Marketplace Shopify S Sales lookup failed: ' . $e->getMessage());
+        }
+        $adsPct = $shopifyNetSales > 0
+            ? ($adSpend / $shopifyNetSales) * 100
+            : ($adSpend > 0 ? 100.0 : 0.0);
+        $nPftPct = $gpftPct - $adsPct;
+        // N ROI = G ROI − Ads% (same TCOS base as Ads%, matches /facebook-ads)
+        $nRoi = $roiPct - $adsPct;
+
+        // Still overlay even when sales are 0 so the master doesn't keep stale sheet figures.
+        foreach ($rows as &$row) {
+            $name = trim((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
+            if (strcasecmp($name, 'FB Marketplace') !== 0) {
+                continue;
+            }
+
+            $row['L30 Sales'] = (int) round($l30Sales);
+            $row['L30 Orders'] = $orders;
+            $row['Qty'] = $qty;
+            $row['Total PFT'] = round($totalPft, 2);
+            $row['cogs'] = round($totalCogs, 2);
+            $row['Gprofit%'] = round($gpftPct, 1) . '%';
+            $row['G Roi'] = round($roiPct, 1);
+            $row['Total Ad Spend'] = round($adSpend, 2);
+            $row['Ads%'] = round($adsPct, 1) . '%';
+            $row['TACOS %'] = round($adsPct, 1) . '%';
+            $row['N PFT'] = round($nPftPct, 1) . '%';
+            $row['N ROI'] = round($nRoi, 1);
+
+            $l60Sales = (float) str_replace(['$', ',', '%'], '', (string) ($row['L-60 Sales'] ?? 0));
+            if ($l60Sales > 0) {
+                $row['Growth'] = round((($l30Sales - $l60Sales) / $l60Sales) * 100, 2) . '%';
+            }
+        }
+        unset($row);
+
+        return $rows;
+    }
+
     private function overlayLiveShopifyDirectMetricsOnChannelRows(array $rows): array
     {
         $live = $this->getShopifyDirectLiveMetricsSummary();
@@ -4010,6 +4088,8 @@ class ChannelMasterController extends Controller
             $formattedData = $this->overlayLivePurchasingPowerMetricsOnChannelRows($formattedData);
             // Shopify: overlay live Net Sales from shopify_raw_orders (matches /shopify Net Sales card)
             $formattedData = $this->overlayLiveShopifyDirectMetricsOnChannelRows($formattedData);
+            // FB Marketplace: overlay live Sales / GPFT / ROI from /facebook-marketplace
+            $formattedData = $this->overlayLiveFbMarketplaceMetricsOnChannelRows($formattedData);
             $formattedData = $this->applyDefaultMissingLinks($formattedData);
             
             // Get summary data from cache
@@ -4702,6 +4782,8 @@ class ChannelMasterController extends Controller
         // so the "Shopify" Active Channel row Sales column reflects the same value the user sees
         // on /shopify. Applied before daily snapshot + chart aggregation so both pick it up.
         $finalData = $this->overlayLiveShopifyDirectMetricsOnChannelRows($finalData);
+        // FB Marketplace: overlay live Sales / GPFT / ROI from /facebook-marketplace
+        $finalData = $this->overlayLiveFbMarketplaceMetricsOnChannelRows($finalData);
 
         // Sum of (inventory * Amazon price) for INV Val badge and TAT (save in first row for daily history)
         $inventoryValueAmazon = $this->getInventoryValueAmazon();
@@ -11470,124 +11552,102 @@ class ChannelMasterController extends Controller
     {
         $result = [];
 
+        // L30 Sales / GPFT / ROI — same source as /facebook-marketplace
+        $live = FacebookMarketplaceController::computeLiveMetrics()['summary'] ?? [];
+        $l30Sales = (float) ($live['total_sales'] ?? 0);
+        $l30Orders = (int) ($live['total_orders'] ?? 0);
+        $totalQuantity = (int) ($live['total_quantity'] ?? 0);
+        $totalProfit = (float) ($live['total_pft'] ?? 0);
+        $totalCogs = (float) ($live['total_cogs'] ?? 0);
+        $gProfitPct = (float) ($live['gpft_percent'] ?? 0);
+        $gRoi = (float) ($live['roi_percent'] ?? 0);
+
+        // L60 still from sheet (no L60 order upload on /facebook-marketplace yet)
         $query = FbMarketplaceSheetdata::where('sku', 'not like', '%Parent%');
-
-        $l30Orders = $query->sum('l30');
-        $l60Orders = $query->sum('l60');
-        $totalQuantity = $l30Orders; // l30 is already units sold (quantity)
-
-        $l30Sales  = (clone $query)->selectRaw('SUM(l30 * price) as total')->value('total') ?? 0;
-        $l60Sales  = (clone $query)->selectRaw('SUM(l60 * price) as total')->value('total') ?? 0;
+        $l60Orders = (int) $query->sum('l60');
+        $l60Sales = (float) ((clone $query)->selectRaw('SUM(l60 * price) as total')->value('total') ?? 0);
 
         $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
 
-        // Get eBay marketing percentage
-        $percentage = ChannelMaster::where('channel', 'FB Marketplace')->value('channel_percentage') ?? 100;
-        $percentage = $percentage / 100; // convert % to fraction
-
-        // Load product masters (lp, ship) keyed by SKU
-        $productMasters = ProductMaster::all()->keyBy(function ($item) {
-            return strtoupper($item->sku);
+        // L60 profit using same marketplace_percentages margin (no ship) as live L30
+        $factor = (float) ($live['factor'] ?? 0.95);
+        $productMasters = ProductMaster::query()->get(['sku', 'Values'])->keyBy(function ($item) {
+            return strtoupper(trim((string) $item->sku));
         });
-
-        // Calculate total profit
-        $ebayRows     = $query->get(['sku', 'price', 'l30','l60']);
-        $totalProfit  = 0;
-        $totalProfitL60  = 0;
-        $totalCogs       = 0;
-        $totalCogsL60    = 0;
-
-
-        foreach ($ebayRows as $row) {
-            $sku       = strtoupper($row->sku);
-            $price     = (float) $row->price;
-            $unitsL30  = (int) $row->l30;
-            $unitsL60  = (int) $row->l60;
-
-            $soldAmount = $unitsL30 * $price;
-            if ($soldAmount <= 0) {
+        $totalProfitL60 = 0.0;
+        $totalCogsL60 = 0.0;
+        foreach ($query->get(['sku', 'price', 'l60']) as $row) {
+            $sku = strtoupper(trim((string) $row->sku));
+            $price = (float) $row->price;
+            $unitsL60 = (int) $row->l60;
+            if ($unitsL60 <= 0 || $price <= 0) {
                 continue;
             }
-
-            $lp   = 0;
-            $ship = 0;
-
+            $lp = 0.0;
             if (isset($productMasters[$sku])) {
                 $pm = $productMasters[$sku];
-
-                $values = is_array($pm->Values) ? $pm->Values :
-                        (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-
-                $lp   = isset($values['lp']) ? (float) $values['lp'] : ($pm->lp ?? 0);
-                $ship = isset($values['ship']) ? (float) $values['ship'] : ($pm->ship ?? 0);
+                $values = is_array($pm->Values) ? $pm->Values
+                    : (is_string($pm->Values) ? (json_decode($pm->Values, true) ?: []) : []);
+                foreach ($values as $k => $v) {
+                    if (strtolower((string) $k) === 'lp') {
+                        $lp = (float) $v;
+                        break;
+                    }
+                }
             }
-
-            // Profit per unit
-            $profitPerUnit = ($price * $percentage) - $lp - $ship;
-            $profitTotal   = $profitPerUnit * $unitsL30;
-            $profitTotalL60   = $profitPerUnit * $unitsL60;
-
-            $totalProfit += $profitTotal;
-            $totalProfitL60 += $profitTotalL60;
-
-            $totalCogs    += ($unitsL30 * $lp);
-            $totalCogsL60 += ($unitsL60 * $lp);
+            $unitPft = ($price * $factor) - $lp;
+            $totalProfitL60 += $unitPft * $unitsL60;
+            $totalCogsL60 += $lp * $unitsL60;
         }
-
-        // --- FIX: Calculate total LP only for SKUs in eBayMetrics ---
-        $ebaySkus   = $ebayRows->pluck('sku')->map(fn($s) => strtoupper($s))->toArray();
-        $ebayPMs    = ProductMaster::whereIn('sku', $ebaySkus)->get();
-
-        $totalLpValue = 0;
-        foreach ($ebayPMs as $pm) {
-            $values = is_array($pm->Values) ? $pm->Values :
-                    (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-
-            $lp = isset($values['lp']) ? (float) $values['lp'] : ($pm->lp ?? 0);
-            $totalLpValue += $lp;
-        }
-
-        // Use L30 Sales for denominator
-        $gProfitPct = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
         $gprofitL60 = $l60Sales > 0 ? ($totalProfitL60 / $l60Sales) * 100 : 0;
-
-        // $gRoi       = $totalLpValue > 0 ? ($totalProfit / $totalLpValue) : 0;
-        // $gRoiL60    = $totalLpValue > 0 ? ($totalProfitL60 / $totalLpValue) : 0;
-
-        $gRoi    = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
         $gRoiL60 = $totalCogsL60 > 0 ? ($totalProfitL60 / $totalCogsL60) * 100 : 0;
 
-        // N PFT = (Sum of PFT / Sum of L30 Sales) * 100
-        $nPft = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
+        // Facebook ads — same TCOS as /facebook-ads: Spend / Shopify S Sales
+        $adSpend = 0.0;
+        $shopifyNetSales = 0.0;
+        try {
+            $adSpend = (float) (app(ShopifyAdsMasterController::class)->getFacebookChannelSpend()['spend'] ?? 0);
+        } catch (\Throwable $e) {
+            Log::warning('getFbMarketplaceChannelData ads spend failed: ' . $e->getMessage());
+        }
+        try {
+            $shopifyNetSales = (float) ShopifyAdsMasterController::advertisementMasterNetSales();
+        } catch (\Throwable $e) {
+            Log::warning('getFbMarketplaceChannelData Shopify S Sales failed: ' . $e->getMessage());
+        }
+        $adsPct = $shopifyNetSales > 0
+            ? ($adSpend / $shopifyNetSales) * 100
+            : ($adSpend > 0 ? 100.0 : 0.0);
+        $nPftPct = $gProfitPct - $adsPct;
+        $nRoi = $gRoi - $adsPct;
 
-        // Channel data
         $channelData = ChannelMaster::where('channel', 'FB Marketplace')->first();
-
-        // Get Map and Miss counts from amazon_channel_summary_data table
         $mapMissCounts = $this->getMapAndMissCounts('fb_marketplace');
 
         $result[] = [
             'Channel '   => 'FB Marketplace',
             'L-60 Sales' => intval($l60Sales),
-            'L30 Sales'  => intval($l30Sales),
+            'L30 Sales'  => intval(round($l30Sales)),
             'Growth'     => round($growth, 2) . '%',
             'L60 Orders' => $l60Orders,
             'L30 Orders' => $l30Orders,
-            'Qty'        => intval($totalQuantity),
-            'Gprofit%'   => round($gProfitPct, 2) . '%',
-            'gprofitL60' => round($gprofitL60, 2) . '%',
-            'G Roi'      => round($gRoi, 2),
-            'G RoiL60'   => round($gRoiL60, 2),
-            'N PFT'      => round($nPft, 2) . '%',
+            'Qty'        => $totalQuantity,
+            'Gprofit%'   => round($gProfitPct, 1) . '%',
+            'gprofitL60' => round($gprofitL60, 1) . '%',
+            'G Roi'      => round($gRoi, 1),
+            'G RoiL60'   => round($gRoiL60, 1),
+            'N PFT'      => round($nPftPct, 1) . '%',
             'Total PFT'  => round($totalProfit, 2),
-            'N ROI'      => round($gRoi, 2),
+            'N ROI'      => round($nRoi, 1),
             'KW Spent'   => 0,
             'PT Spent'   => 0,
             'HL Spent'   => 0,
             'PMT Spent'  => 0,
             'Shopping Spent' => 0,
             'SERP Spent' => 0,
-            'Total Ad Spend' => 0,
+            'Total Ad Spend' => round($adSpend, 2),
+            'Ads%'       => round($adsPct, 1) . '%',
+            'TACOS %'    => round($adsPct, 1) . '%',
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
@@ -11602,7 +11662,7 @@ class ChannelMasterController extends Controller
 
         return response()->json([
             'status' => 200,
-            'message' => 'wayfair channel data fetched successfully',
+            'message' => 'FB Marketplace channel data fetched successfully',
             'data' => $result,
         ]);
     }

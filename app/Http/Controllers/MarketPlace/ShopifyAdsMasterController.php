@@ -58,6 +58,32 @@ class ShopifyAdsMasterController extends Controller
      *     breakdown: array<string, float>
      * }
      */
+    /**
+     * Facebook (CH=FB) spend for Active campaigns only — matches the default
+     * Status=active filter on /facebook-ads (Spend badge).
+     * Used by /all-marketplace-master FB Marketplace Ads% / Spend / N PFT / N ROI
+     * and /facebook-ads TCOS.
+     *
+     * @return array{spend: float, clicks: float, sold: float, sales: float, active: int}
+     */
+    public function getFacebookChannelSpend(): array
+    {
+        try {
+            $row = $this->metaChannelMetrics('Facebook', 'FB', null, false, true);
+        } catch (\Throwable $e) {
+            \Log::warning('ShopifyAdsMaster::getFacebookChannelSpend failed: ' . $e->getMessage());
+            $row = [];
+        }
+
+        return [
+            'spend'  => round((float) ($row['spend'] ?? 0), 2),
+            'clicks' => (float) ($row['clicks'] ?? 0),
+            'sold'   => (float) ($row['sold'] ?? 0),
+            'sales'  => (float) ($row['sales'] ?? 0),
+            'active' => (int) ($row['active'] ?? 0),
+        ];
+    }
+
     public function getRolledUpSpend(): array
     {
         // Same set updateBadges() in the blade sums (parents only). loadFacebookContext()
@@ -809,7 +835,12 @@ class ShopifyAdsMasterController extends Controller
      *
      * @param  list<string>|null  $adTypeList
      */
-    private function metaChannelMetrics(string $label, string $chCode, ?array $adTypeList = null, bool $isSubRow = false): array
+    /**
+     * @param  bool  $activeOnly  When true, only Active campaigns contribute to
+     *                            spend / clicks / sold / sales (matches /facebook-ads
+     *                            default Status filter).
+     */
+    private function metaChannelMetrics(string $label, string $chCode, ?array $adTypeList = null, bool $isSubRow = false, bool $activeOnly = false): array
     {
         try {
             $ctx = $this->loadFacebookContext();
@@ -833,6 +864,10 @@ class ShopifyAdsMasterController extends Controller
                         continue;
                     }
                 }
+                $isActive = ! empty($ctx['activeCids'][$cid]);
+                if ($activeOnly && ! $isActive) {
+                    continue;
+                }
                 if (isset($ctx['spendByCid'][$cid])) {
                     $spend  += $ctx['spendByCid'][$cid]['spend'];
                     $clicks += $ctx['spendByCid'][$cid]['clicks'];
@@ -841,7 +876,7 @@ class ShopifyAdsMasterController extends Controller
                     $sold  += $ctx['salesByCid'][$cid]['sold'];
                     $sales += $ctx['salesByCid'][$cid]['sales'];
                 }
-                if (! empty($ctx['activeCids'][$cid])) {
+                if ($isActive) {
                     $active++;
                 }
             }
