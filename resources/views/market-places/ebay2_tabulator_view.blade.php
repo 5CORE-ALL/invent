@@ -39,6 +39,15 @@
             z-index: 10050;
         }
 
+        /* Sku Link LMP (mirrors /ebay-tabulator-view) */
+        .linked-sku-badge-wrap { display: inline-flex; align-items: center; gap: 2px; }
+        .linked-sku-badge-wrap .sku-link-lmp-remove { font-size: 0.55rem; opacity: 0.65; padding: 0; margin-left: 2px; }
+        .linked-sku-badge-wrap .sku-link-lmp-remove:hover { opacity: 1; }
+        .sku-link-lmp-suggestion-item { cursor: pointer; }
+        .sku-link-lmp-suggestion-item .form-check-input { pointer-events: none; }
+        .sku-link-lmp-selected-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; background: #f1f5f9; border: 1px solid #e2e8f0; font-size: 12px; }
+        .sku-link-lmp-selected-chip button { border: 0; background: transparent; padding: 0; line-height: 1; font-size: 14px; color: #64748b; }
+
         /* LMP modal: full-viewport backdrop (avoid black gaps behind modal) */
         #lmpModal {
             z-index: 1060 !important;
@@ -631,6 +640,34 @@
             </div>
         </div>
     </div>
+
+    {{-- Sku Link LMP Modal (same as /ebay-tabulator-view; shared endpoints/table) --}}
+    <div class="modal fade" id="skuLinkLmpModal" tabindex="-1" aria-labelledby="skuLinkLmpModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="skuLinkLmpModalLabel">Sku Link LMP</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small mb-2">Link one or more SKUs to <strong id="sku-link-lmp-source"></strong>. All linked SKUs will show each other's LMP.</p>
+                    <label for="sku-link-lmp-input" class="form-label mb-1">Search SKU to link</label>
+                    <input type="text" id="sku-link-lmp-input" class="form-control" placeholder="Search or enter SKU..." autocomplete="off">
+                    <div id="sku-link-lmp-suggestions" class="list-group mt-2 d-none" style="max-height: 220px; overflow-y: auto;"></div>
+                    <div id="sku-link-lmp-selected-wrap" class="mt-2 d-none">
+                        <div class="small text-muted mb-1">Selected to link (<span id="sku-link-lmp-selected-count">0</span>):</div>
+                        <div id="sku-link-lmp-selected-skus" class="d-flex flex-wrap"></div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="sku-link-lmp-save-btn">
+                        <i class="fas fa-link"></i> <span id="sku-link-lmp-save-btn-label">Link SKU(s)</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
     @section('script-bottom')
@@ -659,6 +696,208 @@
         let selectedSkus = new Set(); // Track selected SKUs across all pages
         /** Shared with /ebay2/campaign-ads SBID Rule (ebay_sbid_rules.key = ebay2). */
         let currentSbidRule = { l7_views_threshold: 70, l30_sold_es_bid_max: 0, bands: [] };
+
+        // ── Sku Link LMP (mirrors /ebay-tabulator-view; shared sku.link.lmp.* routes) ──
+        const linkedSkuAddUrl = @json(route('sku.link.lmp.linked-skus.add'));
+        const linkedSkuBulkLinkUrl = @json(route('sku.link.lmp.linked-skus.bulk-link'));
+        const linkedSkuRemoveUrl = @json(route('sku.link.lmp.linked-skus.remove'));
+        const filteredSkusUrl = @json(route('sku.link.lmp.filtered-skus'));
+        const skuLinkLmpCsrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+
+        let linkedSkuModal = null;
+        let linkedSkuModalRow = null;
+        let linkedSkuModalSelectedSkus = new Set();
+        let linkedSkuSuggestionTimer = null;
+        let linkedSkuSuggestionRequestId = 0;
+
+        function rowSkuForLinkLmp(rowData) {
+            return String(rowData?.['(Child) sku'] || rowData?.sku || '').trim();
+        }
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text == null ? '' : String(text);
+            return div.innerHTML;
+        }
+        function escapeHtmlAttr(text) {
+            return escapeHtml(text).replace(/"/g, '&quot;');
+        }
+
+        function linkedLmpSkuFormatter(cell) {
+            const row = cell.getRow().getData();
+            if (row.is_parent_summary || (row.Parent && String(row.Parent).toUpperCase().startsWith('PARENT'))) return '';
+            const rowSku = rowSkuForLinkLmp(row);
+            let skus = row.linked_lmp_skus || [];
+            if (typeof skus === 'string') { try { skus = JSON.parse(skus) || []; } catch (e) { skus = []; } }
+            if (!Array.isArray(skus)) skus = [];
+            if (!skus.length && rowSku) skus = [rowSku];
+            const seen = new Set();
+            skus = skus.filter(function (sku) {
+                const norm = String(sku || '').trim().toUpperCase();
+                if (!norm || seen.has(norm)) return false;
+                seen.add(norm); return true;
+            });
+            const badges = skus.length ? skus.map(function (sku) {
+                const skuText = String(sku || '').trim();
+                const isSelf = skuText.toUpperCase() === rowSku.toUpperCase();
+                const removeBtn = isSelf ? '' : `<button type="button" class="btn-close sku-link-lmp-remove" data-linked-sku="${escapeHtmlAttr(skuText)}" aria-label="Remove"></button>`;
+                return `<span class="linked-sku-badge-wrap badge bg-info-subtle text-dark border me-1 mb-1"><span class="linked-sku-badge">${escapeHtml(skuText)}</span>${removeBtn}</span>`;
+            }).join('') : '<span class="text-muted fst-italic">No SKUs</span>';
+            return `<div class="d-flex flex-wrap align-items-start py-1" style="line-height:1.6;">${badges}</div>`;
+        }
+
+        function linkedLmpSkuAddFormatter(cell) {
+            const row = cell.getRow().getData();
+            if (row.is_parent_summary || (row.Parent && String(row.Parent).toUpperCase().startsWith('PARENT'))) return '';
+            const rowSku = rowSkuForLinkLmp(row);
+            if (!rowSku) return '';
+            return `<div class="d-flex align-items-center justify-content-center py-1">
+                <button type="button" class="btn btn-sm btn-outline-primary sku-link-lmp-add-btn" title="Link another SKU" style="padding:2px 8px;" data-sku="${escapeHtmlAttr(rowSku)}"><i class="fas fa-plus"></i></button>
+            </div>`;
+        }
+
+        function applyAffectedLinkedSkuRows(affected) {
+            if (!table || !Array.isArray(affected)) return;
+            const bySku = {};
+            affected.forEach(function (item) { if (item?.sku) bySku[item.sku] = item.linked_lmp_skus || []; });
+            table.getRows().forEach(function (row) {
+                const data = row.getData();
+                const sku = rowSkuForLinkLmp(data);
+                if (!Object.prototype.hasOwnProperty.call(bySku, sku)) return;
+                row.update({ linked_lmp_skus: bySku[sku] });
+            });
+            // Re-fetch /ebay2-data so LMP recomputes across the linked group
+            table.replaceData('/ebay2-data?_=' + Date.now());
+        }
+
+        function removeLinkedSkuFromRow(rowData, linkedSku) {
+            const sku = rowSkuForLinkLmp(rowData);
+            const target = String(linkedSku || '').trim();
+            if (!sku || !target) return;
+            if (!confirm(`Remove LMP link between "${sku}" and "${target}"?`)) return;
+            fetch(linkedSkuRemoveUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': skuLinkLmpCsrfToken, 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+                body: JSON.stringify({ sku: sku, linked_sku: target }),
+            }).then(r => r.json()).then(function (response) {
+                if (!response.success) throw new Error(response.message || 'Could not remove linked SKU.');
+                applyAffectedLinkedSkuRows(response.affected);
+            }).catch(function (err) { alert(err.message || 'Could not remove linked SKU.'); });
+        }
+
+        function updateLinkedSkuSelectedSummary() {
+            const wrap = document.getElementById('sku-link-lmp-selected-wrap');
+            const listEl = document.getElementById('sku-link-lmp-selected-skus');
+            const countEl = document.getElementById('sku-link-lmp-selected-count');
+            const saveLabel = document.getElementById('sku-link-lmp-save-btn-label');
+            const selected = Array.from(linkedSkuModalSelectedSkus);
+            if (countEl) countEl.textContent = String(selected.length);
+            if (saveLabel) saveLabel.textContent = selected.length > 1 ? 'Link ' + selected.length + ' SKUs' : 'Link SKU(s)';
+            if (!wrap || !listEl) return;
+            if (!selected.length) { wrap.classList.add('d-none'); listEl.innerHTML = ''; return; }
+            wrap.classList.remove('d-none');
+            listEl.innerHTML = selected.map(function (sku) {
+                return `<span class="sku-link-lmp-selected-chip">${escapeHtml(sku)}<button type="button" class="sku-link-lmp-selected-remove" data-sku="${escapeHtmlAttr(sku)}" title="Remove">&times;</button></span>`;
+            }).join('');
+        }
+
+        function renderLinkedSkuSuggestions(term) {
+            const wrap = document.getElementById('sku-link-lmp-suggestions');
+            if (!wrap) return;
+            const query = String(term || '').trim();
+            if (!query) { wrap.classList.add('d-none'); wrap.innerHTML = ''; return; }
+            clearTimeout(linkedSkuSuggestionTimer);
+            linkedSkuSuggestionTimer = setTimeout(function () {
+                const requestId = ++linkedSkuSuggestionRequestId;
+                fetch(`${filteredSkusUrl}?sku=${encodeURIComponent(query)}`, { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(r => r.json()).then(function (response) {
+                    if (requestId !== linkedSkuSuggestionRequestId) return;
+                    if (!response.success) throw new Error(response.message || 'Could not search SKUs.');
+                    const currentSku = rowSkuForLinkLmp(linkedSkuModalRow).toUpperCase();
+                    const existing = new Set((Array.isArray(linkedSkuModalRow?.linked_lmp_skus) ? linkedSkuModalRow.linked_lmp_skus : []).map(s => String(s || '').trim().toUpperCase()));
+                    const matches = (Array.isArray(response.skus) ? response.skus : []).map(s => String(s || '').trim())
+                        .filter(function (sku) { const norm = sku.toUpperCase(); return sku && norm !== currentSku && !existing.has(norm); }).slice(0, 12);
+                    if (!matches.length) { wrap.classList.add('d-none'); wrap.innerHTML = ''; return; }
+                    wrap.classList.remove('d-none');
+                    wrap.innerHTML = matches.map(function (sku) {
+                        const checked = linkedSkuModalSelectedSkus.has(sku);
+                        return `<label class="list-group-item list-group-item-action py-2 sku-link-lmp-suggestion-item d-flex align-items-center gap-2 mb-0"><input type="checkbox" class="form-check-input sku-link-lmp-suggestion-cb" value="${escapeHtmlAttr(sku)}" ${checked ? 'checked' : ''}><span class="flex-grow-1">${escapeHtml(sku)}</span></label>`;
+                    }).join('');
+                }).catch(function () { if (requestId !== linkedSkuSuggestionRequestId) return; wrap.classList.add('d-none'); wrap.innerHTML = ''; });
+            }, 200);
+        }
+
+        function getLinkedSkuModalSelections() {
+            const selected = Array.from(linkedSkuModalSelectedSkus);
+            const inputVal = String(document.getElementById('sku-link-lmp-input')?.value || '').trim();
+            const sourceNorm = rowSkuForLinkLmp(linkedSkuModalRow).toUpperCase();
+            if (inputVal && inputVal.toUpperCase() !== sourceNorm) {
+                if (!selected.some(s => s.toUpperCase() === inputVal.toUpperCase())) selected.push(inputVal);
+            }
+            return selected;
+        }
+
+        function openLinkedSkuModal(rowData) {
+            if (!linkedSkuModal || !rowSkuForLinkLmp(rowData)) return;
+            linkedSkuModalRow = rowData;
+            linkedSkuModalSelectedSkus = new Set();
+            document.getElementById('sku-link-lmp-source').textContent = rowSkuForLinkLmp(rowData);
+            const input = document.getElementById('sku-link-lmp-input');
+            input.value = '';
+            renderLinkedSkuSuggestions('');
+            updateLinkedSkuSelectedSummary();
+            linkedSkuModal.show();
+            setTimeout(function () { input?.focus(); }, 200);
+        }
+
+        function saveLinkedSkuFromModal() {
+            const sourceSku = rowSkuForLinkLmp(linkedSkuModalRow);
+            if (!sourceSku) return;
+            const toLink = getLinkedSkuModalSelections();
+            if (!toLink.length) { alert('Select one or more SKUs from the list, or enter a SKU to link.'); return; }
+            const allSkus = [sourceSku].concat(toLink);
+            const uniqueSkus = []; const seen = new Set();
+            allSkus.forEach(function (sku) { const norm = String(sku || '').trim().toUpperCase(); if (!norm || seen.has(norm)) return; seen.add(norm); uniqueSkus.push(String(sku).trim()); });
+            if (uniqueSkus.length < 2) { alert('Select at least one SKU to link.'); return; }
+            const btn = document.getElementById('sku-link-lmp-save-btn');
+            const original = btn?.innerHTML || '';
+            if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Linking...'; }
+            const isBulk = uniqueSkus.length > 2 || toLink.length > 1;
+            const fetchPromise = isBulk
+                ? fetch(linkedSkuBulkLinkUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': skuLinkLmpCsrfToken, 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }, body: JSON.stringify({ skus: uniqueSkus }) })
+                : fetch(linkedSkuAddUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': skuLinkLmpCsrfToken, 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }, body: JSON.stringify({ sku: sourceSku, linked_sku: toLink[0] }) });
+            fetchPromise.then(r => r.json()).then(function (response) {
+                if (!response.success) throw new Error(response.message || 'Could not link SKU(s).');
+                linkedSkuModalSelectedSkus = new Set();
+                linkedSkuModal?.hide();
+                applyAffectedLinkedSkuRows(response.affected);
+            }).catch(function (err) { alert(err.message || 'Could not link SKU(s).'); })
+            .finally(function () { if (btn) { btn.disabled = false; btn.innerHTML = original; } });
+        }
+
+        // Wire up the Sku Link LMP modal controls once the DOM is ready.
+        $(function () {
+            const modalEl = document.getElementById('skuLinkLmpModal');
+            if (modalEl) linkedSkuModal = bootstrap.Modal.getOrCreateInstance(modalEl);
+            document.getElementById('sku-link-lmp-input')?.addEventListener('input', function () { renderLinkedSkuSuggestions(this.value); });
+            document.getElementById('sku-link-lmp-suggestions')?.addEventListener('click', function (e) {
+                const item = e.target.closest('.sku-link-lmp-suggestion-item'); if (!item) return;
+                const cb = item.querySelector('.sku-link-lmp-suggestion-cb'); if (!cb || e.target === cb) return;
+                cb.checked = !cb.checked; cb.dispatchEvent(new Event('change', { bubbles: true }));
+            });
+            document.getElementById('sku-link-lmp-suggestions')?.addEventListener('change', function (e) {
+                const cb = e.target.closest('.sku-link-lmp-suggestion-cb'); if (!cb) return;
+                const sku = String(cb.value || '').trim(); if (!sku) return;
+                if (cb.checked) linkedSkuModalSelectedSkus.add(sku); else linkedSkuModalSelectedSkus.delete(sku);
+                updateLinkedSkuSelectedSummary();
+            });
+            document.getElementById('sku-link-lmp-selected-skus')?.addEventListener('click', function (e) {
+                const btn = e.target.closest('.sku-link-lmp-selected-remove'); if (!btn) return;
+                linkedSkuModalSelectedSkus.delete(String(btn.dataset.sku || '').trim());
+                document.querySelectorAll('.sku-link-lmp-suggestion-cb').forEach(function (cb) { if (cb.value === btn.dataset.sku) cb.checked = false; });
+                updateLinkedSkuSelectedSummary();
+            });
+            document.getElementById('sku-link-lmp-save-btn')?.addEventListener('click', function () { saveLinkedSkuFromModal(); });
+        });
 
         function shouldUseEsBid(sold, l7, rule) {
             const l30Max = parseFloat(rule && rule.l30_sold_es_bid_max);
@@ -3032,9 +3271,12 @@
                             const sku = rowData['(Child) sku'];
                             const totalCompetitors = rowData.lmp_entries_total || 0;
                             const currentPrice = parseFloat(rowData['eBay Price'] || 0);
+                            const linkedSkus = Array.isArray(rowData.linked_lmp_skus) ? rowData.linked_lmp_skus : [];
+                            const linkedSkusAttr = escapeHtmlAttr(JSON.stringify(linkedSkus));
+                            const skuAttr = escapeHtmlAttr(sku || '');
 
                             if (!lmpPrice && totalCompetitors === 0) {
-                                return `<a href="#" class="view-lmp-competitors" data-sku="${sku}"
+                                return `<a href="#" class="view-lmp-competitors" data-sku="${skuAttr}" data-linked-skus="${linkedSkusAttr}"
                                     style="color: #007bff; text-decoration: none; cursor: pointer; font-size: 12px;">
                                     <i class="fa fa-eye"></i> View
                                 </a>`;
@@ -3049,9 +3291,9 @@
                                 html += `<span style="color: ${priceColor}; font-weight: 600; font-size: 14px;">${priceFormatted}</span>`;
                             }
                             
-                            // Show link to open modal with all competitors
+                            // Show link to open modal with all competitors (incl. Sku Link LMP group)
                             if (totalCompetitors > 0) {
-                                html += `<a href="#" class="view-lmp-competitors" data-sku="${sku}" 
+                                html += `<a href="#" class="view-lmp-competitors" data-sku="${skuAttr}" data-linked-skus="${linkedSkusAttr}"
                                     style="color: #007bff; text-decoration: none; cursor: pointer; font-size: 11px;">
                                     <i class="fa fa-eye"></i> View ${totalCompetitors}
                                 </a>`;
@@ -3063,8 +3305,42 @@
                         width: 70
                     
                     },
-                  
-                   
+                    {
+                        title: "Sku Link LMP",
+                        field: "linked_lmp_skus",
+                        hozAlign: "left",
+                        headerHozAlign: "center",
+                        width: 200,
+                        headerSort: false,
+                        cssClass: "linked-sku-col",
+                        formatter: linkedLmpSkuFormatter,
+                        cellClick: function (e, cell) {
+                            if (e.target.closest('.sku-link-lmp-remove')) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                removeLinkedSkuFromRow(
+                                    cell.getRow().getData(),
+                                    e.target.closest('.sku-link-lmp-remove').dataset.linkedSku || ''
+                                );
+                            }
+                        },
+                    },
+                    {
+                        title: "+",
+                        field: "linked_lmp_sku_add",
+                        hozAlign: "center",
+                        headerHozAlign: "center",
+                        width: 50,
+                        headerSort: false,
+                        formatter: linkedLmpSkuAddFormatter,
+                        cellClick: function (e, cell) {
+                            if (e.target.closest('.sku-link-lmp-add-btn')) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                openLinkedSkuModal(cell.getRow().getData());
+                            }
+                        },
+                    },
                     {
                         title: "S PRC",
                         field: "SPRICE",
@@ -4193,6 +4469,7 @@
                 'growth_percent': 'Growth',
                 'eBay Price': 'eBay Price',
                 'lmp_price': 'LMP',
+                'linked_lmp_skus': 'Sku Link LMP',
                 'T_Sale_l30': 'Total Sales L30',
                 'Total_pft': 'Total Profit',
                 'PFT %': 'PFT %',
@@ -4330,7 +4607,8 @@
         let currentLmpData = {
             sku: null,
             competitors: [],
-            lowestPrice: null
+            lowestPrice: null,
+            linkedLmpSkus: []
         };
 
         function refreshEbay2TableData() {
@@ -4373,7 +4651,7 @@
             }
         }
 
-        function loadEbayCompetitorsModal(sku) {
+        function loadEbayCompetitorsModal(sku, linkedLmpSkus) {
             $('#lmpSku').text(sku);
             
             // Pre-fill form with SKU
@@ -4383,6 +4661,9 @@
             $('#addCompShipping').val('');
             $('#addCompLink').val('');
             $('#addCompTitle').val('');
+
+            currentLmpData.sku = sku;
+            currentLmpData.linkedLmpSkus = Array.isArray(linkedLmpSkus) ? linkedLmpSkus : [];
             
             openLmpModal();
             
@@ -4396,11 +4677,15 @@
                 </div>
             `);
             
-            // Fetch LMP data
+            // Fetch LMP data (merged across Sku Link LMP group — same as LMP column)
             $.ajax({
                 url: '/ebay-lmp-data',
                 method: 'GET',
-                data: { sku: sku },
+                traditional: true,
+                data: {
+                    sku: sku,
+                    linked_lmp_skus: currentLmpData.linkedLmpSkus
+                },
                 success: function(response) {
                     if (response.success && response.competitors && response.competitors.length > 0) {
                         currentLmpData.sku = sku;
@@ -4497,7 +4782,18 @@
         $(document).on('click', '.view-lmp-competitors', function(e) {
             e.preventDefault();
             const sku = $(this).data('sku');
-            loadEbayCompetitorsModal(sku);
+            let linkedSkus = $(this).data('linked-skus') || [];
+            if (typeof linkedSkus === 'string') {
+                try { linkedSkus = JSON.parse(linkedSkus) || []; } catch (err) { linkedSkus = []; }
+            }
+            if (!Array.isArray(linkedSkus) || !linkedSkus.length) {
+                if (table && table.getRows) {
+                    const r = table.getRows().find(row => row.getData()['(Child) sku'] === sku);
+                    const fromRow = r ? r.getData().linked_lmp_skus : null;
+                    if (Array.isArray(fromRow)) linkedSkus = fromRow;
+                }
+            }
+            loadEbayCompetitorsModal(sku, linkedSkus);
         });
 
         // Add Competitor Form Submission
@@ -4535,7 +4831,7 @@
                         
                         // Reload competitors list
                         const sku = $('#addCompSku').val();
-                        loadEbayCompetitorsModal(sku);
+                        loadEbayCompetitorsModal(sku, currentLmpData.linkedLmpSkus);
                         
                         // Reload main table data
                         refreshEbay2TableData();
@@ -4580,7 +4876,7 @@
                         
                         // Reload competitors list
                         const sku = currentLmpData.sku;
-                        loadEbayCompetitorsModal(sku);
+                        loadEbayCompetitorsModal(sku, currentLmpData.linkedLmpSkus);
                         
                         // Reload main table data
                         refreshEbay2TableData();

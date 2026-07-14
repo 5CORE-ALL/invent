@@ -4307,9 +4307,12 @@
                             const sku = rowData['(Child) sku'];
                             const totalCompetitors = rowData.lmp_entries_total || 0;
                             const currentPrice = parseFloat(rowData['eBay Price'] || 0);
+                            const linkedSkus = Array.isArray(rowData.linked_lmp_skus) ? rowData.linked_lmp_skus : [];
+                            const linkedSkusAttr = escapeHtmlAttr(JSON.stringify(linkedSkus));
+                            const skuAttr = escapeHtmlAttr(sku || '');
 
                             if (!lmpPrice && totalCompetitors === 0) {
-                                return `<a href="#" class="view-lmp-competitors" data-sku="${sku}"
+                                return `<a href="#" class="view-lmp-competitors" data-sku="${skuAttr}" data-linked-skus="${linkedSkusAttr}"
                                     style="color: #007bff; text-decoration: none; cursor: pointer; font-size: 12px;">
                                     <i class="fa fa-eye"></i> View
                                 </a>`;
@@ -4325,9 +4328,9 @@
                                     `<span style="font-weight: 600; font-size: 14px;">${priceFormatted}</span>`;
                             }
 
-                            // Show link to open modal with all competitors
+                            // Show link to open modal with all competitors (incl. Sku Link LMP group)
                             if (totalCompetitors > 0) {
-                                html += `<a href="#" class="view-lmp-competitors" data-sku="${sku}" 
+                                html += `<a href="#" class="view-lmp-competitors" data-sku="${skuAttr}" data-linked-skus="${linkedSkusAttr}"
                                     style="color: #007bff; text-decoration: none; cursor: pointer; font-size: 11px;">
                                     <i class="fa fa-eye"></i> View ${totalCompetitors}
                                 </a>`;
@@ -5915,7 +5918,8 @@
         let currentLmpData = {
             sku: null,
             competitors: [],
-            lowestPrice: null
+            lowestPrice: null,
+            linkedLmpSkus: []
         };
 
         // Load Competitors Modal Function
@@ -5944,7 +5948,7 @@
             }
         }
 
-        function loadEbayCompetitorsModal(sku) {
+        function loadEbayCompetitorsModal(sku, linkedLmpSkus) {
             $('#lmpSku').text(sku);
 
             // Pre-fill form with SKU
@@ -5954,6 +5958,9 @@
             $('#addCompShipping').val('');
             $('#addCompLink').val('');
             $('#addCompTitle').val('');
+
+            currentLmpData.sku = sku;
+            currentLmpData.linkedLmpSkus = Array.isArray(linkedLmpSkus) ? linkedLmpSkus : [];
 
             openLmpModal();
 
@@ -5967,12 +5974,14 @@
                 </div>
             `);
 
-            // Fetch LMP data
+            // Fetch LMP data (merged across Sku Link LMP group — same as LMP column)
             $.ajax({
                 url: '/ebay-lmp-data',
                 method: 'GET',
+                traditional: true,
                 data: {
-                    sku: sku
+                    sku: sku,
+                    linked_lmp_skus: currentLmpData.linkedLmpSkus
                 },
                 success: function(response) {
                     if (response.success && response.competitors && response.competitors.length > 0) {
@@ -6075,8 +6084,20 @@
         $(document).on('click', '.view-lmp-competitors', function(e) {
             e.preventDefault();
             const sku = $(this).data('sku');
+            let linkedSkus = $(this).data('linked-skus') || [];
+            if (typeof linkedSkus === 'string') {
+                try { linkedSkus = JSON.parse(linkedSkus) || []; } catch (err) { linkedSkus = []; }
+            }
+            if (!Array.isArray(linkedSkus) || !linkedSkus.length) {
+                // Fallback: pull linked group from the tabulator row if attribute missing
+                if (table && table.getRows) {
+                    const r = table.getRows().find(row => row.getData()['(Child) sku'] === sku);
+                    const fromRow = r ? r.getData().linked_lmp_skus : null;
+                    if (Array.isArray(fromRow)) linkedSkus = fromRow;
+                }
+            }
             renderLmpModalStats(sku);
-            loadEbayCompetitorsModal(sku);
+            loadEbayCompetitorsModal(sku, linkedSkus);
         });
 
         // Show the SKU's CVR / Price / Views / Sold in the LMP competitors modal.
@@ -6150,7 +6171,7 @@
 
                         // Reload competitors list
                         const sku = $('#addCompSku').val();
-                        loadEbayCompetitorsModal(sku);
+                        loadEbayCompetitorsModal(sku, currentLmpData.linkedLmpSkus);
 
                         // Reload main table data
                         table.replaceData();
@@ -6197,7 +6218,7 @@
 
                         // Reload competitors list
                         const sku = currentLmpData.sku;
-                        loadEbayCompetitorsModal(sku);
+                        loadEbayCompetitorsModal(sku, currentLmpData.linkedLmpSkus);
 
                         // Reload main table data
                         table.replaceData();

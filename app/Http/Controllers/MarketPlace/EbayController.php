@@ -3322,26 +3322,58 @@ class EbayController extends Controller
 
     /**
      * Get eBay LMP data for a specific SKU
+     * Merges competitors across the Sku Link LMP group so the modal matches the LMP column.
      */
     public function getEbayLmpData(Request $request)
     {
         try {
-            $sku = $request->input('sku');
+            $sku = trim((string) $request->input('sku'));
+            $linkedSkus = $request->input('linked_lmp_skus', []);
             
-            if (!$sku) {
+            if ($sku === '') {
                 return response()->json([
                     'error' => 'SKU is required'
                 ], 400);
             }
-            
-            // Use 'ebay' to match database marketplace value
+
+            if (! is_array($linkedSkus)) {
+                $linkedSkus = [];
+            }
+
+            // Resolve Sku Link LMP group (same source as /ebay-tabulator-view LMP column).
+            $groupSkus = [$sku];
+            try {
+                $lmpGroupService = new \App\Services\LmpSkuGroupService();
+                $seed = array_values(array_filter(array_map(
+                    fn ($value) => trim((string) $value),
+                    array_merge([$sku], $linkedSkus)
+                )));
+                $lmpGroupService->prepareForSkus($seed);
+                $resolved = $lmpGroupService->groupContaining($sku);
+                if (! empty($resolved)) {
+                    $groupSkus = $resolved;
+                }
+            } catch (\Throwable $e) {
+                Log::warning('LmpSkuGroupService in getEbayLmpData failed: ' . $e->getMessage());
+            }
+
+            $groupSkus = array_values(array_unique(array_filter(array_map(
+                fn ($value) => trim((string) $value),
+                array_merge($groupSkus, $linkedSkus, [$sku])
+            ))));
+
+            // Collect competitors from every linked SKU (not just the opened row).
             $competitors = collect();
-            foreach (\App\Models\EbaySkuCompetitor::resolveLookupKeys($sku) as $lookupSku) {
-                $competitors = \App\Models\EbaySkuCompetitor::getCompetitorsForSku($lookupSku, 'ebay');
-                if ($competitors->isNotEmpty()) {
-                    break;
+            foreach ($groupSkus as $groupSku) {
+                foreach (\App\Models\EbaySkuCompetitor::resolveLookupKeys($groupSku) as $lookupSku) {
+                    $found = \App\Models\EbaySkuCompetitor::getCompetitorsForSku($lookupSku, 'ebay');
+                    if ($found->isNotEmpty()) {
+                        $competitors = $competitors->merge($found);
+                    }
                 }
             }
+            $competitors = \App\Models\EbaySkuCompetitor::dedupeByItemId($competitors);
+
             $fetcher = app(EbayLivePriceFetcher::class);
 
             // Best-effort live refresh. Background command `ebay:update-sku-prices` is the

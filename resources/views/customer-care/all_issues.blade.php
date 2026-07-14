@@ -1151,11 +1151,11 @@
                                                 placeholder="Qty">
                                         </div>
                                         <div class="col-md-3">
-                                            <label for="hold_issue_replacement_tracking_30" class="form-label small mb-1">
+                                            <label for="hold_issue_replacement_tracking_40" class="form-label small mb-1">
                                                 Tracking ID
                                             </label>
-                                            <input type="text" class="form-control" id="hold_issue_replacement_tracking_30"
-                                                maxlength="30" placeholder="Up to 30 chars">
+                                            <input type="text" class="form-control" id="hold_issue_replacement_tracking_40"
+                                                maxlength="40" placeholder="Up to 40 chars">
                                         </div>
                                         <div class="col-12">
                                             <div class="form-check">
@@ -3262,7 +3262,7 @@
             function clearReplacementSubsection() {
                 const skuInp = document.getElementById('hold_issue_replacement_sku');
                 const qtyInp = document.getElementById('hold_issue_replacement_qty_sending');
-                const trkInp = document.getElementById('hold_issue_replacement_tracking_30');
+                const trkInp = document.getElementById('hold_issue_replacement_tracking_40');
                 const outChk = document.getElementById('hold_issue_outgoing_needed');
                 const whInp  = document.getElementById('hold_issue_outgoing_warehouse_id');
                 const whWrap = document.getElementById('outgoingWarehouseWrap');
@@ -4158,7 +4158,7 @@
                     document.getElementById('hold_issue_replacement_qty_sending').value =
                         (record.replacement_qty_sending != null && record.replacement_qty_sending !== '')
                             ? record.replacement_qty_sending : '';
-                    document.getElementById('hold_issue_replacement_tracking_30').value = record.replacement_tracking || '';
+                    document.getElementById('hold_issue_replacement_tracking_40').value = record.replacement_tracking || '';
                     document.getElementById('hold_issue_outgoing_needed').checked = !!record.outgoing_needed;
                     const whSel = document.getElementById('hold_issue_outgoing_warehouse_id');
                     if (whSel) {
@@ -4173,7 +4173,7 @@
                     {
                         const rSku = document.getElementById('hold_issue_replacement_sku');
                         const rQty = document.getElementById('hold_issue_replacement_qty_sending');
-                        const rTrk = document.getElementById('hold_issue_replacement_tracking_30');
+                        const rTrk = document.getElementById('hold_issue_replacement_tracking_40');
                         const rCb  = document.getElementById('hold_issue_outgoing_needed');
                         if (rSku) rSku.readOnly = true;
                         if (rQty) rQty.readOnly = true;
@@ -4393,7 +4393,7 @@
                 } else if (subKey === 'replacement') {
                     const rsku = document.getElementById('hold_issue_replacement_sku').value.trim();
                     const rqty = document.getElementById('hold_issue_replacement_qty_sending').value;
-                    const rtrk = document.getElementById('hold_issue_replacement_tracking_30').value.trim();
+                    const rtrk = document.getElementById('hold_issue_replacement_tracking_40').value.trim();
                     const rout = document.getElementById('hold_issue_outgoing_needed').checked;
                     if (!rsku) {
                         showAlert('Replacement SKU is required.');
@@ -4405,15 +4405,15 @@
                         document.getElementById('hold_issue_replacement_qty_sending').focus();
                         return;
                     }
-                    if (rtrk.length > 30) {
-                        showAlert('Tracking ID must be at most 30 characters.');
-                        document.getElementById('hold_issue_replacement_tracking_30').focus();
+                    if (rtrk.length > 40) {
+                        showAlert('Tracking ID must be at most 40 characters.');
+                        document.getElementById('hold_issue_replacement_tracking_40').focus();
                         return;
                     }
                     replacementSku = rsku;
                     replacementQtySending = rqty;
                     // Replacement tracking ID for this action lives in the same column
-                    // as the existing Replacement Tracking field, but capped at 30 chars.
+                    // as the existing Replacement Tracking field, but capped at 40 chars.
                     if (rtrk) replacementTrackingValue = rtrk;
                     outgoingNeeded = rout;
                     // If Outgoing needed is checked, a warehouse must be picked.

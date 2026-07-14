@@ -24,6 +24,7 @@ use App\Models\Ebay2OrderItem;
 use App\Models\AmazonDatasheet;
 use App\Models\EbaySkuCompetitor;
 use App\Models\TemuPricing;
+use App\Services\LmpSkuGroupService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -492,7 +493,46 @@ class EbayTwoController extends Controller
 
         $lmpLookups = EbaySkuCompetitor::buildGroupedLookup('ebay');
         $lmpDetailsLookup = $lmpLookups['details'];
-        $lmpLowestLookup = $lmpLookups['lowest'];
+
+        // Sku Link LMP — same shared lmp_sku_links groups as /ebay-tabulator-view
+        $lmpGroupService = new LmpSkuGroupService();
+        try {
+            $prepSkus = $productMasters->pluck('sku')->filter()->map(fn ($s) => (string) $s)->all();
+            foreach ($ebayMetrics as $metricSku => $_metric) {
+                $prepSkus[] = (string) $metricSku;
+            }
+            $lmpGroupService->prepareForSkus($prepSkus);
+        } catch (\Throwable $e) {
+            Log::warning('LmpSkuGroupService prepare failed (eBay2): ' . $e->getMessage());
+        }
+
+        $resolveLinkedLmpSkus = static function (string $sku) use ($lmpGroupService): array {
+            $sku = trim($sku);
+            if ($sku === '') {
+                return [];
+            }
+            try {
+                $linkedGroup = $lmpGroupService->groupContaining($sku);
+            } catch (\Throwable $e) {
+                $linkedGroup = [];
+            }
+            if (empty($linkedGroup)) {
+                $linkedGroup = [$sku];
+            }
+            $seenLinked = [];
+            $linkedLmpSkus = [];
+            foreach ($linkedGroup as $member) {
+                $display = trim((string) $member);
+                $normMember = strtoupper($display);
+                if ($normMember === '' || isset($seenLinked[$normMember])) {
+                    continue;
+                }
+                $seenLinked[$normMember] = true;
+                $linkedLmpSkus[] = $display;
+            }
+
+            return $linkedLmpSkus;
+        };
 
         // 6. Build Result
         $result = [];
@@ -566,7 +606,14 @@ class EbayTwoController extends Controller
             // Temu Price (computed from temu_pricing.base_price, normalized SKU match — see /temu-decrease)
             $row['Temu Price'] = $temuPriceByNormalizedSku[$temuPriceNormalizer($pm->sku)] ?? 0;
 
-            EbaySkuCompetitor::applyToRow($row, $pm->sku, $lmpLowestLookup, $lmpDetailsLookup, $row['base_sku'] ?: null);
+            // LMP — merged across the Sku Link LMP group so linked SKUs share LMP (same as /ebay-tabulator-view).
+            EbaySkuCompetitor::applyLinkedGroupToRow(
+                $row,
+                (string) $pm->sku,
+                $lmpDetailsLookup,
+                $resolveLinkedLmpSkus((string) $pm->sku),
+                $row['base_sku'] ?: null
+            );
 
             $ebayL30ForDil = floatval($row["eBay L30"] ?? 0);
             $viewsForDil = floatval($row['views'] ?? 0);
@@ -846,7 +893,13 @@ class EbayTwoController extends Controller
                 $temuLookupSku = $row['base_sku'] !== '' ? $row['base_sku'] : $metricSku;
                 $row['Temu Price'] = $temuPriceByNormalizedSku[$temuPriceNormalizer($temuLookupSku)] ?? 0;
 
-                EbaySkuCompetitor::applyToRow($row, $metricSku, $lmpLowestLookup, $lmpDetailsLookup, $row['base_sku'] ?: null);
+                EbaySkuCompetitor::applyLinkedGroupToRow(
+                    $row,
+                    (string) $metricSku,
+                    $lmpDetailsLookup,
+                    $resolveLinkedLmpSkus((string) $metricSku),
+                    $row['base_sku'] ?: null
+                );
 
                 $ebayL30ForDilM = floatval($row["eBay L30"] ?? 0);
                 $viewsForDilM = floatval($row['views'] ?? 0);

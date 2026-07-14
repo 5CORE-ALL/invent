@@ -90,15 +90,35 @@
                         <option value="more">INV &gt; 0</option>
                     </select>
 
-                    {{-- DIL% slab filter — same color thresholds the Dil column already uses
-                         (<16.66 red, 16.66–25 yellow, 25–50 green, ≥50 pink). DIL = L30 / INV × 100. --}}
+                    {{-- GPFT% slabs — match /ebay-tabulator-view --}}
+                    <select id="gpft-filter" class="form-select form-select-sm" style="width: 120px;"
+                        title="Filter rows by PFT% (gross profit margin)">
+                        <option value="all">GPFT%</option>
+                        <option value="negative">Negative</option>
+                        <option value="0-10">0-10%</option>
+                        <option value="10-20">10-20%</option>
+                        <option value="20-30">20-30%</option>
+                        <option value="30-40">30-40%</option>
+                        <option value="40plus">Above 40%</option>
+                    </select>
+
+                    {{-- ROI% slabs — match /ebay-tabulator-view --}}
+                    <select id="roi-filter" class="form-select form-select-sm" style="width: 120px;"
+                        title="Filter rows by ROI%">
+                        <option value="all">ROI%</option>
+                        <option value="lt40">&lt; 40%</option>
+                        <option value="40-75">40–75%</option>
+                        <option value="75-125">75–125%</option>
+                        <option value="gt125">125%+</option>
+                    </select>
+
+                    {{-- DIL% slabs — match /ebay-tabulator-view: red &lt;25, green 25–50, pink 50%+ --}}
                     <select id="dil-filter" class="form-select form-select-sm" style="width: 120px;"
-                        title="Filter rows by Dil% color band (L30 / INV × 100)">
+                        title="Filter rows by Dil% (OV L30 / INV × 100)">
                         <option value="all">DIL%</option>
-                        <option value="red">Red (&lt;16.7%)</option>
-                        <option value="yellow">Yellow (16.7–25%)</option>
-                        <option value="green">Green (25–50%)</option>
-                        <option value="pink">Pink (50%+)</option>
+                        <option value="red">Red &lt;25%</option>
+                        <option value="green">Green 25-50%</option>
+                        <option value="pink">Pink 50%+</option>
                     </select>
 
                     {{-- Sold dropdown (mirrors Amazon tabulator + Mercari w/Ship + every other /pricing page).
@@ -334,12 +354,12 @@
                             const INV = parseFloat(rowData.INV) || 0;
                             const OVL30 = parseFloat(rowData.L30) || 0;
 
-                            if (INV === 0) return '<span style="color: #6c757d;">0%</span>';
+                            if (INV === 0) return '<span style="color: #a00211; font-weight: 600;">0%</span>';
 
                             const dil = (OVL30 / INV) * 100;
                             let color = '';
-                            if (dil < 16.66) color = '#a00211';
-                            else if (dil < 25) color = '#ffc107';
+                            // Match /ebay-tabulator-view Dil slabs (red absorbs former yellow)
+                            if (dil < 25) color = '#a00211';
                             else if (dil < 50) color = '#28a745';
                             else color = '#e83e8c';
 
@@ -535,15 +555,19 @@
                 searchInput.addEventListener('keyup', applyAllFilters);
             }
 
-            // INV dropdown change — same funnel, stacks with the other filters.
+            // INV / GPFT% / ROI% / DIL% / Sold dropdowns — all funnel into applyAllFilters
             const invFilterEl = document.getElementById('inv-filter');
             if (invFilterEl) invFilterEl.addEventListener('change', applyAllFilters);
 
-            // DIL% dropdown change — same funnel, stacks with the other filters.
+            const gpftFilterEl = document.getElementById('gpft-filter');
+            if (gpftFilterEl) gpftFilterEl.addEventListener('change', applyAllFilters);
+
+            const roiFilterEl = document.getElementById('roi-filter');
+            if (roiFilterEl) roiFilterEl.addEventListener('change', applyAllFilters);
+
             const dilFilterEl = document.getElementById('dil-filter');
             if (dilFilterEl) dilFilterEl.addEventListener('change', applyAllFilters);
 
-            // Sold dropdown change — same funnel, stacks with the other two filters.
             const soldFilterEl = document.getElementById('sold-filter');
             if (soldFilterEl) soldFilterEl.addEventListener('change', applyAllFilters);
 
@@ -879,6 +903,12 @@
             const invEl = document.getElementById('inv-filter');
             const invFilter = invEl ? invEl.value : 'all';
 
+            const gpftEl = document.getElementById('gpft-filter');
+            const gpftFilter = gpftEl ? gpftEl.value : 'all';
+
+            const roiEl = document.getElementById('roi-filter');
+            const roiFilter = roiEl ? roiEl.value : 'all';
+
             const dilEl = document.getElementById('dil-filter');
             const dilFilter = dilEl ? dilEl.value : 'all';
 
@@ -903,15 +933,34 @@
                     if (invFilter === 'more' && !(inv > 0))   return false;
                 }
 
-                // DIL% (computed: L30 / INV * 100, same buckets as Dil column formatter)
+                // GPFT% (PFT column) — ebay slabs
+                if (gpftFilter && gpftFilter !== 'all') {
+                    const gpft = parseFloat(row.PFT) || 0;
+                    if (gpftFilter === 'negative' && !(gpft < 0)) return false;
+                    if (gpftFilter === '0-10'    && !(gpft >= 0 && gpft < 10))  return false;
+                    if (gpftFilter === '10-20'   && !(gpft >= 10 && gpft < 20)) return false;
+                    if (gpftFilter === '20-30'   && !(gpft >= 20 && gpft < 30)) return false;
+                    if (gpftFilter === '30-40'   && !(gpft >= 30 && gpft < 40)) return false;
+                    if (gpftFilter === '40plus'  && !(gpft >= 40))              return false;
+                }
+
+                // ROI% — ebay slabs
+                if (roiFilter && roiFilter !== 'all') {
+                    const roiVal = parseFloat(row.ROI) || 0;
+                    if (roiFilter === 'lt40'   && !(roiVal < 40))                 return false;
+                    if (roiFilter === '40-75'  && !(roiVal >= 40 && roiVal < 75))  return false;
+                    if (roiFilter === '75-125' && !(roiVal >= 75 && roiVal < 125)) return false;
+                    if (roiFilter === 'gt125'  && !(roiVal >= 125))                return false;
+                }
+
+                // DIL% — ebay slabs: red <25, green 25–50, pink 50%+
                 if (dilFilter && dilFilter !== 'all') {
                     const inv = parseFloat(row.INV) || 0;
                     const l30 = parseFloat(row.L30) || 0;
                     const dil = inv === 0 ? 0 : (l30 / inv) * 100;
-                    if (dilFilter === 'red'    && !(dil < 16.66))              return false;
-                    if (dilFilter === 'yellow' && !(dil >= 16.66 && dil < 25)) return false;
-                    if (dilFilter === 'green'  && !(dil >= 25 && dil < 50))    return false;
-                    if (dilFilter === 'pink'   && !(dil >= 50))                return false;
+                    if (dilFilter === 'red'   && !(dil < 25))             return false;
+                    if (dilFilter === 'green' && !(dil >= 25 && dil < 50)) return false;
+                    if (dilFilter === 'pink'  && !(dil >= 50))             return false;
                 }
 
                 // Sold filter (Mercari w/o Ship L30 sold qty — `sold` field).

@@ -139,9 +139,9 @@ class DispatchIssuesController extends IssueBoardControllerBase
             'replacement_qty_sending' => 'nullable|numeric|min:0',
             'outgoing_needed'        => 'nullable|boolean',
             'outgoing_warehouse_id'  => 'nullable|integer|exists:warehouses,id',
-            // Replacement / Alternate Sent tracking input is capped at 30 chars in the UI;
-            // we reuse `replacement_tracking` (varchar 50 in DB) but enforce 30 here.
-            'replacement_tracking'   => 'nullable|string|max:30',
+            // Replacement / Alternate Sent tracking input is capped at 40 chars in the UI;
+            // we reuse `replacement_tracking` (varchar 50 in DB) but enforce 40 here.
+            'replacement_tracking'   => 'nullable|string|max:40',
             // Carrier dropdown shown on Carrier Claims / Carrier Scan Issues. Persisted
             // on dispatch_issue_issues.issue_carrier (also the column edited inline from
             // the table). Final allow-list (USPS / UPS / FEDEX / GOFO) is enforced after

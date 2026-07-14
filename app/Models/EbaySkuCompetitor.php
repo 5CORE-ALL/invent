@@ -139,6 +139,47 @@ class EbaySkuCompetitor extends Model
             }
         }
 
+        self::attachLmpFieldsToRow($row, $lmpEntries, $lowestLmp);
+    }
+
+    /**
+     * Attach LMP fields merging competitors across Sku Link LMP group members
+     * (same behavior as /ebay-tabulator-view).
+     *
+     * @param  list<string>  $linkedLmpSkus
+     */
+    public static function applyLinkedGroupToRow(
+        array &$row,
+        string $sku,
+        $lmpDetailsLookup,
+        array $linkedLmpSkus,
+        ?string $fallbackSku = null
+    ): void {
+        $row['linked_lmp_skus'] = $linkedLmpSkus;
+
+        $lmpEntries = collect();
+        $skusToLookup = $linkedLmpSkus !== [] ? $linkedLmpSkus : [$sku];
+
+        foreach ($skusToLookup as $linkedSku) {
+            $member = (string) $linkedSku;
+            $memberFallback = (strcasecmp($member, $sku) === 0) ? $fallbackSku : null;
+            foreach (self::resolveLookupKeys($member, $memberFallback) as $skuLookupKey) {
+                $entries = $lmpDetailsLookup->get($skuLookupKey);
+                if ($entries instanceof \Illuminate\Support\Collection && $entries->isNotEmpty()) {
+                    $lmpEntries = $lmpEntries->merge($entries);
+                }
+            }
+        }
+
+        $lmpEntries = self::dedupeByItemId($lmpEntries);
+        self::attachLmpFieldsToRow($row, $lmpEntries, $lmpEntries->first());
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, mixed>  $lmpEntries
+     */
+    private static function attachLmpFieldsToRow(array &$row, $lmpEntries, $lowestLmp = null): void
+    {
         $row['lmp_price'] = ($lowestLmp && isset($lowestLmp->total_price) && is_numeric($lowestLmp->total_price))
             ? floatval($lowestLmp->total_price)
             : null;
@@ -172,6 +213,7 @@ class EbaySkuCompetitor extends Model
             'lmp_title' => null,
             'lmp_entries' => [],
             'lmp_entries_total' => 0,
+            'linked_lmp_skus' => [],
         ];
     }
 
