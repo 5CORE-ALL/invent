@@ -12,6 +12,7 @@ use App\Models\SheinDailyData;
 use App\Models\SheinDailyDataL60;
 use App\Models\ShopifySku;
 use App\Services\SheinShopifySalesService;
+use App\Services\LmpSkuGroupService;
 use App\Models\AmazonChannelSummary;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use Illuminate\Support\Facades\Log;
@@ -159,13 +160,134 @@ class SheinController extends Controller
     }
 
     /**
+     * Load a Shein order export. Accepts any extension — auto-detects spreadsheet vs
+     * delimited text (Seller Hub CSVs are often tab-separated and may be .csv/.txt/.xlsx).
+     */
+    private function loadSheinOrderSpreadsheet(string $filePath)
+    {
+        $ext = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
+        $spreadsheetExts = ['xlsx', 'xls', 'xlsm', 'ods'];
+
+        // Try Excel/ODS by extension first
+        if (in_array($ext, $spreadsheetExts, true)) {
+            return IOFactory::load($filePath);
+        }
+
+        // Delimited text (csv/tsv/txt/unknown): sniff delimiter and use CSV reader
+        if ($this->looksLikeDelimitedText($filePath) || in_array($ext, ['csv', 'txt', 'tsv', ''], true) || $ext === '') {
+            try {
+                $delimiter = $this->detectSheinCsvDelimiter($filePath);
+                $reader = IOFactory::createReader('Csv');
+                $reader->setDelimiter($delimiter);
+                $reader->setEnclosure('"');
+                $reader->setSheetIndex(0);
+
+                return $reader->load($filePath);
+            } catch (\Throwable $e) {
+                // Fall through to generic IOFactory
+            }
+        }
+
+        // Last resort: let PhpSpreadsheet guess (xlsx/xls/csv/etc.)
+        return IOFactory::load($filePath);
+    }
+
+    private function looksLikeDelimitedText(string $filePath): bool
+    {
+        $handle = @fopen($filePath, 'rb');
+        if (! $handle) {
+            return false;
+        }
+        $chunk = fread($handle, 4096) ?: '';
+        fclose($handle);
+        // Binary Excel/zip files start with PK or other non-text signatures
+        if (str_starts_with($chunk, 'PK') || str_starts_with($chunk, "\xD0\xCF")) {
+            return false;
+        }
+        $sample = substr($chunk, 0, 800);
+
+        return str_contains($sample, "\t") || str_contains($sample, ',') || str_contains(strtolower($sample), 'order');
+    }
+
+    private function detectSheinCsvDelimiter(string $filePath): string
+    {
+        $handle = fopen($filePath, 'r');
+        if (! $handle) {
+            return ',';
+        }
+        $line = fgets($handle) ?: '';
+        fclose($handle);
+        $tabs = substr_count($line, "\t");
+        $commas = substr_count($line, ',');
+
+        return $tabs > $commas ? "\t" : ',';
+    }
+
+    /**
+     * Map one Shein Seller Hub order-export row (header row 2) into shein_daily_data columns.
+     * Format matches sheinorders.csv: Number of items sold @ 38, Province @ 39, City @ 40.
+     */
+    private function mapSheinOrderExportRow(array $row): ?array
+    {
+        if (empty($row[1])) {
+            return null;
+        }
+
+        $qty = isset($row[38]) && is_numeric($row[38]) ? max(1, (int) $row[38]) : 1;
+
+        return [
+            'order_type' => isset($row[0]) && $row[0] !== '' ? trim((string) $row[0]) : null,
+            'order_number' => isset($row[1]) && $row[1] !== '' ? trim((string) $row[1]) : null,
+            'exchange_order' => isset($row[2]) && $row[2] !== '' ? trim((string) $row[2]) : null,
+            'order_status' => isset($row[3]) && $row[3] !== '' ? trim((string) $row[3]) : null,
+            'shipment_mode' => isset($row[4]) && $row[4] !== '' ? trim((string) $row[4]) : null,
+            'urged_or_not' => isset($row[5]) && $row[5] !== '' ? trim((string) $row[5]) : null,
+            'is_it_lost' => isset($row[6]) && $row[6] !== '' ? trim((string) $row[6]) : null,
+            'whether_to_stay' => isset($row[7]) && $row[7] !== '' ? trim((string) $row[7]) : null,
+            'order_issue' => isset($row[8]) && $row[8] !== '' ? trim((string) $row[8]) : null,
+            'product_name' => isset($row[9]) && $row[9] !== '' ? trim((string) $row[9]) : null,
+            'product_description' => isset($row[10]) && $row[10] !== '' ? trim((string) $row[10]) : null,
+            'specification' => isset($row[11]) && $row[11] !== '' ? trim((string) $row[11]) : null,
+            'seller_sku' => isset($row[12]) && $row[12] !== '' ? trim((string) $row[12]) : null,
+            'shein_sku' => isset($row[13]) && $row[13] !== '' ? trim((string) $row[13]) : null,
+            'skc' => isset($row[14]) && $row[14] !== '' ? trim((string) $row[14]) : null,
+            'item_id' => isset($row[15]) && $row[15] !== '' ? trim((string) $row[15]) : null,
+            'product_status' => isset($row[16]) && $row[16] !== '' ? trim((string) $row[16]) : null,
+            'inventory_id' => isset($row[17]) && $row[17] !== '' ? trim((string) $row[17]) : null,
+            'exchange_id' => isset($row[18]) && $row[18] !== '' ? trim((string) $row[18]) : null,
+            'reason_for_replacement' => isset($row[19]) && $row[19] !== '' ? trim((string) $row[19]) : null,
+            'product_id_to_be_exchanged' => isset($row[20]) && $row[20] !== '' ? trim((string) $row[20]) : null,
+            'locked_or_not' => isset($row[21]) && $row[21] !== '' ? trim((string) $row[21]) : null,
+            'order_processed_on' => isset($row[22]) ? $this->parseDate($row[22]) : null,
+            'collection_deadline' => isset($row[23]) ? $this->parseDate($row[23]) : null,
+            'requested_shipping_time' => isset($row[24]) ? $this->parseDate($row[24]) : null,
+            'delivery_deadline' => isset($row[25]) ? $this->parseDate($row[25]) : null,
+            'delivery_time' => isset($row[26]) ? $this->parseDate($row[26]) : null,
+            'tracking_number' => isset($row[27]) && $row[27] !== '' ? trim((string) $row[27]) : null,
+            'sellers_package' => isset($row[28]) && $row[28] !== '' ? trim((string) $row[28]) : null,
+            'seller_currency' => isset($row[29]) && $row[29] !== '' ? trim((string) $row[29]) : null,
+            'product_price' => isset($row[30]) ? $this->sanitizePrice($row[30]) : null,
+            'coupon_discount' => isset($row[31]) ? $this->sanitizePrice($row[31]) : null,
+            'store_campaign_discount' => isset($row[32]) ? $this->sanitizePrice($row[32]) : null,
+            'commission' => isset($row[33]) ? $this->sanitizePrice($row[33]) : null,
+            'estimated_merchandise_revenue' => isset($row[34]) ? $this->sanitizePrice($row[34]) : null,
+            'fulfillment_service_fee' => isset($row[35]) ? $this->sanitizePrice($row[35]) : null,
+            'storage_fee' => isset($row[36]) ? $this->sanitizePrice($row[36]) : null,
+            'consumption_tax' => isset($row[37]) ? $this->sanitizePrice($row[37]) : null,
+            'quantity' => $qty,
+            'province' => isset($row[39]) && $row[39] !== '' ? trim((string) $row[39]) : null,
+            'city' => isset($row[40]) && $row[40] !== '' ? trim((string) $row[40]) : null,
+        ];
+    }
+
+    /**
      * Upload Shein daily data file in chunks
      */
     public function uploadDailyDataChunk(Request $request)
     {
         try {
             $request->validate([
-                'file' => 'required|file|mimes:xlsx,xls,csv,txt',
+                'file' => 'required|file|max:51200',
                 'chunk' => 'required|integer|min:0',
                 'totalChunks' => 'required|integer|min:1',
             ]);
@@ -175,116 +297,57 @@ class SheinController extends Controller
             $totalChunks = $request->input('totalChunks');
             $uploadId = $request->input('uploadId', uniqid('shein_upload_'));
 
-            // Store the file temporarily
             $tempPath = storage_path('app/temp');
-            if (!file_exists($tempPath)) {
+            if (! file_exists($tempPath)) {
                 mkdir($tempPath, 0755, true);
             }
 
-            $fileName = $uploadId . '_' . $file->getClientOriginalName();
-            $filePath = $tempPath . '/' . $fileName;
+            $fileName = $uploadId.'_'.$file->getClientOriginalName();
+            $filePath = $tempPath.'/'.$fileName;
 
-            // Move uploaded file on first chunk
             if ($chunk == 0) {
                 $file->move($tempPath, $fileName);
-                
-                // Truncate the table on first chunk
+
                 DB::statement('SET FOREIGN_KEY_CHECKS=0;');
                 SheinDailyData::truncate();
                 DB::statement('SET FOREIGN_KEY_CHECKS=1;');
-                
+
                 Log::info('Shein daily data table truncated before import');
             }
 
-            // Load and process the spreadsheet
-            $spreadsheet = IOFactory::load($filePath);
+            $spreadsheet = $this->loadSheinOrderSpreadsheet($filePath);
             $sheet = $spreadsheet->getActiveSheet();
             $rows = $sheet->toArray();
 
-            // Skip first two rows (headers)
-            unset($rows[0]); // First header row
-            unset($rows[1]); // Second header row with actual column names
+            unset($rows[0], $rows[1]);
 
             $totalRows = count($rows);
-            $chunkSize = ceil($totalRows / $totalChunks);
+            $chunkSize = max(1, (int) ceil($totalRows / $totalChunks));
             $startRow = $chunk * $chunkSize;
-            $endRow = min(($chunk + 1) * $chunkSize, $totalRows);
+            $chunkRows = array_slice($rows, $startRow, $chunkSize, true);
 
-            // Process only this chunk's rows
-            $chunkRows = array_slice($rows, $startRow, $endRow - $startRow, true);
-            
             $imported = 0;
             $skipped = 0;
 
             DB::beginTransaction();
             try {
-                foreach ($chunkRows as $index => $row) {
-                    if (empty($row[1])) { // Skip if order_number is empty
+                foreach ($chunkRows as $row) {
+                    $insertData = $this->mapSheinOrderExportRow(is_array($row) ? $row : []);
+                    if (! $insertData) {
                         $skipped++;
                         continue;
                     }
-
-                    // Map columns to current Shein order export (0-based, row 2 = headers after group row).
-                    // Template adds "Requested Shipping Time" before delivery dates; Referral Fees→commission; Sales Tax→consumption_tax.
-                    $insertData = [
-                        'order_type' => isset($row[0]) && $row[0] !== '' ? trim($row[0]) : null,
-                        'order_number' => isset($row[1]) && $row[1] !== '' ? trim($row[1]) : null,
-                        'exchange_order' => isset($row[2]) && $row[2] !== '' ? trim($row[2]) : null,
-                        'order_status' => isset($row[3]) && $row[3] !== '' ? trim($row[3]) : null,
-                        'shipment_mode' => isset($row[4]) && $row[4] !== '' ? trim($row[4]) : null,
-                        'urged_or_not' => isset($row[5]) && $row[5] !== '' ? trim($row[5]) : null,
-                        'is_it_lost' => isset($row[6]) && $row[6] !== '' ? trim($row[6]) : null,
-                        'whether_to_stay' => isset($row[7]) && $row[7] !== '' ? trim($row[7]) : null,
-                        'order_issue' => isset($row[8]) && $row[8] !== '' ? trim($row[8]) : null,
-                        'product_name' => isset($row[9]) && $row[9] !== '' ? trim($row[9]) : null,
-                        'product_description' => isset($row[10]) && $row[10] !== '' ? trim($row[10]) : null,
-                        'specification' => isset($row[11]) && $row[11] !== '' ? trim($row[11]) : null,
-                        'seller_sku' => isset($row[12]) && $row[12] !== '' ? trim($row[12]) : null,
-                        'shein_sku' => isset($row[13]) && $row[13] !== '' ? trim($row[13]) : null,
-                        'skc' => isset($row[14]) && $row[14] !== '' ? trim($row[14]) : null,
-                        'item_id' => isset($row[15]) && $row[15] !== '' ? trim($row[15]) : null,
-                        'product_status' => isset($row[16]) && $row[16] !== '' ? trim($row[16]) : null,
-                        'inventory_id' => isset($row[17]) && $row[17] !== '' ? trim($row[17]) : null,
-                        'exchange_id' => isset($row[18]) && $row[18] !== '' ? trim($row[18]) : null,
-                        'reason_for_replacement' => isset($row[19]) && $row[19] !== '' ? trim($row[19]) : null,
-                        'product_id_to_be_exchanged' => isset($row[20]) && $row[20] !== '' ? trim($row[20]) : null,
-                        'locked_or_not' => isset($row[21]) && $row[21] !== '' ? trim($row[21]) : null,
-                        'order_processed_on' => isset($row[22]) ? $this->parseDate($row[22]) : null,
-                        'collection_deadline' => isset($row[23]) ? $this->parseDate($row[23]) : null,
-                        'requested_shipping_time' => isset($row[24]) ? $this->parseDate($row[24]) : null,
-                        'delivery_deadline' => isset($row[25]) ? $this->parseDate($row[25]) : null,
-                        'delivery_time' => isset($row[26]) ? $this->parseDate($row[26]) : null,
-                        'tracking_number' => isset($row[27]) && $row[27] !== '' ? trim($row[27]) : null,
-                        'sellers_package' => isset($row[28]) && $row[28] !== '' ? trim($row[28]) : null,
-                        'seller_currency' => isset($row[29]) && $row[29] !== '' ? trim($row[29]) : null,
-                        'product_price' => isset($row[30]) ? $this->sanitizePrice($row[30]) : null,
-                        'coupon_discount' => isset($row[31]) ? $this->sanitizePrice($row[31]) : null,
-                        'store_campaign_discount' => isset($row[32]) ? $this->sanitizePrice($row[32]) : null,
-                        'commission' => isset($row[33]) ? $this->sanitizePrice($row[33]) : null,
-                        'estimated_merchandise_revenue' => isset($row[34]) ? $this->sanitizePrice($row[34]) : null,
-                        'fulfillment_service_fee' => isset($row[35]) ? $this->sanitizePrice($row[35]) : null,
-                        'storage_fee' => isset($row[36]) ? $this->sanitizePrice($row[36]) : null,
-                        'consumption_tax' => isset($row[37]) ? $this->sanitizePrice($row[37]) : null,
-                        'province' => isset($row[38]) && $row[38] !== '' ? trim($row[38]) : null,
-                        'city' => isset($row[39]) && $row[39] !== '' ? trim($row[39]) : null,
-                        'quantity' => 1,
-                    ];
-
                     SheinDailyData::create($insertData);
                     $imported++;
                 }
-
                 DB::commit();
             } catch (\Exception $e) {
                 DB::rollBack();
                 throw $e;
             }
 
-            // Clean up temp file on last chunk
-            if ($chunk == $totalChunks - 1) {
-                if (file_exists($filePath)) {
-                    unlink($filePath);
-                }
+            if ($chunk == $totalChunks - 1 && file_exists($filePath)) {
+                unlink($filePath);
             }
 
             return response()->json([
@@ -294,13 +357,14 @@ class SheinController extends Controller
                 'totalChunks' => $totalChunks,
                 'imported' => $imported,
                 'skipped' => $skipped,
-                'progress' => round((($chunk + 1) / $totalChunks) * 100, 2)
+                'progress' => round((($chunk + 1) / $totalChunks) * 100, 2),
             ]);
         } catch (\Exception $e) {
-            Log::error('Error uploading Shein daily data chunk: ' . $e->getMessage());
+            Log::error('Error uploading Shein daily data chunk: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Error: ' . $e->getMessage()
+                'message' => 'Error: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -374,7 +438,7 @@ class SheinController extends Controller
     {
         try {
             $request->validate([
-                'file' => 'required|file|mimes:xlsx,xls,csv,txt',
+                'file' => 'required|file|max:51200',
                 'chunk' => 'required|integer|min:0',
                 'totalChunks' => 'required|integer|min:1',
             ]);
@@ -384,115 +448,54 @@ class SheinController extends Controller
             $totalChunks = $request->input('totalChunks');
             $uploadId = $request->input('uploadId', uniqid('shein_l60_upload_'));
 
-            // Store the file temporarily
             $tempPath = storage_path('app/temp');
-            if (!file_exists($tempPath)) {
+            if (! file_exists($tempPath)) {
                 mkdir($tempPath, 0755, true);
             }
 
-            $fileName = $uploadId . '_' . $file->getClientOriginalName();
-            $filePath = $tempPath . '/' . $fileName;
+            $fileName = $uploadId.'_'.$file->getClientOriginalName();
+            $filePath = $tempPath.'/'.$fileName;
 
-            // Move uploaded file on first chunk
             if ($chunk == 0) {
                 $file->move($tempPath, $fileName);
-                
-                // Truncate the L60 table on first chunk
+
                 DB::statement('SET FOREIGN_KEY_CHECKS=0;');
                 SheinDailyDataL60::truncate();
                 DB::statement('SET FOREIGN_KEY_CHECKS=1;');
-                
+
                 Log::info('Shein L60 daily data table truncated before import');
             }
 
-            // Load and process the spreadsheet
-            $spreadsheet = IOFactory::load($filePath);
-            $sheet = $spreadsheet->getActiveSheet();
-            $rows = $sheet->toArray();
-
-            // Skip first two rows (headers)
-            unset($rows[0]); // First header row
-            unset($rows[1]); // Second header row with actual column names
+            $spreadsheet = $this->loadSheinOrderSpreadsheet($filePath);
+            $rows = $spreadsheet->getActiveSheet()->toArray();
+            unset($rows[0], $rows[1]);
 
             $totalRows = count($rows);
-            $chunkSize = ceil($totalRows / $totalChunks);
-            $startRow = $chunk * $chunkSize;
-            $endRow = min(($chunk + 1) * $chunkSize, $totalRows);
+            $chunkSize = max(1, (int) ceil($totalRows / $totalChunks));
+            $chunkRows = array_slice($rows, $chunk * $chunkSize, $chunkSize, true);
 
-            // Process only this chunk's rows
-            $chunkRows = array_slice($rows, $startRow, $endRow - $startRow, true);
-            
             $imported = 0;
             $skipped = 0;
 
             DB::beginTransaction();
             try {
-                foreach ($chunkRows as $index => $row) {
-                    if (empty($row[1])) { // Skip if order_number is empty
+                foreach ($chunkRows as $row) {
+                    $insertData = $this->mapSheinOrderExportRow(is_array($row) ? $row : []);
+                    if (! $insertData) {
                         $skipped++;
                         continue;
                     }
-
-                    // Map columns to current Shein order export (same as L30)
-                    $insertData = [
-                        'order_type' => isset($row[0]) && $row[0] !== '' ? trim($row[0]) : null,
-                        'order_number' => isset($row[1]) && $row[1] !== '' ? trim($row[1]) : null,
-                        'exchange_order' => isset($row[2]) && $row[2] !== '' ? trim($row[2]) : null,
-                        'order_status' => isset($row[3]) && $row[3] !== '' ? trim($row[3]) : null,
-                        'shipment_mode' => isset($row[4]) && $row[4] !== '' ? trim($row[4]) : null,
-                        'urged_or_not' => isset($row[5]) && $row[5] !== '' ? trim($row[5]) : null,
-                        'is_it_lost' => isset($row[6]) && $row[6] !== '' ? trim($row[6]) : null,
-                        'whether_to_stay' => isset($row[7]) && $row[7] !== '' ? trim($row[7]) : null,
-                        'order_issue' => isset($row[8]) && $row[8] !== '' ? trim($row[8]) : null,
-                        'product_name' => isset($row[9]) && $row[9] !== '' ? trim($row[9]) : null,
-                        'product_description' => isset($row[10]) && $row[10] !== '' ? trim($row[10]) : null,
-                        'specification' => isset($row[11]) && $row[11] !== '' ? trim($row[11]) : null,
-                        'seller_sku' => isset($row[12]) && $row[12] !== '' ? trim($row[12]) : null,
-                        'shein_sku' => isset($row[13]) && $row[13] !== '' ? trim($row[13]) : null,
-                        'skc' => isset($row[14]) && $row[14] !== '' ? trim($row[14]) : null,
-                        'item_id' => isset($row[15]) && $row[15] !== '' ? trim($row[15]) : null,
-                        'product_status' => isset($row[16]) && $row[16] !== '' ? trim($row[16]) : null,
-                        'inventory_id' => isset($row[17]) && $row[17] !== '' ? trim($row[17]) : null,
-                        'exchange_id' => isset($row[18]) && $row[18] !== '' ? trim($row[18]) : null,
-                        'reason_for_replacement' => isset($row[19]) && $row[19] !== '' ? trim($row[19]) : null,
-                        'product_id_to_be_exchanged' => isset($row[20]) && $row[20] !== '' ? trim($row[20]) : null,
-                        'locked_or_not' => isset($row[21]) && $row[21] !== '' ? trim($row[21]) : null,
-                        'order_processed_on' => isset($row[22]) ? $this->parseDate($row[22]) : null,
-                        'collection_deadline' => isset($row[23]) ? $this->parseDate($row[23]) : null,
-                        'requested_shipping_time' => isset($row[24]) ? $this->parseDate($row[24]) : null,
-                        'delivery_deadline' => isset($row[25]) ? $this->parseDate($row[25]) : null,
-                        'delivery_time' => isset($row[26]) ? $this->parseDate($row[26]) : null,
-                        'tracking_number' => isset($row[27]) && $row[27] !== '' ? trim($row[27]) : null,
-                        'sellers_package' => isset($row[28]) && $row[28] !== '' ? trim($row[28]) : null,
-                        'seller_currency' => isset($row[29]) && $row[29] !== '' ? trim($row[29]) : null,
-                        'product_price' => isset($row[30]) ? $this->sanitizePrice($row[30]) : null,
-                        'coupon_discount' => isset($row[31]) ? $this->sanitizePrice($row[31]) : null,
-                        'store_campaign_discount' => isset($row[32]) ? $this->sanitizePrice($row[32]) : null,
-                        'commission' => isset($row[33]) ? $this->sanitizePrice($row[33]) : null,
-                        'estimated_merchandise_revenue' => isset($row[34]) ? $this->sanitizePrice($row[34]) : null,
-                        'fulfillment_service_fee' => isset($row[35]) ? $this->sanitizePrice($row[35]) : null,
-                        'storage_fee' => isset($row[36]) ? $this->sanitizePrice($row[36]) : null,
-                        'consumption_tax' => isset($row[37]) ? $this->sanitizePrice($row[37]) : null,
-                        'province' => isset($row[38]) && $row[38] !== '' ? trim($row[38]) : null,
-                        'city' => isset($row[39]) && $row[39] !== '' ? trim($row[39]) : null,
-                        'quantity' => 1,
-                    ];
-
                     SheinDailyDataL60::create($insertData);
                     $imported++;
                 }
-
                 DB::commit();
             } catch (\Exception $e) {
                 DB::rollBack();
                 throw $e;
             }
 
-            // Clean up temp file on last chunk
-            if ($chunk == $totalChunks - 1) {
-                if (file_exists($filePath)) {
-                    unlink($filePath);
-                }
+            if ($chunk == $totalChunks - 1 && file_exists($filePath)) {
+                unlink($filePath);
             }
 
             return response()->json([
@@ -502,34 +505,63 @@ class SheinController extends Controller
                 'totalChunks' => $totalChunks,
                 'imported' => $imported,
                 'skipped' => $skipped,
-                'progress' => round((($chunk + 1) / $totalChunks) * 100, 2)
+                'progress' => round((($chunk + 1) / $totalChunks) * 100, 2),
             ]);
         } catch (\Exception $e) {
-            Log::error('Error uploading Shein L60 daily data chunk: ' . $e->getMessage());
+            Log::error('Error uploading Shein L60 daily data chunk: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Error: ' . $e->getMessage()
+                'message' => 'Error: '.$e->getMessage(),
             ], 500);
         }
     }
 
     /**
-     * Get L60 sales statistics — prior 30-day shopify_order_items window (Sen Shp).
+     * Get L60 sales statistics from uploaded shein_daily_data_l60 (Seller Hub export).
      */
     public function getL60Sales(Request $request)
     {
         try {
-            [$start, $end] = SheinShopifySalesService::channelMasterL60Window();
-            $totals = SheinShopifySalesService::computeL60Totals($start, $end);
+            $excludedStatuses = ['refund', 'return', 'cancel', 'closed', 'exchange'];
+            $rows = SheinDailyDataL60::query()
+                ->where(function ($q) use ($excludedStatuses) {
+                    foreach ($excludedStatuses as $s) {
+                        $q->whereRaw('LOWER(COALESCE(order_status, "")) NOT LIKE ?', ["%{$s}%"]);
+                    }
+                })
+                ->get();
 
-            Log::info('Shein L60 sales fetched from shopify_order_items', $totals);
+            $totalOrders = 0;
+            $totalQuantity = 0;
+            $totalSales = 0.0;
+            foreach ($rows as $row) {
+                $orderNum = trim((string) ($row->order_number ?? ''));
+                $sellerSku = trim((string) ($row->seller_sku ?? ''));
+                if ($orderNum === '' && $sellerSku === '') {
+                    continue;
+                }
+                $totalOrders++;
+                $quantity = max(1, (int) ($row->quantity ?? 0));
+                $productPrice = (float) ($row->product_price ?? 0);
+                // Sales = Product Price × qty (Seller Hub GMV)
+                $lineRevenue = $productPrice * $quantity;
+                $totalQuantity += $quantity;
+                $totalSales += $lineRevenue;
+            }
+
+            $totals = [
+                'total_sales' => round($totalSales, 2),
+                'total_orders' => $totalOrders,
+                'total_quantity' => $totalQuantity,
+            ];
 
             return response()->json([
                 'success' => true,
                 'data' => $totals,
             ]);
         } catch (\Exception $e) {
-            Log::error('Error fetching Shein L60 sales from shopify_order_items: ' . $e->getMessage());
+            Log::error('Error fetching Shein L60 sales from shein_daily_data_l60: '.$e->getMessage());
 
             return response()->json([
                 'success' => false,
@@ -540,26 +572,58 @@ class SheinController extends Controller
 
     /**
      * Get daily data for Shein tabulator view.
-     * Source: apicentral.shopify_order_items — same Shein identification as /shopify-orders (Sen Shp).
+     * Source: uploaded Seller Hub order export only → shein_daily_data
+     * (NOT Shopify / apicentral).
      */
     public function getDailyData(Request $request)
     {
         try {
-            [$start, $end] = SheinShopifySalesService::tabulatorL30Window();
-            $data = SheinShopifySalesService::getDailyDataRows($start, $end);
+            $productMasters = $this->productMasterByNormalizedSku();
+            $normalizeSku = fn ($v) => $this->normalizeSheinSkuExact((string) $v);
 
-            Log::info('Shein daily data fetched from shopify_order_items', [
+            $data = SheinDailyData::query()
+                ->orderByDesc('order_processed_on')
+                ->orderByDesc('id')
+                ->get()
+                ->map(function ($item) use ($productMasters, $normalizeSku) {
+                    $key = $item->seller_sku ? $normalizeSku($item->seller_sku) : '';
+                    $pm = $key !== '' ? $productMasters->get($key) : null;
+                    if (! $pm instanceof ProductMaster) {
+                        $pm = null;
+                    }
+                    $resolved = $this->lpAndShipFromProductMaster($pm);
+                    $row = $item->toArray();
+                    $row['lp'] = $resolved['lp'];
+                    $row['ship'] = $resolved['ship'];
+                    // Ensure dates are plain strings for Tabulator
+                    foreach (['order_processed_on', 'collection_deadline', 'requested_shipping_time', 'delivery_deadline', 'delivery_time'] as $dateField) {
+                        if (! empty($row[$dateField]) && ! is_string($row[$dateField])) {
+                            try {
+                                $row[$dateField] = Carbon::parse($row[$dateField])->format('Y-m-d H:i:s');
+                            } catch (\Throwable $e) {
+                                $row[$dateField] = (string) $row[$dateField];
+                            }
+                        }
+                    }
+
+                    return $row;
+                })
+                ->values()
+                ->all();
+
+            Log::info('Shein daily data fetched from shein_daily_data upload', [
                 'result_count' => count($data),
             ]);
 
             return response()->json([
                 'data' => $data,
+                'source' => 'shein_daily_data_upload',
                 'marketplace_margin_decimal' => SheinShopifySalesService::sheinMarginDecimal(),
             ]);
         } catch (\Exception $e) {
-            Log::error('Error fetching Shein daily data from shopify_order_items: ' . $e->getMessage());
+            Log::error('Error fetching Shein daily data from upload: '.$e->getMessage());
 
-            return response()->json(['error' => $e->getMessage()], 500);
+            return response()->json(['error' => $e->getMessage(), 'data' => []], 500);
         }
     }
 
@@ -922,19 +986,37 @@ class SheinController extends Controller
                 )->keyBy(fn($r) => $normalizeSku($r->sku));
             }
 
-            // ── 3. Shein sales → al30 / sales  (from shein_daily_data.seller_sku)
+            // ── 3. Shein sales → al30 / sales from uploaded shein_daily_data (Seller Hub CSV)
             $excludedStatuses = ['refund', 'return', 'cancel', 'closed', 'exchange'];
-            $salesAgg = SheinDailyData::query()
-                ->selectRaw('seller_sku, SUM(COALESCE(quantity, 0)) AS al30')
+            $salesAgg = new SupportCollection();
+            SheinDailyData::query()
                 ->whereNotNull('seller_sku')->where('seller_sku', '!=', '')
                 ->where(function ($q) use ($excludedStatuses) {
                     foreach ($excludedStatuses as $s) {
                         $q->whereRaw('LOWER(COALESCE(order_status, "")) NOT LIKE ?', ["%{$s}%"]);
                     }
                 })
-                ->groupBy('seller_sku')
-                ->get()
-                ->keyBy(fn($r) => $normalizeSku($r->seller_sku));
+                ->get(['seller_sku', 'quantity', 'product_price', 'estimated_merchandise_revenue'])
+                ->each(function ($row) use ($salesAgg, $normalizeSku) {
+                    $key = $normalizeSku($row->seller_sku);
+                    if ($key === '') {
+                        return;
+                    }
+                    $qty = max(1, (int) ($row->quantity ?? 0));
+                    $price = (float) ($row->product_price ?? 0);
+                    // Sales = Product Price × qty (Seller Hub GMV)
+                    $rev = $price * $qty;
+                    $existing = $salesAgg->get($key);
+                    if ($existing) {
+                        $existing->al30 += $qty;
+                        $existing->sales += $rev;
+                    } else {
+                        $salesAgg->put($key, (object) [
+                            'al30' => $qty,
+                            'sales' => $rev,
+                        ]);
+                    }
+                });
 
             // ── 4. Shopify → INV / OV L30
             // Load full tables and key in PHP — SQL UPPER(TRIM(sku)) does not fold NBSP / multi-space variants.
@@ -957,6 +1039,25 @@ class SheinController extends Controller
                 $pricingBySku->keys()->all(),
                 $productMasterBySku->keys()->all()
             ))->unique()->values();
+
+            // Sku Link LMP — same shared lmp_sku_links groups as /ebay-tabulator-view
+            $lmpGroupService = new LmpSkuGroupService();
+            try {
+                $prepSkus = [];
+                foreach ($productMasterBySku as $pm) {
+                    if ($pm && trim((string) ($pm->sku ?? '')) !== '') {
+                        $prepSkus[] = (string) $pm->sku;
+                    }
+                }
+                foreach ($pricingBySku as $pr) {
+                    if ($pr && trim((string) ($pr->sku ?? '')) !== '') {
+                        $prepSkus[] = (string) $pr->sku;
+                    }
+                }
+                $lmpGroupService->prepareForSkus($prepSkus);
+            } catch (\Throwable $e) {
+                Log::warning('LmpSkuGroupService prepare failed (Shein): ' . $e->getMessage());
+            }
 
             // ── 6. Margin from marketplace_percentages
             $percentage = $this->sheinMarketplaceMarginPercent();
@@ -981,9 +1082,12 @@ class SheinController extends Controller
 
                 $sale  = $salesAgg->get($normalizedSku);
                 $al30  = $sale ? (float) $sale->al30 : 0;
-                // Use theoretical sales (al30 × special_offer_price) — consistent with profit calc
-                // Same pattern as TikTok: TT L30 × TT Price
-                $sales = $al30 * $spOffer;
+                // Actual L30 revenue from uploaded shein_daily_data (Seller Hub CSV).
+                // Fall back to theoretical al30 × special_offer only when qty exists but revenue missing.
+                $sales = $sale ? (float) ($sale->sales ?? 0) : 0;
+                if ($sales <= 0 && $al30 > 0 && $spOffer > 0) {
+                    $sales = $al30 * $spOffer;
+                }
 
                 $shopifyRow = $shopifyBySku->get($normalizedSku);
                 $inv        = $shopifyRow ? (int) ($shopifyRow->inv      ?? 0) : 0;
@@ -1029,8 +1133,22 @@ class SheinController extends Controller
                 // fall back to meta-derived value, then INV-based default.
                 $nrReq = $linkVal['nr_req'] ?? $nr ?? ($inv > 0 ? 'REQ' : 'NR');
 
-                // LMP competitor entries (up to 4 price/url pairs from shein_lmp)
-                $lmpEntries = $this->sheinLmpEntriesFrom($lmpBySku->get($normalizedSku));
+                // LMP competitor entries merged across Sku Link LMP group (same as ebay-tabulator-view)
+                $linkedLmpSkus = $this->sheinLinkedLmpSkusFor($lmpGroupService, (string) $displaySku);
+                $lmpEntries = [];
+                $seenLmp = [];
+                foreach ($linkedLmpSkus as $linkedSku) {
+                    $linkedNorm = $normalizeSku($linkedSku);
+                    foreach ($this->sheinLmpEntriesFrom($lmpBySku->get($linkedNorm)) as $entry) {
+                        $dedupeKey = ((string) ($entry['price'] ?? '')) . '|' . strtoupper(trim((string) ($entry['link'] ?? '')));
+                        if (isset($seenLmp[$dedupeKey])) {
+                            continue;
+                        }
+                        $seenLmp[$dedupeKey] = true;
+                        $entry['source_sku'] = $linkedSku;
+                        $lmpEntries[] = $entry;
+                    }
+                }
                 $lmpPrice = null;
                 $lmpLink  = null;
                 foreach ($lmpEntries as $entry) {
@@ -1073,6 +1191,7 @@ class SheinController extends Controller
                     'lmp_price'    => $lmpPrice,
                     'lmp_link'     => $lmpLink,
                     'lmp_entries'  => $lmpEntries,
+                    'linked_lmp_skus' => $linkedLmpSkus,
                 ];
             }
 
@@ -1183,7 +1302,8 @@ class SheinController extends Controller
     }
 
     /**
-     * Map / Miss / NMap — same rules as shein_pricing_view badges (Amazon-aligned).
+     * Map / Miss / NMap — same rules as shein_pricing_view badges (ebay2-aligned):
+     * Map/NMap only when listed + both INV and Shein stock > 0.
      */
     public static function countSheinPricingBadgeTotals(iterable $rows): array
     {
@@ -1200,24 +1320,32 @@ class SheinController extends Controller
             }
 
             $inv = (float) ($row['inv'] ?? 0);
-            // NR/REQ — same source as the shein-pricing page badge (prefer nr_req, fall back to meta NR).
             $nrValue = strtoupper(trim((string) (($row['nr_req'] ?? '') ?: ($row['NR'] ?? ''))));
-            $isMissingShein = (bool) ($row['is_missing_shein'] ?? false);
+            $isMissingShein = (bool) ($row['is_missing_shein'] ?? false)
+                || strtoupper(trim((string) ($row['missing'] ?? ''))) === 'M';
             $rowPrice = (float) ($row['special_offer'] ?? 0);
+            $sheinStock = (float) ($row['shein_stock'] ?? 0);
 
-            if ($inv > 0 && $nrValue === 'REQ') {
-                if ($isMissingShein || $rowPrice <= 0) {
-                    $miss++;
-                } elseif (! $isMissingShein && $rowPrice > 0) {
-                    $sheinStock = (float) ($row['shein_stock'] ?? 0);
-                    $diff = abs($inv - $sheinStock);
-                    $within = $inv <= 0 || $diff <= 3.0 || $diff <= ($inv * 0.03);
-                    if ($within) {
-                        $map++;
-                    } else {
-                        $nmap++;
-                    }
-                }
+            if ($inv <= 0 || $nrValue !== 'REQ') {
+                continue;
+            }
+
+            if ($isMissingShein || $rowPrice <= 0) {
+                $miss++;
+                continue;
+            }
+
+            // Both sides need stock (same as sheinRowIsListedForMap)
+            if ($sheinStock <= 0) {
+                continue;
+            }
+
+            $diff = abs($inv - $sheinStock);
+            $within = $diff <= 3.0 || $diff <= ($inv * 0.03);
+            if ($within) {
+                $map++;
+            } else {
+                $nmap++;
             }
         }
 
@@ -1230,7 +1358,8 @@ class SheinController extends Controller
     }
 
     /**
-     * Persist daily summary for badge charts (matches pricing page updateSummary on child SKUs).
+     * Persist daily summary for badge charts — formulas must match
+     * shein_pricing_view updateSummary() so today's chart point equals the badges.
      */
     private function saveSheinPricingSnapshot(array $rows): void
     {
@@ -1243,16 +1372,15 @@ class SheinController extends Controller
 
             $totalSales = 0.0;
             $totalPft = 0.0;
-            $totalCogs = 0.0;
-            $gpftSum = 0.0;
-            $gpftCount = 0;
-            $roiSum = 0.0;
-            $roiCount = 0;
             $totalAl30 = 0.0;
             $zeroSold = 0;
             $moreSold = 0;
             $dilSum = 0.0;
             $dilCount = 0;
+            $gpftSum = 0.0;
+            $gpftCount = 0;
+            $roiSum = 0.0;
+            $roiCount = 0;
             $badgeTotals = self::countSheinPricingBadgeTotals($children);
             $missingCount = $badgeTotals['miss'];
             $mapCount = $badgeTotals['map'];
@@ -1260,18 +1388,17 @@ class SheinController extends Controller
 
             foreach ($children as $row) {
                 $inv = (float) ($row['inv'] ?? 0);
-                // NR/REQ — same source as the shein-pricing page badge (prefer nr_req, fall back to meta NR).
                 $nrValue = strtoupper(trim((string) (($row['nr_req'] ?? '') ?: ($row['NR'] ?? ''))));
-                $isMissingShein = (bool) ($row['is_missing_shein'] ?? false);
+                $isMissingShein = (bool) ($row['is_missing_shein'] ?? false)
+                    || strtoupper(trim((string) ($row['missing'] ?? ''))) === 'M';
                 $rowPrice = (float) ($row['special_offer'] ?? 0);
+                // Missing L — same as sheinRowIsMissingL
                 $isMissingL = $inv > 0 && $nrValue === 'REQ' && ($isMissingShein || $rowPrice <= 0);
 
                 $al30 = (float) ($row['al30'] ?? 0);
                 $ovL30 = (float) ($row['ov_l30'] ?? 0);
                 $profit = (float) ($row['profit'] ?? 0);
-                $lp = (float) ($row['lp'] ?? 0);
 
-                $totalCogs += $lp * $al30;
                 $totalAl30 += $al30;
                 if ($al30 === 0.0) {
                     $zeroSold++;
@@ -1284,17 +1411,16 @@ class SheinController extends Controller
                 }
 
                 if (! $isMissingL) {
+                    // Same as AliExpress pricing badges / shein_pricing updateSummary
                     $totalSales += (float) ($row['sales'] ?? 0);
                     $totalPft += $al30 * $profit;
 
-                    $gpft = isset($row['gpft']) ? (float) $row['gpft'] : null;
-                    if ($gpft !== null && is_finite($gpft)) {
-                        $gpftSum += $gpft;
+                    if (isset($row['gpft']) && is_numeric($row['gpft'])) {
+                        $gpftSum += (float) $row['gpft'];
                         $gpftCount++;
                     }
-                    $groi = isset($row['groi']) ? (float) $row['groi'] : null;
-                    if ($groi !== null && is_finite($groi)) {
-                        $roiSum += $groi;
+                    if (isset($row['groi']) && is_numeric($row['groi'])) {
+                        $roiSum += (float) $row['groi'];
                         $roiCount++;
                     }
                 }
@@ -1302,14 +1428,13 @@ class SheinController extends Controller
 
             $totalSku = $children->count();
             $avgGpft = $gpftCount > 0 ? $gpftSum / $gpftCount : 0.0;
-            $avgDil = $dilCount > 0 ? $dilSum / $dilCount : 0.0;
             $avgRoi = $roiCount > 0 ? $roiSum / $roiCount : 0.0;
+            $avgDil = $dilCount > 0 ? $dilSum / $dilCount : 0.0;
 
             $summaryData = [
                 'total_sku' => $totalSku,
                 'total_sales' => round($totalSales, 2),
                 'total_pft' => round($totalPft, 2),
-                'total_cogs' => round($totalCogs, 2),
                 'total_al30' => round($totalAl30, 2),
                 'avg_gpft' => round($avgGpft, 2),
                 'avg_dil' => round($avgDil, 2),
@@ -1355,7 +1480,42 @@ class SheinController extends Controller
             'ov_l30'      => (int) $sumOvL30,
             'dil_percent' => $sumInv > 0 ? round(($sumOvL30 / $sumInv) * 100, 2) : 0,
             'lmp_price'   => null, 'lmp_link' => null, 'lmp_entries' => [],
+            'linked_lmp_skus' => [],
         ];
+    }
+
+    /**
+     * Sku Link LMP group for a Shein row — same shared service as /ebay-tabulator-view.
+     *
+     * @return list<string>
+     */
+    private function sheinLinkedLmpSkusFor(LmpSkuGroupService $lmpGroupService, string $sku): array
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return [];
+        }
+
+        try {
+            $group = $lmpGroupService->groupContaining($sku);
+        } catch (\Throwable $e) {
+            $group = [];
+        }
+
+        $members = $group !== [] ? $group : [$sku];
+        $seen = [];
+        $out = [];
+        foreach ($members as $member) {
+            $display = trim((string) $member);
+            $norm = strtoupper($display);
+            if ($norm === '' || isset($seen[$norm])) {
+                continue;
+            }
+            $seen[$norm] = true;
+            $out[] = $display;
+        }
+
+        return $out;
     }
 
     public function saveSheinSpriceUpdates(Request $request)

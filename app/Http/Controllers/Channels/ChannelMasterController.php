@@ -5285,10 +5285,10 @@ class ChannelMasterController extends Controller
                 || str_contains($orderStatus, 'exchange')) {
                 continue;
             }
-            $quantity = (int) ($row->quantity ?? 0);
+            $quantity = max(1, (int) ($row->quantity ?? 0));
             $productPrice = (float) ($row->product_price ?? 0);
-            $estRev = (float) ($row->estimated_merchandise_revenue ?? 0);
-            $lineRevenue = $productPrice > 0 ? $productPrice * $quantity : ($estRev > 0 ? $estRev : 0.0);
+            // Sales = Product Price × qty (Seller Hub GMV)
+            $lineRevenue = $productPrice * $quantity;
             $sum += $lineRevenue;
         }
 
@@ -5909,10 +5909,10 @@ class ChannelMasterController extends Controller
                 || str_contains($orderStatus, 'exchange')) {
                 continue;
             }
-            $quantity = (int) ($row->quantity ?? 0);
+            $quantity = max(1, (int) ($row->quantity ?? 0));
             $productPrice = (float) ($row->product_price ?? 0);
-            $estRev = (float) ($row->estimated_merchandise_revenue ?? 0);
-            $lineRevenue = $productPrice > 0 ? $productPrice * $quantity : ($estRev > 0 ? $estRev : 0.0);
+            // Sales = Product Price × qty (Seller Hub GMV)
+            $lineRevenue = $productPrice * $quantity;
             $sum += $lineRevenue;
         }
 
@@ -9903,22 +9903,24 @@ class ChannelMasterController extends Controller
 
             $orderStatus = strtolower((string) ($row->order_status ?? ''));
             if (str_contains($orderStatus, 'refund')
-                || str_contains($orderStatus, 'returned')
-                || str_contains($orderStatus, 'cancelled')) {
+                || str_contains($orderStatus, 'return')
+                || str_contains($orderStatus, 'cancel')
+                || str_contains($orderStatus, 'closed')
+                || str_contains($orderStatus, 'exchange')) {
                 continue;
             }
 
-            $quantity = (int) ($row->quantity ?? 0);
+            $quantity = max(1, (int) ($row->quantity ?? 0));
             $productPrice = (float) ($row->product_price ?? 0);
-            $estRev = (float) ($row->estimated_merchandise_revenue ?? 0);
-            $lineRevenue = $productPrice > 0 ? $productPrice * $quantity : ($estRev > 0 ? $estRev : 0.0);
-            $unitPriceForPft = $productPrice > 0 ? $productPrice : ($quantity > 0 && $estRev > 0 ? $estRev / $quantity : ($estRev > 0 ? $estRev : 0.0));
+            // Sales = Product Price × qty (Seller Hub GMV)
+            $lineRevenue = $productPrice * $quantity;
+            $unitPriceForPft = $productPrice;
 
             $totalOrders++;
             $totalQuantity += $quantity;
             $totalRevenue += $lineRevenue;
 
-            if ($quantity > 0 && $unitPriceForPft > 0) {
+            if ($unitPriceForPft > 0) {
                 $totalWeightedPrice += $unitPriceForPft * $quantity;
                 $totalQuantityForPrice += $quantity;
             }
@@ -10021,24 +10023,24 @@ class ChannelMasterController extends Controller
 
             $orderStatus = strtolower((string) ($row->order_status ?? ''));
             if (str_contains($orderStatus, 'refund')
-                || str_contains($orderStatus, 'returned')
-                || str_contains($orderStatus, 'cancelled')
+                || str_contains($orderStatus, 'return')
+                || str_contains($orderStatus, 'cancel')
                 || str_contains($orderStatus, 'closed')
                 || str_contains($orderStatus, 'exchange')) {
                 continue;
             }
 
-            $quantity = (int) ($row->quantity ?? 0);
+            $quantity = max(1, (int) ($row->quantity ?? 0));
             $productPrice = (float) ($row->product_price ?? 0);
-            $estRev = (float) ($row->estimated_merchandise_revenue ?? 0);
-            $lineRevenue = $productPrice > 0 ? $productPrice * $quantity : ($estRev > 0 ? $estRev : 0.0);
-            $unitPriceForPft = $productPrice > 0 ? $productPrice : ($quantity > 0 && $estRev > 0 ? $estRev / $quantity : ($estRev > 0 ? $estRev : 0.0));
+            // Sales = Product Price × qty (Seller Hub GMV)
+            $lineRevenue = $productPrice * $quantity;
+            $unitPriceForPft = $productPrice;
 
             $totalOrders++;
             $totalQuantity += $quantity;
             $totalRevenue += $lineRevenue;
 
-            if ($quantity > 0 && $unitPriceForPft > 0) {
+            if ($unitPriceForPft > 0) {
                 $totalWeightedPrice += $unitPriceForPft * $quantity;
                 $totalQuantityForPrice += $quantity;
             }

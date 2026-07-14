@@ -4,43 +4,43 @@ namespace App\Services;
 
 use App\Models\MarketplacePercentage;
 use App\Models\ProductMaster;
+use App\Models\SheinDailyData;
+use App\Models\SheinDailyDataL60;
 use Carbon\Carbon;
-use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\DB;
 
 /**
- * Shein L30/L60 sales from apicentral.shopify_order_items — same identification as /shopify-orders (Sen Shp).
+ * Shein L30/L60 metrics from uploaded Seller Hub order exports
+ * (shein_daily_data / shein_daily_data_l60) — same CSV format as sheinorders.csv.
  */
 class SheinShopifySalesService
 {
     public const PST = 'America/Los_Angeles';
 
-    /** Apply Shein identification (mirrors ShopifyOrdersController Sen Shp mapping). */
-    public static function applyIdentification(Builder $query): Builder
-    {
-        return $query->where(function ($q) {
-            $q->whereRaw('LOWER(COALESCE(source_name, "")) LIKE ?', ['%shein%'])
-                ->orWhereRaw('LOWER(COALESCE(tags, "")) LIKE ?', ['%shein%']);
-        });
-    }
-
-    /** Same rolling window as /shopify-orders getData (last 30 days from PST). */
+    /** L30 window helper kept for callers; uploaded exports are typically already L30. */
     public static function shopifyOrdersL30Start(): Carbon
     {
-        return Carbon::now(self::PST)->subDays(30)->startOfDay();
+        return Carbon::now(self::PST)->subDay()->startOfDay()->subDays(29);
     }
 
-    /** L30 window for tabulator (matches /shopify-orders). */
     public static function tabulatorL30Window(): array
     {
+        $end = Carbon::now(self::PST)->subDay()->endOfDay();
+
         return [
-            self::shopifyOrdersL30Start(),
-            Carbon::now(self::PST)->endOfDay(),
+            $end->copy()->startOfDay()->subDays(29),
+            $end,
         ];
     }
 
-    /** Prior 30-day window (days 31–60) for L60 badge on tabulator. */
+    /** @return array{0: Carbon, 1: Carbon, 2: bool} */
+    public static function effectiveTabulatorWindow(): array
+    {
+        [$start, $end] = self::tabulatorL30Window();
+
+        return [$start, $end, false];
+    }
+
     public static function channelMasterL60Window(): array
     {
         $today = Carbon::now(self::PST);
@@ -59,70 +59,69 @@ class SheinShopifySalesService
     }
 
     /**
-     * Row shape for /shein-tabulator (compatible with shein_daily_data column fields).
+     * Row shape for /shein-tabulator from uploaded shein_daily_data.
+     * Date args ignored — the upload file is the period source of truth.
      */
-    public static function getDailyDataRows(Carbon $startDate, Carbon $endDate): array
+    public static function getDailyDataRows(?Carbon $startDate = null, ?Carbon $endDate = null): array
     {
-        $rows = self::applyIdentification(
-            DB::connection('apicentral')->table('shopify_order_items')
-        )
-            ->whereBetween('order_date', [$startDate, $endDate])
-            ->whereNotNull('sku')
-            ->where('sku', '!=', '')
-            ->orderBy('order_date', 'desc')
-            ->orderBy('id', 'desc')
-            ->get();
+        $query = SheinDailyData::query()->orderByDesc('order_processed_on')->orderByDesc('id');
+        if ($startDate && $endDate) {
+            $query->whereBetween('order_processed_on', [$startDate, $endDate]);
+        }
 
+        $rows = $query->get();
         if ($rows->isEmpty()) {
             return [];
         }
 
-        $productMasters = self::productMastersForSkus($rows->pluck('sku'));
+        $productMasters = self::productMastersForSkus($rows->pluck('seller_sku'));
         $result = [];
 
         foreach ($rows as $item) {
-            $sku = trim((string) ($item->sku ?? ''));
-            $orderStatus = (string) ($item->financial_status ?: ($item->fulfillment_status ?? ''));
+            $sku = trim((string) ($item->seller_sku ?? ''));
+            $orderStatus = (string) ($item->order_status ?? '');
             if (self::isExcludedStatus($orderStatus)) {
                 continue;
             }
 
             [$lp, $ship] = self::lpAndShip($productMasters, $sku);
-            $price = (float) ($item->price ?? 0);
-            $quantity = max(0, (int) ($item->quantity ?? 0));
-            $lineRevenue = $price > 0 ? $price * $quantity : 0.0;
+            $price = (float) ($item->product_price ?? 0);
+            $quantity = max(1, (int) ($item->quantity ?? 0));
+            $estRev = (float) ($item->estimated_merchandise_revenue ?? 0);
+            // Sales = Product Price × qty (Seller Hub GMV)
+            $lineRevenue = $price * $quantity;
 
             $result[] = [
-                'order_type' => '',
+                'order_type' => (string) ($item->order_type ?? ''),
                 'order_number' => (string) ($item->order_number ?? ''),
-                'exchange_order' => '',
+                'exchange_order' => (string) ($item->exchange_order ?? ''),
                 'order_status' => $orderStatus,
-                'shipment_mode' => '',
-                'product_name' => (string) ($item->product_title ?? ''),
-                'product_description' => '',
-                'specification' => '',
+                'shipment_mode' => (string) ($item->shipment_mode ?? ''),
+                'product_name' => (string) ($item->product_name ?? ''),
+                'product_description' => (string) ($item->product_description ?? ''),
+                'specification' => (string) ($item->specification ?? ''),
                 'seller_sku' => $sku,
-                'shein_sku' => '',
-                'skc' => '',
-                'item_id' => '',
-                'product_status' => '',
+                'shein_sku' => (string) ($item->shein_sku ?? ''),
+                'skc' => (string) ($item->skc ?? ''),
+                'item_id' => (string) ($item->item_id ?? ''),
+                'product_status' => (string) ($item->product_status ?? ''),
                 'tracking_number' => (string) ($item->tracking_number ?? ''),
-                'sellers_package' => '',
+                'sellers_package' => (string) ($item->sellers_package ?? ''),
                 'product_price' => round($price, 2),
-                'coupon_discount' => 0,
-                'store_campaign_discount' => 0,
-                'commission' => 0,
-                'estimated_merchandise_revenue' => round($lineRevenue, 2),
-                'fulfillment_service_fee' => 0,
-                'storage_fee' => 0,
-                'consumption_tax' => 0,
-                'province' => '',
-                'city' => '',
+                'coupon_discount' => round((float) ($item->coupon_discount ?? 0), 2),
+                'store_campaign_discount' => round((float) ($item->store_campaign_discount ?? 0), 2),
+                'commission' => round((float) ($item->commission ?? 0), 2),
+                'estimated_merchandise_revenue' => round($estRev > 0 ? $estRev : $lineRevenue, 2),
+                'fulfillment_service_fee' => round((float) ($item->fulfillment_service_fee ?? 0), 2),
+                'storage_fee' => round((float) ($item->storage_fee ?? 0), 2),
+                'consumption_tax' => round((float) ($item->consumption_tax ?? 0), 2),
+                'province' => (string) ($item->province ?? ''),
+                'city' => (string) ($item->city ?? ''),
                 'quantity' => $quantity,
                 'lp' => $lp,
                 'ship' => $ship,
-                'order_processed_on' => $item->order_date
-                    ? Carbon::parse($item->order_date)->format('Y-m-d H:i:s')
+                'order_processed_on' => $item->order_processed_on
+                    ? Carbon::parse($item->order_processed_on)->format('Y-m-d H:i:s')
                     : null,
                 'collection_deadline' => null,
                 'requested_shipping_time' => null,
@@ -135,11 +134,35 @@ class SheinShopifySalesService
     }
 
     /**
-     * @return array{total_sales: float, total_orders: int, total_quantity: int}
+     * @return array<string, array{al30: int, sales: float}>
      */
-    public static function computeL60Totals(Carbon $startDate, Carbon $endDate): array
+    public static function aggregateSalesBySku(?Carbon $startDate = null, ?Carbon $endDate = null): array
     {
-        $summary = self::computeChannelSummary($startDate, $endDate);
+        $agg = [];
+        foreach (self::getDailyDataRows($startDate, $endDate) as $row) {
+            $sku = trim((string) ($row['seller_sku'] ?? ''));
+            if ($sku === '') {
+                continue;
+            }
+            if (! isset($agg[$sku])) {
+                $agg[$sku] = ['al30' => 0, 'sales' => 0.0];
+            }
+            $qty = max(0, (int) ($row['quantity'] ?? 0));
+            $price = (float) ($row['product_price'] ?? 0);
+            $est = (float) ($row['estimated_merchandise_revenue'] ?? 0);
+            $agg[$sku]['al30'] += $qty > 0 ? $qty : 1;
+            $agg[$sku]['sales'] += $price > 0 ? ($price * max(1, $qty)) : $est;
+        }
+
+        return $agg;
+    }
+
+    public static function computeL60Totals(?Carbon $startDate = null, ?Carbon $endDate = null): array
+    {
+        // L60 uses the dedicated upload table (ignore date window — file is the source of truth)
+        $rows = SheinDailyDataL60::query()->get();
+        $margin = self::sheinMarginDecimal();
+        $summary = self::summarizeUploadedRows($rows, $margin);
 
         return [
             'total_sales' => round($summary['total_sales'], 2),
@@ -148,18 +171,20 @@ class SheinShopifySalesService
         ];
     }
 
-    /**
-     * Full channel metrics for a date window — used by /all-marketplace-master
-     * (getSheinChannelData) and app:update-marketplace-daily-metrics so both reflect the same
-     * Shopify Sen Shp source as /shein-tabulator.
-     *
-     * @return array{total_orders: int, total_quantity: int, total_sales: float, total_cogs: float, total_pft: float, pft_percentage: float, roi_percentage: float, avg_price: float, total_commission: float}
-     */
-    public static function computeChannelSummary(Carbon $startDate, Carbon $endDate): array
+    public static function computeChannelSummary(?Carbon $startDate = null, ?Carbon $endDate = null): array
     {
-        $rows = self::getDailyDataRows($startDate, $endDate);
+        $rows = collect(self::getDailyDataRows($startDate, $endDate));
         $margin = self::sheinMarginDecimal();
 
+        return self::summarizeUploadedRows($rows, $margin);
+    }
+
+    /**
+     * @param  iterable<int, object|array>  $rows
+     * @return array{total_orders: int, total_quantity: int, total_sales: float, total_cogs: float, total_pft: float, pft_percentage: float, roi_percentage: float, avg_price: float, total_commission: float}
+     */
+    private static function summarizeUploadedRows(iterable $rows, float $margin): array
+    {
         $totalOrders = 0;
         $totalQuantity = 0;
         $totalSales = 0.0;
@@ -170,35 +195,43 @@ class SheinShopifySalesService
         $totalCommission = 0.0;
 
         foreach ($rows as $row) {
+            $row = is_array($row) ? $row : (array) $row;
+            $orderStatus = (string) ($row['order_status'] ?? '');
+            if (self::isExcludedStatus($orderStatus)) {
+                continue;
+            }
+
             $orderNum = trim((string) ($row['order_number'] ?? ''));
             $sellerSku = trim((string) ($row['seller_sku'] ?? ''));
             if ($orderNum === '' && $sellerSku === '') {
                 continue;
             }
 
-            $quantity = max(0, (int) ($row['quantity'] ?? 0));
+            $quantity = max(1, (int) ($row['quantity'] ?? 0));
+            $qty = $quantity;
             $productPrice = (float) ($row['product_price'] ?? 0);
-            $estRev = (float) ($row['estimated_merchandise_revenue'] ?? 0);
-            $lineRevenue = $productPrice > 0 ? ($productPrice * $quantity) : ($estRev > 0 ? $estRev : 0.0);
-            $unitPriceForPft = $productPrice > 0
-                ? $productPrice
-                : ($quantity > 0 && $estRev > 0 ? $estRev / $quantity : ($estRev > 0 ? $estRev : 0.0));
+            // Sales = Product Price × qty (Seller Hub GMV)
+            $lineRevenue = $productPrice * $qty;
+            $unitPriceForPft = $productPrice;
 
             $totalOrders++;
-            $totalQuantity += $quantity;
+            $totalQuantity += $qty;
             $totalSales += $lineRevenue;
             $totalCommission += (float) ($row['commission'] ?? 0);
 
-            if ($quantity > 0 && $unitPriceForPft > 0) {
-                $totalWeightedPrice += $unitPriceForPft * $quantity;
-                $totalQuantityForPrice += $quantity;
+            if ($qty > 0 && $unitPriceForPft > 0) {
+                $totalWeightedPrice += $unitPriceForPft * $qty;
+                $totalQuantityForPrice += $qty;
             }
 
             $lp = (float) ($row['lp'] ?? 0);
             $ship = (float) ($row['ship'] ?? 0);
+            if ($lp === 0.0 && $sellerSku !== '') {
+                // LP may be missing on Eloquent L60 rows — leave 0
+            }
 
-            $totalCogs += $lp * $quantity;
-            $totalPft += ($unitPriceForPft * $margin - $lp - $ship) * $quantity;
+            $totalCogs += $lp * $qty;
+            $totalPft += ($unitPriceForPft * $margin - $lp - $ship) * $qty;
         }
 
         $avgPrice = $totalQuantityForPrice > 0 ? $totalWeightedPrice / $totalQuantityForPrice : 0.0;
@@ -239,21 +272,18 @@ class SheinShopifySalesService
             : collect();
     }
 
-    /** @return array{0: float, 1: float} [lp, ship] */
+    /** @return array{0: float, 1: float} */
     private static function lpAndShip(Collection $productMasters, string $sku): array
     {
         $lp = 0.0;
         $ship = 0.0;
-
         if ($sku === '' || ! isset($productMasters[$sku])) {
             return [$lp, $ship];
         }
-
         $pm = $productMasters[$sku];
         $values = is_array($pm->Values)
             ? $pm->Values
             : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-
         if (is_array($values)) {
             foreach ($values as $k => $v) {
                 if (strtolower((string) $k) === 'lp') {
