@@ -3873,8 +3873,7 @@
                     // ATC (Actual Time) — whole minutes
                     cols.push({
                         title: "ATC",
-                        field: "etc_done", 
-                        visible: false,
+                        field: "etc_done",
                         width: 52,
                         minWidth: 46,
                         widthGrow: 0,

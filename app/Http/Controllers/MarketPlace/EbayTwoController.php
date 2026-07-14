@@ -698,7 +698,8 @@ class EbayTwoController extends Controller
                 $lp = floatval($pm->lp);
             }
 
-            $ship = isset($values["ebay2_ship"]) ? floatval($values["ebay2_ship"]) : (isset($pm->ebay2_ship) ? floatval($pm->ebay2_ship) : 0);
+            // Same normal ship as eBay 1 (Values['ship']), not ebay2_ship
+            $ship = isset($values["ship"]) ? floatval($values["ship"]) : (isset($pm->ship) ? floatval($pm->ship) : 0);
 
             // Price and units for calculations
             $price = floatval($row["eBay Price"] ?? 0);
@@ -744,11 +745,11 @@ class EbayTwoController extends Controller
             $row["pmt_ads"] = $pmtAds;
             $row["LP_productmaster"] = $lp;
             $row["Ship_productmaster"] = $ship;
+            // Keep column key for UI; value is normal ship (same as eBay 1)
             $row["ebay2_ship"] = $ship;
 
-            // PMT-specific PFT/ROI (matching Ebay2PMTAdController formulas)
-            // PMT controller uses $values["ship"] (general ship), not ebay2_ship
-            $pmtShip = isset($values["ship"]) ? floatval($values["ship"]) : (isset($pm->ship) ? floatval($pm->ship) : 0);
+            // PMT-specific PFT/ROI — same normal ship as eBay 1
+            $pmtShip = $ship;
             $row["pmt_pft_val"] = round(
                 $price > 0 ? (($price * $pmtPercentage - $lp - $pmtShip) / $price) : 0,
                 2
@@ -1224,7 +1225,8 @@ class EbayTwoController extends Controller
             $lp = floatval($pm->lp);
         }
 
-        $ship = isset($values["ebay2_ship"]) ? floatval($values["ebay2_ship"]) : (isset($pm->ebay2_ship) ? floatval($pm->ebay2_ship) : 0);
+        // Same normal ship as eBay 1 (Values['ship']), not ebay2_ship
+        $ship = isset($values["ship"]) ? floatval($values["ship"]) : (isset($pm->ship) ? floatval($pm->ship) : 0);
 
         // Calculate SGPFT
         $spriceFloat = floatval($sprice);

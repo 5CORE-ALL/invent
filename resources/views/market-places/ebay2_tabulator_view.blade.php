@@ -346,7 +346,7 @@
                          Formula: sprice = (LP × (1 + ROI%/100) + Ship) / margin   (margin = row.percentage or 0.85 for eBay2) --}}
                     <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light pricing-filter-item"
                         id="target-roi-controls"
-                        title="Target ROI% — sets S PRC = (LP × (1 + Target ROI%/100) + eBay2 Ship) / margin on every selected row (back-solves so SROI column equals the target)">
+                        title="Target ROI% — sets S PRC = (LP × (1 + Target ROI%/100) + Ship) / margin on every selected row (back-solves so SROI column equals the target)">
                         <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
                             <span style="font-size:1em;" aria-hidden="true">🎯</span> ROI%:
                         </label>
@@ -354,7 +354,7 @@
                             placeholder="30" step="0.1" style="width: 56px;"
                             title="Target ROI% applied to all selected rows when you click 'Apply S PRC'">
                         <button id="apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
-                            title="Compute & save S PRC = (LP × (1 + Target ROI%/100) + eBay2 Ship) / margin for every selected row">
+                            title="Compute & save S PRC = (LP × (1 + Target ROI%/100) + Ship) / margin for every selected row">
                             <i class="fas fa-calculator"></i>
                         </button>
                     </div>
@@ -363,7 +363,7 @@
                          Formula: sprice = (LP + Ship) / (margin − GPFT%/100). Target GPFT% must be < margin*100. --}}
                     <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light pricing-filter-item"
                         id="target-gpft-controls"
-                        title="Target GPFT% — sets S PRC = (LP + eBay2 Ship) / (margin − Target GPFT%/100) on every selected row">
+                        title="Target GPFT% — sets S PRC = (LP + Ship) / (margin − Target GPFT%/100) on every selected row">
                         <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
                             <span style="font-size:1em;" aria-hidden="true">🎯</span> GPFT%:
                         </label>
@@ -371,7 +371,7 @@
                             placeholder="30" step="0.1" style="width: 56px;"
                             title="Target GPFT% applied to all selected rows when you click 'Apply S PRC'. Must be less than the eBay2 take-home margin (typically < 85%).">
                         <button id="apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
-                            title="Compute & save S PRC = (LP + eBay2 Ship) / (margin − Target GPFT%/100) for every selected row">
+                            title="Compute & save S PRC = (LP + Ship) / (margin − Target GPFT%/100) for every selected row">
                             <i class="fas fa-calculator"></i>
                         </button>
                     </div>
@@ -1264,8 +1264,7 @@
              * SGPFT / SPFT / SROI values stay in sync exactly like Decrease / Increase / Same Price.
              * Rounding is plain 2-decimal — no .99 / .49 retail snapping — because snapping
              * would shift the achieved SROI / SGPFT off the user-typed target.
-             * Ship field is `ebay2_ship` (per the table's column definition + the
-             * EbayTwoController saveSpriceToDatabase shipping lookup at line 1161).
+             * Ship = normal ProductMaster ship (same as eBay 1) via Ship_productmaster.
              */
             function ebay2ApplyTargetBackSolve(computeFn, labelPrefix) {
                 if (selectedSkus.size === 0) {
@@ -1286,7 +1285,7 @@
 
                     const lp = parseFloat(row['LP_productmaster']) || 0;
                     if (lp <= 0) { skippedNoLp++; return; }
-                    const ship = parseFloat(row['ebay2_ship']) || 0;
+                    const ship = parseFloat(row['Ship_productmaster'] ?? row['ebay2_ship']) || 0;
                     const marginRaw = parseFloat(row['percentage']);
                     const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : 0.85;
 

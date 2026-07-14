@@ -1443,7 +1443,6 @@ class CvrMasterController extends Controller
             $lp = 0;
             $ship = 0;
             $temuShip = 0;
-            $ebay2Ship = 0;
             $actWt = 0;
             
             if ($values) {
@@ -1451,7 +1450,6 @@ class CvrMasterController extends Controller
                     if (strtolower($k) === "lp") $lp = floatval($v);
                     if (strtolower($k) === "ship") $ship = floatval($v);
                     if (strtolower($k) === "temu_ship") $temuShip = floatval($v);
-                    if (strtolower($k) === "ebay2_ship") $ebay2Ship = floatval($v);
                     if (strtolower($k) === "wt_act") $actWt = floatval($v);
                 }
             }
@@ -1637,7 +1635,8 @@ class CvrMasterController extends Controller
             $ebay2Margin = $ebay2Marketplace ? ($ebay2Marketplace->percentage / 100) : 0.85;
             $ebay2Price = $ebay2Data->ebay_price ?? 0;
             $ebay2L30 = $ebay2Data->ebay_l30 ?? 0;
-            $ebay2GPFT = $ebay2Price > 0 ? (($ebay2Price * $ebay2Margin - $lp - $ebay2Ship) / $ebay2Price) * 100 : 0;
+            // Same normal ship as eBay 1
+            $ebay2GPFT = $ebay2Price > 0 ? (($ebay2Price * $ebay2Margin - $lp - $ship) / $ebay2Price) * 100 : 0;
             $ebay2AD = 0;
             $ebay2NPFT = $ebay2L30 == 0 ? $ebay2GPFT : ($ebay2GPFT - $ebay2AD);
             
@@ -1666,7 +1665,7 @@ class CvrMasterController extends Controller
                 'sroi' => $ebay2Suggested['sroi'],
                 'spft' => $ebay2Suggested['spft'],
                 'lp' => $lp,
-                'ship' => $ebay2Ship,
+                'ship' => $ship,
                 'margin' => $ebay2Margin,
                 'act_wt' => $actWt,
                 'pushed_by' => null,
