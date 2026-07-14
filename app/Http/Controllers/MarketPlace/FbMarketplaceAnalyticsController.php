@@ -6,7 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\MarketplacePercentage;
 use App\Models\FbMarketplacePriceSoldData;
-use App\Models\FbMarketplaceListingStatus;
+use App\Models\FBMarketplaceListingStatus;
 use App\Models\FbMarketplaceSheetdata;
 use App\Models\FacebookMarketplaceSale;
 use App\Models\ProductMaster;
@@ -40,7 +40,7 @@ class FbMarketplaceAnalyticsController extends Controller
         });
 
         // Fetch listing statuses (sprice / nr_req / approved / links) keyed by SKU
-        $listingStatusData = FbMarketplaceListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
+        $listingStatusData = FBMarketplaceListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
 
         // Order-upload fallback for sold qty (/facebook-marketplace)
         $fbSalesBySku = FacebookMarketplaceSale::query()
@@ -142,7 +142,7 @@ class FbMarketplaceAnalyticsController extends Controller
 
         $sku = $request->input('sku');
 
-        $status = FbMarketplaceListingStatus::firstOrNew(['sku' => $sku]);
+        $status = FBMarketplaceListingStatus::firstOrNew(['sku' => $sku]);
         $value = is_array($status->value)
             ? $status->value
             : (json_decode($status->value, true) ?: []);

@@ -73,6 +73,7 @@ use App\Models\EbayOrder;
 use App\Models\EbayOrderItem;
 use App\Models\EbayPriorityReport;
 use App\Models\FaireListingStatus;
+use App\Models\FacebookMarketplaceSale;
 use App\Models\FbMarketplaceSheetdata;
 use App\Models\FBMarketplaceListingStatus;
 use App\Models\FbShopSheetdata;
@@ -1474,6 +1475,90 @@ class ChannelMasterController extends Controller
      * knows about "Shopify B2C" / "Shopify B2B" controllers.
      */
     /**
+     * FB Marketplace Y Sales — sold_price × qty for Pacific wall-clock yesterday
+     * from facebook_marketplace_sales (same source as /facebook-marketplace).
+     * Uses order_date when set; otherwise created_at (PT calendar day).
+     */
+    private function computeFbMarketplaceYSalesLikeAmazon(): ?float
+    {
+        try {
+            if (! Schema::hasTable('facebook_marketplace_sales')) {
+                return null;
+            }
+            $tz = 'America/Los_Angeles';
+            $yesterday = Carbon::yesterday($tz)->toDateString();
+
+            return $this->sumFbMarketplaceSalesForPacificDate($yesterday);
+        } catch (\Throwable $e) {
+            Log::warning('FB Marketplace Y Sales failed: ' . $e->getMessage());
+
+            return null;
+        }
+    }
+
+    /**
+     * FB Marketplace L7 — seven Pacific days ending on Y-Sales yesterday.
+     */
+    private function computeFbMarketplaceL7SalesLikeAmazon(): ?float
+    {
+        try {
+            if (! Schema::hasTable('facebook_marketplace_sales')) {
+                return null;
+            }
+            $tz = 'America/Los_Angeles';
+            $end = Carbon::yesterday($tz);
+            $start = $end->copy()->subDays(6);
+
+            return $this->sumFbMarketplaceSalesForPacificRange(
+                $start->toDateString(),
+                $end->toDateString()
+            );
+        } catch (\Throwable $e) {
+            Log::warning('FB Marketplace L7 Sales failed: ' . $e->getMessage());
+
+            return null;
+        }
+    }
+
+    /**
+     * Sum sold_price × qty_sold for one Pacific calendar day.
+     */
+    private function sumFbMarketplaceSalesForPacificDate(string $pacificDate): float
+    {
+        return $this->sumFbMarketplaceSalesForPacificRange($pacificDate, $pacificDate) ?? 0.0;
+    }
+
+    /**
+     * Sum sold_price × qty_sold for an inclusive Pacific date range.
+     * Prefers order_date; falls back to created_at (converted to PT) when order_date is null.
+     */
+    private function sumFbMarketplaceSalesForPacificRange(string $startDate, string $endDate): float
+    {
+        $tz = 'America/Los_Angeles';
+        $rangeStartUtc = Carbon::parse($startDate, $tz)->startOfDay()->utc();
+        $rangeEndUtc = Carbon::parse($endDate, $tz)->endOfDay()->utc();
+
+        $sum = 0.0;
+        FacebookMarketplaceSale::query()
+            ->where(function ($q) use ($startDate, $endDate, $rangeStartUtc, $rangeEndUtc) {
+                $q->whereBetween('order_date', [$startDate, $endDate])
+                    ->orWhere(function ($q2) use ($rangeStartUtc, $rangeEndUtc) {
+                        $q2->whereNull('order_date')
+                            ->whereBetween('created_at', [
+                                $rangeStartUtc->toDateTimeString(),
+                                $rangeEndUtc->toDateTimeString(),
+                            ]);
+                    });
+            })
+            ->get(['sold_price', 'qty_sold'])
+            ->each(function ($r) use (&$sum) {
+                $sum += (float) $r->sold_price * (int) $r->qty_sold;
+            });
+
+        return round($sum, 2);
+    }
+
+    /**
      * Overlay /facebook-marketplace Sales / GPFT / ROI + /facebook-ads spend onto the
      * "FB Marketplace" Active Channel row so /all-marketplace-master matches those pages.
      */
@@ -1519,6 +1604,9 @@ class ChannelMasterController extends Controller
         // N ROI = G ROI − Ads% (same TCOS base as Ads%, matches /facebook-ads)
         $nRoi = $roiPct - $adsPct;
 
+        $ySales = $this->computeFbMarketplaceYSalesLikeAmazon();
+        $l7Sales = $this->computeFbMarketplaceL7SalesLikeAmazon();
+
         // Still overlay even when sales are 0 so the master doesn't keep stale sheet figures.
         foreach ($rows as &$row) {
             $name = trim((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
@@ -1538,6 +1626,12 @@ class ChannelMasterController extends Controller
             $row['TACOS %'] = round($adsPct, 1) . '%';
             $row['N PFT'] = round($nPftPct, 1) . '%';
             $row['N ROI'] = round($nRoi, 1);
+            if ($ySales !== null) {
+                $row['Y Sales'] = $ySales;
+            }
+            if ($l7Sales !== null) {
+                $row['L7 Sales'] = $l7Sales;
+            }
 
             $l60Sales = (float) str_replace(['$', ',', '%'], '', (string) ($row['L-60 Sales'] ?? 0));
             if ($l60Sales > 0) {
@@ -4403,6 +4497,15 @@ class ChannelMasterController extends Controller
             Log::warning('Purchasing Power Y Sales failed: ' . $e->getMessage());
         }
 
+        try {
+            $fbMarketplaceY = $this->computeFbMarketplaceYSalesLikeAmazon();
+            if ($fbMarketplaceY !== null) {
+                $yesterdaySummaries['fbmarketplace'] = $fbMarketplaceY;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('FB Marketplace Y Sales failed: ' . $e->getMessage());
+        }
+
         // L7 Sales: seven Pacific calendar days ending on the same "yesterday" as Y Sales (inclusive).
         $temuL7 = $this->computeTemuL7SalesLikeAmazon(false);
         if ($temuL7 !== null) {
@@ -4543,6 +4646,15 @@ class ChannelMasterController extends Controller
             }
         } catch (\Throwable $e) {
             Log::warning('Purchasing Power L7 Sales failed: ' . $e->getMessage());
+        }
+
+        try {
+            $fbMarketplaceL7 = $this->computeFbMarketplaceL7SalesLikeAmazon();
+            if ($fbMarketplaceL7 !== null) {
+                $l7Summaries['fbmarketplace'] = $fbMarketplaceL7;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('FB Marketplace L7 Sales failed: ' . $e->getMessage());
         }
 
         // Map lowercase channel key => controller method
@@ -11624,10 +11736,15 @@ class ChannelMasterController extends Controller
         $channelData = ChannelMaster::where('channel', 'FB Marketplace')->first();
         $mapMissCounts = $this->getMapAndMissCounts('fb_marketplace');
 
+        $ySales = $this->computeFbMarketplaceYSalesLikeAmazon() ?? 0.0;
+        $l7Sales = $this->computeFbMarketplaceL7SalesLikeAmazon() ?? 0.0;
+
         $result[] = [
             'Channel '   => 'FB Marketplace',
             'L-60 Sales' => intval($l60Sales),
             'L30 Sales'  => intval(round($l30Sales)),
+            'Y Sales'    => round($ySales, 2),
+            'L7 Sales'   => round($l7Sales, 2),
             'Growth'     => round($growth, 2) . '%',
             'L60 Orders' => $l60Orders,
             'L30 Orders' => $l30Orders,
