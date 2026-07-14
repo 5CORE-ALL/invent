@@ -242,9 +242,9 @@
 
                     <select id="inventory-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
-                        <option value="all">E Stock</option>
-                        <option value="zero">0 E Stock</option>
-                        <option value="more" selected>E Stock &gt; 0</option>
+                        <option value="all">INV</option>
+                        <option value="zero">0 INV</option>
+                        <option value="more" selected>INV &gt; 0</option>
                     </select>
 
                     <select id="el30-filter" class="form-select form-select-sm"
@@ -3930,21 +3930,15 @@
 
                 table.clearFilter(true);
 
-                // Missing / Map / N Map badges are authoritative (same rows as /map-issues).
-                // Skip the "E Stock" inventory filter while one is active, otherwise not-listed
-                // Missing L rows (E Stock = 0) get filtered out and the view shows nothing.
-                const badgeFilterActive = missingFilterActive || mapFilterActive || nmapFilterActive;
-
-                if (!badgeFilterActive) {
-                    if (inventoryFilter === 'zero') {
-                        table.addFilter(function(data) {
-                            return (parseFloat(data['E Stock'] || 0) || 0) === 0;
-                        });
-                    } else if (inventoryFilter === 'more') {
-                        table.addFilter(function(data) {
-                            return (parseFloat(data['E Stock'] || 0) || 0) > 0;
-                        });
-                    }
+                // INV filter — same as /ebay-tabulator-view (Shopify INV, not eBay Stock)
+                if (inventoryFilter === 'zero') {
+                    table.addFilter(function(data) {
+                        return (parseFloat(data['INV'] || 0) || 0) === 0;
+                    });
+                } else if (inventoryFilter === 'more') {
+                    table.addFilter(function(data) {
+                        return (parseFloat(data['INV'] || 0) || 0) > 0;
+                    });
                 }
 
                 if (el30Filter === 'zero') {

@@ -330,9 +330,9 @@
 
                     <select id="inventory-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
-                        <option value="all">INV</option>
+                        <option value="all" selected>INV</option>
                         <option value="zero">0 INV</option>
-                        <option value="more" selected>INV &gt; 0</option>
+                        <option value="more">INV &gt; 0</option>
                     </select>
 
                     <select id="el30-filter" class="form-select form-select-sm" style="width: auto; display: inline-block;">
@@ -1622,7 +1622,7 @@
         function ebaySelectAllUsesFullFilteredSet() {
             if (typeof isProductNavigationActive !== 'undefined' && isProductNavigationActive) return true;
             if (($('#view-type-filter').val() || 'all') !== 'all') return true;
-            if (($('#inventory-filter').val() || 'more') !== 'more') return true;
+            if (($('#inventory-filter').val() || 'all') !== 'all') return true;
             if (($('#el30-filter').val() || 'all') !== 'all') return true;
             if (($('#nrl-filter').val() || 'REQ') !== 'REQ') return true;
             if (($('#gpft-filter').val() || 'all') !== 'all') return true;

@@ -245,9 +245,9 @@
 
                     <select id="inv-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
-                        <option value="all">Inventory</option>
-                        <option value="zero">0 Inventory</option>
-                        <option value="more" selected>More than 0</option>
+                        <option value="all">INV</option>
+                        <option value="zero">0 INV</option>
+                        <option value="more" selected>INV &gt; 0</option>
                     </select>
 
                     <select id="el30-filter" class="form-select form-select-sm"
