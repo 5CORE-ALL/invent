@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Sales;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Cache;
@@ -12,6 +13,141 @@ use App\Models\TiktokSalesTwo;
 
 class TikTokSalesController extends Controller
 {
+    /** TikTok 2 margin (same as /tiktok-two/daily-sales). */
+    public const TWO_MARGIN = 0.80;
+
+    /**
+     * Live L30 / L60 / GPFT / ROI from tiktok_sales_two — shared by
+     * /tiktok-two/daily-sales and /all-marketplace-master (TikTok 2 row).
+     *
+     * Window: 30 days ending on the latest order_date (same as getTikTokTwoChannelData).
+     * Profit: (unit_price × 0.80) − LP − shipCost, × qty.
+     *
+     * @return array{
+     *   l30_sales: float, l30_orders: int, qty: int,
+     *   l60_sales: float, l60_orders: int,
+     *   total_pft: float, total_cogs: float,
+     *   gpft_percent: float, roi_percent: float,
+     *   latest_order_date: string|null
+     * }
+     */
+    public static function computeLiveMetricsTwo(): array
+    {
+        $defaults = [
+            'l30_sales' => 0.0,
+            'l30_orders' => 0,
+            'qty' => 0,
+            'l60_sales' => 0.0,
+            'l60_orders' => 0,
+            'total_pft' => 0.0,
+            'total_cogs' => 0.0,
+            'gpft_percent' => 0.0,
+            'roi_percent' => 0.0,
+            'latest_order_date' => null,
+        ];
+
+        try {
+            $latestOrderDate = TiktokSalesTwo::whereNotNull('order_date')->max('order_date');
+            if (! $latestOrderDate) {
+                return $defaults;
+            }
+
+            $latestCarbon = Carbon::parse($latestOrderDate);
+            $l60StartDate = $latestCarbon->copy()->subDays(59)->startOfDay();
+            $l60EndDate = $latestCarbon->copy()->subDays(30)->endOfDay();
+            $l30StartDate = $latestCarbon->copy()->subDays(29)->startOfDay();
+            $l30EndDate = $latestCarbon->copy()->endOfDay();
+
+            $l60Rows = TiktokSalesTwo::whereBetween('order_date', [$l60StartDate, $l60EndDate])->get();
+            $l60Orders = $l60Rows->pluck('order_id')->unique()->filter()->count();
+            $l60Sales = (float) $l60Rows->sum(fn ($r) => (float) $r->unit_price * (float) ($r->quantity ?: 1));
+
+            $l30Rows = TiktokSalesTwo::whereBetween('order_date', [$l30StartDate, $l30EndDate])->get();
+            $productMasters = ProductMaster::query()
+                ->get(['sku', 'Values'])
+                ->keyBy(fn ($item) => strtoupper((string) $item->sku));
+
+            $margin = self::TWO_MARGIN;
+            $l30Sales = 0.0;
+            $totalQuantity = 0.0;
+            $totalProfit = 0.0;
+            $totalCogs = 0.0;
+            $orderIds = [];
+
+            foreach ($l30Rows as $row) {
+                $orderId = trim((string) ($row->order_id ?? ''));
+                if ($orderId !== '') {
+                    $orderIds[$orderId] = true;
+                }
+                $quantity = (float) ($row->quantity ?: 1);
+                if ($quantity <= 0) {
+                    continue;
+                }
+                $unitPrice = (float) $row->unit_price;
+                $l30Sales += $unitPrice * $quantity;
+
+                $sku = strtoupper((string) ($row->seller_sku ?? ''));
+                $lp = 0.0;
+                $ship = 0.0;
+                $weightAct = 0.0;
+                $pm = $sku !== '' ? $productMasters->get($sku) : null;
+                if ($pm) {
+                    $values = is_array($pm->Values)
+                        ? $pm->Values
+                        : (is_string($pm->Values) ? (json_decode($pm->Values, true) ?: []) : []);
+                    if (is_array($values)) {
+                        foreach ($values as $k => $v) {
+                            if (strtolower((string) $k) === 'lp') {
+                                $lp = (float) $v;
+                                break;
+                            }
+                        }
+                        if (isset($values['ship'])) {
+                            $ship = (float) $values['ship'];
+                        }
+                        if (isset($values['wt_act'])) {
+                            $weightAct = (float) $values['wt_act'];
+                        }
+                    }
+                }
+
+                $tWeight = $weightAct * $quantity;
+                if ($quantity == 1) {
+                    $shipCost = $ship;
+                } elseif ($quantity > 1 && $tWeight < 20) {
+                    $shipCost = $ship / $quantity;
+                } else {
+                    $shipCost = $ship;
+                }
+                $cogs = $lp * $quantity;
+                $pftEach = ($unitPrice * $margin) - $lp - $shipCost;
+                $totalQuantity += $quantity;
+                $totalCogs += $cogs;
+                $totalProfit += $pftEach * $quantity;
+            }
+
+            $gpft = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0.0;
+            $roi = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0.0;
+
+            return [
+                'l30_sales' => round($l30Sales, 2),
+                'l30_orders' => count($orderIds),
+                'qty' => (int) round($totalQuantity),
+                'l60_sales' => round($l60Sales, 2),
+                'l60_orders' => $l60Orders,
+                'total_pft' => round($totalProfit, 2),
+                'total_cogs' => round($totalCogs, 2),
+                'gpft_percent' => round($gpft, 1),
+                'roi_percent' => round($roi, 1),
+                'latest_order_date' => $latestCarbon->toDateString(),
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('TikTok 2 computeLiveMetricsTwo failed: ' . $e->getMessage());
+
+            return $defaults;
+        }
+    }
+
     /**
      * Display TikTok daily sales page
      */
@@ -260,7 +396,7 @@ class TikTokSalesController extends Controller
                 return response()->json([]);
             }
 
-            $margin = 0.80; // 80% margin (same as TikTok)
+            $margin = self::TWO_MARGIN; // 80% margin (same as TikTok)
             $skus = $rows->pluck('seller_sku')->filter()->unique()->map(function ($s) {
                 return strtoupper($s);
             })->values()->toArray();

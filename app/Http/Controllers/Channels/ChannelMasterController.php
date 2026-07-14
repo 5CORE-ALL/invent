@@ -50,6 +50,7 @@ use App\Models\AmazonDatasheet;
 use App\Models\AmazonDataView;
 use App\Http\Controllers\Sales\AmazonSalesController;
 use App\Http\Controllers\Sales\FacebookMarketplaceController;
+use App\Http\Controllers\Sales\TikTokSalesController;
 use App\Http\Controllers\MarketPlace\ShopifyAdsMasterController;
 use App\Models\AmazonOrder;
 use App\Models\AmazonOrderItem;
@@ -1643,6 +1644,68 @@ class ChannelMasterController extends Controller
         return $rows;
     }
 
+    /**
+     * Overlay /tiktok-two/daily-sales L30 / GPFT / ROI onto the "TikTok 2" row
+     * so /all-marketplace-master matches that page's data source (tiktok_sales_two).
+     */
+    private function overlayLiveTiktokTwoMetricsOnChannelRows(array $rows): array
+    {
+        try {
+            $live = TikTokSalesController::computeLiveMetricsTwo();
+        } catch (\Throwable $e) {
+            Log::warning('TikTok 2 live metrics overlay failed: ' . $e->getMessage());
+
+            return $rows;
+        }
+
+        $l30Sales = (float) ($live['l30_sales'] ?? 0);
+        $l60Sales = (float) ($live['l60_sales'] ?? 0);
+        $totalPft = (float) ($live['total_pft'] ?? 0);
+        $totalCogs = (float) ($live['total_cogs'] ?? 0);
+        $gpftPct = (float) ($live['gpft_percent'] ?? 0);
+        $roiPct = (float) ($live['roi_percent'] ?? 0);
+        $qty = (int) ($live['qty'] ?? 0);
+        $l30Orders = (int) ($live['l30_orders'] ?? 0);
+        $l60Orders = (int) ($live['l60_orders'] ?? 0);
+        $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0.0;
+
+        $ySales = $this->computeTiktokTwoYSalesLikeAmazon();
+        $l7Sales = $this->computeTiktokTwoL7SalesLikeAmazon();
+
+        foreach ($rows as &$row) {
+            $name = trim((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
+            if (strcasecmp($name, 'TikTok 2') !== 0 && strcasecmp($name, 'Tiktok Shop 2') !== 0) {
+                continue;
+            }
+
+            $row['Channel '] = 'TikTok 2';
+            $row['L30 Sales'] = (int) round($l30Sales);
+            $row['L-60 Sales'] = (int) round($l60Sales);
+            $row['L30 Orders'] = $l30Orders;
+            $row['L60 Orders'] = $l60Orders;
+            $row['Qty'] = $qty;
+            $row['Growth'] = round($growth, 2) . '%';
+            $row['Total PFT'] = round($totalPft, 2);
+            $row['cogs'] = round($totalCogs, 2);
+            $row['Gprofit%'] = round($gpftPct, 1) . '%';
+            $row['G Roi'] = round($roiPct, 1);
+            $row['N PFT'] = round($gpftPct, 1) . '%';
+            $row['N ROI'] = round($roiPct, 1);
+            $row['Total Ad Spend'] = 0;
+            $row['Ads%'] = '0%';
+            $row['TACOS %'] = '0%';
+            if ($ySales !== null) {
+                $row['Y Sales'] = $ySales;
+            }
+            if ($l7Sales !== null) {
+                $row['L7 Sales'] = $l7Sales;
+            }
+        }
+        unset($row);
+
+        return $rows;
+    }
+
     private function overlayLiveShopifyDirectMetricsOnChannelRows(array $rows): array
     {
         $live = $this->getShopifyDirectLiveMetricsSummary();
@@ -1767,6 +1830,12 @@ class ChannelMasterController extends Controller
             'TopDawg' => fn () => $this->getTopDawgLiveMapMissNMapFromPricingData(),
             'Temu' => fn () => $this->getTemuLiveMapMissNMapFromDecreaseData(false),
             'Temu 2' => fn () => $this->getTemuLiveMapMissNMapFromDecreaseData(true),
+            'TikTok 2' => fn () => $this->getTiktok2LiveMapMissNMapFromPricingData(
+                Request::create('/tiktok-2-data-json', 'GET')
+            ),
+            'Tiktok Shop 2' => fn () => $this->getTiktok2LiveMapMissNMapFromPricingData(
+                Request::create('/tiktok-2-data-json', 'GET')
+            ),
         ];
 
         foreach ($rows as &$row) {
@@ -4184,6 +4253,8 @@ class ChannelMasterController extends Controller
             $formattedData = $this->overlayLiveShopifyDirectMetricsOnChannelRows($formattedData);
             // FB Marketplace: overlay live Sales / GPFT / ROI from /facebook-marketplace
             $formattedData = $this->overlayLiveFbMarketplaceMetricsOnChannelRows($formattedData);
+            // TikTok 2: overlay live L30/GPFT/ROI from /tiktok-two/daily-sales
+            $formattedData = $this->overlayLiveTiktokTwoMetricsOnChannelRows($formattedData);
             $formattedData = $this->applyDefaultMissingLinks($formattedData);
             
             // Get summary data from cache
@@ -4679,6 +4750,7 @@ class ChannelMasterController extends Controller
             'purchasingpower' => 'getPurchasingPowerChannelData',
             'shein'     => 'getSheinChannelData',
             'tiktokshop'=> 'getTiktokChannelData',
+            'tiktok2'       => 'getTikTokTwoChannelData',
             'tiktokshop2'   => 'getTikTokTwoChannelData',
             'depop'         => 'getDepopChannelData',
             'instagramshop' => 'getInstagramChannelData',
@@ -4896,6 +4968,8 @@ class ChannelMasterController extends Controller
         $finalData = $this->overlayLiveShopifyDirectMetricsOnChannelRows($finalData);
         // FB Marketplace: overlay live Sales / GPFT / ROI from /facebook-marketplace
         $finalData = $this->overlayLiveFbMarketplaceMetricsOnChannelRows($finalData);
+        // TikTok 2: overlay live L30/GPFT/ROI from /tiktok-two/daily-sales
+        $finalData = $this->overlayLiveTiktokTwoMetricsOnChannelRows($finalData);
 
         // Sum of (inventory * Amazon price) for INV Val badge and TAT (save in first row for daily history)
         $inventoryValueAmazon = $this->getInventoryValueAmazon();
@@ -6190,6 +6264,7 @@ class ChannelMasterController extends Controller
         'purchasingpower' => 'getPurchasingPowerChannelData',
         'shein'     => 'getSheinChannelData',
         'tiktokshop'=> 'getTiktokChannelData',
+        'tiktok2'       => 'getTikTokTwoChannelData',
         'tiktokshop2'   => 'getTikTokTwoChannelData',
         'depop'         => 'getDepopChannelData',
         'instagramshop' => 'getInstagramChannelData',
@@ -10762,117 +10837,39 @@ class ChannelMasterController extends Controller
 
     public function getTikTokTwoChannelData(Request $request)
     {
-        $result = [];
+        $live = TikTokSalesController::computeLiveMetricsTwo();
+        $l30Sales = (float) ($live['l30_sales'] ?? 0);
+        $l60Sales = (float) ($live['l60_sales'] ?? 0);
+        $totalProfit = (float) ($live['total_pft'] ?? 0);
+        $totalCogs = (float) ($live['total_cogs'] ?? 0);
+        $gProfitPct = (float) ($live['gpft_percent'] ?? 0);
+        $gRoi = (float) ($live['roi_percent'] ?? 0);
+        $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0.0;
+        $ySales = $this->computeTiktokTwoYSalesLikeAmazon() ?? 0.0;
+        $l7Sales = $this->computeTiktokTwoL7SalesLikeAmazon() ?? 0.0;
 
-        $metrics = MarketplaceDailyMetric::where('channel', 'TikTok 2')->latest('date')->first();
-
-        $latestOrderDate = TiktokSalesTwo::whereNotNull('order_date')->max('order_date');
-        $l60Orders = 0;
-        $l60Sales = 0;
-        $l30Orders = 0;
-        $l30Sales = 0;
-        $totalQuantity = 0;
-        $totalProfit = 0;
-        $totalCogs = 0;
-        $gProfitPct = 0;
-        $gRoi = 0;
-        $nPft = 0;
-        $nRoi = 0;
-
-        if ($latestOrderDate) {
-            $latestCarbon = \Carbon\Carbon::parse($latestOrderDate);
-            $l60StartDate = $latestCarbon->copy()->subDays(59)->startOfDay();
-            $l60EndDate = $latestCarbon->copy()->subDays(30)->endOfDay();
-            $l30StartDate = $latestCarbon->copy()->subDays(29)->startOfDay();
-            $l30EndDate = $latestCarbon->copy()->endOfDay();
-
-            $l60Rows = TiktokSalesTwo::whereBetween('order_date', [$l60StartDate, $l60EndDate])->get();
-            $l60Orders = $l60Rows->pluck('order_id')->unique()->count();
-            $l60Sales = $l60Rows->sum(function ($r) {
-                return (float) $r->unit_price * (int) ($r->quantity ?: 1);
-            });
-
-            $l30Rows = TiktokSalesTwo::whereBetween('order_date', [$l30StartDate, $l30EndDate])->get();
-            $productMasters = \App\Models\ProductMaster::all()->keyBy(function ($item) {
-                return strtoupper($item->sku);
-            });
-
-            $margin = 0.80;
-            $orderIds = [];
-            foreach ($l30Rows as $row) {
-                $orderIds[$row->order_id] = true;
-                $quantity = (float) ($row->quantity ?: 1);
-                $unitPrice = (float) $row->unit_price;
-                $l30Sales += $unitPrice * $quantity;
-
-                $sku = strtoupper($row->seller_sku ?? '');
-                $lp = 0;
-                $ship = 0;
-                $weightAct = 0;
-                $pm = $productMasters->get($sku);
-                if ($sku && $pm) {
-                    $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-                    if (is_array($values)) {
-                        foreach ($values as $k => $v) {
-                            if (strtolower($k) === 'lp') {
-                                $lp = floatval($v);
-                                break;
-                            }
-                        }
-                    }
-                    if ($lp === 0 && isset($pm->lp)) {
-                        $lp = floatval($pm->lp);
-                    }
-                    if (is_array($values) && isset($values['ship'])) {
-                        $ship = floatval($values['ship']);
-                    } elseif (isset($pm->ship)) {
-                        $ship = floatval($pm->ship);
-                    }
-                    if (is_array($values) && isset($values['wt_act'])) {
-                        $weightAct = floatval($values['wt_act']);
-                    }
-                }
-                $tWeight = $weightAct * $quantity;
-                if ($quantity == 1) {
-                    $shipCost = $ship;
-                } elseif ($quantity > 1 && $tWeight < 20) {
-                    $shipCost = $ship / $quantity;
-                } else {
-                    $shipCost = $ship;
-                }
-                $cogs = $lp * $quantity;
-                $pftEach = ($unitPrice * $margin) - $lp - $shipCost;
-                $totalQuantity += $quantity;
-                $totalCogs += $cogs;
-                $totalProfit += $pftEach * $quantity;
-            }
-            $l30Orders = count($orderIds);
-            $gProfitPct = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
-            $gRoi = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
-            $nPft = $gProfitPct;
-            $nRoi = $gRoi;
-        }
-
-        $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
         $mapMissCounts = $this->getTiktok2LiveMapMissNMapFromPricingData($request);
         $channelData = ChannelMaster::whereIn('channel', ['TikTok 2', 'Tiktok Shop 2'])->first();
 
         $result[] = [
             'Channel '   => 'TikTok 2',
-            'L-60 Sales' => intval($l60Sales),
-            'L30 Sales'  => intval($l30Sales),
+            'L-60 Sales' => (int) round($l60Sales),
+            'L30 Sales'  => (int) round($l30Sales),
+            'Y Sales'    => round($ySales, 2),
+            'L7 Sales'   => round($l7Sales, 2),
             'Growth'     => round($growth, 2) . '%',
-            'L60 Orders' => $l60Orders,
-            'L30 Orders' => $l30Orders,
-            'Qty'        => intval($totalQuantity),
-            'Gprofit%'   => round($gProfitPct, 2),
+            'L60 Orders' => (int) ($live['l60_orders'] ?? 0),
+            'L30 Orders' => (int) ($live['l30_orders'] ?? 0),
+            'Qty'        => (int) ($live['qty'] ?? 0),
+            'Gprofit%'   => round($gProfitPct, 1) . '%',
             'gprofitL60' => 0,
-            'G Roi'      => round($gRoi, 2),
+            'G Roi'      => round($gRoi, 1),
             'G RoiL60'   => 0,
             'Total PFT'  => round($totalProfit, 2),
-            'N PFT'      => round($nPft, 2),
-            'N ROI'      => round($nRoi, 2),
-            'Ads%'       => 0,
+            'N PFT'      => round($gProfitPct, 1) . '%',
+            'N ROI'      => round($gRoi, 1),
+            'Ads%'       => '0%',
+            'TACOS %'    => '0%',
             'TikTok Ad Spend' => 0,
             'KW Spent'   => 0,
             'PT Spent'   => 0,
