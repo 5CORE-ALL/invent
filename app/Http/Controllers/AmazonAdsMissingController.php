@@ -8,6 +8,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -18,9 +19,27 @@ class AmazonAdsMissingController extends Controller
 
     private const TYPES = ['PT', 'KW'];
 
+    private const SIDEBAR_COUNT_CACHE_KEY = 'amazon_ads_missing_sidebar_count';
+
     public function index()
     {
         return view('amazon_ads.amz_ads_missing');
+    }
+
+    /**
+     * Missing PT + Missing KW for in-stock parents (same rules as the page badges).
+     * Cached briefly for the left-sidebar badge.
+     */
+    public static function missingTotalCount(): int
+    {
+        return (int) Cache::remember(self::SIDEBAR_COUNT_CACHE_KEY, 300, function () {
+            return (new self)->computeMissingTotal();
+        });
+    }
+
+    public static function forgetMissingTotalCache(): void
+    {
+        Cache::forget(self::SIDEBAR_COUNT_CACHE_KEY);
     }
 
     /**
@@ -36,8 +55,10 @@ class AmazonAdsMissingController extends Controller
             return response()->json(['data' => []]);
         }
 
+        // Match Product Master page: Eloquent SoftDeletes — skip deleted_at rows.
         $rows = DB::table('product_master')
-            ->select('parent', 'sku')
+            ->select('parent', 'sku', 'Values')
+            ->whereNull('deleted_at')
             ->orderBy('parent')
             ->orderBy('sku')
             ->get();
@@ -46,10 +67,11 @@ class AmazonAdsMissingController extends Controller
         $inventoryByParent = $this->buildInventorySumByParent($rows);
 
         // Distinct parents, derived from child rows only (mirrors the tabulator view's grouping).
+        // Skip DC products (Values.status = DC).
         $parents = [];
         foreach ($rows as $r) {
             $sku = trim((string) ($r->sku ?? ''));
-            if ($sku === '' || Str::startsWith(strtoupper($sku), 'PARENT')) {
+            if ($sku === '' || Str::startsWith(strtoupper($sku), 'PARENT') || $this->isDcProduct($r)) {
                 continue;
             }
             $parent = preg_replace('/\s+/', ' ', trim((string) ($r->parent ?? '')));
@@ -136,6 +158,8 @@ class AmazonAdsMissingController extends Controller
             ]
         );
 
+        self::forgetMissingTotalCache();
+
         return response()->json($this->linksResponseForSku($validated['sku']));
     }
 
@@ -152,9 +176,66 @@ class AmazonAdsMissingController extends Controller
         $sku = $link?->sku;
         if ($link) {
             $link->delete();
+            self::forgetMissingTotalCache();
         }
 
         return response()->json($this->linksResponseForSku((string) $sku));
+    }
+
+    /**
+     * Count Missing PT + Missing KW across in-stock parent rows (inventory > 0).
+     */
+    private function computeMissingTotal(): int
+    {
+        if (! Schema::hasTable('product_master')) {
+            return 0;
+        }
+
+        $rows = DB::table('product_master')
+            ->select('parent', 'sku', 'Values')
+            ->whereNull('deleted_at')
+            ->orderBy('parent')
+            ->orderBy('sku')
+            ->get();
+
+        $inventoryByParent = $this->buildInventorySumByParent($rows);
+
+        $parents = [];
+        foreach ($rows as $r) {
+            $sku = trim((string) ($r->sku ?? ''));
+            if ($sku === '' || Str::startsWith(strtoupper($sku), 'PARENT') || $this->isDcProduct($r)) {
+                continue;
+            }
+            $parent = preg_replace('/\s+/', ' ', trim((string) ($r->parent ?? '')));
+            if ($parent === '') {
+                continue;
+            }
+            $parents[strtoupper($parent)] = $parent;
+        }
+
+        $linkedTypesBySku = AmazonAdsMissingLink::query()
+            ->select('sku', 'type')
+            ->get()
+            ->groupBy(fn ($l) => (string) $l->sku)
+            ->map(function ($links) {
+                return $links->pluck('type')->map(fn ($t) => (string) $t)->unique()->all();
+            });
+
+        $total = 0;
+        foreach ($parents as $parentKey => $parent) {
+            if ((int) round($inventoryByParent[$parentKey] ?? 0) <= 0) {
+                continue;
+            }
+            $types = $linkedTypesBySku->get('PARENT '.$parent, []);
+            if (! in_array('PT', $types, true)) {
+                $total++;
+            }
+            if (! in_array('KW', $types, true)) {
+                $total++;
+            }
+        }
+
+        return $total;
     }
 
     /**
@@ -169,7 +250,7 @@ class AmazonAdsMissingController extends Controller
         $childSkus = [];
         foreach ($rows as $r) {
             $s = trim((string) ($r->sku ?? ''));
-            if ($s === '' || Str::startsWith(strtoupper($s), 'PARENT')) {
+            if ($s === '' || Str::startsWith(strtoupper($s), 'PARENT') || $this->isDcProduct($r)) {
                 continue;
             }
             $childSkus[] = $s;
@@ -180,7 +261,7 @@ class AmazonAdsMissingController extends Controller
         $totals = [];
         foreach ($rows as $r) {
             $s = trim((string) ($r->sku ?? ''));
-            if ($s === '' || Str::startsWith(strtoupper($s), 'PARENT')) {
+            if ($s === '' || Str::startsWith(strtoupper($s), 'PARENT') || $this->isDcProduct($r)) {
                 continue;
             }
             $pKey = strtoupper(preg_replace('/\s+/', ' ', trim((string) ($r->parent ?? ''))));
@@ -192,6 +273,22 @@ class AmazonAdsMissingController extends Controller
         }
 
         return $totals;
+    }
+
+    /**
+     * True when product_master.Values.status is DC (discontinued).
+     */
+    private function isDcProduct(object $row): bool
+    {
+        $values = $row->Values ?? null;
+        if (is_string($values)) {
+            $values = json_decode($values, true);
+        }
+        if (! is_array($values)) {
+            return false;
+        }
+
+        return strtoupper(trim((string) ($values['status'] ?? ''))) === 'DC';
     }
 
     /**

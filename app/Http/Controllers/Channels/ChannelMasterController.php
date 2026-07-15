@@ -999,6 +999,7 @@ class ChannelMasterController extends Controller
             if ($l30Sales > 0) {
                 $gProfitPct = round(($live['pft'] / $l30Sales) * 100, 2);
                 $row['Gprofit%'] = $gProfitPct.'%';
+                // Purchasing Power has no ads — N PFT = GPFT, Ads%/TACOS stay 0.
                 $row['N PFT'] = $gProfitPct.'%';
             }
 
@@ -1007,6 +1008,12 @@ class ChannelMasterController extends Controller
                 $row['G Roi'] = $gRoi;
                 $row['N ROI'] = $gRoi;
             }
+
+            $row['Total Ad Spend'] = 0;
+            $row['Ads%'] = '0%';
+            $row['TACOS %'] = '0%';
+            $row['KW Spent'] = 0;
+            $row['PMT Spent'] = 0;
 
             if ($l60Sales > 0) {
                 $row['gprofitL60'] = round(($live['l60_pft'] / $l60Sales) * 100, 2).'%';
@@ -4305,6 +4312,11 @@ class ChannelMasterController extends Controller
             // TikTok 2: overlay live L30/GPFT/ROI from /tiktok-two/daily-sales
             $formattedData = $this->overlayLiveTiktokTwoMetricsOnChannelRows($formattedData);
             $formattedData = $this->applyDefaultMissingLinks($formattedData);
+
+            // Keep Map Issues sidebar N Map in sync with the active channel page total.
+            if (! $section && $page === 1 && count($formattedData) >= $total) {
+                \App\Support\Badges\AllMarketplaceMasterBadgeCalculator::syncNmapFromChannelRows($formattedData);
+            }
             
             // Get summary data from cache
             $summaryData = \Cache::get('channel_master_summary_data', []);
@@ -4944,19 +4956,22 @@ class ChannelMasterController extends Controller
                 $l30SalesVal = (float) str_replace(['$', ',', '%'], '', $row['L30 Sales'] ?? 0);
                 $adsPercentage = $l30SalesVal > 0 ? ($totalAdSpend / $l30SalesVal) * 100 : 0;
                 $row['Ads%'] = round($adsPercentage, 2) . '%';
+
+                // Recalculate N PFT based on recalculated Ads% (NPFT% = GPFT% - Ads%)
+                $gpftPercent = (float) str_replace(['$', ',', '%'], '', $row['Gprofit%'] ?? 0);
+                $nPftRecalculated = $gpftPercent - $adsPercentage;
+                $row['N PFT'] = round($nPftRecalculated, 2) . '%';
+
+                // Recalculate N ROI based on Net Profit Amount (NROI% = (Gross Profit - Ad Spend) / COGS * 100)
+                $totalPft = (float) str_replace(['$', ',', '%'], '', $row['Total PFT'] ?? 0);
+                $cogs = (float) str_replace(['$', ',', '%'], '', $row['cogs'] ?? 0);
+                $netProfitAmount = $totalPft - $totalAdSpend;
+                $nRoiRecalculated = $cogs > 0 ? ($netProfitAmount / $cogs) * 100 : 0;
+                $row['N ROI'] = round($nRoiRecalculated, 2);
+            } else {
+                // Reverb: keep Ads%/TACOS as Bump% and N PFT/N ROI = GPFT/GROI from getReverbChannelData.
+                $row['TACOS %'] = $row['TACOS %'] ?? $row['Ads%'] ?? '0%';
             }
-
-            // Recalculate N PFT based on recalculated Ads% (NPFT% = GPFT% - Ads%)
-            $gpftPercent = (float) str_replace(['$', ',', '%'], '', $row['Gprofit%'] ?? 0);
-            $nPftRecalculated = $gpftPercent - $adsPercentage;
-            $row['N PFT'] = round($nPftRecalculated, 2) . '%';
-
-            // Recalculate N ROI based on Net Profit Amount (NROI% = (Gross Profit - Ad Spend) / COGS * 100)
-            $totalPft = (float) str_replace(['$', ',', '%'], '', $row['Total PFT'] ?? 0);
-            $cogs = (float) str_replace(['$', ',', '%'], '', $row['cogs'] ?? 0);
-            $netProfitAmount = $totalPft - $totalAdSpend;
-            $nRoiRecalculated = $cogs > 0 ? ($netProfitAmount / $cogs) * 100 : 0;
-            $row['N ROI'] = round($nRoiRecalculated, 2);
 
             $row['clicks'] = $clicks;
             $row['ad_sold'] = $adSold;
@@ -5044,6 +5059,8 @@ class ChannelMasterController extends Controller
 
         $finalData = $this->overlayLiveMapMissNMapOnChannelRows($finalData);
         $finalData = $this->applyDefaultMissingLinks($finalData);
+
+        \App\Support\Badges\AllMarketplaceMasterBadgeCalculator::syncNmapFromChannelRows($finalData);
 
         return response()->json([
             'status'  => 200,
@@ -8000,8 +8017,8 @@ class ChannelMasterController extends Controller
         $gprofitL60 = $l60Sales > 0 ? ($totalProfitL60 / $l60Sales) * 100 : 0;
         $gRoi = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
         $gRoiL60 = $totalCogsL60 > 0 ? ($totalProfitL60 / $totalCogsL60) * 100 : 0;
-        $nPft = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
-        // No Reverb ads on master: N ROI = G ROI (same as Macys / Tiendamia; N ROI = GROI - TCOS when spend > 0).
+        // N PFT / N ROI = GPFT / GROI — Ads% stores Bump% for display but is not cut from net metrics.
+        $nPft = $gProfitPct;
         $nRoi = $gRoi;
         
         // Calculate Bump % (matching frontend Bump badge: Bump Fees / Sales × 100)
@@ -8034,7 +8051,9 @@ class ChannelMasterController extends Controller
             'Shopping Spent' => 0,
             'SERP Spent' => 0,
             'Total Ad Spend' => 0,
+            // Ads%/TACOS show Bump%; net NPFT/NROI do not subtract Bump (matches /reverb-pricing).
             'Ads%'       => round($bumpPercentage, 2) . '%',
+            'TACOS %'    => round($bumpPercentage, 2) . '%',
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
@@ -9719,6 +9738,9 @@ class ChannelMasterController extends Controller
             'Shopping Spent' => 0,
             'SERP Spent' => 0,
             'Total Ad Spend' => 0,
+            // Wayfair has no ads — keep Ads%/TACOS at 0 so master matches /wayfair-pricing.
+            'Ads%'       => '0%',
+            'TACOS %'    => '0%',
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,

@@ -93,6 +93,8 @@ class MissingListingController extends Controller
                 'success' => true,
                 'data'    => $data,
                 'count'   => $data->count(),
+                // Same Missing L total as /all-marketplace-master (live overlay-synced badge).
+                'total_missing_l' => \App\Support\Badges\AllMarketplaceMasterBadgeCalculator::missingLCountForSidebar(),
             ]);
         } catch (\Throwable $e) {
             Log::error('Missing Listing getData failed: ' . $e->getMessage());

@@ -43,6 +43,12 @@
         .amz-ads-missing .amz-missing-badge--kw {
             background-color: #dc2626;
         }
+        .amz-ads-missing .amz-missing-badge--missing {
+            background-color: #868e96;
+        }
+        .amz-ads-missing .amz-missing-badge--missing.is-alert {
+            background-color: #dc2626;
+        }
         .amz-badge-panel {
             position: absolute;
             z-index: 2000;
@@ -175,6 +181,10 @@
                         <div class="amz-missing-badge amz-missing-badge--parent" id="amzParentWrap" title="Parent: total number of parent rows.">
                             <span class="amz-missing-badge-label">Parent</span>
                             <span class="amz-missing-badge-value tabular-nums" id="amzParentValue">0</span>
+                        </div>
+                        <div class="amz-missing-badge amz-missing-badge--missing" id="amzMissingWrap" title="Missing: Missing PT + Missing KW (in-stock rows in the current view).">
+                            <span class="amz-missing-badge-label">Missing</span>
+                            <span class="amz-missing-badge-value tabular-nums" id="amzMissingValue">0</span>
                         </div>
                         <div class="amz-missing-badge amz-missing-badge--pt" id="amzMissingPtWrap" title="Missing PT: in-stock rows (inventory > 0) in the current view with no linked PT campaign.">
                             <span class="amz-missing-badge-label">Missing PT</span>
@@ -381,10 +391,15 @@
                         if (!r.pt || !r.pt.length) { pt++; }
                         if (!r.kw || !r.kw.length) { kw++; }
                     });
+                    var total = pt + kw;
                     var ptEl = document.getElementById('amzMissingPtValue');
                     var kwEl = document.getElementById('amzMissingKwValue');
+                    var missingEl = document.getElementById('amzMissingValue');
+                    var missingWrap = document.getElementById('amzMissingWrap');
                     if (ptEl) { ptEl.textContent = Number(pt).toLocaleString('en-US'); }
                     if (kwEl) { kwEl.textContent = Number(kw).toLocaleString('en-US'); }
+                    if (missingEl) { missingEl.textContent = Number(total).toLocaleString('en-US'); }
+                    if (missingWrap) { missingWrap.classList.toggle('is-alert', total > 0); }
                 }
                 // Total parent rows (whole dataset, independent of filters).
                 function updateParentBadge() {
@@ -436,6 +451,12 @@
                 }
                 bindBadge('amzParentWrap', 'Parents', function () {
                     return parentNamesFrom(table.getData(), function (r) { return r.is_parent; });
+                });
+                bindBadge('amzMissingWrap', 'Missing', function () {
+                    return parentNamesFrom(table.getData('active'), function (r) {
+                        if (!r || (Number(r.inventory) || 0) <= 0) { return false; }
+                        return (!r.pt || !r.pt.length) || (!r.kw || !r.kw.length);
+                    });
                 });
                 bindBadge('amzMissingPtWrap', 'Missing PT', function () {
                     return parentNamesFrom(table.getData('active'), function (r) { return (Number(r.inventory) || 0) > 0 && (!r.pt || !r.pt.length); });

@@ -1,0 +1,375 @@
+@extends('layouts.vertical', ['title' => 'Missing Google Shopping Ads', 'sidenav' => 'condensed'])
+
+@section('css')
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
+    <style>
+        .gs-ads-missing .tabulator .tabulator-header .tabulator-col {
+            font-size: 0.8rem;
+        }
+        .gs-ads-missing .tabulator-row .tabulator-cell {
+            font-size: 0.82rem;
+        }
+        .gs-ads-missing .parent-row {
+            background-color: rgba(69, 233, 255, 0.10);
+        }
+        .gs-ads-missing .parent-copy-btn {
+            cursor: pointer;
+            color: #868e96;
+            margin-left: 6px;
+        }
+        .gs-ads-missing .parent-copy-btn:hover {
+            color: #1971c2;
+        }
+        .gs-ads-missing .gs-missing-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            border-radius: 6px;
+            padding: 0.3rem 0.6rem;
+            font-size: 0.8rem;
+            font-weight: 600;
+            line-height: 1.2;
+            white-space: nowrap;
+            color: #fff;
+            cursor: pointer;
+        }
+        .gs-ads-missing .gs-missing-badge--parent {
+            background-color: #1971c2;
+        }
+        .gs-ads-missing .gs-missing-badge--missing {
+            background-color: #868e96;
+        }
+        .gs-ads-missing .gs-missing-badge--missing.is-alert {
+            background-color: #dc2626;
+        }
+        .gs-badge-panel {
+            position: absolute;
+            z-index: 2000;
+            width: 320px;
+            max-height: 320px;
+            background: #fff;
+            border: 1px solid #ced4da;
+            border-radius: 6px;
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+            padding: 8px 10px;
+            display: flex;
+            flex-direction: column;
+        }
+        .gs-badge-panel.d-none {
+            display: none !important;
+        }
+        .gs-badge-panel .gs-badge-panel-title {
+            font-weight: 700;
+            font-size: 0.85rem;
+            margin-bottom: 6px;
+            border-bottom: 1px solid #e9ecef;
+            padding-bottom: 4px;
+        }
+        .gs-badge-panel .gs-badge-panel-list {
+            overflow-y: auto;
+        }
+        .gs-badge-panel .gs-badge-panel-item {
+            font-size: 0.78rem;
+            padding: 2px 2px;
+            border-bottom: 1px dashed #f1f3f5;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .gs-badge-panel .gs-badge-panel-empty {
+            color: #868e96;
+            font-size: 0.78rem;
+        }
+        .gs-ads-missing .link-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            background: #e7f5ff;
+            color: #1971c2;
+            border: 1px solid #a5d8ff;
+            border-radius: 10px;
+            padding: 1px 7px;
+            margin: 1px 2px;
+            font-size: 0.72rem;
+            white-space: nowrap;
+        }
+        .gs-ads-missing .campaign-dot {
+            display: inline-block;
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            border: 1px solid rgba(0, 0, 0, 0.15);
+            flex: 0 0 auto;
+        }
+        .gs-ads-missing .campaign-dot-green {
+            background-color: #16a34a;
+        }
+        .gs-ads-missing .campaign-dot-red {
+            background-color: #dc2626;
+        }
+    </style>
+@endsection
+
+@section('content')
+    @include('layouts.shared/page-title', ['sub_title' => 'Google Ads', 'page_title' => 'Missing Google Shopping Ads'])
+
+    <div class="row gs-ads-missing">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body p-2">
+                    <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                        <div class="gs-missing-badge gs-missing-badge--parent" id="gsParentWrap" title="Parent: total number of parent rows.">
+                            <span class="gs-missing-badge-label">Parent</span>
+                            <span class="gs-missing-badge-value tabular-nums" id="gsParentValue">0</span>
+                        </div>
+                        <div class="gs-missing-badge gs-missing-badge--missing" id="gsMissingWrap" title="Missing: in-stock parents (Inv &gt; 0) in the current view with no matched Google Shopping campaign.">
+                            <span class="gs-missing-badge-label">Missing</span>
+                            <span class="gs-missing-badge-value tabular-nums" id="gsMissingValue">0</span>
+                        </div>
+                        <button type="button" class="btn btn-success btn-sm ms-auto" id="gsMissingExportBtn" title="Export the current (filtered) view to CSV">
+                            <i class="fa fa-download me-1"></i> Export
+                        </button>
+                    </div>
+                    <div id="gsAdsMissingTable"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+@endsection
+
+@section('script')
+    <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <script>
+        (function () {
+            var missingDataUrl = @json(route('google.shopping.ads.missing.data'));
+
+            function esc(str) {
+                return String(str == null ? '' : str)
+                    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+            }
+
+            function onlyParentsFilter(data) {
+                return data.is_parent === true;
+            }
+
+            function linkCountSorter(a, b) {
+                var la = Array.isArray(a) ? a.length : 0;
+                var lb = Array.isArray(b) ? b.length : 0;
+                return la - lb;
+            }
+
+            function inventoryHeaderFilter(headerValue, rowValue) {
+                var inv = Number(rowValue) || 0;
+                if (headerValue === 'in') {
+                    return inv > 0;
+                }
+                if (headerValue === 'zero') {
+                    return inv <= 0;
+                }
+                return true;
+            }
+
+            function missingHeaderFilter(headerValue, rowValue) {
+                var len = Array.isArray(rowValue) ? rowValue.length : 0;
+                if (headerValue === 'missing') {
+                    return len === 0;
+                }
+                if (headerValue === 'linked') {
+                    return len > 0;
+                }
+                return true;
+            }
+
+            function linkNamesAccessor(value) {
+                if (!Array.isArray(value)) {
+                    return '';
+                }
+                return value.map(function (c) { return c && c.campaign_name ? c.campaign_name : ''; })
+                    .filter(function (n) { return n !== ''; })
+                    .join(', ');
+            }
+
+            function statusDot(c) {
+                var dot = c && c.dot;
+                if (dot !== 'green' && dot !== 'red') { return ''; }
+                var status = c.status || (dot === 'green' ? 'ENABLED' : 'PAUSED');
+                var title = status ? (status.charAt(0) + status.slice(1).toLowerCase()) : (dot === 'green' ? 'Enabled' : 'Paused');
+                return '<span class="campaign-dot campaign-dot-' + dot + '" title="' + esc(title) + '"></span>';
+            }
+
+            function campaignsFormatter(cell) {
+                var list = cell.getValue() || [];
+                if (!Array.isArray(list) || !list.length) {
+                    return '';
+                }
+                return list.map(function (c) {
+                    return '<span class="link-chip" title="' + esc(c.campaign_name) + '">'
+                        + statusDot(c)
+                        + esc(c.campaign_name)
+                        + '</span>';
+                }).join('');
+            }
+
+            var table = new Tabulator('#gsAdsMissingTable', {
+                ajaxURL: missingDataUrl,
+                ajaxResponse: function (url, params, response) {
+                    return (response && Array.isArray(response.data)) ? response.data : (response || []);
+                },
+                index: 'sku',
+                layout: 'fitColumns',
+                height: 'calc(100vh - 220px)',
+                pagination: true,
+                paginationSize: 100,
+                paginationSizeSelector: [25, 50, 100, 200, 500],
+                paginationCounter: 'rows',
+                initialSort: [{ column: 'parent', dir: 'asc' }],
+                rowFormatter: function (row) {
+                    if (row.getData().is_parent) {
+                        row.getElement().classList.add('parent-row');
+                    }
+                },
+                columns: [
+                    {
+                        title: 'Parent', field: 'parent', headerFilter: 'input', headerFilterPlaceholder: 'Search Parent...',
+                        cssClass: 'text-primary', widthGrow: 1, tooltip: true,
+                        hozAlign: 'center', headerHozAlign: 'center',
+                        formatter: function (cell) {
+                            var v = cell.getValue() || '';
+                            return '<span class="parent-name">' + esc(v) + '</span>'
+                                + ' <i class="fa fa-copy parent-copy-btn" role="button" tabindex="0" title="Copy parent name" data-parent="' + esc(v) + '"></i>';
+                        }
+                    },
+                    {
+                        title: 'Inv', field: 'inventory', width: 110,
+                        hozAlign: 'right', headerHozAlign: 'right',
+                        headerSort: true, sorter: 'number',
+                        headerFilter: 'list',
+                        headerFilterParams: { values: { '': 'All', in: 'In Stock', zero: 'Zero Inv' } },
+                        headerFilterFunc: inventoryHeaderFilter,
+                        formatter: function (cell) {
+                            var v = cell.getValue();
+                            return (v == null || v === '') ? '' : Number(v).toLocaleString('en-US');
+                        }
+                    },
+                    {
+                        title: 'Campaign', field: 'campaigns', widthGrow: 3,
+                        hozAlign: 'center', headerHozAlign: 'center',
+                        headerSort: true, sorter: linkCountSorter,
+                        headerFilter: 'list',
+                        headerFilterParams: { values: { '': 'All', missing: 'Missing', linked: 'Linked' } },
+                        headerFilterFunc: missingHeaderFilter,
+                        formatter: campaignsFormatter,
+                        accessorDownload: linkNamesAccessor
+                    }
+                ]
+            });
+
+            table.on('tableBuilt', function () {
+                table.setFilter(onlyParentsFilter);
+            });
+
+            var exportBtn = document.getElementById('gsMissingExportBtn');
+            if (exportBtn) {
+                exportBtn.addEventListener('click', function () {
+                    var stamp = new Date().toISOString().slice(0, 10);
+                    table.download('csv', 'missing-google-shopping-ads-' + stamp + '.csv');
+                });
+            }
+
+            function updateMissingBadge(rowsData) {
+                var rows = rowsData || table.getData('active');
+                var missing = 0;
+                rows.forEach(function (r) {
+                    if (!r || (Number(r.inventory) || 0) <= 0) { return; }
+                    if (!r.campaigns || !r.campaigns.length) { missing++; }
+                });
+                var missingEl = document.getElementById('gsMissingValue');
+                var missingWrap = document.getElementById('gsMissingWrap');
+                if (missingEl) { missingEl.textContent = Number(missing).toLocaleString('en-US'); }
+                if (missingWrap) { missingWrap.classList.toggle('is-alert', missing > 0); }
+            }
+
+            function updateParentBadge() {
+                var all = table.getData();
+                var parents = all.reduce(function (n, r) { return n + (r && r.is_parent ? 1 : 0); }, 0);
+                var el = document.getElementById('gsParentValue');
+                if (el) { el.textContent = Number(parents).toLocaleString('en-US'); }
+            }
+
+            table.on('dataFiltered', function (filters, rows) {
+                updateMissingBadge((rows || []).map(function (rc) { return rc.getData(); }));
+                updateParentBadge();
+            });
+
+            var badgePanel = document.createElement('div');
+            badgePanel.className = 'gs-badge-panel d-none';
+            badgePanel.innerHTML = '<div class="gs-badge-panel-title"></div><div class="gs-badge-panel-list"></div>';
+            document.body.appendChild(badgePanel);
+            var badgePanelTitle = badgePanel.querySelector('.gs-badge-panel-title');
+            var badgePanelList = badgePanel.querySelector('.gs-badge-panel-list');
+
+            function openBadgePanel(anchorEl, title, names) {
+                badgePanelTitle.textContent = title + ' (' + names.length + ')';
+                badgePanelList.innerHTML = names.length
+                    ? names.map(function (n) { return '<div class="gs-badge-panel-item" title="' + esc(n) + '">' + esc(n) + '</div>'; }).join('')
+                    : '<div class="gs-badge-panel-empty">Nothing to show</div>';
+                var rect = anchorEl.getBoundingClientRect();
+                badgePanel.style.top = (window.scrollY + rect.bottom + 4) + 'px';
+                badgePanel.style.left = (window.scrollX + rect.left) + 'px';
+                badgePanel.classList.remove('d-none');
+            }
+
+            function parentNamesFrom(rows, predicate) {
+                var out = [];
+                rows.forEach(function (r) {
+                    if (predicate(r)) { out.push(r.parent || r.sku || ''); }
+                });
+                return out;
+            }
+
+            function bindBadge(wrapId, titleText, getNames) {
+                var el = document.getElementById(wrapId);
+                if (!el) { return; }
+                el.addEventListener('click', function () {
+                    openBadgePanel(el, titleText, getNames());
+                });
+            }
+            bindBadge('gsParentWrap', 'Parents', function () {
+                return parentNamesFrom(table.getData(), function (r) { return r.is_parent; });
+            });
+            bindBadge('gsMissingWrap', 'Missing', function () {
+                return parentNamesFrom(table.getData('active'), function (r) {
+                    return r && (Number(r.inventory) || 0) > 0 && (!r.campaigns || !r.campaigns.length);
+                });
+            });
+
+            document.addEventListener('click', function (e) {
+                if (badgePanel.classList.contains('d-none')) { return; }
+                if (badgePanel.contains(e.target) || e.target.closest('.gs-missing-badge')) { return; }
+                badgePanel.classList.add('d-none');
+            });
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape') { badgePanel.classList.add('d-none'); }
+            });
+
+            var tableEl = document.getElementById('gsAdsMissingTable');
+            tableEl.addEventListener('click', function (e) {
+                var copyBtn = e.target.closest('.parent-copy-btn');
+                if (!copyBtn) { return; }
+                var txt = copyBtn.getAttribute('data-parent') || '';
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(txt);
+                }
+                copyBtn.classList.remove('fa-copy');
+                copyBtn.classList.add('fa-check');
+                setTimeout(function () {
+                    copyBtn.classList.remove('fa-check');
+                    copyBtn.classList.add('fa-copy');
+                }, 900);
+            });
+        })();
+    </script>
+@endsection

@@ -122,6 +122,15 @@
                         style="color: white; font-weight: bold;">L30 Sales: $0.00</span>
                     <span class="badge bg-primary fs-6 p-2" id="total-cogs-badge"
                         style="color: white; font-weight: bold;">Total COGS: $0.00</span>
+                    <span class="badge fs-6 p-2" id="tacos-percentage-badge"
+                        title="Wayfair has no ads — TACOS%/Ads% is always 0% (same as /all-marketplace-master)"
+                        style="background-color: #6f42c1; color: white; font-weight: bold;">TACOS %: 0.0%</span>
+                    <span class="badge fs-6 p-2" id="m-pft-badge"
+                        title="NPFT% = GPFT% (Wayfair has no ads — same as /all-marketplace-master N PFT)"
+                        style="background-color: #fd7e14; color: white; font-weight: bold;">N PFT: 0%</span>
+                    <span class="badge fs-6 p-2" id="n-roi-badge"
+                        title="NROI% = ROI% (Wayfair has no ads — same as /all-marketplace-master N ROI)"
+                        style="background-color: #e83e8c; color: white; font-weight: bold;">N ROI: 0%</span>
                 </div>
             </div>
             <div class="card-body" style="padding: 0;">
@@ -521,6 +530,10 @@
 
                 $('#l30-sales-badge').text('L30 Sales: $' + totalL30Sales.toFixed(2));
                 $('#total-cogs-badge').text('Total COGS: $' + totalCogs.toFixed(2));
+                // Wayfair has no ads — TACOS%=0, N PFT = GPFT, N ROI = ROI (same as /all-marketplace-master).
+                $('#tacos-percentage-badge').text('TACOS %: 0.0%');
+                $('#m-pft-badge').text('N PFT: ' + pftPercentage.toFixed(1) + '%');
+                $('#n-roi-badge').text('N ROI: ' + roiPercentage.toFixed(1) + '%');
             }
 
             // Build Column Visibility Dropdown

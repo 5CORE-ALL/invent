@@ -290,8 +290,11 @@
                             <span class="badge bg-primary fs-6 p-2" id="wf-total-sales-badge" style="font-weight:700;">Sales: $0</span>
                             <span class="badge bg-warning fs-6 p-2" id="wf-total-fqty-badge" style="font-weight:700;color:#111;">Sold: 0</span>
                             <span class="badge bg-success fs-6 p-2 d-none" id="wf-total-profit-badge" style="font-weight:700;" aria-hidden="true">Profit: 0</span>
-                            <span class="badge bg-info fs-6 p-2" id="wf-avg-gpft-badge" style="font-weight:700;color:#111;" title="Order-style: margin × L30 sales − LP×sold (margin from Marketplace % for Wayfair).">PFt: 0%</span>
-                            <span class="badge bg-secondary fs-6 p-2" id="wf-avg-roi-badge" style="font-weight:700;color:#111;">ROI: 0%</span>
+                            <span class="badge bg-info fs-6 p-2" id="wf-avg-gpft-badge" style="font-weight:700;color:#111;" title="Order-style GPFT%: margin × L30 sales − LP×sold (margin from Marketplace % for Wayfair).">GPFT: 0%</span>
+                            <span class="badge bg-secondary fs-6 p-2" id="wf-avg-roi-badge" style="font-weight:700;color:#fff;" title="GROI% = (Σ PFT ÷ Σ COGS) × 100.">GROI: 0%</span>
+                            <span class="badge fs-6 p-2" id="wf-ads-percent-badge" style="background-color:#d63384;color:white;font-weight:700;" title="Wayfair has no ads — Ads%/TACOS is always 0% (same as /all-marketplace-master).">Ads: 0%</span>
+                            <span class="badge fs-6 p-2" id="wf-npft-percent-badge" style="background-color:#0f766e;color:white;font-weight:700;" title="NPFT% = GPFT% (Wayfair has no ads — same as /all-marketplace-master N PFT).">NPFT: 0%</span>
+                            <span class="badge fs-6 p-2" id="wf-nroi-percent-badge" style="background-color:#6f42c1;color:white;font-weight:700;" title="NROI% = GROI% (Wayfair has no ads — same as /all-marketplace-master N ROI).">NROI: 0%</span>
                             <span class="badge bg-danger fs-6 p-2" id="wf-missing-badge" style="font-weight:700;cursor:pointer;" title="Click to filter: Missing L — not NR, INV &gt; 0, no uploaded Wayfair price.">Missing L: 0</span>
                             <span class="badge fs-6 p-2" id="wf-test-badge" style="font-weight:700;background:#6f42c1;color:#fff;" title="Test: actual count via getRows(active)">Test: 0</span>
                             <span class="badge fs-6 p-2" id="wf-map-count-badge" style="font-weight:700;background:#198754;color:#fff;cursor:pointer;" title="Click to filter: listed, INV &gt; 0, price &gt; 0, |INV − Wayfair stock| ≤ 3">Map: 0</span>
@@ -875,8 +878,12 @@
             $('#wf-total-sales-badge').text('Sales: $' + Math.round(totalSales).toLocaleString());
             $('#wf-total-fqty-badge').text('Sold: ' + totalFqty.toLocaleString());
             $('#wf-total-profit-badge').text('Profit: ' + Math.round(totalProfit).toLocaleString());
-            $('#wf-avg-gpft-badge').text('PFt: ' + Math.round(pftPct) + '%');
-            $('#wf-avg-roi-badge').text('ROI: ' + Math.round(roiPct) + '%');
+            $('#wf-avg-gpft-badge').text('GPFT: ' + Math.round(pftPct) + '%');
+            $('#wf-avg-roi-badge').text('GROI: ' + Math.round(roiPct) + '%');
+            // Wayfair has no ads — Ads%=0, NPFT=GPFT, NROI=GROI (same as /all-marketplace-master).
+            $('#wf-ads-percent-badge').text('Ads: 0%');
+            $('#wf-npft-percent-badge').text('NPFT: ' + Math.round(pftPct) + '%');
+            $('#wf-nroi-percent-badge').text('NROI: ' + Math.round(roiPct) + '%');
             $('#wf-missing-badge').text('Missing L: ' + missingCount.toLocaleString());
             $('#wf-map-count-badge').text('Map: ' + mapCount.toLocaleString());
             $('#wf-nmap-count-badge').text('N Map: ' + nmapCount.toLocaleString());
@@ -1375,11 +1382,39 @@
                         }
                     },
                     {
+                        title: 'NPFT', field: 'npft', sorter: 'number', hozAlign: 'right',
+                        formatter: function(cell) {
+                            // Wayfair has no ads — NPFT% = GPFT%
+                            const d = cell.getRow().getData();
+                            const v = parseFloat(d.gpft);
+                            if (isNaN(v)) return '<span style="color:#6c757d;">–</span>';
+                            if (v === 0 && !d.is_parent) return '0%';
+                            if (v === 0 && d.is_parent) return '<span style="color:#6c757d;">–</span>';
+                            let color = v < 10 ? '#a00211' : v < 15 ? '#ffc107' : v < 20 ? '#3591dc' : v <= 40 ? '#28a745' : '#e83e8c';
+                            return '<span style="color:' + color + ';font-weight:' + (d.is_parent ? '700' : '600') + ';">' + Math.round(v) + '%</span>';
+                        }
+                    },
+                    {
                         title: 'GROI', field: 'groi', sorter: 'number', hozAlign: 'right',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
                             const v = parseFloat(cell.getValue()) || 0;
+                            let color;
+                            if (v < 40) color = '#a00211';
+                            else if (v < 75) color = '#ffc107';
+                            else if (v < 125) color = '#28a745';
+                            else color = '#d63384';
+                            return '<span style="color:' + color + ';font-weight:700;">' + Math.round(v) + '%</span>';
+                        }
+                    },
+                    {
+                        title: 'NROI', field: 'nroi', sorter: 'number', hozAlign: 'right',
+                        formatter: function(cell) {
+                            // Wayfair has no ads — NROI% = GROI%
+                            const d = cell.getRow().getData();
+                            if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
+                            const v = parseFloat(d.groi) || 0;
                             let color;
                             if (v < 40) color = '#a00211';
                             else if (v < 75) color = '#ffc107';
@@ -1442,8 +1477,21 @@
                         }
                     },
                     {
-                        title: 'SROI', field: 'sroi', sorter: 'number', hozAlign: 'right',
+                        title: 'SNPFT', field: 'snpft', sorter: 'number', hozAlign: 'right',
                         formatter: function(cell) {
+                            // Wayfair has no ads — SNPFT = SGPFT
+                            const d = cell.getRow().getData();
+                            if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
+                            const v = parseFloat(d.sgpft);
+                            if (isNaN(v) || v === 0) return '0%';
+                            let color = v < 10 ? '#a00211' : v < 15 ? '#ffc107' : v < 20 ? '#3591dc' : v <= 40 ? '#28a745' : '#e83e8c';
+                            return '<span style="color:' + color + ';font-weight:600;">' + Math.round(v) + '%</span>';
+                        }
+                    },
+                    {
+                        title: 'SNROI', field: 'sroi', sorter: 'number', hozAlign: 'right',
+                        formatter: function(cell) {
+                            // Wayfair has no ads — SNROI = gross SROI (no Ads% cut)
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
                             const v = parseFloat(cell.getValue());

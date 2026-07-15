@@ -99,8 +99,8 @@
         <div class="card shadow-sm">
             <div class="card-body py-3">
                 <div class="d-flex align-items-center flex-wrap gap-2">
-                    <span class="badge bg-danger badge-ml-stat badge-ml-chart" id="stat-missing-listing" data-metric="missing_l" title="View Missing Listing trend">
-                        Missing Listing: <span id="total-missing-listing">0</span>
+                    <span class="badge bg-danger badge-ml-stat badge-ml-chart" id="stat-missing-listing" data-metric="missing_l" title="Missing L total from All Marketplace Master" style="background-color:#a71d2a !important;">
+                        Missing L: <span id="total-missing-listing">{{ number_format(\App\Support\Badges\AllMarketplaceMasterBadgeCalculator::missingLCountForSidebar()) }}</span>
                     </span>
                     <button type="button" class="btn btn-sm btn-primary" id="open-dar-btn" data-bs-toggle="modal" data-bs-target="#darSubmitModal">
                         <i class="fa fa-pen-to-square me-1"></i> DAR
@@ -255,7 +255,11 @@
     let mlCurrentChartDays = 32;
     let mlCurrentBadgeValue = null;
 
-    function updateStats(rows) {
+    function updateStats(rows, totalMissingL) {
+        if (totalMissingL !== undefined && totalMissingL !== null && !isNaN(Number(totalMissingL))) {
+            $('#total-missing-listing').text(Number(totalMissingL).toLocaleString('en-US'));
+            return;
+        }
         const total = (rows || []).reduce((sum, r) => sum + Number(r.missing_listing || 0), 0);
         $('#total-missing-listing').text(total.toLocaleString('en-US'));
     }
@@ -647,7 +651,7 @@
             ajaxURL: "{{ route('missing.listing.data') }}",
             ajaxResponse: function(_url, _params, response) {
                 const data = (response && response.data) ? response.data : [];
-                updateStats(data);
+                updateStats(data, response && response.total_missing_l);
                 return data;
             },
             layout: "fitDataStretch",

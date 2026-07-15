@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Map Issues', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Missing Mapping', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -86,7 +86,7 @@
 @endsection
 
 @section('content')
-    @include('layouts.shared/page-title', ['page_title' => 'Map Issues', 'sub_title' => 'Map Issues'])
+    @include('layouts.shared/page-title', ['page_title' => 'Missing Mapping', 'sub_title' => 'Missing Mapping'])
 
     <div class="row">
         <div class="col-12">

@@ -49,6 +49,8 @@ use App\Http\Controllers\Campaigns\EbayRunningAdsController;
 use App\Http\Controllers\Campaigns\GoogleSerpCampaignsController;
 use App\Http\Controllers\Campaigns\GoogleYoutubeAdsCampaignsController;
 use App\Http\Controllers\Campaigns\GoogleShoppingCampaignsController;
+use App\Http\Controllers\Campaigns\GoogleShoppingAdsMissingController;
+use App\Http\Controllers\Campaigns\GoogleSerpAdsMissingController;
 use App\Http\Controllers\Campaigns\GoogleAdsController;
 use App\Http\Controllers\Campaigns\TiktokAdsController;
 use App\Http\Controllers\Campaigns\WalmartMissingAdsController;
@@ -5602,6 +5604,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/walmart/running/ads/data', 'getWalmartRunningAdsData');
         Route::get('/adv-walmart/ad-running/save-data', 'getAdvWalmartRunningSaveData')->name('adv-walmart.ad-running.save-data');
     });
+    // Missing Google Shopping Ads — parent grid + Inv (same parent grouping as /amazon-ads/missing)
+    Route::controller(GoogleShoppingAdsMissingController::class)->group(function () {
+        Route::get('/google/shopping/missing', 'index')->name('google.shopping.ads.missing');
+        Route::get('/google/shopping/missing/data', 'data')->name('google.shopping.ads.missing.data');
+    });
+
     Route::controller(GoogleShoppingCampaignsController::class)->group(function () {
         Route::get('/google/shopping/google-shopping', 'index')->name('google.shopping.campaigns');
         Route::get('/google/shopping/google-shopping/data', 'data')->name('google.shopping.campaigns.data');
@@ -5625,6 +5633,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/google/shopping/google-shopping/audit', 'auditPage')->name('google.shopping.audit');
         Route::get('/google/shopping/google-shopping/audit/data', 'auditPageData')->name('google.shopping.audit.data');
         Route::post('/google/shopping/google-shopping/audit/save', 'auditPageSave')->name('google.shopping.audit.save');
+    });
+
+    // Missing Google SERP Ads — parent grid + Inv (same as Missing Google Shopping Ads)
+    Route::controller(GoogleSerpAdsMissingController::class)->group(function () {
+        Route::get('/google/shopping/google-serp/missing', 'index')->name('google.serp.ads.missing');
+        Route::get('/google/shopping/google-serp/missing/data', 'data')->name('google.serp.ads.missing.data');
     });
 
     // Google SERP campaigns — same grid + rule storage as Google Shopping above, but filtered to

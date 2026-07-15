@@ -92,16 +92,28 @@
             </li>
 
             <li class="side-nav-item">
-                <a href="{{ route('missing.listing') }}" class="side-nav-link">
+                <a href="{{ route('missing.listing') }}" class="side-nav-link missing-listing-nav">
                     <i class="ri-error-warning-line"></i>
                     <span>Missing Listing</span>
+                    @php
+                        $missingListingCount = \App\Support\Badges\AllMarketplaceMasterBadgeCalculator::missingLCountForSidebar();
+                    @endphp
+                    @if($missingListingCount > 0)
+                        <span class="badge rounded-pill ms-auto missing-listing-badge" title="Missing L total from All Marketplace Master">{{ number_format($missingListingCount) }}</span>
+                    @endif
                 </a>
             </li>
 
             <li class="side-nav-item">
-                <a href="{{ route('map.issues') }}" class="side-nav-link">
+                <a href="{{ route('map.issues') }}" class="side-nav-link map-issues-nav">
                     <i class="ri-node-tree"></i>
-                    <span>Map Issues</span>
+                    <span>Missing Mapping</span>
+                    @php
+                        $mapIssuesNmapCount = \App\Support\Badges\AllMarketplaceMasterBadgeCalculator::nmapCountForSidebar();
+                    @endphp
+                    @if($mapIssuesNmapCount > 0)
+                        <span class="badge rounded-pill ms-auto map-issues-nmap-badge" title="N Map total from All Marketplace Master">{{ number_format($mapIssuesNmapCount) }}</span>
+                    @endif
                 </a>
             </li>
 
@@ -1384,7 +1396,7 @@
                                             <span class="menu-arrow"></span>
                                         </a>
                                         <div class="collapse" id="amazonBudget">
-                                            <ul class="side-nav-fourth-level">
+                                            <ul class="side-nav-forth-level amz-fbm-ad-submenu">
                                                 <li>
                                                     <a href="{{ route('amazon.ads.all') }}">Ads All Amz</a>
                                                 </li>
@@ -1402,7 +1414,13 @@
                                                     <a href="{{ route('amazon.ads.audit') }}">Ads Audit Amz</a>
                                                 </li>
                                                 <li>
-                                                    <a href="{{ route('amazon.ads.missing') }}">Ads Missing Amz</a>
+                                                    <a href="{{ route('amazon.ads.missing') }}" class="amz-ads-missing-nav">
+                                                        Ads Missing Amz
+                                                        @php $amzAdsMissingCount = \App\Http\Controllers\AmazonAdsMissingController::missingTotalCount(); @endphp
+                                                        @if($amzAdsMissingCount > 0)
+                                                            <span class="badge bg-danger rounded-pill">{{ $amzAdsMissingCount }}</span>
+                                                        @endif
+                                                    </a>
                                                 </li>
                                                 <li>
                                                     <a href="{{ route('amazon.ads.categories') }}">Ads Categories Amz</a>
@@ -1953,6 +1971,15 @@
                             <a href="{{ route('google.shopping.campaigns') }}">Google Shopping</a>
                         </li>
                         <li>
+                            <a href="{{ route('google.shopping.ads.missing') }}" class="gs-ads-missing-nav">
+                                Missing Google Shopping Ads
+                                @php $gsAdsMissingCount = \App\Http\Controllers\Campaigns\GoogleShoppingAdsMissingController::missingTotalCount(); @endphp
+                                @if($gsAdsMissingCount > 0)
+                                    <span class="badge bg-danger rounded-pill">{{ $gsAdsMissingCount }}</span>
+                                @endif
+                            </a>
+                        </li>
+                        <li>
                             <a href="{{ route('google.shopping.audit') }}">Google Shopping Audit</a>
                         </li>
                         <li>
@@ -1960,6 +1987,15 @@
                         </li>
                         <li>
                             <a href="{{ route('google.serp.campaigns') }}">Google SERP Campaigns</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('google.serp.ads.missing') }}" class="gs-serp-ads-missing-nav">
+                                Missing Google SERP Ads
+                                @php $gsSerpAdsMissingCount = \App\Http\Controllers\Campaigns\GoogleSerpAdsMissingController::missingTotalCount(); @endphp
+                                @if($gsSerpAdsMissingCount > 0)
+                                    <span class="badge bg-danger rounded-pill">{{ $gsSerpAdsMissingCount }}</span>
+                                @endif
+                            </a>
                         </li>
                         <li>
                             <a href="{{ route('google.serp.audit') }}">Google SERP Audit</a>
@@ -3181,6 +3217,116 @@
 <!-- ========== Left Sidebar End ========== -->
 
 <style>
+    /* Keep Missing badge beside the label (theme defaults pin .badge to absolute right). */
+    .side-nav a.amz-ads-missing-nav {
+        padding-right: calc(var(--tz-menu-item-padding-x, 0.75rem) * 1.5) !important;
+    }
+    .side-nav a.amz-ads-missing-nav > .badge {
+        position: static !important;
+        display: inline-block;
+        vertical-align: middle;
+        margin: 0 0 0 0.35rem !important;
+        top: auto !important;
+        right: auto !important;
+        transform: none !important;
+    }
+
+    /* Keep Missing Google Shopping / SERP Ads badges beside the label. */
+    .side-nav a.gs-ads-missing-nav,
+    .side-nav a.gs-serp-ads-missing-nav {
+        padding-right: calc(var(--tz-menu-item-padding-x, 0.75rem) * 1.5) !important;
+    }
+    .side-nav a.gs-ads-missing-nav > .badge,
+    .side-nav a.gs-serp-ads-missing-nav > .badge {
+        position: static !important;
+        display: inline-block;
+        vertical-align: middle;
+        margin: 0 0 0 0.35rem !important;
+        top: auto !important;
+        right: auto !important;
+        transform: none !important;
+    }
+
+    /* Map Issues — N Map count (same total as /all-marketplace-master). */
+    .side-nav a.map-issues-nav > .map-issues-nmap-badge {
+        background-color: #a71d2a !important;
+        color: #fff !important;
+        font-weight: 700;
+    }
+
+    /* Missing Listing — Missing L count (same total as /all-marketplace-master). */
+    .side-nav a.missing-listing-nav > .missing-listing-badge {
+        background-color: #a71d2a !important;
+        color: #fff !important;
+        font-weight: 700;
+    }
+
+    /* Accordion affordance: arrow points down when collapsed, up when open (not right). */
+    .side-nav .side-nav-item > a > .menu-arrow {
+        transform: translate(-50%, -50%) rotate(90deg) !important;
+    }
+    .side-nav .side-nav-item > a[aria-expanded="true"] > .menu-arrow,
+    .side-nav .side-nav-item.menuitem-active > a:not(.collapsed) > .menu-arrow {
+        transform: translate(-50%, -50%) rotate(-90deg) !important;
+    }
+
+    /*
+     * All sidebar dropdowns: expand directly under the parent (accordion below),
+     * not indented/flyout to the right. Covers second/third/forth/fourth levels.
+     */
+    .side-nav .side-nav-second-level,
+    .side-nav .side-nav-third-level,
+    .side-nav .side-nav-forth-level,
+    .side-nav .side-nav-fourth-level,
+    .side-nav ul.amz-fbm-ad-submenu {
+        padding-left: 0 !important;
+        margin-left: 0 !important;
+    }
+    .side-nav .side-nav-second-level > li > a,
+    .side-nav .side-nav-third-level > li > a,
+    .side-nav .side-nav-forth-level > li > a,
+    .side-nav .side-nav-fourth-level > li > a,
+    .side-nav ul.amz-fbm-ad-submenu > li > a {
+        padding-left: calc(var(--tz-menu-item-padding-x, 0.75rem) * 1.5) !important;
+    }
+
+    /* Condensed/hover theme flyouts open to the right — force accordion below instead. */
+    html[data-sidenav-size="condensed"]:not([data-layout="topnav"]) .wrapper .leftside-menu .side-nav .side-nav-item {
+        position: relative;
+    }
+    html[data-sidenav-size="condensed"]:not([data-layout="topnav"]) .wrapper .leftside-menu .side-nav .side-nav-item:hover > .collapse,
+    html[data-sidenav-size="condensed"]:not([data-layout="topnav"]) .wrapper .leftside-menu .side-nav .side-nav-item:hover > .collapsing,
+    html[data-sidenav-size="condensed"]:not([data-layout="topnav"]) .wrapper .leftside-menu .side-nav .side-nav-item > .collapse.show,
+    html[data-sidenav-size="condensed"]:not([data-layout="topnav"]) .wrapper .leftside-menu .side-nav .side-nav-item > .collapsing {
+        display: block !important;
+        position: static !important;
+        height: auto !important;
+        transition: none !important;
+    }
+    html[data-sidenav-size="condensed"]:not([data-layout="topnav"]) .wrapper .leftside-menu .side-nav .side-nav-item:hover > .collapse > ul,
+    html[data-sidenav-size="condensed"]:not([data-layout="topnav"]) .wrapper .leftside-menu .side-nav .side-nav-item:hover > .collapsing > ul,
+    html[data-sidenav-size="condensed"]:not([data-layout="topnav"]) .wrapper .leftside-menu .side-nav .side-nav-item > .collapse.show > ul,
+    html[data-sidenav-size="condensed"]:not([data-layout="topnav"]) .wrapper .leftside-menu .side-nav .side-nav-item > .collapsing > ul,
+    html[data-sidenav-size="condensed"]:not([data-layout="topnav"]) .wrapper .leftside-menu .side-nav .side-nav-item li:hover > .collapse > ul,
+    html[data-sidenav-size="condensed"]:not([data-layout="topnav"]) .wrapper .leftside-menu .side-nav .side-nav-item li:hover > .collapsing > ul {
+        display: block !important;
+        position: static !important;
+        left: auto !important;
+        top: auto !important;
+        width: 100% !important;
+        box-shadow: none !important;
+        padding-left: 0 !important;
+        margin-left: 0 !important;
+    }
+    html[data-sidenav-size="condensed"]:not([data-layout="topnav"]) .wrapper .leftside-menu .side-nav .side-nav-item:hover > .collapse > ul a,
+    html[data-sidenav-size="condensed"]:not([data-layout="topnav"]) .wrapper .leftside-menu .side-nav .side-nav-item > .collapse.show > ul a {
+        width: 100% !important;
+    }
+    html[data-sidenav-size="condensed"]:not([data-layout="topnav"]) .wrapper .leftside-menu .side-nav .side-nav-item > .side-nav-link span,
+    html[data-sidenav-size="condensed"]:not([data-layout="topnav"]) .wrapper .leftside-menu .side-nav .side-nav-item > a span {
+        visibility: visible !important;
+    }
+
     @media (min-width: 768px) {
         body.desktop-sidebar-collapsible .leftside-menu {
             position: fixed !important;

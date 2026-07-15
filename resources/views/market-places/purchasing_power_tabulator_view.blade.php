@@ -181,6 +181,10 @@
                         <span class="badge fs-6 p-2" id="gpft-pct-badge"
                               style="background:#6f42c1;color:#fff;font-weight:bold;"
                               title="Weighted Gross Profit %: (Σ Profit ÷ Σ Sales L30) × 100. Matches /all-marketplace-master Gprofit% formula and /purchasing-power-sales GPFT % (rev) badge.">GPFT: 0%</span>
+                        <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color:white;font-weight:bold;" title="Weighted GROI% = (Σ Profit ÷ Σ COGS) × 100.">GROI: 0%</span>
+                        <span class="badge fs-6 p-2" id="ads-percent-badge" style="background-color:#d63384;color:white;font-weight:bold;" title="Purchasing Power has no ads — Ads%/TACOS is always 0% (same as /all-marketplace-master).">Ads: 0%</span>
+                        <span class="badge fs-6 p-2" id="npft-percent-badge" style="background-color:#0f766e;color:white;font-weight:bold;" title="NPFT% = GPFT% (Purchasing Power has no ads — same as /all-marketplace-master N PFT).">NPFT: 0%</span>
+                        <span class="badge fs-6 p-2" id="nroi-percent-badge" style="background-color:#6f42c1;color:white;font-weight:bold;" title="NROI% = GROI% (Purchasing Power has no ads — same as /all-marketplace-master N ROI).">NROI: 0%</span>
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color:black;font-weight:bold;">Avg Price: $0</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-inv-badge" style="color:black;font-weight:bold;">Total INV: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-l30-badge" style="color:black;font-weight:bold;">Total PP L30: 0</span>
@@ -189,7 +193,6 @@
                         <span class="badge fs-6 p-2" id="more-sold-count-badge" style="background-color:#28a745;color:white;font-weight:bold;cursor:pointer;">&gt; 0 Sold</span>
                         <span class="badge bg-warning fs-6 p-2" id="avg-dil-badge" style="color:black;font-weight:bold;">DIL%: 0%</span>
                         <span class="badge bg-info fs-6 p-2" id="total-cogs-badge" style="color:black;font-weight:bold;">COGS: $0</span>
-                        <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color:black;font-weight:bold;">ROI%: 0%</span>
                         <span class="badge bg-danger fs-6 p-2" id="less-amz-badge" style="color:white;font-weight:bold;cursor:pointer;">&lt; Amz</span>
                         <span class="badge fs-6 p-2" id="more-amz-badge" style="background-color:#28a745;color:white;font-weight:bold;cursor:pointer;">&gt; Amz</span>
                         <span class="badge bg-danger fs-6 p-2" id="missing-badge" style="color:white;font-weight:bold;cursor:pointer;">MISSING: 0</span>
@@ -856,17 +859,30 @@
                     }
                 },
                 {
-                    title: 'PFT%', field: 'PFT %', hozAlign: 'center', sorter: 'number', width: 50,
+                    title: 'NPFT', field: 'PFT %', hozAlign: 'center', sorter: 'number', width: 50,
                     formatter: function(cell) {
-                        const p = parseFloat(cell.getValue());
+                        // Purchasing Power has no ads — NPFT% = GPFT%
+                        const p = parseFloat(cell.getRow().getData()['GPFT%'] ?? cell.getValue());
+                        if (!isFinite(p)) return '';
                         const color = p < 10 ? '#a00211' : p < 15 ? '#ffc107' : p < 20 ? '#3591dc' : p <= 40 ? '#28a745' : '#e83e8c';
                         return `<span style="color:${color};font-weight:600;">${p.toFixed(0)}%</span>`;
                     }
                 },
                 {
-                    title: 'ROI%', field: 'ROI%', hozAlign: 'center', sorter: 'number', width: 50,
+                    title: 'GROI%', field: 'ROI%', hozAlign: 'center', sorter: 'number', width: 50,
                     formatter: function(cell) {
                         const p = parseFloat(cell.getValue());
+                        if (!isFinite(p)) return '';
+                        const color = p < 40 ? '#a00211' : p < 75 ? '#ffc107' : p < 125 ? '#28a745' : '#d63384';
+                        return `<span style="color:${color};font-weight:600;">${p.toFixed(0)}%</span>`;
+                    }
+                },
+                {
+                    title: 'NROI', field: 'NROI', hozAlign: 'center', sorter: 'number', width: 50,
+                    formatter: function(cell) {
+                        // Purchasing Power has no ads — NROI% = GROI% (ROI%)
+                        const p = parseFloat(cell.getRow().getData()['ROI%']);
+                        if (!isFinite(p)) return '';
                         const color = p < 40 ? '#a00211' : p < 75 ? '#ffc107' : p < 125 ? '#28a745' : '#d63384';
                         return `<span style="color:${color};font-weight:600;">${p.toFixed(0)}%</span>`;
                     }
@@ -920,17 +936,21 @@
                     }
                 },
                 {
-                    title: 'SPFT', field: 'SPFT', hozAlign: 'center', sorter: 'number', width: 50,
+                    title: 'SNPFT', field: 'SPFT', hozAlign: 'center', sorter: 'number', width: 50,
                     formatter: function(cell) {
-                        const p = parseFloat(cell.getValue());
+                        // Purchasing Power has no ads — SNPFT = SGPFT
+                        const p = parseFloat(cell.getRow().getData().SGPFT ?? cell.getValue());
+                        if (!isFinite(p)) return '';
                         const color = p < 10 ? '#a00211' : p < 15 ? '#ffc107' : p < 20 ? '#3591dc' : p <= 40 ? '#28a745' : '#e83e8c';
                         return `<span style="color:${color};font-weight:600;">${p.toFixed(0)}%</span>`;
                     }
                 },
                 {
-                    title: 'SROI', field: 'SROI', hozAlign: 'center', sorter: 'number', width: 50,
+                    title: 'SNROI', field: 'SROI', hozAlign: 'center', sorter: 'number', width: 50,
                     formatter: function(cell) {
+                        // Purchasing Power has no ads — SNROI = gross SROI (no Ads% cut)
                         const p = parseFloat(cell.getValue());
+                        if (!isFinite(p)) return '';
                         const color = p < 40 ? '#a00211' : p < 75 ? '#ffc107' : p < 125 ? '#28a745' : '#d63384';
                         return `<span style="color:${color};font-weight:600;">${p.toFixed(0)}%</span>`;
                     }
@@ -1158,7 +1178,11 @@
             $('#zero-sold-count-badge').text(`0 Sold: ${zeroSold}`);
             $('#avg-dil-badge').text(`DIL%: ${(avgDil * 100).toFixed(1)}%`);
             $('#total-cogs-badge').text(`COGS: $${Math.round(totalCogs).toLocaleString()}`);
-            $('#roi-percent-badge').text(`ROI%: ${roiPctWeighted.toFixed(1)}%`);
+            $('#roi-percent-badge').text(`GROI: ${roiPctWeighted.toFixed(1)}%`);
+            // Purchasing Power has no ads — Ads%=0, NPFT=GPFT, NROI=GROI (same as /all-marketplace-master).
+            $('#ads-percent-badge').text('Ads: 0%');
+            $('#npft-percent-badge').text('NPFT: ' + gpftPctWeighted.toFixed(1) + '%');
+            $('#nroi-percent-badge').text('NROI: ' + roiPctWeighted.toFixed(1) + '%');
             $('#missing-badge').text(`MISSING: ${missingCount}`);
             $('#mapping-badge').text(`MAPPING: ${mappingCount}`);
             $('#total-pp-stock-badge').text(`PP Stock: ${totalPpStock.toLocaleString()}`);

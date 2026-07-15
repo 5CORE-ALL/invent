@@ -140,12 +140,12 @@
                 <div id="summary-stats" class="mb-2 p-2 bg-light rounded">
                     <div class="d-flex flex-wrap align-items-center gap-2">
                         <span class="badge fs-6 p-2 flex-shrink-0" id="rd-sum-qty-amount-badge" style="background-color: #5dade2; color: #111; font-weight: bold;" title="Total Sales from full reverb_daily_data table: SUM(quantity × amount), rounded to whole dollars">Total Sales: $0</span>
-                        <span class="badge fs-6 p-2 flex-shrink-0" id="rd-ads-percent-badge" style="background-color: #e83e8c; color: white; font-weight: bold;" title="Ads% = Reverb Bump fees ÷ Sales (L30) × 100">Ads%: 0%</span>
+                        <span class="badge fs-6 p-2 flex-shrink-0" id="rd-ads-percent-badge" style="background-color: #e83e8c; color: white; font-weight: bold;" title="Ads%/TACOS on master = Bump fees ÷ Sales (L30) × 100. Bump is shown in Ads% but is not cut from NPFT/NROI (same as /all-marketplace-master).">Ads%: 0%</span>
                         <span class="badge bg-dark fs-6 p-2 flex-shrink-0" id="rd-daily-overview-badge" style="font-weight: bold;" title="Total units: SUM(quantity) across all reverb_daily_data order rows">Orders: —</span>
                         <span class="badge bg-info fs-6 p-2 flex-shrink-0" id="gpft-list-badge" style="color: black; font-weight: bold;" title="Weighted GPFT% = Σ[sold_qty×(RV Price×take%−LP−Ship)] ÷ Σ(sold_qty×RV Price) — same method as /temu-decrease, using normal ship">GPFT: 0%</span>
                         <span class="badge fs-6 p-2 flex-shrink-0" id="groi-badge" style="background-color: #6f42c1; color: white; font-weight: bold;" title="Weighted GROI% = Σ[sold_qty×(RV Price×take%−LP−Ship)] ÷ Σ(sold_qty×LP) — same method as /temu-decrease, using normal ship">GROI: 0%</span>
-                        <span class="badge fs-6 p-2 flex-shrink-0" id="npft-badge" style="background-color: #0d6efd; color: white; font-weight: bold;" title="NPFT% = GPFT% − Ads%">NPFT: 0%</span>
-                        <span class="badge fs-6 p-2 flex-shrink-0" id="nroi-badge" style="background-color: #6610f2; color: white; font-weight: bold;" title="NROI% = GROI% − Ads%">NROI: 0%</span>
+                        <span class="badge fs-6 p-2 flex-shrink-0" id="npft-badge" style="background-color: #0d6efd; color: white; font-weight: bold;" title="NPFT% = GPFT% (Reverb Ads% is Bump — not cut from net; same as /all-marketplace-master N PFT).">NPFT: 0%</span>
+                        <span class="badge fs-6 p-2 flex-shrink-0" id="nroi-badge" style="background-color: #6610f2; color: white; font-weight: bold;" title="NROI% = GROI% (Reverb Ads% is Bump — not cut from net; same as /all-marketplace-master N ROI).">NROI: 0%</span>
                         <span class="badge bg-danger fs-6 p-2 flex-shrink-0" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="SKUs with reverb_daily_qty = 0">0 Sold: 0</span>
                         <span class="badge fs-6 p-2 flex-shrink-0" id="more-sold-count-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="SKUs with reverb_daily_qty &gt; 0">&gt; 0 Sold: 0</span>
                         <span class="badge bg-danger fs-6 p-2 flex-shrink-0" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amazon">&lt; Amz: 0</span>
@@ -372,8 +372,8 @@
     const TABULATOR_COLUMN_VISIBILITY_URL = '/tabulator-column-visibility';
     const REVERB_DAILY_TOTALS_URL = @json(url('reverb-daily-data-totals-json'));
     let table = null;
-    // Reverb Ads% (Bump fees ÷ Sales) — loaded from the daily totals endpoint; used by
-    // updateSummary() to derive NPFT = GPFT − Ads% and NROI = GROI − Ads%.
+    // Reverb Ads% (Bump fees ÷ Sales) — loaded from the daily totals endpoint.
+    // Shown on the Ads% badge to match /all-marketplace-master; NPFT/NROI do not subtract it.
     let reverbAdsPct = 0;
     let decreaseModeActive = false;
     let increaseModeActive = false;
@@ -722,7 +722,7 @@
         // Columns hidden while the "Missing L" badge filter is active
         const missingHiddenColumnFields = [
             'RV Price',
-            'GPFT%', 'PFT %', 'ROI%', 'SPRICE', 'SGPFT', 'SPFT', 'SROI',
+            'GPFT%', 'PFT %', 'ROI%', 'NPFT', 'NROI', 'SPRICE', 'SGPFT', 'SPFT', 'SROI', 'SNPFT', 'SNROI',
             'RV L30', 'reverb_daily_qty', 'reverb_daily_qty_x_subtotal', 'reverb_daily_qty_x_amount', 'R Stock',
             'Views', 'CVR',
             'L30', 'RV Dil%', 'MAP', 'Profit', 'Sales L30', 'LP_productmaster', 'Ship_productmaster'
@@ -1641,6 +1641,45 @@
                     width: 50
                 },
                 {
+                    title: "NPFT",
+                    field: "NPFT",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        // Reverb Ads% is Bump — NPFT% = GPFT% (same as /all-marketplace-master N PFT).
+                        const value = cell.getRow().getData()['GPFT%'];
+                        if (value === null || value === undefined) return '';
+                        const percent = parseFloat(value);
+                        let color = '';
+                        if (percent < 10) color = '#a00211';
+                        else if (percent >= 10 && percent < 15) color = '#ffc107';
+                        else if (percent >= 15 && percent < 20) color = '#3591dc';
+                        else if (percent >= 20 && percent <= 40) color = '#28a745';
+                        else color = '#e83e8c';
+                        return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                    },
+                    width: 50
+                },
+                {
+                    title: "NROI",
+                    field: "NROI",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        // Reverb Ads% is Bump — NROI% = GROI%/ROI% (same as /all-marketplace-master N ROI).
+                        const value = cell.getRow().getData()['ROI%'];
+                        if (value === null || value === undefined) return '';
+                        const percent = parseFloat(value);
+                        let color = '';
+                        if (percent < 40) color = '#a00211';
+                        else if (percent < 75) color = '#ffc107';
+                        else if (percent < 125) color = '#28a745';
+                        else color = '#d63384';
+                        return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                    },
+                    width: 50
+                },
+                {
                     title: "Profit",
                     field: "Profit",
                     hozAlign: "center",
@@ -1787,6 +1826,45 @@
                         else if (percent < 125) color = '#28a745';
                         else color = '#d63384';
                         
+                        return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                    },
+                    width: 50
+                },
+                {
+                    title: "SNPFT",
+                    field: "SNPFT",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        // Reverb has no Ads cut on net — SNPFT = SGPFT.
+                        const value = cell.getRow().getData().SGPFT;
+                        if (value === null || value === undefined) return '';
+                        const percent = parseFloat(value);
+                        let color = '';
+                        if (percent < 10) color = '#a00211';
+                        else if (percent >= 10 && percent < 15) color = '#ffc107';
+                        else if (percent >= 15 && percent < 20) color = '#3591dc';
+                        else if (percent >= 20 && percent <= 40) color = '#28a745';
+                        else color = '#e83e8c';
+                        return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                    },
+                    width: 50
+                },
+                {
+                    title: "SNROI",
+                    field: "SNROI",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        // Reverb has no Ads cut on net — SNROI = SROI.
+                        const value = cell.getRow().getData().SROI;
+                        if (value === null || value === undefined) return '';
+                        const percent = parseFloat(value);
+                        let color = '';
+                        if (percent < 40) color = '#a00211';
+                        else if (percent < 75) color = '#ffc107';
+                        else if (percent < 125) color = '#28a745';
+                        else color = '#d63384';
                         return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                     },
                     width: 50
@@ -2218,12 +2296,12 @@
                         'Total Sales: $' + Math.round(totalSales).toLocaleString()
                     );
                     $('#rd-daily-overview-badge').text('Orders: ' + (d.sum_quantity || 0));
-                    // Ads% (Reverb) = Bump fees ÷ Sales (L30)
+                    // Ads% (Reverb) = Bump fees ÷ Sales — same as /all-marketplace-master Ads%/TACOS.
+                    // NPFT/NROI stay equal to GPFT/GROI (Bump is not cut from net).
                     const bumpFees = parseFloat(d.sum_bump_fee) || 0;
                     const adsPct = totalSales > 0 ? (bumpFees / totalSales) * 100 : 0;
                     reverbAdsPct = adsPct;
                     $('#rd-ads-percent-badge').text('Ads%: ' + adsPct.toFixed(1) + '%');
-                    // Refresh NPFT / NROI which depend on Ads%
                     updateSummary();
                 })
                 .fail(function(xhr) {
@@ -2326,9 +2404,9 @@
 
             $('#gpft-list-badge').text(`GPFT: ${Math.round(gpftPct)}%`);
             $('#groi-badge').text(`GROI: ${Math.round(groiPct)}%`);
-            // NPFT = GPFT − Ads%, NROI = GROI − Ads% (Ads% from daily totals endpoint)
-            $('#npft-badge').text(`NPFT: ${Math.round(gpftPct - reverbAdsPct)}%`);
-            $('#nroi-badge').text(`NROI: ${Math.round(groiPct - reverbAdsPct)}%`);
+            // NPFT = GPFT, NROI = GROI — Ads% is Bump on master and is not cut from net metrics.
+            $('#npft-badge').text(`NPFT: ${Math.round(gpftPct)}%`);
+            $('#nroi-badge').text(`NROI: ${Math.round(groiPct)}%`);
             $('#zero-sold-count-badge').text(`0 Sold: ${zeroSoldCount}`);
             $('#more-sold-count-badge').text(`> 0 Sold: ${moreSoldCount}`);
             $('#less-amz-badge').text(`< Amz: ${lessAmzCount}`);

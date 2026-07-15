@@ -84,6 +84,15 @@
                         <span class="badge fs-6 p-2" id="l7-sales-badge" style="background-color: #6610f2; color: white; font-weight: bold;" title="Last 7 days sales (UTC) = Σ order total for the last 7 days">L7 Sales: $0</span>
                         <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge" style="color: white; font-weight: bold;">PFT: 0%</span>
                         <span class="badge fs-6 p-2" id="roi-percentage-badge" style="background-color: purple; color: white; font-weight: bold;">ROI: 0%</span>
+                        <span class="badge fs-6 p-2" id="tacos-percentage-badge"
+                            title="Ads%/TACOS on master = Bump fees ÷ Sales × 100. Bump is shown here but not cut from N PFT/N ROI (same as /all-marketplace-master)."
+                            style="background-color: #6f42c1; color: white; font-weight: bold;">TACOS %: 0.0%</span>
+                        <span class="badge fs-6 p-2" id="m-pft-badge"
+                            title="NPFT% = GPFT%/PFT% (Reverb Ads% is Bump — not cut from net; same as /all-marketplace-master N PFT)"
+                            style="background-color: #fd7e14; color: white; font-weight: bold;">N PFT: 0%</span>
+                        <span class="badge fs-6 p-2" id="n-roi-badge"
+                            title="NROI% = ROI% (Reverb Ads% is Bump — not cut from net; same as /all-marketplace-master N ROI)"
+                            style="background-color: #e83e8c; color: white; font-weight: bold;">N ROI: 0%</span>
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0</span>
                         <span class="badge bg-dark fs-6 p-2" id="pft-total-badge" style="color: white; font-weight: bold;">PFT: $0</span>
                         <span class="badge bg-secondary fs-6 p-2" id="total-cogs-badge" style="color: white; font-weight: bold;">COGS: $0</span>
@@ -688,8 +697,8 @@
             // Calculate Fee Percentage: (Total Fees / Total Revenue) * 100
             const feePercentage = totalRevenue > 0 ? (totalFees / totalRevenue) * 100 : 0;
             
-            // Calculate Bump Percentage: (Bump Fees / Total Revenue) * 100
-            const bumpPercentage = totalRevenue > 0 ? (totalBumpFees / totalRevenue) * 100 : 0;
+            // Bump % / TACOS (Ads%) = Bump Fees ÷ displayed Sales (amount) — same basis as master Ads%.
+            const bumpPercentage = l30Sales > 0 ? (totalBumpFees / l30Sales) * 100 : 0;
             
             // Calculate Selling Percentage: (Selling Fees / Total Revenue) * 100
             const sellingPercentage = totalRevenue > 0 ? (totalSellingFees / totalRevenue) * 100 : 0;
@@ -705,6 +714,10 @@
             $('#l7-sales-badge').text('L7 Sales: $' + Math.round(l7Sales).toLocaleString());
             $('#pft-percentage-badge').text('PFT: ' + Math.round(pftPercentage) + '%');
             $('#roi-percentage-badge').text('ROI: ' + Math.round(roiPercentage) + '%');
+            // TACOS% = master Ads% (Bump%). N PFT / N ROI do not cut Bump (same as /all-marketplace-master).
+            $('#tacos-percentage-badge').text('TACOS %: ' + bumpPercentage.toFixed(1) + '%');
+            $('#m-pft-badge').text('N PFT: ' + pftPercentage.toFixed(1) + '%');
+            $('#n-roi-badge').text('N ROI: ' + roiPercentage.toFixed(1) + '%');
             $('#avg-price-badge').text('Avg Price: $' + Math.round(avgPrice).toLocaleString());
             $('#pft-total-badge').text('PFT: $' + Math.round(totalPft).toLocaleString());
             

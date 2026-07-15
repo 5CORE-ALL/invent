@@ -75,6 +75,15 @@
                         <span class="badge bg-success fs-6 p-2" id="total-pft-badge" style="color:white;font-weight:bold;">PFT: $0</span>
                         <span class="badge bg-danger fs-6 p-2" id="gpft-rev-badge" style="color:white;font-weight:bold;" title="Total PFT ÷ revenue (non-canceled lines)">GPFT % (rev): 0%</span>
                         <span class="badge fs-6 p-2" id="groi-badge" style="background-color:#6f42c1;color:white;font-weight:bold;" title="Total PFT ÷ COGS (LP × qty), non-canceled">GROI %: 0%</span>
+                        <span class="badge fs-6 p-2" id="tacos-percentage-badge"
+                            title="Purchasing Power has no ads — TACOS%/Ads% is always 0% (same as /all-marketplace-master)"
+                            style="background-color:#6f42c1;color:white;font-weight:bold;">TACOS %: 0.0%</span>
+                        <span class="badge fs-6 p-2" id="m-pft-badge"
+                            title="NPFT% = GPFT% (Purchasing Power has no ads — same as /all-marketplace-master N PFT)"
+                            style="background-color:#fd7e14;color:white;font-weight:bold;">N PFT: 0%</span>
+                        <span class="badge fs-6 p-2" id="n-roi-badge"
+                            title="NROI% = GROI% (Purchasing Power has no ads — same as /all-marketplace-master N ROI)"
+                            style="background-color:#e83e8c;color:white;font-weight:bold;">N ROI: 0%</span>
                         <span class="badge bg-danger fs-6 p-2" id="canceled-badge" style="color:white;font-weight:bold;">Canceled: 0</span>
                         <span class="badge bg-secondary fs-6 p-2" id="avg-price-badge" style="color:white;font-weight:bold;">Avg Price: $0</span>
                     </div>
@@ -404,6 +413,10 @@
             $('#total-pft-badge').text(`PFT: $${Math.round(rollupPft).toLocaleString()}`);
             $('#gpft-rev-badge').text(`GPFT % (rev): ${gpftRevPct.toFixed(1)}%`);
             $('#groi-badge').text(`GROI %: ${groiPct.toFixed(1)}%`);
+            // Purchasing Power has no ads — TACOS%=0, N PFT = GPFT, N ROI = GROI (same as /all-marketplace-master).
+            $('#tacos-percentage-badge').text('TACOS %: 0.0%');
+            $('#m-pft-badge').text('N PFT: ' + gpftRevPct.toFixed(1) + '%');
+            $('#n-roi-badge').text('N ROI: ' + groiPct.toFixed(1) + '%');
             $('#canceled-badge').text(`Canceled: ${canceledCount}`);
             $('#avg-price-badge').text(`Avg Price: $${avgPrice.toFixed(2)}`);
 
