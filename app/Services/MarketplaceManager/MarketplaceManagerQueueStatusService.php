@@ -210,6 +210,15 @@ final class MarketplaceManagerQueueStatusService
         }
 
         if ($pending > 0) {
+            // Delayed-only = worker is healthy, jobs are waiting on retry backoff (not stalled).
+            if ($classified['delayed'] > 0 && $classified['waiting'] === 0 && $running === 0) {
+                return [
+                    'state' => 'backlogged',
+                    'message' => "{$classified['delayed']} {$label} job(s) delayed for retry (worker idle until then).",
+                    'log_age_seconds' => $logAge,
+                ];
+            }
+
             if ($logAge !== null && $logAge > 900) {
                 return [
                     'state' => 'stalled',

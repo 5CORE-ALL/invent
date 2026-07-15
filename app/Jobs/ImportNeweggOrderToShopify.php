@@ -67,12 +67,12 @@ class ImportNeweggOrderToShopify implements ShouldQueue
             return;
         }
 
-        $status = $pushService->lastApiStatus;
+        $status = $pushService->lastApiStatus ?? null;
         if ($status === 429 || ($status !== null && $status >= 500)) {
             Log::warning('ImportNeweggOrderToShopify: temporary Shopify error, will retry', [
                 'order_id' => $order->order_id,
                 'status' => $status,
-                'reason' => $pushService->lastFailureReason,
+                'reason' => $pushService->lastFailureReason ?? null,
             ]);
 
             throw new RuntimeException($pushService->lastFailureReason ?: "Shopify HTTP {$status}");
@@ -81,7 +81,7 @@ class ImportNeweggOrderToShopify implements ShouldQueue
         $order->update(['import_status' => 'import_failed']);
         Log::error('ImportNeweggOrderToShopify: failed', [
             'order_id' => $order->order_id,
-            'reason' => $pushService->lastFailureReason,
+            'reason' => $pushService->lastFailureReason ?? 'Import returned no Shopify order id',
         ]);
     }
 
