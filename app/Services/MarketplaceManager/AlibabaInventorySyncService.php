@@ -45,9 +45,10 @@ class AlibabaInventorySyncService
 
         $settings = MarketplaceSyncSettings::getFor('alibaba');
         $qtyPercent = max(0, min(100, (int) ($settings['inventory']['quantity_calc_percent'] ?? 100)));
-        $minQty = max(0, (int) ($settings['inventory']['min_quantity'] ?? 0));
         $maxQty = $settings['inventory']['max_quantity'] ?? null;
+        // min_quantity is ignored: Shopify 0 => marketplace 0 (never invent 1).
 
+        // Always LIVE Shopify API qty — never local shopify_skus cache.
         $shopifyQty = $this->fetchLiveShopifyQuantities($skus, $shopifyConfig);
         $metrics = AlibabaMetric::query()
             ->whereIn('sku', $skus)
@@ -62,29 +63,23 @@ class AlibabaInventorySyncService
         foreach ($metrics as $metric) {
             $sku = (string) $metric->sku;
             $productId = (string) $metric->product_id;
-            if ($productId === '') {
+            // Rule 1: never update unlinked SKUs.
+            if (! MarketplaceLiveInventoryRules::isLinked($productId, $sku)) {
                 $skipped++;
                 continue;
             }
 
             $shopifyStock = $this->resolveShopifyQty($shopifyQty, $sku);
-            if ($shopifyStock === null) {
-                $skipped++;
-                continue;
-            }
-            $qty = (int) floor($shopifyStock * ($qtyPercent / 100));
-            if ($qty < $minQty) {
-                $qty = $minQty;
-            }
-            if ($maxQty !== null && $maxQty !== '') {
-                $qty = min($qty, (int) $maxQty);
-            }
+            // Rule 4: missing / 0 live Shopify => push 0 (do not skip leaving stale MP stock).
+            $pushQty = $shopifyStock === null
+                ? MarketplaceLiveInventoryRules::qtyWhenMissingFromShopify()
+                : MarketplaceLiveInventoryRules::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty);
 
             $inventoryRows[] = [
                 'product_id' => $productId,
                 'sku_code' => $sku,
-                'inventory' => max(0, $qty),
-                'shopify_qty' => $shopifyStock,
+                'inventory' => MarketplaceLiveInventoryRules::clampPushQty($pushQty, $shopifyStock ?? 0),
+                'shopify_qty' => $shopifyStock ?? 0,
             ];
         }
 
@@ -184,6 +179,9 @@ class AlibabaInventorySyncService
         }
 
         $skus = $metrics->pluck('sku')->unique()->values()->all();
+
+        // 1) Fetch LIVE Shopify stock first (Admin API) — never use local shopify_skus / mapping cache for push qty.
+        Log::info('AlibabaInventorySyncService: fetching live Shopify inventory', ['sku_count' => count($skus)]);
         $shopifyQty = $this->shopifyApi->getInventoryQuantitiesBySku($skus);
 
         // Fill gaps with direct variant lookups (bulk product pagination can miss SKUs).
@@ -194,15 +192,34 @@ class AlibabaInventorySyncService
             }
         }
         if ($missing !== []) {
+            Log::info('AlibabaInventorySyncService: live variant fallback for missing SKUs', ['count' => count($missing)]);
             foreach ($this->fetchLiveShopifyQuantities($missing) as $sku => $qty) {
                 $shopifyQty[$sku] = $qty;
             }
         }
 
-        $shopifyDetails = $this->shopifyApi->getProductDetailsBySkuMap($skus);
+        $coverage = MarketplaceLiveInventoryRules::shopifyLiveCoverageReport(
+            $skus,
+            fn (string $sku) => $this->resolveShopifyQty($shopifyQty, $sku)
+        );
+        Log::info('AlibabaInventorySyncService: Shopify live coverage', $coverage);
+        if (! $coverage['ok'] && ($settings['inventory']['inventory_sync'] ?? false) && ! $dryRun) {
+            Log::error('AlibabaInventorySyncService: aborting inventory push — Shopify live coverage too low', $coverage);
+
+            return [
+                'updated' => 0,
+                'failed' => 0,
+                'skipped' => count($skus),
+                'price_updated' => 0,
+                'message' => $coverage['message'],
+            ];
+        }
+
+        $shopifyDetails = ($settings['pricing']['price_sync'] ?? false)
+            ? $this->shopifyApi->getProductDetailsBySkuMap($skus)
+            : [];
 
         $qtyPercent = max(0, min(100, (int) ($settings['inventory']['quantity_calc_percent'] ?? 100)));
-        $minQty = max(0, (int) ($settings['inventory']['min_quantity'] ?? 1));
         $maxQty = $settings['inventory']['max_quantity'] ?? null;
         $useSalePrice = (bool) ($settings['pricing']['use_sale_price'] ?? false);
 
@@ -213,32 +230,25 @@ class AlibabaInventorySyncService
         foreach ($metrics as $metric) {
             $sku = (string) $metric->sku;
             $productId = (string) $metric->product_id;
-            if ($productId === '' || $sku === $productId) {
+            // Rule 1: never update unlinked SKUs.
+            if (! MarketplaceLiveInventoryRules::isLinked($productId, $sku)) {
                 $skipped++;
                 continue;
             }
 
             if ($settings['inventory']['inventory_sync'] ?? false) {
                 $shopifyStock = $this->resolveShopifyQty($shopifyQty, $sku);
-                // Never invent stock: if Shopify API did not return this SKU, skip it.
-                // (Previously missing SKUs became 0 → min_quantity 1 and overwrote AE.)
-                if ($shopifyStock === null) {
-                    $skipped++;
-                } else {
-                    $qty = (int) floor($shopifyStock * ($qtyPercent / 100));
-                    if ($qty < $minQty) {
-                        $qty = $minQty;
-                    }
-                    if ($maxQty !== null && $maxQty !== '') {
-                        $qty = min($qty, (int) $maxQty);
-                    }
-                    $inventoryRows[] = [
-                        'product_id' => $productId,
-                        'sku_code' => $sku,
-                        'inventory' => max(0, $qty),
-                        'shopify_qty' => $shopifyStock,
-                    ];
-                }
+                // Rules 2+4: live Shopify only; missing/0 => marketplace 0 (never invent stock).
+                $pushQty = $shopifyStock === null
+                    ? MarketplaceLiveInventoryRules::qtyWhenMissingFromShopify()
+                    : MarketplaceLiveInventoryRules::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty);
+
+                $inventoryRows[] = [
+                    'product_id' => $productId,
+                    'sku_code' => $sku,
+                    'inventory' => MarketplaceLiveInventoryRules::clampPushQty($pushQty, $shopifyStock ?? 0),
+                    'shopify_qty' => $shopifyStock ?? 0,
+                ];
             }
 
             if ($settings['pricing']['price_sync'] ?? false) {
@@ -275,6 +285,9 @@ class AlibabaInventorySyncService
         $priceUpdated = 0;
 
         if ($inventoryRows !== []) {
+            Log::info('AlibabaInventorySyncService: pushing live Shopify qty to Alibaba', [
+                'rows' => count($inventoryRows),
+            ]);
             $invResult = $this->aliExpressApi->batchUpdateInventory($inventoryRows);
             if (! empty($invResult['success'])) {
                 $updated = count($inventoryRows);

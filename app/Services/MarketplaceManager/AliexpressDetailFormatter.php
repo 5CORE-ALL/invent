@@ -22,7 +22,7 @@ class AliexpressDetailFormatter
     public function formatProduct(?array $aeLive, ?AliexpressMetric $metric, ShopifySku $shopify, array $aeSkuRows = []): array
     {
         $ae = $this->arr($aeLive);
-        $shopifyQty = $shopify->available_to_sell ?? $shopify->inv ?? $shopify->on_hand ?? null;
+        $shopifyQty = MarketplaceListingStockResolver::shopifyQtyFromRow($shopify);
         $shopifyPrice = $shopify->b2c_price ?? $shopify->price ?? null;
 
         $shopifyCatalog = $this->loadShopifyCatalogRow($shopify);
@@ -37,7 +37,21 @@ class AliexpressDetailFormatter
         $cachedPrice = $this->money($metric?->price);
         $minPrice = $this->money($ae['product_min_price'] ?? null) ?? $cachedPrice;
         $maxPrice = $this->money($ae['product_max_price'] ?? null) ?? $cachedPrice;
-        $aeStock = $this->resolveProductAeStock($variants, $metric, (string) ($shopify->sku ?? ''));
+
+        // Only show marketplace qty when this Shopify SKU is actually linked.
+        // Unlinked pages were leaking stale pricing/mapping ae_stock (e.g. 116 vs Shopify 113).
+        $isLinked = $this->isMetricLinked($metric, (string) ($shopify->sku ?? ''));
+        $aeStock = null;
+        if ($isLinked) {
+            $aeStock = MarketplaceListingStockResolver::resolveMarketplaceQty(
+                MarketplaceListingStockResolver::CHANNEL_ALIEXPRESS,
+                (string) ($shopify->sku ?? ''),
+                $metric?->sku !== null ? (string) $metric->sku : null
+            );
+            if ($aeStock === null) {
+                $aeStock = $this->resolveProductAeStock($variants, $metric, (string) ($shopify->sku ?? ''));
+            }
+        }
 
         return [
             'shopify' => [
@@ -1724,24 +1738,26 @@ class AliexpressDetailFormatter
         return $row?->updated_at;
     }
 
+    protected function isMetricLinked(?AliexpressMetric $metric, string $shopifySku): bool
+    {
+        if (! $metric || empty($metric->product_id)) {
+            return false;
+        }
+        $mappedSku = trim((string) $metric->sku);
+        if ($mappedSku === '' || $mappedSku === (string) $metric->product_id) {
+            return false;
+        }
+
+        return ShopifySku::normalizeSkuForShopifyLookup($mappedSku)
+            === ShopifySku::normalizeSkuForShopifyLookup($shopifySku);
+    }
+
     protected function localAeStockForSku(string $sku): ?int
     {
-        $sku = strtoupper(trim($sku));
-        if ($sku === '' || ! Schema::hasTable('aliexpress_pricing_prices')) {
-            return null;
-        }
-
-        $row = AliexpressPricingPrice::query()
-            ->where(function ($q) use ($sku) {
-                $q->where('sku', $sku)->orWhere('sku', trim($sku));
-            })
-            ->first();
-
-        if (! $row || $row->ae_stock === null) {
-            return null;
-        }
-
-        return (int) $row->ae_stock;
+        return MarketplaceListingStockResolver::resolveMarketplaceQty(
+            MarketplaceListingStockResolver::CHANNEL_ALIEXPRESS,
+            $sku
+        );
     }
 
     /**

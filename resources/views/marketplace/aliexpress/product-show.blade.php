@@ -49,27 +49,27 @@
     ];
 
     $aeListingRows = [
-        'Product ID' => $ae['product_id'] ?? $l['product_id'] ?? null,
-        'Title' => $ae['title'] ?? $l['title'] ?? null,
-        'Status' => $ae['status'] ?? null,
-        'AE Qty' => $ae['stock'] ?? $l['ae_stock'] ?? null,
-        'Category ID' => $ae['category_id'] ?? null,
-        'Currency' => $ae['currency'] ?? null,
-        'Product unit' => $ae['unit'] ?? null,
-        'Package type' => $ae['package_type'] ?? null,
-        'Freight template' => $ae['freight_template_id'] ?? null,
-        'Bulk order' => $ae['bulk_order'] ?? null,
-        'Bulk discount' => $ae['bulk_discount'] ?? null,
-        'Min price' => isset($ae['min_price']) ? '$'.number_format((float)$ae['min_price'], 2) : null,
-        'Max price' => isset($ae['max_price']) ? '$'.number_format((float)$ae['max_price'], 2) : null,
-        'Price (cached)' => isset($ae['cached_price']) ? '$'.number_format((float)$ae['cached_price'], 2) : null,
-        'L30 / L60' => isset($l['l30']) ? ($l['l30'].' / '.($l['l60'] ?? '—')) : null,
-        'Created' => $ae['gmt_create'] ?? null,
-        'Modified' => $ae['gmt_modified'] ?? null,
-        'Last order' => !empty($l['last_order_date']) ? \Carbon\Carbon::parse($l['last_order_date'])->format('M d, Y H:i') : null,
-        'Last synced' => !empty($l['last_synced_at']) ? \Carbon\Carbon::parse($l['last_synced_at'])->timezone(config('app.timezone'))->format('M d, Y H:i') : null,
-        'Link map synced' => !empty($l['link_synced_at']) ? \Carbon\Carbon::parse($l['link_synced_at'])->timezone(config('app.timezone'))->format('M d, Y H:i') : null,
-        'Inventory synced' => !empty($l['inventory_synced_at']) ? \Carbon\Carbon::parse($l['inventory_synced_at'])->timezone(config('app.timezone'))->format('M d, Y H:i') : null,
+        'Product ID' => $linked ? ($ae['product_id'] ?? $l['product_id'] ?? null) : null,
+        'Title' => $linked ? ($ae['title'] ?? $l['title'] ?? null) : null,
+        'Status' => $linked ? ($ae['status'] ?? null) : null,
+        'AE Qty' => $linked ? ($ae['stock'] ?? $l['ae_stock'] ?? null) : null,
+        'Category ID' => $linked ? ($ae['category_id'] ?? null) : null,
+        'Currency' => $linked ? ($ae['currency'] ?? null) : null,
+        'Product unit' => $linked ? ($ae['unit'] ?? null) : null,
+        'Package type' => $linked ? ($ae['package_type'] ?? null) : null,
+        'Freight template' => $linked ? ($ae['freight_template_id'] ?? null) : null,
+        'Bulk order' => $linked ? ($ae['bulk_order'] ?? null) : null,
+        'Bulk discount' => $linked ? ($ae['bulk_discount'] ?? null) : null,
+        'Min price' => ($linked && isset($ae['min_price'])) ? '$'.number_format((float)$ae['min_price'], 2) : null,
+        'Max price' => ($linked && isset($ae['max_price'])) ? '$'.number_format((float)$ae['max_price'], 2) : null,
+        'Price (cached)' => ($linked && isset($ae['cached_price'])) ? '$'.number_format((float)$ae['cached_price'], 2) : null,
+        'L30 / L60' => ($linked && isset($l['l30'])) ? ($l['l30'].' / '.($l['l60'] ?? '—')) : null,
+        'Created' => $linked ? ($ae['gmt_create'] ?? null) : null,
+        'Modified' => $linked ? ($ae['gmt_modified'] ?? null) : null,
+        'Last order' => ($linked && !empty($l['last_order_date'])) ? \Carbon\Carbon::parse($l['last_order_date'])->format('M d, Y H:i') : null,
+        'Last synced' => ($linked && !empty($l['last_synced_at'])) ? \Carbon\Carbon::parse($l['last_synced_at'])->timezone(config('app.timezone'))->format('M d, Y H:i') : null,
+        'Link map synced' => ($linked && !empty($l['link_synced_at'])) ? \Carbon\Carbon::parse($l['link_synced_at'])->timezone(config('app.timezone'))->format('M d, Y H:i') : null,
+        'Inventory synced' => ($linked && !empty($l['inventory_synced_at'])) ? \Carbon\Carbon::parse($l['inventory_synced_at'])->timezone(config('app.timezone'))->format('M d, Y H:i') : null,
     ];
 
     ob_start();
@@ -100,11 +100,11 @@
                     @else
                         <span class="badge bg-light text-muted source-pill">AE data: not loaded</span>
                     @endif
-                    @if(!empty($l['last_synced_at']))
+                    @if($linked && !empty($l['last_synced_at']))
                         <span class="badge bg-secondary-subtle text-secondary source-pill" title="Latest of link-map or inventory/price sync">
                             Last synced: {{ \Carbon\Carbon::parse($l['last_synced_at'])->timezone(config('app.timezone'))->format('M d, Y H:i') }}
                         </span>
-                    @else
+                    @elseif($linked)
                         <span class="badge bg-light text-muted source-pill">Last synced: —</span>
                     @endif
                 </div>
@@ -129,7 +129,7 @@
                 <div class="card h-100">
                     <div class="card-body py-3">
                         <div class="text-muted small">Shopify Qty</div>
-                        <div class="fs-4 fw-semibold">{{ $s['available_to_sell'] ?? $s['on_hand'] ?? '—' }}</div>
+                        <div class="fs-4 fw-semibold">{{ $s['available_to_sell'] !== null ? $s['available_to_sell'] : ($s['on_hand'] !== null ? $s['on_hand'] : '—') }}</div>
                     </div>
                 </div>
             </div>
@@ -137,7 +137,13 @@
                 <div class="card h-100">
                     <div class="card-body py-3">
                         <div class="text-muted small">AliExpress Qty</div>
-                        <div class="fs-4 fw-semibold">{{ $ae['stock'] ?? $l['ae_stock'] ?? '—' }}</div>
+                        <div class="fs-4 fw-semibold">
+                            @if($linked)
+                                {{ $ae['stock'] !== null ? $ae['stock'] : ($l['ae_stock'] !== null ? $l['ae_stock'] : '—') }}
+                            @else
+                                —
+                            @endif
+                        </div>
                     </div>
                 </div>
             </div>

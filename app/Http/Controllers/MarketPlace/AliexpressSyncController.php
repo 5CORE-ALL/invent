@@ -4,6 +4,7 @@ namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
 use App\Jobs\ImportAliexpressOrderToShopify;
+use App\Jobs\WarmAliexpressLiveListingsCache;
 use App\Models\AliexpressMetric;
 use App\Models\AliexpressOrderMetric;
 use App\Models\AliexpressPricingPrice;
@@ -14,9 +15,11 @@ use App\Services\AliExpressAuthService;
 use App\Services\MarketplaceManager\AliexpressDetailFormatter;
 use App\Services\MarketplaceManager\AliexpressInventorySyncService;
 use App\Services\MarketplaceManager\AliexpressLinkMapSyncService;
+use App\Services\MarketplaceManager\AliexpressLiveListingsService;
 use App\Services\MarketplaceManager\AliexpressOrderDetailService;
 use App\Services\MarketplaceManager\AliexpressOrderPushService;
 use App\Services\MarketplaceManager\AliexpressOrderSyncService;
+use App\Services\MarketplaceManager\MarketplaceListingStockResolver;
 use App\Services\ShopifyApiService;
 use App\Services\Support\MarketplaceApiConfigService;
 use Illuminate\Http\JsonResponse;
@@ -140,13 +143,16 @@ class AliexpressSyncController extends Controller
     {
         $searchSku = trim((string) $request->input('search_sku', ''));
         $searchName = trim((string) $request->input('search_name', ''));
-        $linkTab = strtolower((string) $request->input('link', 'all'));
+        $linkTab = strtolower((string) $request->input('link', 'linked'));
         if (! in_array($linkTab, ['all', 'linked', 'unlinked', 'not_in_shopify'], true)) {
-            $linkTab = 'all';
+            $linkTab = 'linked';
         }
+        $stateTab = $this->parseAeStateTab($request);
         $page = max(1, (int) $request->input('page', 1));
         $perPage = 50;
         $apiError = null;
+        $forceLive = $request->boolean('refresh_live');
+        $emptyStateCounts = $this->emptyAeStateCounts();
 
         if (! Schema::hasTable('shopify_skus')) {
             $apiError = 'shopify_skus table missing. Run Shopify inventory sync first.';
@@ -159,15 +165,23 @@ class AliexpressSyncController extends Controller
                 'searchSku' => $searchSku,
                 'searchName' => $searchName,
                 'linkTab' => $linkTab,
+                'stateTab' => $stateTab,
                 'counts' => $counts,
+                'stateCounts' => $emptyStateCounts,
+                'stateCacheReady' => false,
                 'apiError' => $apiError,
                 'connected' => $this->apiConfig->isConfigured('aliexpress'),
             ]);
         }
 
+        if ($forceLive) {
+            WarmAliexpressLiveListingsCache::dispatch();
+        }
+
         $linkedSkus = $this->linkedAliexpressSkus();
         $shopifyNormKeys = $this->shopifyNormalizedSkuKeys();
         $counts = $this->shopifyListingCounts($linkedSkus, $shopifyNormKeys);
+        $liveService = app(AliexpressLiveListingsService::class);
 
         if ($linkTab === 'not_in_shopify') {
             $paginator = $this->paginateAeNotInShopify($searchSku, $searchName, $shopifyNormKeys, $page, $perPage);
@@ -178,10 +192,31 @@ class AliexpressSyncController extends Controller
                 'searchSku' => $searchSku,
                 'searchName' => $searchName,
                 'linkTab' => $linkTab,
+                'stateTab' => 'all',
                 'counts' => $counts,
+                'stateCounts' => $emptyStateCounts,
+                'stateCacheReady' => false,
                 'apiError' => $apiError,
                 'connected' => $this->apiConfig->isConfigured('aliexpress'),
             ]);
+        }
+
+        $linkedNormToSku = [];
+        foreach ($linkedSkus as $sku) {
+            $n = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
+            if ($n !== '') {
+                $linkedNormToSku[$n] = (string) $sku;
+            }
+        }
+        $stateIndex = $this->aeStateIndexFromCache(
+            $liveService,
+            static fn (string $norm): bool => isset($linkedNormToSku[$norm]),
+            count($linkedSkus),
+            $linkedNormToSku
+        );
+
+        if ($linkTab === 'linked' && ! $stateIndex['ready'] && ! $forceLive) {
+            WarmAliexpressLiveListingsCache::dispatch();
         }
 
         $query = ShopifySku::query()
@@ -199,41 +234,84 @@ class AliexpressSyncController extends Controller
             });
         }
 
-        if ($linkTab === 'linked' && $linkedSkus !== []) {
-            $query->whereIn('sku', $linkedSkus);
+        if ($linkTab === 'linked') {
+            if ($linkedSkus === []) {
+                $query->whereRaw('1 = 0');
+            } elseif ($stateTab !== 'all') {
+                $stateSkus = $stateIndex['skusByState'][$stateTab] ?? [];
+                if ($stateSkus === []) {
+                    $query->whereRaw('1 = 0');
+                } else {
+                    $query->whereIn('sku', $stateSkus);
+                }
+            } else {
+                $query->whereIn('sku', $linkedSkus);
+            }
         } elseif ($linkTab === 'unlinked' && $linkedSkus !== []) {
             $query->whereNotIn('sku', $linkedSkus);
-        } elseif ($linkTab === 'linked') {
-            $query->whereRaw('1 = 0');
         }
 
         $paginator = $query->orderBy('sku')->paginate($perPage, ['*'], 'page', $page)->withQueryString();
-        $skus = collect($paginator->items())->pluck('sku')->filter()->values()->all();
+        $pageRows = collect($paginator->items())->all();
+        $skus = collect($pageRows)->pluck('sku')->filter()->values()->all();
         $aeMap = $this->aliexpressMetricMapForSkus($skus);
         $aeStockMap = $this->aliexpressStockMapForSkus($skus);
+        $liveShopifyQty = MarketplaceListingStockResolver::liveShopifyQtyMapForRows($pageRows, true);
 
-        $enriched = collect($paginator->items())->map(function (ShopifySku $row) use ($aeMap, $aeStockMap) {
+        // Page hydrate: when cache has no state for this page, fetch live product info for IDs on page.
+        $pageLiveByProduct = [];
+        if ($linkTab === 'linked') {
+            $needIds = [];
+            foreach ($skus as $sku) {
+                $metric = $aeMap[$sku] ?? null;
+                if (! $metric || ! $this->isShopifySkuLinkedOnAliexpress($metric, (string) $sku)) {
+                    continue;
+                }
+                if ($this->aeCachedRowForSku((string) $sku, $stateIndex) === null) {
+                    $needIds[] = (string) $metric->product_id;
+                }
+            }
+            if ($needIds !== []) {
+                // Cap page hydrate so Linked stays responsive while full cache warms.
+                $pageLiveByProduct = $liveService->liveDetailsByProductIds(array_slice(array_values(array_unique($needIds)), 0, 20));
+            }
+        }
+
+        $enriched = collect($pageRows)->map(function (ShopifySku $row) use ($aeMap, $aeStockMap, $liveShopifyQty, $stateIndex, $pageLiveByProduct) {
             $sku = (string) $row->sku;
             $metric = $aeMap[$sku] ?? null;
             $linked = $this->isShopifySkuLinkedOnAliexpress($metric, $sku);
-            $shopifyQty = $row->available_to_sell ?? $row->inv ?? $row->on_hand ?? null;
+            $shopifyQty = MarketplaceListingStockResolver::shopifyQtyFromLiveMapOrRow($liveShopifyQty, $row, $sku);
             $shopifyPrice = $row->b2c_price ?? $row->price ?? null;
-            $aeQty = $linked ? ($aeStockMap[strtoupper(trim($sku))] ?? null) : null;
+            $metricSku = $linked ? (string) ($metric->sku ?? '') : null;
+            $pid = $linked ? (string) ($metric->product_id ?? '') : '';
+            $aeQty = $linked
+                ? MarketplaceListingStockResolver::qtyFromMap($aeStockMap, $sku, $metricSku)
+                : null;
+            $cached = $this->aeCachedRowForSku($sku, $stateIndex);
+            $live = ($pid !== '' && isset($pageLiveByProduct[$pid])) ? $pageLiveByProduct[$pid] : null;
+            $state = (string) ($live['state'] ?? $cached['state'] ?? '');
+            if ($linked && $live !== null && array_key_exists('inventory', $live) && $live['inventory'] !== null) {
+                $aeQty = (int) $live['inventory'];
+            } elseif ($linked && $cached && array_key_exists('inventory', $cached) && $cached['inventory'] !== null) {
+                $aeQty = (int) $cached['inventory'];
+            }
 
             return (object) [
                 'shopify_sku_id' => $row->id,
-                'product_id' => $linked ? ($metric->product_id ?? null) : null,
+                'product_id' => $linked ? ($pid !== '' ? $pid : null) : null,
                 'sku' => $sku,
                 'title' => trim(($row->product_title ?? '').($row->variant_title ? ' — '.$row->variant_title : '')) ?: $sku,
-                'aliexpress_title' => $metric->product_name ?? null,
+                'aliexpress_title' => $live['title'] ?? ($cached['title'] ?? ($metric->product_name ?? null)),
                 'image_src' => $row->image_src ?? null,
-                'price' => $linked ? ($metric->price ?? null) : null,
+                'price' => isset($live['price']) ? $live['price'] : (isset($cached['price']) ? $cached['price'] : ($linked ? ($metric->price ?? null) : null)),
                 'shopify_price' => $shopifyPrice,
                 'quantity' => $aeQty,
                 'ae_quantity' => $aeQty,
                 'shopify_quantity' => $shopifyQty,
                 'linked' => $linked,
                 'listing_status' => $linked ? 'linked' : 'unlinked',
+                'aliexpress_state' => $state !== '' ? $state : null,
             ];
         });
 
@@ -245,7 +323,10 @@ class AliexpressSyncController extends Controller
             'searchSku' => $searchSku,
             'searchName' => $searchName,
             'linkTab' => $linkTab,
+            'stateTab' => $linkTab === 'linked' ? $stateTab : 'all',
             'counts' => $counts,
+            'stateCounts' => $linkTab === 'linked' ? $stateIndex['counts'] : $emptyStateCounts,
+            'stateCacheReady' => $linkTab === 'linked' ? $stateIndex['ready'] : false,
             'apiError' => $apiError,
             'connected' => $this->apiConfig->isConfigured('aliexpress'),
         ]);
@@ -254,6 +335,7 @@ class AliexpressSyncController extends Controller
     public function showProduct(int $shopifySkuId): View
     {
         $shopifyRow = ShopifySku::query()->findOrFail($shopifySkuId);
+        $shopifyRow = MarketplaceListingStockResolver::refreshShopifyRowFromLiveVariantApi($shopifyRow);
         $sku = (string) $shopifyRow->sku;
         $aeMap = $this->aliexpressMetricMapForSkus([$sku]);
         $metric = $aeMap[$sku] ?? null;
@@ -501,13 +583,20 @@ class AliexpressSyncController extends Controller
 
     public function syncInventoryNow(): JsonResponse
     {
-        $result = app(AliexpressInventorySyncService::class)->syncFromShopify(false);
+        $settings = MarketplaceSyncSettings::getFor('aliexpress');
+        if (! ($settings['inventory']['inventory_sync'] ?? false) && ! ($settings['pricing']['price_sync'] ?? false)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Turn on Inventory sync (or Price sync) in settings first.',
+            ], 422);
+        }
+
+        \App\Jobs\RunMarketplaceInventorySyncJob::dispatch('aliexpress');
 
         return response()->json([
-            'success' => ($result['failed'] ?? 0) === 0,
-            'message' => $result['message'],
-            'updated' => $result['updated'] ?? 0,
-            'price_updated' => $result['price_updated'] ?? 0,
+            'success' => true,
+            'queued' => true,
+            'message' => 'Inventory sync queued. It runs in the background from live Shopify (usually a few minutes). Keep inventory sync ON — webhook + 15-min schedule also push automatically.',
         ]);
     }
 
@@ -637,6 +726,8 @@ class AliexpressSyncController extends Controller
         $inventory = $this->mergeSettingsSection($current['inventory'] ?? [], $request->input('inventory', []), [
             'inventory_sync',
         ]);
+        // Hard rule: never invent marketplace stock from Shopify 0 via min_quantity.
+        $inventory['min_quantity'] = 0;
         $order = $this->mergeSettingsSection($current['order'] ?? [], $request->input('order', []), [
             'fetch_orders', 'auto_import_to_shopify', 'keep_order_number_from_channel',
         ]);
@@ -696,6 +787,119 @@ class AliexpressSyncController extends Controller
         }
 
         return $merged;
+    }
+
+    /**
+     * @return array{all: int, onselling: int, auditing: int, offline: int, draft: int, other: int}
+     */
+    protected function emptyAeStateCounts(int $all = 0): array
+    {
+        return [
+            'all' => $all,
+            'onselling' => 0,
+            'auditing' => 0,
+            'offline' => 0,
+            'draft' => 0,
+            'other' => 0,
+        ];
+    }
+
+    protected function parseAeStateTab(Request $request): string
+    {
+        $state = strtolower(trim((string) $request->input('state', 'all')));
+        $allowed = ['all', 'onselling', 'auditing', 'offline', 'draft', 'other'];
+
+        return in_array($state, $allowed, true) ? $state : 'all';
+    }
+
+    protected function aeStateBucket(?string $state): string
+    {
+        $state = strtolower(trim((string) $state));
+        if ($state === 'onselling' || $state === 'on_selling') {
+            return 'onselling';
+        }
+        if ($state === 'auditing') {
+            return 'auditing';
+        }
+        if ($state === 'offline') {
+            return 'offline';
+        }
+        if (in_array($state, ['draft', 'pending', 'editingrequired', 'editing_required', 'service_delete', 'deleted', 'dead'], true)) {
+            return 'draft';
+        }
+
+        return 'other';
+    }
+
+    /**
+     * @param  callable(string): bool  $includeNorm
+     * @param  array<string, string>  $normToSku
+     * @return array{counts: array{all: int, onselling: int, auditing: int, offline: int, draft: int, other: int}, skusByState: array<string, array<int, string>>, byNorm: array<string, array{state: string, inventory: int|null, title: ?string, price: ?float}>, ready: bool}
+     */
+    protected function aeStateIndexFromCache(
+        AliexpressLiveListingsService $liveService,
+        callable $includeNorm,
+        int $allCount,
+        array $normToSku = []
+    ): array {
+        $counts = $this->emptyAeStateCounts($allCount);
+        $skusByState = [
+            'onselling' => [],
+            'auditing' => [],
+            'offline' => [],
+            'draft' => [],
+            'other' => [],
+        ];
+        $byNorm = [];
+
+        $cached = $liveService->peekCached();
+        if (! is_array($cached) || $cached === []) {
+            return ['counts' => $counts, 'skusByState' => $skusByState, 'byNorm' => $byNorm, 'ready' => false];
+        }
+
+        $seen = [];
+        foreach ($cached as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $rawSku = trim((string) ($row['sku'] ?? ''));
+            if ($rawSku === '') {
+                continue;
+            }
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($rawSku);
+            if ($norm === '' || isset($seen[$norm]) || ! $includeNorm($norm)) {
+                continue;
+            }
+            $seen[$norm] = true;
+            $bucket = $this->aeStateBucket((string) ($row['state'] ?? ''));
+            if (! isset($counts[$bucket])) {
+                $bucket = 'other';
+            }
+            $counts[$bucket]++;
+            $skusByState[$bucket][] = $normToSku[$norm] ?? $rawSku;
+            $byNorm[$norm] = [
+                'state' => (string) ($row['state'] ?? $bucket),
+                'inventory' => array_key_exists('inventory', $row) && $row['inventory'] !== null ? (int) $row['inventory'] : null,
+                'title' => isset($row['title']) ? (string) $row['title'] : null,
+                'price' => isset($row['price']) ? (float) $row['price'] : null,
+            ];
+        }
+
+        return ['counts' => $counts, 'skusByState' => $skusByState, 'byNorm' => $byNorm, 'ready' => true];
+    }
+
+    /**
+     * @param  array{byNorm?: array<string, array{state: string, inventory: int|null, title: ?string, price: ?float}>}  $stateIndex
+     * @return array{state: string, inventory: int|null, title: ?string, price: ?float}|null
+     */
+    protected function aeCachedRowForSku(string $sku, array $stateIndex): ?array
+    {
+        $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+        if ($norm === '') {
+            return null;
+        }
+
+        return $stateIndex['byNorm'][$norm] ?? null;
     }
 
     /**
@@ -825,6 +1029,7 @@ class AliexpressSyncController extends Controller
         $aeStockMap = $this->aliexpressStockMapForSkus($sliceSkus);
         $slice = $rows->slice(($page - 1) * $perPage, $perPage)->map(function (AliexpressMetric $metric) use ($aeStockMap) {
             $sku = (string) $metric->sku;
+            $aeQty = MarketplaceListingStockResolver::qtyFromMap($aeStockMap, $sku);
 
             return (object) [
                 'shopify_sku_id' => null,
@@ -835,8 +1040,8 @@ class AliexpressSyncController extends Controller
                 'image_src' => null,
                 'price' => $metric->price ?? null,
                 'shopify_price' => null,
-                'quantity' => $aeStockMap[strtoupper(trim($sku))] ?? null,
-                'ae_quantity' => $aeStockMap[strtoupper(trim($sku))] ?? null,
+                'quantity' => $aeQty,
+                'ae_quantity' => $aeQty,
                 'shopify_quantity' => null,
                 'linked' => false,
                 'listing_status' => 'not_in_shopify',
@@ -904,40 +1109,17 @@ class AliexpressSyncController extends Controller
     }
 
     /**
-     * Local AE stock from aliexpress_pricing_prices (updated by inventory sync).
+     * Local AE stock for listings index — same resolver as detail pages.
      *
      * @param  array<int, string>  $skus
-     * @return array<string, int> keyed by uppercase SKU
+     * @return array<string, int>
      */
     protected function aliexpressStockMapForSkus(array $skus): array
     {
-        if ($skus === [] || ! Schema::hasTable('aliexpress_pricing_prices')) {
-            return [];
-        }
-
-        $keys = [];
-        foreach ($skus as $sku) {
-            $trim = trim((string) $sku);
-            if ($trim === '') {
-                continue;
-            }
-            $keys[] = $trim;
-            $keys[] = strtoupper($trim);
-        }
-        $keys = array_values(array_unique($keys));
-
-        $map = [];
-        AliexpressPricingPrice::query()
-            ->whereIn('sku', $keys)
-            ->get(['sku', 'ae_stock'])
-            ->each(function (AliexpressPricingPrice $row) use (&$map) {
-                $key = strtoupper(trim((string) $row->sku));
-                if ($key !== '' && $row->ae_stock !== null) {
-                    $map[$key] = (int) $row->ae_stock;
-                }
-            });
-
-        return $map;
+        return MarketplaceListingStockResolver::stockMapForSkus(
+            MarketplaceListingStockResolver::CHANNEL_ALIEXPRESS,
+            $skus
+        );
     }
 
     protected function isShopifySkuLinkedOnAliexpress(?AliexpressMetric $metric, string $shopifySku): bool

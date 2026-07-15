@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Jobs\ImportReverbOrderToShopify;
+use App\Jobs\PushLinkedSkuInventoryFromShopify;
+use App\Models\ReverbMetric;
 use App\Models\ReverbOrderMetric;
 use App\Models\ReverbSyncSettings;
 use Illuminate\Http\JsonResponse;
@@ -108,7 +110,30 @@ class ReverbWebhookController extends Controller
     protected function handleListingUpdated(array $payload): void
     {
         Log::info('ReverbWebhookController: listing.updated received', ['payload' => array_keys($payload)]);
-        // Trigger inventory sync - can dispatch job: SyncReverbInventoryFromShopify
-        // For now, rely on scheduled sync; webhook can be extended to dispatch job
+
+        $sku = trim((string) (
+            $payload['sku']
+            ?? $payload['listing']['sku']
+            ?? $payload['product']['sku']
+            ?? ''
+        ));
+        $listingId = trim((string) (
+            $payload['listing_id']
+            ?? $payload['id']
+            ?? $payload['listing']['id']
+            ?? ''
+        ));
+
+        if ($sku === '' && $listingId !== '') {
+            $metric = ReverbMetric::query()->where('product_id', $listingId)->first();
+            $sku = trim((string) ($metric->sku ?? ''));
+        }
+
+        if ($sku === '') {
+            return;
+        }
+
+        // Reverb listing changed → re-assert from live Shopify across all linked MPs (fast).
+        PushLinkedSkuInventoryFromShopify::dispatch([$sku], null, null);
     }
 }

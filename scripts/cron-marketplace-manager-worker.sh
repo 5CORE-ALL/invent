@@ -38,7 +38,7 @@ nohup "$PHP_BIN" "$ROOT/artisan" queue:work database \
   --queue="$QUEUE" \
   --sleep=3 \
   --tries=5 \
-  --timeout=900 \
+  --timeout=1800 \
   --max-time=7200 \
   >>"$LOG" 2>&1 &
 echo "$(ts) spawned pid $!" >>"$LOG"

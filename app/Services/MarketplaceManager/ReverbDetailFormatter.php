@@ -22,7 +22,7 @@ class ReverbDetailFormatter
     public function formatProduct(?array $aeLive, ?ReverbMetric $metric, ShopifySku $shopify, array $aeSkuRows = []): array
     {
         $ae = $this->unwrapReverbListing($aeLive);
-        $shopifyQty = $shopify->available_to_sell ?? $shopify->inv ?? $shopify->on_hand ?? null;
+        $shopifyQty = MarketplaceListingStockResolver::shopifyQtyFromRow($shopify);
         $shopifyPrice = $shopify->b2c_price ?? $shopify->price ?? null;
 
         $shopifyCatalog = $this->loadShopifyCatalogRow($shopify);
@@ -38,9 +38,21 @@ class ReverbDetailFormatter
         $livePrice = $this->money($ae['price'] ?? null)
             ?? $this->money(is_array($ae['buyer_price'] ?? null) ? ($ae['buyer_price']['amount'] ?? null) : null)
             ?? $cachedPrice;
-        $aeStock = $this->resolveProductAeStock($variants, $metric, (string) ($shopify->sku ?? ''));
-        if ($aeStock === null && isset($ae['inventory']) && is_numeric($ae['inventory'])) {
-            $aeStock = (int) $ae['inventory'];
+        // Only show marketplace qty when this Shopify SKU is actually linked.
+        $isLinked = $this->isMetricLinked($metric, (string) ($shopify->sku ?? ''));
+        $aeStock = null;
+        if ($isLinked) {
+            $aeStock = MarketplaceListingStockResolver::resolveMarketplaceQty(
+                MarketplaceListingStockResolver::CHANNEL_REVERB,
+                (string) ($shopify->sku ?? ''),
+                $metric?->sku !== null ? (string) $metric->sku : null
+            );
+            if ($aeStock === null) {
+                $aeStock = $this->resolveProductAeStock($variants, $metric, (string) ($shopify->sku ?? ''));
+            }
+            if ($aeStock === null && isset($ae['inventory']) && is_numeric($ae['inventory'])) {
+                $aeStock = (int) $ae['inventory'];
+            }
         }
 
         $state = is_array($ae['state'] ?? null) ? $ae['state'] : [];
@@ -1913,24 +1925,26 @@ class ReverbDetailFormatter
         return $row?->updated_at;
     }
 
+    protected function isMetricLinked(?ReverbMetric $metric, string $shopifySku): bool
+    {
+        if (! $metric || empty($metric->product_id)) {
+            return false;
+        }
+        $mappedSku = trim((string) $metric->sku);
+        if ($mappedSku === '' || $mappedSku === (string) $metric->product_id) {
+            return false;
+        }
+
+        return ShopifySku::normalizeSkuForShopifyLookup($mappedSku)
+            === ShopifySku::normalizeSkuForShopifyLookup($shopifySku);
+    }
+
     protected function localAeStockForSku(string $sku): ?int
     {
-        $sku = strtoupper(trim($sku));
-        if ($sku === '' || ! Schema::hasTable('reverb_pricing_prices')) {
-            return null;
-        }
-
-        $row = ReverbPricingPrice::query()
-            ->where(function ($q) use ($sku) {
-                $q->where('sku', $sku)->orWhere('sku', trim($sku));
-            })
-            ->first();
-
-        if (! $row || $row->rv_stock === null) {
-            return null;
-        }
-
-        return (int) $row->rv_stock;
+        return MarketplaceListingStockResolver::resolveMarketplaceQty(
+            MarketplaceListingStockResolver::CHANNEL_REVERB,
+            $sku
+        );
     }
 
     /**

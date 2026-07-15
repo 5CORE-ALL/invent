@@ -7,6 +7,7 @@ use App\Models\AlibabaMetric;
 use App\Models\AliexpressListingStatus;
 use App\Models\AliexpressMetric;
 use App\Models\MarketplaceSyncSettings;
+use App\Models\NeweggMetric;
 use App\Models\ReverbMetric;
 use App\Models\ReverbProduct;
 use App\Services\MarketplaceManager\MarketplaceManagerRegistry;
@@ -85,6 +86,9 @@ class MarketplaceManagerController extends Controller
                 : (Schema::hasTable('reverb_products')
                     ? (int) ReverbProduct::query()->whereNotNull('sku')->where('sku', 'not like', '%Parent%')->count()
                     : 0),
+            'newegg' => Schema::hasTable('newegg_metric')
+                ? (int) NeweggMetric::query()->whereNotNull('sku')->count()
+                : 0,
             default => 0,
         };
     }

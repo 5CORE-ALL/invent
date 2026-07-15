@@ -41,6 +41,14 @@ class MarketplaceManagerRegistry
                 'logo' => 'uploads/reverb.png',
                 'enabled' => true,
             ],
+            [
+                'slug' => 'newegg',
+                'label' => 'Newegg',
+                'short' => 'NE',
+                'source_shop' => 'Shopify B2C',
+                'logo' => 'uploads/newegg.svg',
+                'enabled' => true,
+            ],
         ];
     }
 
