@@ -12,7 +12,8 @@ class TaskPolicy
     /**
      * Emails with this permission can delete or modify anybody's task (case-insensitive),
      * including bulk edit/delete. Sourced from users table:
-     * Hritiksha, Srimanta, Jisan, Nishtha, President (Amarjit), Shobha.
+     * Hritiksha, Srimanta, Jisan, Nishtha, President (Amarjit), Shobha,
+     * Ritu, Joy (SJOY), Jasmine.
      */
     private const SPECIAL_TASK_DELETE_MODIFY_EMAILS = [
         'president@5core.com',          // Amarjit (President)
@@ -21,8 +22,10 @@ class TaskPolicy
         'mgr-content@5core.com',        // Srimanta
         'support@5core.com',            // Jisan
         'mgr-advertisement@5core.com',  // Nishtha
-        'ritu.kaur013@gmail.com',
-        'inventory@5core.com',
+        'ritu.kaur013@gmail.com',       // RITU
+        'inventory@5core.com',          // Ritu
+        'sjoy7486@gmail.com',           // SJOY (Joy)
+        'sr.manager@5core.com',         // Jasmine
     ];
 
     /**
@@ -37,6 +40,10 @@ class TaskPolicy
         'president',
         'amarjit',
         'shobha',
+        'ritu',
+        'sjoy',
+        'joy',
+        'jasmine',
     ];
 
     /** Cleanup Missed Daily, Today Deleted, and related revert/archive tools. */

@@ -4009,6 +4009,23 @@ class ChannelMasterController extends Controller
         return (float) ($metrics['Total Ad Spend'] ?? 0);
     }
 
+    /**
+     * eBay 2 KW / PMT / total spend breakdown — same source as /all-marketplace-master
+     * and /ebay2/campaign-ads (via fetchAdMetricsFromTables('ebaytwo')).
+     *
+     * @return array{kw_spent: float, pmt_spent: float, total_ad_spend: float}
+     */
+    public function getEbaytwoMasterAdBreakdown(): array
+    {
+        $metrics = $this->fetchAdMetricsFromTables('ebaytwo');
+
+        return [
+            'kw_spent' => (float) ($metrics['KW Spent'] ?? 0),
+            'pmt_spent' => (float) ($metrics['PMT Spent'] ?? 0),
+            'total_ad_spend' => (float) ($metrics['Total Ad Spend'] ?? 0),
+        ];
+    }
+
  
     public function getEbayMasterAdsPercent(): float
     {
@@ -4030,6 +4047,23 @@ class ChannelMasterController extends Controller
     {
         $metrics = $this->fetchAdMetricsFromTables('ebay');
         return (float) ($metrics['Total Ad Spend'] ?? 0);
+    }
+
+    /**
+     * eBay KW / PMT / total spend breakdown — same source as /all-marketplace-master
+     * and /ebay/campaign-ads (via fetchAdMetricsFromTables('ebay')).
+     *
+     * @return array{kw_spent: float, pmt_spent: float, total_ad_spend: float}
+     */
+    public function getEbayMasterAdBreakdown(): array
+    {
+        $metrics = $this->fetchAdMetricsFromTables('ebay');
+
+        return [
+            'kw_spent' => (float) ($metrics['KW Spent'] ?? 0),
+            'pmt_spent' => (float) ($metrics['PMT Spent'] ?? 0),
+            'total_ad_spend' => (float) ($metrics['Total Ad Spend'] ?? 0),
+        ];
     }
 
     /**

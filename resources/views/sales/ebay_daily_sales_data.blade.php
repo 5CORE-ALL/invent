@@ -125,6 +125,21 @@
                             style="color: white; font-weight: bold;">L30 Sales: $0.00</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-cogs-badge"
                             style="color: white; font-weight: bold;">Total COGS: $0.00</span>
+                        <span class="badge fs-6 p-2" id="kw-spent-badge"
+                            title="eBay KW spend — same source as /all-marketplace-master (/ebay/campaign-ads)"
+                            style="background-color: #ffc107; color: black; font-weight: bold;">KW Spent: ${{ number_format((float) ($kwSpent ?? 0), 0) }}</span>
+                        <span class="badge fs-6 p-2" id="pmt-spent-badge"
+                            title="eBay PMT spend — same source as /all-marketplace-master (/ebay/campaign-ads)"
+                            style="background-color: #28a745; color: white; font-weight: bold;">PMT Spent: ${{ number_format((float) ($pmtSpent ?? 0), 0) }}</span>
+                        <span class="badge fs-6 p-2" id="tacos-percentage-badge"
+                            title="eBay Ads%/TACOS — same as /all-marketplace-master eBay Ads%"
+                            style="background-color: #6f42c1; color: white; font-weight: bold;">TACOS %: {{ number_format((float) ($ebayAdsPercent ?? 0), 1) }}%</span>
+                        <span class="badge fs-6 p-2" id="m-pft-badge"
+                            title="NPFT% = GPFT% − TACOS% (Ads% from /all-marketplace-master)"
+                            style="background-color: #fd7e14; color: white; font-weight: bold;">N PFT: 0%</span>
+                        <span class="badge fs-6 p-2" id="n-roi-badge"
+                            title="NROI% = (GPFT$ − Ad Spend) / COGS × 100 — same as Amazon / ebay-tabulator"
+                            style="background-color: #e83e8c; color: white; font-weight: bold;">N ROI: 0%</span>
                     </div>
                 </div>
             </div>
@@ -149,6 +164,9 @@
     <script>
         const COLUMN_VIS_KEY = "ebay_sales_column_visibility";
         let table = null;
+        // Ads%/TACOS + spend — same ChannelMaster / campaign-ads source as /all-marketplace-master
+        const EBAY_ADS_PCT = {{ (float) ($ebayAdsPercent ?? 0) }};
+        const EBAY_TOTAL_AD_SPEND = {{ (float) ($ebayTotalAdSpend ?? 0) }};
 
         // Toast notification function
         function showToast(message, type = 'info') {
@@ -548,6 +566,21 @@
                 // Calculate ROI Percentage: (PFT Total / Total COGS) * 100
                 const roiPercentage = totalCogs > 0 ? (totalPft / totalCogs) * 100 : 0;
 
+                // TACOS% = eBay Ads% from /all-marketplace-master (do not recompute from page sales).
+                const tacosPercentage = parseFloat(EBAY_ADS_PCT) || 0;
+                // N PFT% = GPFT% − TACOS%
+                const nPft = pftPercentage - tacosPercentage;
+                // N ROI% = (GPFT$ − Ad Spend) / COGS × 100 — same as Amazon / ebay-tabulator.
+                // Unfiltered: master's total ad spend. Filtered: Ads% × visible sales.
+                const totalDataCount = table.getDataCount("all");
+                const isFiltered = data.length < totalDataCount || (($('#sku-search').val() || '').trim() !== '');
+                const masterAdSpend = parseFloat(EBAY_TOTAL_AD_SPEND) || 0;
+                const salesForAds = totalOrderSales || totalL30Sales;
+                const adSpend = (!isFiltered && masterAdSpend > 0)
+                    ? masterAdSpend
+                    : (tacosPercentage / 100) * salesForAds;
+                const nRoi = totalCogs > 0 ? ((totalPft - adSpend) / totalCogs) * 100 : 0;
+
                 // Update badges
                 $('#total-orders-badge').text('Total Orders: ' + totalOrders.toLocaleString());
                 $('#total-quantity-badge').text('Total Quantity: ' + totalQuantity.toLocaleString());
@@ -568,6 +601,9 @@
 
                 $('#l30-sales-badge').text('L30 Sales: $' + totalL30Sales.toFixed(2));
                 $('#total-cogs-badge').text('Total COGS: $' + totalCogs.toFixed(2));
+                $('#tacos-percentage-badge').text('TACOS %: ' + tacosPercentage.toFixed(1) + '%');
+                $('#m-pft-badge').text('N PFT: ' + nPft.toFixed(1) + '%');
+                $('#n-roi-badge').text('N ROI: ' + nRoi.toFixed(1) + '%');
             }
 
             // Build Column Visibility Dropdown

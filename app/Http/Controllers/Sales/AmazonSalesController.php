@@ -3,13 +3,16 @@
 namespace App\Http\Controllers\Sales;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\AmazonAdsController;
 use App\Models\AmazonOrder;
 use App\Models\AmazonOrderItem;
 use App\Models\ProductMaster;
 use App\Models\MarketplacePercentage;
 use App\Models\AmazonSpCampaignReport;
+use App\Models\ChannelMasterCalculatedData;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
 
 class AmazonSalesController extends Controller
@@ -19,43 +22,6 @@ class AmazonSalesController extends Controller
 
     public function index()
     {
-        // Calculate KW Spent - same logic as amazonKwAdsView
-        // Uses L30 report_date_range, group by campaignName to get MAX(spend), then sum
-        $kwSpentData = DB::table('amazon_sp_campaign_reports')
-            ->selectRaw('campaignName, MAX(spend) as max_spend')
-            ->where('report_date_range', 'L30')
-            ->whereRaw("campaignName NOT REGEXP '(PT\\.?$|FBA$)'") // Exclude PT and FBA campaigns
-            ->groupBy('campaignName')
-            ->get();
-        
-        $kwSpent = $kwSpentData->sum('max_spend') ?? 0;
-
-        // Calculate PT Spent - same logic as amazonPtAdsView
-        // Uses L30 report_date_range, group by campaignName to get MAX(spend), then sum
-        $ptSpentData = DB::table('amazon_sp_campaign_reports')
-            ->selectRaw('campaignName, MAX(spend) as max_spend')
-            ->where('report_date_range', 'L30')
-            ->where(function($query) {
-                $query->whereRaw("campaignName LIKE '%PT'")
-                    ->orWhereRaw("campaignName LIKE '%PT.'");
-            })
-            ->whereRaw("campaignName NOT LIKE '%FBA PT%'") // Exclude FBA PT campaigns
-            ->whereRaw("campaignName NOT LIKE '%FBA PT.%'") // Exclude FBA PT. campaigns
-            ->groupBy('campaignName')
-            ->get();
-        
-        $ptSpent = $ptSpentData->sum('max_spend') ?? 0;
-
-        // Calculate HL Spent - same logic as amazonHlAdsView
-        // Uses L30 report_date_range, group by campaignName to get MAX(cost), then sum
-        $hlSpentData = DB::table('amazon_sb_campaign_reports')
-            ->selectRaw('campaignName, MAX(cost) as max_cost')
-            ->where('report_date_range', 'L30')
-            ->groupBy('campaignName')
-            ->get();
-        
-        $hlSpent = $hlSpentData->sum('max_cost') ?? 0;
-
         $windowDays = self::DAILY_SALES_WINDOW_DAYS;
         $yesterdayPacific = Carbon::yesterday('America/Los_Angeles');
         $endDate = $yesterdayPacific->copy()->endOfDay();
@@ -63,6 +29,54 @@ class AmazonSalesController extends Controller
 
         // Total Sales badge: AMAZON_SALES_TOTAL_MODE (default lines = Seller Central "Ordered Product Sales", tax excluded)
         $amazonSalesTotal = AmazonOrder::badgeTotalSalesByOrderDate($startWindow, $endDate);
+
+        // KW / PT / HL spend — same live source as /all-marketplace-master Amazon row
+        // (/amazon-ads/all via AmazonAdsController). Replaces the old MAX(spend)-per-campaign
+        // queries which did not match channel master.
+        $kwSpent = 0.0;
+        $ptSpent = 0.0;
+        $hlSpent = 0.0;
+        try {
+            $amazonAdsRows = app(AmazonAdsController::class)->getAdvertisementMasterChannelRows();
+            foreach (($amazonAdsRows[0]['_children'] ?? []) as $child) {
+                switch ($child['source'] ?? '') {
+                    case 'amazon_kw':
+                        $kwSpent = (float) ($child['spend'] ?? 0);
+                        break;
+                    case 'amazon_pt':
+                        $ptSpent = (float) ($child['spend'] ?? 0);
+                        break;
+                    case 'amazon_hl':
+                        $hlSpent = (float) ($child['spend'] ?? 0);
+                        break;
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Amazon daily-sales ad spend fell back to channel_master_calculated_data: '.$e->getMessage());
+        }
+
+        $liveTotalAdSpend = round($kwSpent + $ptSpent + $hlSpent, 2);
+
+        // Ads% / TACOS — same stored value the Amazon Ads% column on /all-marketplace-master
+        // (and the Ads badge on /amazon-tabulator-view) uses.
+        $amazonRow = ChannelMasterCalculatedData::where('channel', 'Amazon')->first()
+            ?? ChannelMasterCalculatedData::where('channel', 'like', 'Amazon%')->first();
+        $amazonAdsPercent = (float) ($amazonRow->ads_percentage ?? 0);
+        $amazonTotalAdSpend = (float) ($amazonRow->total_ad_spend ?? 0);
+
+        if ($amazonTotalAdSpend <= 0 && $liveTotalAdSpend > 0) {
+            $amazonTotalAdSpend = $liveTotalAdSpend;
+        }
+        if ($amazonAdsPercent <= 0) {
+            $masterL30 = (float) ($amazonRow->l30_sales ?? 0);
+            $salesBase = $masterL30 > 0 ? $masterL30 : (float) $amazonSalesTotal;
+            $amazonAdsPercent = $salesBase > 0 ? ($amazonTotalAdSpend / $salesBase) * 100 : 0.0;
+        }
+
+        // If live KW/PT/HL pull failed, leave them at 0 rather than inventing from totals.
+        if ($liveTotalAdSpend <= 0 && $amazonTotalAdSpend > 0) {
+            // No per-channel breakdown available — badges stay 0; TACOS/NPFT/NROI still use master totals.
+        }
 
         // 8 Feb to yesterday (separate badge, fixed start) — same formula as main badge
         $start8Feb = Carbon::createFromDate(now()->year, 2, 8)->startOfDay();
@@ -80,6 +94,8 @@ class AmazonSalesController extends Controller
             'kwSpent'                 => (float) $kwSpent,
             'ptSpent'                 => (float) $ptSpent,
             'hlSpent'                 => (float) $hlSpent,
+            'amazonAdsPercent'        => round($amazonAdsPercent, 2),
+            'amazonTotalAdSpend'      => round($amazonTotalAdSpend, 2),
             'amazonSalesTotal'        => $amazonSalesTotal,
             'amazonSalesWindowDays'   => $windowDays,
             'amazonSalesTotalMode'    => AmazonOrder::salesTotalMode(),

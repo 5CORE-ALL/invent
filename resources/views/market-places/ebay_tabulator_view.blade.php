@@ -516,19 +516,19 @@
                         <option value="red">Red (No LMP)</option>
                     </select>
 
-                    {{-- Target ROI% bulk control — back-solves SPRICE for selected rows so SGROI = Target ROI%. --}}
-                    {{-- Formula: sprice = (LP × (1 + ROI%/100) + Ship) / margin  (margin = MarketplacePercentage take-home for eBay) --}}
+                    {{-- Target ROI% bulk control — back-solves SPRICE so SNROI (Amazon NROI formula) = Target. --}}
+                    {{-- Formula: sprice = (LP × (1 + Target/100) + Ship) / (margin − Ads%) --}}
                     <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light pricing-filter-item"
                         id="target-roi-controls"
-                        title="Target ROI% — sets SPRICE = (LP × (1 + Target ROI%/100) + Ship) / margin on every selected row (accounts for eBay fees + shipping)">
+                        title="Target SNROI% — sets SPRICE so net SROI = Target (same Amazon NROI formula: accounts for fees, shipping, and Ads%)">
                         <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
                             <span style="font-size:1em;" aria-hidden="true">🎯</span> ROI%:
                         </label>
                         <input type="number" id="target-roi-input" class="form-control form-control-sm text-end"
                             placeholder="30" step="0.1" style="width: 56px;"
-                            title="Target ROI% applied to all selected rows when you click 'Apply SPRICE'">
+                            title="Target SNROI% applied to all selected rows when you click 'Apply SPRICE'">
                         <button id="apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
-                            title="Compute & save SPRICE = (LP \u00d7 (1 + Target ROI%/100) + Ship) / margin for every selected row">
+                            title="Compute & save SPRICE = (LP \u00d7 (1 + Target/100) + Ship) / (margin \u2212 Ads%) for every selected row">
                             <i class="fas fa-calculator"></i>
                         </button>
                     </div>
@@ -678,7 +678,7 @@
                             title="NPFT% = GPFT% − Ads% (net profit margin after ad spend).">NPFT: {{ round((float) ($ordersL30Gpft ?? 0) - (float) ($channelAdsPercent ?? 0)) }}%</span>
                         <span class="badge fs-6 p-2" id="nroi-percent-badge"
                             style="background-color: #6f42c1; color: white; font-weight: bold;"
-                            title="NROI% = GROI% − Ads% (net ROI after ad spend).">NROI: {{ round((float) ($ordersL30Groi ?? 0) - (float) ($channelAdsPercent ?? 0)) }}%</span>
+                            title="NROI% = (GPFT$ − Ad Spend) / COGS × 100 — same as Amazon (do not cut Ads% from GROI%).">NROI: {{ round((float) ($ordersL30Nroi ?? 0)) }}%</span>
 
                         <!-- eBay Metrics -->
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge"
@@ -1347,10 +1347,35 @@
          *  which the per-SKU datasheet can't reproduce for the real-orders basis). */
         const ORDERS_L30_GPFT = {{ (float) ($ordersL30Gpft ?? 0) }};
         const ORDERS_L30_GROI = {{ (float) ($ordersL30Groi ?? 0) }};
+        const ORDERS_L30_PFT = {{ (float) ($ordersL30Pft ?? 0) }};
+        const ORDERS_L30_COGS = {{ (float) ($ordersL30Cogs ?? 0) }};
+        const EBAY_AD_SPEND = {{ (float) ($ebayAdSpend ?? 0) }};
+        const ORDERS_L30_NROI = {{ (float) ($ordersL30Nroi ?? 0) }};
         /** eBay channel-level Ads% (TACOS) — Total Ad Spend / L30 Sales × 100.
          *  Same value shown for eBay on /all-marketplace-master (per-SKU spend isn't
          *  available in this page's data, so the Ads % column shows the channel figure). */
         const EBAY_CHANNEL_ADS_PCT = {{ (float) ($channelAdsPercent ?? 0) }};
+
+        /**
+         * Net ROI — same shape as Amazon NROI / SNROI badge:
+         *   (gross profit $ − ad spend $) / COGS × 100
+         * where ad spend $ = price × Ads%/100 and COGS = LP.
+         * @param {object} rowData
+         * @param {string} priceKey  'eBay Price' for NROI, 'SPRICE' for SNROI
+         */
+        function ebayComputeNetRoi(rowData, priceKey) {
+            if (!rowData) return null;
+            const price = parseFloat(rowData[priceKey]);
+            const lp = parseFloat(rowData.LP_productmaster);
+            if (!isFinite(price) || price <= 0 || !isFinite(lp) || lp <= 0) return null;
+            const ship = parseFloat(rowData.Ship_productmaster) || 0;
+            const marginRaw = parseFloat(rowData.percentage);
+            const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : 0.85;
+            const adsFrac = (parseFloat(EBAY_CHANNEL_ADS_PCT) || 0) / 100;
+            const grossPft = (price * margin) - ship - lp;
+            const adSpend = price * adsFrac;
+            return ((grossPft - adSpend) / lp) * 100;
+        }
         /** App base path (XAMPP subdir / public): root-relative "/ebay-data-json" would 404 */
         const EBAY_DATA_JSON_URL = @json(url('/ebay-data-json'));
         let skuMetricsChart = null;
@@ -2693,17 +2718,20 @@
                 });
             }
 
-            // Target ROI%
+            // Target ROI% — targets displayed SNROI (Amazon NROI shape), not gross SGROI:
+            //   ((sprice×margin − ship − lp) − sprice×Ads%/100) / lp × 100 = Target
+            //   -> sprice = (lp × (1 + Target/100) + ship) / (margin − Ads%/100)
             $('#apply-target-roi-btn').on('click', function() {
                 const $btn = $(this);
                 const raw = $('#target-roi-input').val();
                 const targetRoiPct = parseFloat(String(raw).replace(',', '.'));
                 if (raw === '' || raw == null) { showToast('error', 'Please enter a Target ROI%'); return; }
                 if (!isFinite(targetRoiPct)) { showToast('error', 'Target ROI% must be a number'); return; }
+                const adsFrac = (parseFloat(EBAY_CHANNEL_ADS_PCT) || 0) / 100;
                 const roiMultiplier = 1 + (targetRoiPct / 100);
                 ebayApplyTargetSpriceBatch({
                     targetPct: targetRoiPct,
-                    label: `Target ROI ${targetRoiPct}%`,
+                    label: `Target SNROI ${targetRoiPct}%`,
                     $btn: $btn,
                     btnHtml: '<i class="fas fa-calculator"></i> Apply SPRICE',
                     computeSprice: function(rd) {
@@ -2712,7 +2740,11 @@
                         const ship = parseFloat(rd.Ship_productmaster) || 0;
                         const marginRaw = parseFloat(rd.percentage);
                         const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : 0.85;
-                        return { sprice: (lp * roiMultiplier + ship) / margin };
+                        const netMargin = margin - adsFrac;
+                        if (netMargin <= 0) {
+                            return { skipReason: `Ads% ≥ eBay take-home margin (~${Math.round(margin * 100)}%)` };
+                        }
+                        return { sprice: (lp * roiMultiplier + ship) / netMargin };
                     }
                 });
             });
@@ -4715,15 +4747,16 @@
                         title: "NROI",
                         field: "NROI",
                         hozAlign: "center",
+                        // Same formula as Amazon NROI: (PFT$ − Ad Spend$) / LP × 100
                         sorter: function(a, b, aRow, bRow) {
-                            const ads = (typeof EBAY_CHANNEL_ADS_PCT !== 'undefined') ? (parseFloat(EBAY_CHANNEL_ADS_PCT) || 0) : 0;
-                            return ((parseFloat(aRow.getData()['ROI%'] || 0) - ads) - (parseFloat(bRow.getData()['ROI%'] || 0) - ads));
+                            const aNet = ebayComputeNetRoi(aRow.getData(), 'eBay Price');
+                            const bNet = ebayComputeNetRoi(bRow.getData(), 'eBay Price');
+                            return ((aNet == null || !isFinite(aNet)) ? 0 : aNet)
+                                 - ((bNet == null || !isFinite(bNet)) ? 0 : bNet);
                         },
                         formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            const ads = (typeof EBAY_CHANNEL_ADS_PCT !== 'undefined') ? (parseFloat(EBAY_CHANNEL_ADS_PCT) || 0) : 0;
-                            // NROI% = GROI% − Ads% (channel TACOS)
-                            const percent = (parseFloat(rowData['ROI%'] || 0)) - ads;
+                            const percent = ebayComputeNetRoi(cell.getRow().getData(), 'eBay Price');
+                            if (percent === null || !isFinite(percent)) return '';
                             let color = '';
 
                             if (percent < 40) color = '#a00211'; // red
@@ -4734,9 +4767,11 @@
                             return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                         },
                         bottomCalc: function(values, data) {
-                            const ads = (typeof EBAY_CHANNEL_ADS_PCT !== 'undefined') ? (parseFloat(EBAY_CHANNEL_ADS_PCT) || 0) : 0;
                             let sum = 0, n = 0;
-                            data.forEach(r => { const v = parseFloat(r['ROI%']); if (!isNaN(v)) { sum += (v - ads); n++; } });
+                            data.forEach(r => {
+                                const v = ebayComputeNetRoi(r, 'eBay Price');
+                                if (v != null && isFinite(v)) { sum += v; n++; }
+                            });
                             return n ? sum / n : 0;
                         },
                         bottomCalcFormatter: function(cell) {
@@ -5040,14 +5075,14 @@
                         width: 80
                     },
                     {
-                        title: "S PFT",
+                        title: "SNPFT",
                         field: "SPFT",
                         visible: false,
                         hozAlign: "center",
                         sorter: "number",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
-                            // S PFT = S GPFT − Ads% (net of channel ad spend).
+                            // SNPFT = S GPFT − Ads% (net of channel ad spend).
                             const rawGpft = rowData.SGPFT;
                             if (rawGpft === null || rawGpft === undefined || rawGpft === '') return '';
                             const sgpft = parseFloat(rawGpft);
@@ -5090,19 +5125,20 @@
                         width: 80
                     },
                     {
-                        title: "SROI",
+                        title: "SNROI",
                         field: "SROI",
                         hozAlign: "center",
-                        sorter: "number",
+                        // Same formula as Amazon SNROI / NROI badge:
+                        // (gross PFT$ − SPRICE×Ads%/100) / LP × 100
+                        sorter: function(a, b, aRow, bRow) {
+                            const aNet = ebayComputeNetRoi(aRow.getData(), 'SPRICE');
+                            const bNet = ebayComputeNetRoi(bRow.getData(), 'SPRICE');
+                            return ((aNet == null || !isFinite(aNet)) ? 0 : aNet)
+                                 - ((bNet == null || !isFinite(bNet)) ? 0 : bNet);
+                        },
                         formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            // SROI = S GROI − Ads% (net of channel ad spend).
-                            const rawGroi = rowData.SGROI;
-                            if (rawGroi === null || rawGroi === undefined || rawGroi === '') return '';
-                            const sgroi = parseFloat(rawGroi);
-                            if (isNaN(sgroi)) return '';
-                            const ads = parseFloat(EBAY_CHANNEL_ADS_PCT) || 0;
-                            const percent = sgroi - ads;
+                            const percent = ebayComputeNetRoi(cell.getRow().getData(), 'SPRICE');
+                            if (percent === null || !isFinite(percent)) return '';
 
                             let color = '';
                             // Same as ROI% color logic
@@ -5956,9 +5992,12 @@
                 $('#total-sales-amt-badge').text('Sales: $' + Math.round(ORDERS_L30_TOTAL_SALES).toLocaleString());
                 $('#avg-gpft-badge').text('GPFT: ' + Math.round(ORDERS_L30_GPFT) + '%');
                 $('#groi-percent-badge').text('GROI: ' + Math.round(ORDERS_L30_GROI) + '%');
-                // NPFT% = GPFT% − Ads%, NROI% = GROI% − Ads% (net of ad spend).
+                // NPFT% = GPFT% − Ads%. NROI% = (GPFT$ − Ad Spend) / COGS × 100 (Amazon formula).
                 $('#npft-percent-badge').text('NPFT: ' + Math.round(ORDERS_L30_GPFT - EBAY_CHANNEL_ADS_PCT) + '%');
-                $('#nroi-percent-badge').text('NROI: ' + Math.round(ORDERS_L30_GROI - EBAY_CHANNEL_ADS_PCT) + '%');
+                const nroiBadge = (ORDERS_L30_COGS > 0)
+                    ? ((ORDERS_L30_PFT - EBAY_AD_SPEND) / ORDERS_L30_COGS) * 100
+                    : ORDERS_L30_NROI;
+                $('#nroi-percent-badge').text('NROI: ' + Math.round(nroiBadge) + '%');
 
                 $('#avg-price-badge').text('Prc: $' + avgPrice.toFixed(2));
                 $('#avg-cvr-badge').text('CVR: ' + avgCVR.toFixed(1) + '%');

@@ -78,14 +78,22 @@ class EbayController extends Controller
             ? round(($ebayAdSpend / $agg['sales']) * 100, 1)
             : 0.0;
 
+        // NROI% = (GPFT$ − Ad Spend) / COGS × 100 — same shape as Amazon NROI badge
+        // (do not cut Ads% from GROI%).
+        $ordersL30Nroi = $agg['cogs'] > 0
+            ? round((($agg['pft'] - $ebayAdSpend) / $agg['cogs']) * 100, 1)
+            : 0.0;
+
         return view("market-places.ebay_tabulator_view", [
             'channelAdsPercent'   => $channelAdsPercent,
+            'ebayAdSpend'         => round((float) $ebayAdSpend, 2),
             'ordersL30TotalQty'   => $agg['qty'],
             'ordersL30TotalSales' => $agg['sales'],
             'ordersL30Gpft'       => $agg['gpft'],
             'ordersL30Groi'       => $agg['groi'],
             'ordersL30Pft'        => $agg['pft'],
             'ordersL30Cogs'       => $agg['cogs'],
+            'ordersL30Nroi'       => $ordersL30Nroi,
         ]);
     }
 
@@ -1268,8 +1276,10 @@ class EbayController extends Controller
                 $ship = (float) ($r->Ship_productmaster ?? 0);
                 $pct = (float) ($r->percentage ?? 1);
                 if ($sprice > 0 && $lp > 0) {
-                    $adDec = $channelAdsPct / 100;
-                    $r->SROI = round((($sprice * ($pct - $adDec) - $ship - $lp) / $lp) * 100, 2);
+                    // SNROI = (gross PFT$ − SPRICE×Ads%/100) / LP × 100 (Amazon NROI shape)
+                    $grossPft = ($sprice * $pct) - $ship - $lp;
+                    $adSpend = $sprice * ($channelAdsPct / 100);
+                    $r->SROI = round((($grossPft - $adSpend) / $lp) * 100, 2);
                 }
             }
         }
@@ -1633,48 +1643,19 @@ class EbayController extends Controller
         // Calculate SGPFT first - use marketplace percentage instead of hardcoded 0.86
         $sgpft = $spriceFloat > 0 ? round((($spriceFloat * $percentage - $ship - $lp) / $spriceFloat) * 100, 2) : 0;
         
-        // Get AD% from the product (optional: tables may not exist on apicentral)
-        $adPercent = 0;
-        try {
-            $ebayMetric = EbayMetric::where('sku', $sku)->first();
-            if ($ebayMetric) {
-                $campaignListings = DB::connection('apicentral')
-                    ->table('ebay_campaign_ads_listings')
-                    ->where('listing_id', $ebayMetric->item_id)
-                    ->first();
-
-                $ebayCampaignReportsL30 = EbayPriorityReport::where('report_range', 'L30')
-                    ->where('campaign_name', 'LIKE', '%' . $sku . '%')
-                    ->first();
-
-                $ebayGeneralReportsL30 = EbayGeneralReport::where('report_range', 'L30')
-                    ->where('listing_id', $ebayMetric->item_id)
-                    ->first();
-
-                $kw_spend_l30 = (float) str_replace('USD ', '', $ebayCampaignReportsL30 ? ($ebayCampaignReportsL30->cpc_ad_fees_payout_currency ?? 0) : 0);
-                $kw_sales_l30 = (float) str_replace('USD ', '', $ebayCampaignReportsL30 ? ($ebayCampaignReportsL30->cpc_sale_amount_payout_currency ?? 0) : 0);
-                $pmt_spend_l30 = (float) str_replace('USD ', '', $ebayGeneralReportsL30 ? ($ebayGeneralReportsL30->ad_fees ?? 0) : 0);
-                $pmt_sales_l30 = (float) str_replace('USD ', '', $ebayGeneralReportsL30 ? ($ebayGeneralReportsL30->sale_amount ?? 0) : 0);
-
-                $adDenominator = $kw_sales_l30 + $pmt_sales_l30;
-                $adPercent = $adDenominator > 0 ? (($kw_spend_l30 + $pmt_spend_l30) / $adDenominator) * 100 : 0;
-            }
-        } catch (\Throwable $e) {
-            Log::warning('eBay save SPRICE: ad% lookup skipped (table or data missing)', [
-                'sku' => $sku,
-                'error' => $e->getMessage()
-            ]);
-            $adPercent = 0;
-        }
+        // Channel Ads% (TACOS) — same source as /ebay-tabulator-view Ads badge /
+        // /all-marketplace-master eBay Ads% (not per-SKU ACOS).
+        $adPercent = (float) app(ChannelMasterController::class)->getEbayMasterAdsPercent();
         
-        // SPFT = SGPFT - AD%
+        // SPFT = SGPFT − Ads%
         $spft = round($sgpft - $adPercent, 2);
         // SGROI = gross ROI on suggested price (same as GROI% but using SPRICE)
         $sgroi = round($lp > 0 ? (($spriceFloat * $percentage - $lp - $ship) / $lp) * 100 : 0, 2);
-        // SROI = ((SPRICE * (percentage - AD%/100) - ship - lp) / lp) * 100
+        // SNROI = (gross PFT$ − ad spend$) / LP × 100 — same shape as Amazon NROI badge
+        // where ad spend$ = SPRICE × Ads%/100.
         $adDecimal = $adPercent / 100;
         $sroi = round(
-            $lp > 0 ? (($spriceFloat * ($percentage - $adDecimal) - $ship - $lp) / $lp) * 100 : 0,
+            $lp > 0 ? ((($spriceFloat * $percentage - $ship - $lp) - ($spriceFloat * $adDecimal)) / $lp) * 100 : 0,
             2
         );
         Log::info('Calculated values', ['sprice' => $spriceFloat, 'sgpft' => $sgpft, 'sgroi' => $sgroi, 'ad_percent' => $adPercent, 'spft' => $spft, 'sroi' => $sroi]);
@@ -3083,7 +3064,8 @@ class EbayController extends Controller
             $avgL7Views = $l7ViewsCount > 0 ? ($totalL7Views / $l7ViewsCount) : 0;
             $tcosPercent = $totalSalesAmt > 0 ? (($grandTotalSpend / $totalSalesAmt) * 100) : 0;
             $groiPercent = $totalLpAmt > 0 ? (($totalPftAmt / $totalLpAmt) * 100) : 0;
-            $nroiPercent = $groiPercent - $tcosPercent;
+            // NROI% = (GPFT$ − Ad Spend) / COGS × 100 — same as Amazon / ebay-tabulator badge
+            $nroiPercent = $totalLpAmt > 0 ? ((($totalPftAmt - $grandTotalSpend) / $totalLpAmt) * 100) : 0;
             $gpftPercent = $totalSalesAmt > 0 ? (($totalSalesAmt - $totalLpAmt) / $totalSalesAmt * 100) : 0;
             
             // Store ALL metrics in JSON (flexible!)
