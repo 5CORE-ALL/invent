@@ -16,7 +16,11 @@ class SyncInventoryToReverbManager implements ShouldQueue
 
     public int $tries = 2;
 
-    public int $timeout = 600;
+    // Reverb's live listing crawl alone can take 5-15+ minutes (see RunMarketplaceInventorySyncJob);
+    // 600s was too short and made this job fail on every scheduled run. Stay under the
+    // marketplace-manager-worker's --timeout=1800 so the job reports a clean failure instead
+    // of the worker force-killing it right at the ceiling.
+    public int $timeout = 1700;
 
     public function __construct()
     {
