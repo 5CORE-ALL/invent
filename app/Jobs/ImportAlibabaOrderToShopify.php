@@ -26,7 +26,7 @@ class ImportAlibabaOrderToShopify implements ShouldQueue
     public function __construct(
         protected int $alibabaOrderMetricId
     ) {
-        $this->onQueue(\App\Services\MarketplaceManager\MarketplaceManagerRegistry::QUEUE);
+        $this->onQueue(\App\Services\MarketplaceManager\MarketplaceManagerRegistry::queueFor('alibaba'));
     }
 
     public function middleware(): array

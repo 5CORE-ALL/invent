@@ -133,7 +133,7 @@ class ReverbWebhookController extends Controller
             return;
         }
 
-        // Reverb listing changed → re-assert from live Shopify across all linked MPs (fast).
-        PushLinkedSkuInventoryFromShopify::dispatch([$sku], null, null);
+        // Reverb listing changed → re-assert from live Shopify across all enabled MPs (parallel queues).
+        PushLinkedSkuInventoryFromShopify::dispatchToEnabled([$sku], null, null);
     }
 }

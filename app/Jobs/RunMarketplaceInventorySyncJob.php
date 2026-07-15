@@ -32,7 +32,7 @@ class RunMarketplaceInventorySyncJob implements ShouldQueue, ShouldBeUnique
     public function __construct(
         public string $marketplace
     ) {
-        $this->onQueue(MarketplaceManagerRegistry::QUEUE);
+        $this->onQueue(MarketplaceManagerRegistry::queueFor($this->marketplace));
     }
 
     public function uniqueId(): string

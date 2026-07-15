@@ -17,8 +17,8 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Fast-path: push one (or a few) SKUs from live Shopify to every enabled marketplace
- * where the SKU is linked. Used by Shopify inventory webhooks.
+ * Fast-path: push SKUs from live Shopify → one marketplace (runs on that channel's queue).
+ * Use dispatchToEnabled() for webhooks so all enabled channels update in parallel.
  */
 class PushLinkedSkuInventoryFromShopify implements ShouldQueue, ShouldBeUnique
 {
@@ -38,17 +38,42 @@ class PushLinkedSkuInventoryFromShopify implements ShouldQueue, ShouldBeUnique
         public array $skus,
         public ?int $availableHint = null,
         public ?string $inventoryItemId = null,
+        public string $marketplace = 'reverb',
     ) {
-        $this->onQueue(MarketplaceManagerRegistry::QUEUE);
+        $this->marketplace = strtolower(trim($this->marketplace));
+        $this->onQueue(MarketplaceManagerRegistry::queueFor($this->marketplace));
         $this->skus = array_values(array_unique(array_filter(array_map(
             static fn ($s) => trim((string) $s),
             $skus
         ), static fn ($s) => $s !== '')));
     }
 
+    /**
+     * Fan-out to every marketplace that has inventory_sync enabled (parallel queues).
+     *
+     * @param  array<int, string>  $skus
+     * @return int number of jobs dispatched
+     */
+    public static function dispatchToEnabled(
+        array $skus,
+        ?int $availableHint = null,
+        ?string $inventoryItemId = null,
+    ): int {
+        $dispatched = 0;
+        foreach (MarketplaceManagerRegistry::slugs() as $slug) {
+            $settings = MarketplaceSyncSettings::getFor($slug);
+            if (! ($settings['inventory']['inventory_sync'] ?? false)) {
+                continue;
+            }
+            static::dispatch($skus, $availableHint, $inventoryItemId, $slug);
+            $dispatched++;
+        }
+
+        return $dispatched;
+    }
+
     public function uniqueId(): string
     {
-        // Deduplicate by sorted SKU set so page refresh / webhook storms don't flood the queue.
         $normalized = $this->skus;
         sort($normalized);
         $key = strtoupper(implode('|', $normalized));
@@ -56,7 +81,7 @@ class PushLinkedSkuInventoryFromShopify implements ShouldQueue, ShouldBeUnique
             $key = 'iid:'.$this->inventoryItemId;
         }
 
-        return 'mm-push-inv-'.md5($key !== '' ? $key : 'empty');
+        return 'mm-push-inv-'.$this->marketplace.'-'.md5($key !== '' ? $key : 'empty');
     }
 
     public function handle(
@@ -67,46 +92,55 @@ class PushLinkedSkuInventoryFromShopify implements ShouldQueue, ShouldBeUnique
     ): void {
         if ($this->skus === []) {
             Log::info('PushLinkedSkuInventoryFromShopify: no SKUs resolved', [
+                'marketplace' => $this->marketplace,
                 'inventory_item_id' => $this->inventoryItemId,
             ]);
 
             return;
         }
 
-        $results = [];
+        if (! $this->inventorySyncEnabled($this->marketplace)) {
+            Log::info('PushLinkedSkuInventoryFromShopify: inventory_sync off — skip', [
+                'marketplace' => $this->marketplace,
+                'skus' => $this->skus,
+            ]);
 
-        foreach ([
+            return;
+        }
+
+        $service = match ($this->marketplace) {
             'reverb' => $reverb,
             'aliexpress' => $aliexpress,
             'alibaba' => $alibaba,
             'newegg' => $newegg,
-        ] as $slug => $service) {
-            if (! $this->inventorySyncEnabled($slug)) {
-                continue;
-            }
-            try {
-                $results[$slug] = $service->syncSkusFromShopify($this->skus);
-            } catch (\Throwable $e) {
-                // Never abort other marketplaces — wrong stock on one channel is better
-                // than failing all channels mid-push.
-                Log::error('PushLinkedSkuInventoryFromShopify: marketplace push failed', [
-                    'marketplace' => $slug,
-                    'skus' => $this->skus,
-                    'error' => $e->getMessage(),
-                ]);
-                $results[$slug] = [
-                    'updated' => 0,
-                    'failed' => count($this->skus),
-                    'message' => $e->getMessage(),
-                ];
-            }
+            default => null,
+        };
+
+        if ($service === null) {
+            Log::warning('PushLinkedSkuInventoryFromShopify: unknown marketplace', [
+                'marketplace' => $this->marketplace,
+            ]);
+
+            return;
+        }
+
+        try {
+            $result = $service->syncSkusFromShopify($this->skus);
+        } catch (\Throwable $e) {
+            Log::error('PushLinkedSkuInventoryFromShopify: marketplace push failed', [
+                'marketplace' => $this->marketplace,
+                'skus' => $this->skus,
+                'error' => $e->getMessage(),
+            ]);
+            throw $e;
         }
 
         Log::info('PushLinkedSkuInventoryFromShopify: done', [
+            'marketplace' => $this->marketplace,
             'skus' => $this->skus,
             'available_hint' => $this->availableHint,
             'inventory_item_id' => $this->inventoryItemId,
-            'results' => $results,
+            'result' => $result,
         ]);
     }
 

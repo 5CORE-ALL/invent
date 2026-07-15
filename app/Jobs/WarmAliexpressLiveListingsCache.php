@@ -24,7 +24,7 @@ class WarmAliexpressLiveListingsCache implements ShouldQueue
 
     public function __construct()
     {
-        $this->onQueue(MarketplaceManagerRegistry::QUEUE);
+        $this->onQueue(MarketplaceManagerRegistry::queueFor('aliexpress'));
     }
 
     public function handle(AliexpressLiveListingsService $service): void

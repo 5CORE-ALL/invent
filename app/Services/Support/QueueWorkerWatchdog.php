@@ -2,6 +2,7 @@
 
 namespace App\Services\Support;
 
+use App\Services\MarketplaceManager\MarketplaceManagerRegistry;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\Process\Process;
 
@@ -12,7 +13,20 @@ class QueueWorkerWatchdog
      */
     public static function watchdogQueues(): array
     {
-        return config('queue_workers.watchdog_queues', []);
+        $queues = config('queue_workers.watchdog_queues', []);
+
+        // One dedicated worker per Marketplace Manager channel (parallel inventory / orders).
+        // Adding a slug in MarketplaceManagerRegistry auto-registers its mm-{slug} queue here.
+        foreach (MarketplaceManagerRegistry::queueNames() as $queue) {
+            if (! isset($queues[$queue])) {
+                $queues[$queue] = [
+                    'timeout' => 1800,
+                    'max_time' => 7200,
+                ];
+            }
+        }
+
+        return $queues;
     }
 
     /**

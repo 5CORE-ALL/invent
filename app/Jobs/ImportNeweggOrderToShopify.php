@@ -26,7 +26,7 @@ class ImportNeweggOrderToShopify implements ShouldQueue
     public function __construct(
         protected int $neweggOrderMetricId
     ) {
-        $this->onQueue(\App\Services\MarketplaceManager\MarketplaceManagerRegistry::QUEUE);
+        $this->onQueue(\App\Services\MarketplaceManager\MarketplaceManagerRegistry::queueFor('newegg'));
     }
 
     public function middleware(): array

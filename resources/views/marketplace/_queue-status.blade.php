@@ -3,6 +3,7 @@
         <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
             <div>
                 <strong class="small"><i class="ri-pulse-line"></i> Background sync status</strong>
+                <div id="mm-queue-name" class="small text-muted"></div>
                 <div id="mm-queue-worker" class="small text-muted mt-1">Checking queue…</div>
             </div>
             <div class="d-flex gap-2 flex-wrap">
@@ -32,6 +33,7 @@
 
     var url = panel.getAttribute('data-status-url');
     var workerEl = document.getElementById('mm-queue-worker');
+    var queueNameEl = document.getElementById('mm-queue-name');
     var runningBadge = document.getElementById('mm-queue-running');
     var waitingBadge = document.getElementById('mm-queue-waiting');
     var failedBadge = document.getElementById('mm-queue-failed');
@@ -67,6 +69,9 @@
 
         workerEl.textContent = worker.message || 'Queue status unknown.';
         workerEl.className = 'small mt-1 ' + workerClass(worker.state || 'idle');
+        if (queueNameEl) {
+            queueNameEl.textContent = data.queue ? ('Queue: ' + data.queue + ' (parallel per marketplace)') : '';
+        }
 
         if ((counts.running || 0) > 0) {
             runningBadge.style.display = '';

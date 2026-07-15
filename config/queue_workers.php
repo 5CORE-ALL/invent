@@ -59,6 +59,8 @@ return [
             'timeout' => 1800,
             'max_time' => 7200,
         ],
+        // Per-marketplace mm-{slug} queues are injected by QueueWorkerWatchdog
+        // from MarketplaceManagerRegistry (auto when you add a new channel).
         'aliexpress' => [
             'timeout' => 900,
             'max_time' => 7200,

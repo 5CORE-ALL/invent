@@ -207,7 +207,7 @@ final class ReverbLiveListingsService
 
         // One batched job (not 1 job per SKU) — keeps marketplace-manager free for full syncs.
         try {
-            PushLinkedSkuInventoryFromShopify::dispatch($skus, null, null);
+            PushLinkedSkuInventoryFromShopify::dispatch($skus, null, null, 'reverb');
 
             return count($skus);
         } catch (\Throwable $e) {

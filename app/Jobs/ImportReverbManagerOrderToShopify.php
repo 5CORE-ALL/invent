@@ -26,7 +26,7 @@ class ImportReverbManagerOrderToShopify implements ShouldQueue
     public function __construct(
         protected int $reverbOrderMetricId
     ) {
-        $this->onQueue(\App\Services\MarketplaceManager\MarketplaceManagerRegistry::QUEUE);
+        $this->onQueue(\App\Services\MarketplaceManager\MarketplaceManagerRegistry::queueFor('reverb'));
     }
 
     public function middleware(): array

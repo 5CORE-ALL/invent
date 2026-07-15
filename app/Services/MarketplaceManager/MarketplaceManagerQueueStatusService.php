@@ -6,12 +6,10 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Snapshot of marketplace-manager queue + per-channel background work for MM UI.
+ * Snapshot of per-marketplace queue + background work for MM UI.
  */
 final class MarketplaceManagerQueueStatusService
 {
-    private const QUEUE = MarketplaceManagerRegistry::QUEUE;
-
     /** @var array<string, string> */
     private const JOB_LABELS = [
         'RunMarketplaceInventorySyncJob' => 'Full inventory sync',
@@ -43,17 +41,26 @@ final class MarketplaceManagerQueueStatusService
     public function snapshot(?string $marketplace = null): array
     {
         $slug = $marketplace !== null ? strtolower(trim($marketplace)) : null;
-        $queueRows = $this->queueRows();
+        $queue = $slug ? MarketplaceManagerRegistry::queueFor($slug) : MarketplaceManagerRegistry::QUEUE;
+        $queues = $slug
+            ? [$queue, MarketplaceManagerRegistry::QUEUE]
+            : array_values(array_unique(array_merge(
+                [MarketplaceManagerRegistry::QUEUE],
+                MarketplaceManagerRegistry::queueNames()
+            )));
+
+        $queueRows = $this->queueRows($queues);
         $classified = $this->classifyRows($queueRows, $slug);
 
         return [
-            'queue' => self::QUEUE,
-            'worker' => $this->workerStatus($classified),
+            'queue' => $queue,
+            'queues' => $queues,
+            'worker' => $this->workerStatus($classified, $queue),
             'counts' => [
                 'waiting' => $classified['waiting'],
                 'running' => $classified['running'],
                 'delayed' => $classified['delayed'],
-                'failed_recent' => $this->failedCount(),
+                'failed_recent' => $this->failedCount($queues),
             ],
             'tasks' => $classified['tasks'],
             'link_map' => $slug ? $this->linkMapProgress($slug) : null,
@@ -62,18 +69,19 @@ final class MarketplaceManagerQueueStatusService
     }
 
     /**
+     * @param  list<string>  $queues
      * @return list<object>
      */
-    private function queueRows(): array
+    private function queueRows(array $queues): array
     {
-        if (! Schema::hasTable('jobs')) {
+        if (! Schema::hasTable('jobs') || $queues === []) {
             return [];
         }
 
         return DB::table('jobs')
-            ->where('queue', self::QUEUE)
+            ->whereIn('queue', $queues)
             ->orderBy('id')
-            ->get(['id', 'payload', 'attempts', 'reserved_at', 'available_at', 'created_at'])
+            ->get(['id', 'queue', 'payload', 'attempts', 'reserved_at', 'available_at', 'created_at'])
             ->all();
     }
 
@@ -94,7 +102,10 @@ final class MarketplaceManagerQueueStatusService
             $payload = (string) ($row->payload ?? '');
             $shortName = $this->shortJobName($payload);
             $isRunning = $row->reserved_at !== null;
-            $isDelayed = ! $isRunning && strtotime((string) $row->available_at) > $now;
+            $availableTs = is_numeric($row->available_at)
+                ? (int) $row->available_at
+                : strtotime((string) $row->available_at);
+            $isDelayed = ! $isRunning && $availableTs > $now;
 
             if ($isRunning) {
                 $running++;
@@ -104,7 +115,7 @@ final class MarketplaceManagerQueueStatusService
                 $waiting++;
             }
 
-            if ($slug !== null && ! $this->jobRelatesToMarketplace($shortName, $payload, $slug)) {
+            if ($slug !== null && ! $this->jobRelatesToMarketplace($shortName, $payload, $slug, (string) ($row->queue ?? ''))) {
                 continue;
             }
 
@@ -144,9 +155,12 @@ final class MarketplaceManagerQueueStatusService
      * @param  array{waiting: int, running: int, delayed: int, tasks: list<array<string, mixed>>}  $classified
      * @return array{state: string, message: string, log_age_seconds: ?int}
      */
-    private function workerStatus(array $classified): array
+    private function workerStatus(array $classified, string $primaryQueue): array
     {
-        $logPath = storage_path('logs/marketplace-manager-worker.log');
+        $logPath = storage_path('logs/mm-worker-'.$primaryQueue.'.log');
+        if (! is_file($logPath)) {
+            $logPath = storage_path('logs/marketplace-manager-worker.log');
+        }
         $logAge = is_file($logPath) ? max(0, time() - (int) filemtime($logPath)) : null;
         $pending = $classified['waiting'] + $classified['delayed'];
         $running = $classified['running'];
@@ -186,14 +200,17 @@ final class MarketplaceManagerQueueStatusService
         return ['state' => 'idle', 'message' => 'Queue idle.', 'log_age_seconds' => $logAge];
     }
 
-    private function failedCount(): int
+    /**
+     * @param  list<string>  $queues
+     */
+    private function failedCount(array $queues): int
     {
-        if (! Schema::hasTable('failed_jobs')) {
+        if (! Schema::hasTable('failed_jobs') || $queues === []) {
             return 0;
         }
 
         return (int) DB::table('failed_jobs')
-            ->where('queue', self::QUEUE)
+            ->whereIn('queue', $queues)
             ->where('failed_at', '>=', now()->subDay())
             ->count();
     }
@@ -241,19 +258,15 @@ final class MarketplaceManagerQueueStatusService
         return 'UnknownJob';
     }
 
-    private function jobRelatesToMarketplace(string $shortName, string $payload, string $slug): bool
+    private function jobRelatesToMarketplace(string $shortName, string $payload, string $slug, string $queue): bool
     {
-        if (str_contains(strtolower($payload), '"'.$slug.'"') || str_contains(strtolower($payload), ';s:'.strlen($slug).':"'.$slug.'"')) {
+        if ($queue === MarketplaceManagerRegistry::queueFor($slug)) {
             return true;
         }
 
-        $globalJobs = [
-            'SyncInventoryToAliexpress',
-            'SyncInventoryToAlibaba',
-            'SyncInventoryToNewegg',
-            'SyncInventoryToReverbManager',
-            'PushLinkedSkuInventoryFromShopify',
-        ];
+        if (str_contains(strtolower($payload), '"'.$slug.'"') || str_contains(strtolower($payload), ';s:'.strlen($slug).':"'.$slug.'"')) {
+            return true;
+        }
 
         if ($slug === 'reverb' && in_array($shortName, ['WarmReverbLiveListingsCache', 'ImportReverbManagerOrderToShopify', 'SyncInventoryToReverbManager'], true)) {
             return true;
@@ -266,10 +279,6 @@ final class MarketplaceManagerQueueStatusService
         }
         if ($slug === 'newegg' && in_array($shortName, ['WarmNeweggLiveListingsCache', 'ImportNeweggOrderToShopify', 'SyncInventoryToNewegg'], true)) {
             return true;
-        }
-
-        if (in_array($shortName, $globalJobs, true)) {
-            return $slug === 'reverb';
         }
 
         return false;

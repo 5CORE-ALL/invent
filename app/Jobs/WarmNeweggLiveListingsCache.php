@@ -24,7 +24,7 @@ class WarmNeweggLiveListingsCache implements ShouldQueue
 
     public function __construct()
     {
-        $this->onQueue(MarketplaceManagerRegistry::QUEUE);
+        $this->onQueue(MarketplaceManagerRegistry::queueFor('newegg'));
     }
 
     public function handle(NeweggLiveListingsService $service): void

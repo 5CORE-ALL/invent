@@ -23,7 +23,7 @@ class SyncInventoryToNewegg implements ShouldQueue, ShouldBeUnique
 
     public function __construct()
     {
-        $this->onQueue(\App\Services\MarketplaceManager\MarketplaceManagerRegistry::QUEUE);
+        $this->onQueue(\App\Services\MarketplaceManager\MarketplaceManagerRegistry::queueFor('newegg'));
     }
 
     public function uniqueId(): string
