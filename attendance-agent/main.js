@@ -4,6 +4,8 @@ const {
 } = require('electron');
 const path = require('path');
 const os = require('os');
+const http = require('http');
+const crypto = require('crypto');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
 const axios = require('axios');
@@ -954,6 +956,18 @@ ipcMain.handle('saveSetup', async (_e, { apiUrl }) => {
     return { ok: true };
 });
 
+function applyLoginSuccess(data) {
+    store.set('token', data.token);
+    store.set('user', data.user);
+    store.set('device', data.device);
+    if (data.config) config = { ...config, ...data.config };
+    enableAutoLaunch();
+    updateTray();
+    updateTrayTooltip('Signed in — clock in to start');
+    showWindow();
+    fetchSessionState().catch(() => {});
+}
+
 ipcMain.handle('login', async (_e, { email, password }) => {
     try {
         const { data } = await axios.post(`${getAgentApiPath()}/login`, {
@@ -964,15 +978,7 @@ ipcMain.handle('login', async (_e, { email, password }) => {
             os_version: os.release(),
             agent_version: AGENT_VERSION,
         }, { timeout: 20000 });
-        store.set('token', data.token);
-        store.set('user', data.user);
-        store.set('device', data.device);
-        if (data.config) config = { ...config, ...data.config };
-        enableAutoLaunch();
-        updateTray();
-        updateTrayTooltip('Signed in — clock in to start');
-        showWindow();
-        fetchSessionState().catch(() => {});
+        applyLoginSuccess(data);
         return { ok: true, user: data.user };
     } catch (err) {
         const msg = err.response?.data?.message
@@ -980,6 +986,113 @@ ipcMain.handle('login', async (_e, { email, password }) => {
             || (err.response?.status === 404 ? 'Login API not found (404). Re-save server URL on setup screen.' : null)
             || (err.code === 'ECONNREFUSED' ? 'Cannot reach server. Check the URL.' : err.message);
         return { ok: false, message: msg };
+    }
+});
+
+// Google requires desktop apps to authenticate via the system browser (embedded
+// webviews are blocked), so we spin up a one-shot local server and capture the
+// authorization code Google redirects back to via a loopback URI (RFC 8252).
+function createLoopbackServer(expectedState) {
+    let resolveCode;
+    let rejectCode;
+    const codePromise = new Promise((resolve, reject) => {
+        resolveCode = resolve;
+        rejectCode = reject;
+    });
+
+    const server = http.createServer((req, res) => {
+        let parsed;
+        try {
+            parsed = new URL(req.url, 'http://127.0.0.1');
+        } catch {
+            res.writeHead(400);
+            res.end();
+            return;
+        }
+        if (parsed.pathname !== '/callback') {
+            res.writeHead(404);
+            res.end();
+            return;
+        }
+        const code = parsed.searchParams.get('code');
+        const state = parsed.searchParams.get('state');
+        const error = parsed.searchParams.get('error');
+        const ok = !error && code && state === expectedState;
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(
+            '<html><body style="font-family:sans-serif;text-align:center;padding-top:80px">'
+            + `<h2>${ok ? 'Signed in ✓' : 'Sign-in failed'}</h2>`
+            + '<p>You can close this window and return to 5Core Attendance.</p>'
+            + '</body></html>'
+        );
+        if (ok) {
+            resolveCode(code);
+        } else {
+            rejectCode(new Error(error || 'Google sign-in was interrupted. Please try again.'));
+        }
+    });
+
+    const listen = new Promise((resolve, reject) => {
+        server.on('error', reject);
+        server.listen(0, '127.0.0.1', () => resolve(server.address().port));
+    });
+
+    return { server, listen, codePromise };
+}
+
+ipcMain.handle('googleLogin', async () => {
+    let server;
+    try {
+        const { data: pingData } = await axios.get(`${getAgentApiPath()}/ping`, { timeout: 10000 });
+        const clientId = pingData?.google_client_id;
+        if (!clientId) {
+            return { ok: false, message: 'Google sign-in is not configured on the server yet.' };
+        }
+
+        const state = crypto.randomBytes(16).toString('hex');
+        const loopback = createLoopbackServer(state);
+        server = loopback.server;
+        const port = await loopback.listen;
+        const redirectUri = `http://127.0.0.1:${port}/callback`;
+
+        const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+        authUrl.searchParams.set('client_id', clientId);
+        authUrl.searchParams.set('redirect_uri', redirectUri);
+        authUrl.searchParams.set('response_type', 'code');
+        authUrl.searchParams.set('scope', 'openid email profile');
+        authUrl.searchParams.set('access_type', 'online');
+        authUrl.searchParams.set('prompt', 'select_account');
+        authUrl.searchParams.set('state', state);
+
+        await shell.openExternal(authUrl.toString());
+
+        const timeout = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('Sign-in timed out. Please try again.')), 180000);
+        });
+        const code = await Promise.race([loopback.codePromise, timeout]);
+
+        const { data } = await axios.post(`${getAgentApiPath()}/google-login`, {
+            code,
+            redirect_uri: redirectUri,
+            machine_id: MACHINE_ID,
+            device_name: os.hostname(),
+            os_name: process.platform,
+            os_version: os.release(),
+            agent_version: AGENT_VERSION,
+        }, { timeout: 20000 });
+
+        applyLoginSuccess(data);
+        return { ok: true, user: data.user };
+    } catch (err) {
+        const msg = err.response?.data?.message
+            || err.response?.data?.errors?.email?.[0]
+            || err.response?.data?.errors?.redirect_uri?.[0]
+            || (err.code === 'ECONNREFUSED' ? 'Cannot reach server. Check the URL.' : err.message);
+        return { ok: false, message: msg || 'Google sign-in failed.' };
+    } finally {
+        if (server) {
+            try { server.close(); } catch { /* already closed */ }
+        }
     }
 });
 

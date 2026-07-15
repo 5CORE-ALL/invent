@@ -16,9 +16,11 @@ Route::prefix('attendance/desktop-api')->name('attendance.desktop-api.')->group(
         'ok' => true,
         'service' => '5core-attendance-agent',
         'version' => config('attendance.agent_version', '1.0.0'),
+        'google_client_id' => config('services.google_desktop.client_id'),
     ]))->name('ping');
 
     Route::post('/login', [AttendanceAgentController::class, 'login'])->name('login');
+    Route::post('/google-login', [AttendanceAgentController::class, 'googleLogin'])->name('google-login');
 
     Route::middleware('auth:sanctum')->group(function () {
         Route::get('/config', [AttendanceAgentController::class, 'config'])->name('config');

@@ -98,6 +98,16 @@ h2 { font-size: 1.25rem; margin-bottom: 4px; }
 .btn-danger { background: var(--danger); color: #fff; flex: 1; }
 .btn-ghost { background: var(--surface2); color: var(--text); border: 1px solid var(--border); flex: 1; }
 .btn-primary-outline { background: transparent; color: var(--primary); border: 1px solid var(--primary); flex: 1; }
+.btn-google {
+    width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;
+    background: var(--surface); color: var(--text); border: 1px solid var(--border);
+}
+.btn-google:hover:not(:disabled) { background: var(--surface2); }
+.divider {
+    display: flex; align-items: center; gap: 10px; margin: 14px 0;
+    color: var(--muted); font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.05em;
+}
+.divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
 
 .alert { padding: 8px 10px; border-radius: 10px; font-size: 0.8rem; margin-bottom: 12px; display: none; }
 .alert.show { display: block; }
