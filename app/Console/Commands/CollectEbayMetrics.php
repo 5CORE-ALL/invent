@@ -84,6 +84,7 @@ class CollectEbayMetrics extends Command
                 // Get metrics
                 $price = floatval($ebayMetric->ebay_price ?? 0);
                 $views = intval($ebayMetric->views ?? 0);
+                $l7Views = intval($ebayMetric->l7_views ?? 0);
                 $ebayL30 = intval($ebayMetric->ebay_l30 ?? 0);
                 $itemId = $ebayMetric->item_id ?? null;
                 
@@ -113,6 +114,7 @@ class CollectEbayMetrics extends Command
                 $dailyData = [
                     'price' => round($price, 2),
                     'views' => $views,
+                    'l7_views' => $l7Views,
                     'cvr_percent' => round($cvr, 2),
                     'ad_percent' => round($adPercent, 2),
                     'ebay_l30' => $ebayL30,

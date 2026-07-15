@@ -326,17 +326,23 @@ class TaskController extends Controller
         return $user && strtolower(trim($user->email ?? '')) === self::TRAINING_VIDEO_EDITOR_EMAIL;
     }
 
+    /** Default Task Manager training video (green playbox) when none is saved yet. */
+    private const TRAINING_VIDEO_DEFAULT_LINK = 'https://kommodo.ai/recordings/LV8JsSprDjbAV2HXf67P';
+
     private function getTrainingVideoLink(): string
     {
         try {
             if (\Illuminate\Support\Facades\Storage::exists(self::TRAINING_VIDEO_FILE)) {
                 $data = json_decode(\Illuminate\Support\Facades\Storage::get(self::TRAINING_VIDEO_FILE), true);
-                return is_array($data) ? (string) ($data['link'] ?? '') : '';
+                $link = is_array($data) ? trim((string) ($data['link'] ?? '')) : '';
+                if ($link !== '') {
+                    return $link;
+                }
             }
         } catch (\Throwable $e) {
-            // ignore and fall through to empty
+            // ignore and fall through to default
         }
-        return '';
+        return self::TRAINING_VIDEO_DEFAULT_LINK;
     }
 
     /** Return the current training video link as JSON. */
@@ -1918,6 +1924,7 @@ class TaskController extends Controller
         try {
             $user = Auth::user();
             $isAdmin = \App\Support\SuperAdminAccess::isTaskAdmin($user);
+            $canBulkEditAny = $isAdmin || TaskPolicy::userHasSpecialTaskPermission($user);
 
             // Check if this is for automated tasks
             // Either based on is_automated flag or specific actions only for automated tasks
@@ -2066,8 +2073,8 @@ class TaskController extends Controller
             case 'tid':
             case 'assignee':
             case 'etc':
-                // Other bulk operations require admin privileges
-                if (!$isAdmin) {
+                // Bulk field edits: admins + special task-permission users
+                if (!$canBulkEditAny) {
                     return response()->json([
                         'success' => false,
                         'message' => 'Unauthorized. Only administrators can perform bulk updates.'
@@ -2162,8 +2169,8 @@ class TaskController extends Controller
                 ]);
             
             case 'assign_assignor':
-                // Bulk assign assignor (admin only)
-                if (!$isAdmin) {
+                // Bulk assign assignor (admin / special task-permission users)
+                if (!$canBulkEditAny) {
                     return response()->json([
                         'success' => false,
                         'message' => 'Only admins can change assignor'

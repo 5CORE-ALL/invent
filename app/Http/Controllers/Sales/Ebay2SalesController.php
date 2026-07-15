@@ -155,8 +155,8 @@ class Ebay2SalesController extends Controller
                     if ($lp === 0 && isset($pm->lp)) {
                         $lp = floatval($pm->lp);
                     }
-                    // Use ebay2_ship for eBay 2, fallback to regular ship if not set
-                    $ship = isset($values["ebay2_ship"]) && $values["ebay2_ship"] !== null ? floatval($values["ebay2_ship"]) : (isset($values["ship"]) ? floatval($values["ship"]) : 0);
+                    // Same normal ship as eBay 1 (Values['ship']), not ebay2_ship
+                    $ship = isset($values["ship"]) ? floatval($values["ship"]) : (isset($pm->ship) ? floatval($pm->ship) : 0);
                     $weightAct = isset($values["wt_act"]) ? floatval($values["wt_act"]) : 0;
                 }
 
@@ -166,8 +166,14 @@ class Ebay2SalesController extends Controller
                 // T Weight = Weight Act * Quantity
                 $tWeight = $weightAct * $quantity;
 
-                // Ship Cost = ship (not divided by quantity - each unit bears full shipping cost)
-                $shipCost = $ship;
+                // Ship Cost — same rules as eBay 1
+                if ($quantity == 1) {
+                    $shipCost = $ship;
+                } elseif ($quantity > 1 && $tWeight < 20) {
+                    $shipCost = $ship / $quantity;
+                } else {
+                    $shipCost = $ship;
+                }
 
                 // COGS = LP * quantity
                 $cogs = $lp * $quantity;

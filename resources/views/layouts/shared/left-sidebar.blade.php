@@ -1388,6 +1388,16 @@
                                                 <li>
                                                     <a href="{{ route('amazon.ads.all') }}">Ads All Amz</a>
                                                 </li>
+                                                @if (Route::has('amazon.ads.campaign-link.index'))
+                                                <li>
+                                                    <a href="{{ route('amazon.ads.campaign-link.index') }}">Campaign Link Amz</a>
+                                                </li>
+                                                @endif
+                                                @if (Route::has('amazon.ads.negative-link.index'))
+                                                <li>
+                                                    <a href="{{ route('amazon.ads.negative-link.index') }}">Negative Link Amz</a>
+                                                </li>
+                                                @endif
                                                 <li>
                                                     <a href="{{ route('amazon.ads.audit') }}">Ads Audit Amz</a>
                                                 </li>
@@ -2823,6 +2833,9 @@
                         </li>
                         <li>
                             <a href="{{ url('/purchase-master/sku-link-lmp') }}">SKU Link LMP</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('ads.link.index') }}">Ads Link</a>
                         </li>
                         <li>
                             <a href="{{ route('ready.to.ship') }}">Ready To Ship</a>

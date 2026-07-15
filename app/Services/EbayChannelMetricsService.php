@@ -130,10 +130,8 @@ class EbayChannelMetricsService
     {
         if ($which === 1) {
             $query = EbayOrder::with('items')->where('period', 'l60');
-            $shipKey = 'ship';
         } else {
             $query = Ebay2Order::with('items')->where('period', 'l60');
-            $shipKey = 'ebay2_ship';
         }
 
         $orders = self::applyActiveOrderFilter($query)->get();
@@ -183,13 +181,7 @@ class EbayChannelMetricsService
                         $lp = (float) $pm->lp;
                     }
 
-                    if ($which === 2) {
-                        $ship = isset($values[$shipKey]) && $values[$shipKey] !== null
-                            ? (float) $values[$shipKey]
-                            : (isset($values['ship']) ? (float) $values['ship'] : 0.0);
-                    } else {
-                        $ship = isset($values['ship']) ? (float) $values['ship'] : (isset($pm->ship) ? (float) $pm->ship : 0.0);
-                    }
+                    $ship = isset($values['ship']) ? (float) $values['ship'] : (isset($pm->ship) ? (float) $pm->ship : 0.0);
                 }
 
                 $totalCogs += $lp * $quantity;

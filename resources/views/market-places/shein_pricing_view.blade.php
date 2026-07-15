@@ -46,38 +46,99 @@
             padding-right: 0 !important;
         }
 
-        /* ── DIL dropdown (identical to TikTok) ── */
-        .ae-manual-dropdown { position: relative; display: inline-block; }
-        .ae-manual-dropdown .dropdown-menu {
-            position: absolute; top: 100%; left: 0; z-index: 1050;
-            display: none; min-width: 200px; padding: .5rem 0; margin: 0;
-            background: #fff; border: 1px solid #dee2e6; border-radius: .375rem;
-            box-shadow: 0 .125rem .25rem rgba(0,0,0,.075);
+        /* Sku Link LMP (mirrors /ebay-tabulator-view) */
+        .linked-sku-badge-wrap { display: inline-flex; align-items: center; gap: 2px; }
+        .linked-sku-badge-wrap .sku-link-lmp-remove { font-size: 0.55rem; opacity: 0.65; padding: 0; margin-left: 2px; }
+        .linked-sku-badge-wrap .sku-link-lmp-remove:hover { opacity: 1; }
+        .sku-link-lmp-suggestion-item { cursor: pointer; }
+        .sku-link-lmp-suggestion-item .form-check-input { pointer-events: none; }
+        .sku-link-lmp-selected-chip {
+            display: inline-flex; align-items: center; gap: 4px;
+            padding: 2px 8px; border-radius: 999px; background: #f1f5f9;
+            border: 1px solid #e2e8f0; font-size: 12px;
         }
-        .ae-manual-dropdown.show .dropdown-menu { display: block; }
-        .ae-dropdown-item {
-            display: block; width: 100%; padding: .5rem 1rem; clear: both;
-            font-weight: 400; color: #212529; text-decoration: none;
-            background: transparent; border: 0; cursor: pointer; white-space: nowrap;
+        .sku-link-lmp-selected-chip button {
+            border: 0; background: transparent; padding: 0; line-height: 1;
+            font-size: 14px; color: #64748b;
         }
-        .ae-dropdown-item:hover { background: #e9ecef; }
 
-        /* ── Status circles ── */
-        .ae-sc { display:inline-block; width:12px; height:12px; border-radius:50%; margin-right:6px; border:1px solid #ddd; }
-        .ae-sc.def    { background:#6c757d; }
-        .ae-sc.red    { background:#dc3545; }
-        .ae-sc.yellow { background:#ffc107; }
-        .ae-sc.green  { background:#28a745; }
-        .ae-sc.pink   { background:#e83e8c; }
-
-        /* Summary badges — horizontal scroll (eBay 2 / TikTok style) */
-        #summary-stats .d-flex.flex-wrap.gap-2 {
-            display: flex; flex-wrap: nowrap; align-items: stretch; gap: clamp(0.2rem, 0.5vw, 0.45rem);
-            width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: thin;
+        /* Toolbar: compact controls, wrap to next row (matches /ebay2-tabulator-view).
+           Do NOT use overflow-x — it clips Bootstrap dropdown menus (Columns).
+           z-index: table is a later sibling so it paints over the toolbar unless
+           the toolbar creates a higher stacking context (Columns / Sample menus). */
+        .shein-toolbar-row {
+            row-gap: 4px;
+            position: relative;
+            z-index: 1055;
         }
-        #summary-stats .d-flex.flex-wrap.gap-2 > .badge {
-            flex: 1 1 0; min-width: 0; font-size: clamp(0.62rem, 0.35rem + 0.85vw, 1.05rem);
+        .shein-toolbar-row > .form-select,
+        .shein-toolbar-row .form-select.pricing-filter-item,
+        .shein-toolbar-row > .form-control,
+        .shein-toolbar-row > .btn,
+        .shein-toolbar-row > .dropdown > .btn,
+        .shein-toolbar-row > .btn-group > .btn {
+            padding: 3px 10px;
+            font-size: 0.8125rem;
+            line-height: 1.3;
+            min-height: 30px;
+        }
+        .shein-toolbar-row .form-select {
+            padding-right: 24px;
+            background-position: right 6px center;
+            width: auto;
+            display: inline-block;
+        }
+        .shein-toolbar-row .dropdown,
+        .shein-toolbar-row .btn-group {
+            position: relative;
+            z-index: 1056;
+        }
+        .shein-toolbar-row .dropdown-menu {
+            font-size: 0.8125rem;
+            z-index: 1060 !important;
+        }
+        #shein-pricing-table {
+            position: relative;
+            z-index: 1;
+        }
+        .shein-toolbar-row .pricing-filter-item .form-control {
+            padding: 3px 8px;
+            font-size: 0.8125rem;
+            min-height: 30px;
+        }
+        .shein-toolbar-row .pricing-filter-item .btn {
+            padding: 3px 8px;
+            min-height: 30px;
+        }
+
+        /* Badges above the filter controls (matches /ebay2-tabulator-view) */
+        #summary-stats {
+            order: -1;
+            padding: 0.5rem 0.7rem !important;
+            margin-top: 0 !important;
+            margin-bottom: 0.5rem !important;
+        }
+        #summary-stats .shein-summary-badge-row {
+            display: flex;
+            flex-wrap: nowrap;
+            align-items: stretch;
+            gap: clamp(0.2rem, 0.5vw, 0.45rem);
+            width: 100%;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: thin;
+        }
+        #summary-stats .shein-summary-badge-row > .badge {
+            flex: 1 1 0;
+            min-width: 0;
+            font-size: clamp(0.62rem, 0.35rem + 0.85vw, 1.05rem);
             padding: clamp(0.28rem, 0.4vw, 0.5rem) clamp(0.2rem, 0.5vw, 0.5rem);
+            font-weight: bold;
+            box-sizing: border-box;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
             white-space: nowrap;
         }
     </style>
@@ -91,34 +152,43 @@
 
     <div class="row">
         <div class="col-12">
-            <div class="card">
-                <div class="card-body">
+            <div class="card shadow-sm">
+                <div class="card-body py-2 d-flex flex-column">
 
-                    {{-- ── Filter bar (TikTok style) ── --}}
-                    <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                    {{-- Filter toolbar (layout / compact UI matches /ebay2-tabulator-view) --}}
+                    <div class="d-flex align-items-center flex-wrap gap-2 shein-toolbar-row mb-1">
+                        <input type="text" id="pricing-sku-search" class="form-control form-control-sm"
+                            placeholder="Search SKU..." style="width: 160px; display: inline-block;">
+                        <input type="text" id="pricing-parent-search" class="form-control form-control-sm"
+                            placeholder="Search Parent..." style="width: 160px; display: inline-block;">
 
-                        {{-- Row type filter (All Rows / SKUs) — parent rows are hidden --}}
-                    <select id="ae-row-type-filter" class="form-select form-select-sm" style="width:120px;">
-                        <option value="all" selected>All Rows</option>
-                        <option value="skus">SKUs</option>
-                    </select>
-
-                    {{-- Inventory filter --}}
-                        <select id="ae-inv-filter" class="form-select form-select-sm" style="width:140px;">
-                            <option value="all">All Inventory</option>
-                            <option value="zero">0 Inventory</option>
-                            <option value="more" selected>More than 0</option>
+                        <select id="ae-inv-filter" class="form-select form-select-sm pricing-filter-item">
+                            <option value="all">INV</option>
+                            <option value="zero">0 INV</option>
+                            <option value="more" selected>INV &gt; 0</option>
                         </select>
 
-                        {{-- Shein Stock filter --}}
-                        <select id="ae-stock-filter" class="form-select form-select-sm" style="width:140px;">
-                            <option value="all">Shein Stock</option>
-                            <option value="zero">0 Shein Stock</option>
-                            <option value="more">More than 0</option>
+                        <select id="ae-stock-filter" class="form-select form-select-sm pricing-filter-item">
+                            <option value="all">Sh Stock</option>
+                            <option value="zero">0 Sh Stock</option>
+                            <option value="more">Sh Stock &gt; 0</option>
                         </select>
 
-                        {{-- GPFT% filter (slabs match ebay-tabulator-view) --}}
-                        <select id="ae-gpft-filter" class="form-select form-select-sm" style="width:130px;">
+                        <select id="ae-al30-filter" class="form-select form-select-sm pricing-filter-item"
+                            title="Excludes 0 inventory items">
+                            <option value="all">Sh L30</option>
+                            <option value="0">0</option>
+                            <option value="0-10">1–10</option>
+                            <option value="10plus">10+</option>
+                        </select>
+
+                        <select id="ae-nrl-filter" class="form-select form-select-sm pricing-filter-item">
+                            <option value="all">Status</option>
+                            <option value="REQ" selected>REQ Only</option>
+                            <option value="NR">NR Only</option>
+                        </select>
+
+                        <select id="ae-gpft-filter" class="form-select form-select-sm pricing-filter-item">
                             <option value="all">GPFT%</option>
                             <option value="negative">Negative</option>
                             <option value="0-10">0-10%</option>
@@ -128,8 +198,7 @@
                             <option value="40plus">Above 40%</option>
                         </select>
 
-                        {{-- ROI% filter --}}
-                        <select id="ae-roi-filter" class="form-select form-select-sm" style="width:130px;">
+                        <select id="ae-roi-filter" class="form-select form-select-sm pricing-filter-item">
                             <option value="all">ROI%</option>
                             <option value="lt40">&lt; 40%</option>
                             <option value="40-75">40–75%</option>
@@ -137,126 +206,121 @@
                             <option value="gt125">125%+</option>
                         </select>
 
-                        {{-- AL30 filter --}}
-                        <select id="ae-al30-filter" class="form-select form-select-sm" style="width:130px;" title="Excludes 0 inventory items">
-                            <option value="all">Sh L30</option>
-                            <option value="0">0</option>
-                            <option value="0-10">1–10</option>
-                            <option value="10plus">10+</option>
+                        <select id="ae-map-filter" class="form-select form-select-sm pricing-filter-item">
+                            <option value="all">MAP</option>
+                            <option value="map">MP only</option>
+                            <option value="nmap">N MP only</option>
                         </select>
 
-                        {{-- Map filter --}}
-                        <select id="ae-map-filter" class="form-select form-select-sm" style="width:120px;">
-                            <option value="all">Map</option>
-                            <option value="map">Map only</option>
-                            <option value="nmap">N Map only</option>
+                        <select id="ae-sprice-filter" class="form-select form-select-sm pricing-filter-item">
+                            <option value="all">SPRICE</option>
+                            <option value="blank">Blank SPRICE only</option>
                         </select>
 
-                        {{-- DIL% dropdown (identical to TikTok) --}}
-                        <div class="ae-manual-dropdown">
-                            <button class="btn btn-light btn-sm ae-dil-toggle" type="button" id="ae-dil-btn">
-                                <span class="ae-sc def"></span>DIL%
-                            </button>
-                            <ul class="dropdown-menu">
-                                <li><a class="ae-dropdown-item ae-dil-item active" href="#" data-color="all">
-                                    <span class="ae-sc def"></span>All DIL</a></li>
-                                <li><a class="ae-dropdown-item ae-dil-item" href="#" data-color="red">
-                                    <span class="ae-sc red"></span>Red (&lt;16.7%)</a></li>
-                                <li><a class="ae-dropdown-item ae-dil-item" href="#" data-color="yellow">
-                                    <span class="ae-sc yellow"></span>Yellow (16.7–25%)</a></li>
-                                <li><a class="ae-dropdown-item ae-dil-item" href="#" data-color="green">
-                                    <span class="ae-sc green"></span>Green (25–50%)</a></li>
-                                <li><a class="ae-dropdown-item ae-dil-item" href="#" data-color="pink">
-                                    <span class="ae-sc pink"></span>Pink (50%+)</a></li>
-                            </ul>
-                        </div>
+                        {{-- DIL Filter (plain select — matches /ebay2-tabulator-view) --}}
+                        <select id="ae-dil-filter" class="form-select form-select-sm pricing-filter-item">
+                            <option value="all">DIL%</option>
+                            <option value="red">Red &lt;25%</option>
+                            <option value="green">Green 25-50%</option>
+                            <option value="pink">Pink 50%+</option>
+                        </select>
 
-                        {{-- SKU search --}}
-                        <input type="text" id="pricing-sku-search" class="form-control form-control-sm"
-                            style="max-width:220px;" placeholder="Search SKU...">
+                        <select id="ae-row-type-filter" class="form-select form-select-sm pricing-filter-item">
+                            <option value="all" selected>All Rows</option>
+                            <option value="skus">SKUs</option>
+                        </select>
 
-                        <button type="button" id="refresh-pricing-table" class="btn btn-sm btn-outline-primary">
-                            <i class="fa fa-refresh"></i> Refresh
-                        </button>
-                        <button type="button" id="export-pricing-btn" class="btn btn-sm btn-success">
-                            <i class="fas fa-file-csv"></i> Export CSV
-                        </button>
-                        <a href="{{ route('shein.pricing.sample') }}" class="btn btn-sm btn-outline-secondary">
-                            <i class="fas fa-download"></i> Sample
-                        </a>
-                        <button type="button" class="btn btn-sm btn-warning"
-                            data-bs-toggle="modal" data-bs-target="#uploadPriceSheetModal">
-                            <i class="fas fa-upload"></i> Upload Price
-                        </button>
-
-                        {{-- Price Mode (Increase / Decrease) – identical to TikTok --}}
-                        <button id="ae-price-mode-btn" class="btn btn-sm btn-secondary" title="Cycle: Off → Decrease → Increase">
-                            <i class="fas fa-exchange-alt"></i> Price Mode
-                        </button>
-
-                        {{-- Target ROI% bulk control — back-solves SPRICE so SROI = Target ROI%. --}}
-                        {{-- Formula: sprice = (LP × (1 + ROI%/100) + Ship) / margin --}}
-                        <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
-                            id="ae-target-roi-controls"
-                            title="Target ROI% — sets SPRICE = (LP × (1 + Target ROI%/100) + Ship) / margin on every selected row (back-solves so SROI column equals the target)">
-                            <label for="ae-target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">Target ROI%:</label>
-                            <input type="number" id="ae-target-roi-input" class="form-control form-control-sm text-end"
-                                placeholder="e.g. 30" step="0.1" style="width: 80px;"
-                                title="Target ROI% applied to all selected rows when you click 'Apply SPRICE'">
-                            <button id="ae-apply-target-roi-btn" class="btn btn-sm btn-primary" type="button"
-                                title="Compute & save SPRICE = (LP × (1 + Target ROI%/100) + Ship) / margin for every selected row">
-                                <i class="fas fa-calculator"></i> Apply SPRICE
-                            </button>
-                        </div>
-
-                        {{-- Target GPFT% bulk control — back-solves SPRICE so SGPFT = Target GPFT%. --}}
-                        {{-- Formula: sprice = (LP + Ship) / (margin − GPFT%/100). Target GPFT% must be < margin*100. --}}
-                        <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
-                            id="ae-target-gpft-controls"
-                            title="Target GPFT% — sets SPRICE = (LP + Ship) / (margin − Target GPFT%/100) on every selected row (back-solves so SGPFT column equals the target)">
-                            <label for="ae-target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">Target GPFT%:</label>
-                            <input type="number" id="ae-target-gpft-input" class="form-control form-control-sm text-end"
-                                placeholder="e.g. 30" step="0.1" style="width: 80px;"
-                                title="Target GPFT% applied to all selected rows when you click 'Apply SPRICE'. Must be less than the Shein take-home margin.">
-                            <button id="ae-apply-target-gpft-btn" class="btn btn-sm btn-primary" type="button"
-                                title="Compute & save SPRICE = (LP + Ship) / (margin − Target GPFT%/100) for every selected row">
-                                <i class="fas fa-calculator"></i> Apply SPRICE
-                            </button>
-                        </div>
-
-                        {{-- Column Visibility Dropdown (same UX as ebay-tabulator-view) --}}
-                        <div class="dropdown d-inline-block ms-2">
+                        <div class="dropdown d-inline-block pricing-filter-item">
                             <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
-                                id="ae-column-visibility-dropdown" data-bs-toggle="dropdown" aria-expanded="false">
-                                <i class="fa fa-eye"></i> Columns
+                                id="ae-column-visibility-dropdown" data-bs-toggle="dropdown" data-bs-auto-close="outside"
+                                aria-expanded="false" title="Columns">
+                                <i class="fa fa-eye"></i>
                             </button>
                             <ul class="dropdown-menu" aria-labelledby="ae-column-visibility-dropdown"
                                 id="ae-column-dropdown-menu" style="max-height: 400px; overflow-y: auto;">
-                                {{-- Populated by JS --}}
                             </ul>
                         </div>
-                        <button id="ae-show-all-columns-btn" class="btn btn-sm btn-outline-secondary">
-                            <i class="fa fa-eye"></i> Show All
+
+                        <button id="ae-price-mode-btn" type="button" class="btn btn-sm btn-secondary pricing-filter-item"
+                            title="Cycle: Off → Decrease → Increase">
+                            <i class="fas fa-exchange-alt"></i> Price %
                         </button>
 
-                        <!-- Play / Pause parent navigation -->
-                        <div class="btn-group align-items-center ms-2" role="group" aria-label="Parent navigation">
-                            <button type="button" id="play-backward" class="btn btn-sm btn-light rounded-circle shadow-sm" title="Previous parent" disabled>
+                        <button type="button" id="export-pricing-btn" class="btn btn-sm btn-success pricing-filter-item" title="Export">
+                            <i class="fas fa-file-excel"></i>
+                        </button>
+
+                        {{-- Target ROI% (compact — same UX as /ebay2-tabulator-view) --}}
+                        <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light pricing-filter-item"
+                            id="ae-target-roi-controls"
+                            title="Target ROI% — sets SPRICE = (LP × (1 + Target ROI%/100) + Ship) / margin on every selected row">
+                            <label for="ae-target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
+                                <span style="font-size:1em;" aria-hidden="true">🎯</span> ROI%:
+                            </label>
+                            <input type="number" id="ae-target-roi-input" class="form-control form-control-sm text-end"
+                                placeholder="30" step="0.1" style="width: 56px;"
+                                title="Target ROI% applied to all selected rows when you click Apply">
+                            <button id="ae-apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
+                                title="Compute & save SPRICE for every selected row">
+                                <i class="fas fa-calculator"></i>
+                            </button>
+                        </div>
+
+                        {{-- Target GPFT% (compact — same UX as /ebay2-tabulator-view) --}}
+                        <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light pricing-filter-item"
+                            id="ae-target-gpft-controls"
+                            title="Target GPFT% — sets SPRICE = (LP + Ship) / (margin − Target GPFT%/100) on every selected row">
+                            <label for="ae-target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
+                                <span style="font-size:1em;" aria-hidden="true">🎯</span> GPFT%:
+                            </label>
+                            <input type="number" id="ae-target-gpft-input" class="form-control form-control-sm text-end"
+                                placeholder="30" step="0.1" style="width: 56px;"
+                                title="Target GPFT% applied to all selected rows when you click Apply">
+                            <button id="ae-apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
+                                title="Compute & save SPRICE for every selected row">
+                                <i class="fas fa-calculator"></i>
+                            </button>
+                        </div>
+
+                        <button type="button" id="refresh-pricing-table" class="btn btn-sm btn-outline-primary pricing-filter-item">
+                            <i class="fa fa-refresh"></i>
+                        </button>
+                        <div class="btn-group pricing-filter-item">
+                            <button type="button" class="btn btn-sm btn-warning dropdown-toggle" data-bs-toggle="dropdown"
+                                aria-expanded="false" title="Sample / Upload Price">
+                                <i class="fas fa-file-import"></i>
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end">
+                                <li>
+                                    <a class="dropdown-item" href="{{ route('shein.pricing.sample') }}">
+                                        <i class="fas fa-download text-info"></i> Sample CSV
+                                    </a>
+                                </li>
+                                <li>
+                                    <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#uploadPriceSheetModal">
+                                        <i class="fas fa-upload text-warning"></i> Upload Price
+                                    </a>
+                                </li>
+                            </ul>
+                        </div>
+
+                        <div class="btn-group align-items-center pricing-filter-item" role="group" aria-label="Parent navigation">
+                            <button type="button" id="play-backward" class="btn btn-sm btn-light" title="Previous parent" disabled>
                                 <i class="fas fa-step-backward"></i>
                             </button>
-                            <button type="button" id="play-auto" class="btn btn-sm btn-primary rounded-circle shadow-sm" title="Start parent navigation">
+                            <button type="button" id="play-auto" class="btn btn-sm btn-primary" title="Start parent navigation">
                                 <i class="fas fa-play"></i>
                             </button>
-                            <button type="button" id="play-pause" class="btn btn-sm btn-warning rounded-circle shadow-sm" style="display: none;" title="Stop navigation and show all">
+                            <button type="button" id="play-pause" class="btn btn-sm btn-warning" style="display: none;" title="Stop navigation and show all">
                                 <i class="fas fa-pause"></i>
                             </button>
-                            <button type="button" id="play-forward" class="btn btn-sm btn-light rounded-circle shadow-sm" title="Next parent" disabled>
+                            <button type="button" id="play-forward" class="btn btn-sm btn-light" title="Next parent" disabled>
                                 <i class="fas fa-step-forward"></i>
                             </button>
                         </div>
                     </div>
 
-                    {{-- Discount input (shown when Price Mode is active) – identical to TikTok --}}
+                    {{-- Discount input (shown when Price % is active) --}}
                     <div id="ae-discount-container" class="p-2 bg-light border rounded mb-2" style="display:none;">
                         <div class="d-flex align-items-center gap-2">
                             <span id="ae-selected-skus-count" class="fw-bold text-secondary"></span>
@@ -273,21 +337,21 @@
                         </div>
                     </div>
 
-                    {{-- ── Summary badges (click chart: ae-badge-chart; hover ½s chart: ae-hover-chart; filter badges: hover-only so click = filter) ── --}}
-                    <div id="summary-stats" class="mt-2 p-3 bg-light rounded mb-3">
-                        <div class="d-flex flex-wrap gap-2">
-                            <span class="badge bg-secondary fs-6 p-2 ae-badge-chart ae-hover-chart" id="ae-total-sku-badge" data-metric="total_sku" style="font-weight:700;cursor:pointer;" title="Click or hover (½s) for daily trend">SKU: 0</span>
-                            <span class="badge bg-primary fs-6 p-2 ae-badge-chart ae-hover-chart" id="ae-total-sales-badge" data-metric="total_sales" style="font-weight:700;cursor:pointer;" title="Click or hover (½s) for daily trend">Sales: $0</span>
-                            <span class="badge bg-success fs-6 p-2 ae-badge-chart ae-hover-chart" id="ae-total-pft-badge" data-metric="total_pft" style="font-weight:700;cursor:pointer;color:#111;" title="Click or hover (½s) for daily trend">PFT: $0</span>
-                            <span class="badge bg-warning fs-6 p-2 ae-badge-chart ae-hover-chart" id="ae-total-al30-badge" data-metric="total_al30" style="font-weight:700;color:#111;cursor:pointer;" title="Click or hover (½s) for daily trend">Sh L30: 0</span>
-                            <span class="badge bg-info fs-6 p-2 ae-badge-chart ae-hover-chart" id="ae-avg-gpft-badge" data-metric="avg_gpft" style="font-weight:700;color:#111;cursor:pointer;" title="Click or hover (½s) for daily trend">GPFT: 0%</span>
-                            <span class="badge bg-danger fs-6 p-2 ae-hover-chart" id="ae-missing-badge" data-metric="missing_count" style="font-weight:700;cursor:pointer;" title="Click to filter · Hover ½s for daily trend">Missing L: 0</span>
-                            <span class="badge fs-6 p-2 ae-hover-chart" id="ae-map-badge" data-metric="map_count" style="font-weight:700;cursor:pointer;background:#198754;color:#fff;" title="Click to filter · Hover ½s for daily trend">Map: 0</span>
-                            <span class="badge fs-6 p-2 ae-hover-chart" id="ae-nmap-badge" data-metric="nmap_count" style="font-weight:700;cursor:pointer;background:#a71d2a;color:#fff;" title="Click to filter · Hover ½s for daily trend">N Map: 0</span>
-                            <span class="badge fs-6 p-2 ae-hover-chart" id="ae-zero-sold-badge" data-metric="zero_sold" style="font-weight:700;cursor:pointer;background:#dc3545;color:#fff;" title="Click to filter · Hover ½s for daily trend">0 Sold: 0</span>
-                            <span class="badge fs-6 p-2 ae-hover-chart" id="ae-more-sold-badge" data-metric="more_sold" style="font-weight:700;cursor:pointer;background:#28a745;color:#fff;" title="Click to filter · Hover ½s for daily trend">&gt;0 Sold: 0</span>
-                            <span class="badge bg-warning fs-6 p-2 ae-badge-chart ae-hover-chart d-none" id="ae-avg-dil-badge" data-metric="avg_dil" style="font-weight:700;color:#111;cursor:pointer;" title="Click or hover (½s) for daily trend">DIL%: 0%</span>
-                            <span class="badge bg-secondary fs-6 p-2 ae-badge-chart ae-hover-chart" id="ae-avg-roi-badge" data-metric="avg_roi" style="font-weight:700;color:#fff;cursor:pointer;" title="Click or hover (½s) for daily trend">ROI: 0%</span>
+                    {{-- Summary badges above filters via CSS order (matches /ebay2-tabulator-view: no hover chart) --}}
+                    <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
+                        <div class="shein-summary-badge-row">
+                            <span class="badge bg-danger fs-6 p-2" id="ae-zero-sold-badge" style="font-weight:700;cursor:pointer;" title="Click to filter 0 sold items">0 Sold: 0</span>
+                            <span class="badge fs-6 p-2" id="ae-more-sold-badge" style="font-weight:700;cursor:pointer;background:#b6e0fe;color:#0f172a;" title="Click to filter sold items">&gt; 0 Sold: 0</span>
+                            <span class="badge bg-primary fs-6 p-2" id="ae-total-sales-badge" style="font-weight:700;color:#111;" title="Same as /shein-tabulator: Σ (product_price × qty) from uploaded orders">Sales: $0</span>
+                            <span class="badge bg-warning fs-6 p-2" id="ae-total-al30-badge" style="font-weight:700;color:#111;" title="Same as /shein-tabulator Total Quantity">Qty: 0</span>
+                            <span class="badge bg-info fs-6 p-2" id="ae-avg-gpft-badge" style="font-weight:700;color:#111;" title="Same as /shein-tabulator PFT%: Σ PFT / Σ Sales (sold product_price)">GPFT: 0%</span>
+                            <span class="badge bg-secondary fs-6 p-2" id="ae-avg-roi-badge" style="font-weight:700;color:#fff;" title="Same as /shein-tabulator ROI%: Σ PFT / Σ (LP × qty)">GROI: 0%</span>
+                            <span class="badge bg-success fs-6 p-2 d-none" id="ae-total-pft-badge" style="font-weight:700;color:#111;" aria-hidden="true">PFT: $0</span>
+                            <span class="badge bg-secondary fs-6 p-2" id="ae-total-sku-badge" style="font-weight:700;">SKU: 0</span>
+                            <span class="badge bg-danger fs-6 p-2" id="ae-missing-badge" style="font-weight:700;cursor:pointer;" title="Click to filter Missing L">M L: 0</span>
+                            <span class="badge fs-6 p-2 d-none" id="ae-map-badge" style="font-weight:700;cursor:pointer;background:#198754;color:#fff;" title="Click to filter Map rows" aria-hidden="true">Map: 0</span>
+                            <span class="badge fs-6 p-2" id="ae-nmap-badge" style="font-weight:700;cursor:pointer;background:#a71d2a;color:#fff;" title="Click to filter N Map rows">N Map: 0</span>
+                            <span class="badge bg-warning fs-6 p-2 d-none" id="ae-avg-dil-badge" style="font-weight:700;color:#111;" aria-hidden="true">DIL%: 0%</span>
                         </div>
                     </div>
 
@@ -400,6 +464,80 @@
             </div>
         </div>
     </div>
+
+    <!-- LMP Competitors Modal (same as Amazon page) -->
+    <div class="modal fade" id="sheinLmpModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title">
+                        <i class="fa fa-shopping-cart"></i> Competitors for SKU: <span id="sheinLmpSku"></span>
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <!-- Add New Competitor LMP -->
+                    <div class="card mb-3 border-success">
+                        <div class="card-header bg-success text-white py-2">
+                            <strong><i class="fa fa-plus-circle"></i> Add Competitor LMP</strong>
+                            <span class="float-end small">Max 4 per SKU</span>
+                        </div>
+                        <div class="card-body py-2">
+                            <form id="sheinAddLmpForm" class="row g-2 align-items-end">
+                                <div class="col-md-3">
+                                    <label class="form-label mb-1 small"><strong>SKU</strong></label>
+                                    <input type="text" class="form-control form-control-sm" id="sheinAddLmpSku" readonly>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label mb-1 small"><strong>Price</strong> <span class="text-danger">*</span></label>
+                                    <input type="number" class="form-control form-control-sm" id="sheinAddLmpPrice" placeholder="9.99" step="0.01" min="0.01" required>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label mb-1 small"><strong>Product Link</strong></label>
+                                    <input type="url" class="form-control form-control-sm" id="sheinAddLmpLink" placeholder="https://us.shein.com/...">
+                                </div>
+                                <div class="col-md-2">
+                                    <button type="submit" class="btn btn-success btn-sm w-100" id="sheinAddLmpBtn">
+                                        <i class="fa fa-plus"></i> Add
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+
+                    <div id="sheinLmpDataList"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- Sku Link LMP Modal (same as /ebay-tabulator-view; shared sku.link.lmp.* routes) --}}
+    <div class="modal fade" id="skuLinkLmpModal" tabindex="-1" aria-labelledby="skuLinkLmpModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="skuLinkLmpModalLabel">Sku Link LMP</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small mb-2">Link one or more SKUs to <strong id="sku-link-lmp-source"></strong>. All linked SKUs will show each other's LMP.</p>
+                    <label for="sku-link-lmp-input" class="form-label mb-1">Search SKU to link</label>
+                    <input type="text" id="sku-link-lmp-input" class="form-control" placeholder="Search or enter SKU..." autocomplete="off">
+                    <div id="sku-link-lmp-suggestions" class="list-group mt-2 d-none" style="max-height: 220px; overflow-y: auto;"></div>
+                    <div id="sku-link-lmp-selected-wrap" class="mt-2 d-none">
+                        <div class="small text-muted mb-1">Selected to link (<span id="sku-link-lmp-selected-count">0</span>):</div>
+                        <div id="sku-link-lmp-selected-skus" class="d-flex flex-wrap"></div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="sku-link-lmp-save-btn">
+                        <i class="fas fa-link"></i> <span id="sku-link-lmp-save-btn-label">Link SKU(s)</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script-bottom')
@@ -409,6 +547,8 @@
     <script>
         let table = null;
         let summaryDataCache = [];
+        // Sales / GPFT / GROI from /shein-tabulator upload (product_price × qty) — not special_offer
+        let salesPageTotals = null;
 
         // Badge-click filter flags (identical to TikTok pattern)
         let aeMissingActive  = false;
@@ -466,7 +606,7 @@
                 return;
             }
             $btn.removeClass('btn-danger btn-primary').addClass('btn-secondary')
-                .html('<i class="fas fa-exchange-alt"></i> Price Mode');
+                .html('<i class="fas fa-exchange-alt"></i> Price %');
             selectedSkus.clear();
             updateSelectedCount();
         }
@@ -584,6 +724,24 @@
             return inv > 0 && nr === 'REQ' && (isMissingShein || price <= 0);
         }
 
+        /** MAP / N MP helpers — same structure as /ebay2-tabulator-view (both sides need stock). */
+        function sheinRowIsListedForMap(row) {
+            if (!row || row.is_parent) return false;
+            const inv = parseFloat(row.inv) || 0;
+            if (inv <= 0) return false;
+            if (sheinNrReq(row) !== 'REQ') return false;
+            if (row.is_missing_shein || (parseFloat(row.special_offer) || 0) <= 0) return false;
+            return (parseFloat(row.shein_stock) || 0) > 0;
+        }
+        function sheinRowIsMap(row) {
+            if (!sheinRowIsListedForMap(row)) return false;
+            return sheinInvWithinMapTolerance(row.inv, row.shein_stock);
+        }
+        function sheinRowIsNMap(row) {
+            if (!sheinRowIsListedForMap(row)) return false;
+            return !sheinInvWithinMapTolerance(row.inv, row.shein_stock);
+        }
+
         // ── applyFilters (mirrors TikTok applyFilters) ────────────────
         // Play / Pause parent navigation state
         let shPlayUniqueParents = [];
@@ -665,6 +823,7 @@
             }
 
             const skuSearch  = ($('#pricing-sku-search').val() || '').toLowerCase().trim();
+            const parentSearch = ($('#pricing-parent-search').val() || '').toLowerCase().trim();
             const rowType    = $('#ae-row-type-filter').val();
             const invFilter  = $('#ae-inv-filter').val();
             const stockFilter= $('#ae-stock-filter').val();
@@ -672,10 +831,15 @@
             const roiFilter  = $('#ae-roi-filter').val();
             const al30Filter = $('#ae-al30-filter').val();
             const mapFilter  = $('#ae-map-filter').val();
-            const dilColor   = $('.ae-dil-item.active').data('color') || 'all';
+            const nrlFilter  = $('#ae-nrl-filter').val() || 'all';
+            const spriceFilter = $('#ae-sprice-filter').val() || 'all';
+            const dilColor   = $('#ae-dil-filter').val() || 'all';
 
             if (skuSearch) {
                 table.addFilter(d => (d.sku || '').toLowerCase().includes(skuSearch));
+            }
+            if (parentSearch) {
+                table.addFilter(d => String(d.parent || '').toLowerCase().includes(parentSearch));
             }
 
             // Row type filter (All / Parents / SKUs) – same as Amazon
@@ -697,6 +861,14 @@
                 table.addFilter(d => (parseInt(d.shein_stock, 10) || 0) === 0);
             } else if (stockFilter === 'more') {
                 table.addFilter(d => (parseInt(d.shein_stock, 10) || 0) > 0);
+            }
+
+            // Status NR/REQ (matches /ebay2-tabulator-view)
+            if (nrlFilter === 'REQ' || nrlFilter === 'NR') {
+                table.addFilter(function(d) {
+                    if (d.is_parent) return true;
+                    return sheinNrReq(d) === nrlFilter;
+                });
             }
 
             // GPFT filter — slabs match ebay-tabulator-view
@@ -738,36 +910,31 @@
                 });
             }
 
-            // Map filter (Amazon: listed, INV>0, NR=REQ, INV vs Shein stock tolerance)
+            // Map filter (same rows as MAP column / ebay2)
             if (mapFilter === 'map') {
-                table.addFilter(d => {
-                    if (d.is_parent) return false;
-                    const inv = parseFloat(d.inv) || 0;
-                    const nr = sheinNrReq(d);
-                    if (inv <= 0 || nr !== 'REQ' || d.is_missing_shein) return false;
-                    return parseFloat(d.special_offer) > 0 && sheinInvWithinMapTolerance(inv, d.shein_stock);
-                });
+                table.addFilter(d => sheinRowIsMap(d));
             } else if (mapFilter === 'nmap') {
-                table.addFilter(d => {
-                    if (d.is_parent) return false;
-                    const inv = parseFloat(d.inv) || 0;
-                    const nr = sheinNrReq(d);
-                    if (inv <= 0 || nr !== 'REQ' || d.is_missing_shein) return false;
-                    if (parseFloat(d.special_offer) <= 0) return false;
-                    return !sheinInvWithinMapTolerance(inv, d.shein_stock);
+                table.addFilter(d => sheinRowIsNMap(d));
+            }
+
+            // Blank SPRICE only (matches /ebay2-tabulator-view)
+            if (spriceFilter === 'blank') {
+                table.addFilter(function(d) {
+                    if (d.is_parent) return true;
+                    const sp = d.sprice;
+                    return sp === null || sp === undefined || sp === '' || parseFloat(sp) === 0 || isNaN(parseFloat(sp));
                 });
             }
 
-            // DIL% filter (identical to TikTok)
+            // DIL% filter — slabs match /ebay2-tabulator-view: red <25, green 25-50, pink 50+
             if (dilColor !== 'all') {
                 table.addFilter(function(d) {
                     const inv   = parseFloat(d.inv)    || 0;
                     const ovL30 = parseFloat(d.ov_l30) || 0;
                     const dil   = inv === 0 ? 0 : (ovL30 / inv) * 100;
-                    if (dilColor === 'red')    return dil < 16.66;
-                    if (dilColor === 'yellow') return dil >= 16.66 && dil < 25;
-                    if (dilColor === 'green')  return dil >= 25 && dil < 50;
-                    if (dilColor === 'pink')   return dil >= 50;
+                    if (dilColor === 'red')   return dil < 25;
+                    if (dilColor === 'green') return dil >= 25 && dil < 50;
+                    if (dilColor === 'pink')  return dil >= 50;
                     return true;
                 });
             }
@@ -777,24 +944,10 @@
                 table.addFilter(d => sheinRowIsMissingL(d));
             }
             if (aeMapActive) {
-                table.addFilter(d => {
-                    if (d.is_parent) return false;
-                    const inv = parseFloat(d.inv) || 0;
-                    const nr = sheinNrReq(d);
-                    if (inv <= 0 || nr !== 'REQ' || d.is_missing_shein) return false;
-                    return parseFloat(d.special_offer) > 0 && sheinInvWithinMapTolerance(inv, d.shein_stock);
-                });
+                table.addFilter(d => sheinRowIsMap(d));
             }
             if (aeNMapActive) {
-                table.addFilter(d => {
-                    if (d.is_parent) return false;
-                    const inv = parseFloat(d.inv) || 0;
-                    const nr = sheinNrReq(d);
-                    if (inv <= 0 || nr !== 'REQ' || d.is_missing_shein) return false;
-                    const price = parseFloat(d.special_offer) || 0;
-                    if (price <= 0) return false;
-                    return !sheinInvWithinMapTolerance(inv, d.shein_stock);
-                });
+                table.addFilter(d => sheinRowIsNMap(d));
             }
             if (aeZeroSoldActive) table.addFilter(d => (parseFloat(d.al30) || 0) === 0);
             if (aeMoreSoldActive) table.addFilter(d => (parseFloat(d.al30) || 0) > 0);
@@ -821,16 +974,18 @@
         }
 
         function updateSummary(rowsInput = null) {
-            let rows = normalizeRows(rowsInput);
-            if (!rows.length && table && typeof table.getData === "function") {
-                const activeRows = normalizeRows(table.getData("active"));
-                const allRows    = normalizeRows(table.getData());
-                rows = activeRows.length ? activeRows : allRows;
+            // Always use the full loaded dataset (summaryDataCache) — same source the
+            // daily chart snapshot is saved from. Filtered table views must not change
+            // Sales / GPFT / GROI / etc. or badges diverge from the graph.
+            let rows = normalizeRows(summaryDataCache);
+            if (!rows.length) {
+                rows = normalizeRows(rowsInput);
             }
-            if (!rows.length) rows = normalizeRows(summaryDataCache);
+            if (!rows.length && table && typeof table.getData === "function") {
+                rows = normalizeRows(table.getData());
+            }
+            if (!rows.length) return;
 
-            let totalSales = 0, totalPft = 0, totalAl30 = 0, totalCogs = 0;
-            let hasGpftData = false, hasRoiData = false;
             let missingCount = 0, mapCount = 0, nmapCount = 0;
             let zeroSold = 0, moreSold = 0;
             let dilSum = 0, dilCount = 0;
@@ -842,72 +997,258 @@
                 const al30   = parseFloat(row.al30)   || 0;
                 const inv    = parseFloat(row.inv)    || 0;
                 const ovL30  = parseFloat(row.ov_l30) || 0;
-                const nr     = sheinNrReq(row);
-                const isMissingShein = !!row.is_missing_shein;
-                const rowPrice = parseFloat(row.special_offer) || 0;
                 const isMissingL = sheinRowIsMissingL(row);
 
-                if (!isMissingL) {
-                    // Dollar-weighted aggregates — totals share the same profit numerator,
-                    // so GPFT (PFT / Sales) and ROI (PFT / COGS) always agree in sign.
-                    const rowSales  = parseFloat(row.sales) || 0;
-                    const rowProfit = al30 * (parseFloat(row.profit) || 0);
-                    const lp        = parseFloat(row.lp) || 0;
-                    const ship      = parseFloat(row.ship) || 0;
-                    const rowCogs   = al30 * (lp + ship);
-
-                    totalSales += rowSales;
-                    totalPft   += rowProfit;
-                    totalCogs  += rowCogs;
-
-                    if (rowSales !== 0) hasGpftData = true;
-                    if (rowCogs  !== 0) hasRoiData  = true;
-                }
-
-                totalAl30 += al30;
                 if (al30 === 0) zeroSold++; else moreSold++;
                 if (inv > 0) { dilSum += (ovL30 / inv) * 100; dilCount++; }
 
                 if (isMissingL) {
                     missingCount++;
-                } else if (inv > 0 && nr === 'REQ' && !isMissingShein && rowPrice > 0) {
-                    if (sheinInvWithinMapTolerance(inv, row.shein_stock)) {
-                        mapCount++;
-                    } else {
-                        nmapCount++;
-                    }
+                } else if (sheinRowIsMap(row)) {
+                    mapCount++;
+                } else if (sheinRowIsNMap(row)) {
+                    nmapCount++;
                 }
             });
 
-            const avgGpft = totalSales !== 0 ? (totalPft / totalSales) * 100 : 0;
-            const avgRoi  = totalCogs  !== 0 ? (totalPft / totalCogs)  * 100 : 0;
-            const avgDil  = dilCount   > 0   ? dilSum / dilCount             : 0;
-            const gpftCount = hasGpftData ? 1 : 0; // preserves existing "–" placeholder when no data
-            const roiCount  = hasRoiData  ? 1 : 0;
+            // Sales / Qty / GPFT / GROI — identical to /shein-tabulator (uploaded order product_price)
+            const sp = salesPageTotals || {};
+            const totalSales = parseFloat(sp.total_sales) || 0;
+            const totalPft   = parseFloat(sp.total_pft) || 0;
+            const totalQty   = parseInt(sp.total_quantity, 10) || 0;
+            const avgGpft    = parseFloat(sp.pft_percentage);
+            const avgRoi     = parseFloat(sp.roi_percentage);
+            const hasSalesTotals = salesPageTotals != null;
+            const avgDil  = dilCount > 0 ? dilSum / dilCount : 0;
 
             $('#ae-total-sku-badge').text(`SKU: ${childCount.toLocaleString()}`);
-            $('#ae-total-sales-badge').text(totalSales > 0 ? `Sales: $${Math.round(totalSales).toLocaleString()}` : 'Sales: –');
-            $('#ae-total-pft-badge').text(totalPft !== 0 || totalSales > 0 ? `PFT: $${Math.round(totalPft).toLocaleString()}` : 'PFT: –');
-            $('#ae-total-al30-badge').text(`Sh L30: ${totalAl30.toLocaleString()}`);
-            $('#ae-avg-gpft-badge').text(gpftCount  > 0 ? `GPFT: ${Math.round(avgGpft)}%`  : 'GPFT: –');
-            $('#ae-missing-badge').text(`Missing L: ${missingCount.toLocaleString()}`);
+            $('#ae-total-sales-badge').text(hasSalesTotals && totalSales > 0 ? `Sales: $${Math.round(totalSales).toLocaleString()}` : (hasSalesTotals ? 'Sales: $0' : 'Sales: –'));
+            $('#ae-total-pft-badge').text(hasSalesTotals ? `PFT: $${Math.round(totalPft).toLocaleString()}` : 'PFT: –');
+            $('#ae-total-al30-badge').text(hasSalesTotals ? `Qty: ${totalQty.toLocaleString()}` : 'Qty: –');
+            $('#ae-avg-gpft-badge').text(hasSalesTotals && Number.isFinite(avgGpft) ? `GPFT: ${Math.round(avgGpft)}%` : 'GPFT: –');
+            $('#ae-missing-badge').text(`M L: ${missingCount.toLocaleString()}`);
             $('#ae-map-badge').text(`Map: ${mapCount.toLocaleString()}`);
             $('#ae-nmap-badge').text(`N Map: ${nmapCount.toLocaleString()}`);
             $('#ae-zero-sold-badge').text(`0 Sold: ${zeroSold.toLocaleString()}`);
-            $('#ae-more-sold-badge').text(`>0 Sold: ${moreSold.toLocaleString()}`);
+            $('#ae-more-sold-badge').text(`> 0 Sold: ${moreSold.toLocaleString()}`);
             $('#ae-avg-dil-badge').text(dilCount > 0 ? `DIL%: ${avgDil.toFixed(1)}%` : 'DIL%: –');
             if ($('#ae-avg-roi-badge').length) {
-                $('#ae-avg-roi-badge').text(roiCount > 0 ? `ROI: ${Math.round(avgRoi)}%` : 'ROI: –');
+                $('#ae-avg-roi-badge').text(hasSalesTotals && Number.isFinite(avgRoi) ? `GROI: ${Math.round(avgRoi)}%` : 'GROI: –');
             }
         }
 
+        // ── Sku Link LMP (mirrors /ebay-tabulator-view; shared sku.link.lmp.* routes) ──
+        const linkedSkuAddUrl = @json(route('sku.link.lmp.linked-skus.add'));
+        const linkedSkuBulkLinkUrl = @json(route('sku.link.lmp.linked-skus.bulk-link'));
+        const linkedSkuRemoveUrl = @json(route('sku.link.lmp.linked-skus.remove'));
+        const filteredSkusUrl = @json(route('sku.link.lmp.filtered-skus'));
+        const skuLinkLmpCsrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+
+        let linkedSkuModal = null;
+        let linkedSkuModalRow = null;
+        let linkedSkuModalSelectedSkus = new Set();
+        let linkedSkuSuggestionTimer = null;
+        let linkedSkuSuggestionRequestId = 0;
+
+        function rowSkuForLinkLmp(rowData) {
+            return String(rowData?.sku || '').trim();
+        }
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text == null ? '' : String(text);
+            return div.innerHTML;
+        }
+        function escapeHtmlAttr(text) {
+            return escapeHtml(text).replace(/"/g, '&quot;');
+        }
+
+        function linkedLmpSkuFormatter(cell) {
+            const row = cell.getRow().getData();
+            if (row.is_parent) return '';
+            const rowSku = rowSkuForLinkLmp(row);
+            let skus = row.linked_lmp_skus || [];
+            if (typeof skus === 'string') { try { skus = JSON.parse(skus) || []; } catch (e) { skus = []; } }
+            if (!Array.isArray(skus)) skus = [];
+            if (!skus.length && rowSku) skus = [rowSku];
+            const seen = new Set();
+            skus = skus.filter(function (sku) {
+                const norm = String(sku || '').trim().toUpperCase();
+                if (!norm || seen.has(norm)) return false;
+                seen.add(norm); return true;
+            });
+            const badges = skus.length ? skus.map(function (sku) {
+                const skuText = String(sku || '').trim();
+                const isSelf = skuText.toUpperCase() === rowSku.toUpperCase();
+                const removeBtn = isSelf ? '' : `<button type="button" class="btn-close sku-link-lmp-remove" data-linked-sku="${escapeHtmlAttr(skuText)}" aria-label="Remove"></button>`;
+                return `<span class="linked-sku-badge-wrap badge bg-info-subtle text-dark border me-1 mb-1"><span class="linked-sku-badge">${escapeHtml(skuText)}</span>${removeBtn}</span>`;
+            }).join('') : '<span class="text-muted fst-italic">No SKUs</span>';
+            return `<div class="d-flex flex-wrap align-items-start py-1" style="line-height:1.6;">${badges}</div>`;
+        }
+
+        function linkedLmpSkuAddFormatter(cell) {
+            const row = cell.getRow().getData();
+            if (row.is_parent) return '';
+            const rowSku = rowSkuForLinkLmp(row);
+            if (!rowSku) return '';
+            return `<div class="d-flex align-items-center justify-content-center py-1">
+                <button type="button" class="btn btn-sm btn-outline-primary sku-link-lmp-add-btn" title="Link another SKU" style="padding:2px 8px;" data-sku="${escapeHtmlAttr(rowSku)}"><i class="fas fa-plus"></i></button>
+            </div>`;
+        }
+
+        function applyAffectedLinkedSkuRows(affected) {
+            if (!table || !Array.isArray(affected)) return;
+            // Re-fetch so LMP recomputes across the linked group (same as ebay-tabulator-view)
+            table.replaceData();
+        }
+
+        function removeLinkedSkuFromRow(rowData, linkedSku) {
+            const sku = rowSkuForLinkLmp(rowData);
+            const target = String(linkedSku || '').trim();
+            if (!sku || !target) return;
+            if (!confirm(`Remove LMP link between "${sku}" and "${target}"?`)) return;
+            fetch(linkedSkuRemoveUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': skuLinkLmpCsrfToken, 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+                body: JSON.stringify({ sku: sku, linked_sku: target }),
+            }).then(r => r.json()).then(function (response) {
+                if (!response.success) throw new Error(response.message || 'Could not remove linked SKU.');
+                applyAffectedLinkedSkuRows(response.affected);
+            }).catch(function (err) { alert(err.message || 'Could not remove linked SKU.'); });
+        }
+
+        function updateLinkedSkuSelectedSummary() {
+            const wrap = document.getElementById('sku-link-lmp-selected-wrap');
+            const listEl = document.getElementById('sku-link-lmp-selected-skus');
+            const countEl = document.getElementById('sku-link-lmp-selected-count');
+            const saveLabel = document.getElementById('sku-link-lmp-save-btn-label');
+            const selected = Array.from(linkedSkuModalSelectedSkus);
+            if (countEl) countEl.textContent = String(selected.length);
+            if (saveLabel) saveLabel.textContent = selected.length > 1 ? 'Link ' + selected.length + ' SKUs' : 'Link SKU(s)';
+            if (!wrap || !listEl) return;
+            if (!selected.length) { wrap.classList.add('d-none'); listEl.innerHTML = ''; return; }
+            wrap.classList.remove('d-none');
+            listEl.innerHTML = selected.map(function (sku) {
+                return `<span class="sku-link-lmp-selected-chip">${escapeHtml(sku)}<button type="button" class="sku-link-lmp-selected-remove" data-sku="${escapeHtmlAttr(sku)}" title="Remove">&times;</button></span>`;
+            }).join('');
+        }
+
+        function renderLinkedSkuSuggestions(term) {
+            const wrap = document.getElementById('sku-link-lmp-suggestions');
+            if (!wrap) return;
+            const query = String(term || '').trim();
+            if (!query) { wrap.classList.add('d-none'); wrap.innerHTML = ''; return; }
+            clearTimeout(linkedSkuSuggestionTimer);
+            linkedSkuSuggestionTimer = setTimeout(function () {
+                const requestId = ++linkedSkuSuggestionRequestId;
+                fetch(`${filteredSkusUrl}?sku=${encodeURIComponent(query)}`, { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(r => r.json()).then(function (response) {
+                    if (requestId !== linkedSkuSuggestionRequestId) return;
+                    if (!response.success) throw new Error(response.message || 'Could not search SKUs.');
+                    const currentSku = rowSkuForLinkLmp(linkedSkuModalRow).toUpperCase();
+                    const existing = new Set((Array.isArray(linkedSkuModalRow?.linked_lmp_skus) ? linkedSkuModalRow.linked_lmp_skus : []).map(s => String(s || '').trim().toUpperCase()));
+                    const matches = (Array.isArray(response.skus) ? response.skus : []).map(s => String(s || '').trim())
+                        .filter(function (sku) { const norm = sku.toUpperCase(); return sku && norm !== currentSku && !existing.has(norm); }).slice(0, 12);
+                    if (!matches.length) { wrap.classList.add('d-none'); wrap.innerHTML = ''; return; }
+                    wrap.classList.remove('d-none');
+                    wrap.innerHTML = matches.map(function (sku) {
+                        const checked = linkedSkuModalSelectedSkus.has(sku);
+                        return `<label class="list-group-item list-group-item-action py-2 sku-link-lmp-suggestion-item d-flex align-items-center gap-2 mb-0"><input type="checkbox" class="form-check-input sku-link-lmp-suggestion-cb" value="${escapeHtmlAttr(sku)}" ${checked ? 'checked' : ''}><span class="flex-grow-1">${escapeHtml(sku)}</span></label>`;
+                    }).join('');
+                }).catch(function () { if (requestId !== linkedSkuSuggestionRequestId) return; wrap.classList.add('d-none'); wrap.innerHTML = ''; });
+            }, 200);
+        }
+
+        function getLinkedSkuModalSelections() {
+            const selected = Array.from(linkedSkuModalSelectedSkus);
+            const inputVal = String(document.getElementById('sku-link-lmp-input')?.value || '').trim();
+            const sourceNorm = rowSkuForLinkLmp(linkedSkuModalRow).toUpperCase();
+            if (inputVal && inputVal.toUpperCase() !== sourceNorm) {
+                if (!selected.some(s => s.toUpperCase() === inputVal.toUpperCase())) selected.push(inputVal);
+            }
+            return selected;
+        }
+
+        function openLinkedSkuModal(rowData) {
+            if (!linkedSkuModal || !rowSkuForLinkLmp(rowData)) return;
+            linkedSkuModalRow = rowData;
+            linkedSkuModalSelectedSkus = new Set();
+            document.getElementById('sku-link-lmp-source').textContent = rowSkuForLinkLmp(rowData);
+            const input = document.getElementById('sku-link-lmp-input');
+            input.value = '';
+            renderLinkedSkuSuggestions('');
+            updateLinkedSkuSelectedSummary();
+            linkedSkuModal.show();
+            setTimeout(function () { input?.focus(); }, 200);
+        }
+
+        function saveLinkedSkuFromModal() {
+            const sourceSku = rowSkuForLinkLmp(linkedSkuModalRow);
+            if (!sourceSku) return;
+            const toLink = getLinkedSkuModalSelections();
+            if (!toLink.length) { alert('Select one or more SKUs from the list, or enter a SKU to link.'); return; }
+            const allSkus = [sourceSku].concat(toLink);
+            const uniqueSkus = []; const seen = new Set();
+            allSkus.forEach(function (sku) { const norm = String(sku || '').trim().toUpperCase(); if (!norm || seen.has(norm)) return; seen.add(norm); uniqueSkus.push(String(sku).trim()); });
+            if (uniqueSkus.length < 2) { alert('Select at least one SKU to link.'); return; }
+            const btn = document.getElementById('sku-link-lmp-save-btn');
+            const original = btn?.innerHTML || '';
+            if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Linking...'; }
+            const isBulk = uniqueSkus.length > 2 || toLink.length > 1;
+            const fetchPromise = isBulk
+                ? fetch(linkedSkuBulkLinkUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': skuLinkLmpCsrfToken, 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }, body: JSON.stringify({ skus: uniqueSkus }) })
+                : fetch(linkedSkuAddUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': skuLinkLmpCsrfToken, 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }, body: JSON.stringify({ sku: sourceSku, linked_sku: toLink[0] }) });
+            fetchPromise.then(r => r.json()).then(function (response) {
+                if (!response.success) throw new Error(response.message || 'Could not link SKU(s).');
+                linkedSkuModalSelectedSkus = new Set();
+                linkedSkuModal?.hide();
+                applyAffectedLinkedSkuRows(response.affected);
+            }).catch(function (err) { alert(err.message || 'Could not link SKU(s).'); })
+            .finally(function () { if (btn) { btn.disabled = false; btn.innerHTML = original; } });
+        }
+
+        function initSkuLinkLmpModal() {
+            const modalEl = document.getElementById('skuLinkLmpModal');
+            if (modalEl) linkedSkuModal = bootstrap.Modal.getOrCreateInstance(modalEl);
+            document.getElementById('sku-link-lmp-input')?.addEventListener('input', function () { renderLinkedSkuSuggestions(this.value); });
+            document.getElementById('sku-link-lmp-suggestions')?.addEventListener('click', function (e) {
+                const item = e.target.closest('.sku-link-lmp-suggestion-item'); if (!item) return;
+                const cb = item.querySelector('.sku-link-lmp-suggestion-cb'); if (!cb || e.target === cb) return;
+                cb.checked = !cb.checked; cb.dispatchEvent(new Event('change', { bubbles: true }));
+            });
+            document.getElementById('sku-link-lmp-suggestions')?.addEventListener('change', function (e) {
+                const cb = e.target.closest('.sku-link-lmp-suggestion-cb'); if (!cb) return;
+                const sku = String(cb.value || '').trim(); if (!sku) return;
+                if (cb.checked) linkedSkuModalSelectedSkus.add(sku); else linkedSkuModalSelectedSkus.delete(sku);
+                updateLinkedSkuSelectedSummary();
+            });
+            document.getElementById('sku-link-lmp-selected-skus')?.addEventListener('click', function (e) {
+                const btn = e.target.closest('.sku-link-lmp-selected-remove'); if (!btn) return;
+                linkedSkuModalSelectedSkus.delete(String(btn.dataset.sku || '').trim());
+                document.querySelectorAll('.sku-link-lmp-suggestion-cb').forEach(function (cb) {
+                    if (cb.value === btn.dataset.sku) cb.checked = false;
+                });
+                updateLinkedSkuSelectedSummary();
+            });
+            document.getElementById('sku-link-lmp-save-btn')?.addEventListener('click', function () { saveLinkedSkuFromModal(); });
+        }
+
         $(document).ready(function() {
+            initSkuLinkLmpModal();
             table = new Tabulator("#shein-pricing-table", {
                 ajaxURL: "/shein/pricing-data",
                 ajaxResponse: function(url, params, response) {
+                    // New shape: { data: rows[], sales_page: {...} } — same Sales/GPFT/GROI as /shein-tabulator
+                    let rows = response;
+                    if (response && !Array.isArray(response) && Array.isArray(response.data)) {
+                        salesPageTotals = response.sales_page || null;
+                        rows = response.data;
+                    } else if (Array.isArray(response)) {
+                        salesPageTotals = null;
+                        rows = response;
+                    }
                     // Hide parent rows — drop them from the dataset entirely
-                    const rows = Array.isArray(response) ?
-                        response.filter(r => !(r && r.is_parent === true)) : response;
+                    rows = Array.isArray(rows) ?
+                        rows.filter(r => !(r && r.is_parent === true)) : rows;
                     summaryDataCache = normalizeRows(rows);
                     updateSummary(summaryDataCache);
                     setTimeout(aeApplyBadgeFilterFromUrl, 0);
@@ -954,6 +1295,7 @@
                         field: "parent",
                         width: 120,
                         frozen: true,
+                        visible: false,
                         cssClass: "text-muted",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
@@ -1061,24 +1403,26 @@
                         }
                     },
                     {
-                        title: "Map",
+                        title: "MAP",
                         field: "map",
                         hozAlign: "center",
                         width: 90,
+                        headerTooltip: "MP when within map-issues tolerance (3 units, or rounded 3% for INV ≥ 100); N MP otherwise (listed rows with Shein Stock > 0).",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '';
-                            const inv = parseFloat(d.inv) || 0;
-                            const nr = sheinNrReq(d);
-                            if (inv <= 0 || nr !== 'REQ' || d.is_missing_shein) return '';
-                            const rowPrice = parseFloat(d.special_offer) || 0;
-                            if (rowPrice <= 0) return '';
-                            const sheinStock = parseFloat(d.shein_stock) || 0;
-                            if (sheinInvWithinMapTolerance(inv, sheinStock)) {
-                                return '<span style="color:#198754;font-weight:bold;">Map</span>';
+                            // Same structure as /ebay2-tabulator-view MAP column.
+                            if (sheinRowIsMap(d)) {
+                                return '<span style="color: #28a745; font-weight: bold;">MP</span>';
                             }
-                            const diff = Math.round(Math.abs(inv - sheinStock));
-                            return `<span style="color:#dc3545;font-weight:bold;">N Map (${diff})</span>`;
+                            if (sheinRowIsNMap(d)) {
+                                const inv = parseFloat(d.inv) || 0;
+                                const sheinStock = parseFloat(d.shein_stock) || 0;
+                                const signedDiff = Math.round(inv - sheinStock);
+                                const sign = signedDiff > 0 ? '+' : '';
+                                return `<span style="color: #dc3545; font-weight: bold;">N MP<br>(${sign}${signedDiff})</span>`;
+                            }
+                            return '';
                         }
                     },
                     {
@@ -1129,9 +1473,14 @@
                             const row = cell.getRow().getData();
                             const inv   = parseFloat(row.inv)    || 0;
                             const ovL30 = parseFloat(row.ov_l30) || 0;
-                            if (inv === 0) return `<span style="color:#6c757d;">0%</span>`;
+                            // INV=0 → 0% red (same as /ebay2-tabulator-view)
+                            if (inv === 0) return '<span style="color:#a00211;font-weight:600;">0%</span>';
                             const dil = (ovL30 / inv) * 100;
-                            let color = dil < 16.66 ? '#a00211' : dil < 25 ? '#ffc107' : dil < 50 ? '#28a745' : '#e83e8c';
+                            let color;
+                            // No yellow band — red absorbs former 16.66–25% (same as ebay-tabulator-view / Dil filter slabs)
+                            if (dil < 25) color = '#a00211';
+                            else if (dil < 50) color = '#28a745';
+                            else color = '#e83e8c';
                             return `<span style="color:${color};font-weight:600;">${Math.round(dil)}%</span>`;
                         }
                     },
@@ -1159,6 +1508,68 @@
                             if (v === 0) return '<span style="color:#adb5bd;">–</span>';
                             return `<span style="color:#e83e8c;font-weight:600;">${money(v)}</span>`;
                         }
+                    },
+                    {
+                        title: "LMP",
+                        field: "lmp_price",
+                        sorter: "number",
+                        hozAlign: "center",
+                        width: 90,
+                        tooltip: "Lowest market price (Shein competitors)",
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
+                            const entries = Array.isArray(d.lmp_entries) ? d.lmp_entries : [];
+                            const total = entries.length;
+                            if (total === 0) return '<span style="color:#adb5bd;">N/A</span>';
+
+                            const lowest = Math.min.apply(null, entries.map(e => parseFloat(e.price) || Infinity));
+                            const myPrice = parseFloat(d.special_offer) || 0;
+                            const priceColor = (myPrice > 0 && lowest < myPrice) ? '#dc3545' : '#28a745';
+
+                            let html = '<div style="display:flex;flex-direction:column;align-items:center;gap:2px;line-height:1.15;">';
+                            html += '<span style="color:' + priceColor + ';font-weight:700;font-size:14px;">' + money(lowest) + '</span>';
+                            html += '<a href="#" class="shein-view-lmp" data-sku="' + String(d.sku || '').replace(/"/g, '&quot;') + '"' + (d.lmp_entries ? ' data-lmp=\'' + JSON.stringify(d.lmp_entries).replace(/'/g, '&#39;') + '\'' : '') + ' style="color:#0d6efd;text-decoration:none;font-size:11px;"><i class="fa fa-eye"></i> View ' + total + '</a>';
+                            html += '</div>';
+                            return html;
+                        }
+                    },
+                    {
+                        title: "Sku Link LMP",
+                        field: "linked_lmp_skus",
+                        hozAlign: "left",
+                        headerHozAlign: "center",
+                        width: 220,
+                        headerSort: false,
+                        cssClass: "linked-sku-col",
+                        formatter: linkedLmpSkuFormatter,
+                        cellClick: function(e, cell) {
+                            if (e.target.closest('.sku-link-lmp-remove')) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                removeLinkedSkuFromRow(
+                                    cell.getRow().getData(),
+                                    e.target.closest('.sku-link-lmp-remove').dataset.linkedSku || ''
+                                );
+                            }
+                        },
+                    },
+                    {
+                        title: "+",
+                        field: "linked_lmp_sku_add",
+                        hozAlign: "center",
+                        headerHozAlign: "center",
+                        width: 52,
+                        headerSort: false,
+                        cssClass: "linked-sku-add-col",
+                        formatter: linkedLmpSkuAddFormatter,
+                        cellClick: function(e, cell) {
+                            if (e.target.closest('.sku-link-lmp-add-btn')) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                openLinkedSkuModal(cell.getRow().getData());
+                            }
+                        },
                     },
                     {
                         title: "GPFT",
@@ -1217,6 +1628,7 @@
                         field: "sales",
                         sorter: "number",
                         hozAlign: "right",
+                        visible: false,
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             const v = parseFloat(cell.getValue()) || 0;
@@ -1243,6 +1655,7 @@
                         field: "lp",
                         sorter: "number",
                         hozAlign: "right",
+                        visible: false,
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
@@ -1254,6 +1667,7 @@
                         field: "ship",
                         sorter: "number",
                         hozAlign: "right",
+                        visible: false,
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
@@ -1329,6 +1743,7 @@
             });
 
             $('#pricing-sku-search').on('input', function() { applyFilters(); });
+            $('#pricing-parent-search').on('input', function() { applyFilters(); });
             $('#ae-row-type-filter').on('change', function() { applyFilters(); });
             $('#ae-inv-filter').on('change',    function() { applyFilters(); });
             $('#ae-stock-filter').on('change',  function() { applyFilters(); });
@@ -1336,26 +1751,11 @@
             $('#ae-roi-filter').on('change',    function() { applyFilters(); });
             $('#ae-al30-filter').on('change',   function() { applyFilters(); });
             $('#ae-map-filter').on('change',    function() { applyFilters(); });
+            $('#ae-nrl-filter').on('change',    function() { applyFilters(); });
+            $('#ae-sprice-filter').on('change', function() { applyFilters(); });
+            $('#ae-dil-filter').on('change',    function() { applyFilters(); });
 
-            // DIL dropdown (identical to TikTok manual dropdown)
-            $(document).on('click', '.ae-dil-toggle', function(e) {
-                e.stopPropagation();
-                $(this).closest('.ae-manual-dropdown').toggleClass('show');
-            });
-            $(document).on('click', '.ae-dil-item', function(e) {
-                e.preventDefault(); e.stopPropagation();
-                $('.ae-dil-item').removeClass('active');
-                $(this).addClass('active');
-                const circle = $(this).find('.ae-sc').clone();
-                $('#ae-dil-btn').html('').append(circle).append('DIL%');
-                $(this).closest('.ae-manual-dropdown').removeClass('show');
-                applyFilters();
-            });
-            $(document).on('click', function() {
-                $('.ae-manual-dropdown').removeClass('show');
-            });
-
-            // ── Price Mode (Increase / Decrease) ─────────────────────
+            // ── Price % (Increase / Decrease) ─────────────────────
             $('#ae-price-mode-btn').on('click', function() {
                 if (!decreaseModeActive && !increaseModeActive) {
                     decreaseModeActive = true; increaseModeActive = false;
@@ -1427,6 +1827,8 @@
              *
              * `margin` is the per-row take-home rate (row._margin) with a 1 fallback.
              * Saving goes through /shein/save-sprice exactly like an inline SPRICE edit.
+             * Rounding is plain 2-decimal — no .99 retail snapping — because snapping
+             * would shift the achieved SROI / SGPFT off the user-typed target (same as ebay2).
              * ============================================================================
              */
             function aeApplyTargetSpriceBatch(opts) {
@@ -1450,7 +1852,6 @@
                     }
                     let sprice = +Number(res.sprice).toFixed(2);
                     if (!isFinite(sprice) || sprice <= 0) return;
-                    sprice = finalizeSprice(sprice);
                     rowsToProcess.push({ row: r, sku: sku, sprice: sprice });
                 });
 
@@ -1571,9 +1972,9 @@
 
             /*
              * ============================================================================
-             * Column visibility (mirrors ebay-tabulator-view)
-             * Persists in the shared DB table `channel_tabulator_column_settings` via the
-             * /tabulator-column-visibility endpoint, channel = 'shein_pricing'.
+             * Column visibility — same pattern as /ebay2-tabulator-view
+             * Persists in `channel_tabulator_column_settings` via
+             * /tabulator-column-visibility, channel = 'shein_pricing'.
              * ============================================================================
              */
             const AE_COLUMN_VIS_URL = '/tabulator-column-visibility';
@@ -1591,14 +1992,14 @@
                             'X-CSRF-TOKEN': '{{ csrf_token() }}'
                         }
                     })
-                    .then(r => r.json())
+                    .then(response => response.json())
                     .then(savedVisibility => {
                         const map = (savedVisibility && typeof savedVisibility === 'object') ? savedVisibility : {};
                         table.getColumns().forEach(col => {
                             const def = col.getDefinition();
                             if (!def.field || def.field === '_ae_select') return;
-                            const title = (def.title || '').replace(/<[^>]*>/g, '').trim() || def.field;
 
+                            const title = (def.title || '').replace(/<[^>]*>/g, '').trim() || def.field;
                             const li = document.createElement('li');
                             const label = document.createElement('label');
                             label.style.display = 'block';
@@ -1608,7 +2009,10 @@
                             const checkbox = document.createElement('input');
                             checkbox.type = 'checkbox';
                             checkbox.value = def.field;
-                            checkbox.checked = map.hasOwnProperty(def.field) ? (map[def.field] !== false) : col.isVisible();
+                            // Prefer saved map; fall back to current column visibility (definition default)
+                            checkbox.checked = map.hasOwnProperty(def.field)
+                                ? (map[def.field] !== false)
+                                : col.isVisible();
                             checkbox.style.marginRight = '8px';
                             checkbox.className = 'ae-column-toggle';
 
@@ -1651,55 +2055,51 @@
                             'X-CSRF-TOKEN': '{{ csrf_token() }}'
                         }
                     })
-                    .then(r => r.json())
+                    .then(response => response.json())
                     .then(savedVisibility => {
-                        if (savedVisibility && typeof savedVisibility === 'object') {
-                            Object.keys(savedVisibility).forEach(field => {
-                                if (field === '_ae_select') return;
-                                const col = table.getColumn(field);
-                                if (col) {
-                                    if (savedVisibility[field]) {
-                                        col.show();
-                                    } else {
-                                        col.hide();
-                                    }
-                                }
-                            });
-                        }
+                        if (!savedVisibility || typeof savedVisibility !== 'object') return;
+                        table.getColumns().forEach(col => {
+                            const def = col.getDefinition();
+                            if (!def.field || def.field === '_ae_select') return;
+                            // Only apply fields that were explicitly saved (same idea as ebay2 +
+                            // restore true so default-hidden columns can be re-shown and stick).
+                            if (!Object.prototype.hasOwnProperty.call(savedVisibility, def.field)) return;
+                            if (savedVisibility[def.field]) {
+                                col.show();
+                            } else {
+                                col.hide();
+                            }
+                        });
                     })
                     .catch(err => console.error('Error applying Shein column visibility:', err));
             }
 
-            // Toggle column from dropdown
+            // Keep menu open while toggling checkboxes (multi-select)
+            document.getElementById('ae-column-dropdown-menu').addEventListener('click', function(e) {
+                e.stopPropagation();
+            });
+
+            // Toggle column from dropdown → save immediately (ebay2)
             document.getElementById('ae-column-dropdown-menu').addEventListener('change', function(e) {
-                if (e.target.classList && e.target.classList.contains('ae-column-toggle')) {
+                if (e.target.type === 'checkbox') {
                     const field = e.target.value;
                     const col = table.getColumn(field);
-                    if (col) {
-                        if (e.target.checked) col.show();
-                        else col.hide();
-                        aeSaveColumnVisibilityToServer();
+                    if (!col) return;
+                    if (e.target.checked) {
+                        col.show();
+                    } else {
+                        col.hide();
                     }
+                    aeSaveColumnVisibilityToServer();
                 }
             });
 
-            // Show All Columns button — make every non-select column visible
-            document.getElementById('ae-show-all-columns-btn').addEventListener('click', function() {
-                table.getColumns().forEach(col => {
-                    const def = col.getDefinition();
-                    if (def.field && def.field !== '_ae_select') col.show();
-                });
-                aeBuildColumnDropdown();
-                aeSaveColumnVisibilityToServer();
-            });
-
-            // Build dropdown and apply server visibility once the table is built
             table.on('tableBuilt', function() {
                 aeApplyColumnVisibilityFromServer();
                 aeBuildColumnDropdown();
             });
 
-            // Badge click → table filter (hover opens chart via ae-hover-chart)
+            // Badge click → table filter only (same as /ebay2-tabulator-view — no hover/click chart)
             $('#ae-missing-badge').on('click', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
@@ -1860,26 +2260,7 @@
                 aeLoadChart();
             }
 
-            let aeBadgeHoverTimer = null;
-            $(document).on('mouseenter', '.ae-hover-chart', function() {
-                const metric = $(this).data('metric');
-                if (!metric) return;
-                aeBadgeHoverTimer = setTimeout(function() {
-                    aeOpenBadgeChartModal(metric);
-                }, 500);
-            });
-            $(document).on('mouseleave', '.ae-hover-chart', function() {
-                if (aeBadgeHoverTimer) {
-                    clearTimeout(aeBadgeHoverTimer);
-                    aeBadgeHoverTimer = null;
-                }
-            });
-            $(document).on('mousedown', '.ae-hover-chart', function() {
-                if (aeBadgeHoverTimer) {
-                    clearTimeout(aeBadgeHoverTimer);
-                    aeBadgeHoverTimer = null;
-                }
-            });
+            // No hover/click chart on badges — match /ebay2-tabulator-view (filter badges click to filter only)
 
             function aeRenderLineChart(points) {
                 if (!Array.isArray(points) || !points.length) return false;
@@ -2043,12 +2424,6 @@
                 });
             }
 
-            $(document).on('click', '.ae-badge-chart', function(e) {
-                e.stopPropagation();
-                const m = $(this).data('metric');
-                if (m) aeOpenBadgeChartModal(m);
-            });
-
             $(document).on('change', '#aeBadgeChartRange', function() {
                 const raw = $(this).val();
                 const d = raw === '0' ? 0 : (parseInt(raw, 10) || 30);
@@ -2101,6 +2476,163 @@
             document.getElementById('sheinBuyerLinkInput').value = d['B Link'] || '';
             bootstrap.Modal.getOrCreateInstance(document.getElementById('sheinEditLinksModal')).show();
         }
+
+        // ── LMP competitors modal (same as Amazon page) ──────────────────
+        let sheinLmpCurrentSku = '';
+
+        function renderSheinLmpList(entries) {
+            entries = Array.isArray(entries) ? entries.filter(e => (parseFloat(e.price) || 0) > 0) : [];
+            if (entries.length === 0) {
+                $('#sheinLmpDataList').html('<div class="alert alert-info mb-0"><i class="fa fa-info-circle"></i> No competitors yet. Add your first one above!</div>');
+                return;
+            }
+            const lowest = Math.min.apply(null, entries.map(e => parseFloat(e.price) || Infinity));
+
+            let html = '<div class="table-responsive"><table class="table table-hover table-bordered table-sm align-middle mb-0">';
+            html += '<thead class="table-light"><tr>' +
+                '<th style="width:40px;">#</th>' +
+                '<th style="width:120px;">Price</th>' +
+                '<th>Product Link</th>' +
+                '<th style="width:60px;">Open</th>' +
+                '<th style="width:60px;">Del</th>' +
+                '</tr></thead><tbody>';
+
+            entries.forEach(function(e, i) {
+                const price = parseFloat(e.price) || 0;
+                const isLow = Math.abs(price - lowest) < 0.01;
+                const rowClass = isLow ? 'table-success' : '';
+                const priceBadge = isLow
+                    ? '<span class="badge bg-success">' + money(price) + ' <i class="fa fa-trophy"></i></span>'
+                    : '<strong>' + money(price) + '</strong>';
+                const link = e.link || '';
+                const linkText = link
+                    ? '<a href="' + String(link).replace(/"/g, '&quot;') + '" target="_blank" rel="noopener noreferrer" style="font-size:11px;word-break:break-all;">' + String(link).substring(0, 90) + (String(link).length > 90 ? '…' : '') + '</a>'
+                    : '<span style="color:#999;">—</span>';
+                const openBtn = link
+                    ? '<a href="' + String(link).replace(/"/g, '&quot;') + '" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-info" title="Open competitor"><i class="fa fa-external-link"></i></a>'
+                    : '<span style="color:#999;">—</span>';
+                const delBtn = '<button class="btn btn-sm btn-danger shein-del-lmp" data-slot="' + (e.slot || (i + 1)) + '" data-source-sku="' + String(e.source_sku || sheinLmpCurrentSku || '').replace(/"/g, '&quot;') + '" title="Remove this LMP"><i class="fa fa-trash"></i></button>';
+                html += '<tr class="' + rowClass + '">' +
+                    '<td class="text-center"><strong>' + (i + 1) + '</strong></td>' +
+                    '<td>' + priceBadge + '</td>' +
+                    '<td>' + linkText + '</td>' +
+                    '<td class="text-center">' + openBtn + '</td>' +
+                    '<td class="text-center">' + delBtn + '</td>' +
+                    '</tr>';
+            });
+            html += '</tbody></table></div>';
+            $('#sheinLmpDataList').html(html);
+        }
+
+        // After LMP add/delete, refresh the grid so linked-SKU merges stay correct.
+        function sheinRefreshLmpAfterChange(sku) {
+            if (!table) return;
+            const currentSku = sku || sheinLmpCurrentSku;
+            table.replaceData().then(function() {
+                if (!currentSku) return;
+                const match = table.getData().find(r => String(r.sku) === String(currentSku) && !r.is_parent);
+                if (match) {
+                    renderSheinLmpList(match.lmp_entries || []);
+                }
+            }).catch(function() {});
+        }
+
+        // Refresh the LMP cell of a given SKU row in the grid.
+        function sheinUpdateLmpRow(sku, entries) {
+            sheinRefreshLmpAfterChange(sku);
+        }
+
+        $(document).on('click', '.shein-view-lmp', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const sku = $(this).data('sku');
+            let entries = [];
+            // Prefer entries embedded on the link; fall back to the table row data.
+            const raw = $(this).attr('data-lmp');
+            if (raw) {
+                try { entries = JSON.parse(raw); } catch (err) { entries = []; }
+            }
+            if ((!entries || entries.length === 0) && table) {
+                const match = table.getData().find(r => String(r.sku) === String(sku) && !r.is_parent);
+                if (match && Array.isArray(match.lmp_entries)) entries = match.lmp_entries;
+            }
+            sheinLmpCurrentSku = sku || '';
+            document.getElementById('sheinLmpSku').textContent = sku || '';
+            document.getElementById('sheinAddLmpSku').value = sku || '';
+            document.getElementById('sheinAddLmpPrice').value = '';
+            document.getElementById('sheinAddLmpLink').value = '';
+            renderSheinLmpList(entries);
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('sheinLmpModal')).show();
+        });
+
+        // Add a new competitor LMP.
+        $(document).on('submit', '#sheinAddLmpForm', function(e) {
+            e.preventDefault();
+            const sku = document.getElementById('sheinAddLmpSku').value.trim();
+            const price = document.getElementById('sheinAddLmpPrice').value;
+            const link = document.getElementById('sheinAddLmpLink').value.trim();
+            if (!sku) { sheinLinksNotify('SKU is missing', 'error'); return; }
+            if (!(parseFloat(price) > 0)) { sheinLinksNotify('Enter a valid price', 'error'); return; }
+
+            const $btn = $('#sheinAddLmpBtn');
+            $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Adding...');
+
+            $.ajax({
+                url: '/shein/lmp/add',
+                method: 'POST',
+                data: { sku: sku, price: price, link: link },
+                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                success: function(res) {
+                    if (res && res.success) {
+                        document.getElementById('sheinAddLmpPrice').value = '';
+                        document.getElementById('sheinAddLmpLink').value = '';
+                        sheinRefreshLmpAfterChange(sku);
+                        sheinLinksNotify('LMP added', 'success');
+                    } else {
+                        sheinLinksNotify((res && res.message) || 'Error adding LMP', 'error');
+                    }
+                },
+                error: function(xhr) {
+                    const msg = (xhr.responseJSON && xhr.responseJSON.message) || 'Error adding LMP';
+                    sheinLinksNotify(msg, 'error');
+                },
+                complete: function() {
+                    $btn.prop('disabled', false).html('<i class="fa fa-plus"></i> Add');
+                }
+            });
+        });
+
+        // Delete a competitor LMP slot.
+        $(document).on('click', '.shein-del-lmp', function() {
+            const slot = $(this).data('slot');
+            const sku = $(this).data('source-sku') || sheinLmpCurrentSku;
+            if (!sku || !slot) return;
+            if (!confirm('Remove this LMP entry?')) return;
+
+            const $btn = $(this);
+            $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i>');
+
+            $.ajax({
+                url: '/shein/lmp/delete',
+                method: 'POST',
+                data: { sku: sku, slot: slot },
+                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                success: function(res) {
+                    if (res && res.success) {
+                        sheinRefreshLmpAfterChange(sheinLmpCurrentSku);
+                        sheinLinksNotify('LMP removed', 'success');
+                    } else {
+                        sheinLinksNotify((res && res.message) || 'Error removing LMP', 'error');
+                        $btn.prop('disabled', false).html('<i class="fa fa-trash"></i>');
+                    }
+                },
+                error: function(xhr) {
+                    const msg = (xhr.responseJSON && xhr.responseJSON.message) || 'Error removing LMP';
+                    sheinLinksNotify(msg, 'error');
+                    $btn.prop('disabled', false).html('<i class="fa fa-trash"></i>');
+                }
+            });
+        });
 
         $(document).on('click', '#sheinSaveLinksBtn', function() {
             if (!sheinEditLinksRow) return;

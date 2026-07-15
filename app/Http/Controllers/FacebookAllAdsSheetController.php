@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\MarketPlace\ShopifyAdsMasterController;
 use App\Models\FacebookAllAdsSheet;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Reader\Csv as CsvReader;
@@ -237,12 +239,12 @@ class FacebookAllAdsSheetController extends Controller
             $query->where('import_batch_id', $batchId);
         } else {
             // No batches at all — return an empty payload.
-            return response()->json([
+            return response()->json(array_merge([
                 'success' => true,
                 'columns' => [],
                 'data'    => [],
                 'batch'   => null,
-            ]);
+            ], $this->tcosPayloadMatchingMaster()));
         }
 
         $rows = $query->get(['id', 'row_index', 'row_data', 'ad_type', 'ch', 'source_filename', 'created_at']);
@@ -296,7 +298,7 @@ class FacebookAllAdsSheetController extends Controller
         // Pluck the batch's upload_type from the first row's row_data.
         $batchUploadType = $rows->first()->row_data['__upload_type'] ?? null;
 
-        return response()->json([
+        return response()->json(array_merge([
             'success' => true,
             'columns' => $columnList,
             'data'    => $data,
@@ -307,7 +309,42 @@ class FacebookAllAdsSheetController extends Controller
                 'uploaded_at'     => $meta->uploaded_at ?? null,
                 'row_count'       => $meta ? (int) $meta->row_count : 0,
             ],
-        ]);
+        ], $this->tcosPayloadMatchingMaster()));
+    }
+
+    /**
+     * TCOS for /facebook-ads — same Ads%/TACOS as /all-marketplace-master FB Marketplace:
+     *   Facebook Ad Spend (CH=FB) / Shopify S Sales (store net sales) × 100
+     * Same denominator as /shopify-ads-master Facebook TCOS (not FB Marketplace sales).
+     *
+     * @return array{
+     *   shopify_net_sales: float,
+     *   facebook_ad_spend: float,
+     *   tcos_percent: float
+     * }
+     */
+    private function tcosPayloadMatchingMaster(): array
+    {
+        $netSales = 0.0;
+        $adSpend = 0.0;
+        try {
+            $netSales = (float) ShopifyAdsMasterController::advertisementMasterNetSales();
+        } catch (\Throwable $e) {
+            Log::warning('facebook-ads TCOS Shopify S Sales lookup failed: ' . $e->getMessage());
+        }
+        try {
+            $adSpend = (float) (app(ShopifyAdsMasterController::class)->getFacebookChannelSpend()['spend'] ?? 0);
+        } catch (\Throwable $e) {
+            Log::warning('facebook-ads TCOS spend lookup failed: ' . $e->getMessage());
+        }
+
+        $tcos = $netSales > 0 ? ($adSpend / $netSales) * 100 : ($adSpend > 0 ? 100.0 : 0.0);
+
+        return [
+            'shopify_net_sales' => round($netSales, 2),
+            'facebook_ad_spend' => round($adSpend, 2),
+            'tcos_percent' => round($tcos, 1),
+        ];
     }
 
     /**
@@ -685,7 +722,7 @@ class FacebookAllAdsSheetController extends Controller
                 array_values(array_diff($availableTypes, [$baseType]))
             ))
             : implode(' + ', array_map('ucfirst', $availableTypes));
-        return [
+        return array_merge([
             'success' => true,
             'columns' => $columnList,
             'data'    => $projected,
@@ -700,7 +737,7 @@ class FacebookAllAdsSheetController extends Controller
                 'sources'         => $latestByType,
                 'base_type'       => $baseType,
             ],
-        ];
+        ], $this->tcosPayloadMatchingMaster());
     }
 
     /**

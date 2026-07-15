@@ -98,6 +98,9 @@
                 <div id="summary-stats" class="p-3 bg-light rounded">
                     <h6 class="mb-3">Summary Statistics</h6>
                     <div class="d-flex flex-wrap gap-2">
+                        <span class="badge fs-6 p-2" id="fbm-y-sales-badge"
+                            style="background-color: #6f42c1; color: white; font-weight: bold;"
+                            title="Yesterday's Facebook Marketplace sales — {{ !empty($ySalesDate) ? \Carbon\Carbon::parse($ySalesDate)->format('M j, Y') . ' (PT / California)' : 'Pacific / California calendar day' }}. Σ sold_price × qty ({{ number_format((int) ($yQuantity ?? 0)) }} qty, {{ number_format((int) ($yOrders ?? 0)) }} orders). Same source as the FB Marketplace row on /all-marketplace-master.">Y Sales: ${{ number_format((float) ($ySales ?? 0), 2) }}</span>
                         <span class="badge bg-primary fs-6 p-2" id="fbm-total-orders-badge"
                             style="color: white; font-weight: bold;">Total Orders: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="fbm-total-quantity-badge"
@@ -116,6 +119,27 @@
                             style="background-color: #6f42c1; color: white; font-weight: bold;">Total Rows: 0</span>
                         <span class="badge fs-6 p-2" id="fbm-avg-qty-badge"
                             style="background-color: #fd7e14; color: white; font-weight: bold;">Avg Qty / Order: 0</span>
+                        <span class="badge fs-6 p-2" id="fbm-margin-badge"
+                            style="background-color: #20c997; color: white; font-weight: bold;"
+                            title="Take-home margin from marketplace_percentages">Margin: —</span>
+                        <span class="badge bg-info fs-6 p-2" id="fbm-gpft-badge"
+                            style="color: black; font-weight: bold;"
+                            title="GPFT% = Σ PFT / Σ Sales × 100 (sold_price × margin − LP, no ship)">GPFT: 0%</span>
+                        <span class="badge bg-secondary fs-6 p-2" id="fbm-roi-badge"
+                            style="color: white; font-weight: bold;"
+                            title="ROI% = Σ PFT / Σ COGS × 100">ROI: 0%</span>
+                        <span class="badge fs-6 p-2" id="fbm-ads-badge"
+                            style="background-color: #d63384; color: white; font-weight: bold;"
+                            title="Ads% = Facebook ads spend (CH=FB from /facebook-ads) / Sales × 100">Ads: 0%</span>
+                        <span class="badge fs-6 p-2" id="fbm-ad-spend-badge"
+                            style="background-color: #fd7e14; color: white; font-weight: bold;"
+                            title="Total Facebook ads spend (CH=FB)">Ad Spend: $0</span>
+                        <span class="badge fs-6 p-2" id="fbm-npft-badge"
+                            style="background-color: #0f766e; color: white; font-weight: bold;"
+                            title="NPFT% = GPFT% − Ads%">NPFT: 0%</span>
+                        <span class="badge fs-6 p-2" id="fbm-nroi-badge"
+                            style="background-color: #6f42c1; color: white; font-weight: bold;"
+                            title="NROI% = (Σ PFT − Ad Spend) / Σ COGS × 100">NROI: 0%</span>
                     </div>
                 </div>
             </div>
@@ -157,7 +181,24 @@
                 return Number(v || 0).toLocaleString();
             }
 
-            function updateBadges(rows) {
+            function pctColor(val, kind) {
+                const n = Number(val);
+                if (!isFinite(n)) return '#6c757d';
+                if (kind === 'gpft') {
+                    if (n < 10) return '#a00211';
+                    if (n < 15) return '#ffc107';
+                    if (n < 20) return '#0d6efd';
+                    if (n <= 40) return '#28a745';
+                    return '#e83e8c';
+                }
+                // ROI
+                if (n >= 125) return '#d63384';
+                if (n >= 75) return '#28a745';
+                if (n >= 40) return '#ffc107';
+                return '#a00211';
+            }
+
+            function updateBadges(rows, summary) {
                 // Aggregate metrics over all rows.
                 let totalQuantity = 0;
                 let totalSales    = 0;
@@ -179,6 +220,34 @@
                 const avgPrice    = totalQuantity > 0 ? totalSales / totalQuantity : 0;
                 const aov         = totalOrders   > 0 ? totalSales / totalOrders   : 0;
                 const avgQtyOrder = totalOrders   > 0 ? totalQuantity / totalOrders : 0;
+                const gpft = summary && summary.gpft_percent != null ? Number(summary.gpft_percent) : 0;
+                const roi  = summary && summary.roi_percent  != null ? Number(summary.roi_percent)  : 0;
+                const margin = summary && summary.margin_percent != null ? Number(summary.margin_percent) : null;
+                const adsPct = summary && summary.ads_percent != null ? Number(summary.ads_percent) : 0;
+                const adSpend = summary && summary.total_ad_spend != null ? Number(summary.total_ad_spend) : 0;
+                const npft = summary && summary.npft_percent != null ? Number(summary.npft_percent) : (gpft - adsPct);
+                const nroi = summary && summary.nroi_percent != null ? Number(summary.nroi_percent) : 0;
+
+                const ySales = summary && summary.y_sales != null ? Number(summary.y_sales) : 0;
+                const ySalesDate = summary && summary.y_sales_date ? String(summary.y_sales_date) : '';
+                const yQty = summary && summary.y_quantity != null ? Number(summary.y_quantity) : 0;
+                const yOrders = summary && summary.y_orders != null ? Number(summary.y_orders) : 0;
+                const yBadge = document.getElementById('fbm-y-sales-badge');
+                if (yBadge) {
+                    yBadge.textContent = 'Y Sales: ' + fmtMoney(ySales);
+                    let dateLabel = 'Pacific / California calendar day';
+                    if (ySalesDate) {
+                        try {
+                            const d = new Date(ySalesDate + 'T12:00:00');
+                            dateLabel = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) + ' (PT / California)';
+                        } catch (e) {
+                            dateLabel = ySalesDate + ' (PT / California)';
+                        }
+                    }
+                    yBadge.title = "Yesterday's Facebook Marketplace sales — " + dateLabel
+                        + '. Σ sold_price × qty (' + fmtInt(yQty) + ' qty, ' + fmtInt(yOrders)
+                        + ' orders). Same source as the FB Marketplace row on /all-marketplace-master.';
+                }
 
                 document.getElementById('fbm-total-orders-badge').textContent   = 'Total Orders: '   + fmtInt(totalOrders);
                 document.getElementById('fbm-total-quantity-badge').textContent = 'Total Quantity: ' + fmtInt(totalQuantity);
@@ -189,13 +258,24 @@
                 document.getElementById('fbm-total-skus-badge').textContent     = 'Total SKUs: '     + fmtInt(totalSkus);
                 document.getElementById('fbm-total-rows-badge').textContent     = 'Total Rows: '     + fmtInt(totalRows);
                 document.getElementById('fbm-avg-qty-badge').textContent        = 'Avg Qty / Order: '+ avgQtyOrder.toFixed(2);
+                document.getElementById('fbm-margin-badge').textContent         = margin != null
+                    ? ('Margin: ' + margin.toFixed(0) + '%')
+                    : 'Margin: —';
+                document.getElementById('fbm-gpft-badge').textContent           = 'GPFT: ' + gpft.toFixed(1) + '%';
+                document.getElementById('fbm-roi-badge').textContent            = 'ROI: '  + roi.toFixed(1)  + '%';
+                document.getElementById('fbm-ads-badge').textContent            = 'Ads: ' + adsPct.toFixed(1) + '%';
+                document.getElementById('fbm-ad-spend-badge').textContent       = 'Ad Spend: ' + fmtMoney(adSpend);
+                document.getElementById('fbm-npft-badge').textContent           = 'NPFT: ' + npft.toFixed(1) + '%';
+                document.getElementById('fbm-nroi-badge').textContent           = 'NROI: ' + nroi.toFixed(1) + '%';
             }
 
             function loadTable() {
                 fetch(dataUrl, { headers: { 'Accept': 'application/json' } })
                     .then(r => r.json())
-                    .then(rows => {
-                        updateBadges(rows);
+                    .then(payload => {
+                        const rows = Array.isArray(payload) ? payload : (payload.data || []);
+                        const summary = Array.isArray(payload) ? null : (payload.summary || null);
+                        updateBadges(rows, summary);
                         if (!table) {
                             buildTable(rows);
                         } else {
@@ -220,10 +300,22 @@
                         { title: 'Order Number', field: 'order_number', headerFilter: 'input', minWidth: 160 },
                         { title: 'SKU',          field: 'sku',          headerFilter: 'input', minWidth: 140 },
                         { title: 'Qty Sold',     field: 'qty_sold',     hozAlign: 'right', width: 110, headerFilter: 'input' },
-                        { title: 'Sold Price',   field: 'sold_price',   hozAlign: 'right', width: 130,
+                        { title: 'Sold Price',   field: 'sold_price',   hozAlign: 'right', width: 120,
                             formatter: c => fmtMoney(c.getValue()) },
-                        { title: 'Total',        field: 'total',        hozAlign: 'right', width: 130,
+                        { title: 'Total',        field: 'total',        hozAlign: 'right', width: 120,
                             formatter: c => fmtMoney(c.getValue()) },
+                        { title: 'LP',           field: 'lp',           hozAlign: 'right', width: 90,
+                            formatter: c => fmtMoney(c.getValue()) },
+                        { title: 'GPFT %',       field: 'gpft',         hozAlign: 'center', width: 90, sorter: 'number',
+                            formatter: c => {
+                                const v = Number(c.getValue()) || 0;
+                                return '<span style="color:' + pctColor(v, 'gpft') + ';font-weight:600;">' + v.toFixed(1) + '%</span>';
+                            } },
+                        { title: 'ROI %',        field: 'roi',          hozAlign: 'center', width: 90, sorter: 'number',
+                            formatter: c => {
+                                const v = Number(c.getValue()) || 0;
+                                return '<span style="color:' + pctColor(v, 'roi') + ';font-weight:600;">' + v.toFixed(1) + '%</span>';
+                            } },
                         { title: 'Order Date',   field: 'order_date',   width: 120 },
                         { title: 'Uploaded At',  field: 'created_at',   width: 170 },
                         { title: '',             field: '_actions',     width: 90, hozAlign: 'center',

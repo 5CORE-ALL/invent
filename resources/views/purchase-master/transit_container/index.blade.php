@@ -1447,9 +1447,18 @@ const PUSH_MAX_ATTEMPTS = 8;     // hard safety cap to avoid an infinite loop
 const PUSH_RETRY_BASE_MS = 800;  // initial backoff (doubles each attempt, capped)
 const PUSH_RETRY_MAX_MS  = 5000; // max backoff between retries
 
+function resolveTransitPushQty(row) {
+    const pcsQty = parseFloat(row.pcs_qty);
+    if (pcsQty > 0) return pcsQty;
+    const units = parseFloat(row.no_of_units) || 0;
+    const ctn = parseFloat(row.total_ctn) || 0;
+    return units * ctn;
+}
+
 async function pushSingleWithRetry(row, tableRow, table, tabName, forceRepush) {
     const rowId = row.id;
     let lastError = null;
+    const computedQty = resolveTransitPushQty(row);
 
     for (let attempt = 1; attempt <= PUSH_MAX_ATTEMPTS; attempt++) {
         tableRow.update({ push_status: 'processing' });
@@ -1468,7 +1477,9 @@ async function pushSingleWithRetry(row, tableRow, table, tabName, forceRepush) {
                     data: {
                         ...row,
                         our_sku: row.our_sku ? row.our_sku.trim().toUpperCase() : '',
-                        id: rowId
+                        id: rowId,
+                        // Always send computed qty so fractional cartons (e.g. 0.33) are not lost
+                        pcs_qty: computedQty
                     }
                 })
             });

@@ -127,6 +127,9 @@
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
                     <h6 class="mb-3">Summary Statistics</h6>
                     <div class="d-flex flex-wrap gap-2">
+                        <span class="badge fs-6 p-2" id="y-sales-badge"
+                            style="background-color: #6f42c1; color: white; font-weight: bold;"
+                            title="Temu 2 base-price sales for the last complete uploaded day ({{ $temu2YDate ?? 'n/a' }}). Temu 2 is upload-only — upload a report covering the latest day to move this forward.">Y Sales{{ !empty($temu2YDate) ? ' (' . \Carbon\Carbon::parse($temu2YDate)->format('M j') . ')' : '' }}: ${{ number_format((float) ($temu2YSales ?? 0), 2) }}</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-orders-badge" style="color: white; font-weight: bold;">Total Orders: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: white; font-weight: bold;">Total Quantity: 0</span>
                         <span class="badge bg-info fs-6 p-2" id="total-revenue-badge" style="color: white; font-weight: bold;">Total Revenue: $0.00</span>

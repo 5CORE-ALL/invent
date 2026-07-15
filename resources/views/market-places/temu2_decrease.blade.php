@@ -6,10 +6,41 @@
         <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
 
     <style>
+        /* Filter UI — matches /ebay-tabulator-view: compact dropdowns, badges on top */
+        #ebay-filter-bar .form-select {
+            width: auto !important;
+            max-width: 140px;
+            padding-right: 1.35rem !important;
+            padding-left: 0.5rem !important;
+            background-position: right 0.35rem center !important;
+        }
+        /* Compact SPRICE / LMP filter cluster — size to short labels, not longest option */
+        #ebay-filter-bar #sprice-filter,
+        #ebay-filter-bar #sprice-lmp-filter,
+        #ebay-filter-bar #prc-lmp-filter,
+        #ebay-filter-bar #lmp-filter {
+            width: 5.75rem !important;
+            max-width: 5.75rem !important;
+            min-width: 0 !important;
+        }
+        #ebay-filter-bar #sprice-lmp-filter {
+            width: 6.25rem !important;
+            max-width: 6.25rem !important;
+        }
+        #ebay-filter-bar { gap: 8px 10px !important; }
+        #summary-stats {
+            order: -1;
+            padding: 0.5rem 0.7rem !important;
+            margin-top: 0 !important;
+            margin-bottom: 0.5rem !important;
+        }
+        #summary-stats .ebay2-summary-badge-row,
+        #summary-stats .d-flex { gap: 8px !important; }
+
         .tabulator-col .tabulator-col-sorter {
             display: none !important;
         }
-        
+
         .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
             writing-mode: vertical-rl;
             text-orientation: mixed;
@@ -22,7 +53,7 @@
             font-size: 11px;
             font-weight: 600;
         }
-        
+
         .tabulator .tabulator-header .tabulator-col {
             height: 80px !important;
         }
@@ -120,6 +151,29 @@
         .status-dot.yellow {
             background-color: #ffc107;
         }
+
+        /* Summary badges: wrap to next line — never clip/hide */
+        #summary-stats .ebay2-summary-badge-row {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: stretch;
+            gap: 0.3rem;
+            width: 100%;
+            overflow: visible;
+        }
+
+        #summary-stats .ebay2-summary-badge-row>.badge {
+            flex: 0 0 auto;
+            font-size: 0.7rem;
+            padding: 0.25rem 0.45rem;
+            font-weight: bold;
+            box-sizing: border-box;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            white-space: nowrap;
+        }
     </style>
 @endsection
 
@@ -137,156 +191,165 @@
     <div class="toast-container"></div>
     <div class="row">
         <div class="card shadow-sm">
-            <div class="card-body py-3">
-                <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
-                    <!-- Inventory Filter -->
-                    <div>
-                        <select id="inventory-filter" class="form-select form-select-sm" style="width: 140px;">
-                            <option value="all">All Inventory</option>
-                            <option value="gt0" selected>INV &gt; 0</option>
-                            <option value="eq0" >INV = 0</option>
-                        </select>
-                    </div>
+            <div class="card-body py-2 d-flex flex-column">
+                <div class="d-flex align-items-center flex-wrap gap-2" id="ebay-filter-bar">
+                    <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU..." style="width: 180px; display: inline-block;">
+                    <input type="text" id="parent-search" class="form-control form-control-sm" placeholder="Search Parent..." style="width: 180px; display: inline-block;">
 
-                    {{--
-                        Stock Transfer filter — identifies SKUs that are out of stock so they
-                        can be queued for a transfer between the local warehouse (INV column)
-                        and Temu's side (Temu Stock column). Uses BOTH stock fields:
-                          • "Both = 0"  →  INV = 0 AND Temu Stock = 0  (out of stock everywhere)
-                          • "Either = 0" →  INV = 0 OR  Temu Stock = 0 (one side is empty;
-                             these are the actual stock-transfer candidates because at least
-                             one warehouse has zero units to fulfill from).
-                        Both options are independent of the Inventory filter above so users
-                        can combine them (e.g. INV > 0 + Either = 0 → SKUs with local stock
-                        but nothing on Temu).
-                    --}}
-                    <div>
-                        <select id="stock-transfer-filter" class="form-select form-select-sm" style="width: 170px;"
-                                title="Filter SKUs with 0 in stock (uses both INV and Temu Stock columns)">
-                            <option value="all">Stock Transfer</option>
-                            <option value="both0">0 Stock (Both INV &amp; Temu)</option>
-                            <option value="either0">0 Stock (Either INV or Temu)</option>
-                        </select>
-                    </div>
-
-                    <!-- GPFT + CVR (one row, same height as other filters) -->
-                    <div class="d-inline-flex align-items-center gap-1 flex-shrink-0">
-                        <select id="gpft-filter" class="form-select form-select-sm" style="width: 118px;">
-                            <option value="all">GPFT%</option>
-                            <option value="negative">Negative</option>
-                            <option value="0-10">0-10%</option>
-                            <option value="10-20">10-20%</option>
-                            <option value="20-30">20-30%</option>
-                            <option value="30-40">30-40%</option>
-                            <option value="40-50">40-50%</option>
-                            <option value="50plus">Above 50%</option>
-                        </select>
-                        <select id="cvr-filter" class="form-select form-select-sm" style="width: 112px;">
-                            <option value="all">All CVR%</option>
-                            <option value="0-0">0%</option>
-                            <option value="0-3">0-3%</option>
-                            <option value="3-7">3-7%</option>
-                            <option value="7-13">7-13%</option>
-                            <option value="13plus">13%+</option>
-                        </select>
-                    </div>
-
-                    {{-- Sold dropdown (mirrors Amazon tabulator + /temu-decrease + every other /pricing page).
-                         Backed by `temu_l30`:
-                           all  → no filter
-                           sold → temu_l30 > 0
-                           zero → temu_l30 = 0 AND INV > 0 (preserves the original
-                                  #zero-sold-count-badge semantics — "0 sold items (INV>0)")
-                         The existing #zero-sold-count-badge click handler just toggles this
-                         dropdown so badges + dropdown can never disagree. There is no
-                         "> 0 Sold" badge on this page, but the dropdown still offers the
-                         option for symmetry with the Amazon styling. --}}
-                    <select id="sold-filter" class="form-select form-select-sm" style="width: 130px;"
-                            title="Filter by Temu L30 sold quantity (0 Sold also requires INV > 0)">
-                        <option value="all">Sold</option>
-                        <option value="sold">Sold &gt; 0</option>
-                        <option value="zero">0 Sold</option>
+                    <select id="inventory-filter" class="form-select form-select-sm pricing-filter-item"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">INV</option>
+                        <option value="zero">0 INV</option>
+                        <option value="more" selected>INV &gt; 0</option>
                     </select>
 
-                    <!-- ROI Filter -->
-                    <div>
-                        <select id="roi-filter" class="form-select form-select-sm" style="width: 130px;">
-                            <option value="all">GROI%</option>
-                            <option value="lt40">&lt; 40%</option>
-                            <option value="40-75">40–75%</option>
-                            <option value="75-125">75–125%</option>
-                            <option value="gt125">125%+</option>
-                        </select>
-                    </div>
+                    <select id="tl30-filter" class="form-select form-select-sm pricing-filter-item"
+                        style="width: auto; display: inline-block;">
+                        <option value="all" selected>T L30</option>
+                        <option value="zero">0 T L30</option>
+                        <option value="more">T L30 &gt; 0</option>
+                    </select>
 
-                    <!-- CVR Trend Filter -->
-                    <div>
-                        <select id="cvr-trend-filter" class="form-select form-select-sm" style="width: 150px;">
-                            <option value="all">All CVR trend</option>
-                            <option value="l60_gt_l30">CVR 60 &gt; CVR 30</option>
-                            <option value="l30_gt_l60">CVR 30 &gt; CVR 60</option>
-                            <option value="equal">CVR 60 = CVR 30</option>
-                        </select>
-                    </div>
+                    <select id="growth-sign-filter" class="form-select form-select-sm pricing-filter-item"
+                        style="width: auto; display: inline-block;"
+                        title="Temu T L30 vs T L60: (L30 − L60) / L60 × 100; L60=0 and L30&gt;0 counts as +100%">
+                        <option value="all" selected>Growth</option>
+                        <option value="negative">Negative Only</option>
+                        <option value="zero">Zero Only</option>
+                        <option value="positive">Positive Only</option>
+                    </select>
 
-                    <!-- Arrow filter (CVR 30 vs CVR 60: up / down / equal) -->
-                    <div>
-                        <select id="arrow-filter" class="form-select form-select-sm" style="width: 120px;">
-                            <option value="all">All arrows</option>
-                            <option value="up">↑ Up (CVR 30 &gt; CVR 60)</option>
-                            <option value="down">↓ Down (CVR 30 &lt; CVR 60)</option>
-                            <option value="equal">＝ Equal</option>
-                        </select>
-                    </div>
+                    <select id="nrl-filter" class="form-select form-select-sm pricing-filter-item"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">Status</option>
+                        <option value="REQ" selected>REQ Only</option>
+                        <option value="NR">NR Only</option>
+                    </select>
 
-                    <!-- DIL Filter -->
-                    <div class="dropdown d-inline-block">
-                        <button class="btn btn-light btn-sm dropdown-toggle" type="button" id="dilFilterDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-                            <span class="status-circle default"></span> DIL%
+                    <select id="gpft-filter" class="form-select form-select-sm pricing-filter-item"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">GPFT%</option>
+                        <option value="negative">Negative</option>
+                        <option value="0-10">0-10%</option>
+                        <option value="10-20">10-20%</option>
+                        <option value="20-30">20-30%</option>
+                        <option value="30-40">30-40%</option>
+                        <option value="40plus">Above 40%</option>
+                    </select>
+
+                    <select id="cvr-filter" class="form-select form-select-sm pricing-filter-item"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">CVR%</option>
+                        <option value="0-0">0%</option>
+                        <option value="0-3">0-3%</option>
+                        <option value="3-7">3-7%</option>
+                        <option value="7-13">7-13%</option>
+                        <option value="13plus">13%+</option>
+                    </select>
+
+                    <select id="roi-filter" class="form-select form-select-sm pricing-filter-item"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">ROI%</option>
+                        <option value="lt40">&lt; 40%</option>
+                        <option value="40-75">40–75%</option>
+                        <option value="75-125">75–125%</option>
+                        <option value="gt125">125%+</option>
+                    </select>
+
+                    <select id="cvr-trend-filter" class="form-select form-select-sm pricing-filter-item"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">CVR trend</option>
+                        <option value="l60_gt_l30">CVR 60 &gt; CVR 30</option>
+                        <option value="l30_gt_l60">CVR 30 &gt; CVR 60</option>
+                        <option value="equal">CVR 60 = CVR 30</option>
+                    </select>
+
+                    <select id="sprice-filter" class="form-select form-select-sm pricing-filter-item"
+                        style="display: inline-block;"
+                        title="SPRICE: Blank shows only rows with empty SPRICE">
+                        <option value="all">SPRICE</option>
+                        <option value="blank">Blank</option>
+                    </select>
+
+                    <select id="sprice-lmp-filter" class="form-select form-select-sm pricing-filter-item"
+                        style="display: inline-block;"
+                        title="Sprice/LMP: Red = SPRICE &gt; LMP">
+                        <option value="all">S/LMP</option>
+                        <option value="red">Red</option>
+                    </select>
+
+                    <select id="prc-lmp-filter" class="form-select form-select-sm pricing-filter-item"
+                        style="display: inline-block;"
+                        title="Prc/LMP: Red = Temu Price &gt; LMP">
+                        <option value="all">P/LMP</option>
+                        <option value="red">Red</option>
+                    </select>
+
+                    <select id="lmp-filter" class="form-select form-select-sm pricing-filter-item"
+                        style="display: inline-block;"
+                        title="LMP: Red = no LMP value">
+                        <option value="all">LMP</option>
+                        <option value="red">Red</option>
+                    </select>
+
+                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light pricing-filter-item"
+                        id="target-roi-controls"
+                        title="Target ROI% — sets S PRC = (LP × (1 + Target ROI%/100) + Temu Ship) / TEMU2_PCT">
+                        <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
+                            <span style="font-size:1em;" aria-hidden="true">🎯</span> ROI%:
+                        </label>
+                        <input type="number" id="target-roi-input" class="form-control form-control-sm text-end"
+                            placeholder="30" step="0.1" style="width: 56px;">
+                        <button id="apply-target-roi-btn" class="btn btn-sm btn-success" type="button" title="Apply Target ROI%">
+                            <i class="fas fa-calculator"></i>
                         </button>
-                        <ul class="dropdown-menu" aria-labelledby="dilFilterDropdown">
-                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="all">
-                                    <span class="status-circle default"></span> All DIL</a></li>
-                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="red">
-                                    <span class="status-circle red"></span> Red (&lt;16.7%)</a></li>
-                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="yellow">
-                                    <span class="status-circle yellow"></span> Yellow (16.7-25%)</a></li>
-                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="green">
-                                    <span class="status-circle green"></span> Green (25-50%)</a></li>
-                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="pink">
-                                    <span class="status-circle pink"></span> Pink (50%+)</a></li>
+                    </div>
+
+                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light pricing-filter-item"
+                        id="target-gpft-controls"
+                        title="Target GPFT% — sets S PRC = (LP + Temu Ship) / (TEMU2_PCT − Target GPFT%/100)">
+                        <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
+                            <span style="font-size:1em;" aria-hidden="true">🎯</span> GPFT%:
+                        </label>
+                        <input type="number" id="target-gpft-input" class="form-control form-control-sm text-end"
+                            placeholder="30" step="0.1" style="width: 56px;">
+                        <button id="apply-target-gpft-btn" class="btn btn-sm btn-success" type="button" title="Apply Target GPFT%">
+                            <i class="fas fa-calculator"></i>
+                        </button>
+                    </div>
+
+                    <select id="dil-filter" class="form-select form-select-sm pricing-filter-item"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">DIL%</option>
+                        <option value="red">Red &lt;25%</option>
+                        <option value="green">Green 25-50%</option>
+                        <option value="pink">Pink 50%+</option>
+                    </select>
+
+                    <div class="dropdown d-inline-block pricing-filter-item">
+                        <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
+                            id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false" title="Columns">
+                            <i class="fa fa-eye"></i>
+                        </button>
+                        <ul class="dropdown-menu" aria-labelledby="columnVisibilityDropdown" id="column-dropdown-menu"
+                            style="max-height: 400px; overflow-y: auto;">
                         </ul>
                     </div>
 
-                    <!-- SPRICE Filter -->
-                    <div>
-                        <select id="sprice-filter" class="form-select form-select-sm" style="width: 130px;">
-                            <option value="all">All SPRICE</option>
-                            <option value="blank">Blank S PRC only</option>
-                            <option value="27-31">$27-$31</option>
-                            <option value="lt27">&lt; $27</option>
-                            <option value="gt31">&gt; $31</option>
-                        </select>
-                    </div>
+                    <button id="inc-dec-btn" class="btn btn-sm btn-secondary pricing-filter-item"
+                        title="Cycle: Off → Decrease → Increase → Same Price → Off">
+                        <i class="fas fa-exchange-alt"></i> Price %
+                    </button>
 
-                    <!-- NRL/REQ Filter -->
-                    <div>
-                        <select id="nr-req-filter" class="form-select form-select-sm" style="width: 100px;">
-                            <option value="all">ALL</option>
-                            <option value="NRL">NRL</option>
-                            <option value="REQ" selected>REQ</option>
-                        </select>
-                    </div>
-
-                    <!-- Play / Pause parent navigation (like pricing-master-cvr) -->
-                    <div class="btn-group align-items-center ms-2" role="group">
+                    {{-- Temu-only actions (kept after ebay-aligned filters) --}}
+                    <div class="btn-group align-items-center pricing-filter-item" role="group">
                         <button type="button" id="play-backward" class="btn btn-sm btn-light rounded-circle shadow-sm" title="Previous parent" disabled>
                             <i class="fas fa-step-backward"></i>
                         </button>
                         <button type="button" id="play-auto" class="btn btn-sm btn-primary rounded-circle shadow-sm me-1" title="Play">
                             <i class="fas fa-play"></i>
                         </button>
-                        <button type="button" id="play-pause" class="btn btn-sm btn-primary rounded-circle shadow-sm me-1" style="display: none;" title="Pause - click to reset Play">
+                        <button type="button" id="play-pause" class="btn btn-sm btn-primary rounded-circle shadow-sm me-1" style="display: none;" title="Pause">
                             <i class="fas fa-pause"></i>
                         </button>
                         <button type="button" id="play-forward" class="btn btn-sm btn-light rounded-circle shadow-sm" title="Next parent" disabled>
@@ -294,116 +357,93 @@
                         </button>
                     </div>
 
-                    <div class="dropdown d-inline-block">
-                        <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
-                            id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="fa fa-eye"></i> Columns
+                    <div class="dropdown pricing-filter-item">
+                        <button type="button" class="btn btn-sm btn-success" id="export-btn"
+                            data-bs-toggle="dropdown" aria-expanded="false" title="Export">
+                            <i class="fa fa-download"></i>
                         </button>
-                        <ul class="dropdown-menu" aria-labelledby="columnVisibilityDropdown" id="column-dropdown-menu"
-                            style="max-height: 400px; overflow-y: auto;">
+                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="export-btn">
+                            <li>
+                                <a class="dropdown-item" href="#" id="export-l30-btn">
+                                    <i class="fa fa-download me-1"></i> Export L30
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="#" id="export-l7-btn">
+                                    <i class="fa fa-download me-1"></i> Export L7
+                                </a>
+                            </li>
                         </ul>
                     </div>
-
-                    <button type="button" class="btn btn-sm btn-success" id="export-btn">
-                        <i class="fa fa-download"></i> Export L30
-                    </button>
-                    <button type="button" class="btn btn-sm btn-info" id="export-l7-btn">
-                        <i class="fa fa-download"></i> Export L7
-                    </button>
-                    <a href="{{ route('temu2.tabulator') }}" class="btn btn-sm btn-outline-primary" title="View Temu 2 order-level sales (temu2_daily_data)">
-                        <i class="fa fa-list-alt"></i> Order Data
-                    </a>
-                    <div class="d-inline-flex align-items-center gap-1 flex-shrink-0 border rounded px-2 py-1 bg-light ms-1" title="L30 / L7 period (temu2_daily_data)">
-                        <label for="campaign-period-select" class="mb-0 small fw-semibold text-nowrap text-dark">Period</label>
-                        <select id="campaign-period-select" class="form-select form-select-sm" style="min-width: 88px;">
-                            <option value="L30" selected>L30</option>
-                            <option value="L7">L7</option>
-                        </select>
-                    </div>
-                    <a href="{{ route('temu.lmp') }}" class="btn btn-sm btn-outline-secondary" title="Temu LMP table and upload">
-                        <i class="fa fa-link"></i> Temu LMP
-                    </a>
-
-                    <button id="inc-dec-btn" class="btn btn-sm btn-secondary" title="Cycle: Off → Decrease → Increase → Same Price → Off">
-                        INC / DEC
-                    </button>
-
-                    {{-- Target ROI% bulk control — back-solves S PRC for selected rows so SROI = Target ROI%.
-                         Formula: sprice = (LP × (1 + ROI%/100) + Ship) / TEMU2_PCT --}}
-                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
-                        id="target-roi-controls"
-                        title="Target ROI% — sets S PRC = (LP × (1 + Target ROI%/100) + Temu Ship) / TEMU2_PCT on every selected row (back-solves so SROI column equals the target)">
-                        <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
-                            Target ROI%:
-                        </label>
-                        <input type="number" id="target-roi-input" class="form-control form-control-sm text-end"
-                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
-                            title="Target ROI% applied to all selected rows when you click 'Apply S PRC'">
-                        <button id="apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
-                            title="Compute & save S PRC = (LP × (1 + Target ROI%/100) + Temu Ship) / TEMU2_PCT for every selected row">
-                            <i class="fas fa-calculator"></i> Apply S PRC
+                    <div class="dropdown pricing-filter-item">
+                        <button type="button" class="btn btn-sm btn-success" id="upload-actions-btn"
+                            data-bs-toggle="dropdown" aria-expanded="false" title="Upload">
+                            <i class="fa fa-upload"></i>
                         </button>
+                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="upload-actions-btn">
+                            <li>
+                                <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#uploadViewDataModal">
+                                    <i class="fa fa-eye me-1 text-success"></i> Up View Data
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#uploadRPricingModal">
+                                    <i class="fa fa-tags me-1 text-danger"></i> Up R Pricing
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#uploadPricingModal">
+                                    <i class="fa fa-dollar-sign me-1 text-info"></i> Up Pricing
+                                </a>
+                            </li>
+                        </ul>
                     </div>
-
-                    {{-- Target GPFT% bulk control — back-solves S PRC for selected rows so SGPFT = Target GPFT%.
-                         Formula: sprice = (LP + Temu Ship) / (TEMU2_PCT − GPFT%/100). Target GPFT% must be < TEMU2_PCT*100. --}}
-                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
-                        id="target-gpft-controls"
-                        title="Target GPFT% — sets S PRC = (LP + Temu Ship) / (TEMU2_PCT − Target GPFT%/100) on every selected row">
-                        <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
-                            Target GPFT%:
-                        </label>
-                        <input type="number" id="target-gpft-input" class="form-control form-control-sm text-end"
-                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
-                            title="Target GPFT% applied to all selected rows when you click 'Apply S PRC'. Must be less than the Temu take-home (TEMU2_PCT × 100%).">
-                        <button id="apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
-                            title="Compute & save S PRC = (LP + Temu Ship) / (TEMU2_PCT − Target GPFT%/100) for every selected row">
-                            <i class="fas fa-calculator"></i> Apply S PRC
-                        </button>
-                    </div>
-
-                    <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#uploadViewDataModal">
-                        <i class="fa fa-eye"></i> Up View Data
-                    </button>
-                    <button type="button" class="btn btn-sm btn-danger" data-bs-toggle="modal" data-bs-target="#uploadRPricingModal">
-                        <i class="fa fa-tags"></i> Up R Pricing
-                    </button>
-                    <button type="button" class="btn btn-sm btn-info" data-bs-toggle="modal" data-bs-target="#uploadPricingModal">
-                        <i class="fa fa-dollar-sign"></i> Up Pricing
-                    </button>
                 </div>
+                <small id="search-result-info" class="text-muted" style="display: none;"></small>
 
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
-                    <h6 class="mb-1">Summary Statistics</h6>
-                    <small class="text-muted d-block mb-2">Sums from full table (all rows, no filter)</small>
-                    <div class="d-flex flex-wrap gap-2">
-                        <!-- Basic Counts (sales summary = same as tabulator sales page) -->
-                        <span class="badge bg-success fs-6 p-2 temu-badge-history" id="total-revenue-badge" data-badge-metric="total_sales" data-badge-label="Sales" style="color: black; font-weight: bold; cursor: pointer;" title="Click to view history">Sales: $0</span>
-                        <span class="badge bg-primary fs-6 p-2 temu-badge-history" id="total-orders-badge" data-badge-metric="total_orders" data-badge-label="Orders" style="color: white; font-weight: bold; cursor: pointer;" title="Click to view history">Orders: 0</span>
-                        <span class="badge bg-primary fs-6 p-2 temu-badge-history" id="total-products-badge" data-badge-metric="sku_count" data-badge-label="SKU" style="color: black; font-weight: bold; cursor: pointer;" title="Click to view history">SKU: 0</span>
-                        <span class="badge bg-success fs-6 p-2 temu-badge-history" id="total-quantity-badge" data-badge-metric="total_quantity" data-badge-label="QTY" style="color: black; font-weight: bold; cursor: pointer;" title="Click to view history">QTY: 0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter 0 sold items (INV>0)">0 Sold: 0</span>
-                        <span class="badge fs-6 p-2" id="missing-count-badge" style="color: white; font-weight: bold; background-color: #dc3545; cursor: pointer;" title="Click to filter missing SKUs (INV>0)">Missing L: 0</span>
-                        <span class="badge fs-6 p-2" id="not-mapped-count-badge" style="color: white; font-weight: bold; background-color: #dc3545; cursor: pointer;" title="Click to filter not mapped SKUs (INV>0)">Missing M: 0</span>
-                        
-                        <!-- Pricing & Performance -->
-                        <span class="badge bg-info fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">AVG: $0.00</span>
-                       
-                        <span class="badge bg-info fs-6 p-2" id="cvr-total-views-badge" style="color: black; font-weight: bold;" title="Sum of product_clicks for all visible rows (from temu2_view_data)">Total Views: 0</span>
-                        <span class="badge bg-success fs-6 p-2" id="cvr-total-sold-badge" style="color: black; font-weight: bold;" title="Sum of temu_l30 for all visible rows (from temu2_daily_data)">Total Sold: 0</span>
-                        <span class="badge bg-warning fs-6 p-2 temu-badge-history" id="avg-cvr-badge" data-badge-metric="avg_cvr_pct" data-badge-label="CVR %" style="color: black; font-weight: bold; cursor: pointer;" title="Total Sold / Total Views * 100">CVR: 0.0%</span>
-                        
-                        <!-- Financial Totals -->
-                        <span class="badge bg-primary fs-6 p-2" id="total-profit-badge" style="color: black; font-weight: bold; display: none;">PFT: $0</span>
-                        <span class="badge bg-info fs-6 p-2" id="total-lp-badge" style="color: black; font-weight: bold; display: none;">Total LP: $0</span>
-                        
-                        <!-- Percentages (Gross) -->
-                        <span class="badge bg-success fs-6 p-2" id="avg-gprft-badge" style="color: black; font-weight: bold;">GPFT: 0%</span>
-                        <span class="badge bg-primary fs-6 p-2" id="avg-groi-badge" style="color: black; font-weight: bold;">GROI: 0%</span>
-                        
-                        <!-- Engagement -->
-                        <span class="badge bg-info fs-6 p-2 temu-badge-history" id="total-views-badge" data-badge-metric="total_views" data-badge-label="Views" style="color: black; font-weight: bold; cursor: pointer;" title="Click to view history">Views: 0</span>
-                        <span class="badge bg-info fs-6 p-2 temu-badge-history" id="avg-views-badge" data-badge-metric="avg_views" data-badge-label="AVG views" style="color: black; font-weight: bold; cursor: pointer;" title="Click to view history">AVG views: 0</span>
+                    <div class="ebay2-summary-badge-row" role="group" aria-label="Summary metrics">
+                        <span class="badge bg-dark fs-6 p-2" id="rows-count-badge"
+                            style="color: white; font-weight: bold;"
+                            title="Number of rows currently shown after filters">Rows: 0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge"
+                            style="color: white; font-weight: bold; cursor: pointer;"
+                            title="Click to filter 0 sold items (INV&gt;0)">0 Sold: 0</span>
+                        <span class="badge fs-6 p-2" id="more-sold-count-badge"
+                            style="background-color: #b6e0fe; color: #0f172a; font-weight: 700; cursor: pointer;"
+                            title="Click to filter items with sales (INV&gt;0)">&gt; 0 Sold: 0</span>
+                        <span class="badge bg-primary fs-6 p-2 temu-badge-history" id="total-sales-amt-badge"
+                            data-badge-metric="total_sales" data-badge-label="Sales"
+                            style="color: black; font-weight: bold; cursor: pointer;"
+                            title="L30 sales from Temu 2 orders (same source as sales summary)">Sales: $0</span>
+                        <span class="badge fs-6 p-2 temu-badge-history" id="qty-sold-badge"
+                            data-badge-metric="total_quantity" data-badge-label="QTY"
+                            style="background-color: #6f42c1; color: white; font-weight: bold; cursor: pointer;"
+                            title="L30 units sold">Qty: 0</span>
+                        <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge"
+                            style="color: black; font-weight: bold;"
+                            title="GPFT% = Σ PFT / Σ Sales × 100 (same as /temu2-tabulator order-level)">GPFT: 0%</span>
+                        <span class="badge bg-secondary fs-6 p-2" id="groi-percent-badge"
+                            style="color: white; font-weight: bold;"
+                            title="GROI% = Σ PFT / Σ COGS × 100 (same as /temu2-tabulator order-level)">GROI: 0%</span>
+                        <span class="badge fs-6 p-2 d-none" id="ads-percent-badge"
+                            style="background-color: #d63384; color: white; font-weight: bold;"
+                            title="Ads% = Ad Spend / Sales × 100">Ads: 0%</span>
+                        <span class="badge bg-warning fs-6 p-2" id="avg-price-badge"
+                            style="color: black; font-weight: bold;">Prc: $0.00</span>
+                        <span class="badge bg-danger fs-6 p-2 temu-badge-history" id="avg-cvr-badge"
+                            data-badge-metric="avg_cvr_pct" data-badge-label="CVR %"
+                            style="color: white; font-weight: bold; cursor: pointer;"
+                            title="CVR = (Qty / Views) × 100">CVR: 0%</span>
+                        <span class="badge bg-info fs-6 p-2 temu-badge-history" id="total-views-badge"
+                            data-badge-metric="total_views" data-badge-label="Views"
+                            style="color: black; font-weight: bold; cursor: pointer;">Views: 0</span>
+                        <span class="badge bg-secondary fs-6 p-2" id="missing-l-count-badge"
+                            style="color: white; font-weight: bold; cursor: pointer;"
+                            title="Click to filter Missing L (INV&gt;0, not listed, REQ)">M L: 0</span>
+                        <span class="badge bg-secondary fs-6 p-2" id="missing-m-count-badge"
+                            style="color: white; font-weight: bold; cursor: pointer;"
+                            title="Click to filter Missing M (listed, INV&gt;0, REQ, INV vs Temu Stock mismatch)">M M: 0</span>
                     </div>
                 </div>
             </div>
@@ -438,10 +478,6 @@
                     </div>
                 </div>
                 <div id="temu-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
-                    <div class="p-2 bg-light border-bottom">
-                        <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search by SKU (case-insensitive)...">
-                        <small id="search-result-info" class="text-muted" style="display: none;"></small>
-                    </div>
                     <div id="temu-table" style="flex: 1;"></div>
                 </div>
             </div>
@@ -911,7 +947,9 @@
 @section('script-bottom')
 <script>
     const TEMU2_PCT = {{ $temu2Pct }};
-    const COLUMN_VIS_KEY = "temu2_decrease_column_visibility";
+    // Same shared DB persistence as /ebay-tabulator-view (channel_tabulator_column_settings)
+    const TABULATOR_COLUMN_CHANNEL = 'temu2_decrease';
+    const TABULATOR_COLUMN_VISIBILITY_URL = '/tabulator-column-visibility';
     let table = null;
     let decreaseModeActive = false;
     let increaseModeActive = false;
@@ -1975,13 +2013,16 @@
             if (e.which === 13) $('#apply-target-gpft-btn').click();
         });
 
-        // Badge click handlers for filtering
-        // zeroSoldFilterActive removed — Sold filter is now owned by the #sold-filter
-        // dropdown (which the 0 Sold badge below just toggles).
+        // Badge click filters — same pattern as /ebay-tabulator-view
+        let zeroSoldFilterActive = false;
+        let moreSoldFilterActive = false;
+        let missingLFilterActive = false;
+        let missingMFilterActive = false;
         let lessAmzFilterActive = false;
         let moreAmzFilterActive = false;
-        let missingBadgeFilterActive = false;
         let mapBadgeFilterActive = false;
+        // aliases kept for any leftover refs
+        let missingBadgeFilterActive = false;
         let notMapBadgeFilterActive = false;
 
         // Map tolerance — same formula as /map-issues, /temu-decrease, and the
@@ -2001,33 +2042,41 @@
             return Math.round((diff / invNum) * 100) <= 3;
         }
 
-        // 0 Sold badge just toggles the #sold-filter dropdown so the dropdown stays the
-        // single source of truth (mirrors Amazon tabulator). Click again to clear.
         $('#zero-sold-count-badge').on('click', function() {
-            const next = $('#sold-filter').val() === 'zero' ? 'all' : 'zero';
-            $('#sold-filter').val(next);
+            zeroSoldFilterActive = !zeroSoldFilterActive;
+            moreSoldFilterActive = false;
             applyFilters();
         });
 
-        $('#missing-count-badge').on('click', function() {
-            missingBadgeFilterActive = !missingBadgeFilterActive;
+        $('#more-sold-count-badge').on('click', function() {
+            moreSoldFilterActive = !moreSoldFilterActive;
+            zeroSoldFilterActive = false;
             applyFilters();
-            if (table) {
-                if (missingBadgeFilterActive) {
-                    table.getColumn('lmp').show();
-                    table.getColumn('lmp_minus_15').show();
-                }
-                // LMP columns stay visible when Missing L is off (no hide)
+        });
+
+        $('#missing-l-count-badge').on('click', function() {
+            missingLFilterActive = !missingLFilterActive;
+            missingBadgeFilterActive = missingLFilterActive;
+            $(this).toggleClass('bg-secondary', !missingLFilterActive)
+                   .toggleClass('bg-danger', missingLFilterActive);
+            applyFilters();
+            if (table && missingLFilterActive) {
+                try { table.getColumn('lmp').show(); table.getColumn('lmp_minus_15').show(); } catch (e) {}
             }
         });
 
-        $('#not-mapped-count-badge').on('click', function() {
-            notMapBadgeFilterActive = !notMapBadgeFilterActive;
+        $('#missing-m-count-badge').on('click', function() {
+            missingMFilterActive = !missingMFilterActive;
+            notMapBadgeFilterActive = missingMFilterActive;
             mapBadgeFilterActive = false;
+            $(this).toggleClass('bg-secondary', !missingMFilterActive)
+                   .toggleClass('bg-danger', missingMFilterActive);
             applyFilters();
             if (table) {
-                if (notMapBadgeFilterActive) table.getColumn('MAP').show();
-                else table.getColumn('MAP').hide();
+                try {
+                    if (missingMFilterActive) table.getColumn('MAP').show();
+                    else table.getColumn('MAP').hide();
+                } catch (e) {}
             }
         });
 
@@ -2552,220 +2601,143 @@
             });
         }
 
+        // Badges wrap via CSS; no shrink-to-fit (keeps all badges visible).
+        function fitSummaryBadges() {}
+
         function updateSummary() {
-            // Sum from table directly with no filter: use full dataset (getData("all"))
-            const data = table.getData("all");
-            
-            let totalProducts = data.length;
+            if (!table) return;
+            const allData = table.getData('all');
+            const filteredData = table.getData('active');
+
+            let totalProducts = allData.length;
             let totalQuantity = 0;
             let totalPriceWeighted = 0;
             let totalQty = 0;
             let totalRevenue = 0;
             let totalProfit = 0;
             let totalLp = 0;
-            let totalGprft = 0;
-            let totalGroi = 0;
-            let totalAds = 0;
-            let totalNpft = 0;
-            let totalNroi = 0;
-            let totalCvr = 0;
-            let totalDil = 0;
             let totalSpend = 0;
-            let totalSpendL30 = 0; // Total spend_l30 for aggregate Ads% calculation (matches all-marketplace-master)
+            let totalSpendL30 = 0;
             let totalViews = 0;
             let totalTemuL30 = 0;
-            let totalInv = 0;
-            let cvrCount = 0;
-            let dilCount = 0;
             let zeroSoldCount = 0;
+            let moreSoldCount = 0;
             let missingCount = 0;
-            let mappedCount = 0;
             let notMappedCount = 0;
-            let lessAmzCount = 0;
-            let moreAmzCount = 0;
-            
-            data.forEach(row => {
-                const temuL30 = parseInt(row['temu_l30']) || 0;
-                const price = parseFloat(row['base_price']) || 0;
-                const temuPrice = parseFloat(row['temu_price']) || 0;  // Temu Price column = price for PFT formula
-                const lpPerUnit = parseFloat(row['lp']) || 0;
-                const temuShip = parseFloat(row['temu_ship']) || 0;
+            let rowsCount = 0;
+
+            // Filtered counts: Rows / 0 Sold / >0 Sold
+            filteredData.forEach(row => {
+                rowsCount++;
+                const temuL30 = parseInt(row.temu_l30, 10) || 0;
+                const inventory = parseFloat(row.inventory) || 0;
+                if (inventory > 0 && temuL30 === 0) zeroSoldCount++;
+                if (inventory > 0 && temuL30 > 0) moreSoldCount++;
+            });
+
+            // Financials + M L / M M from full dataset (ebay pattern for missing)
+            allData.forEach(row => {
+                const temuL30 = parseInt(row.temu_l30, 10) || 0;
+                const price = parseFloat(row.base_price) || 0;
+                const temuPrice = parseFloat(row.temu_price) || 0;
+                const lpPerUnit = parseFloat(row.lp) || 0;
+                const temuShip = parseFloat(row.temu_ship) || 0;
+                const inventory = parseFloat(row.inventory) || 0;
 
                 totalQuantity += temuL30;
                 totalPriceWeighted += price * temuL30;
                 totalQty += temuL30;
 
-                // Use Temu Price column directly (already has +$2.99 applied for base_price <= $26.99 by controller).
-                // This keeps badge GPFT/GROI consistent with per-row GPFT% column.
-                const hasSales = temuL30 > 0 && temuPrice > 0;
-                if (hasSales) {
+                if (temuL30 > 0 && temuPrice > 0) {
                     const pftDecimal = (temuPrice * TEMU2_PCT - lpPerUnit - temuShip) / temuPrice;
-                    const rowProfit = pftDecimal * temuPrice * temuL30;
                     totalRevenue += temuPrice * temuL30;
-                    totalProfit += rowProfit;
+                    totalProfit += pftDecimal * temuPrice * temuL30;
                     totalLp += lpPerUnit * temuL30;
                 }
 
-                // Percentage metrics (for fallback simple average when no revenue/COGS)
-                totalGprft += parseFloat(row['profit_percent']) || 0;
-                totalGroi += parseFloat(row['roi_percent']) || 0;
-                totalAds += parseFloat(row['ads_percent']) || 0;
-                totalNpft += parseFloat(row['npft_percent']) || 0;
-                totalNroi += parseFloat(row['nroi_percent']) || 0;
-                
-                // CVR% (only count non-zero values for average)
-                const cvr = parseFloat(row['cvr_percent']) || 0;
-                if (cvr > 0) {
-                    totalCvr += cvr;
-                    cvrCount++;
-                }
-                
-                // DIL% (only count non-zero values for average)
-                const dil = parseFloat(row['dil_percent']) || 0;
-                if (dil > 0) {
-                    totalDil += dil;
-                    dilCount++;
-                }
-                
-                // Ad spend and views
-                totalSpend += parseFloat(row['spend']) || 0;
-                // Use spend_l30 ONLY (no fallback to spend) to match all-marketplace-master fetchTotalAdSpendFromTables
-                totalSpendL30 += parseFloat(row['spend_l30'] || 0);
-                totalViews += parseInt(row['product_clicks']) || 0;
+                totalSpend += parseFloat(row.spend) || 0;
+                totalSpendL30 += parseFloat(row.spend_l30 || 0);
+                totalViews += parseInt(row.product_clicks, 10) || 0;
                 totalTemuL30 += temuL30;
-                
-                // Declare common variables once for this row
-                const inventory = parseFloat(row['inventory']) || 0;
-                const missing = row['missing'];
-                const goodsId = row['goods_id'];
-                const temuStock = parseFloat(row['temu_stock']) || 0;
-                
-                totalInv += parseInt(row['inventory']) || 0;
-                
-                // Count SKUs with 0 sold (Temu L30 = 0 AND INV > 0)
-                if (temuL30 === 0 && inventory > 0) {
-                    zeroSoldCount++;
-                }
-                
-                const nrReq = (row['nr_req'] || 'REQ').toString().toUpperCase();
 
-                // Missing L: not listed (missing === 'M'), INV > 0, exclude NR/NRL (matches amazon-tabulator-view)
+                const missing = row.missing;
+                const temuStock = parseFloat(row.temu_stock) || 0;
+                const nrReq = String(row.nr_req || 'REQ').toUpperCase();
+
                 if (missing === 'M' && inventory > 0 && nrReq !== 'NR' && nrReq !== 'NRL') {
                     missingCount++;
                 }
-
-                // Map / Missing M: REQ, listed, price > 0, BOTH sides with stock (temu_stock > 0)
-                // — same gate as /map-issues, /temu-decrease, and the /all-marketplace-master
-                // Temu 2 row. Tolerance: |INV − stock| <= 3 OR <= 3% of INV.
-                // Rows where temu_stock = 0 are neither Map nor Missing M (nothing comparable
-                // to map to) — without this gate, the badge over-counted by 29 vs the
-                // master page and was the source of the "different Missing M" discrepancy.
                 if (inventory > 0 && nrReq === 'REQ' && missing !== 'M' && temuPrice > 0 && temuStock > 0) {
-                    if (temuInvWithinMapTolerance(inventory, temuStock)) {
-                        mappedCount++;
-                    } else {
+                    if (!temuInvWithinMapTolerance(inventory, temuStock)) {
                         notMappedCount++;
                     }
                 }
-                
-                // Count < Amz and > Amz (compare Temu Price with Amazon Price)
-                // temuPrice already declared above, reuse it
-                const amazonPrice = parseFloat(row['a_price']) || 0;
-                
-                if (amazonPrice > 0 && temuPrice > 0) {
-                    if (temuPrice < amazonPrice) {
-                        lessAmzCount++; // Temu Price < Amazon Price
-                    } else if (temuPrice > amazonPrice) {
-                        moreAmzCount++; // Temu Price > Amazon Price
-                    }
-                }
             });
-            
-            // Calculate averages
-            const avgPrice = totalQty > 0 ? totalPriceWeighted / totalQty : 0;
-            // Avg GPRFT% = (Total Profit / Total Revenue) * 100 — profit from PFT formula (Temu Price * 0.96 - lp - temuship) / Temu Price
-            const avgGprft = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : (totalProducts > 0 ? totalGprft / totalProducts : 0);
-            // Weighted GROI% = (Total Profit / Total LP/COGS) × 100
-            const avgGroi = totalLp > 0 ? (totalProfit / totalLp) * 100 : (totalProducts > 0 ? totalGroi / totalProducts : 0);
-            const avgAds = totalProducts > 0 ? totalAds / totalProducts : 0;
-            // Prefer backend aggregate_ads_percent only when it is a valid positive number.
-            // If backend sends 0/invalid while table has spend+sales, compute ADS% from table totals.
-            // Primary source is spend_l30; fall back to spend snapshot when spend_l30 is unavailable.
-            const spendForAdsPercent = totalSpendL30 > 0 ? totalSpendL30 : totalSpend;
-            const computedAggregateAdsPercent = totalRevenue > 0 ? (spendForAdsPercent / totalRevenue) * 100 : 0;
-            const hasValidBackendAdsPercent = Number.isFinite(Number(badgeAvgAds)) && Number(badgeAvgAds) > 0;
-            if (!hasValidBackendAdsPercent) {
-                badgeAvgAds = computedAggregateAdsPercent;
-            }
-            // NPFT% = GPFT% - ADS% (simple formula, not weighted)
-            // CRITICAL: Always use badgeAvgAds (aggregate Ads% from backend) - never use avgAds (simple average)
-            // This ensures NPFT uses the same Ads% as all-marketplace-master (2.9%)
-            let adsPercentForNpft = 0;
-            if (badgeAvgAds != null && badgeAvgAds !== undefined) {
-                adsPercentForNpft = badgeAvgAds;
-            } else if (totalRevenue > 0) {
-                // Fallback: use same source selection as badge (spend_l30, else spend snapshot)
-                adsPercentForNpft = (spendForAdsPercent / totalRevenue) * 100;
-            }
-            // Use weighted avgGprft for accurate NPFT calculation
-            const avgNpft = avgGprft - adsPercentForNpft;
-            // NROI% = GROI% - ADS% (simple formula)
-            const avgNroi = avgGroi - adsPercentForNpft;
-            const avgCvr = cvrCount > 0 ? totalCvr / cvrCount : 0;
-            // CVR is driven by the two dedicated badges below — Total Views and Total Sold —
-            // so the badge value matches "sold ÷ views" exactly. totalViews comes from the
-            // same product_clicks sum used by the Total Views badge; totalTemuL30 comes from
-            // the same temu_l30 sum used by the Total Sold badge. Using totalTemuL30 (not
-            // totalQuantity, which can be overridden by sales_summary) keeps the math
-            // strictly = SoldBadge / ViewsBadge so the displayed numbers always agree.
-            const cvrTotalViews = totalViews;
-            const cvrTotalSold  = totalTemuL30;
-            const qtyPerViews = cvrTotalViews > 0 ? (cvrTotalSold / cvrTotalViews) * 100 : 0;
-            const avgDil = dilCount > 0 ? totalDil / dilCount : 0;
 
-            // Calculate TCOS: (Total Ad Spend / Total Revenue) × 100
-            const totalTcos = totalRevenue > 0 ? (totalSpend / totalRevenue) * 100 : 0;
-            
-            // Calculate average views
-            const avgViews = totalProducts > 0 ? totalViews / totalProducts : 0;
-            
-            // Update badges (prefer backend summary; fall back to table totals when backend returns empty/zeroed summary)
+            const avgPrice = totalQty > 0 ? totalPriceWeighted / totalQty : 0;
+            // Fallback listing-price GPFT/GROI; prefer order-level from sales_summary
+            // (same math as /temu2-tabulator PFT% / ROI%).
+            let avgGprft = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
+            let avgGroi = totalLp > 0 ? (totalProfit / totalLp) * 100 : 0;
+            let salesAmt = totalRevenue;
+            let qtyAmt = totalQuantity;
+            let profitAmt = totalProfit;
+            let cogsAmt = totalLp;
             if (salesSummaryFromBackend) {
                 const backendOrders = Number(salesSummaryFromBackend.total_orders || 0);
                 const backendQuantity = Number(salesSummaryFromBackend.total_quantity || 0);
                 const backendRevenue = Number(salesSummaryFromBackend.total_revenue || 0);
-                const hasBackendSalesSummary = (backendOrders > 0 || backendQuantity > 0 || backendRevenue > 0);
-
-                if (hasBackendSalesSummary) {
-                    $('#total-orders-badge').text('Orders: ' + backendOrders.toLocaleString());
-                    $('#total-quantity-badge').text('QTY: ' + backendQuantity.toLocaleString());
-                    $('#total-revenue-badge').text('Sales: $' + Math.round(backendRevenue).toLocaleString());
-                } else {
-                    $('#total-orders-badge').text('Orders: 0');
-                    $('#total-quantity-badge').text('QTY: ' + totalQuantity.toLocaleString());
-                    $('#total-revenue-badge').text('Sales: $' + Math.round(totalRevenue).toLocaleString());
+                if (backendOrders > 0 || backendQuantity > 0 || backendRevenue > 0) {
+                    salesAmt = backendRevenue;
+                    qtyAmt = backendQuantity;
                 }
-            } else {
-                $('#total-orders-badge').text('Orders: 0');
-                $('#total-quantity-badge').text('QTY: ' + totalQuantity.toLocaleString());
-                $('#total-revenue-badge').text('Sales: $' + Math.round(totalRevenue).toLocaleString());
+                if (salesSummaryFromBackend.gpft_percent != null && salesSummaryFromBackend.gpft_percent !== undefined) {
+                    avgGprft = Number(salesSummaryFromBackend.gpft_percent) || 0;
+                }
+                if (salesSummaryFromBackend.groi_percent != null && salesSummaryFromBackend.groi_percent !== undefined) {
+                    avgGroi = Number(salesSummaryFromBackend.groi_percent) || 0;
+                }
+                if (salesSummaryFromBackend.total_pft != null && salesSummaryFromBackend.total_pft !== undefined) {
+                    profitAmt = Number(salesSummaryFromBackend.total_pft) || 0;
+                }
+                if (salesSummaryFromBackend.total_cogs != null && salesSummaryFromBackend.total_cogs !== undefined) {
+                    cogsAmt = Number(salesSummaryFromBackend.total_cogs) || 0;
+                }
             }
-            $('#total-products-badge').text('SKU: ' + totalProducts.toLocaleString());
+            const spendForAdsPercent = totalSpendL30 > 0 ? totalSpendL30 : totalSpend;
+            const adsRevenueBase = salesAmt > 0 ? salesAmt : totalRevenue;
+            const computedAggregateAdsPercent = adsRevenueBase > 0 ? (spendForAdsPercent / adsRevenueBase) * 100 : 0;
+            const hasValidBackendAdsPercent = Number.isFinite(Number(badgeAvgAds)) && Number(badgeAvgAds) > 0;
+            if (!hasValidBackendAdsPercent) {
+                badgeAvgAds = computedAggregateAdsPercent;
+            }
+            const adsPercentForNpft = (badgeAvgAds != null && badgeAvgAds !== undefined)
+                ? badgeAvgAds
+                : computedAggregateAdsPercent;
+            const cvrTotalViews = totalViews;
+            const cvrTotalSold = totalTemuL30;
+            const qtyPerViews = cvrTotalViews > 0 ? (cvrTotalSold / cvrTotalViews) * 100 : 0;
+
+            $('#rows-count-badge').text('Rows: ' + rowsCount.toLocaleString());
             $('#zero-sold-count-badge').text('0 Sold: ' + zeroSoldCount.toLocaleString());
-            $('#missing-count-badge').text('Missing L: ' + missingCount.toLocaleString());
-            $('#not-mapped-count-badge').text('Missing M: ' + notMappedCount.toLocaleString());
-            $('#avg-price-badge').text('AVG: $' + avgPrice.toFixed(2));
-            $('#cvr-total-views-badge').text('Total Views: ' + cvrTotalViews.toLocaleString());
-            $('#cvr-total-sold-badge').text('Total Sold: ' + cvrTotalSold.toLocaleString());
+            $('#more-sold-count-badge').text('> 0 Sold: ' + moreSoldCount.toLocaleString());
+            $('#total-sales-amt-badge').text('Sales: $' + Math.round(salesAmt).toLocaleString());
+            $('#qty-sold-badge').text('Qty: ' + Number(qtyAmt).toLocaleString());
+            $('#avg-gpft-badge').text('GPFT: ' + avgGprft.toFixed(1) + '%');
+            $('#groi-percent-badge').text('GROI: ' + avgGroi.toFixed(1) + '%');
+            $('#ads-percent-badge').text('Ads: ' + (Number(adsPercentForNpft) || 0).toFixed(1) + '%');
+            $('#avg-price-badge').text('Prc: $' + avgPrice.toFixed(2));
             $('#avg-cvr-badge').text('CVR: ' + qtyPerViews.toFixed(1) + '%');
-            $('#avg-dil-badge').text('Avg DIL: ' + Math.round(avgDil) + '%');
-            // Total Revenue badge set above from sales_summary or table
-            $('#total-profit-badge').text('PFT: $' + Math.round(totalProfit).toLocaleString());
-            $('#total-lp-badge').text('Total LP: $' + Math.round(totalLp).toLocaleString());
-            $('#avg-gprft-badge').text('GPFT: ' + avgGprft.toFixed(1) + '%');
-            $('#avg-groi-badge').text('GROI: ' + Math.round(avgGroi) + '%');
             $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
-            $('#avg-views-badge').text('AVG views: ' + Math.round(avgViews));
+            $('#missing-l-count-badge').text('M L: ' + missingCount.toLocaleString());
+            $('#missing-m-count-badge').text('M M: ' + notMappedCount.toLocaleString());
+
+            // Legacy hidden IDs (if present) — avoid JS errors
+            $('#total-products-badge').text('SKU: ' + totalProducts.toLocaleString());
+            $('#total-profit-badge').text('PFT: $' + Math.round(profitAmt).toLocaleString());
+            $('#total-lp-badge').text('Total LP: $' + Math.round(cogsAmt).toLocaleString());
+
+            fitSummaryBadges();
         }
 
         function updateTemuAdsCounts() {
@@ -2817,7 +2789,6 @@
                 if (response && Array.isArray(response.data)) {
                     const periodFromResponse = (response.period || currentCampaignPeriod || 'L30').toUpperCase();
                     currentCampaignPeriod = periodFromResponse;
-                    $('#campaign-period-select').val(currentCampaignPeriod);
                     totalCampaignCountFromBackend = parseInt(response.total_campaign_count || 0, 10);
                     salesSummaryFromBackend = response.sales_summary || null;
                     // Use exact aggregate_ads_percent from backend (matches all-marketplace-master)
@@ -2942,6 +2913,7 @@
                     hozAlign: "center",
                     sorter: "number",
                     width: 60,
+                    visible: false,
                     formatter: function(cell) {
                         const val = parseFloat(cell.getValue()) || 0;
                         let color = val <= 4 ? '#a00211' : (val > 4 && val <= 7 ? '#ffc107' : (val > 7 && val <= 13 ? '#28a745' : '#e83e8c'));
@@ -2954,6 +2926,7 @@
                     hozAlign: "center",
                     sorter: "number",
                     width: 60,
+                    visible: false,
                     formatter: function(cell) {
                         const val = parseFloat(cell.getValue()) || 0;
                         let color = val <= 4 ? '#a00211' : (val > 4 && val <= 7 ? '#ffc107' : (val > 7 && val <= 13 ? '#28a745' : '#e83e8c'));
@@ -3014,6 +2987,7 @@
                     hozAlign: "center",
                     width: 50,
                     sorter: "number",
+                    visible: false,
                     formatter: function(cell) {
                         const value = cell.getValue();
                         return Math.round(parseFloat(value) || 0);
@@ -3791,84 +3765,105 @@
             toggleL60Columns(l60ColumnsVisible);
         });
 
-        $('#sku-search').on('keyup', function() {
+        $('#sku-search, #parent-search').on('keyup', function() {
             applyFilters();
         });
 
-        // Apply filters
+        // Apply filters — same structure as /ebay-tabulator-view, Temu field mapping
         function applyFilters() {
-            // When Play navigation is active, show only current parent (like pricing-master-cvr)
             if (isPlayNavigationActive) {
                 if (typeof showCurrentParentPlayView === 'function') showCurrentParentPlayView();
                 return;
             }
 
             const inventoryFilter = $('#inventory-filter').val();
+            const tl30Filter = $('#tl30-filter').val();
+            const growthSignFilter = $('#growth-sign-filter').val();
+            const nrlFilter = $('#nrl-filter').val();
             const gpftFilter = $('#gpft-filter').val();
             const groiFilter = $('#roi-filter').val();
             const cvrFilter = $('#cvr-filter').val();
             const cvrTrendFilter = $('#cvr-trend-filter').val();
-            const arrowFilter = $('#arrow-filter').val();
-            const adsFilter = 'all';
             const spriceFilter = $('#sprice-filter').val();
-            const dilFilter = $('.column-filter[data-column="dil_percent"].active')?.data('color') || 'all';
-            const skuSearch = $('#sku-search').val();
+            const spriceLmpFilter = $('#sprice-lmp-filter').val();
+            const prcLmpFilter = $('#prc-lmp-filter').val();
+            const lmpFilter = $('#lmp-filter').val();
+            const dilFilter = $('#dil-filter').val() || 'all';
+            const skuSearch = ($('#sku-search').val() || '').trim();
+            const parentSearch = ($('#parent-search').val() || '').trim();
             adsReqFilter = 'all';
             adsRunningFilter = 'all';
 
-            // Clear all filters first
-            table.clearFilter();
+            table.clearFilter(true);
 
-            // SKU search filter (case-insensitive)
             if (skuSearch) {
                 table.addFilter(function(data) {
-                    const sku = data.sku || '';
-                    return sku.toUpperCase().includes(skuSearch.toUpperCase());
+                    return String(data.sku || '').toUpperCase().includes(skuSearch.toUpperCase());
+                });
+            }
+            if (parentSearch) {
+                table.addFilter(function(data) {
+                    return String(data.parent || '').toUpperCase().includes(parentSearch.toUpperCase());
                 });
             }
 
-            // Inventory filter
             if (inventoryFilter !== 'all') {
                 table.addFilter(function(data) {
                     const inv = parseFloat(data.inventory) || 0;
-                    if (inventoryFilter === 'gt0') return inv > 0;
-                    if (inventoryFilter === 'eq0') return inv === 0;
+                    if (inventoryFilter === 'more') return inv > 0;
+                    if (inventoryFilter === 'zero') return inv === 0;
                     return true;
                 });
             }
 
-            // Stock Transfer filter — 0-in-stock SKUs using BOTH inventory & temu_stock.
-            // "both0"   = INV == 0 AND Temu Stock == 0 (out of stock everywhere)
-            // "either0" = INV == 0 OR  Temu Stock == 0 (the real transfer candidates —
-            //             one side has zero units to fulfill from)
-            const stockTransferFilter = $('#stock-transfer-filter').val();
-            if (stockTransferFilter && stockTransferFilter !== 'all') {
+            if (tl30Filter !== 'all') {
                 table.addFilter(function(data) {
-                    const inv       = parseFloat(data.inventory)  || 0;
-                    const temuStock = parseFloat(data.temu_stock) || 0;
-                    if (stockTransferFilter === 'both0')   return inv === 0 && temuStock === 0;
-                    if (stockTransferFilter === 'either0') return inv === 0 || temuStock === 0;
+                    const l30 = parseInt(data.temu_l30, 10) || 0;
+                    if (tl30Filter === 'more') return l30 > 0;
+                    if (tl30Filter === 'zero') return l30 === 0;
                     return true;
                 });
             }
 
-            // GPFT filter — use same formula as column: (temu_price * 0.96 - lp - temu_ship) / temu_price * 100
+            if (growthSignFilter !== 'all') {
+                table.addFilter(function(data) {
+                    const l30 = parseFloat(data.temu_l30) || 0;
+                    const l60 = parseFloat(data.temu_l60) || 0;
+                    let growth = 0;
+                    if (l60 === 0 && l30 > 0) growth = 100;
+                    else if (l60 > 0) growth = ((l30 - l60) / l60) * 100;
+                    growth = Math.round(growth);
+                    if (growthSignFilter === 'negative') return growth < 0;
+                    if (growthSignFilter === 'zero') return growth === 0;
+                    if (growthSignFilter === 'positive') return growth > 0;
+                    return true;
+                });
+            }
+
+            if (nrlFilter !== 'all') {
+                table.addFilter(function(data) {
+                    const nr = String(data.nr_req || 'REQ').toUpperCase();
+                    const normalized = (nr === 'NR' || nr === 'NRL') ? 'NR' : nr;
+                    return normalized === nrlFilter;
+                });
+            }
+
             if (gpftFilter !== 'all') {
                 table.addFilter(function(data) {
                     const price = parseFloat(data.temu_price) || 0;
-                    const gpft = price > 0 ? ((price * TEMU2_PCT - (parseFloat(data.lp) || 0) - (parseFloat(data.temu_ship) || 0)) / price) * 100 : 0;
+                    const gpft = price > 0
+                        ? ((price * TEMU2_PCT - (parseFloat(data.lp) || 0) - (parseFloat(data.temu_ship) || 0)) / price) * 100
+                        : 0;
                     if (gpftFilter === 'negative') return gpft < 0;
                     if (gpftFilter === '0-10') return gpft >= 0 && gpft < 10;
                     if (gpftFilter === '10-20') return gpft >= 10 && gpft < 20;
                     if (gpftFilter === '20-30') return gpft >= 20 && gpft < 30;
                     if (gpftFilter === '30-40') return gpft >= 30 && gpft < 40;
-                    if (gpftFilter === '40-50') return gpft >= 40 && gpft < 50;
-                    if (gpftFilter === '50plus') return gpft >= 50;
+                    if (gpftFilter === '40plus') return gpft >= 40;
                     return true;
                 });
             }
 
-            // ROI filter (GROI%)
             if (groiFilter !== 'all') {
                 table.addFilter(function(data) {
                     const groi = parseFloat(data.roi_percent) || 0;
@@ -3880,12 +3875,9 @@
                 });
             }
 
-            // CVR filter
             if (cvrFilter !== 'all') {
                 table.addFilter(function(data) {
-                    const cvr = parseFloat(data.cvr_percent) || 0;
-                    const cvrRounded = Math.round(cvr * 100) / 100;
-                    
+                    const cvrRounded = Math.round((parseFloat(data.cvr_percent) || 0) * 100) / 100;
                     if (cvrFilter === '0-0') return cvrRounded === 0;
                     if (cvrFilter === '0-3') return cvrRounded > 0 && cvrRounded <= 3;
                     if (cvrFilter === '3-7') return cvrRounded > 3 && cvrRounded <= 7;
@@ -3895,200 +3887,131 @@
                 });
             }
 
-            // ADS filter
-            if (adsFilter !== 'all') {
+            if (cvrTrendFilter !== 'all') {
+                const cvrTrendTol = 0.1;
                 table.addFilter(function(data) {
-                    const ads = parseFloat(data.ads_percent) || 0;
-                    
-                    if (adsFilter === '0-10') return ads >= 0 && ads < 10;
-                    if (adsFilter === '10-20') return ads >= 10 && ads < 20;
-                    if (adsFilter === '20-30') return ads >= 20 && ads < 30;
-                    if (adsFilter === '30-100') return ads >= 30 && ads <= 100;
-                    if (adsFilter === '100plus') return ads > 100;
+                    const cvr30 = parseFloat(data.cvr_30 || data.cvr_percent) || 0;
+                    const cvr60 = parseFloat(data.cvr_60) || 0;
+                    if (cvrTrendFilter === 'l60_gt_l30') return cvr60 > cvr30 + cvrTrendTol;
+                    if (cvrTrendFilter === 'l30_gt_l60') return cvr30 > cvr60 + cvrTrendTol;
+                    if (cvrTrendFilter === 'equal') return Math.abs(cvr30 - cvr60) <= cvrTrendTol;
                     return true;
                 });
             }
 
-            // DIL filter
             if (dilFilter !== 'all') {
                 table.addFilter(function(data) {
-                    const dil = parseFloat(data['dil_percent']) || 0;
-                    
-                    if (dilFilter === 'red') return dil < 16.66;
-                    if (dilFilter === 'yellow') return dil >= 16.66 && dil < 25;
+                    const dil = parseFloat(data.dil_percent) || 0;
+                    if (dilFilter === 'red') return dil < 25;
                     if (dilFilter === 'green') return dil >= 25 && dil < 50;
                     if (dilFilter === 'pink') return dil >= 50;
                     return true;
                 });
             }
 
-            // CVR trend filter (CVR 60 vs CVR 30)
-            const cvrTrendTol = 0.1;
-            const applyArrowOrCvrTrend = (filterVal) => {
-                if (filterVal === 'all') return;
-                table.addFilter(function(data) {
-                    const cvr30 = parseFloat(data.cvr_30 || data.cvr_percent) || 0;
-                    const cvr60 = parseFloat(data.cvr_60) || 0;
-                    if (filterVal === 'l60_gt_l30' || filterVal === 'down') return cvr60 > cvr30 + cvrTrendTol;
-                    if (filterVal === 'l30_gt_l60' || filterVal === 'up') return cvr30 > cvr60 + cvrTrendTol;
-                    if (filterVal === 'equal') return Math.abs(cvr30 - cvr60) <= cvrTrendTol;
-                    return true;
-                });
-            };
-            if (arrowFilter !== 'all') {
-                applyArrowOrCvrTrend(arrowFilter);
-            } else if (cvrTrendFilter !== 'all') {
-                applyArrowOrCvrTrend(cvrTrendFilter);
-            }
-
-            // SPRICE filter
-            if (spriceFilter !== 'all') {
+            if (spriceFilter === 'blank') {
                 table.addFilter(function(data) {
                     const spriceVal = data.sprice;
-                    const sprice = parseFloat(spriceVal) || 0;
-                    if (spriceFilter === 'blank') {
-                        const blank = spriceVal == null || spriceVal === '' || isNaN(sprice) || sprice <= 0;
-                        return blank;
-                    }
-                    if (spriceFilter === '27-31') return sprice >= 27 && sprice <= 31;
-                    if (spriceFilter === 'lt27') return sprice > 0 && sprice < 27;
-                    if (spriceFilter === 'gt31') return sprice > 31;
-                    return true;
+                    const sprice = parseFloat(spriceVal);
+                    return spriceVal == null || spriceVal === '' || isNaN(sprice) || sprice <= 0;
                 });
             }
 
-            // Sold+SPRC Blank filter (if active)
+            if (spriceLmpFilter === 'red') {
+                table.addFilter(function(data) {
+                    const sprice = parseFloat(data.sprice) || 0;
+                    const lmp = parseFloat(data.lmp) || 0;
+                    return sprice > 0 && lmp > 0 && sprice > lmp;
+                });
+            }
+
+            if (prcLmpFilter === 'red') {
+                table.addFilter(function(data) {
+                    const price = parseFloat(data.temu_price) || 0;
+                    const lmp = parseFloat(data.lmp) || 0;
+                    return price > 0 && lmp > 0 && price > lmp;
+                });
+            }
+
+            if (lmpFilter === 'red') {
+                table.addFilter(function(data) {
+                    return (parseFloat(data.lmp) || 0) <= 0;
+                });
+            }
+
             if (soldSpriceBlankFilterActive) {
                 table.addFilter(function(data) {
-                    const temuL30Val = data['temu_l30'];
-                    const spriceVal = data['sprice'];
-                    const invVal = data['inventory'];
-                    
-                    const temuL30 = temuL30Val ? parseInt(temuL30Val) : 0;
-                    const inventory = invVal ? parseInt(invVal) : 0;
+                    const temuL30 = parseInt(data.temu_l30, 10) || 0;
+                    const inventory = parseInt(data.inventory, 10) || 0;
+                    const spriceVal = data.sprice;
                     const spriceIsBlank = !spriceVal || spriceVal === '' || spriceVal === 0 || parseFloat(spriceVal) === 0;
-                    
                     return inventory > 0 && temuL30 > 0 && spriceIsBlank;
                 });
             }
 
-            // Ads Req filter
-            if (adsReqFilter !== 'all') {
+            if (zeroSoldFilterActive) {
                 table.addFilter(function(data) {
-                    const views = parseFloat(data['product_clicks']) || 0;
-                    if (adsReqFilter === 'below-avg' && latestAvgViews > 0) {
-                        return views > 0 && views < latestAvgViews;
-                    }
-                    return true;
+                    return (parseInt(data.temu_l30, 10) || 0) === 0 && (parseFloat(data.inventory) || 0) > 0;
+                });
+            } else if (moreSoldFilterActive) {
+                table.addFilter(function(data) {
+                    return (parseInt(data.temu_l30, 10) || 0) > 0 && (parseFloat(data.inventory) || 0) > 0;
                 });
             }
 
-            // Ads Running filter
-            if (adsRunningFilter !== 'all') {
+            if (missingLFilterActive || missingBadgeFilterActive) {
                 table.addFilter(function(data) {
-                    const target = parseFloat(data['target']) || 0;
-                    if (adsRunningFilter === 'running') {
-                        return target > 0;
-                    }
-                    return true;
+                    const inv = parseFloat(data.inventory) || 0;
+                    const nrReq = String(data.nr_req || 'REQ').toUpperCase();
+                    return data.missing === 'M' && inv > 0 && nrReq !== 'NR' && nrReq !== 'NRL';
                 });
             }
 
-            // Sold filter — driven by the #sold-filter dropdown (single source of truth).
-            // The legacy #zero-sold-count-badge click just toggles this dropdown to "zero".
-            // `zero` keeps the original badge semantics (INV > 0 required). `sold` is the new
-            // option added for parity with the Amazon-style dropdown (no INV constraint).
-            const soldFilter = $('#sold-filter').val();
-            if (soldFilter === 'zero') {
-                table.addFilter(function(data) {
-                    const temuL30 = parseInt(data['temu_l30']) || 0;
-                    const inv = parseFloat(data['inventory']) || 0;
-                    return temuL30 === 0 && inv > 0;
-                });
-            } else if (soldFilter === 'sold') {
-                table.addFilter(function(data) {
-                    return (parseInt(data['temu_l30']) || 0) > 0;
-                });
-            }
-
-            // Missing L badge filter — not listed (missing='M'), INV > 0, exclude NR/NRL (matches amazon-tabulator-view)
-            if (missingBadgeFilterActive) {
-                table.addFilter(function(data) {
-                    const inv = parseFloat(data['inventory']) || 0;
-                    const nrReq = (data['nr_req'] || 'REQ').toString().toUpperCase();
-                    return data['missing'] === 'M' && inv > 0 && nrReq !== 'NR' && nrReq !== 'NRL';
-                });
-            }
-
-            // Map badge — REQ, listed, price > 0, both sides with stock (same gate as the badge counter);
-            // within tolerance (3 units OR 3% of INV).
             if (mapBadgeFilterActive) {
                 table.addFilter(function(data) {
-                    const inv = parseFloat(data['inventory']) || 0;
-                    const missing = data['missing'];
-                    const nrReq = (data['nr_req'] || 'REQ').toString().toUpperCase();
-                    const price = parseFloat(data['temu_price']) || 0;
-                    const temuStock = parseFloat(data['temu_stock']) || 0;
+                    const inv = parseFloat(data.inventory) || 0;
+                    const missing = data.missing;
+                    const nrReq = String(data.nr_req || 'REQ').toUpperCase();
+                    const price = parseFloat(data.temu_price) || 0;
+                    const temuStock = parseFloat(data.temu_stock) || 0;
                     if (inv <= 0 || nrReq !== 'REQ' || missing === 'M' || price <= 0 || temuStock <= 0) return false;
                     return temuInvWithinMapTolerance(inv, temuStock);
                 });
             }
 
-            // Missing M badge — REQ, listed, price > 0, both sides with stock (same gate as the badge counter);
-            // NOT within tolerance (3 units OR 3% of INV).
-            if (notMapBadgeFilterActive) {
+            if (missingMFilterActive || notMapBadgeFilterActive) {
                 table.addFilter(function(data) {
-                    const inv = parseFloat(data['inventory']) || 0;
-                    const missing = data['missing'];
-                    const nrReq = (data['nr_req'] || 'REQ').toString().toUpperCase();
-                    const price = parseFloat(data['temu_price']) || 0;
-                    const temuStock = parseFloat(data['temu_stock']) || 0;
+                    const inv = parseFloat(data.inventory) || 0;
+                    const missing = data.missing;
+                    const nrReq = String(data.nr_req || 'REQ').toUpperCase();
+                    const price = parseFloat(data.temu_price) || 0;
+                    const temuStock = parseFloat(data.temu_stock) || 0;
                     if (inv <= 0 || nrReq !== 'REQ' || missing === 'M' || price <= 0 || temuStock <= 0) return false;
                     return !temuInvWithinMapTolerance(inv, temuStock);
                 });
             }
 
-            // NRL/REQ filter
-            const nrReqFilter = $('#nr-req-filter').val();
-            if (nrReqFilter !== 'all') {
-                table.addFilter(function(data) {
-                    const nr_req = data['nr_req'] || 'REQ';
-                    // Handle both NR and NRL as same value
-                    const dataValue = (nr_req === 'NR' || nr_req === 'NRL') ? 'NRL' : nr_req;
-                    return dataValue === nrReqFilter;
-                });
-            }
-
             updateSummary();
             updateSelectAllCheckbox();
-            
-            // Show search result info
-            if (skuSearch) {
+
+            if (skuSearch || parentSearch) {
                 const resultCount = table.getData('active').length;
-                const totalCount = table.getData('all').length;
-                
+                const q = skuSearch || parentSearch;
                 if (resultCount === 0) {
-                    $('#search-result-info').html(`<i class="fa fa-exclamation-triangle text-warning"></i> No results found for "${skuSearch}". SKU may not exist in product_master table.`).show();
+                    $('#search-result-info').html('<i class="fa fa-exclamation-triangle text-warning"></i> No results for "' + q + '".').show();
                 } else {
-                    $('#search-result-info').html(`Found ${resultCount} result(s) matching "${skuSearch}"`).show();
+                    $('#search-result-info').html('Found ' + resultCount + ' result(s)').show();
                 }
             } else {
                 $('#search-result-info').hide();
             }
 
-            // LMP, LMP Link, (LMP - 15%): always visible (show when Missing L active, never hide)
             try {
-                if (missingBadgeFilterActive) {
-                    table.getColumn('lmp').show();
-                    table.getColumn('lmp_minus_15').show();
-                } else {
-                    table.getColumn('lmp').show();
-                    table.getColumn('lmp_minus_15').show();
-                }
+                table.getColumn('lmp').show();
+                table.getColumn('lmp_minus_15').show();
             } catch (e) {}
-            // MAP column: visible only when Missing M badge is active
             try {
-                if (notMapBadgeFilterActive) table.getColumn('MAP').show();
+                if (missingMFilterActive || notMapBadgeFilterActive) table.getColumn('MAP').show();
                 else table.getColumn('MAP').hide();
             } catch (e) {}
         }
@@ -4293,27 +4216,7 @@
             });
         });
 
-        $('#inventory-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter, #arrow-filter, #sprice-filter, #nr-req-filter, #stock-transfer-filter, #sold-filter').on('change', function() {
-            applyFilters();
-        });
-
-        $(document).on('click', '.column-filter', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            
-            const $item = $(this);
-            const column = $item.data('column');
-            const color = $item.data('color');
-            const dropdown = $item.closest('.dropdown');
-            const button = dropdown.find('.dropdown-toggle');
-            
-            dropdown.find('.column-filter').removeClass('active');
-            $item.addClass('active');
-            
-            const statusCircle = $item.find('.status-circle').clone();
-            const text = $item.text().trim();
-            button.html('').append(statusCircle).append(' DIL%');
-            
+        $('#inventory-filter, #tl30-filter, #growth-sign-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter, #sprice-filter, #sprice-lmp-filter, #prc-lmp-filter, #lmp-filter, #dil-filter').on('change', function() {
             applyFilters();
         });
 
@@ -4531,37 +4434,58 @@
         // Initialize iconClicked flag for IN ROAS
         window.iconClicked = false;
 
+        /*
+         * Column visibility — same as /ebay-tabulator-view:
+         * shared table channel_tabulator_column_settings via /tabulator-column-visibility
+         * channel = 'temu2_decrease'
+         */
         function buildColumnDropdown() {
             const menu = document.getElementById("column-dropdown-menu");
+            if (!menu) return;
             menu.innerHTML = '';
 
-            fetch('/temu2-decrease-column-visibility', {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json'
-                }
-            })
-            .then(response => response.json())
-            .then(savedVisibility => {
-                table.getColumns().forEach(col => {
-                    const def = col.getDefinition();
-                    if (def.field && def.field !== '_select') {
-                        const visible = savedVisibility[def.field] !== undefined ? savedVisibility[def.field] : def.visible !== false;
-                        const li = document.createElement('li');
-                        li.className = 'dropdown-item';
-                        li.innerHTML = `
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" value="${def.field}" 
-                                       id="col-${def.field}" ${visible ? 'checked' : ''}>
-                                <label class="form-check-label" for="col-${def.field}">
-                                    ${def.title}
-                                </label>
-                            </div>
-                        `;
-                        menu.appendChild(li);
+            fetch(TABULATOR_COLUMN_VISIBILITY_URL + '?channel=' + encodeURIComponent(TABULATOR_COLUMN_CHANNEL), {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
                     }
-                });
-            });
+                })
+                .then(response => response.json())
+                .then(savedVisibility => {
+                    const map = (savedVisibility && typeof savedVisibility === 'object') ? savedVisibility : {};
+
+                    const showAllLi = document.createElement("li");
+                    showAllLi.innerHTML = '<a class="dropdown-item" href="#" id="show-all-columns-btn"><i class="fa fa-eye"></i> Show All</a>';
+                    menu.appendChild(showAllLi);
+                    const dividerLi = document.createElement("li");
+                    dividerLi.innerHTML = '<hr class="dropdown-divider my-1">';
+                    menu.appendChild(dividerLi);
+
+                    table.getColumns().forEach(col => {
+                        const def = col.getDefinition();
+                        if (!def.field || def.field === '_select') return;
+                        if (alwaysHiddenColumns.indexOf(def.field) !== -1) return;
+
+                        const li = document.createElement("li");
+                        const label = document.createElement("label");
+                        label.style.display = "block";
+                        label.style.padding = "5px 10px";
+                        label.style.cursor = "pointer";
+
+                        const checkbox = document.createElement("input");
+                        checkbox.type = "checkbox";
+                        checkbox.value = def.field;
+                        checkbox.checked = map.hasOwnProperty(def.field) ? (map[def.field] !== false) : col.isVisible();
+                        checkbox.style.marginRight = "8px";
+
+                        label.appendChild(checkbox);
+                        label.appendChild(document.createTextNode(def.title || def.field));
+                        li.appendChild(label);
+                        menu.appendChild(li);
+                    });
+                })
+                .catch(err => console.error('Error loading column visibility:', err));
         }
 
         function saveColumnVisibilityToServer() {
@@ -4573,43 +4497,58 @@
                 }
             });
 
-            fetch('/temu2-decrease-column-visibility', {
+            fetch(TABULATOR_COLUMN_VISIBILITY_URL, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'X-CSRF-TOKEN': '{{ csrf_token() }}'
                 },
                 body: JSON.stringify({
+                    channel: TABULATOR_COLUMN_CHANNEL,
                     visibility: visibility
                 })
+            }).catch(err => console.error('Error saving column visibility:', err));
+        }
+
+        // Columns that should ALWAYS stay hidden, regardless of saved state.
+        var alwaysHiddenColumns = ['cvr_60', 'cvr_45', 'temu_l45'];
+        function enforceAlwaysHiddenColumns() {
+            alwaysHiddenColumns.forEach(function(col) {
+                try { table.hideColumn(col); } catch (e) {}
             });
         }
 
         function applyColumnVisibilityFromServer() {
-            fetch('/temu2-decrease-column-visibility', {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json'
-                }
-            })
-            .then(response => response.json())
-            .then(savedVisibility => {
-                table.getColumns().forEach(col => {
-                    const field = col.getField();
-                    if (field && savedVisibility[field] !== undefined) {
-                        if (savedVisibility[field]) {
-                            col.show();
-                        } else {
-                            col.hide();
-                        }
+            fetch(TABULATOR_COLUMN_VISIBILITY_URL + '?channel=' + encodeURIComponent(TABULATOR_COLUMN_CHANNEL), {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
                     }
-                });
-            });
+                })
+                .then(response => response.json())
+                .then(savedVisibility => {
+                    if (savedVisibility && typeof savedVisibility === 'object') {
+                        table.getColumns().forEach(col => {
+                            const def = col.getDefinition();
+                            if (def.field && savedVisibility.hasOwnProperty(def.field)) {
+                                if (savedVisibility[def.field]) {
+                                    col.show();
+                                } else {
+                                    col.hide();
+                                }
+                            }
+                        });
+                    }
+                    enforceAlwaysHiddenColumns();
+                })
+                .catch(err => console.error('Error applying column visibility:', err));
         }
 
         table.on('tableBuilt', function() {
             applyColumnVisibilityFromServer();
             buildColumnDropdown();
+            enforceAlwaysHiddenColumns();
         });
 
         table.on('dataLoaded', function(data) {
@@ -4650,23 +4589,43 @@
             }, 100);
         });
 
-        document.getElementById("column-dropdown-menu").addEventListener("change", function(e) {
-            if (e.target.type === 'checkbox') {
-                const field = e.target.value;
-                const col = table.getColumn(field);
-                if (e.target.checked) {
-                    col.show();
-                } else {
-                    col.hide();
+        (function() {
+            var colMenu = document.getElementById("column-dropdown-menu");
+            if (!colMenu) return;
+            colMenu.addEventListener("change", function(e) {
+                if (e.target.type === 'checkbox') {
+                    const field = e.target.value;
+                    if (alwaysHiddenColumns.indexOf(field) !== -1) {
+                        e.target.checked = false;
+                        enforceAlwaysHiddenColumns();
+                        return;
+                    }
+                    const col = table.getColumn(field);
+                    if (!col) return;
+                    if (e.target.checked) {
+                        col.show();
+                    } else {
+                        col.hide();
+                    }
+                    saveColumnVisibilityToServer();
                 }
-                saveColumnVisibilityToServer();
-            }
-        });
+            });
+            // "Show All" — same as /ebay-tabulator-view
+            colMenu.addEventListener("click", function(e) {
+                var showAll = e.target.closest('#show-all-columns-btn');
+                if (showAll) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    table.getColumns().forEach(col => col.show());
+                    enforceAlwaysHiddenColumns();
+                    buildColumnDropdown();
+                    saveColumnVisibilityToServer();
+                }
+            });
+        })();
 
         function updateCampaignPeriodUi() {
             const isL7 = currentCampaignPeriod === 'L7';
-            $('#export-btn').prop('disabled', isL7).toggleClass('disabled', isL7);
-            $('#export-l7-btn').prop('disabled', !isL7).toggleClass('disabled', !isL7);
 
             const temuSalesCol = table.getColumn('temu_l30');
             if (temuSalesCol) {
@@ -4693,68 +4652,55 @@
             return currentCampaignPeriod === 'L7' ? '/temu2-decrease-data-l7' : '/temu2-decrease-data';
         }
 
-        $('#campaign-period-select').on('change', function() {
-            const $sel = $(this);
-            $sel.prop('disabled', true);
-            const visibilityState = captureColumnVisibilityState();
-            currentCampaignPeriod = ($sel.val() || 'L30').toUpperCase();
-            const endpoint = currentPeriodEndpoint();
-            table.setData(endpoint).then(function() {
-                applyFilters();
-                updateCampaignPeriodUi();
-                applyColumnVisibilityState(visibilityState);
-                buildColumnDropdown();
-                if (typeof updateTemuAdsCounts === 'function') updateTemuAdsCounts();
-            }).catch(function(err) {
-                console.error('Campaign period load failed', err);
-                if (typeof showToast === 'function') {
-                    showToast('Failed to load ' + currentCampaignPeriod + ' data', 'error');
-                }
-            }).finally(function() {
-                $sel.prop('disabled', false);
-            });
-        });
+        // Export L30 / L7 from icon dropdown — loads period data if needed, then restores current view
+        function exportPeriodCsv(period) {
+            const isL7 = period === 'L7';
+            const filename = isL7 ? 'temu2_decrease_data_l7.csv' : 'temu2_decrease_data_l30.csv';
+            const endpoint = isL7 ? '/temu2-decrease-data-l7' : '/temu2-decrease-data';
+            const $btn = $('#export-btn');
+            const originalHtml = $btn.html();
 
-        // Export L30 (only available in L30 mode)
-        $('#export-btn').on('click', function() {
-            if (currentCampaignPeriod !== 'L30') {
-                showToast('Switch to L30 to use Export L30', 'warning');
+            if (currentCampaignPeriod === period) {
+                table.download("csv", filename);
                 return;
             }
-            table.download("csv", "temu2_decrease_data_l30.csv");
-        });
 
-        // Export L7 — same JSON + columns as L30; load L7 endpoint, then Tabulator CSV
-        $('#export-l7-btn').on('click', function() {
-            const $btn = $(this);
-            const originalHtml = $btn.html();
-            $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Loading...');
-
+            $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i>');
+            const restoreEndpoint = currentPeriodEndpoint();
             suppressDataLoadedHandler = true;
-            table.setData('/temu2-decrease-data-l7').then(function() {
+            table.setData(endpoint).then(function() {
                 applyFilters();
-                table.download("csv", "temu2_decrease_data_l7.csv");
-                // Allow full dataLoaded on L30 restore so fullDataset and summary refresh
+                table.download("csv", filename);
                 suppressDataLoadedHandler = false;
-                return table.setData('/temu2-decrease-data');
+                return table.setData(restoreEndpoint);
             }).then(function() {
                 applyFilters();
                 if (typeof showToast === 'function') {
-                    showToast('L7 export completed (same format as L30)', 'success');
+                    showToast(period + ' export completed', 'success');
                 }
             }).catch(function(err) {
-                console.error('Export L7 error', err);
+                console.error('Export ' + period + ' error', err);
                 suppressDataLoadedHandler = false;
-                return table.setData('/temu2-decrease-data').then(function() {
+                return table.setData(restoreEndpoint).then(function() {
                     applyFilters();
                 }).then(function() {
                     if (typeof showToast === 'function') {
-                        showToast('Failed to export L7 data', 'error');
+                        showToast('Failed to export ' + period + ' data', 'error');
                     }
                 });
             }).finally(function() {
                 $btn.prop('disabled', false).html(originalHtml);
             });
+        }
+
+        $('#export-l30-btn').on('click', function(e) {
+            e.preventDefault();
+            exportPeriodCsv('L30');
+        });
+
+        $('#export-l7-btn').on('click', function(e) {
+            e.preventDefault();
+            exportPeriodCsv('L7');
         });
 
         // Copy temu_data_view → temu2_data_view (one SKU or all)

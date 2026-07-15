@@ -24,6 +24,7 @@ use App\Models\Ebay2OrderItem;
 use App\Models\AmazonDatasheet;
 use App\Models\EbaySkuCompetitor;
 use App\Models\TemuPricing;
+use App\Services\LmpSkuGroupService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -492,7 +493,46 @@ class EbayTwoController extends Controller
 
         $lmpLookups = EbaySkuCompetitor::buildGroupedLookup('ebay');
         $lmpDetailsLookup = $lmpLookups['details'];
-        $lmpLowestLookup = $lmpLookups['lowest'];
+
+        // Sku Link LMP — same shared lmp_sku_links groups as /ebay-tabulator-view
+        $lmpGroupService = new LmpSkuGroupService();
+        try {
+            $prepSkus = $productMasters->pluck('sku')->filter()->map(fn ($s) => (string) $s)->all();
+            foreach ($ebayMetrics as $metricSku => $_metric) {
+                $prepSkus[] = (string) $metricSku;
+            }
+            $lmpGroupService->prepareForSkus($prepSkus);
+        } catch (\Throwable $e) {
+            Log::warning('LmpSkuGroupService prepare failed (eBay2): ' . $e->getMessage());
+        }
+
+        $resolveLinkedLmpSkus = static function (string $sku) use ($lmpGroupService): array {
+            $sku = trim($sku);
+            if ($sku === '') {
+                return [];
+            }
+            try {
+                $linkedGroup = $lmpGroupService->groupContaining($sku);
+            } catch (\Throwable $e) {
+                $linkedGroup = [];
+            }
+            if (empty($linkedGroup)) {
+                $linkedGroup = [$sku];
+            }
+            $seenLinked = [];
+            $linkedLmpSkus = [];
+            foreach ($linkedGroup as $member) {
+                $display = trim((string) $member);
+                $normMember = strtoupper($display);
+                if ($normMember === '' || isset($seenLinked[$normMember])) {
+                    continue;
+                }
+                $seenLinked[$normMember] = true;
+                $linkedLmpSkus[] = $display;
+            }
+
+            return $linkedLmpSkus;
+        };
 
         // 6. Build Result
         $result = [];
@@ -566,7 +606,14 @@ class EbayTwoController extends Controller
             // Temu Price (computed from temu_pricing.base_price, normalized SKU match — see /temu-decrease)
             $row['Temu Price'] = $temuPriceByNormalizedSku[$temuPriceNormalizer($pm->sku)] ?? 0;
 
-            EbaySkuCompetitor::applyToRow($row, $pm->sku, $lmpLowestLookup, $lmpDetailsLookup, $row['base_sku'] ?: null);
+            // LMP — merged across the Sku Link LMP group so linked SKUs share LMP (same as /ebay-tabulator-view).
+            EbaySkuCompetitor::applyLinkedGroupToRow(
+                $row,
+                (string) $pm->sku,
+                $lmpDetailsLookup,
+                $resolveLinkedLmpSkus((string) $pm->sku),
+                $row['base_sku'] ?: null
+            );
 
             $ebayL30ForDil = floatval($row["eBay L30"] ?? 0);
             $viewsForDil = floatval($row['views'] ?? 0);
@@ -698,7 +745,8 @@ class EbayTwoController extends Controller
                 $lp = floatval($pm->lp);
             }
 
-            $ship = isset($values["ebay2_ship"]) ? floatval($values["ebay2_ship"]) : (isset($pm->ebay2_ship) ? floatval($pm->ebay2_ship) : 0);
+            // Same normal ship as eBay 1 (Values['ship']), not ebay2_ship
+            $ship = isset($values["ship"]) ? floatval($values["ship"]) : (isset($pm->ship) ? floatval($pm->ship) : 0);
 
             // Price and units for calculations
             $price = floatval($row["eBay Price"] ?? 0);
@@ -744,11 +792,11 @@ class EbayTwoController extends Controller
             $row["pmt_ads"] = $pmtAds;
             $row["LP_productmaster"] = $lp;
             $row["Ship_productmaster"] = $ship;
+            // Keep column key for UI; value is normal ship (same as eBay 1)
             $row["ebay2_ship"] = $ship;
 
-            // PMT-specific PFT/ROI (matching Ebay2PMTAdController formulas)
-            // PMT controller uses $values["ship"] (general ship), not ebay2_ship
-            $pmtShip = isset($values["ship"]) ? floatval($values["ship"]) : (isset($pm->ship) ? floatval($pm->ship) : 0);
+            // PMT-specific PFT/ROI — same normal ship as eBay 1
+            $pmtShip = $ship;
             $row["pmt_pft_val"] = round(
                 $price > 0 ? (($price * $pmtPercentage - $lp - $pmtShip) / $price) : 0,
                 2
@@ -845,7 +893,13 @@ class EbayTwoController extends Controller
                 $temuLookupSku = $row['base_sku'] !== '' ? $row['base_sku'] : $metricSku;
                 $row['Temu Price'] = $temuPriceByNormalizedSku[$temuPriceNormalizer($temuLookupSku)] ?? 0;
 
-                EbaySkuCompetitor::applyToRow($row, $metricSku, $lmpLowestLookup, $lmpDetailsLookup, $row['base_sku'] ?: null);
+                EbaySkuCompetitor::applyLinkedGroupToRow(
+                    $row,
+                    (string) $metricSku,
+                    $lmpDetailsLookup,
+                    $resolveLinkedLmpSkus((string) $metricSku),
+                    $row['base_sku'] ?: null
+                );
 
                 $ebayL30ForDilM = floatval($row["eBay L30"] ?? 0);
                 $viewsForDilM = floatval($row['views'] ?? 0);
@@ -1224,7 +1278,8 @@ class EbayTwoController extends Controller
             $lp = floatval($pm->lp);
         }
 
-        $ship = isset($values["ebay2_ship"]) ? floatval($values["ebay2_ship"]) : (isset($pm->ebay2_ship) ? floatval($pm->ebay2_ship) : 0);
+        // Same normal ship as eBay 1 (Values['ship']), not ebay2_ship
+        $ship = isset($values["ship"]) ? floatval($values["ship"]) : (isset($pm->ship) ? floatval($pm->ship) : 0);
 
         // Calculate SGPFT
         $spriceFloat = floatval($sprice);

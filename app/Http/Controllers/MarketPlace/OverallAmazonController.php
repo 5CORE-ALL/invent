@@ -136,6 +136,14 @@ class OverallAmazonController extends Controller
 
     public function getViewAmazonData(Request $request)
     {
+        // Channel Ads% (same as /all-marketplace-master Amazon row) — used for
+        // PFT% = GPFT% − Ads% and SPFT = SGPFT − Ads% on every row.
+        $amazonAdsPercent = (float) (\App\Models\ChannelMasterCalculatedData::where('channel', 'Amazon')
+            ->value('ads_percentage')
+            ?? \App\Models\ChannelMasterCalculatedData::where('channel', 'like', 'Amazon%')
+                ->value('ads_percentage')
+            ?? 0);
+
         $productMasters = ProductMaster::orderBy('parent', 'asc')
             ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
             ->orderBy('sku', 'asc')
@@ -589,6 +597,9 @@ class OverallAmazonController extends Controller
                 ? round((($price * 0.80 - $ship - $lp) / $price) * 100, 2)
                 : 0;
 
+            // PFT% = GPFT% − Ads% (channel TACOS from /all-marketplace-master)
+            $row['PFT%'] = round($row['GPFT%'] - $amazonAdsPercent, 2);
+
             // GROI% (Gross ROI) = ((price × 0.80 - ship - lp) / lp) × 100
             // Same numerator as GPFT, divided by LP instead of Price
             $row['GROI%'] = $lp > 0
@@ -710,6 +721,20 @@ class OverallAmazonController extends Controller
                     );
                     $row['SGPFT'] = $sgpft;
                 }
+            }
+
+            // SPFT = SGPFT − Ads% (always recompute from current SGPFT + channel Ads%)
+            if (isset($row['SGPFT']) && $row['SGPFT'] !== null && $row['SGPFT'] !== '') {
+                $row['Spft%'] = round((float) $row['SGPFT'] - $amazonAdsPercent, 2);
+            }
+
+            // Net SROI — same shape as NROI badge: (gross PFT$ − ad spend$) / LP × 100
+            // where ad spend$ = SPRICE × Ads%/100.
+            $spriceForRoi = floatval($row['SPRICE'] ?? 0);
+            if ($spriceForRoi > 0 && $lp > 0) {
+                $grossPft = ($spriceForRoi * 0.80) - $ship - $lp;
+                $adSpend = $spriceForRoi * ($amazonAdsPercent / 100);
+                $row['SROI'] = round((($grossPft - $adSpend) / $lp) * 100, 2);
             }
 
             $row['image_path'] = $shopify->image_src ?? ($values['image_path'] ?? null);
@@ -844,6 +869,7 @@ class OverallAmazonController extends Controller
                 'LP_productmaster' => '',
                 'Ship_productmaster' => '',
                 'GPFT%' => $rows->count() > 0 ? round($rows->avg('GPFT%'), 2) : 0,
+                'PFT%' => $rows->count() > 0 ? round($rows->avg('PFT%'), 2) : 0,
                 'GROI%' => $rows->count() > 0 ? round($rows->avg('GROI%'), 2) : 0,
                 'ROI_percentage' => $rows->count() > 0 ? round($rows->avg('ROI_percentage'), 2) : 0,
                 'is_parent_summary' => true,
@@ -1191,15 +1217,26 @@ class OverallAmazonController extends Controller
         // Calculate SGPFT first (using 0.80 for Amazon)
         $spriceFloat = floatval($sprice);
         $sgpft = $spriceFloat > 0 ? round((($spriceFloat * 0.80 - $ship - $lp) / $spriceFloat) * 100, 2) : 0;
+
+        // Channel Ads% — same source as /all-marketplace-master Amazon Ads%
+        $adsPct = (float) (\App\Models\ChannelMasterCalculatedData::where('channel', 'Amazon')
+            ->value('ads_percentage')
+            ?? \App\Models\ChannelMasterCalculatedData::where('channel', 'like', 'Amazon%')
+                ->value('ads_percentage')
+            ?? 0);
+
+        // SPFT = SGPFT − Ads%
+        $spft = round($sgpft - $adsPct, 2);
         
-        // SPFT = SGPFT (without AD% deduction)
-        $spft = $sgpft;
-        
-        // SROI = ((SPRICE * 0.80 - ship - lp) / lp) * 100 (without AD% deduction)
-        $sroi = round(
-            $lp > 0 ? (($spriceFloat * 0.80 - $ship - $lp) / $lp) * 100 : 0,
-            2
-        );
+        // Net SROI — same shape as NROI badge: (gross PFT$ − ad spend$) / LP × 100
+        // where ad spend$ = SPRICE × Ads%/100.
+        if ($lp > 0) {
+            $grossPft = ($spriceFloat * 0.80) - $ship - $lp;
+            $adSpend = $spriceFloat * ($adsPct / 100);
+            $sroi = round((($grossPft - $adSpend) / $lp) * 100, 2);
+        } else {
+            $sroi = 0;
+        }
         
         Log::info('Calculated values', ['sprice' => $spriceFloat, 'sgpft' => $sgpft, 'spft' => $spft, 'sroi' => $sroi]);
 

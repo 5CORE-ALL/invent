@@ -46,7 +46,7 @@
 @section('content')
     @include('layouts.shared.page-title', [
         'page_title' => 'Shein Daily Data',
-        'sub_title' => 'Shein sales from Shopify orders (Sen Shp) — last 30 days PST',
+        'sub_title' => 'Uses uploaded Seller Hub orders only (shein_daily_data) — not Shopify',
     ])
     <div class="toast-container"></div>
     <div class="row">
@@ -68,6 +68,13 @@
                         <i class="fa fa-eye"></i> Show All
                     </button>
 
+                    <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#uploadDailyDataModal">
+                        <i class="fa fa-upload"></i> Upload L30
+                    </button>
+                    <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#uploadL60Modal">
+                        <i class="fa fa-upload"></i> Upload L60
+                    </button>
+
                     <button type="button" class="btn btn-sm btn-info" id="export-btn">
                         <i class="fa fa-file-excel"></i> Export
                     </button>
@@ -75,7 +82,7 @@
 
                 <!-- Summary Stats -->
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
-                    <h6 class="mb-3">Summary Statistics (L30 — Shopify Sen Shp)</h6>
+                    <h6 class="mb-3">Summary Statistics (uploaded orders)</h6>
                     <div class="d-flex flex-wrap gap-2">
                         <span class="badge bg-primary fs-6 p-2" id="total-orders-badge" style="color: white; font-weight: bold;">Total Orders: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: white; font-weight: bold;">Total Quantity: 0</span>
@@ -110,6 +117,81 @@
                     </div>
                     <!-- Table body (scrollable section) -->
                     <div id="shein-table" style="flex: 1;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- Upload L30 (Seller Hub order export) --}}
+    <div class="modal fade" id="uploadDailyDataModal" tabindex="-1" aria-labelledby="uploadDailyDataModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="uploadDailyDataModalLabel">
+                        <i class="fa fa-upload me-2"></i>Upload Shein L30 Order Export
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="dailyDataFile" class="form-label">Select Seller Hub export (any file type)</label>
+                        <input type="file" class="form-control" id="dailyDataFile">
+                        <div class="form-text">
+                            Same format as <code>sheinorders.csv</code> (2 header rows, Order Number, Seller SKU, Product Price, Estimated merchandise revenue, Number of items sold, …).
+                            Accepts any extension (.csv, .xlsx, .xls, .txt, etc.). Replaces all current L30 rows.
+                        </div>
+                    </div>
+                    <div id="uploadProgressContainer" style="display: none;">
+                        <div class="mb-2"><strong>Upload Progress:</strong></div>
+                        <div class="progress mb-2" style="height: 25px;">
+                            <div id="uploadProgressBar" class="progress-bar progress-bar-striped progress-bar-animated"
+                                 role="progressbar" style="width: 0%">0%</div>
+                        </div>
+                        <div id="uploadStatus" class="text-muted small"></div>
+                    </div>
+                    <div id="uploadResult" class="alert" style="display: none;"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="startUploadBtn">
+                        <i class="fa fa-upload me-1"></i>Start Upload
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- Upload L60 --}}
+    <div class="modal fade" id="uploadL60Modal" tabindex="-1" aria-labelledby="uploadL60ModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="uploadL60ModalLabel">
+                        <i class="fa fa-upload me-2"></i>Upload Shein L60 Order Export
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="dailyDataFileL60" class="form-label">Select Seller Hub L60 export (any file type)</label>
+                        <input type="file" class="form-control" id="dailyDataFileL60">
+                        <div class="form-text">Same CSV/Excel format as L30. Accepts any extension. Stores in the L60 table only.</div>
+                    </div>
+                    <div id="uploadL60ProgressContainer" style="display: none;">
+                        <div class="mb-2"><strong>Upload Progress:</strong></div>
+                        <div class="progress mb-2" style="height: 25px;">
+                            <div id="uploadL60ProgressBar" class="progress-bar progress-bar-striped progress-bar-animated bg-success"
+                                 role="progressbar" style="width: 0%">0%</div>
+                        </div>
+                        <div id="uploadL60Status" class="text-muted small"></div>
+                    </div>
+                    <div id="uploadL60Result" class="alert" style="display: none;"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-success" id="startUploadL60Btn">
+                        <i class="fa fa-upload me-1"></i>Upload L60
+                    </button>
                 </div>
             </div>
         </div>
@@ -186,17 +268,18 @@
             paginationSizeSelector: [10, 25, 50, 100, 200],
             paginationCounter: "rows",
             ajaxResponse: function(url, params, response) {
-                console.log("AJAX Response received:", response);
+                console.log("AJAX Response received:", response && response.source, response && (response.data || response).length);
+                let rows = [];
                 if (response && Array.isArray(response.data)) {
-                    const m = parseFloat(response.marketplace_margin_decimal);
-                    sheinMarketplaceMarginDecimal = Number.isFinite(m) ? m : 1;
-                    return response.data;
+                    rows = response.data;
+                } else if (response && response.data && typeof response.data === 'object') {
+                    rows = Object.values(response.data);
+                } else if (Array.isArray(response)) {
+                    rows = response;
                 }
-                if (Array.isArray(response)) {
-                    sheinMarketplaceMarginDecimal = 1;
-                    return response;
-                }
-                return response;
+                const m = parseFloat(response && response.marketplace_margin_decimal);
+                sheinMarketplaceMarginDecimal = Number.isFinite(m) ? m : 1;
+                return rows;
             },
             ajaxError: function(error) {
                 console.error("AJAX Error:", error);
@@ -309,14 +392,12 @@
                     },
                     mutator: function(value, data, type, params, component) {
                         const productPrice = parseFloat(data.product_price) || 0;
-                        const estRev = parseFloat(data.estimated_merchandise_revenue) || 0;
-                        const quantity = parseInt(data.quantity, 10) || 0;
-                        const unitPrice = productPrice > 0 ? productPrice : (quantity > 0 && estRev > 0 ? estRev / quantity : (estRev > 0 ? estRev : 0));
+                        const quantity = parseInt(data.quantity, 10) || 1;
                         const lp = parseFloat(data.lp) || 0;
                         const ship = parseFloat(data.ship) || 0;
 
                         const m = sheinMarketplaceMarginDecimal;
-                        const pft = (unitPrice * m - lp - ship) * quantity;
+                        const pft = (productPrice * m - lp - ship) * quantity;
                         return pft.toFixed(2);
                     }
                 },
@@ -597,7 +678,12 @@
             ]);
         });
 
-        // Update summary stats
+        // Update summary stats — same formulas as /aliexpress-tabulator
+        //   Revenue = Σ (product_price × qty)
+        //   PFT     = Σ (price × margin − LP − Ship) × qty
+        //   COGS    = Σ (LP × qty)
+        //   PFT%    = Σ PFT / Σ Revenue × 100
+        //   ROI%    = Σ PFT / Σ COGS × 100
         function updateSummary() {
             const data = table.getData("active");
             let totalOrders = 0;
@@ -626,12 +712,9 @@
                 }
 
                 totalOrders++;
-                const quantity = Math.max(0, parseInt(row.quantity, 10) || 0);
+                const quantity = parseInt(row.quantity, 10) || 1;
                 const productPrice = parseFloat(row.product_price) || 0;
-                const estRev = parseFloat(row.estimated_merchandise_revenue) || 0;
-                // Line revenue: prefer unit price × qty; fall back to Est. Revenue when Product Price is missing (common export mismatch)
-                const lineRevenue = productPrice > 0 ? productPrice * quantity : (estRev > 0 ? estRev : 0);
-                const unitPriceForPft = productPrice > 0 ? productPrice : (quantity > 0 && estRev > 0 ? estRev / quantity : (estRev > 0 ? estRev : 0));
+                const lineRevenue = productPrice * quantity;
                 const commission = parseFloat(row.commission) || 0;
                 const lp = parseFloat(row.lp) || 0;
                 const ship = parseFloat(row.ship) || 0;
@@ -640,45 +723,38 @@
                 totalRevenue += lineRevenue;
                 totalCommission += commission;
 
-                if (quantity > 0 && unitPriceForPft > 0) {
-                    totalWeightedPrice += unitPriceForPft * quantity;
+                if (quantity > 0 && productPrice > 0) {
+                    totalWeightedPrice += productPrice * quantity;
                     totalQuantityForPrice += quantity;
                 }
 
+                // Same as AliExpress / ChannelMaster: PFT = (unit × margin − lp − ship) × qty ; COGS = lp × qty
                 const m = sheinMarketplaceMarginDecimal;
-                const pft = (unitPriceForPft * m - lp - ship) * quantity;
+                const pft = (productPrice * m - lp - ship) * quantity;
+                const cogs = lp * quantity;
                 totalPft += pft;
-                
-                // Calculate COGS: Quantity * LP
-                const cogs = quantity * lp;
                 totalCogs += cogs;
             });
 
-            // Calculate average price (weighted by quantity)
             const avgPrice = totalQuantityForPrice > 0 ? totalWeightedPrice / totalQuantityForPrice : 0;
-
-            // Calculate PFT Percentage: (PFT Total / Total Revenue) * 100
             const pftPercentage = totalRevenue > 0 ? (totalPft / totalRevenue) * 100 : 0;
-            
-            // Calculate ROI Percentage: (PFT Total / Total COGS) * 100
             const roiPercentage = totalCogs > 0 ? (totalPft / totalCogs) * 100 : 0;
 
             $('#total-orders-badge').text('Total Orders: ' + totalOrders.toLocaleString());
             $('#total-quantity-badge').text('Total Quantity: ' + totalQuantity.toLocaleString());
             $('#total-revenue-badge').text('Total Revenue: $' + totalRevenue.toFixed(2));
-            $('#pft-percentage-badge').text('PFT %: ' + pftPercentage.toFixed(1) + '%');
-            $('#roi-percentage-badge').text('ROI %: ' + roiPercentage.toFixed(1) + '%');
+            $('#pft-percentage-badge').text('PFT %: ' + Math.round(pftPercentage) + '%');
+            $('#roi-percentage-badge').text('ROI %: ' + Math.round(roiPercentage) + '%');
             $('#avg-price-badge').text('Avg Price: $' + avgPrice.toFixed(2));
             $('#pft-total-badge').text('PFT Total: $' + totalPft.toFixed(2));
-            
-            // Color code PFT Total badge
+
             const pftBadge = $('#pft-total-badge');
             if (totalPft >= 0) {
                 pftBadge.removeClass('bg-danger').addClass('bg-dark');
             } else {
                 pftBadge.removeClass('bg-dark').addClass('bg-danger');
             }
-            
+
             $('#total-cogs-badge').text('Total COGS: $' + totalCogs.toFixed(2));
             $('#total-commission-badge').text('Commission: $' + totalCommission.toFixed(2));
         }
@@ -806,6 +882,125 @@
         // Export functionality
         $('#export-btn').on('click', function() {
             table.download("csv", "shein_daily_data.csv");
+        });
+
+        // ── Upload L30 / L60 (Seller Hub CSV) ──
+        function uploadSheinFile(fileInputId, url, progressWrap, progressBar, statusEl, resultEl, startBtnSelector, onDone) {
+            const fileInput = document.getElementById(fileInputId);
+            const file = fileInput && fileInput.files[0];
+            if (!file) {
+                showToast('Please select a file first', 'error');
+                return;
+            }
+            const $btn = $(startBtnSelector);
+            const uploadId = 'shein_' + Date.now();
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('chunk', 0);
+            formData.append('totalChunks', 1);
+            formData.append('uploadId', uploadId);
+
+            $btn.prop('disabled', true);
+            $(progressWrap).show();
+            $(resultEl).hide();
+            $(progressBar).addClass('progress-bar-animated').css('width', '40%').text('40%');
+            $(statusEl).text('Uploading and importing…');
+
+            $.ajax({
+                url: url,
+                type: 'POST',
+                data: formData,
+                processData: false,
+                contentType: false,
+                headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+                success: function(res) {
+                    $(progressBar).removeClass('progress-bar-animated').css('width', '100%').text('100%');
+                    if (res && res.success) {
+                        const msg = 'Imported ' + (res.imported || 0) + ' rows'
+                            + (res.skipped ? (' (skipped ' + res.skipped + ')') : '');
+                        $(statusEl).text('Done');
+                        $(resultEl).removeClass('alert-danger').addClass('alert-success').text(msg).show();
+                        showToast('Upload complete — ' + msg, 'success');
+                        try {
+                            if (typeof onDone === 'function') onDone();
+                        } catch (e) {
+                            console.error(e);
+                        }
+                        // Close modal shortly after success so it doesn't look stuck
+                        setTimeout(function() {
+                            const modalEl = $(progressWrap).closest('.modal')[0];
+                            if (modalEl && window.bootstrap) {
+                                bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+                            }
+                        }, 800);
+                    } else {
+                        $(statusEl).text('Failed');
+                        $(resultEl).removeClass('alert-success').addClass('alert-danger')
+                            .text((res && res.message) || 'Upload failed').show();
+                    }
+                },
+                error: function(xhr) {
+                    $(progressBar).removeClass('progress-bar-animated');
+                    $(statusEl).text('Failed');
+                    const msg = (xhr.responseJSON && xhr.responseJSON.message) || xhr.statusText || 'Upload failed';
+                    $(resultEl).removeClass('alert-success').addClass('alert-danger').text(msg).show();
+                    showToast(msg, 'error');
+                },
+                complete: function() {
+                    $btn.prop('disabled', false);
+                }
+            });
+        }
+
+        $('#startUploadBtn').on('click', function() {
+            uploadSheinFile(
+                'dailyDataFile',
+                '{{ route("shein.upload.daily.data") }}',
+                '#uploadProgressContainer',
+                '#uploadProgressBar',
+                '#uploadStatus',
+                '#uploadResult',
+                '#startUploadBtn',
+                function() {
+                    if (table) {
+                        try {
+                            const p = table.replaceData('/shein/daily-data');
+                            if (p && typeof p.then === 'function') {
+                                p.then(function() { updateSummary(); }).catch(function() {
+                                    table.setData('/shein/daily-data');
+                                });
+                            } else {
+                                table.setData('/shein/daily-data');
+                                setTimeout(updateSummary, 400);
+                            }
+                        } catch (e) {
+                            table.setData('/shein/daily-data');
+                        }
+                    }
+                    loadL60Sales();
+                }
+            );
+        });
+
+        $('#startUploadL60Btn').on('click', function() {
+            uploadSheinFile(
+                'dailyDataFileL60',
+                '{{ route("shein.upload.daily.data.l60") }}',
+                '#uploadL60ProgressContainer',
+                '#uploadL60ProgressBar',
+                '#uploadL60Status',
+                '#uploadL60Result',
+                '#startUploadL60Btn',
+                function() { loadL60Sales(); }
+            );
+        });
+
+        // Reset progress UI when modal opens again
+        $('#uploadDailyDataModal, #uploadL60Modal').on('show.bs.modal', function() {
+            $(this).find('[id$="ProgressContainer"]').hide();
+            $(this).find('[id$="Result"]').hide().text('');
+            $(this).find('[id$="Status"]').text('');
+            $(this).find('.progress-bar').css('width', '0%').text('0%').addClass('progress-bar-animated');
         });
     });
 </script>

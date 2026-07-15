@@ -326,8 +326,17 @@ class SkuLinkLmpController extends Controller
         }
 
         $this->skuGroupService->prepareForSkus([$sku, $linkedSku]);
+        $initialGroup = $this->resolveLinkedSkuGroupMembers($sku);
+        // Re-prepare with the initial members so the full connected component is loaded.
+        $this->skuGroupService->prepareForSkus($initialGroup);
         $beforeGroup = $this->resolveLinkedSkuGroupMembers($sku);
-        $this->skuLinkService->unlink($sku, $linkedSku);
+
+        $this->skuLinkService->unlinkFromGroup(
+            $linkedSku,
+            $beforeGroup,
+            Auth::user()?->name ?? 'N/A'
+        );
+
         $this->skuGroupService->prepareForSkus($beforeGroup);
 
         $affectedBySku = [];

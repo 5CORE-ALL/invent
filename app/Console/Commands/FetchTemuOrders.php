@@ -48,8 +48,12 @@ class FetchTemuOrders extends Command
             return self::FAILURE;
         }
 
-        // Always last 60 days (rolling window)
-        $to = Carbon::today()->subDay()->endOfDay();
+        // Always last 60 days (rolling window), fetching right up to the present moment.
+        // Previously the upper bound was IST "yesterday end" (Carbon::today()->subDay()),
+        // which is only ~11:29 AM Pacific of yesterday — so a full Pacific "yesterday" was
+        // never in temu_orders and Y Sales / daily figures came up short. createBefore is an
+        // epoch instant, so using now() simply means "everything up to now".
+        $to = Carbon::now();
         $from = $to->copy()->subDays(self::WINDOW_DAYS - 1)->startOfDay();
         $status = null;
         $window = 'L'.self::WINDOW_DAYS;
@@ -172,12 +176,19 @@ class FetchTemuOrders extends Command
             // Keep only a rolling 60-day window: prune orders older than the start of the window.
             $pruned = TemuOrder::where('parent_order_time', '<', $from)->delete();
 
-            $this->info("✅ Done. Parent orders: {$totalParents}, sub-orders seen: {$totalSubOrders}, rows upserted: {$totalUpserted}, pruned (>60d): {$pruned}");
+            // Pull the ACTUAL order amounts (bg.order.amount.query) so reported sales use
+            // Temu's real figures instead of catalog price × qty — the same principle as the
+            // Amazon pipeline, which stores real per-order price from its orderItems endpoint.
+            $amountStats = $this->fetchAndStoreOrderAmounts();
+
+            $this->info("✅ Done. Parent orders: {$totalParents}, sub-orders seen: {$totalSubOrders}, rows upserted: {$totalUpserted}, pruned (>60d): {$pruned}, amounts: {$amountStats['updated']} rows from {$amountStats['parents']} parent(s)");
             Log::info('Completed FetchTemuOrders', [
                 'parents' => $totalParents,
                 'sub_orders' => $totalSubOrders,
                 'upserted' => $totalUpserted,
                 'pruned' => $pruned,
+                'amount_parents' => $amountStats['parents'],
+                'amount_rows' => $amountStats['updated'],
             ]);
 
             return self::SUCCESS;
@@ -187,6 +198,195 @@ class FetchTemuOrders extends Command
 
             return self::FAILURE;
         }
+    }
+
+    /**
+     * Fetch actual order amounts via bg.order.amount.query for parents that need them
+     * and store per-sub-order base/total amounts on temu_orders.
+     *
+     * Refreshes: never-fetched rows, plus a trailing recent window (amounts can change
+     * with cancellations/refunds — same reasoning as the Amazon trailing re-sync).
+     *
+     * @return array{parents:int, updated:int}
+     */
+    private function fetchAndStoreOrderAmounts(): array
+    {
+        $recentCutoff = Carbon::now()->subDays(3);
+
+        // Group by parent (not distinct + orderBy) so ordering by the latest order time is
+        // compatible with MySQL ONLY_FULL_GROUP_BY. Recent parents first so a cut-short run
+        // still refreshes the newest orders.
+        $parentSns = TemuOrder::whereNotNull('parent_order_sn')
+            ->where(function ($q) use ($recentCutoff) {
+                $q->whereNull('amount_fetched_at')
+                    ->orWhere('parent_order_time', '>=', $recentCutoff);
+            })
+            ->groupBy('parent_order_sn')
+            ->orderByRaw('MAX(parent_order_time) DESC')
+            ->pluck('parent_order_sn')
+            ->filter()
+            ->values();
+
+        if ($parentSns->isEmpty()) {
+            return ['parents' => 0, 'updated' => 0];
+        }
+
+        $this->info('Fetching order amounts for '.$parentSns->count().' parent order(s)...');
+
+        $parentsDone = 0;
+        $rowsUpdated = 0;
+        $consecutiveFailures = 0;
+        $loggedSample = false;
+
+        foreach ($parentSns as $parentOrderSn) {
+            $result = $this->queryOrderAmount($parentOrderSn);
+
+            if ($result === null) {
+                $consecutiveFailures++;
+                // Stop early if the API is clearly unhappy (quota / auth) rather than
+                // hammering it for every parent.
+                if ($consecutiveFailures >= 10) {
+                    $this->warn('   ⚠️ Too many consecutive amount-query failures — stopping amount sync for this run.');
+                    break;
+                }
+                usleep(300000);
+                continue;
+            }
+            $consecutiveFailures = 0;
+
+            // Emit the first raw response so the exact amount schema is visible in this
+            // command's own output/logs (no separate probe command needed).
+            if (! $loggedSample) {
+                $loggedSample = true;
+                $sample = json_encode($result, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+                $this->line('   ℹ️ Sample bg.order.amount.query result: '.$sample);
+                Log::info('Temu order amount sample', ['parentOrderSn' => $parentOrderSn, 'result' => $result]);
+            }
+
+            $rawJson = json_encode($result, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+            $amountsByOrderSn = $this->parseAmountResult($result);
+
+            $subOrders = TemuOrder::where('parent_order_sn', $parentOrderSn)->get();
+            foreach ($subOrders as $row) {
+                $amt = $amountsByOrderSn[$row->order_sn] ?? null;
+
+                $row->amount_raw_json = $rawJson;
+                $row->amount_fetched_at = now();
+                if ($amt !== null) {
+                    if ($amt['base'] !== null) {
+                        $row->order_base_amount = $amt['base'];
+                    }
+                    if ($amt['total'] !== null) {
+                        $row->order_total_amount = $amt['total'];
+                    }
+                }
+                $row->save();
+                $rowsUpdated++;
+            }
+
+            $parentsDone++;
+            usleep(350000); 
+        }
+
+        return ['parents' => $parentsDone, 'updated' => $rowsUpdated];
+    }
+
+    /**
+     * Call bg.order.amount.query for one parent order. Returns the decoded `result`
+     * array on success, or null on any failure (logged, non-fatal).
+     */
+    private function queryOrderAmount(string $parentOrderSn): ?array
+    {
+        try {
+            $body = [
+                'type' => 'bg.order.amount.query',
+                'parentOrderSn' => $parentOrderSn,
+            ];
+            $signed = $this->generateSignValue($body);
+
+            $response = Http::timeout(60)
+                ->withHeaders(['Content-Type' => 'application/json'])
+                ->post('https://openapi-b-us.temu.com/openapi/router', $signed);
+
+            if ($response->failed()) {
+                Log::warning('bg.order.amount.query HTTP failure', ['parent' => $parentOrderSn, 'status' => $response->status()]);
+
+                return null;
+            }
+
+            $data = $response->json();
+            if (! ($data['success'] ?? false)) {
+                Log::warning('bg.order.amount.query API error', ['parent' => $parentOrderSn, 'error' => $data['errorMsg'] ?? null, 'code' => $data['errorCode'] ?? null]);
+                return null;
+            }
+
+            $result = $data['result'] ?? null;
+
+            return is_array($result) ? $result : null;
+        } catch (\Throwable $e) {
+            Log::warning('bg.order.amount.query exception', ['parent' => $parentOrderSn, 'error' => $e->getMessage()]);
+
+            return null;
+        }
+    }
+
+    /**
+     * Defensively extract per-sub-order amounts from a bg.order.amount.query result.
+     * The response wraps amounts in `result`; per-line entries live in one of a few
+     * possible list keys and are keyed by orderSn. Base = goods/product amount (matches
+     * Temu "Base price sales"); total = order/pay amount. Unknown shapes yield an empty
+     * map, in which case the caller keeps the raw JSON and sales fall back to catalog price.
+     *
+     * @return array<string, array{base: float|null, total: float|null}>
+     */
+    private function parseAmountResult(array $result): array
+    {
+        $baseKeys = ['goodsAmount', 'baseAmount', 'productAmount', 'skuAmount', 'goodsAmountTotal', 'salesAmount'];
+        $totalKeys = ['orderAmount', 'totalAmount', 'payAmount', 'settleAmount', 'actualAmount'];
+
+        $pick = function (array $entry, array $keys): ?float {
+            foreach ($keys as $k) {
+                if (array_key_exists($k, $entry) && is_scalar($entry[$k]) && $entry[$k] !== '') {
+                    return (float) $entry[$k];
+                }
+            }
+
+            return null;
+        };
+
+        // Find the array of per-order entries (each has an orderSn).
+        $entries = [];
+        foreach (['skuList', 'orderList', 'subOrderList', 'orderAmountList', 'amountList', 'items'] as $listKey) {
+            if (isset($result[$listKey]) && is_array($result[$listKey])) {
+                foreach ($result[$listKey] as $e) {
+                    if (is_array($e) && isset($e['orderSn'])) {
+                        $entries[] = $e;
+                    }
+                }
+                if (! empty($entries)) {
+                    break;
+                }
+            }
+        }
+
+        // Fallback: the result itself represents a single order line.
+        if (empty($entries) && isset($result['orderSn'])) {
+            $entries[] = $result;
+        }
+
+        $out = [];
+        foreach ($entries as $e) {
+            $orderSn = (string) $e['orderSn'];
+            if ($orderSn === '') {
+                continue;
+            }
+            $out[$orderSn] = [
+                'base' => $pick($e, $baseKeys),
+                'total' => $pick($e, $totalKeys),
+            ];
+        }
+
+        return $out;
     }
 
     private function statusText($status): ?string
@@ -213,7 +413,9 @@ class FetchTemuOrders extends Command
         }
 
         try {
-            return Carbon::createFromTimestamp($ts);
+            // Store in Pacific (Temu's reporting timezone) so day-windows line up with
+            // Seller Central regardless of the server/app timezone.
+            return Carbon::createFromTimestamp($ts, 'America/Los_Angeles');
         } catch (\Throwable $e) {
             return null;
         }

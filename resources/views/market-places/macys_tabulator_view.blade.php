@@ -272,7 +272,19 @@
     let increaseModeActive = false;
     let samePriceModeActive = false;
     let selectedSkus = new Set();
-    
+    // Must match MarketplacePercentage for Macys (and row.percentage from API) — NOT a hardcoded 0.80.
+    // Using 0.80 here while GPFT uses 0.75 made SPFT ≠ GPFT when SPRICE === MC Price.
+    const MACYS_DEFAULT_MARGIN = {{ number_format(((float) ($macysPercentage ?? 80)) / 100, 4, '.', '') }};
+
+    /** Take-home margin for a row (same value used for GPFT% on the server). */
+    function getMacysMargin(rowData) {
+        const m = parseFloat(rowData && rowData.percentage);
+        if (isFinite(m) && m > 0) {
+            return m > 1 ? m / 100 : m;
+        }
+        return MACYS_DEFAULT_MARGIN;
+    }
+
     // Toast notification function
     function showToast(message, type = 'info') {
         const toastContainer = document.querySelector('.toast-container');
@@ -494,7 +506,7 @@
         });
 
         /*
-         * Target ROI% bulk apply (Macys, margin = 0.80)
+         * Target ROI% bulk apply (Macys, margin = row.percentage / MarketplacePercentage)
          * ---------------------------------------------
          * For every selected row with a usable LP, back-solve the sale price so the
          * resulting SROI column matches Target ROI%:
@@ -524,7 +536,6 @@
                 return;
             }
 
-            const MACYS_MARGIN = 0.80;
             const roiMultiplier = 1 + (targetRoiPct / 100);
             const updates = [];
             let updatedCount = 0;
@@ -540,6 +551,7 @@
                 const lp = parseFloat(rowData['LP_productmaster']) || 0;
                 if (lp <= 0) { skippedNoLp++; return; }
                 const ship = parseFloat(rowData['Ship_productmaster']) || 0;
+                const MACYS_MARGIN = getMacysMargin(rowData);
 
                 const candidate = (lp * roiMultiplier + ship) / MACYS_MARGIN;
                 const newSprice = +candidate.toFixed(2);
@@ -571,12 +583,12 @@
         });
 
         /*
-         * Target GPFT% bulk apply (Macys, margin = 0.80)
+         * Target GPFT% bulk apply (Macys, margin = row.percentage / MarketplacePercentage)
          * ----------------------------------------------
          * Mirrors Target ROI but back-solves so SGPFT = Target GPFT%:
          *     SGPFT = ((sprice * margin − ship − lp) / sprice) * 100
          *   → sprice = (lp + ship) / (margin − GPFT%/100)
-         * Constraint: (margin − target/100) must be > 0, i.e. Target GPFT% < 80%.
+         * Constraint: (margin − target/100) must be > 0.
          */
         $('#apply-target-gpft-btn').on('click', function () {
             const rawInput = $('#target-gpft-input').val();
@@ -597,16 +609,10 @@
                 return;
             }
 
-            const MACYS_MARGIN = 0.80;
-            const denom = MACYS_MARGIN - (targetGpftPct / 100);
-            if (denom <= 0) {
-                showToast(`Target GPFT% ${targetGpftPct}% is too high — must be < 80% (Macys take-home).`, 'error');
-                return;
-            }
-
             const updates = [];
             let updatedCount = 0;
             let skippedNoLp = 0;
+            let skippedBadTarget = 0;
 
             selectedSkus.forEach(sku => {
                 const rows = table.searchRows('(Child) sku', '=', sku);
@@ -618,6 +624,9 @@
                 const lp = parseFloat(rowData['LP_productmaster']) || 0;
                 if (lp <= 0) { skippedNoLp++; return; }
                 const ship = parseFloat(rowData['Ship_productmaster']) || 0;
+                const MACYS_MARGIN = getMacysMargin(rowData);
+                const denom = MACYS_MARGIN - (targetGpftPct / 100);
+                if (denom <= 0) { skippedBadTarget++; return; }
 
                 const candidate = (lp + ship) / denom;
                 const newSprice = +candidate.toFixed(2);
@@ -639,12 +648,19 @@
             });
 
             if (updates.length === 0) {
-                showToast('No selected rows have a usable LP > 0', 'warning');
+                if (skippedBadTarget > 0) {
+                    showToast(`Target GPFT% ${targetGpftPct}% is too high — must be < Macys take-home margin (~${Math.round(MACYS_DEFAULT_MARGIN * 100)}%).`, 'error');
+                } else {
+                    showToast('No selected rows have a usable LP > 0', 'warning');
+                }
                 return;
             }
 
             saveSpriceUpdates(updates);
-            const note = skippedNoLp > 0 ? ` (${skippedNoLp} skipped — no LP)` : '';
+            const notes = [];
+            if (skippedNoLp > 0) notes.push(`${skippedNoLp} skipped — no LP`);
+            if (skippedBadTarget > 0) notes.push(`${skippedBadTarget} skipped — target ≥ margin`);
+            const note = notes.length ? ` (${notes.join('; ')})` : '';
             showToast(`Target GPFT ${targetGpftPct}% applied to ${updatedCount} SKU(s)${note}`, 'success');
         });
 
@@ -818,14 +834,19 @@
                             }
                         }
 
-                        // Apply retail price rounding (round to .99 endings)
-                        newSprice = roundToRetailPrice(newSprice);
+                        // Same Price: keep the typed price exact (no .99 snap) so
+                        // SPRICE === MC Price ⇒ SPFT === GPFT. Decrease/Increase still retail-round.
+                        if (!samePriceModeActive) {
+                            newSprice = roundToRetailPrice(newSprice);
+                        } else {
+                            newSprice = +Number(newSprice).toFixed(2);
+                        }
 
                         // Ensure minimum price
                         newSprice = Math.max(0.99, newSprice);
 
-                        // Calculate metrics with 80% margin
-                        const percentage = 0.80; // 80% margin for Macys
+                        // Use the same take-home margin as GPFT% (row.percentage from API)
+                        const percentage = getMacysMargin(rowData);
                         const lp = parseFloat(rowData['LP_productmaster']) || 0;
                         const ship = parseFloat(rowData['Ship_productmaster']) || 0;
 
@@ -884,8 +905,8 @@
                     const amazonPrice = parseFloat(rowData['A Price']);
                     
                     if (amazonPrice && amazonPrice > 0) {
-                        // Calculate metrics with 80% margin
-                        const percentage = 0.80; // 80% margin for Macys
+                        // Calculate metrics with the same margin GPFT% uses
+                        const percentage = getMacysMargin(rowData);
                         const lp = parseFloat(rowData['LP_productmaster']) || 0;
                         const ship = parseFloat(rowData['Ship_productmaster']) || 0;
                         
@@ -1556,8 +1577,8 @@
                 const sku = rowData['(Child) sku'];
                 const newSprice = parseFloat(cell.getValue()) || 0;
                 
-                // Recalculate SGPFT, SPFT, SROI with 80% margin
-                const percentage = 0.80; // 80% margin for Macys
+                // Recalculate SGPFT, SPFT, SROI with the same margin as GPFT%
+                const percentage = getMacysMargin(rowData);
                 const lp = rowData['LP_productmaster'] || 0;
                 const ship = rowData['Ship_productmaster'] || 0;
                 

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\InventoryWarehouse;
 use App\Models\ShopifySku;
+use App\Models\TransitContainerDetail;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -257,6 +258,37 @@ class InventoryWarehouseController extends Controller
     }
 
     /**
+     * Resolve push qty from row data.
+     * Must use floats — casting fractional cartons like "0.33" with (int) becomes 0
+     * and incorrectly triggers "Invalid row data".
+     */
+    private function resolvePushQty(array $row): int
+    {
+        $pcsQty = (isset($row['pcs_qty']) && $row['pcs_qty'] !== '' && $row['pcs_qty'] !== null)
+            ? (float) $row['pcs_qty']
+            : 0.0;
+
+        if ($pcsQty > 0) {
+            return (int) max(1, round($pcsQty));
+        }
+
+        $units = (isset($row['no_of_units']) && $row['no_of_units'] !== '' && $row['no_of_units'] !== null)
+            ? (float) $row['no_of_units']
+            : 0.0;
+        $ctns = (isset($row['total_ctn']) && $row['total_ctn'] !== '' && $row['total_ctn'] !== null)
+            ? (float) $row['total_ctn']
+            : 0.0;
+
+        $computed = $units * $ctns;
+        if ($computed <= 0) {
+            return 0;
+        }
+
+        // Partial cartons (e.g. 2 × 0.33 = 0.66) still need at least 1 unit for Shopify
+        return (int) max(1, round($computed));
+    }
+
+    /**
      * Build an authenticated Shopify HTTP client.
      * Prefers X-Shopify-Access-Token (modern), falls back to basic auth.
      */
@@ -467,12 +499,19 @@ class InventoryWarehouseController extends Controller
         foreach ($rows as $row) {
             $rowId = (int)($row['id'] ?? 0);
             $sku = $this->normalizeSku($row['our_sku'] ?? '');
-            $units = !empty($row['no_of_units']) ? (int) $row['no_of_units'] : 0;
-            $ctns  = !empty($row['total_ctn']) ? (int) $row['total_ctn'] : 0;
-            $qty = $units * $ctns;
+            $qty = $this->resolvePushQty($row);
+            $units = (float) ($row['no_of_units'] ?? 0);
+            $ctns  = (float) ($row['total_ctn'] ?? 0);
 
             if (!$rowId || !$sku || $qty <= 0) {
-                Log::warning("Invalid row data - skipping", ['row_id' => $rowId, 'sku' => $sku, 'qty' => $qty]);
+                Log::warning("Invalid row data - skipping", [
+                    'row_id' => $rowId,
+                    'sku' => $sku,
+                    'qty' => $qty,
+                    'no_of_units' => $row['no_of_units'] ?? null,
+                    'total_ctn' => $row['total_ctn'] ?? null,
+                    'pcs_qty' => $row['pcs_qty'] ?? null,
+                ]);
                 continue;
             }
 
@@ -787,22 +826,52 @@ class InventoryWarehouseController extends Controller
         $force   = (bool) $request->input('force', false);
         $userId  = auth()->id();
 
+        if (!is_array($row)) {
+            $row = [];
+        }
+
         $rowId = (int)($row['id'] ?? 0);
+
+        // Source of truth for qty/SKU: DB row. Request payload can miss fields or
+        // truncate fractional cartons (e.g. total_ctn "0.33" cast to int = 0).
+        $dbRow = $rowId > 0 ? TransitContainerDetail::find($rowId) : null;
+        if ($dbRow) {
+            $row['our_sku'] = $row['our_sku'] ?? $dbRow->our_sku;
+            $row['no_of_units'] = $dbRow->no_of_units;
+            $row['total_ctn'] = $dbRow->total_ctn;
+            if (!isset($row['pcs_qty']) || (float) $row['pcs_qty'] <= 0) {
+                $row['pcs_qty'] = (float) $dbRow->no_of_units * (float) $dbRow->total_ctn;
+            }
+            if (empty($tabName)) {
+                $tabName = $dbRow->tab_name;
+            }
+        }
+
         $sku = $this->normalizeSku($row['our_sku'] ?? '');
-        $units = !empty($row['no_of_units']) ? (int) $row['no_of_units'] : 0;
-        $ctns  = !empty($row['total_ctn']) ? (int) $row['total_ctn'] : 0;
-        $pcsQty = !empty($row['pcs_qty']) ? (float) $row['pcs_qty'] : 0;
-        // Use pcs_qty directly if set, otherwise compute from units × ctns (mirrors the frontend display logic)
-        $qty = ($pcsQty > 0) ? (int) round($pcsQty) : ($units * $ctns);
+        $qty = $this->resolvePushQty($row);
+        $units = (float) ($row['no_of_units'] ?? 0);
+        $ctns  = (float) ($row['total_ctn'] ?? 0);
 
         // Validate input
         if (!$rowId || !$sku || $qty <= 0) {
+            Log::warning('pushSingleItem invalid row', [
+                'row_id' => $rowId,
+                'sku' => $sku,
+                'qty' => $qty,
+                'request_data' => $request->input('data'),
+                'db_units' => $dbRow->no_of_units ?? null,
+                'db_ctn' => $dbRow->total_ctn ?? null,
+            ]);
+
             return response()->json([
                 'success' => false,
                 'status' => 'failed',
                 'row_id' => $rowId,
                 'sku' => $sku,
-                'message' => 'Invalid row data'
+                'qty' => $qty,
+                'no_of_units' => $row['no_of_units'] ?? null,
+                'total_ctn' => $row['total_ctn'] ?? null,
+                'message' => 'Invalid row data: missing SKU or quantity (check Qty/Ctns × Qty Ctns)'
             ]);
         }
 

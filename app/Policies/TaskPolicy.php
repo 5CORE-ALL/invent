@@ -10,23 +10,34 @@ use Illuminate\Auth\Access\Response;
 class TaskPolicy
 {
     /**
-     * Emails with this permission can delete or modify anybody's task (case-insensitive).
-     * president@5core.com and software5@5core.com (plus each task's own assignor) may
-     * edit/delete tasks.
+     * Emails with this permission can delete or modify anybody's task (case-insensitive),
+     * including bulk edit/delete. Sourced from users table:
+     * Hritiksha, Srimanta, Jisan, Nishtha, President (Amarjit), Shobha.
      */
     private const SPECIAL_TASK_DELETE_MODIFY_EMAILS = [
-        'president@5core.com',
-        'software5@5core.com',
+        'president@5core.com',          // Amarjit (President)
+        'software5@5core.com',          // Shobha
+        'mgr-operations@5core.com',     // Hritiksha
+        'mgr-content@5core.com',        // Srimanta
+        'support@5core.com',            // Jisan
+        'mgr-advertisement@5core.com',  // Nishtha
         'ritu.kaur013@gmail.com',
         'inventory@5core.com',
     ];
 
     /**
      * Names from the users table that get the same full-access permission as the
-     * special emails above. Intentionally empty — only the president override and
-     * the task's assignor may edit/delete.
+     * special emails above (full name or first token, case-insensitive).
      */
-    private const SPECIAL_TASK_DELETE_MODIFY_NAMES = [];
+    private const SPECIAL_TASK_DELETE_MODIFY_NAMES = [
+        'hritiksha',
+        'srimanta',
+        'jisan',
+        'nishtha',
+        'president',
+        'amarjit',
+        'shobha',
+    ];
 
     /** Cleanup Missed Daily, Today Deleted, and related revert/archive tools. */
     private const TASK_MAINTENANCE_TOOL_EMAILS = [
@@ -209,8 +220,7 @@ class TaskPolicy
      */
     public function bulkUpdate(User $user): bool
     {
-        // Only admin can perform bulk operations
-        return $this->isAdmin($user);
+        return $this->isAdmin($user) || self::userHasSpecialTaskPermission($user);
     }
 
     /**
