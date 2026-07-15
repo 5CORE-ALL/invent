@@ -3,8 +3,10 @@
 namespace App\Http\Controllers\Sales;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Channels\ChannelMasterController;
 use App\Models\Ebay3DailyData;
 use App\Models\ProductMaster;
+use App\Models\ChannelMasterCalculatedData;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -39,9 +41,47 @@ class Ebay3SalesController extends Controller
             Log::warning('Ebay3 Y Sales failed: ' . $e->getMessage());
         }
 
+        // Ads% / TACOS + Total Ad Spend — same ChannelMasterCalculatedData values the
+        // EbayThree Ads% column on /all-marketplace-master uses (channel key is "EbayThree").
+        $ebay3Row = ChannelMasterCalculatedData::where('channel', 'EbayThree')->first()
+            ?? ChannelMasterCalculatedData::where('channel', 'eBay 3')->first()
+            ?? ChannelMasterCalculatedData::where('channel', 'like', 'EbayThree%')->first()
+            ?? ChannelMasterCalculatedData::where('channel', 'like', 'eBay 3%')->first();
+        $ebay3AdsPercent = (float) ($ebay3Row->ads_percentage ?? 0);
+        $ebay3TotalAdSpend = (float) ($ebay3Row->total_ad_spend ?? 0);
+
+        // KW / PMT badges — same live campaign-ads breakdown the master EbayThree row uses.
+        $kwSpent = 0.0;
+        $pmtSpent = 0.0;
+        $liveTotalAdSpend = 0.0;
+        try {
+            $breakdown = app(ChannelMasterController::class)->getEbaythreeMasterAdBreakdown();
+            $kwSpent = (float) ($breakdown['kw_spent'] ?? 0);
+            $pmtSpent = (float) ($breakdown['pmt_spent'] ?? 0);
+            $liveTotalAdSpend = (float) ($breakdown['total_ad_spend'] ?? 0);
+        } catch (\Throwable $e) {
+            Log::warning('Ebay3 daily-sales ad spend lookup failed: '.$e->getMessage());
+        }
+
+        if ($ebay3TotalAdSpend <= 0 && $liveTotalAdSpend > 0) {
+            $ebay3TotalAdSpend = $liveTotalAdSpend;
+        }
+        if ($ebay3AdsPercent <= 0 && $ebay3TotalAdSpend > 0) {
+            $masterL30 = (float) ($ebay3Row->l30_sales ?? 0);
+            if ($masterL30 <= 0) {
+                $ebay3AdsPercent = (float) app(ChannelMasterController::class)->getEbaythreeMasterAdsPercent();
+            } else {
+                $ebay3AdsPercent = ($ebay3TotalAdSpend / $masterL30) * 100;
+            }
+        }
+
         return view('sales.ebay3_daily_sales_data', [
             'salesYesterday' => round($ySales, 2),
             'yesterdayLabel' => \Carbon\Carbon::yesterday($tz)->format('M j, Y'),
+            'kwSpent' => round($kwSpent, 2),
+            'pmtSpent' => round($pmtSpent, 2),
+            'ebay3AdsPercent' => round($ebay3AdsPercent, 2),
+            'ebay3TotalAdSpend' => round($ebay3TotalAdSpend, 2),
         ]);
     }
 
