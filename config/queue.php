@@ -40,7 +40,10 @@ return [
             'driver' => 'database',
             'table' => 'jobs',
             'queue' => 'default',
-            'retry_after' => 90,
+            // Must exceed the longest marketplace-manager job timeout (1800s) or Laravel
+            // re-releases reserved inventory jobs while they are still running — duplicates,
+            // timeouts, and a stuck backlog that blocks Shopify→marketplace stock pushes.
+            'retry_after' => 2100,
             'after_commit' => false,
         ],
 
