@@ -984,7 +984,44 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(55)
             ->runInBackground()
             ->appendOutputTo($log);
-       
+
+        // Newegg Marketplace Manager: inventory/price from Shopify, orders to Shopify
+        $schedule->command('newegg:sync-inventory-from-shopify')
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('newegg-sync-inventory')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('newegg:sync-orders --from=2026-07-07 --import')
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('newegg-sync-orders')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('newegg:sync-link-map')
+            ->hourly()
+            ->timezone('Asia/Kolkata')
+            ->name('newegg-sync-link-map')
+            ->withoutOverlapping(55)
+            ->runInBackground()
+            ->appendOutputTo($log);
+        // $schedule->command('shopify:retry-pending-orders')
+            //     ->hourly()
+            //     ->timezone('UTC')
+            //     ->name('shopify-retry-pending-orders')
+            //     ->withoutOverlapping(30)
+            //     ->runInBackground()
+            //     ->appendOutputTo($log);
+
+        /*
+        |--------------------------------------------------------------------------
+        | MACY
+        |--------------------------------------------------------------------------
+        */
         $ist($schedule->command('app:fetch-macy-products')
             ->everyFiveMinutes()
             ->name('fetch-macy-products')

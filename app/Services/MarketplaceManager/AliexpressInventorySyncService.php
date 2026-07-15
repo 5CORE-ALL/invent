@@ -45,9 +45,10 @@ class AliexpressInventorySyncService
 
         $settings = MarketplaceSyncSettings::getFor('aliexpress');
         $qtyPercent = max(0, min(100, (int) ($settings['inventory']['quantity_calc_percent'] ?? 100)));
-        $minQty = max(0, (int) ($settings['inventory']['min_quantity'] ?? 0));
         $maxQty = $settings['inventory']['max_quantity'] ?? null;
+        // min_quantity is ignored: Shopify 0 => marketplace 0 (never invent 1).
 
+        // Always LIVE Shopify API qty — never local shopify_skus cache.
         $shopifyQty = $this->fetchLiveShopifyQuantities($skus, $shopifyConfig);
         $metrics = AliexpressMetric::query()
             ->whereIn('sku', $skus)
@@ -62,29 +63,23 @@ class AliexpressInventorySyncService
         foreach ($metrics as $metric) {
             $sku = (string) $metric->sku;
             $productId = (string) $metric->product_id;
-            if ($productId === '') {
+            // Rule 1: never update unlinked SKUs.
+            if (! MarketplaceLiveInventoryRules::isLinked($productId, $sku)) {
                 $skipped++;
                 continue;
             }
 
             $shopifyStock = $this->resolveShopifyQty($shopifyQty, $sku);
-            if ($shopifyStock === null) {
-                $skipped++;
-                continue;
-            }
-            $qty = (int) floor($shopifyStock * ($qtyPercent / 100));
-            if ($qty < $minQty) {
-                $qty = $minQty;
-            }
-            if ($maxQty !== null && $maxQty !== '') {
-                $qty = min($qty, (int) $maxQty);
-            }
+            // Rule 4: missing / 0 live Shopify => push 0 (do not skip leaving stale MP stock).
+            $pushQty = $shopifyStock === null
+                ? MarketplaceLiveInventoryRules::qtyWhenMissingFromShopify()
+                : MarketplaceLiveInventoryRules::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty);
 
             $inventoryRows[] = [
                 'product_id' => $productId,
                 'sku_code' => $sku,
-                'inventory' => max(0, $qty),
-                'shopify_qty' => $shopifyStock,
+                'inventory' => MarketplaceLiveInventoryRules::clampPushQty($pushQty, $shopifyStock ?? 0),
+                'shopify_qty' => $shopifyStock ?? 0,
             ];
         }
 
@@ -101,12 +96,16 @@ class AliexpressInventorySyncService
         if (! empty($invResult['success'])) {
             $this->updateLocalStock($inventoryRows);
             $this->updateLocalPlatformQuantities($inventoryRows);
+            $republish = $this->republishOfflineProductsWithStock($inventoryRows);
+            $extra = ((int) ($republish['online'] ?? 0) > 0)
+                ? ' Republished '.$republish['online'].' offline listing(s).'
+                : '';
 
             return [
                 'updated' => count($inventoryRows),
                 'failed' => 0,
                 'skipped' => $skipped,
-                'message' => 'Synced '.count($inventoryRows).' SKU(s) to AliExpress and local platform.',
+                'message' => 'Synced '.count($inventoryRows).' SKU(s) to AliExpress and local platform.'.$extra,
             ];
         }
 
@@ -184,6 +183,9 @@ class AliexpressInventorySyncService
         }
 
         $skus = $metrics->pluck('sku')->unique()->values()->all();
+
+        // 1) Fetch LIVE Shopify stock first (Admin API) — never use local shopify_skus / mapping cache for push qty.
+        Log::info('AliexpressInventorySyncService: fetching live Shopify inventory', ['sku_count' => count($skus)]);
         $shopifyQty = $this->shopifyApi->getInventoryQuantitiesBySku($skus);
 
         // Fill gaps with direct variant lookups (bulk product pagination can miss SKUs).
@@ -194,15 +196,34 @@ class AliexpressInventorySyncService
             }
         }
         if ($missing !== []) {
+            Log::info('AliexpressInventorySyncService: live variant fallback for missing SKUs', ['count' => count($missing)]);
             foreach ($this->fetchLiveShopifyQuantities($missing) as $sku => $qty) {
                 $shopifyQty[$sku] = $qty;
             }
         }
 
-        $shopifyDetails = $this->shopifyApi->getProductDetailsBySkuMap($skus);
+        $coverage = MarketplaceLiveInventoryRules::shopifyLiveCoverageReport(
+            $skus,
+            fn (string $sku) => $this->resolveShopifyQty($shopifyQty, $sku)
+        );
+        Log::info('AliexpressInventorySyncService: Shopify live coverage', $coverage);
+        if (! $coverage['ok'] && ($settings['inventory']['inventory_sync'] ?? false) && ! $dryRun) {
+            Log::error('AliexpressInventorySyncService: aborting inventory push — Shopify live coverage too low', $coverage);
+
+            return [
+                'updated' => 0,
+                'failed' => 0,
+                'skipped' => count($skus),
+                'price_updated' => 0,
+                'message' => $coverage['message'],
+            ];
+        }
+
+        $shopifyDetails = ($settings['pricing']['price_sync'] ?? false)
+            ? $this->shopifyApi->getProductDetailsBySkuMap($skus)
+            : [];
 
         $qtyPercent = max(0, min(100, (int) ($settings['inventory']['quantity_calc_percent'] ?? 100)));
-        $minQty = max(0, (int) ($settings['inventory']['min_quantity'] ?? 1));
         $maxQty = $settings['inventory']['max_quantity'] ?? null;
         $useSalePrice = (bool) ($settings['pricing']['use_sale_price'] ?? false);
 
@@ -213,32 +234,25 @@ class AliexpressInventorySyncService
         foreach ($metrics as $metric) {
             $sku = (string) $metric->sku;
             $productId = (string) $metric->product_id;
-            if ($productId === '' || $sku === $productId) {
+            // Rule 1: never update unlinked SKUs.
+            if (! MarketplaceLiveInventoryRules::isLinked($productId, $sku)) {
                 $skipped++;
                 continue;
             }
 
             if ($settings['inventory']['inventory_sync'] ?? false) {
                 $shopifyStock = $this->resolveShopifyQty($shopifyQty, $sku);
-                // Never invent stock: if Shopify API did not return this SKU, skip it.
-                // (Previously missing SKUs became 0 → min_quantity 1 and overwrote AE.)
-                if ($shopifyStock === null) {
-                    $skipped++;
-                } else {
-                    $qty = (int) floor($shopifyStock * ($qtyPercent / 100));
-                    if ($qty < $minQty) {
-                        $qty = $minQty;
-                    }
-                    if ($maxQty !== null && $maxQty !== '') {
-                        $qty = min($qty, (int) $maxQty);
-                    }
-                    $inventoryRows[] = [
-                        'product_id' => $productId,
-                        'sku_code' => $sku,
-                        'inventory' => max(0, $qty),
-                        'shopify_qty' => $shopifyStock,
-                    ];
-                }
+                // Rules 2+4: live Shopify only; missing/0 => marketplace 0 (never invent stock).
+                $pushQty = $shopifyStock === null
+                    ? MarketplaceLiveInventoryRules::qtyWhenMissingFromShopify()
+                    : MarketplaceLiveInventoryRules::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty);
+
+                $inventoryRows[] = [
+                    'product_id' => $productId,
+                    'sku_code' => $sku,
+                    'inventory' => MarketplaceLiveInventoryRules::clampPushQty($pushQty, $shopifyStock ?? 0),
+                    'shopify_qty' => $shopifyStock ?? 0,
+                ];
             }
 
             if ($settings['pricing']['price_sync'] ?? false) {
@@ -275,11 +289,16 @@ class AliexpressInventorySyncService
         $priceUpdated = 0;
 
         if ($inventoryRows !== []) {
+            Log::info('AliexpressInventorySyncService: pushing live Shopify qty to AliExpress', [
+                'rows' => count($inventoryRows),
+            ]);
             $invResult = $this->aliExpressApi->batchUpdateInventory($inventoryRows);
             if (! empty($invResult['success'])) {
                 $updated = count($inventoryRows);
                 $this->updateLocalStock($inventoryRows);
                 $this->updateLocalPlatformQuantities($inventoryRows);
+                // AE auto-offlines when stock hits 0; inventory push alone does not republish.
+                $this->republishOfflineProductsWithStock($inventoryRows);
             } else {
                 $failed = count($inventoryRows);
                 Log::warning('AliexpressInventorySyncService: inventory batch failed', $invResult);
@@ -334,6 +353,38 @@ class AliexpressInventorySyncService
      */
     protected function fetchLiveShopifyQuantities(array $skus, ?array $shopifyConfig = null): array
     {
+        $skus = array_values(array_unique(array_filter(array_map(
+            static fn ($s) => trim((string) $s),
+            $skus
+        ))));
+        if ($skus === []) {
+            return [];
+        }
+
+        // Prefer GraphQL chunked resolver for larger gaps (REST product pagination often fails).
+        if (count($skus) >= 15 && $shopifyConfig === null) {
+            $map = [];
+            foreach (array_chunk($skus, 40) as $chunk) {
+                $rows = [];
+                foreach ($chunk as $sku) {
+                    $local = ShopifySku::firstForProductSku($sku);
+                    $rows[] = $local ?: new ShopifySku(['sku' => $sku]);
+                }
+                foreach (MarketplaceListingStockResolver::liveShopifyQtyMapForRows($rows, false) as $upper => $qty) {
+                    $map[(string) $upper] = (int) $qty;
+                    // Also index original SKU casing when we can match.
+                    foreach ($chunk as $orig) {
+                        if (strtoupper(trim($orig)) === strtoupper(trim((string) $upper))) {
+                            $map[$orig] = (int) $qty;
+                        }
+                    }
+                }
+                usleep(150000);
+            }
+
+            return $map;
+        }
+
         $storeUrl = $this->normalizeStoreUrl((string) ($shopifyConfig['store_url'] ?? ''));
         $token = (string) ($shopifyConfig['token'] ?? '');
 
@@ -499,5 +550,81 @@ class AliexpressInventorySyncService
                 );
             }
         }
+    }
+
+    /**
+     * After restocking, put offline AE products back onSelling.
+     * Inventory-only updates do not republish when AE auto-offlined at qty 0.
+     *
+     * @param  array<int, array{product_id: string, sku_code: string, inventory: int, shopify_qty?: int}>  $inventoryRows
+     * @return array{online: int, skipped: int, message: string}
+     */
+    public function republishOfflineProductsWithStock(array $inventoryRows): array
+    {
+        $wantOnline = [];
+        foreach ($inventoryRows as $row) {
+            $pid = trim((string) ($row['product_id'] ?? ''));
+            $inv = (int) ($row['inventory'] ?? 0);
+            $shop = array_key_exists('shopify_qty', $row) ? (int) $row['shopify_qty'] : $inv;
+            if ($pid === '' || $inv <= 0 || $shop <= 0) {
+                continue;
+            }
+            $wantOnline[$pid] = true;
+        }
+
+        if ($wantOnline === []) {
+            return ['online' => 0, 'skipped' => 0, 'message' => 'No positive-stock products to republish.'];
+        }
+
+        $offlineIds = [];
+        try {
+            $live = app(AliexpressLiveListingsService::class);
+            $cached = $live->peekCached();
+            if (! is_array($cached) || $cached === []) {
+                $cached = $live->all(false);
+            }
+            $stateByPid = [];
+            foreach ($cached as $row) {
+                $pid = trim((string) ($row['product_id'] ?? ''));
+                if ($pid === '') {
+                    continue;
+                }
+                $stateByPid[$pid] = strtolower(trim((string) ($row['state'] ?? $row['status'] ?? '')));
+            }
+            foreach (array_keys($wantOnline) as $pid) {
+                $st = $stateByPid[$pid] ?? null;
+                // Unknown state: still try online (safe for already-onSelling).
+                if ($st === null || $st === 'offline') {
+                    $offlineIds[] = $pid;
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('AliexpressInventorySyncService: live state lookup failed; online all restocked products', [
+                'error' => $e->getMessage(),
+            ]);
+            $offlineIds = array_keys($wantOnline);
+        }
+
+        if ($offlineIds === []) {
+            return ['online' => 0, 'skipped' => count($wantOnline), 'message' => 'No offline products among restocked SKUs.'];
+        }
+
+        $result = $this->aliExpressApi->onlineProducts($offlineIds);
+        Log::info('AliexpressInventorySyncService: republish offline with stock', [
+            'candidates' => count($offlineIds),
+            'result' => $result,
+        ]);
+
+        try {
+            app(AliexpressLiveListingsService::class)->all(true);
+        } catch (\Throwable $e) {
+            // Cache refresh is best-effort.
+        }
+
+        return [
+            'online' => (int) ($result['online'] ?? 0),
+            'skipped' => max(0, count($wantOnline) - count($offlineIds)),
+            'message' => (string) ($result['message'] ?? ''),
+        ];
     }
 }

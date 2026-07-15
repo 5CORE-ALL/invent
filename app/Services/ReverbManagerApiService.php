@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Services\MarketplaceManager\MarketplaceLiveInventoryRules;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -248,14 +249,21 @@ class ReverbManagerApiService
             $sku = (string) ($row['sku_code'] ?? '');
             $qty = (int) ($row['inventory'] ?? 0);
             $listingId = trim((string) ($row['product_id'] ?? ''));
+
             if ($listingId === '' && $sku !== '') {
                 $listingId = (string) (app(ReverbApiService::class)->getListingIdBySku($sku) ?? '');
             }
-            if ($listingId === '') {
+
+            // Rule 1: never update unlinked SKUs.
+            if ($listingId === '' || ! MarketplaceLiveInventoryRules::isLinked($listingId, $sku)) {
                 $fail++;
-                $messages[] = ($sku !== '' ? $sku : 'unknown').': missing listing id';
+                $messages[] = ($sku !== '' ? $sku : 'unknown').': skipped unlinked / missing listing id';
                 continue;
             }
+
+            // Rule 4: if caller passed shopify_qty <= 0, force marketplace qty to 0.
+            $shopifyQty = array_key_exists('shopify_qty', $row) ? (int) $row['shopify_qty'] : null;
+            $qty = MarketplaceLiveInventoryRules::clampPushQty($qty, $shopifyQty);
 
             try {
                 if ($listingService->updateListingInventory($listingId, $qty)) {

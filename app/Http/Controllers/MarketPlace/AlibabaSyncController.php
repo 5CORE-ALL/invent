@@ -501,13 +501,20 @@ class AlibabaSyncController extends Controller
 
     public function syncInventoryNow(): JsonResponse
     {
-        $result = app(AlibabaInventorySyncService::class)->syncFromShopify(false);
+        $settings = MarketplaceSyncSettings::getFor('alibaba');
+        if (! ($settings['inventory']['inventory_sync'] ?? false) && ! ($settings['pricing']['price_sync'] ?? false)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Turn on Inventory sync (or Price sync) in settings first.',
+            ], 422);
+        }
+
+        \App\Jobs\RunMarketplaceInventorySyncJob::dispatch('alibaba');
 
         return response()->json([
-            'success' => ($result['failed'] ?? 0) === 0,
-            'message' => $result['message'],
-            'updated' => $result['updated'] ?? 0,
-            'price_updated' => $result['price_updated'] ?? 0,
+            'success' => true,
+            'queued' => true,
+            'message' => 'Inventory sync queued. It runs in the background from live Shopify (usually a few minutes). Keep inventory sync ON — webhook + 15-min schedule also push automatically.',
         ]);
     }
 
@@ -637,6 +644,8 @@ class AlibabaSyncController extends Controller
         $inventory = $this->mergeSettingsSection($current['inventory'] ?? [], $request->input('inventory', []), [
             'inventory_sync',
         ]);
+        // Hard rule: never invent marketplace stock from Shopify 0 via min_quantity.
+        $inventory['min_quantity'] = 0;
         $order = $this->mergeSettingsSection($current['order'] ?? [], $request->input('order', []), [
             'fetch_orders', 'auto_import_to_shopify', 'keep_order_number_from_channel',
         ]);

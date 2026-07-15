@@ -54,11 +54,9 @@
                             <label class="form-label small">Qty % of Shopify</label>
                             <input type="number" class="form-control form-control-sm" name="inventory[quantity_calc_percent]" value="{{ $settings['inventory']['quantity_calc_percent'] ?? 100 }}" min="0" max="100" style="width: 100px;">
                         </div>
-                        <div class="col-auto">
-                            <label class="form-label small">Min qty on Reverb</label>
-                            <input type="number" class="form-control form-control-sm" name="inventory[min_quantity]" value="{{ $settings['inventory']['min_quantity'] ?? 1 }}" min="0" style="width: 100px;">
-                        </div>
                     </div>
+                    <div class="form-text mt-2">Always uses <strong>live Shopify</strong> stock. Shopify 0/− → marketplace <strong>0</strong> (never forced to 1). Draft / inactive / unpublished listings are never stocked or activated.</div>
+                    <input type="hidden" name="inventory[min_quantity]" value="0">
                 </div>
             </div>
 
@@ -180,7 +178,8 @@ document.getElementById('btn-sync-inventory-now')?.addEventListener('click', fun
     var btn = this;
     var status = document.getElementById('save-status');
     btn.disabled = true;
-    status.textContent = 'Syncing inventory…';
+    status.textContent = 'Queueing inventory sync…';
+    status.className = 'ms-2 small text-muted';
     fetch('{{ route('marketplace.manager.reverb.sync.inventory') }}', {
         method: 'POST',
         headers: {
@@ -188,13 +187,20 @@ document.getElementById('btn-sync-inventory-now')?.addEventListener('click', fun
             'Accept': 'application/json',
         },
     })
-    .then(function (r) { return r.json(); })
-    .then(function (data) {
-        status.textContent = data.message || (data.success ? 'Synced.' : 'Failed');
-        status.className = 'ms-2 small ' + (data.success ? 'text-success' : 'text-danger');
+    .then(function (r) {
+        return r.json().then(function (data) {
+            return { ok: r.ok, status: r.status, data: data };
+        }).catch(function () {
+            return { ok: false, status: r.status, data: { message: 'Server returned non-JSON (often a timeout). Sync may still be running in the background.' } };
+        });
+    })
+    .then(function (res) {
+        var data = res.data || {};
+        status.textContent = data.message || (res.ok ? 'Queued.' : 'Failed');
+        status.className = 'ms-2 small ' + (res.ok && data.success !== false ? 'text-success' : 'text-danger');
     })
     .catch(function () {
-        status.textContent = 'Sync request failed.';
+        status.textContent = 'Sync request failed (network). Check that the marketplace-manager queue worker is running.';
         status.className = 'ms-2 small text-danger';
     })
     .finally(function () { btn.disabled = false; });

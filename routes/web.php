@@ -520,13 +520,19 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/reverb/refresh-products/status', [\App\Http\Controllers\MarketPlace\ReverbSyncController::class, 'refreshProductsStatus'])->name('reverb.refresh.status');
         Route::post('/reverb/fetch-orders', [\App\Http\Controllers\MarketPlace\ReverbSyncController::class, 'fetchOrders'])->name('reverb.fetch.orders');
         Route::post('/reverb/sync-inventory', [\App\Http\Controllers\MarketPlace\ReverbSyncController::class, 'syncInventoryNow'])->name('reverb.sync.inventory');
+        Route::get('/newegg/connect', [\App\Http\Controllers\MarketPlace\NeweggSyncController::class, 'connect'])->name('newegg.connect');
+        Route::post('/newegg/test-connection', [\App\Http\Controllers\MarketPlace\NeweggSyncController::class, 'testConnection'])->name('newegg.test');
+        Route::post('/newegg/refresh-products', [\App\Http\Controllers\MarketPlace\NeweggSyncController::class, 'refreshProducts'])->name('newegg.refresh');
+        Route::get('/newegg/refresh-products/status', [\App\Http\Controllers\MarketPlace\NeweggSyncController::class, 'refreshProductsStatus'])->name('newegg.refresh.status');
+        Route::post('/newegg/fetch-orders', [\App\Http\Controllers\MarketPlace\NeweggSyncController::class, 'fetchOrders'])->name('newegg.fetch.orders');
+        Route::post('/newegg/sync-inventory', [\App\Http\Controllers\MarketPlace\NeweggSyncController::class, 'syncInventoryNow'])->name('newegg.sync.inventory');
         Route::get('/{marketplace}', [\App\Http\Controllers\MarketplaceManager\MarketplaceManagerController::class, 'show'])
             ->name('show')
-            ->where('marketplace', 'aliexpress|alibaba|reverb');
+            ->where('marketplace', 'aliexpress|alibaba|reverb|newegg');
     });
 
-    // Marketplace Sync: dynamic routes per marketplace (reverb, amazon, ebay, walmart, aliexpress, alibaba)
-    Route::prefix('marketplace/{marketplace}')->where(['marketplace' => 'reverb|amazon|ebay|walmart|topdawg|aliexpress|alibaba'])->group(function () {
+    // Marketplace Sync: dynamic routes per marketplace (reverb, amazon, ebay, walmart, aliexpress, alibaba, newegg)
+    Route::prefix('marketplace/{marketplace}')->where(['marketplace' => 'reverb|amazon|ebay|walmart|topdawg|aliexpress|alibaba|newegg'])->group(function () {
         Route::get('/products', [\App\Http\Controllers\MarketplaceController::class, 'products'])->name('marketplace.products');
         Route::get('/products/{shopifySku}', [\App\Http\Controllers\MarketplaceController::class, 'showProduct'])->name('marketplace.products.show')->whereNumber('shopifySku');
         Route::post('/products/{shopifySku}/pull', [\App\Http\Controllers\MarketplaceController::class, 'pullProduct'])->name('marketplace.products.pull')->whereNumber('shopifySku');

@@ -7,6 +7,7 @@ use App\Models\ReverbPricingPrice;
 use App\Models\MarketplaceSyncSettings;
 use App\Models\ProductStockMapping;
 use App\Models\ShopifySku;
+use App\Services\ReverbApiService;
 use App\Services\ReverbManagerApiService;
 use App\Services\ShopifyApiService;
 use Illuminate\Support\Facades\Http;
@@ -21,8 +22,8 @@ class ReverbInventorySyncService
     ) {}
 
     /**
-     * Immediately sync specific SKUs from Shopify → Reverb and refresh local qty fields.
-     * Used after an Reverb order is pushed to Shopify so AE stock matches the decrement.
+     * Immediately sync specific SKUs from live Shopify → live Reverb listing IDs.
+     * Listing id + SKU come from live Reverb API (not stored reverb_metric) when possible.
      *
      * @param  array<int, string>  $skus
      * @param  array{store_url?: string, token?: string}|null  $shopifyConfig
@@ -45,46 +46,97 @@ class ReverbInventorySyncService
 
         $settings = MarketplaceSyncSettings::getFor('reverb');
         $qtyPercent = max(0, min(100, (int) ($settings['inventory']['quantity_calc_percent'] ?? 100)));
-        $minQty = max(0, (int) ($settings['inventory']['min_quantity'] ?? 0));
         $maxQty = $settings['inventory']['max_quantity'] ?? null;
 
-        $shopifyQty = $this->fetchLiveShopifyQuantities($skus, $shopifyConfig);
+        // Fast path: listing ids from metric / SKU lookup, then LIVE listing GET for state (no full catalog crawl).
+        $listingIdsBySku = [];
         $metrics = ReverbMetric::query()
             ->whereIn('sku', $skus)
             ->whereNotNull('product_id')
             ->where('sku', '!=', '')
             ->whereColumn('sku', '!=', 'product_id')
-            ->get();
+            ->get()
+            ->keyBy(fn ($m) => strtoupper(trim((string) $m->sku)));
+
+        foreach ($skus as $sku) {
+            $key = strtoupper($sku);
+            $metric = $metrics->get($key);
+            if (! $metric) {
+                foreach ($metrics as $m) {
+                    if (strtoupper(trim((string) $m->sku)) === $key) {
+                        $metric = $m;
+                        break;
+                    }
+                }
+            }
+            $pid = $metric ? trim((string) $metric->product_id) : '';
+            if ($pid === '') {
+                try {
+                    $pid = (string) (app(ReverbApiService::class)->getListingIdBySku($sku) ?? '');
+                } catch (\Throwable $e) {
+                    $pid = '';
+                }
+            }
+            if ($pid !== '') {
+                $listingIdsBySku[$sku] = $pid;
+            }
+        }
+
+        $liveDetails = app(ReverbLiveListingsService::class)
+            ->liveDetailsByListingIds(array_values($listingIdsBySku));
+
+        // Always LIVE Shopify API qty.
+        $shopifyQty = $this->fetchLiveShopifyQuantities($skus, $shopifyConfig);
 
         $inventoryRows = [];
         $skipped = 0;
 
-        foreach ($metrics as $metric) {
-            $sku = (string) $metric->sku;
-            $productId = (string) $metric->product_id;
-            if ($productId === '') {
+        foreach ($skus as $requestedSku) {
+            $productId = (string) ($listingIdsBySku[$requestedSku] ?? '');
+            if ($productId === '' || ! isset($liveDetails[$productId])) {
+                // Fall back to live catalog resolve only if page-size sync misses.
+                $listing = $this->resolveLiveListingForSku($requestedSku, []);
+                if ($listing === null) {
+                    $skipped++;
+                    continue;
+                }
+                $sku = (string) $listing['sku'];
+                $productId = (string) $listing['product_id'];
+                $state = (string) ($listing['state'] ?? '');
+            } else {
+                $live = $liveDetails[$productId];
+                $sku = trim((string) ($live['sku'] ?? $requestedSku)) ?: $requestedSku;
+                $state = (string) ($live['state'] ?? '');
+            }
+
+            if (! MarketplaceLiveInventoryRules::isLinked($productId, $sku)) {
+                $skipped++;
+                continue;
+            }
+            if (! MarketplaceLiveInventoryRules::reverbMayUpdateInventory($state)) {
                 $skipped++;
                 continue;
             }
 
             $shopifyStock = $this->resolveShopifyQty($shopifyQty, $sku);
             if ($shopifyStock === null) {
+                $shopifyStock = $this->resolveShopifyQty($shopifyQty, $requestedSku);
+            }
+            // Not on Shopify ⇒ skip. Shopify 0 ⇒ push 0. Shopify >= 1 on sold ⇒ restock+publish.
+            // Draft ⇒ inventory only (never publish).
+            if ($shopifyStock === null) {
                 $skipped++;
                 continue;
             }
-            $qty = (int) floor($shopifyStock * ($qtyPercent / 100));
-            if ($qty < $minQty) {
-                $qty = $minQty;
-            }
-            if ($maxQty !== null && $maxQty !== '') {
-                $qty = min($qty, (int) $maxQty);
-            }
+
+            $pushQty = MarketplaceLiveInventoryRules::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty);
 
             $inventoryRows[] = [
                 'product_id' => $productId,
                 'sku_code' => $sku,
-                'inventory' => max(0, $qty),
+                'inventory' => MarketplaceLiveInventoryRules::clampPushQty($pushQty, $shopifyStock),
                 'shopify_qty' => $shopifyStock,
+                'state' => $state,
             ];
         }
 
@@ -92,10 +144,12 @@ class ReverbInventorySyncService
             return [
                 'updated' => 0,
                 'failed' => 0,
-                'skipped' => $skipped + (count($skus) - $metrics->count()),
-                'message' => 'No linked Reverb SKUs found for inventory sync.',
+                'skipped' => $skipped,
+                'message' => 'No linked live Reverb SKUs found for inventory sync.',
             ];
         }
+
+        $this->persistLiveLinkMap($inventoryRows);
 
         $invResult = $this->aliExpressApi->batchUpdateInventory($inventoryRows);
         if (! empty($invResult['success'])) {
@@ -106,11 +160,10 @@ class ReverbInventorySyncService
                 'updated' => count($inventoryRows),
                 'failed' => 0,
                 'skipped' => $skipped,
-                'message' => 'Synced '.count($inventoryRows).' SKU(s) to Reverb and local platform.',
+                'message' => 'Synced '.count($inventoryRows).' SKU(s) to Reverb from live API.',
             ];
         }
 
-        // Still refresh Shopify qty on our platform even if AE API push failed.
         $this->updateLocalPlatformQuantities($inventoryRows, false);
 
         Log::warning('ReverbInventorySyncService: post-order SKU inventory sync failed', [
@@ -152,30 +205,16 @@ class ReverbInventorySyncService
             ];
         }
 
-        if (! Schema::hasTable('reverb_metric')) {
+        // Source of truth: LIVE Reverb listings (SKU + listing id + state) — not stored reverb_metric.
+        Log::info('ReverbInventorySyncService: fetching live Reverb listings');
+        $liveListings = $this->fetchLiveReverbListings();
+        if ($liveListings === []) {
             return [
                 'updated' => 0,
                 'failed' => 0,
                 'skipped' => 0,
                 'price_updated' => 0,
-                'message' => 'reverb_metric table missing. Run fetch first.',
-            ];
-        }
-
-        $metrics = ReverbMetric::query()
-            ->whereNotNull('sku')
-            ->whereNotNull('product_id')
-            ->where('sku', '!=', '')
-            ->whereColumn('sku', '!=', 'product_id')
-            ->get();
-
-        if ($metrics->isEmpty()) {
-            return [
-                'updated' => 0,
-                'failed' => 0,
-                'skipped' => 0,
-                'price_updated' => 0,
-                'message' => 'No Reverb SKU mappings found. Run Sync AE link map on Listings first.',
+                'message' => 'No listings returned from live Reverb API.',
             ];
         }
 
@@ -183,10 +222,34 @@ class ReverbInventorySyncService
             Log::info('ReverbInventorySyncService: create_products_on_reverb is enabled but listing creation is not implemented yet; only existing linked SKUs will be updated.');
         }
 
-        $skus = $metrics->pluck('sku')->unique()->values()->all();
+        $eligible = [];
+        $skipped = 0;
+        foreach ($liveListings as $listing) {
+            $sku = (string) ($listing['sku'] ?? '');
+            $productId = (string) ($listing['product_id'] ?? '');
+            $state = (string) ($listing['state'] ?? '');
+
+            if (! MarketplaceLiveInventoryRules::isLinked($productId, $sku)) {
+                $skipped++;
+                continue;
+            }
+            if (! MarketplaceLiveInventoryRules::reverbMayUpdateInventory($state)) {
+                $skipped++;
+                continue;
+            }
+
+            $eligible[] = $listing;
+        }
+
+        $skus = array_values(array_unique(array_map(
+            static fn ($row) => (string) $row['sku'],
+            $eligible
+        )));
+
+        // Live Shopify inventory for the live Reverb SKUs only.
+        Log::info('ReverbInventorySyncService: fetching live Shopify inventory', ['sku_count' => count($skus)]);
         $shopifyQty = $this->shopifyApi->getInventoryQuantitiesBySku($skus);
 
-        // Fill gaps with direct variant lookups (bulk product pagination can miss SKUs).
         $missing = [];
         foreach ($skus as $sku) {
             if ($this->resolveShopifyQty($shopifyQty, (string) $sku) === null) {
@@ -194,51 +257,61 @@ class ReverbInventorySyncService
             }
         }
         if ($missing !== []) {
+            Log::info('ReverbInventorySyncService: live variant fallback for missing SKUs', ['count' => count($missing)]);
             foreach ($this->fetchLiveShopifyQuantities($missing) as $sku => $qty) {
                 $shopifyQty[$sku] = $qty;
             }
         }
 
-        $shopifyDetails = $this->shopifyApi->getProductDetailsBySkuMap($skus);
+        $coverage = MarketplaceLiveInventoryRules::shopifyLiveCoverageReport(
+            $skus,
+            fn (string $sku) => $this->resolveShopifyQty($shopifyQty, $sku)
+        );
+        Log::info('ReverbInventorySyncService: Shopify live coverage', $coverage);
+        if (! $coverage['ok'] && ($settings['inventory']['inventory_sync'] ?? false) && ! $dryRun) {
+            Log::error('ReverbInventorySyncService: aborting inventory push — Shopify live coverage too low', $coverage);
+
+            return [
+                'updated' => 0,
+                'failed' => 0,
+                'skipped' => count($skus),
+                'price_updated' => 0,
+                'message' => $coverage['message'],
+            ];
+        }
+
+        $shopifyDetails = ($settings['pricing']['price_sync'] ?? false)
+            ? $this->shopifyApi->getProductDetailsBySkuMap($skus)
+            : [];
 
         $qtyPercent = max(0, min(100, (int) ($settings['inventory']['quantity_calc_percent'] ?? 100)));
-        $minQty = max(0, (int) ($settings['inventory']['min_quantity'] ?? 1));
         $maxQty = $settings['inventory']['max_quantity'] ?? null;
         $useSalePrice = (bool) ($settings['pricing']['use_sale_price'] ?? false);
 
         $inventoryRows = [];
         $priceRows = [];
-        $skipped = 0;
 
-        foreach ($metrics as $metric) {
-            $sku = (string) $metric->sku;
-            $productId = (string) $metric->product_id;
-            if ($productId === '' || $sku === $productId) {
-                $skipped++;
-                continue;
-            }
+        foreach ($eligible as $listing) {
+            $sku = (string) $listing['sku'];
+            $productId = (string) $listing['product_id'];
+            $state = (string) ($listing['state'] ?? '');
 
             if ($settings['inventory']['inventory_sync'] ?? false) {
                 $shopifyStock = $this->resolveShopifyQty($shopifyQty, $sku);
-                // Never invent stock: if Shopify API did not return this SKU, skip it.
-                // (Previously missing SKUs became 0 → min_quantity 1 and overwrote AE.)
+                // Not present on live Shopify ⇒ not linked for inventory ⇒ skip (never invent).
                 if ($shopifyStock === null) {
                     $skipped++;
-                } else {
-                    $qty = (int) floor($shopifyStock * ($qtyPercent / 100));
-                    if ($qty < $minQty) {
-                        $qty = $minQty;
-                    }
-                    if ($maxQty !== null && $maxQty !== '') {
-                        $qty = min($qty, (int) $maxQty);
-                    }
-                    $inventoryRows[] = [
-                        'product_id' => $productId,
-                        'sku_code' => $sku,
-                        'inventory' => max(0, $qty),
-                        'shopify_qty' => $shopifyStock,
-                    ];
+                    continue;
                 }
+
+                $pushQty = MarketplaceLiveInventoryRules::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty);
+                $inventoryRows[] = [
+                    'product_id' => $productId,
+                    'sku_code' => $sku,
+                    'inventory' => MarketplaceLiveInventoryRules::clampPushQty($pushQty, $shopifyStock),
+                    'shopify_qty' => $shopifyStock,
+                    'state' => $state,
+                ];
             }
 
             if ($settings['pricing']['price_sync'] ?? false) {
@@ -260,13 +333,15 @@ class ReverbInventorySyncService
             }
         }
 
+        $this->persistLiveLinkMap($inventoryRows);
+
         if ($dryRun) {
             return [
                 'updated' => count($inventoryRows),
                 'failed' => 0,
                 'skipped' => $skipped,
                 'price_updated' => count($priceRows),
-                'message' => '[dry-run] Would update '.count($inventoryRows).' inventory row(s), '.count($priceRows).' price row(s).',
+                'message' => '[dry-run] Would update '.count($inventoryRows).' inventory row(s) from LIVE Reverb+Shopify, '.count($priceRows).' price row(s).',
             ];
         }
 
@@ -275,6 +350,9 @@ class ReverbInventorySyncService
         $priceUpdated = 0;
 
         if ($inventoryRows !== []) {
+            Log::info('ReverbInventorySyncService: pushing live Shopify qty to live Reverb listings', [
+                'rows' => count($inventoryRows),
+            ]);
             $invResult = $this->aliExpressApi->batchUpdateInventory($inventoryRows);
             if (! empty($invResult['success'])) {
                 $updated = count($inventoryRows);
@@ -301,7 +379,7 @@ class ReverbInventorySyncService
             'failed' => $failed,
             'skipped' => $skipped,
             'price_updated' => $priceUpdated,
-            'message' => "Inventory: {$updated} updated, {$failed} failed. Prices: {$priceUpdated} updated. Skipped: {$skipped}.",
+            'message' => "Inventory: {$updated} updated (live API), {$failed} failed. Prices: {$priceUpdated} updated. Skipped: {$skipped}.",
         ];
     }
 
@@ -328,6 +406,171 @@ class ReverbInventorySyncService
     }
 
     /**
+     * Live Reverb my/listings — SKU + listing id + state (never trust stored metric for this).
+     *
+     * @return array<int, array{product_id: string, sku: string, state: string, inventory: int}>
+     */
+    protected function fetchLiveReverbListings(): array
+    {
+        $token = ReverbApiService::getReverbBearerToken();
+        if (! $token) {
+            return [];
+        }
+
+        $out = [];
+        $url = 'https://api.reverb.com/api/my/listings?state=all&per_page=100';
+        $guard = 0;
+
+        while ($url && $guard < 200) {
+            $guard++;
+            $response = Http::withoutVerifying()
+                ->withHeaders([
+                    'Authorization' => 'Bearer '.$token,
+                    'Accept' => 'application/hal+json',
+                    'Accept-Version' => '3.0',
+                ])
+                ->timeout(60)
+                ->get($url);
+
+            if ($response->status() === 429) {
+                sleep(2);
+                continue;
+            }
+            if (! $response->successful()) {
+                Log::warning('ReverbInventorySyncService: live listings page failed', [
+                    'status' => $response->status(),
+                    'url' => $url,
+                ]);
+                break;
+            }
+
+            $data = $response->json() ?? [];
+            $listings = $data['listings'] ?? $data['_embedded']['listings'] ?? [];
+            if (! is_array($listings)) {
+                break;
+            }
+
+            foreach ($listings as $item) {
+                if (! is_array($item)) {
+                    continue;
+                }
+                $productId = trim((string) ($item['id'] ?? ''));
+                $sku = trim((string) ($item['sku'] ?? $item['manufacturer_sku'] ?? ''));
+                $stateRaw = $item['state'] ?? null;
+                $state = is_array($stateRaw)
+                    ? strtolower(trim((string) ($stateRaw['slug'] ?? $stateRaw['description'] ?? '')))
+                    : strtolower(trim((string) $stateRaw));
+                $inv = (int) ($item['inventory'] ?? $item['quantity'] ?? 0);
+                if ($productId === '' || $sku === '') {
+                    continue;
+                }
+                $out[] = [
+                    'product_id' => $productId,
+                    'sku' => $sku,
+                    'state' => $state,
+                    'inventory' => $inv,
+                ];
+            }
+
+            $next = $data['_links']['next']['href'] ?? null;
+            $url = is_string($next) && $next !== '' ? $next : null;
+            if ($url) {
+                usleep(200000);
+            }
+        }
+
+        Log::info('ReverbInventorySyncService: live Reverb listings fetched', ['count' => count($out)]);
+
+        return $out;
+    }
+
+    /**
+     * @param  array<int, string>  $limitSkus
+     * @return array<string, array{product_id: string, sku: string, state: string, inventory: int}>
+     */
+    protected function fetchLiveReverbListingsIndexedBySku(array $limitSkus): array
+    {
+        $want = [];
+        foreach ($limitSkus as $sku) {
+            $want[strtoupper(trim((string) $sku))] = true;
+        }
+
+        $indexed = [];
+        foreach ($this->fetchLiveReverbListings() as $listing) {
+            $key = strtoupper(trim((string) $listing['sku']));
+            if ($want !== [] && ! isset($want[$key])) {
+                continue;
+            }
+            // Prefer live / sold-out over draft if duplicates.
+            if (! isset($indexed[$key]) || MarketplaceLiveInventoryRules::reverbMayUpdateInventory($listing['state'])) {
+                $indexed[$key] = $listing;
+            }
+        }
+
+        return $indexed;
+    }
+
+    /**
+     * @param  array<string, array{product_id: string, sku: string, state: string, inventory: int}>  $liveBySku
+     * @return array{product_id: string, sku: string, state: string, inventory: int}|null
+     */
+    protected function resolveLiveListingForSku(string $requestedSku, array $liveBySku): ?array
+    {
+        $key = strtoupper(trim($requestedSku));
+        if (isset($liveBySku[$key])) {
+            return $liveBySku[$key];
+        }
+
+        // Fallback: resolve listing id via Reverb API SKU search (still live, not metric table).
+        try {
+            $listingId = app(ReverbApiService::class)->getListingIdBySku($requestedSku);
+            if ($listingId) {
+                return [
+                    'product_id' => (string) $listingId,
+                    'sku' => $requestedSku,
+                    'state' => '',
+                    'inventory' => 0,
+                ];
+            }
+        } catch (\Throwable $e) {
+            Log::warning('ReverbInventorySyncService: live listing resolve failed', [
+                'sku' => $requestedSku,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return null;
+    }
+
+    /**
+     * Write-through live link map into reverb_metric so UI catches up — never read it for push.
+     *
+     * @param  array<int, array{product_id: string, sku_code: string, inventory?: int, state?: string}>  $rows
+     */
+    protected function persistLiveLinkMap(array $rows): void
+    {
+        if ($rows === [] || ! Schema::hasTable('reverb_metric')) {
+            return;
+        }
+
+        foreach ($rows as $row) {
+            $sku = trim((string) ($row['sku_code'] ?? ''));
+            $productId = trim((string) ($row['product_id'] ?? ''));
+            if ($sku === '' || $productId === '' || ! MarketplaceLiveInventoryRules::isLinked($productId, $sku)) {
+                continue;
+            }
+            try {
+                ReverbMetric::updateOrCreate(
+                    ['sku' => $sku],
+                    ['product_id' => $productId]
+                );
+            } catch (\Throwable $e) {
+                // non-fatal
+            }
+        }
+    }
+
+    /**
      * @param  array<int, string>  $skus
      * @param  array{store_url?: string, token?: string}|null  $shopifyConfig
      * @return array<string, int>
@@ -346,37 +589,28 @@ class ReverbInventorySyncService
             return $this->shopifyApi->getInventoryQuantitiesBySku($skus);
         }
 
+        // Prefer GraphQL inventoryQuantity (same live source as Listings UI).
         $map = [];
-        foreach ($skus as $sku) {
-            $variantId = null;
-            $local = ShopifySku::firstForProductSku($sku);
-            if ($local && ! empty($local->variant_id)) {
-                $variantId = (int) $local->variant_id;
-            }
-
-            if ($variantId) {
-                try {
-                    $response = Http::withHeaders([
-                        'X-Shopify-Access-Token' => $token,
-                    ])->timeout(30)->get("https://{$storeUrl}/admin/api/2024-01/variants/{$variantId}.json");
-
-                    if ($response->successful()) {
-                        $map[$sku] = (int) ($response->json('variant.inventory_quantity') ?? 0);
-                        continue;
+        foreach (array_chunk($skus, 15) as $chunk) {
+            foreach (app(ReverbLiveListingsService::class)->liveShopifyQtyBySkus($chunk) as $upper => $qty) {
+                $map[(string) $upper] = (int) $qty;
+                foreach ($chunk as $sku) {
+                    if (strtoupper(trim((string) $sku)) === strtoupper((string) $upper)) {
+                        $map[(string) $sku] = (int) $qty;
                     }
-                } catch (\Throwable $e) {
-                    Log::warning('ReverbInventorySyncService: variant qty fetch failed', [
-                        'sku' => $sku,
-                        'variant_id' => $variantId,
-                        'error' => $e->getMessage(),
-                    ]);
                 }
             }
+        }
 
+        // REST SKU fallback for misses only (never prefer negative REST over missing GraphQL).
+        foreach ($skus as $sku) {
+            if ($this->resolveShopifyQty($map, (string) $sku) !== null) {
+                continue;
+            }
             try {
                 $response = Http::withHeaders([
                     'X-Shopify-Access-Token' => $token,
-                ])->timeout(30)->get('https://'.$storeUrl.'/admin/api/2024-01/variants.json', [
+                ])->timeout(30)->get('https://'.$storeUrl.'/admin/api/2025-01/variants.json', [
                     'sku' => $sku,
                     'limit' => 1,
                 ]);

@@ -13,7 +13,10 @@ use App\Support\AttendanceAccess;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Laravel\Socialite\Facades\Socialite;
+use Laravel\Socialite\Two\GoogleProvider;
 
 class AttendanceAgentController extends Controller
 {
@@ -38,6 +41,95 @@ class AttendanceAgentController extends Controller
         $user = User::query()->where('email', $validated['email'])->first();
         if (! $user || ! Hash::check($validated['password'], $user->password)) {
             throw ValidationException::withMessages(['email' => ['Invalid credentials.']]);
+        }
+
+        abort_unless(AttendanceAccess::isInternalEmployee($user), 403, 'Attendance agent is for internal team members only.');
+
+        $device = $this->deviceService->registerOrUpdate($user, $validated);
+
+        $user->tokens()->where('name', 'like', 'attendance-agent-%')->where('created_at', '<', now()->subDays(90))->delete();
+
+        $token = $user->createToken('attendance-agent-'.$device->machine_id, ['attendance:agent'])->plainTextToken;
+
+        return response()->json([
+            'ok' => true,
+            'token' => $token,
+            'user' => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+            ],
+            'device' => [
+                'id' => $device->id,
+                'machine_id' => $device->machine_id,
+            ],
+            'config' => $this->agentConfig(),
+        ]);
+    }
+
+    public function googleLogin(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'code' => 'required|string',
+            'redirect_uri' => 'required|string|max:255',
+            'machine_id' => 'required|string|max:120',
+            'device_name' => 'nullable|string|max:120',
+            'os_name' => 'nullable|string|max:50',
+            'os_version' => 'nullable|string|max:100',
+            'agent_version' => 'nullable|string|max:30',
+        ]);
+
+        // The loopback redirect URI is attacker-influenced input; restrict it to
+        // localhost so it can only ever point back at the agent's own temporary server.
+        if (! preg_match('#^http://(127\.0\.0\.1|localhost):\d+(/|$)#', $validated['redirect_uri'])) {
+            throw ValidationException::withMessages(['redirect_uri' => ['Invalid redirect URI.']]);
+        }
+
+        $clientId = config('services.google_desktop.client_id');
+        $clientSecret = config('services.google_desktop.client_secret');
+        abort_if(! $clientId || ! $clientSecret, 500, 'Google sign-in is not configured on the server.');
+
+        try {
+            $googleUser = Socialite::buildProvider(GoogleProvider::class, [
+                'client_id' => $clientId,
+                'client_secret' => $clientSecret,
+                'redirect' => $validated['redirect_uri'],
+            ])->stateless()->user();
+        } catch (\Throwable $e) {
+            throw ValidationException::withMessages(['email' => ['Google sign-in failed. Please try again.']]);
+        }
+
+        if (! $googleUser || ! $googleUser->email) {
+            throw ValidationException::withMessages(['email' => ['Google account has no email.']]);
+        }
+
+        $user = User::query()
+            ->where('email', $googleUser->email)
+            ->orWhere('google_id', $googleUser->id)
+            ->first();
+
+        if ($user) {
+            if (! ($user->is_active ?? true)) {
+                throw ValidationException::withMessages(['email' => ['This account is inactive. Contact an administrator.']]);
+            }
+            if (empty($user->google_id)) {
+                $user->update(['google_id' => $googleUser->id]);
+            }
+        } else {
+            $given = $googleUser->user['given_name'] ?? '';
+            $family = $googleUser->user['family_name'] ?? '';
+            $fullName = trim($given.($given && $family ? ' ' : '').$family);
+            if ($fullName === '') {
+                $fullName = $googleUser->name ?? explode('@', $googleUser->email)[0];
+            }
+
+            $user = User::create([
+                'name' => $fullName,
+                'email' => $googleUser->email,
+                'google_id' => $googleUser->id,
+                'password' => bcrypt(Str::random(24)),
+                'email_verified_at' => now(),
+            ]);
         }
 
         abort_unless(AttendanceAccess::isInternalEmployee($user), 403, 'Attendance agent is for internal team members only.');

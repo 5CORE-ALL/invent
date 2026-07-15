@@ -49,35 +49,35 @@
     ];
 
     $aeListingRows = [
-        'Listing ID' => $ae['product_id'] ?? $l['product_id'] ?? null,
-        'Title' => $ae['title'] ?? $l['title'] ?? null,
-        'Status' => $ae['status'] ?? null,
-        'Condition' => $ae['condition'] ?? null,
-        'Make' => $ae['make'] ?? null,
-        'Model' => $ae['model'] ?? null,
-        'Finish' => $ae['finish'] ?? null,
-        'Year' => $ae['year'] ?? null,
-        'Category' => $ae['category'] ?? null,
-        'Reverb Qty' => $ae['stock'] ?? $l['rv_stock'] ?? null,
-        'Price' => isset($ae['min_price']) ? '$'.number_format((float)$ae['min_price'], 2) : null,
-        'Price (cached)' => isset($ae['cached_price']) ? '$'.number_format((float)$ae['cached_price'], 2) : null,
-        'Currency' => $ae['currency'] ?? null,
-        'Shop' => $ae['shop_name'] ?? null,
-        'Location' => $ae['location'] ?? null,
-        'Shipping' => $ae['shipping_rate'] ?? null,
-        'Offers enabled' => $ae['offers_enabled'] ?? null,
-        'Local pickup only' => $ae['local_pickup_only'] ?? null,
-        'Handmade' => $ae['handmade'] ?? null,
-        'Views / Watches' => isset($ae['views']) ? (($ae['views'] ?? '0').' / '.($ae['watches'] ?? '0')) : null,
-        'Return policy' => $ae['return_policy'] ?? null,
-        'Created' => $ae['gmt_create'] ?? null,
-        'Published' => $ae['gmt_modified'] ?? null,
-        'Listing URL' => !empty($ae['listing_url']) ? '<a href="'.e($ae['listing_url']).'" target="_blank" rel="noopener">Open on Reverb</a>' : null,
-        'L30 / L60' => isset($l['l30']) ? ($l['l30'].' / '.($l['l60'] ?? '—')) : null,
-        'Last order' => !empty($l['last_order_date']) ? \Carbon\Carbon::parse($l['last_order_date'])->format('M d, Y H:i') : null,
-        'Last synced' => !empty($l['last_synced_at']) ? \Carbon\Carbon::parse($l['last_synced_at'])->timezone(config('app.timezone'))->format('M d, Y H:i') : null,
-        'Link map synced' => !empty($l['link_synced_at']) ? \Carbon\Carbon::parse($l['link_synced_at'])->timezone(config('app.timezone'))->format('M d, Y H:i') : null,
-        'Inventory synced' => !empty($l['inventory_synced_at']) ? \Carbon\Carbon::parse($l['inventory_synced_at'])->timezone(config('app.timezone'))->format('M d, Y H:i') : null,
+        'Listing ID' => $linked ? ($ae['product_id'] ?? $l['product_id'] ?? null) : null,
+        'Title' => $linked ? ($ae['title'] ?? $l['title'] ?? null) : null,
+        'Status' => $linked ? ($ae['status'] ?? null) : null,
+        'Condition' => $linked ? ($ae['condition'] ?? null) : null,
+        'Make' => $linked ? ($ae['make'] ?? null) : null,
+        'Model' => $linked ? ($ae['model'] ?? null) : null,
+        'Finish' => $linked ? ($ae['finish'] ?? null) : null,
+        'Year' => $linked ? ($ae['year'] ?? null) : null,
+        'Category' => $linked ? ($ae['category'] ?? null) : null,
+        'Reverb Qty' => $linked ? ($ae['stock'] ?? $l['rv_stock'] ?? null) : null,
+        'Price' => ($linked && isset($ae['min_price'])) ? '$'.number_format((float)$ae['min_price'], 2) : null,
+        'Price (cached)' => ($linked && isset($ae['cached_price'])) ? '$'.number_format((float)$ae['cached_price'], 2) : null,
+        'Currency' => $linked ? ($ae['currency'] ?? null) : null,
+        'Shop' => $linked ? ($ae['shop_name'] ?? null) : null,
+        'Location' => $linked ? ($ae['location'] ?? null) : null,
+        'Shipping' => $linked ? ($ae['shipping_rate'] ?? null) : null,
+        'Offers enabled' => $linked ? ($ae['offers_enabled'] ?? null) : null,
+        'Local pickup only' => $linked ? ($ae['local_pickup_only'] ?? null) : null,
+        'Handmade' => $linked ? ($ae['handmade'] ?? null) : null,
+        'Views / Watches' => ($linked && isset($ae['views'])) ? (($ae['views'] ?? '0').' / '.($ae['watches'] ?? '0')) : null,
+        'Return policy' => $linked ? ($ae['return_policy'] ?? null) : null,
+        'Created' => $linked ? ($ae['gmt_create'] ?? null) : null,
+        'Published' => $linked ? ($ae['gmt_modified'] ?? null) : null,
+        'Listing URL' => ($linked && !empty($ae['listing_url'])) ? '<a href="'.e($ae['listing_url']).'" target="_blank" rel="noopener">Open on Reverb</a>' : null,
+        'L30 / L60' => ($linked && isset($l['l30'])) ? ($l['l30'].' / '.($l['l60'] ?? '—')) : null,
+        'Last order' => ($linked && !empty($l['last_order_date'])) ? \Carbon\Carbon::parse($l['last_order_date'])->format('M d, Y H:i') : null,
+        'Last synced' => ($linked && !empty($l['last_synced_at'])) ? \Carbon\Carbon::parse($l['last_synced_at'])->timezone(config('app.timezone'))->format('M d, Y H:i') : null,
+        'Link map synced' => ($linked && !empty($l['link_synced_at'])) ? \Carbon\Carbon::parse($l['link_synced_at'])->timezone(config('app.timezone'))->format('M d, Y H:i') : null,
+        'Inventory synced' => ($linked && !empty($l['inventory_synced_at'])) ? \Carbon\Carbon::parse($l['inventory_synced_at'])->timezone(config('app.timezone'))->format('M d, Y H:i') : null,
     ];
 
     ob_start();
@@ -108,11 +108,11 @@
                     @else
                         <span class="badge bg-light text-muted source-pill">Reverb data: not loaded</span>
                     @endif
-                    @if(!empty($l['last_synced_at']))
+                    @if($linked && !empty($l['last_synced_at']))
                         <span class="badge bg-secondary-subtle text-secondary source-pill" title="Latest of link-map or inventory/price sync">
                             Last synced: {{ \Carbon\Carbon::parse($l['last_synced_at'])->timezone(config('app.timezone'))->format('M d, Y H:i') }}
                         </span>
-                    @else
+                    @elseif($linked)
                         <span class="badge bg-light text-muted source-pill">Last synced: —</span>
                     @endif
                 </div>
@@ -137,7 +137,7 @@
                 <div class="card h-100">
                     <div class="card-body py-3">
                         <div class="text-muted small">Shopify Qty</div>
-                        <div class="fs-4 fw-semibold">{{ $s['available_to_sell'] ?? $s['on_hand'] ?? '—' }}</div>
+                        <div class="fs-4 fw-semibold">{{ $s['available_to_sell'] !== null ? $s['available_to_sell'] : ($s['on_hand'] !== null ? $s['on_hand'] : '—') }}</div>
                     </div>
                 </div>
             </div>
@@ -145,7 +145,13 @@
                 <div class="card h-100">
                     <div class="card-body py-3">
                         <div class="text-muted small">Reverb Qty</div>
-                        <div class="fs-4 fw-semibold">{{ $ae['stock'] ?? $l['rv_stock'] ?? '—' }}</div>
+                        <div class="fs-4 fw-semibold">
+                            @if($linked)
+                                {{ $ae['stock'] !== null ? $ae['stock'] : ($l['rv_stock'] !== null ? $l['rv_stock'] : '—') }}
+                            @else
+                                —
+                            @endif
+                        </div>
                     </div>
                 </div>
             </div>

@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld('agent', {
     getSetup: () => ipcRenderer.invoke('getSetup'),
     saveSetup: (payload) => ipcRenderer.invoke('saveSetup', payload),
     login: (payload) => ipcRenderer.invoke('login', payload),
+    googleLogin: () => ipcRenderer.invoke('googleLogin'),
     signOut: () => ipcRenderer.invoke('signOut'),
     getState: () => ipcRenderer.invoke('getState'),
     clockIn: (payload) => ipcRenderer.invoke('clockIn', payload),

@@ -1656,9 +1656,18 @@ class AliExpressApiService
         foreach ($rows as $row) {
             $productId = (string) ($row['product_id'] ?? '');
             $skuCode = trim((string) ($row['sku_code'] ?? $row['sku'] ?? ''));
-            $inventory = max(0, min(999999, (int) ($row['inventory'] ?? $row['stock'] ?? 0)));
-            if ($productId === '' || $skuCode === '') {
+            // Rule 1: never update unlinked SKUs.
+            if ($productId === '' || $skuCode === ''
+                || ! \App\Services\MarketplaceManager\MarketplaceLiveInventoryRules::isLinked($productId, $skuCode)) {
                 continue;
+            }
+            $inventory = max(0, min(999999, (int) ($row['inventory'] ?? $row['stock'] ?? 0)));
+            // Rule 4: Shopify 0 => marketplace 0.
+            if (array_key_exists('shopify_qty', $row)) {
+                $inventory = \App\Services\MarketplaceManager\MarketplaceLiveInventoryRules::clampPushQty(
+                    $inventory,
+                    (int) $row['shopify_qty']
+                );
             }
             $grouped[$productId][] = [
                 'sku_code' => $skuCode,
@@ -1775,6 +1784,83 @@ class AliExpressApiService
             'message' => $errors === [] ? "Price updated for {$updated} product group(s)." : implode(' | ', $errors),
             'updated' => $updated,
             'errors' => $errors,
+        ];
+    }
+
+    /**
+     * Put offline products back on selling — aliexpress.postproduct.redefining.onlineaeproduct
+     * product_ids semicolon-separated, max 50 per call.
+     *
+     * @param  array<int, string|int>  $productIds
+     * @return array{success: bool, message: string, online: int, errors: array<int, string>}
+     */
+    public function onlineProducts(array $productIds): array
+    {
+        $ids = [];
+        foreach ($productIds as $id) {
+            $id = trim((string) $id);
+            if ($id !== '' && ctype_digit($id)) {
+                $ids[$id] = $id;
+            }
+        }
+        $ids = array_values($ids);
+        if ($ids === []) {
+            return ['success' => true, 'message' => 'No product IDs to online.', 'online' => 0, 'errors' => []];
+        }
+
+        $online = 0;
+        $errors = [];
+
+        foreach (array_chunk($ids, 50) as $chunk) {
+            $productIdsParam = implode(';', $chunk);
+            // Business /rest + method-name sign only (sync fallback returns IncompleteSignature).
+            $raw = $this->callRestGateway('aliexpress.postproduct.redefining.onlineaeproduct', [
+                'product_ids' => $productIdsParam,
+            ]);
+
+            $data = is_array($raw['data'] ?? null) ? $raw['data'] : [];
+            $result = is_array($raw['result'] ?? null)
+                ? $raw['result']
+                : (is_array($data['result'] ?? null) ? $data['result'] : $data);
+
+            $errorDetails = $result['error_details']['error_detail']
+                ?? $result['error_details']
+                ?? $result['errorDetails']
+                ?? null;
+            if (is_array($errorDetails)) {
+                $list = isset($errorDetails[0]) ? $errorDetails : [$errorDetails];
+                foreach ($list as $detail) {
+                    if (! is_array($detail)) {
+                        continue;
+                    }
+                    $code = trim((string) ($detail['error_code'] ?? ''));
+                    $msg = trim((string) ($detail['error_message'] ?? ''));
+                    $pids = $detail['product_ids'] ?? null;
+                    $pidHint = is_array($pids) ? implode(',', array_slice($pids, 0, 5)) : '';
+                    $errors[] = trim(($code !== '' ? "{$code}: " : '').($msg !== '' ? $msg : 'online failed').($pidHint !== '' ? " [{$pidHint}]" : ''));
+                }
+            }
+
+            $bizSuccess = ($result['success'] ?? null) === true || ($result['success'] ?? null) === 'true';
+            $modify = (int) ($result['modify_count'] ?? $result['modifyCount'] ?? 0);
+            if ($bizSuccess || $modify > 0) {
+                $online += max($modify, 0);
+            } elseif (empty($raw['success'])) {
+                $errors[] = $raw['message'] ?? ('Online failed for: '.$productIdsParam);
+            } elseif ($modify === 0 && $errorDetails === null) {
+                $errors[] = 'Online returned modify_count=0 for: '.$productIdsParam;
+            }
+
+            usleep(250000);
+        }
+
+        return [
+            'success' => $errors === [],
+            'message' => $errors === []
+                ? "Onlined {$online} product(s)."
+                : ("Onlined {$online}; errors: ".implode(' | ', array_slice(array_filter($errors), 0, 5))),
+            'online' => $online,
+            'errors' => array_values(array_filter($errors)),
         ];
     }
 }

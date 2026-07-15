@@ -273,6 +273,28 @@ async function init() {
         }
     };
 
+    $('btnGoogleLogin').onclick = async () => {
+        showError($('loginError'), '');
+        $('btnGoogleLogin').disabled = true;
+        $('btnGoogleLoginLabel').textContent = 'Waiting for Google sign-in…';
+        try {
+            const r = await window.agent.googleLogin();
+            if (!r.ok) {
+                showError($('loginError'), r.message || 'Google sign-in failed.');
+                return;
+            }
+            $('userName').textContent = r.user?.name || 'Employee';
+            $('userEmail').textContent = r.user?.email || '';
+            showView('dash');
+            await refresh({ user: r.user });
+        } catch (err) {
+            showError($('loginError'), err?.message || 'Google sign-in failed.');
+        } finally {
+            $('btnGoogleLogin').disabled = false;
+            $('btnGoogleLoginLabel').textContent = 'Sign in with Google';
+        }
+    };
+
     $('btnChangeServer').onclick = async () => {
         await window.agent.signOut();
         $('apiUrl').value = (await window.agent.getSetup()).apiUrl || '';

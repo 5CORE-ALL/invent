@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Controllers\MarketPlace\AlibabaSyncController;
 use App\Http\Controllers\MarketPlace\AliexpressSyncController;
+use App\Http\Controllers\MarketPlace\NeweggSyncController;
 use App\Http\Controllers\MarketPlace\ReverbSyncController;
 use App\Http\Controllers\MarketPlace\TopDawgSyncController;
 use Illuminate\Http\JsonResponse;
@@ -17,7 +18,7 @@ use Illuminate\View\View;
 class MarketplaceController extends Controller
 {
     /** Supported marketplace slugs (lowercase). */
-    public const SUPPORTED_MARKETPLACES = ['reverb', 'amazon', 'ebay', 'walmart', 'topdawg', 'aliexpress', 'alibaba'];
+    public const SUPPORTED_MARKETPLACES = ['reverb', 'amazon', 'ebay', 'walmart', 'topdawg', 'aliexpress', 'alibaba', 'newegg'];
 
     protected function getController(string $marketplace): ?object
     {
@@ -26,6 +27,7 @@ class MarketplaceController extends Controller
             'topdawg' => app(TopDawgSyncController::class),
             'aliexpress' => app(AliexpressSyncController::class),
             'alibaba' => app(AlibabaSyncController::class),
+            'newegg' => app(NeweggSyncController::class),
             'amazon', 'ebay', 'walmart' => null,
             default => null,
         };
@@ -73,6 +75,9 @@ class MarketplaceController extends Controller
         if ($marketplace === 'reverb') {
             return app(ReverbSyncController::class)->pullProductFromReverb($shopifySku);
         }
+        if ($marketplace === 'newegg') {
+            return app(NeweggSyncController::class)->pullProductFromNewegg($shopifySku);
+        }
 
         return response()->json(['success' => false, 'message' => 'Not supported for this marketplace.'], 404);
     }
@@ -88,6 +93,9 @@ class MarketplaceController extends Controller
         }
         if ($marketplace === 'reverb') {
             return app(ReverbSyncController::class)->pullOrderFromReverb($order);
+        }
+        if ($marketplace === 'newegg') {
+            return app(NeweggSyncController::class)->pullOrderFromNewegg($order);
         }
 
         return response()->json(['success' => false, 'message' => 'Not supported for this marketplace.'], 404);
@@ -155,6 +163,9 @@ class MarketplaceController extends Controller
         if ($marketplace === 'alibaba') {
             return app(AlibabaSyncController::class)->saveSettings($request);
         }
+        if ($marketplace === 'newegg') {
+            return app(NeweggSyncController::class)->saveSettings($request);
+        }
         return response()->json(['success' => false], 404);
     }
 
@@ -168,6 +179,9 @@ class MarketplaceController extends Controller
         }
         if (strtolower($marketplace) === 'alibaba') {
             return app(AlibabaSyncController::class)->pushOrderToShopify($request);
+        }
+        if (strtolower($marketplace) === 'newegg') {
+            return app(NeweggSyncController::class)->pushOrderToShopify($request);
         }
         return response()->json(['success' => false], 404);
     }
@@ -183,8 +197,11 @@ class MarketplaceController extends Controller
         if (strtolower($marketplace) === 'reverb') {
             return app(ReverbSyncController::class)->deleteReadyOrder($request);
         }
+        if (strtolower($marketplace) === 'newegg') {
+            return app(NeweggSyncController::class)->deleteReadyOrder($request);
+        }
 
-        return response()->json(['success' => false, 'message' => 'Delete ready order is only available for AliExpress, Alibaba, and Reverb.'], 404);
+        return response()->json(['success' => false, 'message' => 'Delete ready order is only available for AliExpress, Alibaba, Reverb, and Newegg.'], 404);
     }
 
     public function markOrderAlreadyImported(Request $request, string $marketplace): JsonResponse
@@ -193,6 +210,7 @@ class MarketplaceController extends Controller
             'aliexpress' => app(AliexpressSyncController::class)->markOrderAlreadyImported($request),
             'alibaba' => app(AlibabaSyncController::class)->markOrderAlreadyImported($request),
             'reverb' => app(ReverbSyncController::class)->markOrderAlreadyImported($request),
+            'newegg' => app(NeweggSyncController::class)->markOrderAlreadyImported($request),
             default => response()->json(['success' => false, 'message' => 'Not supported for this marketplace.'], 404),
         };
     }

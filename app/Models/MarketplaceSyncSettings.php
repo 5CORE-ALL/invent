@@ -51,6 +51,13 @@ class MarketplaceSyncSettings extends Model
         return (bool) ($settings['listings']['create_products_on_reverb'] ?? false);
     }
 
+    public static function neweggCanCreateProducts(?array $settings = null): bool
+    {
+        $settings ??= self::getFor('newegg');
+
+        return (bool) ($settings['listings']['create_products_on_newegg'] ?? false);
+    }
+
     public static function canFetchOrders(string $marketplace, ?array $settings = null): bool
     {
         $settings ??= self::getFor($marketplace);
@@ -70,6 +77,7 @@ class MarketplaceSyncSettings extends Model
         $marketplace = strtolower((string) $marketplace);
         $isAlibaba = $marketplace === 'alibaba';
         $isReverb = $marketplace === 'reverb';
+        $isNewegg = $marketplace === 'newegg';
 
         $sourceName = 'aliexpress';
         $sourceDisplay = 'AliExpress';
@@ -79,6 +87,9 @@ class MarketplaceSyncSettings extends Model
         } elseif ($isReverb) {
             $sourceName = 'reverb';
             $sourceDisplay = 'Reverb';
+        } elseif ($isNewegg) {
+            $sourceName = 'newegg';
+            $sourceDisplay = 'Newegg';
         }
 
         return [
@@ -94,7 +105,8 @@ class MarketplaceSyncSettings extends Model
                 'inventory_sync' => false,
                 'quantity_calc_percent' => 100,
                 'max_quantity' => null,
-                'min_quantity' => 1,
+                // Never invent stock when Shopify is 0 — min only applies when ATS > 0.
+                'min_quantity' => 0,
                 'out_of_stock_threshold' => 0,
             ],
             'order' => [
@@ -111,6 +123,7 @@ class MarketplaceSyncSettings extends Model
                 'create_products_on_aliexpress' => false,
                 'create_products_on_alibaba' => false,
                 'create_products_on_reverb' => false,
+                'create_products_on_newegg' => false,
                 'sync_title' => false,
                 'sync_images' => false,
             ],

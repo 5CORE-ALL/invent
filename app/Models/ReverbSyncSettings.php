@@ -45,9 +45,9 @@ class ReverbSyncSettings extends Model
                 'auto_relist' => false,
                 'quantity_calc_percent' => 100,
                 'no_manage_stock_quantity' => 0,
-                'max_quantity' => 1,
-                'min_quantity' => 1,
-                'out_of_stock_threshold' => 1,
+                'max_quantity' => null,
+                'min_quantity' => 0,
+                'out_of_stock_threshold' => 0,
                 'shopify_location_ids' => [],
             ],
             'order' => [

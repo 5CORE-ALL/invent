@@ -5,7 +5,15 @@
     <div class="col-12">
         <a href="{{ route('marketplace.manager.show', 'aliexpress') }}" class="text-muted small"><i class="ri-arrow-left-line"></i> AliExpress Manager</a>
         @include('marketplace._page-heading', ['slug' => 'aliexpress', 'heading' => 'AliExpress Listings'])
-        <p class="text-muted mb-3">Shopify catalog from <code>shopify_skus</code> (your synced Shopify inventory), with AliExpress link status from <code>aliexpress_metric</code>. Use <strong>Sync AE link map</strong> to refresh SKU ↔ product_id mappings from AliExpress.</p>
+        <p class="text-muted mb-3">
+            @if(($linkTab ?? '') === 'linked')
+                <strong>Linked</strong> lists Shopify SKUs linked to AliExpress.
+                Use the <strong>State</strong> dropdown to filter by AE status (counts from live cache).
+                Click <em>Refresh live</em> to warm status counts, then reload.
+            @else
+                <strong>Shopify Qty</strong> is loaded live for the current page. Use <strong>Sync AE link map</strong> to refresh SKU ↔ product_id mappings.
+            @endif
+        </p>
 
         @include('marketplace.aliexpress._nav', ['active' => 'products'])
 
@@ -18,11 +26,18 @@
                 <span class="badge bg-primary">
                     @if(($linkTab ?? 'all') === 'not_in_shopify')
                         {{ $products->total() }} on AliExpress, not in Shopify
+                    @elseif(($linkTab ?? '') === 'linked')
+                        {{ $products->total() }} linked Shopify SKU(s)
                     @else
                         {{ $products->total() }} Shopify SKU(s)
                     @endif
                 </span>
                 <div class="d-flex gap-2 flex-wrap">
+                    @if(($linkTab ?? '') === 'linked')
+                        <a href="{{ request()->fullUrlWithQuery(['refresh_live' => 1]) }}" class="btn btn-sm btn-outline-success">
+                            <i class="ri-flashlight-line"></i> Refresh live
+                        </a>
+                    @endif
                     <button type="button" class="btn btn-sm btn-outline-primary" id="btn-refresh-api">
                         <i class="ri-refresh-line"></i> Sync AE link map
                     </button>
@@ -39,6 +54,14 @@
                 <div id="link-map-counts" class="small text-muted mt-2"></div>
             </div>
             <div class="card-body">
+                @php
+                    $counts = $counts ?? ['all' => 0, 'linked' => 0, 'unlinked' => 0, 'not_in_shopify' => 0];
+                    $stateCounts = $stateCounts ?? ['all' => 0, 'onselling' => 0, 'auditing' => 0, 'offline' => 0, 'draft' => 0, 'other' => 0];
+                    $stateTab = $stateTab ?? 'all';
+                    $qName = urlencode($searchName ?? '');
+                    $qSku = urlencode($searchSku ?? '');
+                    $isLinkedTab = ($linkTab ?? '') === 'linked';
+                @endphp
                 <form method="get" class="mb-3">
                     <div class="row g-2 align-items-end flex-wrap">
                         <div class="col-auto">
@@ -50,26 +73,43 @@
                             <input type="text" name="search_sku" class="form-control form-control-sm" value="{{ $searchSku }}" placeholder="SKU" style="min-width: 120px;">
                         </div>
                         <input type="hidden" name="link" value="{{ $linkTab ?? 'all' }}">
+                        @if($isLinkedTab)
+                            <div class="col-auto">
+                                <label class="form-label small mb-0">State</label>
+                                <select name="state" class="form-select form-select-sm" style="min-width: 180px;" onchange="this.form.submit()">
+                                    <option value="all" @selected($stateTab === 'all')>All ({{ (int) ($stateCounts['all'] ?? 0) }})</option>
+                                    <option value="onselling" @selected($stateTab === 'onselling')>On selling ({{ (int) ($stateCounts['onselling'] ?? 0) }})</option>
+                                    <option value="auditing" @selected($stateTab === 'auditing')>Auditing ({{ (int) ($stateCounts['auditing'] ?? 0) }})</option>
+                                    <option value="offline" @selected($stateTab === 'offline')>Offline ({{ (int) ($stateCounts['offline'] ?? 0) }})</option>
+                                    <option value="draft" @selected($stateTab === 'draft')>Draft / other inactive ({{ (int) ($stateCounts['draft'] ?? 0) }})</option>
+                                    @if(!empty($stateCounts['other']))
+                                        <option value="other" @selected($stateTab === 'other')>Other ({{ (int) $stateCounts['other'] }})</option>
+                                    @endif
+                                </select>
+                            </div>
+                        @endif
                         <div class="col-auto">
                             <button type="submit" class="btn btn-primary btn-sm">Search</button>
-                            <a href="{{ request()->url() }}" class="btn btn-outline-secondary btn-sm">Clear</a>
+                            <a href="{{ request()->url() }}?link={{ urlencode($linkTab ?? 'linked') }}" class="btn btn-outline-secondary btn-sm">Clear</a>
                         </div>
                     </div>
+                    @if($isLinkedTab && empty($stateCacheReady))
+                        <p class="small text-muted mt-2 mb-0">State counts need the live AE catalog cache — click <em>Refresh live</em>, wait a minute, then reload.</p>
+                    @endif
                 </form>
 
-                @php $counts = $counts ?? ['all' => 0, 'linked' => 0, 'unlinked' => 0, 'not_in_shopify' => 0]; @endphp
                 <ul class="nav nav-tabs nav-bordered mb-3" role="tablist">
                     <li class="nav-item">
-                        <a href="{{ request()->url() }}?link=all&search_name={{ urlencode($searchName) }}&search_sku={{ urlencode($searchSku) }}" class="nav-link {{ ($linkTab ?? 'all') === 'all' ? 'active' : '' }}">All {{ $counts['all'] ?? 0 }}</a>
+                        <a href="{{ request()->url() }}?link=all&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? 'all') === 'all' ? 'active' : '' }}">All {{ $counts['all'] ?? 0 }}</a>
                     </li>
                     <li class="nav-item">
-                        <a href="{{ request()->url() }}?link=linked&search_name={{ urlencode($searchName) }}&search_sku={{ urlencode($searchSku) }}" class="nav-link {{ ($linkTab ?? '') === 'linked' ? 'active' : '' }}">Linked {{ $counts['linked'] ?? 0 }}</a>
+                        <a href="{{ request()->url() }}?link=linked&state={{ urlencode($stateTab) }}&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'linked' ? 'active' : '' }}">Linked {{ $counts['linked'] ?? 0 }}</a>
                     </li>
                     <li class="nav-item">
-                        <a href="{{ request()->url() }}?link=unlinked&search_name={{ urlencode($searchName) }}&search_sku={{ urlencode($searchSku) }}" class="nav-link {{ ($linkTab ?? '') === 'unlinked' ? 'active' : '' }}">Not on AE {{ $counts['unlinked'] ?? 0 }}</a>
+                        <a href="{{ request()->url() }}?link=unlinked&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'unlinked' ? 'active' : '' }}">Not on AE {{ $counts['unlinked'] ?? 0 }}</a>
                     </li>
                     <li class="nav-item">
-                        <a href="{{ request()->url() }}?link=not_in_shopify&search_name={{ urlencode($searchName) }}&search_sku={{ urlencode($searchSku) }}" class="nav-link {{ ($linkTab ?? '') === 'not_in_shopify' ? 'active' : '' }}">Not in Shopify {{ $counts['not_in_shopify'] ?? 0 }}</a>
+                        <a href="{{ request()->url() }}?link=not_in_shopify&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'not_in_shopify' ? 'active' : '' }}">Not in Shopify {{ $counts['not_in_shopify'] ?? 0 }}</a>
                     </li>
                 </ul>
 
@@ -81,6 +121,7 @@
                                 <th>SKU</th>
                                 <th>{{ ($linkTab ?? '') === 'not_in_shopify' ? 'Title (AE)' : 'Title (Shopify)' }}</th>
                                 <th>AliExpress ID</th>
+                                <th>State</th>
                                 <th>Shopify Qty</th>
                                 <th>AE Qty</th>
                                 <th>Shopify Price</th>
@@ -119,8 +160,16 @@
                                         @endif
                                     </td>
                                     <td class="small">{{ $p->product_id ?? '—' }}</td>
-                                    <td>{{ $p->shopify_quantity ?? '—' }}</td>
-                                    <td>{{ $p->ae_quantity ?? $p->quantity ?? '—' }}</td>
+                                    <td class="small">
+                                        @if(!empty($p->aliexpress_state))
+                                            @php $st = strtolower((string)$p->aliexpress_state); @endphp
+                                            <span class="badge {{ $st === 'onselling' || $st === 'on_selling' ? 'bg-success-subtle text-success' : ($st === 'offline' || $st === 'auditing' ? 'bg-warning-subtle text-warning' : 'bg-light text-muted') }}">{{ $p->aliexpress_state }}</span>
+                                        @else
+                                            —
+                                        @endif
+                                    </td>
+                                    <td>{{ $p->shopify_quantity !== null ? $p->shopify_quantity : '—' }}</td>
+                                    <td>{{ ($p->ae_quantity ?? $p->quantity) !== null ? ($p->ae_quantity ?? $p->quantity) : '—' }}</td>
                                     <td>{{ isset($p->shopify_price) ? number_format((float)$p->shopify_price, 2) : '—' }}</td>
                                     <td>{{ isset($p->price) ? number_format((float)$p->price, 2) : '—' }}</td>
                                     <td>
@@ -135,7 +184,7 @@
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="9" class="text-center text-muted py-4">
+                                    <td colspan="10" class="text-center text-muted py-4">
                                         @if(($linkTab ?? 'all') === 'not_in_shopify')
                                             No AliExpress listings found without a matching Shopify SKU.
                                         @else

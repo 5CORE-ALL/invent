@@ -106,6 +106,251 @@ class NeweggApiService
     }
 
     /**
+     * MM adapter: product detail by Newegg Item # or Seller Part #.
+     * Returns AE-shaped envelope for SyncController compatibility.
+     *
+     * @return array{success: bool, message?: string, data?: array<string, mixed>}
+     */
+    public function getProductInfo(string $productId): array
+    {
+        $productId = trim($productId);
+        if ($productId === '') {
+            return ['success' => false, 'message' => 'Empty product id'];
+        }
+
+        // Prefer Seller Part # lookup (type 1); Item # is type 0 when it looks like 9SI…
+        $type = str_starts_with(strtoupper($productId), '9SI') ? 0 : 1;
+        $inv = $this->getItemInventory($productId, $type);
+        $price = $this->getItemPrice($productId, ['USA'], $type);
+
+        if (! empty($inv['blocked_by_cloudflare']) || ! empty($price['blocked_by_cloudflare'])) {
+            return ['success' => false, 'message' => 'Blocked by Cloudflare'];
+        }
+
+        return [
+            'success' => true,
+            'data' => [
+                'product_id' => $productId,
+                'inventory' => $inv['json'] ?? null,
+                'price' => $price['json'] ?? null,
+            ],
+        ];
+    }
+
+    /**
+     * Match AliExpress SyncController call shape:
+     *   extractSkuRowsFromProductInfo(array $info, string $productId, ?string $productName = null)
+     *
+     * @param  array<string, mixed>  $info  from getProductInfo()['data']
+     * @return list<array{sku: string, product_id: string, inventory?: int|null, price?: float|null, product_name?: ?string}>
+     */
+    public function extractSkuRowsFromProductInfo(array $info, string $productId, ?string $productName = null): array
+    {
+        $productId = trim($productId);
+        $sku = trim((string) ($info['sku'] ?? $info['SellerPartNumber'] ?? $info['seller_part_number'] ?? ''));
+
+        // Inventory payload shapes vary by Newegg tenant.
+        $invJson = is_array($info['inventory'] ?? null) ? $info['inventory'] : $info;
+        $qty = data_get($invJson, 'Inventory')
+            ?? data_get($invJson, 'AvailableQuantity')
+            ?? data_get($invJson, 'NeweggAPIResponse.ResponseBody.Inventory')
+            ?? data_get($invJson, 'ResponseBody.Inventory');
+
+        $priceJson = is_array($info['price'] ?? null) ? $info['price'] : [];
+        $price = data_get($priceJson, 'PriceList.Price.0.SellingPrice')
+            ?? data_get($priceJson, 'PriceList.0.SellingPrice')
+            ?? data_get($priceJson, 'SellingPrice');
+
+        if ($sku === '') {
+            // Seller Part # lookup when product_id was an Item #, fall back to product_id.
+            $sku = trim((string) (
+                data_get($invJson, 'SellerPartNumber')
+                ?? data_get($priceJson, 'SellerPartNumber')
+                ?? $productId
+            ));
+        }
+
+        $itemNumber = trim((string) (
+            data_get($invJson, 'ItemNumber')
+            ?? data_get($priceJson, 'ItemNumber')
+            ?? ($info['product_id'] ?? '')
+            ?? $productId
+        ));
+
+        return [[
+            'sku' => $sku !== '' ? $sku : $productId,
+            'product_id' => $itemNumber !== '' ? $itemNumber : $productId,
+            'inventory' => is_numeric($qty) ? (int) $qty : null,
+            'price' => is_numeric($price) ? (float) $price : null,
+            'product_name' => $productName,
+        ]];
+    }
+
+    /**
+     * @param  mixed  $item
+     * @return list<array{sku: string, product_id: string}>
+     */
+    public function extractSkuRowsFromListItem($item, bool $fetchDetail = false): array
+    {
+        if (! is_array($item)) {
+            return [];
+        }
+        $sku = trim((string) ($item['sku'] ?? $item['SellerPartNumber'] ?? ''));
+        $pid = trim((string) ($item['product_id'] ?? $item['NeweggItemNumber'] ?? $sku));
+        if ($sku === '') {
+            return [];
+        }
+
+        return [['sku' => $sku, 'product_id' => $pid !== '' ? $pid : $sku]];
+    }
+
+    /**
+     * True when Seller ID + API key + secret key are present in config.
+     */
+    public function isConfigured(): bool
+    {
+        return filled($this->sellerId) && filled($this->apiKey) && filled($this->secretKey);
+    }
+
+    /**
+     * Update inventory for one Seller Part # (USA B2C contentmgmt).
+     *   PUT /marketplace/contentmgmt/item/inventoryandprice?sellerid=XXXX
+     * Inventory-only body — does not change Active / price.
+     *
+     * @return array{success:bool,message:string,sku:string,quantity:int,raw:?string,blocked_by_cloudflare:bool}
+     */
+    public function updateItemInventory(string $sellerPartNumber, int $quantity): array
+    {
+        $sellerPartNumber = trim($sellerPartNumber);
+        $quantity = max(0, (int) $quantity);
+
+        if ($sellerPartNumber === '') {
+            return [
+                'success' => false,
+                'message' => 'SellerPartNumber is required.',
+                'sku' => $sellerPartNumber,
+                'quantity' => $quantity,
+                'raw' => null,
+                'blocked_by_cloudflare' => false,
+            ];
+        }
+
+        $bulk = $this->updateItemInventoryBulk([
+            ['seller_part_number' => $sellerPartNumber, 'quantity' => $quantity],
+        ]);
+        $first = $bulk['results'][0] ?? null;
+
+        if ($bulk['blocked_by_cloudflare']) {
+            return [
+                'success' => false,
+                'message' => 'Blocked by Cloudflare (managed challenge). Whitelist this server IP in the Newegg Seller Portal.',
+                'sku' => $sellerPartNumber,
+                'quantity' => $quantity,
+                'raw' => $first['raw'] ?? null,
+                'blocked_by_cloudflare' => true,
+            ];
+        }
+
+        if (! ($first['success'] ?? false)) {
+            return [
+                'success' => false,
+                'message' => (string) ($first['error'] ?? ($bulk['error_message'] ?? 'Inventory update failed')),
+                'sku' => $sellerPartNumber,
+                'quantity' => $quantity,
+                'raw' => $first['raw'] ?? null,
+                'blocked_by_cloudflare' => false,
+            ];
+        }
+
+        return [
+            'success' => true,
+            'message' => "Inventory {$quantity} pushed to Newegg for SPN: {$sellerPartNumber}.",
+            'sku' => $sellerPartNumber,
+            'quantity' => $quantity,
+            'raw' => $first['raw'] ?? null,
+            'blocked_by_cloudflare' => false,
+        ];
+    }
+
+    /**
+     * @param  list<array{seller_part_number:string,quantity:int|string}>  $items
+     * @return array{ok:bool,pushed:int,failed:int,blocked_by_cloudflare:bool,error_message:?string,results:list<array{seller_part_number:string,success:bool,status:int,error:?string,raw:?string}>}
+     */
+    public function updateItemInventoryBulk(array $items): array
+    {
+        $results = [];
+        $pushed = 0;
+        $failed = 0;
+        $blockedAny = false;
+
+        foreach ($items as $i) {
+            $spn = trim((string) ($i['seller_part_number'] ?? ''));
+            $qty = max(0, (int) ($i['quantity'] ?? 0));
+            if ($spn === '') {
+                $results[] = [
+                    'seller_part_number' => $spn,
+                    'success' => false,
+                    'status' => 0,
+                    'error' => 'Missing SellerPartNumber',
+                    'raw' => null,
+                ];
+                $failed++;
+                continue;
+            }
+
+            $res = $this->request('PUT', '/marketplace/contentmgmt/item/inventoryandprice', [], [
+                'Type' => '1',
+                'Value' => $spn,
+                'Inventory' => (string) $qty,
+            ]);
+
+            $ok = false;
+            $err = null;
+            if ($res['blocked_by_cloudflare']) {
+                $blockedAny = true;
+                $err = 'Cloudflare managed challenge (IP not whitelisted for writes).';
+            } else {
+                $j = $res['json'];
+                $resultFlag = data_get($j, 'UpdateInventoryAndPriceResult.Result')
+                    ?? data_get($j, 'Result');
+                if ($resultFlag === 1 || $resultFlag === '1' || $resultFlag === true) {
+                    $ok = true;
+                } elseif ($this->extractItemSuccess($res) && $resultFlag === null) {
+                    // Some tenants return IsSuccess without Result wrapper.
+                    $ok = true;
+                } else {
+                    $err = $this->extractItemError($res);
+                    if ($err === 'HTTP '.$res['status'] && is_array($j)) {
+                        $err = json_encode($j);
+                    }
+                }
+            }
+
+            $results[] = [
+                'seller_part_number' => $spn,
+                'success' => $ok,
+                'status' => $res['status'],
+                'error' => $ok ? null : $err,
+                'raw' => $res['raw'],
+            ];
+            if ($ok) {
+                $pushed++;
+            } else {
+                $failed++;
+            }
+        }
+
+        return [
+            'ok' => $pushed > 0,
+            'pushed' => $pushed,
+            'failed' => $failed,
+            'blocked_by_cloudflare' => $blockedAny,
+            'error_message' => $pushed === 0 ? ($results[0]['error'] ?? 'No items pushed') : null,
+            'results' => $results,
+        ];
+    }
+
+    /**
      * Get Item Price (international) for a single item.
      *   PUT /marketplace/contentmgmt/item/international/price?sellerid=XXXX
      *

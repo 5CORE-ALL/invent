@@ -224,6 +224,13 @@ return [
         'redirect' => env('GOOGLE_REDIRECT_URI'),
     ],
 
+    // Separate "Desktop app" OAuth client for the Electron attendance agent
+    // (loopback redirect URIs require the Desktop client type, unlike the web client above).
+    'google_desktop' => [
+        'client_id' => env('GOOGLE_DESKTOP_CLIENT_ID'),
+        'client_secret' => env('GOOGLE_DESKTOP_CLIENT_SECRET'),
+    ],
+
     'google_ads' => [
         'developer_token' => env('GOOGLE_ADS_DEVELOPER_TOKEN'),
         'client_id' => env('GOOGLE_ADS_CLIENT_ID'),
