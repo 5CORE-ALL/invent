@@ -88,12 +88,22 @@ class EbayTwoController extends Controller
             ? round(($ebayAdSpend / $agg['sales']) * 100, 1)
             : 0.0;
 
+        // NROI% = (GPFT$ − Ad Spend) / COGS × 100 — same shape as Amazon / ebay1 NROI badge
+        // (do not cut Ads% from GROI%).
+        $ordersL30Nroi = $agg['cogs'] > 0
+            ? round((($agg['pft'] - $ebayAdSpend) / $agg['cogs']) * 100, 1)
+            : 0.0;
+
         return view('market-places.ebay2_tabulator_view', [
             'channelAdsPercent'    => $channelAdsPercent,
+            'ebayAdSpend'          => round((float) $ebayAdSpend, 2),
             'ordersL30TotalQty'    => $agg['qty'],
             'ordersL30TotalSales'  => $agg['sales'],
             'ordersL30Gpft'        => $agg['gpft'],
             'ordersL30Groi'        => $agg['groi'],
+            'ordersL30Pft'         => $agg['pft'],
+            'ordersL30Cogs'        => $agg['cogs'],
+            'ordersL30Nroi'        => $ordersL30Nroi,
         ]);
     }
 
@@ -816,6 +826,7 @@ class EbayTwoController extends Controller
             $row['SGPFT'] = null;
             $row['SPFT'] = null;
             $row['SROI'] = null;
+            $row['SGROI'] = null;
             $row['Listed'] = null;
             $row['Live'] = null;
             $row['APlus'] = null;
@@ -830,6 +841,7 @@ class EbayTwoController extends Controller
                     $row['SGPFT'] = $raw['SGPFT'] ?? null;
                     $row['SPFT'] = $raw['SPFT'] ?? null;
                     $row['SROI'] = $raw['SROI'] ?? null;
+                    $row['SGROI'] = $raw['SGROI'] ?? null;
                     $row['Listed'] = isset($raw['Listed']) ? filter_var($raw['Listed'], FILTER_VALIDATE_BOOLEAN) : null;
                     $row['Live'] = isset($raw['Live']) ? filter_var($raw['Live'], FILTER_VALIDATE_BOOLEAN) : null;
                     $row['APlus'] = isset($raw['APlus']) ? filter_var($raw['APlus'], FILTER_VALIDATE_BOOLEAN) : null;
@@ -980,6 +992,7 @@ class EbayTwoController extends Controller
                 $row['SGPFT'] = null;
                 $row['SPFT'] = null;
                 $row['SROI'] = null;
+                $row['SGROI'] = null;
                 $row['Listed'] = null;
                 $row['Live'] = null;
                 $row['APlus'] = null;
@@ -1007,6 +1020,7 @@ class EbayTwoController extends Controller
                         $row['SGPFT'] = $rawOb['SGPFT'] ?? null;
                         $row['SPFT'] = $rawOb['SPFT'] ?? null;
                         $row['SROI'] = $rawOb['SROI'] ?? null;
+                        $row['SGROI'] = $rawOb['SGROI'] ?? null;
                         $row['Listed'] = isset($rawOb['Listed']) ? filter_var($rawOb['Listed'], FILTER_VALIDATE_BOOLEAN) : null;
                         $row['Live'] = isset($rawOb['Live']) ? filter_var($rawOb['Live'], FILTER_VALIDATE_BOOLEAN) : null;
                         $row['APlus'] = isset($rawOb['APlus']) ? filter_var($rawOb['APlus'], FILTER_VALIDATE_BOOLEAN) : null;
@@ -1031,6 +1045,20 @@ class EbayTwoController extends Controller
             $row->{'PFT %'} = round($gpft - $channelAdsPct, 2);
             if (isset($row->SGPFT) && $row->SGPFT !== null && $row->SGPFT !== '') {
                 $row->SPFT = round((float) $row->SGPFT - $channelAdsPct, 2);
+                $sprice = (float) ($row->SPRICE ?? 0);
+                $lp = (float) ($row->LP_productmaster ?? 0);
+                $ship = (float) ($row->Ship_productmaster ?? 0);
+                $pct = (float) ($row->percentage ?? 0.85);
+                if ($pct <= 0) {
+                    $pct = 0.85;
+                }
+                if ($sprice > 0 && $lp > 0) {
+                    $grossPft = ($sprice * $pct) - $ship - $lp;
+                    $row->SGROI = round(($grossPft / $lp) * 100, 2);
+                    // SNROI = (gross PFT$ − SPRICE×Ads%/100) / LP × 100 (Amazon NROI shape)
+                    $adSpend = $sprice * ($channelAdsPct / 100);
+                    $row->SROI = round((($grossPft - $adSpend) / $lp) * 100, 2);
+                }
             }
         }
 
@@ -1285,61 +1313,30 @@ class EbayTwoController extends Controller
         $spriceFloat = floatval($sprice);
         $sgpft = $spriceFloat > 0 ? round((($spriceFloat * $percentage - $ship - $lp) / $spriceFloat) * 100, 2) : 0;
 
-        // Get AD% the same way as regular pricing - using CURRENT eBay price, not SPRICE
-        $adPercent = 0;
-        $ebay2Metric = Ebay2Metric::where('sku', $sku)->first();
-        
-        Log::info('SPRICE Debug - SKU: ' . $sku, [
-            'ebay2_metric_found' => $ebay2Metric ? 'YES' : 'NO',
-            'item_id' => $ebay2Metric->item_id ?? 'NULL',
-            'ebay_price' => $ebay2Metric->ebay_price ?? 'NULL',
-            'ebay_l30' => $ebay2Metric->ebay_l30 ?? 'NULL'
-        ]);
-        
-        if ($ebay2Metric && $ebay2Metric->item_id) {
-            // Fetch from ebay2_general_reports (same as getViewEbayData)
-            $generalReport = Ebay2GeneralReport::where('listing_id', $ebay2Metric->item_id)
-                ->where('report_range', 'L30')
-                ->first();
-            
-            Log::info('SPRICE Debug - General Report', [
-                'general_report_found' => $generalReport ? 'YES' : 'NO',
-                'ad_fees' => $generalReport->ad_fees ?? 'NULL'
-            ]);
-            
-            if ($generalReport) {
-                $pmt_spend_l30 = $this->extractNumber($generalReport->ad_fees);
-                $currentPrice = floatval($ebay2Metric->ebay_price ?? 0); // Use current eBay price
-                $units_ordered_l30 = floatval($ebay2Metric->ebay_l30 ?? 0);
-                $totalRevenue = $currentPrice * $units_ordered_l30; // Revenue based on current price
-                $adPercent = $totalRevenue > 0 ? ($pmt_spend_l30 / $totalRevenue) * 100 : 0;
-                
-                Log::info('SPRICE Debug - AD% Calculation', [
-                    'pmt_spend_l30' => $pmt_spend_l30,
-                    'current_price' => $currentPrice,
-                    'units_l30' => $units_ordered_l30,
-                    'total_revenue' => $totalRevenue,
-                    'ad_percent' => $adPercent
-                ]);
-            }
-        }
+        // Channel Ads% (TACOS) — same source as /ebay2-tabulator-view Ads badge /
+        // /all-marketplace-master eBay 2 Ads% (not per-SKU ACOS).
+        $adPercent = (float) app(ChannelMasterController::class)->getEbaytwoMasterAdsPercent();
 
-        // SPFT = SGPFT - AD%
+        // SNPFT = SGPFT − Ads%
         $spft = round($sgpft - $adPercent, 2);
-        
-        Log::info('SPRICE Debug - Final Calculations', [
-            'sgpft' => $sgpft,
-            'ad_percent' => $adPercent,
-            'spft' => $spft,
-            'lp' => $lp,
-            'ship' => $ship
-        ]);
-
-        // SROI = ((SPRICE * 0.85 - lp - ship) / lp) * 100 (same as regular ROI formula)
+        // SGROI = gross ROI on suggested price
+        $sgroi = round($lp > 0 ? (($spriceFloat * $percentage - $lp - $ship) / $lp) * 100 : 0, 2);
+        // SNROI = (gross PFT$ − ad spend$) / LP × 100 — same shape as Amazon NROI badge
+        $adDecimal = $adPercent / 100;
         $sroi = round(
-            $lp > 0 ? (($spriceFloat * $percentage - $lp - $ship) / $lp) * 100 : 0,
+            $lp > 0 ? ((($spriceFloat * $percentage - $ship - $lp) - ($spriceFloat * $adDecimal)) / $lp) * 100 : 0,
             2
         );
+
+        Log::info('SPRICE calculated', [
+            'sku' => $sku,
+            'sprice' => $spriceFloat,
+            'sgpft' => $sgpft,
+            'sgroi' => $sgroi,
+            'ad_percent' => $adPercent,
+            'spft' => $spft,
+            'sroi' => $sroi,
+        ]);
 
         $ebayDataView = EbayTwoDataView::firstOrNew(['sku' => $sku]);
 
@@ -1353,6 +1350,7 @@ class EbayTwoController extends Controller
             'SPRICE' => $spriceFloat,
             'SPFT' => $spft,
             'SROI' => $sroi,
+            'SGROI' => $sgroi,
             'SGPFT' => $sgpft,
         ]);
 
@@ -1363,6 +1361,7 @@ class EbayTwoController extends Controller
             'message' => 'Data saved successfully.',
             'spft_percent' => $spft,
             'sroi_percent' => $sroi,
+            'sgroi_percent' => $sgroi,
             'sgpft_percent' => $sgpft,
         ]);
     }
@@ -2047,7 +2046,8 @@ class EbayTwoController extends Controller
             $groiPercent = $totalLpAmt > 0 ? (($totalPftAmt / $totalLpAmt) * 100) : 0;
             $avgGpft = $totalSalesAmt > 0 ? (($totalPftAmt / $totalSalesAmt) * 100) : 0; // GPFT = (PFT/Sales)*100
             $npftPercent = $avgGpft - $tacosPercent;
-            $nroiPercent = $groiPercent - $tacosPercent;
+            // NROI% = (GPFT$ − Ad Spend) / COGS × 100 — same as Amazon / ebay2-tabulator badge
+            $nroiPercent = $totalLpAmt > 0 ? ((($totalPftAmt - $totalPmtSpendL30) / $totalLpAmt) * 100) : 0;
             
             // Store ALL metrics in JSON (flexible!)
             $summaryData = [

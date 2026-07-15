@@ -121,12 +121,12 @@
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>
                         <span class="badge bg-dark fs-6 p-2" id="pft-total-badge" style="color: white; font-weight: bold;">GPFT Total: $0.00</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-cogs-badge" style="color: white; font-weight: bold;">Total COGS: $0.00</span>
-                        <span class="badge fs-6 p-2" id="pt-spent-badge" style="background-color: #28a745; color: white; font-weight: bold;">PT Spent: ${{ number_format($ptSpent ?? 0, 0) }}</span>
-                        <span class="badge fs-6 p-2" id="kw-spent-badge" style="background-color: #ffc107; color: black; font-weight: bold;">KW Spent: ${{ number_format($kwSpent ?? 0, 0) }}</span>
-                        <span class="badge fs-6 p-2" id="hl-spent-badge" style="background-color: #dc3545; color: white; font-weight: bold;">HL Spent: ${{ number_format($hlSpent ?? 0, 0) }}</span>
-                        <span class="badge fs-6 p-2" id="tacos-percentage-badge" style="background-color: #6f42c1; color: white; font-weight: bold;">TACOS %: 0%</span>
-                        <span class="badge fs-6 p-2" id="m-pft-badge" style="background-color: #fd7e14; color: white; font-weight: bold;">N PFT: 0%</span>
-                        <span class="badge fs-6 p-2" id="n-roi-badge" style="background-color: #e83e8c; color: white; font-weight: bold;">N ROI: 0%</span>
+                        <span class="badge fs-6 p-2" id="pt-spent-badge" title="Amazon PT spend — same source as /all-marketplace-master (/amazon-ads/all)" style="background-color: #28a745; color: white; font-weight: bold;">PT Spent: ${{ number_format($ptSpent ?? 0, 0) }}</span>
+                        <span class="badge fs-6 p-2" id="kw-spent-badge" title="Amazon KW spend — same source as /all-marketplace-master (/amazon-ads/all)" style="background-color: #ffc107; color: black; font-weight: bold;">KW Spent: ${{ number_format($kwSpent ?? 0, 0) }}</span>
+                        <span class="badge fs-6 p-2" id="hl-spent-badge" title="Amazon HL spend — same source as /all-marketplace-master (/amazon-ads/all)" style="background-color: #dc3545; color: white; font-weight: bold;">HL Spent: ${{ number_format($hlSpent ?? 0, 0) }}</span>
+                        <span class="badge fs-6 p-2" id="tacos-percentage-badge" title="Amazon Ads%/TACOS — same as /all-marketplace-master Amazon Ads%" style="background-color: #6f42c1; color: white; font-weight: bold;">TACOS %: {{ number_format((float) ($amazonAdsPercent ?? 0), 1) }}%</span>
+                        <span class="badge fs-6 p-2" id="m-pft-badge" title="NPFT% = GPFT% − TACOS% (Ads% from /all-marketplace-master)" style="background-color: #fd7e14; color: white; font-weight: bold;">N PFT: 0%</span>
+                        <span class="badge fs-6 p-2" id="n-roi-badge" title="NROI% = (GPFT$ − Ad Spend) / COGS × 100 — Ad Spend from /all-marketplace-master" style="background-color: #e83e8c; color: white; font-weight: bold;">N ROI: 0%</span>
                         <span class="badge fs-6 p-2" id="ads-percentage-badge" style="background-color: #20c997; color: white; font-weight: bold; display: none;">Ads %: 0%</span>
                         <span class="badge fs-6 p-2" id="pft-percentage-filtered-badge" style="background-color: #17a2b8; color: white; font-weight: bold; display: none;">PFT %: 0%</span>
                     </div>
@@ -152,9 +152,13 @@
 <script>
     const COLUMN_VIS_KEY = "amazon_sales_column_visibility";
     let table = null;
-    const KW_SPENT = {{ $kwSpent ?? 0 }};
-    const PT_SPENT = {{ $ptSpent ?? 0 }};
-    const HL_SPENT = {{ $hlSpent ?? 0 }};
+    // KW/PT/HL — live spend from /amazon-ads/all (same as /all-marketplace-master Amazon row)
+    const KW_SPENT = {{ (float) ($kwSpent ?? 0) }};
+    const PT_SPENT = {{ (float) ($ptSpent ?? 0) }};
+    const HL_SPENT = {{ (float) ($hlSpent ?? 0) }};
+    // Ads%/TACOS + Total Ad Spend — same ChannelMasterCalculatedData values as /all-marketplace-master
+    const AMAZON_ADS_PCT = {{ (float) ($amazonAdsPercent ?? 0) }};
+    const AMAZON_TOTAL_AD_SPEND = {{ (float) ($amazonTotalAdSpend ?? 0) }};
     // Server-computed rolling total (amazon_orders effective total; orders without items included)
     const SERVER_AMAZON_SALES_TOTAL = {{ $amazonSalesTotal ?? 0 }};
 
@@ -595,15 +599,28 @@
             // Calculate ROI Percentage: (PFT Total / Total COGS) * 100
             const roiPercentage = totalCogs > 0 ? (totalPft / totalCogs) * 100 : 0;
 
-            // Calculate TACOS Percentage: ((KW Spent + PT Spent + HL Spent) / Total Sales) * 100
-            const tacosPercentage = totalRevenue > 0 ? ((KW_SPENT + PT_SPENT + HL_SPENT) / totalRevenue) * 100 : 0;
+            // Check if data is filtered (compare active data with total data or check for filters)
+            const totalDataCount = table.getDataCount();
+            const activeDataCount = data.length;
+            const skuSearchValue = $('#sku-search').val() || '';
+            const hasTableFilters = table.modules.filter && table.modules.filter.getFilters().length > 0;
+            const isFiltered = activeDataCount < totalDataCount || hasTableFilters || skuSearchValue.trim() !== '';
 
-            // Calculate N PFT: GPFT % - TACOS %
+            // TACOS% = Amazon Ads% from /all-marketplace-master (ChannelMasterCalculatedData).
+            // Do NOT recompute from KW+PT+HL / this page's sales — that diverged from master.
+            const tacosPercentage = parseFloat(AMAZON_ADS_PCT) || 0;
+
+            // N PFT% = GPFT% − TACOS% (same Ads% basis as /amazon-tabulator-view)
             const mPft = pftPercentage - tacosPercentage;
             
-            // Calculate N ROI: (Net Profit / Total COGS) * 100
-            // Net Profit = Total PFT - (KW Spent + PT Spent + HL Spent)
-            const netProfit = totalPft - (KW_SPENT + PT_SPENT + HL_SPENT);
+            // N ROI% = (GPFT$ − Ad Spend) / COGS × 100 — same shape as NROI badge on
+            // /amazon-tabulator-view. Unfiltered: master's total_ad_spend. Filtered: Ads% × visible sales.
+            const masterAdSpend = parseFloat(AMAZON_TOTAL_AD_SPEND) || 0;
+            const salesForAds = isFiltered ? totalSkuLineSales : (SERVER_AMAZON_SALES_TOTAL || totalSkuLineSales);
+            const adSpend = (!isFiltered && masterAdSpend > 0)
+                ? masterAdSpend
+                : (tacosPercentage / 100) * salesForAds;
+            const netProfit = totalPft - adSpend;
             const nRoi = totalCogs > 0 ? (netProfit / totalCogs) * 100 : 0;
             
             // Calculate Ads %: (Sum of unique SKU KW+PT / Total Sales) * 100
@@ -612,13 +629,6 @@
             
             // Calculate PFT %: GPFT % - Ads %
             const pftPercentageFiltered = pftPercentage - adsPercentage;
-            
-            // Check if data is filtered (compare active data with total data or check for filters)
-            const totalDataCount = table.getDataCount();
-            const activeDataCount = data.length;
-            const skuSearchValue = $('#sku-search').val() || '';
-            const hasTableFilters = table.modules.filter && table.modules.filter.getFilters().length > 0;
-            const isFiltered = activeDataCount < totalDataCount || hasTableFilters || skuSearchValue.trim() !== '';
 
             // Update badges (matching eBay format exactly)
             const totalOrders = uniqueOrderIds.size; // Count unique orders

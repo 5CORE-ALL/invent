@@ -3,8 +3,10 @@
 namespace App\Http\Controllers\Sales;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Channels\ChannelMasterController;
 use App\Models\Ebay2Order;
 use App\Models\ProductMaster;
+use App\Models\ChannelMasterCalculatedData;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -41,9 +43,48 @@ class Ebay2SalesController extends Controller
             Log::warning('Ebay2 Y Sales failed: ' . $e->getMessage());
         }
 
+        // Ads% / TACOS + Total Ad Spend — same ChannelMasterCalculatedData values the
+        // EbayTwo Ads% column on /all-marketplace-master uses (channel key is "EbayTwo").
+        $ebay2Row = ChannelMasterCalculatedData::where('channel', 'EbayTwo')->first()
+            ?? ChannelMasterCalculatedData::where('channel', 'eBay 2')->first()
+            ?? ChannelMasterCalculatedData::where('channel', 'like', 'EbayTwo%')->first()
+            ?? ChannelMasterCalculatedData::where('channel', 'like', 'eBay 2%')->first();
+        $ebay2AdsPercent = (float) ($ebay2Row->ads_percentage ?? 0);
+        $ebay2TotalAdSpend = (float) ($ebay2Row->total_ad_spend ?? 0);
+
+        // KW / PMT badges — same live campaign-ads breakdown the master EbayTwo row uses.
+        $kwSpent = 0.0;
+        $pmtSpent = 0.0;
+        $liveTotalAdSpend = 0.0;
+        try {
+            $breakdown = app(ChannelMasterController::class)->getEbaytwoMasterAdBreakdown();
+            $kwSpent = (float) ($breakdown['kw_spent'] ?? 0);
+            $pmtSpent = (float) ($breakdown['pmt_spent'] ?? 0);
+            $liveTotalAdSpend = (float) ($breakdown['total_ad_spend'] ?? 0);
+        } catch (\Throwable $e) {
+            Log::warning('Ebay2 daily-sales ad spend lookup failed: '.$e->getMessage());
+        }
+
+        if ($ebay2TotalAdSpend <= 0 && $liveTotalAdSpend > 0) {
+            $ebay2TotalAdSpend = $liveTotalAdSpend;
+        }
+        if ($ebay2AdsPercent <= 0 && $ebay2TotalAdSpend > 0) {
+            $masterL30 = (float) ($ebay2Row->l30_sales ?? 0);
+            if ($masterL30 <= 0) {
+                // Same sales basis getEbaytwoMasterAdsPercent / getEbaytwoChannelData use.
+                $ebay2AdsPercent = (float) app(ChannelMasterController::class)->getEbaytwoMasterAdsPercent();
+            } else {
+                $ebay2AdsPercent = ($ebay2TotalAdSpend / $masterL30) * 100;
+            }
+        }
+
         return view('sales.ebay2_daily_sales_data', [
             'salesYesterday' => round($ySales, 2),
             'yesterdayLabel' => \Carbon\Carbon::yesterday($tz)->format('M j, Y'),
+            'kwSpent' => round($kwSpent, 2),
+            'pmtSpent' => round($pmtSpent, 2),
+            'ebay2AdsPercent' => round($ebay2AdsPercent, 2),
+            'ebay2TotalAdSpend' => round($ebay2TotalAdSpend, 2),
         ]);
     }
 

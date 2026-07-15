@@ -3,8 +3,10 @@
 namespace App\Http\Controllers\Sales;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Channels\ChannelMasterController;
 use App\Models\EbayOrder;
 use App\Models\ProductMaster;
+use App\Models\ChannelMasterCalculatedData;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -41,9 +43,39 @@ class EbaySalesController extends Controller
             Log::warning('Ebay Y Sales failed: ' . $e->getMessage());
         }
 
+        // Ads spend / TACOS — same source as /all-marketplace-master eBay row and
+        // /ebay-tabulator-view Ads badge (KW + PMT via campaign reports).
+        $kwSpent = 0.0;
+        $pmtSpent = 0.0;
+        $ebayTotalAdSpend = 0.0;
+        try {
+            $breakdown = app(ChannelMasterController::class)->getEbayMasterAdBreakdown();
+            $kwSpent = (float) ($breakdown['kw_spent'] ?? 0);
+            $pmtSpent = (float) ($breakdown['pmt_spent'] ?? 0);
+            $ebayTotalAdSpend = (float) ($breakdown['total_ad_spend'] ?? 0);
+        } catch (\Throwable $e) {
+            Log::warning('Ebay daily-sales ad spend lookup failed: '.$e->getMessage());
+        }
+
+        $ebayRow = ChannelMasterCalculatedData::where('channel', 'eBay')->first()
+            ?? ChannelMasterCalculatedData::where('channel', 'like', 'eBay%')->first()
+            ?? ChannelMasterCalculatedData::where('channel', 'like', 'Ebay%')->first();
+        $ebayAdsPercent = (float) ($ebayRow->ads_percentage ?? 0);
+        if ($ebayTotalAdSpend <= 0 && $ebayRow) {
+            $ebayTotalAdSpend = (float) ($ebayRow->total_ad_spend ?? 0);
+        }
+        if ($ebayAdsPercent <= 0 && $ebayTotalAdSpend > 0) {
+            $masterL30 = (float) ($ebayRow->l30_sales ?? 0);
+            $ebayAdsPercent = $masterL30 > 0 ? ($ebayTotalAdSpend / $masterL30) * 100 : 0.0;
+        }
+
         return view('sales.ebay_daily_sales_data', [
             'salesYesterday' => round($ySales, 2),
             'yesterdayLabel' => \Carbon\Carbon::yesterday($tz)->format('M j, Y'),
+            'kwSpent' => round($kwSpent, 2),
+            'pmtSpent' => round($pmtSpent, 2),
+            'ebayAdsPercent' => round($ebayAdsPercent, 2),
+            'ebayTotalAdSpend' => round($ebayTotalAdSpend, 2),
         ]);
     }
 
