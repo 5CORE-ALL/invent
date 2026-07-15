@@ -7,6 +7,8 @@
         @include('marketplace._page-heading', ['slug' => 'alibaba', 'heading' => 'Alibaba Listings'])
         <p class="text-muted mb-3">Shopify catalog from <code>shopify_skus</code> (your synced Shopify inventory), with Alibaba link status from <code>alibaba_metrics</code>. Use <strong>Sync Alibaba link map</strong> to refresh SKU ↔ product_id mappings from Alibaba.</p>
 
+        @include('marketplace._queue-status', ['slug' => 'alibaba'])
+
         @include('marketplace.alibaba._nav', ['active' => 'products'])
 
         @if($apiError)

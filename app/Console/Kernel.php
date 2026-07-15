@@ -911,12 +911,13 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log));
 
       
-        $schedule->command('aliexpress:sync-inventory-from-shopify')
+        // Shopify live inventory → marketplace (MUST go through unique queue jobs so full
+        // syncs never pile up / crash the shared marketplace-manager worker).
+        $schedule->job(new \App\Jobs\SyncInventoryToAliexpress)
             ->everyFifteenMinutes()
             ->timezone('Asia/Kolkata')
             ->name('aliexpress-sync-inventory')
-            ->withoutOverlapping()
-            ->runInBackground()
+            ->withoutOverlapping(20)
             ->appendOutputTo($log);
 
         $schedule->command('aliexpress:sync-orders --from=2026-07-07 --import')
@@ -927,12 +928,11 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        $schedule->command('alibaba:sync-inventory-from-shopify')
+        $schedule->job(new \App\Jobs\SyncInventoryToAlibaba)
             ->everyFifteenMinutes()
             ->timezone('Asia/Kolkata')
             ->name('alibaba-sync-inventory')
-            ->withoutOverlapping()
-            ->runInBackground()
+            ->withoutOverlapping(20)
             ->appendOutputTo($log);
 
         $schedule->command('alibaba:sync-orders --from=2026-07-11 --import')
@@ -944,12 +944,11 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log);
 
         // Reverb Marketplace Manager (same cadence as AE/Alibaba)
-        $schedule->command('reverb:manager-sync-inventory')
+        $schedule->job(new \App\Jobs\SyncInventoryToReverbManager)
             ->everyFifteenMinutes()
             ->timezone('Asia/Kolkata')
             ->name('reverb-manager-sync-inventory')
-            ->withoutOverlapping()
-            ->runInBackground()
+            ->withoutOverlapping(20)
             ->appendOutputTo($log);
 
         $schedule->command('reverb:manager-sync-orders --from=2026-07-07 --import')
@@ -986,12 +985,11 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log);
 
         // Newegg Marketplace Manager: inventory/price from Shopify, orders to Shopify
-        $schedule->command('newegg:sync-inventory-from-shopify')
+        $schedule->job(new \App\Jobs\SyncInventoryToNewegg)
             ->everyFifteenMinutes()
             ->timezone('Asia/Kolkata')
             ->name('newegg-sync-inventory')
-            ->withoutOverlapping()
-            ->runInBackground()
+            ->withoutOverlapping(20)
             ->appendOutputTo($log);
 
         $schedule->command('newegg:sync-orders --from=2026-07-07 --import')

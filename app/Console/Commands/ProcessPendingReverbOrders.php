@@ -2,7 +2,7 @@
 
 namespace App\Console\Commands;
 
-use App\Jobs\ImportReverbOrderToShopify;
+use App\Jobs\ImportReverbManagerOrderToShopify;
 use App\Models\ReverbOrderMetric;
 use App\Models\ReverbSyncSettings;
 use App\Models\ReverbSyncState;
@@ -22,7 +22,7 @@ class ProcessPendingReverbOrders extends Command
                             {--pause=5 : Seconds to pause between batches}
                             {--batch-mode : Process in batches with pause between (reduces load)}';
 
-    protected $description = 'Dispatch ImportReverbOrderToShopify jobs for pending Reverb orders (only NEW orders by default)';
+    protected $description = 'Dispatch ImportReverbManagerOrderToShopify jobs for pending Reverb orders (only NEW orders by default)';
 
     public function handle(): int
     {
@@ -93,7 +93,7 @@ class ProcessPendingReverbOrders extends Command
                 $batchNum++;
                 $batchDispatched = 0;
                 foreach ($orders as $order) {
-                    ImportReverbOrderToShopify::dispatch($order->id)->onQueue('reverb');
+                    ImportReverbManagerOrderToShopify::dispatch($order->id);
                     Log::debug('ProcessPendingReverbOrders: dispatched new order', ['order_number' => $order->order_number, 'order_paid_at' => $order->order_paid_at?->toIso8601String()]);
                     $dispatchedIds[] = $order->id;
                     $batchDispatched++;
@@ -114,7 +114,7 @@ class ProcessPendingReverbOrders extends Command
         } else {
             $orders = $baseQuery->limit($limit)->get();
             foreach ($orders as $order) {
-                ImportReverbOrderToShopify::dispatch($order->id)->onQueue('reverb');
+                ImportReverbManagerOrderToShopify::dispatch($order->id);
                 Log::debug('ProcessPendingReverbOrders: dispatched new order', ['order_number' => $order->order_number, 'order_paid_at' => $order->order_paid_at?->toIso8601String()]);
                 $totalDispatched++;
             }
@@ -128,7 +128,7 @@ class ProcessPendingReverbOrders extends Command
             return self::SUCCESS;
         }
 
-        $this->info("Dispatched {$totalDispatched} orders to reverb queue. Run: php artisan queue:work --queue=reverb");
+        $this->info("Dispatched {$totalDispatched} orders to the marketplace-manager queue.");
         return self::SUCCESS;
     }
 

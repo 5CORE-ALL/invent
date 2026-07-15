@@ -26,9 +26,9 @@ class PushLinkedSkuInventoryFromShopify implements ShouldQueue, ShouldBeUnique
 
     public int $tries = 3;
 
-    public int $timeout = 180;
+    public int $timeout = 600;
 
-    public int $uniqueFor = 30;
+    public int $uniqueFor = 120;
 
     /**
      * @param  array<int, string>  $skus
@@ -48,7 +48,10 @@ class PushLinkedSkuInventoryFromShopify implements ShouldQueue, ShouldBeUnique
 
     public function uniqueId(): string
     {
-        $key = strtoupper(implode('|', $this->skus));
+        // Deduplicate by sorted SKU set so page refresh / webhook storms don't flood the queue.
+        $normalized = $this->skus;
+        sort($normalized);
+        $key = strtoupper(implode('|', $normalized));
         if ($key === '' && $this->inventoryItemId) {
             $key = 'iid:'.$this->inventoryItemId;
         }
@@ -72,17 +75,31 @@ class PushLinkedSkuInventoryFromShopify implements ShouldQueue, ShouldBeUnique
 
         $results = [];
 
-        if ($this->inventorySyncEnabled('reverb')) {
-            $results['reverb'] = $reverb->syncSkusFromShopify($this->skus);
-        }
-        if ($this->inventorySyncEnabled('aliexpress')) {
-            $results['aliexpress'] = $aliexpress->syncSkusFromShopify($this->skus);
-        }
-        if ($this->inventorySyncEnabled('alibaba')) {
-            $results['alibaba'] = $alibaba->syncSkusFromShopify($this->skus);
-        }
-        if ($this->inventorySyncEnabled('newegg')) {
-            $results['newegg'] = $newegg->syncSkusFromShopify($this->skus);
+        foreach ([
+            'reverb' => $reverb,
+            'aliexpress' => $aliexpress,
+            'alibaba' => $alibaba,
+            'newegg' => $newegg,
+        ] as $slug => $service) {
+            if (! $this->inventorySyncEnabled($slug)) {
+                continue;
+            }
+            try {
+                $results[$slug] = $service->syncSkusFromShopify($this->skus);
+            } catch (\Throwable $e) {
+                // Never abort other marketplaces — wrong stock on one channel is better
+                // than failing all channels mid-push.
+                Log::error('PushLinkedSkuInventoryFromShopify: marketplace push failed', [
+                    'marketplace' => $slug,
+                    'skus' => $this->skus,
+                    'error' => $e->getMessage(),
+                ]);
+                $results[$slug] = [
+                    'updated' => 0,
+                    'failed' => count($this->skus),
+                    'message' => $e->getMessage(),
+                ];
+            }
         }
 
         Log::info('PushLinkedSkuInventoryFromShopify: done', [

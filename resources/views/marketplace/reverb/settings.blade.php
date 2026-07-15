@@ -17,6 +17,8 @@
         @include('marketplace._page-heading', ['slug' => 'reverb', 'heading' => 'Reverb Sync Settings'])
         <p class="text-muted mb-3">Configure how Shopify (source) syncs with Reverb for pricing, inventory, and orders.</p>
 
+        @include('marketplace._queue-status', ['slug' => 'reverb'])
+
         @include('marketplace.reverb._nav', ['active' => 'settings'])
 
         <form id="reverb-settings-form">

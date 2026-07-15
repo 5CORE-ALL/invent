@@ -55,6 +55,10 @@ return [
             'timeout' => 7200,
             'max_time' => 7200,
         ],
+        'marketplace-manager' => [
+            'timeout' => 1800,
+            'max_time' => 7200,
+        ],
         'aliexpress' => [
             'timeout' => 900,
             'max_time' => 7200,

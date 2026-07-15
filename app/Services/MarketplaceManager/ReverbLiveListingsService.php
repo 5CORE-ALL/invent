@@ -177,7 +177,7 @@ final class ReverbLiveListingsService
      */
     public function queueSyncForMismatches(array $liveRows, array $liveShopifyByUpper): int
     {
-        $queued = 0;
+        $skus = [];
         foreach ($liveRows as $row) {
             $sku = trim((string) ($row['sku'] ?? ''));
             if ($sku === '') {
@@ -197,11 +197,27 @@ final class ReverbLiveListingsService
             if ($want === $reverbQty) {
                 continue;
             }
-            PushLinkedSkuInventoryFromShopify::dispatch([$sku], $want, null);
-            $queued++;
+            $skus[] = $sku;
         }
 
-        return $queued;
+        $skus = array_values(array_unique($skus));
+        if ($skus === []) {
+            return 0;
+        }
+
+        // One batched job (not 1 job per SKU) — keeps marketplace-manager free for full syncs.
+        try {
+            PushLinkedSkuInventoryFromShopify::dispatch($skus, null, null);
+
+            return count($skus);
+        } catch (\Throwable $e) {
+            Log::warning('ReverbLiveListingsService: could not queue inventory sync (cache lock / storage)', [
+                'sku_count' => count($skus),
+                'error' => $e->getMessage(),
+            ]);
+
+            return 0;
+        }
     }
 
     /**

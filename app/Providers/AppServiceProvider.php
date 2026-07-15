@@ -6,6 +6,7 @@ use App\Services\Crm\Contracts\FollowUpServiceInterface;
 use App\Services\Crm\Contracts\ShopifyServiceInterface;
 use App\Services\Crm\FollowUpService;
 use App\Services\Crm\ShopifyService;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\View;
 use Illuminate\View\View as ViewInstance;
@@ -32,6 +33,20 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // File cache locks (ShouldBeUnique, Cache::lock) need this tree; optimize:clear removes it
+        // and LockableFile does not always recreate missing parents before fopen().
+        foreach ([
+            storage_path('framework/cache/data'),
+            storage_path('framework/sessions'),
+            storage_path('framework/views'),
+            storage_path('logs'),
+            base_path('bootstrap/cache'),
+        ] as $dir) {
+            if (! is_dir($dir)) {
+                File::makeDirectory($dir, 0755, true);
+            }
+        }
+
         // Register FbaManualData observer
         FbaManualData::observe(FbaManualDataObserver::class);
 

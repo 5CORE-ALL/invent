@@ -55,7 +55,7 @@ fi
 
 fix_storage_permissions() {
     mkdir -p "${PROJECT_DIR}/storage/logs"
-    mkdir -p "${PROJECT_DIR}/storage/framework/cache"
+    mkdir -p "${PROJECT_DIR}/storage/framework/cache/data"
     mkdir -p "${PROJECT_DIR}/storage/framework/sessions"
     mkdir -p "${PROJECT_DIR}/storage/framework/views"
     mkdir -p "${PROJECT_DIR}/bootstrap/cache"
@@ -88,6 +88,13 @@ echo ""
 echo "[3/8] Clearing all caches..."
 ${PHP_BIN} ${ARTISAN} optimize:clear
 echo "  ✓ All caches cleared"
+
+# optimize:clear deletes storage/framework/cache/data wholesale. Laravel's file
+# cache lock (Cache::lock(), used by ShouldBeUnique jobs and withoutOverlapping())
+# does not recreate missing parent directories the way normal cache writes do,
+# so the very next lock acquisition fails with a raw fopen() error until this
+# directory exists again.
+fix_storage_permissions
 
 # ─── Step 4: Rebuild optimized caches ───────────────────────────────────────
 echo ""

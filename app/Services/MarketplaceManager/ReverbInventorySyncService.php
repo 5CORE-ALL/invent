@@ -205,9 +205,12 @@ class ReverbInventorySyncService
             ];
         }
 
-        // Source of truth: LIVE Reverb listings (SKU + listing id + state) — not stored reverb_metric.
+        // Source of truth for listing id/state: live Reverb (warmed cache preferred; force-refresh only when empty).
         Log::info('ReverbInventorySyncService: fetching live Reverb listings');
-        $liveListings = $this->fetchLiveReverbListings();
+        $liveListings = app(ReverbLiveListingsService::class)->all(false);
+        if ($liveListings === []) {
+            $liveListings = $this->fetchLiveReverbListings();
+        }
         if ($liveListings === []) {
             return [
                 'updated' => 0,

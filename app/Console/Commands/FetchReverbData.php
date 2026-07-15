@@ -2,7 +2,7 @@
 
 namespace App\Console\Commands;
 
-use App\Jobs\ImportReverbOrderToShopify;
+use App\Jobs\ImportReverbManagerOrderToShopify;
 use App\Models\ReverbOrderMetric;
 use App\Services\ReverbApiService;
 use App\Models\ReverbProduct;
@@ -414,7 +414,7 @@ class FetchReverbData extends Command
     }
 
     /**
-     * Dispatch ImportReverbOrderToShopify jobs for orders that are not yet pushed and meet cutoff/status filters.
+     * Dispatch ImportReverbManagerOrderToShopify jobs for orders that are not yet pushed and meet cutoff/status filters.
      */
     protected function dispatchImportJobsForOrderNumbers(array $orderNumbers, Carbon $lastSyncForPush, bool $skipShipped): int
     {
@@ -431,7 +431,7 @@ class FetchReverbData extends Command
         $ordersToImport = $toImport->orderBy('order_date')->orderBy('id')->get();
         $count = 0;
         foreach ($ordersToImport as $order) {
-            ImportReverbOrderToShopify::dispatch($order->id)->onQueue('reverb');
+            ImportReverbManagerOrderToShopify::dispatch($order->id);
             $count++;
             $this->info("  Dispatched import job for Reverb order #{$order->order_number}");
         }
