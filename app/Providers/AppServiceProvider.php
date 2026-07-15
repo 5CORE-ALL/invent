@@ -6,7 +6,6 @@ use App\Services\Crm\Contracts\FollowUpServiceInterface;
 use App\Services\Crm\Contracts\ShopifyServiceInterface;
 use App\Services\Crm\FollowUpService;
 use App\Services\Crm\ShopifyService;
-use Illuminate\Support\Facades\File;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\View;
 use Illuminate\View\View as ViewInstance;
@@ -33,8 +32,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        // File cache locks (ShouldBeUnique, Cache::lock) need this tree; optimize:clear removes it
-        // and LockableFile does not always recreate missing parents before fopen().
+        // File cache (permissions sidebar, ShouldBeUnique locks): optimize:clear can wipe
+        // storage/framework/cache/data; recreate + ensure writable before any Cache::put.
         foreach ([
             storage_path('framework/cache/data'),
             storage_path('framework/sessions'),
@@ -43,7 +42,7 @@ class AppServiceProvider extends ServiceProvider
             base_path('bootstrap/cache'),
         ] as $dir) {
             if (! is_dir($dir)) {
-                File::makeDirectory($dir, 0755, true);
+                @mkdir($dir, 0775, true);
             }
         }
 
@@ -54,10 +53,17 @@ class AppServiceProvider extends ServiceProvider
             // Only set permissions if not already set by controller
             if (!$view->offsetExists('permissions')) {
                 $permissions = [];
-                if (Auth::check()) {
-                    $userRole = Auth::user()->role;
-                    $rolePermission = Permission::where('role', $userRole)->first();
-                    $permissions = $rolePermission ? $rolePermission->permissions : [];
+                try {
+                    if (Auth::check()) {
+                        $userRole = Auth::user()->role;
+                        $rolePermission = Permission::where('role', $userRole)->first();
+                        $permissions = $rolePermission ? $rolePermission->permissions : [];
+                    }
+                } catch (\Throwable $e) {
+                    // Never 500 the layout if file cache dirs are momentarily missing/unwritable.
+                    \Illuminate\Support\Facades\Log::warning('Sidebar permissions unavailable', [
+                        'error' => $e->getMessage(),
+                    ]);
                 }
                 $view->with('permissions', $permissions);
             }
