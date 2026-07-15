@@ -920,12 +920,11 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(20)
             ->appendOutputTo($log);
 
-        $schedule->command('aliexpress:sync-orders --from=2026-07-07 --import')
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('aliexpress', '2026-07-07', true))
             ->everyFifteenMinutes()
             ->timezone('Asia/Kolkata')
             ->name('aliexpress-sync-orders')
-            ->withoutOverlapping()
-            ->runInBackground()
+            ->withoutOverlapping(20)
             ->appendOutputTo($log);
 
         $schedule->job(new \App\Jobs\SyncInventoryToAlibaba)
@@ -935,12 +934,11 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(20)
             ->appendOutputTo($log);
 
-        $schedule->command('alibaba:sync-orders --from=2026-07-11 --import')
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('alibaba', '2026-07-11', true))
             ->everyFifteenMinutes()
             ->timezone('Asia/Kolkata')
             ->name('alibaba-sync-orders')
-            ->withoutOverlapping()
-            ->runInBackground()
+            ->withoutOverlapping(20)
             ->appendOutputTo($log);
 
         // Reverb Marketplace Manager (same cadence as AE/Alibaba)
@@ -951,12 +949,11 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(20)
             ->appendOutputTo($log);
 
-        $schedule->command('reverb:manager-sync-orders --from=2026-07-07 --import')
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('reverb', '2026-07-07', true))
             ->everyFifteenMinutes()
             ->timezone('Asia/Kolkata')
             ->name('reverb-manager-sync-orders')
-            ->withoutOverlapping()
-            ->runInBackground()
+            ->withoutOverlapping(20)
             ->appendOutputTo($log);
 
         // Link-map refresh (local SKU ↔ product_id only). Hourly to limit marketplace API load.
@@ -992,12 +989,11 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(20)
             ->appendOutputTo($log);
 
-        $schedule->command('newegg:sync-orders --from=2026-07-07 --import')
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('newegg', '2026-07-07', true))
             ->everyFifteenMinutes()
             ->timezone('Asia/Kolkata')
             ->name('newegg-sync-orders')
-            ->withoutOverlapping()
-            ->runInBackground()
+            ->withoutOverlapping(20)
             ->appendOutputTo($log);
 
         $schedule->command('newegg:sync-link-map')
@@ -1329,6 +1325,14 @@ class Kernel extends ConsoleKernel
             ->everyMinute()
             ->name('queue-ensure-watchdog-daemon')
             ->withoutOverlapping(55)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // After optimize:clear, file-cache shard dirs can vanish; recreate so sidebar badges don't 500.
+        $schedule->command('storage:ensure --fix')
+            ->everyMinute()
+            ->name('storage-ensure-dirs')
+            ->withoutOverlapping(50)
             ->runInBackground()
             ->appendOutputTo($log);
     }

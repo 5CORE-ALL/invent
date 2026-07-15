@@ -8,44 +8,50 @@ use App\Services\MarketplaceManager\MarketplaceManagerRegistry;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
-$queue = MarketplaceManagerRegistry::QUEUE;
+$queues = array_values(array_unique(array_merge(
+    [MarketplaceManagerRegistry::QUEUE],
+    MarketplaceManagerRegistry::queueNames()
+)));
+
 $out = [
-    'queue' => $queue,
-    'jobs_pending' => null,
-    'jobs_waiting' => null,
-    'jobs_running' => null,
-    'jobs_delayed' => null,
-    'jobs_by_legacy_queue' => [],
+    'queues' => [],
+    'totals' => [
+        'pending' => 0,
+        'waiting' => 0,
+        'running' => 0,
+        'delayed' => 0,
+    ],
     'failed_recent' => [],
 ];
 
+$now = now();
+
 if (Schema::hasTable('jobs')) {
-    $now = now();
-    $out['jobs_pending'] = (int) DB::table('jobs')->where('queue', $queue)->count();
-    $out['jobs_running'] = (int) DB::table('jobs')
-        ->where('queue', $queue)
-        ->whereNotNull('reserved_at')
-        ->count();
-    $out['jobs_delayed'] = (int) DB::table('jobs')
-        ->where('queue', $queue)
-        ->whereNull('reserved_at')
-        ->where('available_at', '>', $now)
-        ->count();
-    $out['jobs_waiting'] = (int) DB::table('jobs')
-        ->where('queue', $queue)
-        ->whereNull('reserved_at')
-        ->where('available_at', '<=', $now)
-        ->count();
-    foreach (['aliexpress', 'alibaba', 'reverb'] as $legacy) {
-        $count = (int) DB::table('jobs')->where('queue', $legacy)->count();
-        if ($count > 0) {
-            $out['jobs_by_legacy_queue'][$legacy] = $count;
-        }
+    foreach ($queues as $queue) {
+        $pending = (int) DB::table('jobs')->where('queue', $queue)->count();
+        $running = (int) DB::table('jobs')->where('queue', $queue)->whereNotNull('reserved_at')->count();
+        $delayed = (int) DB::table('jobs')
+            ->where('queue', $queue)
+            ->whereNull('reserved_at')
+            ->where('available_at', '>', $now)
+            ->count();
+        $waiting = (int) DB::table('jobs')
+            ->where('queue', $queue)
+            ->whereNull('reserved_at')
+            ->where('available_at', '<=', $now)
+            ->count();
+
+        $out['queues'][$queue] = compact('pending', 'waiting', 'running', 'delayed');
+        $out['totals']['pending'] += $pending;
+        $out['totals']['waiting'] += $waiting;
+        $out['totals']['running'] += $running;
+        $out['totals']['delayed'] += $delayed;
     }
 }
 
 if (Schema::hasTable('failed_jobs')) {
     $out['failed_recent'] = DB::table('failed_jobs')
+        ->whereIn('queue', $queues)
         ->orderByDesc('id')
         ->limit(5)
         ->get(['id', 'queue', 'failed_at', 'exception'])

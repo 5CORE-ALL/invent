@@ -6,15 +6,17 @@ use App\Services\Crm\Contracts\FollowUpServiceInterface;
 use App\Services\Crm\Contracts\ShopifyServiceInterface;
 use App\Services\Crm\FollowUpService;
 use App\Services\Crm\ShopifyService;
-use Illuminate\Support\Facades\File;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\View;
 use Illuminate\View\View as ViewInstance;
+use App\Cache\ResilientFileStore;
 use App\Models\Permission;
 use App\Models\FbaManualData;
 use App\Observers\FbaManualDataObserver;
+use App\Support\StoragePathGuard;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Blade;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
 class AppServiceProvider extends ServiceProvider
@@ -33,19 +35,20 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        // File cache locks (ShouldBeUnique, Cache::lock) need this tree; optimize:clear removes it
-        // and LockableFile does not always recreate missing parents before fopen().
-        foreach ([
-            storage_path('framework/cache/data'),
-            storage_path('framework/sessions'),
-            storage_path('framework/views'),
-            storage_path('logs'),
-            base_path('bootstrap/cache'),
-        ] as $dir) {
-            if (! is_dir($dir)) {
-                File::makeDirectory($dir, 0755, true);
-            }
-        }
+        // File cache (sidebar badges, ShouldBeUnique locks): optimize:clear can wipe
+        // storage/framework/cache/data; recreate before any Cache::put/lock.
+        StoragePathGuard::ensure();
+
+        // Override default "file" driver so missing shard dirs retry instead of 500.
+        Cache::extend('file', function ($app, array $config) {
+            return Cache::repository(
+                (new ResilientFileStore(
+                    $app['files'],
+                    $config['path'],
+                    $config['permission'] ?? null
+                ))->setLockDirectory($config['lock_path'] ?? null)
+            );
+        });
 
         // Register FbaManualData observer
         FbaManualData::observe(FbaManualDataObserver::class);
@@ -54,10 +57,17 @@ class AppServiceProvider extends ServiceProvider
             // Only set permissions if not already set by controller
             if (!$view->offsetExists('permissions')) {
                 $permissions = [];
-                if (Auth::check()) {
-                    $userRole = Auth::user()->role;
-                    $rolePermission = Permission::where('role', $userRole)->first();
-                    $permissions = $rolePermission ? $rolePermission->permissions : [];
+                try {
+                    if (Auth::check()) {
+                        $userRole = Auth::user()->role;
+                        $rolePermission = Permission::where('role', $userRole)->first();
+                        $permissions = $rolePermission ? $rolePermission->permissions : [];
+                    }
+                } catch (\Throwable $e) {
+                    // Never 500 the layout if file cache dirs are momentarily missing/unwritable.
+                    \Illuminate\Support\Facades\Log::warning('Sidebar permissions unavailable', [
+                        'error' => $e->getMessage(),
+                    ]);
                 }
                 $view->with('permissions', $permissions);
             }

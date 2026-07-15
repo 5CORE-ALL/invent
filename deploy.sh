@@ -96,6 +96,16 @@ echo "  ✓ All caches cleared"
 # directory exists again.
 fix_storage_permissions
 
+# Prove file cache works (creates nested shard dirs) as the web user when possible.
+if [ -n "${WEB_USER}" ] && id "${WEB_USER}" &>/dev/null; then
+    su -s /bin/bash "${WEB_USER}" -c "${PHP_BIN} ${ARTISAN} tinker --execute=\"Cache::put('deploy_ping', 1, 60);\"" >/dev/null 2>&1 \
+      || ${PHP_BIN} ${ARTISAN} tinker --execute="Cache::put('deploy_ping', 1, 60);" >/dev/null 2>&1 \
+      || true
+else
+    ${PHP_BIN} ${ARTISAN} tinker --execute="Cache::put('deploy_ping', 1, 60);" >/dev/null 2>&1 || true
+fi
+fix_storage_permissions
+
 # ─── Step 4: Rebuild optimized caches ───────────────────────────────────────
 echo ""
 echo "[4/8] Rebuilding optimized caches..."
@@ -144,6 +154,8 @@ for worker_script in \
     "${PROJECT_DIR}/scripts/cron-aliexpress-worker.sh"
 do
     if [ -x "${worker_script}" ]; then
+        # Windows CRLF checkouts break bash on the server.
+        sed -i 's/\r$//' "${worker_script}" 2>/dev/null || true
         bash "${worker_script}"
         echo "  ✓ Invoked $(basename "${worker_script}")"
     fi

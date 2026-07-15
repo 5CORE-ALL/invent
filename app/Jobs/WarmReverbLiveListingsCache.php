@@ -24,7 +24,7 @@ class WarmReverbLiveListingsCache implements ShouldQueue
 
     public function __construct()
     {
-        $this->onQueue(MarketplaceManagerRegistry::QUEUE);
+        $this->onQueue(MarketplaceManagerRegistry::queueFor('reverb'));
     }
 
     public function handle(ReverbLiveListingsService $service): void

@@ -4,12 +4,45 @@ namespace App\Services\MarketplaceManager;
 
 /**
  * Channels enabled in the Marketplace Manager UI.
- * Add new marketplaces here as they are implemented.
+ * Add new marketplaces here as they are implemented — each gets its own queue worker.
  */
 class MarketplaceManagerRegistry
 {
-    /** Shared Laravel queue for all Marketplace Manager jobs (orders + inventory). */
+    /**
+     * Legacy shared queue (still watched during migration). Prefer queueFor($slug).
+     *
+     * @deprecated Use queueFor() — inventory/order jobs are per-marketplace for parallelism.
+     */
     public const QUEUE = 'marketplace-manager';
+
+    public const QUEUE_PREFIX = 'mm-';
+
+    /**
+     * Dedicated Laravel queue name for one marketplace (parallel workers).
+     * Example: reverb → mm-reverb
+     */
+    public static function queueFor(string $slug): string
+    {
+        $slug = strtolower(trim($slug));
+        if ($slug === '' || ! self::isSupported($slug)) {
+            return self::QUEUE;
+        }
+
+        return self::QUEUE_PREFIX.$slug;
+    }
+
+    /**
+     * All dedicated marketplace queue names (for workers / status).
+     *
+     * @return list<string>
+     */
+    public static function queueNames(): array
+    {
+        return array_map(
+            static fn (string $slug) => self::queueFor($slug),
+            self::slugs()
+        );
+    }
 
     /**
      * @return array<int, array{slug: string, label: string, short: string, source_shop: string, logo: string, enabled: bool}>

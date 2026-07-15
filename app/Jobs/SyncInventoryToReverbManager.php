@@ -27,7 +27,7 @@ class SyncInventoryToReverbManager implements ShouldQueue, ShouldBeUnique
 
     public function __construct()
     {
-        $this->onQueue(\App\Services\MarketplaceManager\MarketplaceManagerRegistry::QUEUE);
+        $this->onQueue(\App\Services\MarketplaceManager\MarketplaceManagerRegistry::queueFor('reverb'));
     }
 
     public function uniqueId(): string

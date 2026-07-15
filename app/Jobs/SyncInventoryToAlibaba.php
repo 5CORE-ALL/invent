@@ -23,7 +23,7 @@ class SyncInventoryToAlibaba implements ShouldQueue, ShouldBeUnique
 
     public function __construct()
     {
-        $this->onQueue(\App\Services\MarketplaceManager\MarketplaceManagerRegistry::QUEUE);
+        $this->onQueue(\App\Services\MarketplaceManager\MarketplaceManagerRegistry::queueFor('alibaba'));
     }
 
     public function uniqueId(): string

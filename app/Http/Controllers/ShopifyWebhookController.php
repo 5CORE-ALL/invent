@@ -72,13 +72,14 @@ class ShopifyWebhookController extends Controller
             }
         }
 
-        PushLinkedSkuInventoryFromShopify::dispatch($skus, $available, $inventoryItemId);
+        $dispatched = PushLinkedSkuInventoryFromShopify::dispatchToEnabled($skus, $available, $inventoryItemId);
 
         Log::info('ShopifyWebhookController: queued linked marketplace inventory push', [
             'skus' => $skus,
             'available' => $available,
             'inventory_item_id' => $inventoryItemId,
             'topic' => $topic,
+            'jobs_dispatched' => $dispatched,
         ]);
 
         return response()->json([

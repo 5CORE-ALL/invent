@@ -13,18 +13,26 @@ use Illuminate\Support\Facades\Log;
  */
 class NeweggOrderPushService
 {
+    public ?string $lastFailureReason = null;
+
+    public ?int $lastApiStatus = null;
+
     public function __construct(
         protected ShopifyApiService $shopifyApi
     ) {}
 
     public function importToShopify(NeweggOrderMetric $order): ?string
     {
+        $this->lastFailureReason = null;
+        $this->lastApiStatus = null;
+
         if ($order->shopify_order_id) {
             return (string) $order->shopify_order_id;
         }
 
         $sku = trim((string) $order->sku);
         if ($sku === '' || in_array($sku, ['__order__', '__unknown__'], true)) {
+            $this->lastFailureReason = 'Cannot import order without SKU';
             Log::warning('NeweggOrderPushService: cannot import order without SKU', ['id' => $order->id]);
 
             return null;
@@ -54,9 +62,16 @@ class NeweggOrderPushService
                     ]],
                 ]);
 
-                return $shopifyId ? (string) $shopifyId : null;
+                if ($shopifyId) {
+                    return (string) $shopifyId;
+                }
+
+                $this->lastFailureReason = 'Shopify returned no order id';
+
+                return null;
             }
 
+            $this->lastFailureReason = 'Shopify create helper missing; leave order ready for manual import';
             Log::warning('NeweggOrderPushService: Shopify create helper missing; leave order ready for manual import', [
                 'id' => $order->id,
                 'order_id' => $order->order_id,
@@ -65,6 +80,7 @@ class NeweggOrderPushService
 
             return null;
         } catch (\Throwable $e) {
+            $this->lastFailureReason = $e->getMessage();
             Log::error('NeweggOrderPushService: import failed', [
                 'id' => $order->id,
                 'error' => $e->getMessage(),

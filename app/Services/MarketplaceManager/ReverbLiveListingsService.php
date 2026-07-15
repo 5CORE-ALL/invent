@@ -205,11 +205,9 @@ final class ReverbLiveListingsService
             return 0;
         }
 
-        // One batched job (not 1 job per SKU) — keeps marketplace-manager free for full syncs.
+        // Merge into pending set — at most one unique push job per marketplace.
         try {
-            PushLinkedSkuInventoryFromShopify::dispatch($skus, null, null);
-
-            return count($skus);
+            return PushLinkedSkuInventoryFromShopify::enqueue('reverb', $skus);
         } catch (\Throwable $e) {
             Log::warning('ReverbLiveListingsService: could not queue inventory sync (cache lock / storage)', [
                 'sku_count' => count($skus),

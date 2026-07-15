@@ -6,27 +6,26 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Snapshot of marketplace-manager queue + per-channel background work for MM UI.
+ * Snapshot of per-marketplace queue + background work for MM UI.
  */
 final class MarketplaceManagerQueueStatusService
 {
-    private const QUEUE = MarketplaceManagerRegistry::QUEUE;
-
     /** @var array<string, string> */
     private const JOB_LABELS = [
-        'RunMarketplaceInventorySyncJob' => 'Full inventory sync',
-        'PushLinkedSkuInventoryFromShopify' => 'SKU inventory push',
-        'SyncInventoryToReverbManager' => 'Scheduled Reverb inventory sync',
-        'SyncInventoryToAliexpress' => 'Scheduled AliExpress inventory sync',
-        'SyncInventoryToAlibaba' => 'Scheduled Alibaba inventory sync',
-        'SyncInventoryToNewegg' => 'Scheduled Newegg inventory sync',
-        'WarmReverbLiveListingsCache' => 'Warm live Reverb listings',
-        'WarmAliexpressLiveListingsCache' => 'Warm live AliExpress listings',
-        'WarmNeweggLiveListingsCache' => 'Warm live Newegg listings',
-        'ImportReverbManagerOrderToShopify' => 'Import Reverb order → Shopify',
-        'ImportAliexpressOrderToShopify' => 'Import AliExpress order → Shopify',
-        'ImportAlibabaOrderToShopify' => 'Import Alibaba order → Shopify',
-        'ImportNeweggOrderToShopify' => 'Import Newegg order → Shopify',
+        'RunMarketplaceInventorySyncJob' => 'Full inventory sync (Shopify → marketplace)',
+        'PushLinkedSkuInventoryFromShopify' => 'SKU inventory push (Shopify → marketplace)',
+        'SyncInventoryToReverbManager' => 'Full inventory sync (Shopify → Reverb)',
+        'SyncInventoryToAliexpress' => 'Full inventory sync (Shopify → AliExpress)',
+        'SyncInventoryToAlibaba' => 'Full inventory sync (Shopify → Alibaba)',
+        'SyncInventoryToNewegg' => 'Full inventory sync (Shopify → Newegg)',
+        'WarmReverbLiveListingsCache' => 'Warm live Reverb listings cache',
+        'WarmAliexpressLiveListingsCache' => 'Warm live AliExpress listings cache',
+        'WarmNeweggLiveListingsCache' => 'Warm live Newegg listings cache',
+        'ImportReverbManagerOrderToShopify' => 'Import order → Shopify',
+        'ImportAliexpressOrderToShopify' => 'Import order → Shopify',
+        'ImportAlibabaOrderToShopify' => 'Import order → Shopify',
+        'ImportNeweggOrderToShopify' => 'Import order → Shopify',
+        'SyncMarketplaceOrdersJob' => 'Fetch orders from marketplace',
     ];
 
     /** @var array<string, class-string> */
@@ -43,18 +42,29 @@ final class MarketplaceManagerQueueStatusService
     public function snapshot(?string $marketplace = null): array
     {
         $slug = $marketplace !== null ? strtolower(trim($marketplace)) : null;
-        $queueRows = $this->queueRows();
-        $classified = $this->classifyRows($queueRows, $slug);
+        $queue = $slug ? MarketplaceManagerRegistry::queueFor($slug) : MarketplaceManagerRegistry::QUEUE;
+        // Only this marketplace's dedicated queue — do not mix legacy shared failures into the UI.
+        $queues = [$queue];
+
+        $queueRows = $this->queueRows($queues);
+        $classified = $this->classifyRows($queueRows);
+
+        $label = $slug ? (MarketplaceManagerRegistry::find($slug)['label'] ?? $slug) : 'Marketplace';
 
         return [
-            'queue' => self::QUEUE,
-            'worker' => $this->workerStatus($classified),
+            'queue' => $queue,
+            'marketplace' => $slug,
+            'marketplace_label' => $label,
+            'worker' => $this->workerStatus($classified, $queue, $label),
             'counts' => [
                 'waiting' => $classified['waiting'],
                 'running' => $classified['running'],
                 'delayed' => $classified['delayed'],
-                'failed_recent' => $this->failedCount(),
+                'failed_recent' => $this->failedCount($queues),
             ],
+            'now_running' => $classified['now_running'],
+            'ready' => $classified['ready'],
+            'delayed_jobs' => $classified['delayed_jobs'],
             'tasks' => $classified['tasks'],
             'link_map' => $slug ? $this->linkMapProgress($slug) : null,
             'checked_at' => now()->toIso8601String(),
@@ -62,58 +72,90 @@ final class MarketplaceManagerQueueStatusService
     }
 
     /**
+     * @param  list<string>  $queues
      * @return list<object>
      */
-    private function queueRows(): array
+    private function queueRows(array $queues): array
     {
-        if (! Schema::hasTable('jobs')) {
+        if (! Schema::hasTable('jobs') || $queues === []) {
             return [];
         }
 
         return DB::table('jobs')
-            ->where('queue', self::QUEUE)
+            ->whereIn('queue', $queues)
             ->orderBy('id')
-            ->get(['id', 'payload', 'attempts', 'reserved_at', 'available_at', 'created_at'])
+            ->get(['id', 'queue', 'payload', 'attempts', 'reserved_at', 'available_at', 'created_at'])
             ->all();
     }
 
     /**
      * @param  list<object>  $rows
-     * @return array{waiting: int, running: int, delayed: int, tasks: list<array<string, mixed>>}
+     * @return array{
+     *   waiting: int,
+     *   running: int,
+     *   delayed: int,
+     *   now_running: list<array<string, mixed>>,
+     *   ready: list<array<string, mixed>>,
+     *   delayed_jobs: list<array<string, mixed>>,
+     *   tasks: list<array<string, mixed>>
+     * }
      */
-    private function classifyRows(array $rows, ?string $slug): array
+    private function classifyRows(array $rows): array
     {
         $now = now()->getTimestamp();
         $waiting = 0;
         $running = 0;
         $delayed = 0;
-        $tasks = [];
+        $nowRunning = [];
+        $ready = [];
+        $delayedJobs = [];
         $taskCounts = [];
 
         foreach ($rows as $row) {
             $payload = (string) ($row->payload ?? '');
             $shortName = $this->shortJobName($payload);
+            $label = self::JOB_LABELS[$shortName] ?? $this->humanizeJob($shortName);
             $isRunning = $row->reserved_at !== null;
-            $isDelayed = ! $isRunning && strtotime((string) $row->available_at) > $now;
+            $availableTs = is_numeric($row->available_at)
+                ? (int) $row->available_at
+                : (int) strtotime((string) $row->available_at);
+            $isDelayed = ! $isRunning && $availableTs > $now;
+            $delaySeconds = $isDelayed ? max(0, $availableTs - $now) : 0;
+
+            $item = [
+                'id' => (int) $row->id,
+                'job' => $shortName,
+                'label' => $label,
+                'attempts' => (int) ($row->attempts ?? 0),
+                'delay_seconds' => $delaySeconds,
+                'delay_human' => $this->humanDelay($delaySeconds),
+            ];
 
             if ($isRunning) {
                 $running++;
+                $status = 'running';
+                if (count($nowRunning) < 5) {
+                    $nowRunning[] = $item;
+                }
             } elseif ($isDelayed) {
                 $delayed++;
+                $status = 'delayed';
+                if (count($delayedJobs) < 8) {
+                    $delayedJobs[] = $item;
+                }
             } else {
                 $waiting++;
+                $status = 'waiting';
+                if (count($ready) < 8) {
+                    $ready[] = $item;
+                }
             }
 
-            if ($slug !== null && ! $this->jobRelatesToMarketplace($shortName, $payload, $slug)) {
-                continue;
-            }
-
-            $status = $isRunning ? 'running' : ($isDelayed ? 'delayed' : 'waiting');
             $key = $shortName.'|'.$status;
             if (! isset($taskCounts[$key])) {
                 $taskCounts[$key] = [
                     'job' => $shortName,
-                    'label' => self::JOB_LABELS[$shortName] ?? $shortName,
+                    'label' => $label,
                     'status' => $status,
                     'count' => 0,
                 ];
@@ -121,10 +163,7 @@ final class MarketplaceManagerQueueStatusService
             $taskCounts[$key]['count']++;
         }
 
-        foreach ($taskCounts as $task) {
-            $tasks[] = $task;
-        }
-
+        $tasks = array_values($taskCounts);
         usort($tasks, static function (array $a, array $b): int {
             $order = ['running' => 0, 'waiting' => 1, 'delayed' => 2];
             $cmp = ($order[$a['status']] ?? 9) <=> ($order[$b['status']] ?? 9);
@@ -136,64 +175,91 @@ final class MarketplaceManagerQueueStatusService
             'waiting' => $waiting,
             'running' => $running,
             'delayed' => $delayed,
+            'now_running' => $nowRunning,
+            'ready' => $ready,
+            'delayed_jobs' => $delayedJobs,
             'tasks' => array_slice($tasks, 0, 12),
         ];
     }
 
     /**
-     * @param  array{waiting: int, running: int, delayed: int, tasks: list<array<string, mixed>>}  $classified
+     * @param  array{waiting: int, running: int, delayed: int, now_running: list<array<string, mixed>>}  $classified
      * @return array{state: string, message: string, log_age_seconds: ?int}
      */
-    private function workerStatus(array $classified): array
+    private function workerStatus(array $classified, string $primaryQueue, string $label): array
     {
-        $logPath = storage_path('logs/marketplace-manager-worker.log');
+        $logPath = storage_path('logs/mm-worker-'.$primaryQueue.'.log');
+        if (! is_file($logPath)) {
+            $logPath = storage_path('logs/marketplace-manager-worker.log');
+        }
         $logAge = is_file($logPath) ? max(0, time() - (int) filemtime($logPath)) : null;
         $pending = $classified['waiting'] + $classified['delayed'];
         $running = $classified['running'];
 
         if ($running > 0) {
-            $msg = $running === 1
-                ? 'Worker is processing 1 job.'
-                : "Worker is processing {$running} job(s).";
-
-            if ($pending > 0) {
-                $msg .= " {$pending} more waiting.";
+            $current = $classified['now_running'][0]['label'] ?? 'a job';
+            $msg = "Now running: {$current}";
+            if ($classified['waiting'] > 0) {
+                $msg .= ". {$classified['waiting']} more ready next.";
+            }
+            if ($classified['delayed'] > 0) {
+                $msg .= " {$classified['delayed']} delayed (retry later).";
             }
 
             return ['state' => 'running', 'message' => $msg, 'log_age_seconds' => $logAge];
         }
 
         if ($pending > 0) {
-            if ($logAge !== null && $logAge > 900) {
+            // Delayed-only = worker is healthy, jobs are waiting on retry backoff (not stalled).
+            if ($classified['delayed'] > 0 && $classified['waiting'] === 0 && $running === 0) {
                 return [
-                    'state' => 'stalled',
-                    'message' => "{$pending} job(s) waiting but worker log is stale (".round($logAge / 60)."m). Worker may be stopped.",
+                    'state' => 'backlogged',
+                    'message' => "{$classified['delayed']} {$label} job(s) delayed for retry (worker idle until then).",
                     'log_age_seconds' => $logAge,
                 ];
             }
 
+            if ($logAge !== null && $logAge > 900) {
+                return [
+                    'state' => 'stalled',
+                    'message' => "{$pending} {$label} job(s) waiting but worker looks stalled. Auto-restart should recover within a few minutes.",
+                    'log_age_seconds' => $logAge,
+                ];
+            }
+
+            if ($classified['waiting'] > 0 && $classified['delayed'] > 0) {
+                $msg = "{$classified['waiting']} ready + {$classified['delayed']} delayed on {$label}.";
+            } elseif ($classified['delayed'] > 0) {
+                $msg = "{$classified['delayed']} delayed job(s) on {$label} (will retry soon).";
+            } else {
+                $msg = "{$classified['waiting']} job(s) ready on {$label} — worker should pick them up now.";
+            }
+
             return [
                 'state' => 'backlogged',
-                'message' => "{$pending} job(s) waiting in queue.",
+                'message' => $msg,
                 'log_age_seconds' => $logAge,
             ];
         }
 
-        if ($logAge !== null && $logAge < 600) {
-            return ['state' => 'idle', 'message' => 'Queue idle. Worker recently active.', 'log_age_seconds' => $logAge];
-        }
-
-        return ['state' => 'idle', 'message' => 'Queue idle.', 'log_age_seconds' => $logAge];
+        return [
+            'state' => 'idle',
+            'message' => "{$label} queue idle — no inventory/order jobs right now.",
+            'log_age_seconds' => $logAge,
+        ];
     }
 
-    private function failedCount(): int
+    /**
+     * @param  list<string>  $queues
+     */
+    private function failedCount(array $queues): int
     {
-        if (! Schema::hasTable('failed_jobs')) {
+        if (! Schema::hasTable('failed_jobs') || $queues === []) {
             return 0;
         }
 
         return (int) DB::table('failed_jobs')
-            ->where('queue', self::QUEUE)
+            ->whereIn('queue', $queues)
             ->where('failed_at', '>=', now()->subDay())
             ->count();
     }
@@ -216,8 +282,16 @@ final class MarketplaceManagerQueueStatusService
         $running = (bool) ($progress['running'] ?? false);
         $done = (bool) ($progress['done'] ?? false);
         $error = (bool) ($progress['error'] ?? false);
+        $page = (int) ($progress['page'] ?? 0);
 
-        if (! $running && $done && ! $error) {
+        // Only show when a link-map sync is actually active (or failed mid-run).
+        if (! $running && ! $error) {
+            return null;
+        }
+        if (! $running && $done) {
+            return null;
+        }
+        if (! $running && $page < 1) {
             return null;
         }
 
@@ -225,7 +299,7 @@ final class MarketplaceManagerQueueStatusService
             'running' => $running,
             'done' => $done,
             'error' => $error,
-            'page' => (int) ($progress['page'] ?? 0),
+            'page' => $page,
             'total_page' => isset($progress['total_page']) ? (int) $progress['total_page'] : null,
             'total_upserted' => (int) ($progress['total_upserted'] ?? 0),
             'message' => (string) ($progress['message'] ?? ''),
@@ -234,44 +308,32 @@ final class MarketplaceManagerQueueStatusService
 
     private function shortJobName(string $payload): string
     {
-        if (preg_match('/"displayName":"(?:App\\\\\\\\Jobs\\\\\\\\)?([^"\\\\]+)"/', $payload, $m)) {
-            return $m[1];
+        if (preg_match('/"displayName":"([^"]+)"/', $payload, $m)) {
+            $name = str_replace('\\\\', '\\', $m[1]);
+
+            return basename(str_replace('\\', '/', $name));
         }
 
         return 'UnknownJob';
     }
 
-    private function jobRelatesToMarketplace(string $shortName, string $payload, string $slug): bool
+    private function humanizeJob(string $shortName): string
     {
-        if (str_contains(strtolower($payload), '"'.$slug.'"') || str_contains(strtolower($payload), ';s:'.strlen($slug).':"'.$slug.'"')) {
-            return true;
+        return trim(preg_replace('/([a-z])([A-Z])/', '$1 $2', $shortName) ?? $shortName);
+    }
+
+    private function humanDelay(int $seconds): string
+    {
+        if ($seconds <= 0) {
+            return 'now';
+        }
+        if ($seconds < 60) {
+            return $seconds.'s';
+        }
+        if ($seconds < 3600) {
+            return (int) ceil($seconds / 60).'m';
         }
 
-        $globalJobs = [
-            'SyncInventoryToAliexpress',
-            'SyncInventoryToAlibaba',
-            'SyncInventoryToNewegg',
-            'SyncInventoryToReverbManager',
-            'PushLinkedSkuInventoryFromShopify',
-        ];
-
-        if ($slug === 'reverb' && in_array($shortName, ['WarmReverbLiveListingsCache', 'ImportReverbManagerOrderToShopify', 'SyncInventoryToReverbManager'], true)) {
-            return true;
-        }
-        if ($slug === 'aliexpress' && in_array($shortName, ['WarmAliexpressLiveListingsCache', 'ImportAliexpressOrderToShopify', 'SyncInventoryToAliexpress'], true)) {
-            return true;
-        }
-        if ($slug === 'alibaba' && in_array($shortName, ['ImportAlibabaOrderToShopify', 'SyncInventoryToAlibaba'], true)) {
-            return true;
-        }
-        if ($slug === 'newegg' && in_array($shortName, ['WarmNeweggLiveListingsCache', 'ImportNeweggOrderToShopify', 'SyncInventoryToNewegg'], true)) {
-            return true;
-        }
-
-        if (in_array($shortName, $globalJobs, true)) {
-            return $slug === 'reverb';
-        }
-
-        return false;
+        return (int) ceil($seconds / 3600).'h';
     }
 }

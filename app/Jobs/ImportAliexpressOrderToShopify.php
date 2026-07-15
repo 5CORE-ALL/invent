@@ -26,7 +26,7 @@ class ImportAliexpressOrderToShopify implements ShouldQueue
     public function __construct(
         protected int $aliexpressOrderMetricId
     ) {
-        $this->onQueue(\App\Services\MarketplaceManager\MarketplaceManagerRegistry::QUEUE);
+        $this->onQueue(\App\Services\MarketplaceManager\MarketplaceManagerRegistry::queueFor('aliexpress'));
     }
 
     public function middleware(): array
