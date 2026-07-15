@@ -98,6 +98,9 @@
                 <div id="summary-stats" class="p-3 bg-light rounded">
                     <h6 class="mb-3">Summary Statistics</h6>
                     <div class="d-flex flex-wrap gap-2">
+                        <span class="badge fs-6 p-2" id="fbm-y-sales-badge"
+                            style="background-color: #6f42c1; color: white; font-weight: bold;"
+                            title="Yesterday's Facebook Marketplace sales — {{ !empty($ySalesDate) ? \Carbon\Carbon::parse($ySalesDate)->format('M j, Y') . ' (PT / California)' : 'Pacific / California calendar day' }}. Σ sold_price × qty ({{ number_format((int) ($yQuantity ?? 0)) }} qty, {{ number_format((int) ($yOrders ?? 0)) }} orders). Same source as the FB Marketplace row on /all-marketplace-master.">Y Sales: ${{ number_format((float) ($ySales ?? 0), 2) }}</span>
                         <span class="badge bg-primary fs-6 p-2" id="fbm-total-orders-badge"
                             style="color: white; font-weight: bold;">Total Orders: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="fbm-total-quantity-badge"
@@ -224,6 +227,27 @@
                 const adSpend = summary && summary.total_ad_spend != null ? Number(summary.total_ad_spend) : 0;
                 const npft = summary && summary.npft_percent != null ? Number(summary.npft_percent) : (gpft - adsPct);
                 const nroi = summary && summary.nroi_percent != null ? Number(summary.nroi_percent) : 0;
+
+                const ySales = summary && summary.y_sales != null ? Number(summary.y_sales) : 0;
+                const ySalesDate = summary && summary.y_sales_date ? String(summary.y_sales_date) : '';
+                const yQty = summary && summary.y_quantity != null ? Number(summary.y_quantity) : 0;
+                const yOrders = summary && summary.y_orders != null ? Number(summary.y_orders) : 0;
+                const yBadge = document.getElementById('fbm-y-sales-badge');
+                if (yBadge) {
+                    yBadge.textContent = 'Y Sales: ' + fmtMoney(ySales);
+                    let dateLabel = 'Pacific / California calendar day';
+                    if (ySalesDate) {
+                        try {
+                            const d = new Date(ySalesDate + 'T12:00:00');
+                            dateLabel = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) + ' (PT / California)';
+                        } catch (e) {
+                            dateLabel = ySalesDate + ' (PT / California)';
+                        }
+                    }
+                    yBadge.title = "Yesterday's Facebook Marketplace sales — " + dateLabel
+                        + '. Σ sold_price × qty (' + fmtInt(yQty) + ' qty, ' + fmtInt(yOrders)
+                        + ' orders). Same source as the FB Marketplace row on /all-marketplace-master.';
+                }
 
                 document.getElementById('fbm-total-orders-badge').textContent   = 'Total Orders: '   + fmtInt(totalOrders);
                 document.getElementById('fbm-total-quantity-badge').textContent = 'Total Quantity: ' + fmtInt(totalQuantity);

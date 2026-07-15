@@ -232,6 +232,25 @@
                     </div>
                 </div>
 
+                <div class="border rounded p-2 mb-3 bg-light">
+                    <div class="small fw-bold mb-1">Do not decrease when E L30 sold is low</div>
+                    <div class="row g-2 align-items-end">
+                        <div class="col-auto">
+                            <label class="form-label mb-1 small" for="sbid-views-no-dec-max-el30">
+                                If E L30 sold ≤
+                            </label>
+                            <input type="number" step="1" min="0" id="sbid-views-no-dec-max-el30"
+                                   class="form-control form-control-sm" style="width: 88px;"
+                                   title="When eBay L30 units sold is at or below this qty, Decrease steps are skipped (bid stays at C Bid).">
+                        </div>
+                        <div class="col">
+                            <div class="small text-muted pb-1">
+                                then <strong>do not decrease</strong> bid (Increase / No change still apply).
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="border rounded p-2">
                     <div class="small fw-bold mb-2">Daily action per L7 View colour (direction + %/day)</div>
                     <div class="row g-3">
@@ -998,11 +1017,16 @@ let sbidViewsGreenDir = sbidViewsDir('ebay1_sbid_views_green_dir', 'none');
 let sbidViewsGreenStep = sbidViewsNum('ebay1_sbid_views_green_step', 0);
 let sbidViewsRedDir   = sbidViewsDir('ebay1_sbid_views_red_dir', 'inc');
 let sbidViewsRedStep  = sbidViewsNum('ebay1_sbid_views_red_step', 1);
+let sbidViewsNoDecMaxEl30 = sbidViewsNum('ebay1_sbid_views_no_dec_max_el30', 0);
 
-function sbidViewsApplyStep(base, dir, step) {
+function sbidViewsApplyStep(base, dir, step, el30Sold) {
+    let d = dir;
+    if (d === 'dec' && isFinite(el30Sold) && el30Sold <= sbidViewsNoDecMaxEl30) {
+        d = 'none';
+    }
     const s = isFinite(step) ? step : 0;
-    if (dir === 'inc') return base + s;
-    if (dir === 'dec') return base - s;
+    if (d === 'inc') return base + s;
+    if (d === 'dec') return base - s;
     return base; // 'none'
 }
 function computeSbidViews(row) {
@@ -1011,11 +1035,12 @@ function computeSbidViews(row) {
     if (!isFinite(cbid) || cbid <= 0) {
         return { bid: 0, color: '#6c757d', skip: true };
     }
+    const el30Sold = parseFloat(row.ebay_l30) || 0;
     const band = l7ViewBand(row.l7_views);
     let bid = cbid;
-    if (band.key === 'pink') bid = sbidViewsApplyStep(cbid, sbidViewsPinkDir, sbidViewsPinkStep);
-    else if (band.key === 'green') bid = sbidViewsApplyStep(cbid, sbidViewsGreenDir, sbidViewsGreenStep);
-    else if (band.key === 'red') bid = sbidViewsApplyStep(cbid, sbidViewsRedDir, sbidViewsRedStep);
+    if (band.key === 'pink') bid = sbidViewsApplyStep(cbid, sbidViewsPinkDir, sbidViewsPinkStep, el30Sold);
+    else if (band.key === 'green') bid = sbidViewsApplyStep(cbid, sbidViewsGreenDir, sbidViewsGreenStep, el30Sold);
+    else if (band.key === 'red') bid = sbidViewsApplyStep(cbid, sbidViewsRedDir, sbidViewsRedStep, el30Sold);
 
     const min = isFinite(sbidViewsMinCap) ? sbidViewsMinCap : -Infinity;
     const max = isFinite(sbidViewsMaxCap) ? sbidViewsMaxCap : Infinity;
@@ -1040,6 +1065,7 @@ function recomputeAvgL7Views(rows) {
 function seedSbidViewsInputs() {
     $('#sbid-views-min-cap').val(isFinite(sbidViewsMinCap) ? sbidViewsMinCap : '');
     $('#sbid-views-max-cap').val(isFinite(sbidViewsMaxCap) ? sbidViewsMaxCap : '');
+    $('#sbid-views-no-dec-max-el30').val(isFinite(sbidViewsNoDecMaxEl30) ? sbidViewsNoDecMaxEl30 : 0);
     $('#sbid-views-pink-dir').val(sbidViewsPinkDir);
     $('#sbid-views-pink-step').val(isFinite(sbidViewsPinkStep) ? sbidViewsPinkStep : '');
     $('#sbid-views-green-dir').val(sbidViewsGreenDir);
@@ -1054,6 +1080,7 @@ function applySbidViewsSettings(s) {
     if (!s || typeof s !== 'object') return;
     if (isFinite(parseFloat(s.min_cap)))    sbidViewsMinCap   = parseFloat(s.min_cap);
     if (isFinite(parseFloat(s.max_cap)))    sbidViewsMaxCap   = parseFloat(s.max_cap);
+    if (isFinite(parseFloat(s.no_dec_max_el30))) sbidViewsNoDecMaxEl30 = parseFloat(s.no_dec_max_el30);
     if (s.pink_dir)  sbidViewsPinkDir  = s.pink_dir;
     if (isFinite(parseFloat(s.pink_step)))  sbidViewsPinkStep = parseFloat(s.pink_step);
     if (s.green_dir) sbidViewsGreenDir = s.green_dir;
@@ -1080,6 +1107,7 @@ $('#sbid-views-save-btn').on('click', function() {
     const payload = {
         min_cap:    num('#sbid-views-min-cap', 1),
         max_cap:    num('#sbid-views-max-cap', 20),
+        no_dec_max_el30: num('#sbid-views-no-dec-max-el30', 0),
         pink_dir:   dir('#sbid-views-pink-dir', 'dec'),
         pink_step:  num('#sbid-views-pink-step', 1),
         green_dir:  dir('#sbid-views-green-dir', 'none'),

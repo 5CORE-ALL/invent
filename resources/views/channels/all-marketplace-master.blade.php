@@ -1003,21 +1003,6 @@
             return parseFloat(cleaned) || 0;
         }
 
-        // NROI% = G ROI% − Ads%. Uses the same per-channel Ads% basis as the Ads % column
-        // (TACOS % for walmart/topdawg/shopifyb2c, otherwise the Ads% field).
-        function computeNroiPct(rowData) {
-            if (!rowData) return 0;
-            const channel = (rowData['Channel '] || '').trim().toLowerCase();
-            const groi = parseNumber(rowData['G Roi'] || 0);
-            let adsPercent;
-            if (channel === 'walmart' || channel === 'topdawg' || channel === 'shopifyb2c') {
-                adsPercent = parseNumber(rowData['TACOS %'] || 0);
-            } else {
-                adsPercent = parseNumber(rowData['Ads%'] || 0);
-            }
-            return groi - adsPercent;
-        }
-
         // Yesterday's date formatted in America/Los_Angeles (e.g. "Jun 14"). The current PT
         // day is still in progress so its rolling-window data isn't final yet — every "data
         // through …" label we surface points at the last COMPLETED Pacific day instead.
@@ -2102,16 +2087,13 @@
                         title: "NROI %",
                         field: "N ROI",
                         hozAlign: "center",
-                        // NROI% = G ROI% − Ads%; sort on the computed value so order matches the displayed number.
-                        sorter: function(a, b, aRow, bRow) {
-                            return computeNroiPct(aRow.getData()) - computeNroiPct(bRow.getData());
-                        },
+                        // NROI% = (Gross Profit − Ad Spend) / COGS × 100 — do not cut Ads% from GROI%.
+                        sorter: "number",
                         formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            const channelRaw = (rowData['Channel '] || '').trim();
-                            const value = computeNroiPct(rowData);
-                            const dotColor = getMetricDotColor(channelRaw, 'nroi');
-                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channelRaw}" data-metric="nroi" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
+                            const value = parseNumber(cell.getValue());
+                            const channel = (cell.getRow().getData()['Channel '] || '').trim();
+                            const dotColor = getMetricDotColor(channel, 'nroi');
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="nroi" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
                             let style = '';
 
                             if (value <= 50) {
@@ -3623,10 +3605,10 @@
                 // N PFT = G PFT - TAcos % (same as channel-masters)
                 const avgNpft = avgGprofit - avgAdsPercent;
 
-                // Net Profit $ still uses Total PFT − Total Ad Spend for the NP$ badge.
+                // NROI% = (Net Profit / COGS) × 100 where Net Profit = Total PFT − Total Ad Spend
+                // (same as before — do not cut Ads% from GROI%).
                 const netProfit = totalPft - totalAdSpend;
-                // NROI% badge matches the NROI% column definition: G ROI% − Ads% (aggregate).
-                const avgNroi = avgGroi - avgAdsPercent;
+                const avgNroi = totalCogs > 0 ? (netProfit / totalCogs) * 100 : 0;
 
                 // Update badges
                 $('#total-channels').text(totalChannels);

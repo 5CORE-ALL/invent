@@ -36,5 +36,6 @@ return [
         'comparison.index' => 'comparison',
         'sku.link.lmp.index' => 'sku_link_lmp',
         'link.sku.index' => 'sku_link_lmp',
+        'ads.link.index' => 'ads_link',
     ],
 ];

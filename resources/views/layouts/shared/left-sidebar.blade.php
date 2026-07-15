@@ -2835,6 +2835,9 @@
                             <a href="{{ url('/purchase-master/sku-link-lmp') }}">SKU Link LMP</a>
                         </li>
                         <li>
+                            <a href="{{ route('ads.link.index') }}">Ads Link</a>
+                        </li>
+                        <li>
                             <a href="{{ route('ready.to.ship') }}">Ready To Ship</a>
                         </li>
                         <li>

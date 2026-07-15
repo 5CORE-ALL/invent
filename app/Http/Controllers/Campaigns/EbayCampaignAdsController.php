@@ -181,7 +181,8 @@ class EbayCampaignAdsController extends Controller
             $metric  = $metrics->get($lid);
             $baseBid = (float) ($ad->bid_percentage ?? 0);
             $l7views = (float) ($metric?->l7_views ?? 0);
-            $newBid  = \App\Support\SbidViewsRule::apply($baseBid, $l7views, $avgL7Views, $sbidViewsSettings);
+            $el30Sold = (float) ($metric?->ebay_l30 ?? 0);
+            $newBid  = \App\Support\SbidViewsRule::apply($baseBid, $l7views, $avgL7Views, $sbidViewsSettings, $el30Sold);
             if ($newBid <= 0) {
                 $results[] = ['listing_id' => $lid, 'status' => 'skipped', 'reason' => 'No current C Bid to adjust'];
                 $skipped++;
@@ -293,7 +294,8 @@ class EbayCampaignAdsController extends Controller
             // L7 View band (direction/step), clamped to caps. No C Bid → skip.
             $baseBid = (float) ($ad->bid_percentage ?? 0);
             $l7      = (float) ($metric->l7_views ?? 0);
-            $bid     = \App\Support\SbidViewsRule::apply($baseBid, $l7, $avgL7Views, $sbidViewsSettings);
+            $el30Sold = (float) ($metric->ebay_l30 ?? 0);
+            $bid     = \App\Support\SbidViewsRule::apply($baseBid, $l7, $avgL7Views, $sbidViewsSettings, $el30Sold);
             if ($bid <= 0) {
                 $results[] = ['sku' => $sku, 'status' => 'skipped', 'reason' => 'No current C Bid to adjust'];
                 $skipped++;

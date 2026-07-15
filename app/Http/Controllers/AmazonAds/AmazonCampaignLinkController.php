@@ -292,6 +292,102 @@ class AmazonCampaignLinkController extends Controller
     }
 
     /**
+     * Merge keywords across an explicit list of campaigns: link them into one group, then
+     * push the union into every campaign (duplicates by keyword text + match type are skipped).
+     */
+    public function mergeCampaigns(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'campaigns' => ['required', 'array', 'min:2'],
+            'campaigns.*' => ['string', 'max:255'],
+        ]);
+
+        if (! Schema::hasTable(self::SOURCE_TABLE)) {
+            return response()->json(['success' => false, 'message' => 'Keyword report table missing.'], 422);
+        }
+
+        $result = $this->runMerge($validated['campaigns']);
+
+        return response()->json($result, ($result['success'] ?? false) ? 200 : ($result['status'] ?? 422));
+    }
+
+    /**
+     * @param  list<string>  $campaigns
+     * @return array{success: bool, added: int, failed: int, processed: int, campaigns: list<string>, message: string, errors?: list<string>, status?: int}
+     */
+    public function runMerge(array $campaigns): array
+    {
+        $names = [];
+        $seen = [];
+        foreach ($campaigns as $campaign) {
+            $name = trim((string) $campaign);
+            if ($name === '') {
+                continue;
+            }
+            $norm = $this->linkService->normalize($name);
+            if (isset($seen[$norm])) {
+                continue;
+            }
+            $seen[$norm] = true;
+            $names[] = $name;
+        }
+
+        if (count($names) < 2) {
+            return [
+                'success' => false,
+                'added' => 0,
+                'failed' => 0,
+                'processed' => 0,
+                'campaigns' => $names,
+                'message' => 'At least two linked campaigns are required to merge keywords.',
+                'status' => 422,
+            ];
+        }
+
+        $this->linkService->syncFullyConnectedGroup($names, Auth::user()?->name);
+
+        $totalAdded = 0;
+        $totalFailed = 0;
+        $processed = 0;
+        $errors = [];
+        $details = [];
+
+        foreach ($names as $campaign) {
+            $r = $this->pushForCampaign($campaign);
+            $processed++;
+            $totalAdded += (int) ($r['added'] ?? 0);
+            $totalFailed += (int) ($r['failed'] ?? 0);
+            $details[] = [
+                'campaign' => $campaign,
+                'added' => (int) ($r['added'] ?? 0),
+                'failed' => (int) ($r['failed'] ?? 0),
+                'message' => (string) ($r['message'] ?? ''),
+            ];
+            if (! ($r['ok'] ?? false) && (int) ($r['added'] ?? 0) === 0 && (int) ($r['failed'] ?? 0) === 0
+                && ! str_contains((string) ($r['message'] ?? ''), 'No new')
+                && ! str_contains((string) ($r['message'] ?? ''), 'already has all')) {
+                $errors[] = $campaign.': '.($r['message'] ?? 'Failed');
+            }
+        }
+
+        $msg = "Merge complete: added {$totalAdded} keyword(s) across {$processed} campaign(s). Duplicates were skipped.";
+        if ($totalFailed > 0) {
+            $msg .= " ({$totalFailed} rejected/skipped by Amazon.)";
+        }
+
+        return [
+            'success' => true,
+            'added' => $totalAdded,
+            'failed' => $totalFailed,
+            'processed' => $processed,
+            'campaigns' => $names,
+            'details' => $details,
+            'message' => $msg,
+            'errors' => array_slice($errors, 0, 10),
+        ];
+    }
+
+    /**
      * Core import for one destination campaign. Returns a normalized result array.
      *
      * @return array{ok: bool, added: int, failed: int, message: string, status?: int}

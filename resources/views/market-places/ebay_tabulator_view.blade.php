@@ -175,6 +175,98 @@
             color: white !important;
         }
 
+        /* Column visibility dropdown: 4 category panels (only when open) */
+        #column-dropdown-menu.show {
+            display: block;
+            min-width: min(92vw, 720px);
+            max-width: min(96vw, 780px);
+            padding: 0.4rem 0.5rem 0.55rem;
+        }
+
+        #column-dropdown-menu > li.col-vis-full {
+            list-style: none;
+        }
+
+        #column-dropdown-menu .col-vis-groups {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(140px, 1fr));
+            gap: 8px;
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+
+        #column-dropdown-menu .col-vis-group {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            padding: 6px;
+            min-height: 120px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #column-dropdown-menu .col-vis-group.col-vis-drop-over {
+            border-color: #0d6efd;
+            background: #eef5ff;
+            box-shadow: inset 0 0 0 1px rgba(13, 110, 253, 0.25);
+        }
+
+        #column-dropdown-menu .col-vis-group-title {
+            font-size: 0.72rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #495057;
+            margin: 0 0 6px;
+            padding: 2px 4px;
+            border-bottom: 1px solid #dee2e6;
+            user-select: none;
+        }
+
+        #column-dropdown-menu .col-vis-group-list {
+            flex: 1;
+            min-height: 60px;
+            max-height: 280px;
+            overflow-y: auto;
+            margin: 0;
+            padding: 0;
+            list-style: none;
+        }
+
+        #column-dropdown-menu .col-vis-item {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            border-radius: 4px;
+            cursor: grab;
+        }
+
+        #column-dropdown-menu .col-vis-item:active {
+            cursor: grabbing;
+        }
+
+        #column-dropdown-menu .col-vis-item.col-vis-dragging {
+            opacity: 0.45;
+        }
+
+        #column-dropdown-menu .col-vis-item > label {
+            display: block;
+            padding: 3px 5px;
+            cursor: pointer;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin: 0;
+            font-size: 0.8rem;
+            user-select: none;
+        }
+
+        #column-dropdown-menu .col-vis-item > label:hover {
+            background: rgba(0, 0, 0, 0.04);
+            border-radius: 3px;
+        }
+
         #play-backward,
         #play-forward {
             color: #007bff;
@@ -467,15 +559,25 @@
                         <option value="pink">Pink 50%+</option>
                     </select>
 
+                    <!-- L7 Views colour band filter (same bands as L7 View column) -->
+                    <select id="l7-views-filter" class="form-select form-select-sm pricing-filter-item"
+                        style="width: auto; display: inline-block;"
+                        title="L7 Views vs avg: Red &lt; avg, Green avg–2× avg, Pink ≥ 2× avg">
+                        <option value="all">L7 Views</option>
+                        <option value="red">Red</option>
+                        <option value="green">Green</option>
+                        <option value="pink">Pink</option>
+                    </select>
+
                     <!-- Column Visibility Dropdown -->
                     <div class="dropdown d-inline-block pricing-filter-item">
                         <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
-                            id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false"
-                            title="Columns">
+                            id="columnVisibilityDropdown" data-bs-toggle="dropdown" data-bs-auto-close="outside"
+                            aria-expanded="false" title="Columns">
                             <i class="fa fa-eye"></i>
                         </button>
                         <ul class="dropdown-menu" aria-labelledby="columnVisibilityDropdown" id="column-dropdown-menu"
-                            style="max-height: 400px; overflow-y: auto;">
+                            style="max-height: 420px; overflow-y: auto;">
                             <!-- Columns will be populated by JavaScript -->
                         </ul>
                     </div>
@@ -570,7 +672,7 @@
                             title="GROI% = Σ T PFT / Σ COGS × 100 from real L30 orders — same source as /ebay/daily-sales.">GROI: {{ round((float) ($ordersL30Groi ?? 0)) }}%</span>
                         <span class="badge fs-6 p-2" id="ads-percent-badge"
                             style="background-color: #d63384; color: white; font-weight: bold;"
-                            title="eBay channel Ads% (Total Ad Spend / L30 Sales × 100) — same as the Ads % column">Ads: {{ number_format((float) ($channelAdsPercent ?? 0), 1) }}%</span>
+                            title="eBay channel Ads% (Total Ad Spend / L30 Sales × 100) — same as the Ads % column">Ads {{ round((float) ($channelAdsPercent ?? 0)) }}%</span>
                         <span class="badge fs-6 p-2" id="npft-percent-badge"
                             style="background-color: #0f766e; color: white; font-weight: bold;"
                             title="NPFT% = GPFT% − Ads% (net profit margin after ad spend).">NPFT: {{ round((float) ($ordersL30Gpft ?? 0) - (float) ($channelAdsPercent ?? 0)) }}%</span>
@@ -586,9 +688,14 @@
                             title="CVR = (S Qty / Σ Views) × 100. Numerator is the orders-API L30 units (same value the S Qty badge shows, same source /ebay/daily-sales uses). Denominator is the sum of 'views' across rows with E Stock > 0.">CVR: 0%</span>
                         <span class="badge bg-info fs-6 p-2" id="total-views-badge"
                             style="color: black; font-weight: bold;">Views: 0</span>
-                        <span class="badge fs-6 p-2" id="avg-l7-views-badge"
-                            style="background-color: #0dcaf0; color: black; font-weight: bold;"
-                            title="Avg L7 — Average L7 views across rows with E Stock > 0 (Σ L7 View / row count).">L7: 0</span>
+                        <span class="badge fs-6 p-2 ebay1-badge-chart" id="avg-l30-views-badge"
+                            data-metric="avg_l30_view"
+                            style="background-color: #20c997; color: black; font-weight: bold; cursor: pointer;"
+                            title="A L30 View = Σ L30 Views / 30 (rounded). Click for daily history.">A L30 View: 0</span>
+                        <span class="badge fs-6 p-2 ebay1-badge-chart" id="avg-l7-views-badge"
+                            data-metric="avg_l7_views"
+                            style="background-color: #0dcaf0; color: black; font-weight: bold; cursor: pointer;"
+                            title="Avg L7 — Average L7 views across rows with E Stock > 0 (rounded). Click for daily history.">L7: 0</span>
 
                         <!-- Badge Filters -->
                         <span class="badge bg-secondary fs-6 p-2" id="missing-l-count-badge"
@@ -765,6 +872,58 @@
                     </div>
                     <div style="height: 400px;">
                         <canvas id="skuMetricsChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- eBay 1 summary badge daily history (same layout as eBay 3 badge charts) -->
+    <div class="modal fade" id="ebay1MetricChartModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header py-2 bg-dark text-white">
+                    <h6 class="modal-title mb-0">
+                        <span id="ebay1ChartModalTitle">eBay 1 — Metric trend</span>
+                    </h6>
+                    <div class="d-flex align-items-center gap-2">
+                        <select id="ebay1ChartRangeSelect" class="form-select form-select-sm bg-white" style="width: 110px; height: 26px; font-size: 11px; padding: 1px 8px;">
+                            <option value="7">7 Days</option>
+                            <option value="30" selected>30 Days</option>
+                            <option value="60">60 Days</option>
+                            <option value="90">90 Days</option>
+                            <option value="0">Lifetime</option>
+                        </select>
+                        <button type="button" class="btn-close btn-close-white" style="font-size: 10px;" data-bs-dismiss="modal"></button>
+                    </div>
+                </div>
+                <div class="modal-body p-2">
+                    <div id="ebay1ChartContainer" style="height: 22vh; display: none; align-items: stretch;">
+                        <div style="flex: 1; min-width: 0; position: relative;">
+                            <canvas id="ebay1MetricChart"></canvas>
+                        </div>
+                        <div id="ebay1ChartRefPanel" style="width: 100px; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 6px 8px; border-left: 1px solid #e9ecef; background: #f8f9fa; border-radius: 0 4px 4px 0;">
+                            <div style="text-align: center;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #dc3545; margin-bottom: 1px;">Highest</div>
+                                <div id="ebay1ChartHighest" style="font-size: 13px; font-weight: 700; color: #dc3545;">-</div>
+                            </div>
+                            <div style="text-align: center; border-top: 1px dashed #adb5bd; border-bottom: 1px dashed #adb5bd; padding: 4px 0;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #6c757d; margin-bottom: 1px;">Median</div>
+                                <div id="ebay1ChartMedian" style="font-size: 13px; font-weight: 700; color: #6c757d;">-</div>
+                            </div>
+                            <div style="text-align: center;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #198754; margin-bottom: 1px;">Lowest</div>
+                                <div id="ebay1ChartLowest" style="font-size: 13px; font-weight: 700; color: #198754;">-</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="ebay1ChartLoading" class="text-center py-3" style="display: none;">
+                        <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                        <p class="mt-1 text-muted small mb-0">Loading chart data...</p>
+                    </div>
+                    <div id="ebay1ChartNoData" class="text-center py-3" style="display: none;">
+                        <i class="fas fa-exclamation-circle text-warning fa-2x mb-2"></i>
+                        <p class="text-muted small mb-0" id="ebay1ChartNoDataMsg">No daily snapshots yet. Open this page on separate days to build history (auto-saved from summary).</p>
                     </div>
                 </div>
             </div>
@@ -1068,6 +1227,25 @@
                         </div>
                     </div>
 
+                    <div class="border rounded p-2 mb-3 bg-light">
+                        <div class="small fw-bold mb-1">Do not decrease when E L30 sold is low</div>
+                        <div class="row g-2 align-items-end">
+                            <div class="col-auto">
+                                <label class="form-label mb-1 small" for="sbid-views-no-dec-max-el30">
+                                    If E L30 sold ≤
+                                </label>
+                                <input type="number" step="1" min="0" id="sbid-views-no-dec-max-el30"
+                                       class="form-control form-control-sm" style="width: 88px;"
+                                       title="When eBay L30 units sold is at or below this qty, Decrease steps are skipped (bid stays at C Bid).">
+                            </div>
+                            <div class="col">
+                                <div class="small text-muted pb-1">
+                                    then <strong>do not decrease</strong> bid (Increase / No change still apply).
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="border rounded p-2">
                         <div class="small fw-bold mb-2">Daily action per L7 View colour (direction + %/day)</div>
                         <div class="row g-3">
@@ -1182,13 +1360,296 @@
          *  and the "Avg L7" badge. Recomputed in updateSummary(). */
         let avgL7ViewsGlobal = 0;
 
+        /** Daily snapshot badge chart (amazon_channel_summary_data, channel=ebay) */
+        const ebay1BadgeMetricLabels = {
+            avg_l30_view: 'A L30 View',
+            avg_l7_views: 'L7',
+            total_views: 'Views',
+        };
+        let ebay1ChartInstance = null;
+        let ebay1ChartAjax = null;
+        let ebay1ChartDays = 30;
+        let ebay1ChartMetricKey = '';
+        /** 'badge' = channel summary series; 'sku' = per-SKU L30/L7 views history */
+        let ebay1ChartMode = 'badge';
+        let ebay1ChartSku = '';
+        const ebay1SkuViewMetricLabels = {
+            views: 'L30 View',
+            l7_views: 'L7 View',
+        };
+
+        function ebay1FmtChartVal(v) {
+            return Math.round(Number(v)).toLocaleString('en-US');
+        }
+
+        function openEbay1ChartModal() {
+            const modalEl = document.getElementById('ebay1MetricChartModal');
+            if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                bootstrap.Modal.getOrCreateInstance(modalEl).show();
+            } else {
+                $(modalEl).modal('show');
+            }
+        }
+
+        function showEbay1MetricChart(metricKey) {
+            ebay1ChartMode = 'badge';
+            ebay1ChartSku = '';
+            ebay1ChartMetricKey = metricKey;
+            ebay1ChartDays = 30;
+            $('#ebay1ChartRangeSelect').val('30');
+            const label = ebay1BadgeMetricLabels[metricKey] || metricKey;
+            $('#ebay1ChartModalTitle').text('eBay 1 — ' + label + ' (Daily snapshot)');
+            openEbay1ChartModal();
+            loadEbay1MetricChart();
+        }
+
+        /** Per-SKU L30 View / L7 View history — same chart style as A L30 View badge. */
+        function showSkuViewsChart(sku, metricKey) {
+            if (!sku) return;
+            ebay1ChartMode = 'sku';
+            ebay1ChartSku = sku;
+            ebay1ChartMetricKey = (metricKey === 'l7_views') ? 'l7_views' : 'views';
+            ebay1ChartDays = 30;
+            $('#ebay1ChartRangeSelect').val('30');
+            const label = ebay1SkuViewMetricLabels[ebay1ChartMetricKey] || ebay1ChartMetricKey;
+            $('#ebay1ChartModalTitle').text('eBay 1 — ' + label + ' — ' + sku + ' (Daily snapshot)');
+            openEbay1ChartModal();
+            loadEbay1MetricChart();
+        }
+
+        function loadEbay1MetricChart() {
+            if (ebay1ChartAjax) {
+                ebay1ChartAjax.abort();
+            }
+            $('#ebay1ChartNoData').hide();
+            $('#ebay1ChartContainer').hide();
+            $('#ebay1ChartLoading').show();
+
+            if (ebay1ChartMode === 'sku') {
+                const days = ebay1ChartDays > 0 ? ebay1ChartDays : 90;
+                $('#ebay1ChartNoDataMsg').text('No historical data for this SKU yet. Data appears after the metrics collection job runs.');
+                ebay1ChartAjax = $.ajax({
+                    url: '/ebay-metrics-history',
+                    method: 'GET',
+                    data: { sku: ebay1ChartSku, days: days },
+                    success: function(resp) {
+                        ebay1ChartAjax = null;
+                        $('#ebay1ChartLoading').hide();
+                        const rows = Array.isArray(resp) ? resp : (resp && resp.data ? resp.data : []);
+                        const field = ebay1ChartMetricKey === 'l7_views' ? 'l7_views' : 'views';
+                        const mapped = (rows || []).map(function(d) {
+                            return {
+                                date: d.date_formatted || d.date || '',
+                                value: parseFloat(d[field]) || 0,
+                            };
+                        }).filter(function(d) { return d.date !== ''; });
+                        if (mapped.length > 0) {
+                            $('#ebay1ChartContainer').css({ display: 'flex', flexDirection: 'row', alignItems: 'stretch' }).show();
+                            renderEbay1MetricChart(mapped);
+                        } else {
+                            $('#ebay1ChartNoData').show();
+                        }
+                    },
+                    error: function(xhr, status) {
+                        ebay1ChartAjax = null;
+                        if (status === 'abort') return;
+                        $('#ebay1ChartLoading').hide();
+                        $('#ebay1ChartNoData').show();
+                    }
+                });
+                return;
+            }
+
+            $('#ebay1ChartNoDataMsg').text('No daily snapshots yet. Open this page on separate days to build history (auto-saved from summary).');
+            ebay1ChartAjax = $.ajax({
+                url: '/ebay-badge-chart-data',
+                method: 'GET',
+                data: { metric: ebay1ChartMetricKey, days: ebay1ChartDays },
+                success: function(resp) {
+                    ebay1ChartAjax = null;
+                    $('#ebay1ChartLoading').hide();
+                    if (resp.success && resp.data && resp.data.length > 0) {
+                        $('#ebay1ChartContainer').css({ display: 'flex', flexDirection: 'row', alignItems: 'stretch' }).show();
+                        renderEbay1MetricChart(resp.data);
+                    } else {
+                        $('#ebay1ChartNoData').show();
+                    }
+                },
+                error: function(xhr, status) {
+                    ebay1ChartAjax = null;
+                    if (status === 'abort') {
+                        return;
+                    }
+                    $('#ebay1ChartLoading').hide();
+                    $('#ebay1ChartNoData').show();
+                }
+            });
+        }
+
+        function renderEbay1MetricChart(data) {
+            const ctx = document.getElementById('ebay1MetricChart').getContext('2d');
+            if (ebay1ChartInstance) {
+                ebay1ChartInstance.destroy();
+            }
+
+            const labels = data.map(function(d) { return d.date; });
+            const values = data.map(function(d) { return d.value; });
+
+            const dataMin = Math.min.apply(null, values);
+            const dataMax = Math.max.apply(null, values);
+            const sorted = values.slice().sort(function(a, b) { return a - b; });
+            const mid = Math.floor(sorted.length / 2);
+            const median = sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+            const range = dataMax - dataMin || 1;
+            const yMin = Math.max(0, dataMin - range * 0.1);
+            const yMax = dataMax + range * 0.1;
+
+            document.getElementById('ebay1ChartHighest').textContent = ebay1FmtChartVal(dataMax);
+            document.getElementById('ebay1ChartMedian').textContent = ebay1FmtChartVal(median);
+            document.getElementById('ebay1ChartLowest').textContent = ebay1FmtChartVal(dataMin);
+
+            const dotColors = values.map(function(v, i) {
+                if (i === 0) return '#6c757d';
+                return v < values[i - 1] ? '#dc3545' : (v > values[i - 1] ? '#198754' : '#6c757d');
+            });
+            const labelColors = values.map(function(v, i) {
+                if (i < 7) return '#6c757d';
+                return v < values[i - 7] ? '#dc3545' : (v > values[i - 7] ? '#198754' : '#6c757d');
+            });
+
+            const medianLinePlugin = {
+                id: 'ebay1MedianLine',
+                afterDraw: function(chart) {
+                    const yScale = chart.scales.y;
+                    const xScale = chart.scales.x;
+                    const c = chart.ctx;
+                    const yPixel = yScale.getPixelForValue(median);
+                    c.save();
+                    c.setLineDash([6, 4]);
+                    c.strokeStyle = '#6c757d';
+                    c.lineWidth = 1.2;
+                    c.beginPath();
+                    c.moveTo(xScale.left, yPixel);
+                    c.lineTo(xScale.right, yPixel);
+                    c.stroke();
+                    c.restore();
+                }
+            };
+
+            const valueLabelsPlugin = {
+                id: 'ebay1ValueLabels',
+                afterDatasetsDraw: function(chart) {
+                    const dataset = chart.data.datasets[0];
+                    const meta = chart.getDatasetMeta(0);
+                    const c = chart.ctx;
+                    if (!dataset || !meta || !meta.data) return;
+                    c.save();
+                    c.font = 'bold 9px Inter, system-ui, sans-serif';
+                    c.textAlign = 'center';
+                    c.textBaseline = 'bottom';
+                    meta.data.forEach(function(point, i) {
+                        if (point == null || point.skip) return;
+                        const txt = ebay1FmtChartVal(dataset.data[i]);
+                        const offsetY = (i % 2 === 0) ? -8 : -16;
+                        const py = point.y + offsetY;
+                        c.lineJoin = 'round';
+                        c.lineWidth = 3;
+                        c.strokeStyle = 'rgba(255,255,255,0.92)';
+                        c.strokeText(txt, point.x, py);
+                        c.fillStyle = labelColors[i];
+                        c.fillText(txt, point.x, py);
+                    });
+                    c.restore();
+                }
+            };
+
+            ebay1ChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: values,
+                        backgroundColor: 'rgba(32, 201, 151, 0.08)',
+                        borderColor: '#20c997',
+                        borderWidth: 1.5,
+                        fill: true,
+                        tension: 0.3,
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
+                        pointBackgroundColor: dotColors,
+                        pointBorderColor: dotColors,
+                        pointBorderWidth: 1.5
+                    }]
+                },
+                plugins: [medianLinePlugin, valueLabelsPlugin],
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    layout: { padding: { top: 22, left: 2, right: 2, bottom: 2 } },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            titleFont: { size: 10 },
+                            bodyFont: { size: 10 },
+                            padding: 6,
+                            callbacks: {
+                                label: function(context) {
+                                    const idx = context.dataIndex;
+                                    const parts = ['Value: ' + ebay1FmtChartVal(context.raw)];
+                                    if (idx > 0) {
+                                        const diff = context.raw - values[idx - 1];
+                                        parts.push('vs prior: ' + (diff < 0 ? '▼' : diff > 0 ? '▲' : '▬') + ' ' + ebay1FmtChartVal(Math.abs(diff)));
+                                    }
+                                    return parts;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            min: yMin,
+                            max: yMax,
+                            ticks: { font: { size: 9 }, callback: function(v) { return ebay1FmtChartVal(v); } }
+                        },
+                        x: { ticks: { maxRotation: 45, minRotation: 45, autoSkip: true, maxTicksLimit: 30, font: { size: 8 } } }
+                    }
+                }
+            });
+        }
+
+        /** L7 daily pace vs L30 daily pace — green = accelerating, red = slowing. */
+        function viewsPaceVariation(rowData) {
+            const l30 = parseFloat(rowData.views) || 0;
+            const l7 = parseFloat(rowData.l7_views) || 0;
+            const l30Pace = l30 / 30;
+            const l7Pace = l7 / 7;
+            const tol = Math.max(0.05, l30Pace * 0.05);
+            if (l7Pace > l30Pace + tol) {
+                return { color: '#28a745', label: 'up', icon: 'fa-arrow-up', title: 'L7 pace > L30 pace (views accelerating)' };
+            }
+            if (l7Pace < l30Pace - tol) {
+                return { color: '#a00211', label: 'down', icon: 'fa-arrow-down', title: 'L7 pace < L30 pace (views slowing)' };
+            }
+            return { color: '#6c757d', label: 'flat', icon: 'fa-minus', title: 'L7 pace ≈ L30 pace (steady)' };
+        }
+
+        function viewsHistoryArrowBtn(sku, isParent, variation, metric) {
+            if (!sku || isParent) return '';
+            const m = (metric === 'l7_views') ? 'l7_views' : 'views';
+            const label = m === 'l7_views' ? 'L7 View' : 'L30 View';
+            return `<button type="button" class="btn btn-sm p-0 view-sku-views-chart align-middle" data-sku="${sku}" data-metric="${m}" title="${variation.title} — click for ${label} history" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><i class="fas ${variation.icon}" style="color: ${variation.color}; font-size: 12px;"></i></button>`;
+        }
+
         /** L7 View colour band for a value, relative to the current average:
          *  red   = below avg, green = avg..2x avg, pink = 2x avg and above.
          *  Returned as {key, color}; key drives the Sbid (Views) daily step. */
         function l7ViewBand(value) {
             const v = parseFloat(value) || 0;
-            const avg = avgL7ViewsGlobal || 0;
-            if (avg <= 0) return { key: '', color: '' };
+            const avg = parseFloat(avgL7ViewsGlobal) || 0;
+            if (avg <= 0) {
+                // No avg yet — treat zeros / empty as below-avg red
+                return v <= 0 ? { key: 'red', color: '#a00211' } : { key: '', color: '' };
+            }
             if (v < avg) return { key: 'red', color: '#a00211' };
             if (v < avg * 2) return { key: 'green', color: '#28a745' };
             return { key: 'pink', color: '#d63384' };
@@ -1213,18 +1674,24 @@
         let sbidViewsGreenStep = sbidViewsNum('ebay1_sbid_views_green_step', 0);
         let sbidViewsRedDir   = sbidViewsDir('ebay1_sbid_views_red_dir', 'inc');
         let sbidViewsRedStep  = sbidViewsNum('ebay1_sbid_views_red_step', 1);
+        let sbidViewsNoDecMaxEl30 = sbidViewsNum('ebay1_sbid_views_no_dec_max_el30', 0);
 
         /**
          * Sbid (Views): daily one-step adjustment of the S BID based on the row's
          * L7 View colour band, clamped to the manual Min/Max caps. Each colour's
          * direction (increase / decrease / no change) and step are configurable in
-         * the Sbid (Views) modal.
+         * the Sbid (Views) modal. If E L30 sold ≤ no_dec_max_el30, Decrease is skipped.
          * Returns { bid, color, skip }. skip=true when there is no base S Bid.
          */
-        function sbidViewsApplyStep(base, dir, step) {
+        function sbidViewsApplyStep(base, dir, step, el30Sold) {
+            let d = dir;
+            // Low E L30 sold → never decrease
+            if (d === 'dec' && isFinite(el30Sold) && el30Sold <= sbidViewsNoDecMaxEl30) {
+                d = 'none';
+            }
             const s = isFinite(step) ? step : 0;
-            if (dir === 'inc') return base + s;
-            if (dir === 'dec') return base - s;
+            if (d === 'inc') return base + s;
+            if (d === 'dec') return base - s;
             return base; // 'none'
         }
         function computeSbidViews(rowData) {
@@ -1233,11 +1700,12 @@
             if (!isFinite(cbid) || cbid <= 0) {
                 return { bid: 0, color: '#6c757d', skip: true };
             }
+            const el30Sold = parseFloat(rowData['eBay L30']) || 0;
             const band = l7ViewBand(rowData.l7_views);
             let bid = cbid;
-            if (band.key === 'pink') bid = sbidViewsApplyStep(cbid, sbidViewsPinkDir, sbidViewsPinkStep);
-            else if (band.key === 'green') bid = sbidViewsApplyStep(cbid, sbidViewsGreenDir, sbidViewsGreenStep);
-            else if (band.key === 'red') bid = sbidViewsApplyStep(cbid, sbidViewsRedDir, sbidViewsRedStep);
+            if (band.key === 'pink') bid = sbidViewsApplyStep(cbid, sbidViewsPinkDir, sbidViewsPinkStep, el30Sold);
+            else if (band.key === 'green') bid = sbidViewsApplyStep(cbid, sbidViewsGreenDir, sbidViewsGreenStep, el30Sold);
+            else if (band.key === 'red') bid = sbidViewsApplyStep(cbid, sbidViewsRedDir, sbidViewsRedStep, el30Sold);
 
             const min = isFinite(sbidViewsMinCap) ? sbidViewsMinCap : -Infinity;
             const max = isFinite(sbidViewsMaxCap) ? sbidViewsMaxCap : Infinity;
@@ -1636,6 +2104,8 @@
             if (($('#growth-sign-filter').val() || 'all') !== 'all') return true;
             var dil = $('#dil-filter').val() || 'all';
             if (dil !== 'all') return true;
+            var l7v = $('#l7-views-filter').val() || 'all';
+            if (l7v !== 'all') return true;
             if (zeroSoldFilterActive || moreSoldFilterActive || missingLFilterActive || missingMFilterActive) return true;
 
             return false;
@@ -1755,6 +2225,17 @@
                             data: [],
                             borderColor: '#0000FF',
                             backgroundColor: 'rgba(0, 0, 255, 0.1)',
+                            borderWidth: 2,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            yAxisID: 'y',
+                            tension: 0.4
+                        },
+                        {
+                            label: 'L7 Views',
+                            data: [],
+                            borderColor: '#0dcaf0',
+                            backgroundColor: 'rgba(13, 202, 240, 0.1)',
                             borderWidth: 2,
                             pointRadius: 4,
                             pointHoverRadius: 6,
@@ -1928,7 +2409,8 @@
                         skuMetricsChart.data.labels = data.map(d => d.date_formatted || d.date || '');
                         skuMetricsChart.data.datasets[0].data = data.map(d => d.price || 0);
                         skuMetricsChart.data.datasets[1].data = data.map(d => d.views || 0);
-                        skuMetricsChart.data.datasets[2].data = data.map(d => d.cvr_percent || 0);
+                        skuMetricsChart.data.datasets[2].data = data.map(d => d.l7_views || 0);
+                        skuMetricsChart.data.datasets[3].data = data.map(d => d.cvr_percent || 0);
                         skuMetricsChart.update('active');
                         console.log('Chart updated successfully with', data.length, 'data points');
                     }
@@ -1947,6 +2429,19 @@
 
             // Initialize SKU-specific chart
             initSkuMetricsChart();
+
+            // A L30 View (and other ebay1 summary badges) — click opens daily history chart
+            $(document).on('click', '.ebay1-badge-chart', function(e) {
+                e.stopPropagation();
+                const m = $(this).data('metric');
+                if (m) {
+                    showEbay1MetricChart(m);
+                }
+            });
+            $('#ebay1ChartRangeSelect').on('change', function() {
+                ebay1ChartDays = parseInt($(this).val(), 10) || 0;
+                loadEbay1MetricChart();
+            });
 
             // Discount type dropdown change handler
             $('#discount-type-select').on('change', function() {
@@ -2261,6 +2756,7 @@
             function seedSbidViewsInputs() {
                 $('#sbid-views-min-cap').val(isFinite(sbidViewsMinCap) ? sbidViewsMinCap : '');
                 $('#sbid-views-max-cap').val(isFinite(sbidViewsMaxCap) ? sbidViewsMaxCap : '');
+                $('#sbid-views-no-dec-max-el30').val(isFinite(sbidViewsNoDecMaxEl30) ? sbidViewsNoDecMaxEl30 : 0);
                 $('#sbid-views-pink-dir').val(sbidViewsPinkDir);
                 $('#sbid-views-pink-step').val(isFinite(sbidViewsPinkStep) ? sbidViewsPinkStep : '');
                 $('#sbid-views-green-dir').val(sbidViewsGreenDir);
@@ -2273,6 +2769,7 @@
                 if (!s || typeof s !== 'object') return;
                 if (isFinite(parseFloat(s.min_cap)))    sbidViewsMinCap   = parseFloat(s.min_cap);
                 if (isFinite(parseFloat(s.max_cap)))    sbidViewsMaxCap   = parseFloat(s.max_cap);
+                if (isFinite(parseFloat(s.no_dec_max_el30))) sbidViewsNoDecMaxEl30 = parseFloat(s.no_dec_max_el30);
                 if (s.pink_dir)  sbidViewsPinkDir  = s.pink_dir;
                 if (isFinite(parseFloat(s.pink_step)))  sbidViewsPinkStep = parseFloat(s.pink_step);
                 if (s.green_dir) sbidViewsGreenDir = s.green_dir;
@@ -2302,6 +2799,7 @@
                 const payload = {
                     min_cap:    num('#sbid-views-min-cap', 1),
                     max_cap:    num('#sbid-views-max-cap', 20),
+                    no_dec_max_el30: num('#sbid-views-no-dec-max-el30', 0),
                     pink_dir:   dir('#sbid-views-pink-dir', 'dec'),
                     pink_step:  num('#sbid-views-pink-step', 1),
                     green_dir:  dir('#sbid-views-green-dir', 'none'),
@@ -4008,36 +4506,6 @@
                     },
 
                     {
-                        title: "L30 View",
-                        field: "views",
-                        hozAlign: "center",
-                        sorter: "number",
-                        formatter: function(cell) {
-                            const value = parseFloat(cell.getValue() || 0);
-                            let color = '';
-
-                            // getViewColor logic from inc/dec page
-                            if (value >= 30) color = '#28a745'; // green
-                            else color = '#a00211'; // red
-
-                            return `<span style="color: ${color}; font-weight: 600;">${Math.round(value)}</span>`;
-                        },
-                        width: 50
-                    },
-                    {
-                        title: "L7 View",
-                        field: "l7_views",
-                        hozAlign: "center",
-                        sorter: "number",
-                        formatter: function(cell) {
-                            var value = parseInt(cell.getValue() || 0);
-                            var color = l7ViewBand(value).color;
-                            var style = color ? ` style="color: ${color}; font-weight: 600;"` : '';
-                            return `<span${style}>${value.toLocaleString()}</span>`;
-                        },
-                        width: 70
-                    },
-                    {
                         title: "NR/REQ",
                         field: "nr_req",
                         hozAlign: "center",
@@ -4660,7 +5128,58 @@
                         formatter: function(cell) {
                             const v = parseFloat(cell.getValue());
                             if (isNaN(v)) return '<span class="text-muted">—</span>';
-                            return `<span class="text-info fw-semibold">${v.toFixed(1)}%</span>`;
+                            return `<span class="text-info fw-semibold">${Math.round(v)}%</span>`;
+                        }
+                    },
+                    {
+                        title: "L30 View",
+                        field: "views",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 72,
+                        headerTooltip: "L30 views. Arrow: up if L7 daily pace > L30 pace, down if slower. Click arrow for SKU history.",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            const value = parseFloat(cell.getValue() || 0);
+                            const color = value >= 30 ? '#28a745' : '#a00211';
+                            const isParent = rowData.Parent && String(rowData.Parent).toUpperCase().startsWith('PARENT');
+                            const sku = rowData['(Child) sku'] || '';
+                            const variation = viewsPaceVariation(rowData);
+                            const arrowBtn = viewsHistoryArrowBtn(sku, isParent, variation, 'views');
+                            return `<span style="color: ${color}; font-weight: 600;">${Math.round(value)}</span> ${arrowBtn}`.trim();
+                        }
+                    },
+                    {
+                        title: "L7 View",
+                        field: "l7_views",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 80,
+                        headerTooltip: "L7 views. RED text = below avg L7. Green = avg–2× avg. Pink = ≥ 2× avg. Arrow = L7 vs L30 pace; click for L7 history.",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            const value = Number(cell.getValue());
+                            const l7Val = Number.isFinite(value) ? value : 0;
+                            const avg = Number(avgL7ViewsGlobal) || 0;
+                            // Below channel avg L7 → always RED text (e.g. L7=2 vs avg≈15)
+                            let textColor = '#212529';
+                            if (avg > 0 && l7Val < avg) {
+                                textColor = '#a00211';
+                            } else if (avg > 0 && l7Val < avg * 2) {
+                                textColor = '#28a745';
+                            } else if (avg > 0) {
+                                textColor = '#d63384';
+                            } else if (l7Val <= 0) {
+                                textColor = '#a00211';
+                            }
+                            const isParent = rowData.Parent && String(rowData.Parent).toUpperCase().startsWith('PARENT');
+                            const sku = rowData['(Child) sku'] || '';
+                            const variation = viewsPaceVariation(rowData);
+                            const arrowBtn = viewsHistoryArrowBtn(sku, isParent, variation, 'l7_views');
+                            const tip = avg > 0
+                                ? (l7Val < avg ? 'Below avg L7 (' + avg.toFixed(1) + ')' : 'Avg L7 ' + avg.toFixed(1))
+                                : 'L7 views';
+                            return `<span title="${tip}" style="color: ${textColor} !important; font-weight: 600;">${Math.round(l7Val).toLocaleString()}</span> ${arrowBtn}`.trim();
                         }
                     },
                     {
@@ -4669,11 +5188,12 @@
                         hozAlign: "center",
                         sorter: "number",
                         width: 90,
+                        headerTooltip: "Red if C BID > Ads% badge, otherwise green.",
                         formatter: function(cell) {
                             const v = parseFloat(cell.getValue());
                             if (isNaN(v)) return '<span class="text-muted">—</span>';
-                            const color = v <= 4 ? '#dc3545' : v <= 7 ? '#ffc107' : v <= 13 ? '#198754' : '#e83e8c';
-                            return `<span style="color:${color}; font-weight:600;">${v.toFixed(1)}%</span>`;
+                            const color = v > EBAY_CHANNEL_ADS_PCT ? '#a00211' : '#28a745';
+                            return `<span style="color:${color}; font-weight:600;">${Math.round(v)}%</span>`;
                         }
                     },
                     {
@@ -4681,7 +5201,7 @@
                         field: "ca_suggested_bid",
                         hozAlign: "center",
                         width: 90,
-                        headerTooltip: "Daily adjustment of the current C BID by L7 View band — green keeps C Bid, pink/red apply the direction + %/day set in the 'Sbid (Views)' button — clamped to the Min/Max caps. No C Bid → —.",
+                        headerTooltip: "Daily adjustment of the current C BID by L7 View band — green keeps C Bid, pink/red apply the direction + %/day set in the 'Sbid (Views)' button — clamped to the Min/Max caps. No C Bid → —. Text color: red if S BID > Ads% badge, otherwise green.",
                         sorter: function(a, b, aRow, bRow) {
                             return computeSbidViews(aRow.getData()).bid - computeSbidViews(bRow.getData()).bid;
                         },
@@ -4690,7 +5210,8 @@
                             if (res.skip) {
                                 return '<span class="text-muted" title="No S Bid — no current C Bid to adjust" style="font-size:11px;">—</span>';
                             }
-                            return `<span style="color:${res.color}; font-weight:700;">${res.bid.toFixed(1)}%</span>`;
+                            const color = res.bid > EBAY_CHANNEL_ADS_PCT ? '#a00211' : '#28a745';
+                            return `<span style="color:${color}; font-weight:700;">${Math.round(res.bid)}%</span>`;
                         }
                     },
                     {
@@ -5051,6 +5572,7 @@
                 const prcLmpFilter = $('#prc-lmp-filter').val();
                 const lmpFilter = $('#lmp-filter').val();
                 const dilFilter = $('#dil-filter').val() || 'all';
+                const l7ViewsFilter = $('#l7-views-filter').val() || 'all';
                 const viewTypeFilter = $('#view-type-filter').val() || 'all';
 
                 table.clearFilter(true);
@@ -5247,6 +5769,13 @@
                     });
                 }
 
+                // L7 Views colour band (same as L7 View column / Sbid Views)
+                if (l7ViewsFilter !== 'all') {
+                    table.addFilter(function(data) {
+                        return l7ViewBand(data.l7_views).key === l7ViewsFilter;
+                    });
+                }
+
                 // Badge Filters (E Stock > 0 — aligned with E Stock filter)
                 if (zeroSoldFilterActive) {
                     table.addFilter(function(data) {
@@ -5297,7 +5826,7 @@
                 }, 100);
             }
 
-            $('#view-type-filter, #inventory-filter, #el30-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter, #sprice-filter, #sprice-lmp-filter, #prc-lmp-filter, #lmp-filter, #dil-filter')
+            $('#view-type-filter, #inventory-filter, #el30-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter, #sprice-filter, #sprice-lmp-filter, #prc-lmp-filter, #lmp-filter, #dil-filter, #l7-views-filter')
                 .on('change', function() {
                     applyFilters();
                 });
@@ -5404,7 +5933,13 @@
                 let totalViews = 0;
                 let totalL7Views = 0;
                 let l7ViewsCount = 0;
-                filteredData.forEach(row => {
+                // Channel-wide avg (all loaded child rows, E Stock > 0) — drives L7 text colour.
+                // Do NOT use filtered/parent rows: filters were pulling avg down so low L7
+                // values (e.g. 2) incorrectly rendered green instead of red.
+                allData.forEach(row => {
+                    const isParent = row.is_parent_summary === true ||
+                        (row['Parent'] && String(row['Parent']).toUpperCase().startsWith('PARENT'));
+                    if (isParent) return;
                     if (rowEbayStockQty(row) > 0) {
                         totalViews += parseFloat(row.views || 0);
                         totalL7Views += parseFloat(row.l7_views || 0);
@@ -5428,10 +5963,20 @@
                 $('#avg-price-badge').text('Prc: $' + avgPrice.toFixed(2));
                 $('#avg-cvr-badge').text('CVR: ' + avgCVR.toFixed(1) + '%');
                 $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
-                $('#avg-l7-views-badge').text('L7: ' + avgL7Views.toFixed(1));
-                // Repaint the L7 View column so its colour thresholds reflect the new avg.
-                if (table && Math.abs(prevAvgL7Views - avgL7Views) > 0.0001) {
-                    table.redraw(false);
+                $('#avg-l30-views-badge').text('A L30 View: ' + Math.round(totalViews / 30).toLocaleString());
+                $('#avg-l7-views-badge').text('L7: ' + Math.round(avgL7Views).toLocaleString());
+                // Always reformat L7 cells so below-avg values show RED (not stale green HTML).
+                if (table) {
+                    try {
+                        table.getRows('active').forEach(function(row) {
+                            const cell = row.getCell('l7_views');
+                            if (cell && typeof cell.reformat === 'function') cell.reformat();
+                        });
+                    } catch (e) {
+                        if (Math.abs(prevAvgL7Views - avgL7Views) > 0.0001) {
+                            table.redraw(true);
+                        }
+                    }
                 }
 
                 // Count of rows currently shown after filters (exclude parent summary rows)
@@ -5487,7 +6032,83 @@
              * `channel_tabulator_column_settings` under channel = 'ebay1_tabulator'. We hit the
              * same /tabulator-column-visibility endpoint used by the ebay2 / ebay3 / mfrg /
              * amazon tabulators so a single row owns the show/hide map for everyone on this view.
+             *
+             * Category placement (General / Pricing / Advertisement / Others) is classified by
+             * defaults below and can be overridden via drag-and-drop (stored in localStorage).
              */
+            const COL_VIS_CATEGORY_KEYS = ['general', 'pricing', 'advertisement', 'others'];
+            const COL_VIS_CATEGORY_LABELS = {
+                general: 'General',
+                pricing: 'Pricing',
+                advertisement: 'Advertisement',
+                others: 'Others'
+            };
+            const COL_VIS_CATEGORY_STORAGE_KEY = 'ebay1_tabulator_column_categories_v1';
+
+            function colVisItemKey(field, title) {
+                return String(field || '') + '||' + String(title || field || '');
+            }
+
+            /** Default AI-style classification from field / title. */
+            function classifyColumnDefault(field, title) {
+                const f = String(field || '');
+                const t = String(title || field || '');
+                const fl = f.toLowerCase();
+                const tl = t.toLowerCase();
+                const blob = fl + ' ' + tl;
+
+                // Advertisement first (views / bids / ads / promote)
+                if (
+                    /^(views|l7_views|_ads_pct|ca_bid_percentage|ca_suggested_bid|ca_promote_with_ad)$/i.test(f) ||
+                    /\b(ads\s*%|es\s*bid|c\s*bid|s\s*bid|promote|l30\s*view|l7\s*view)\b/i.test(t) ||
+                    /\b(bid|promote|ads)\b/i.test(blob)
+                ) {
+                    return 'advertisement';
+                }
+
+                // Pricing
+                if (
+                    /^(eBay Price|GPFT%|PFT %|ROI%|NROI|lmp_price|linked_lmp_skus|linked_lmp_sku_add|SPRICE|_accept|SGPFT|SPFT|SGROI|SROI|E Dil%|SCVR|CVR_45|CVR_60)$/i.test(f) ||
+                    /\b(prc|price|gpft|npft|groi|nroi|lmp|s\s*prc|s\s*gpft|s\s*pft|s\s*groi|sroi|dil|cvr)\b/i.test(tl) ||
+                    /^(_accept|\+)$/i.test(t)
+                ) {
+                    return 'pricing';
+                }
+
+                // General product / inventory / listing
+                if (
+                    /^(image_path|Parent|\(Child\) sku|INV|L30|rating|links_column|eBay Stock|Missing|MAP|nr_req|nrp|NRL|NR|eBay L30|eBay L45|eBay L60|growth_percent|_select|_parent_sort)$/i.test(f) ||
+                    /\b(image|parent|sku|inv|ov\s*l30|links|rating|stock|missing|map|nr\/req|nrp|nrl|nra|growth|e\s*l\d+)\b/i.test(tl)
+                ) {
+                    return 'general';
+                }
+
+                return 'others';
+            }
+
+            function loadColumnCategoryOverrides() {
+                try {
+                    const raw = localStorage.getItem(COL_VIS_CATEGORY_STORAGE_KEY);
+                    const parsed = raw ? JSON.parse(raw) : {};
+                    return (parsed && typeof parsed === 'object') ? parsed : {};
+                } catch (e) {
+                    return {};
+                }
+            }
+
+            function saveColumnCategoryOverrides(map) {
+                try {
+                    localStorage.setItem(COL_VIS_CATEGORY_STORAGE_KEY, JSON.stringify(map || {}));
+                } catch (e) {}
+            }
+
+            function resolveColumnCategory(field, title, overrides) {
+                const key = colVisItemKey(field, title);
+                const o = overrides && overrides[key];
+                if (o && COL_VIS_CATEGORY_KEYS.indexOf(o) !== -1) return o;
+                return classifyColumnDefault(field, title);
+            }
+
             function buildColumnDropdown() {
                 const menu = document.getElementById("column-dropdown-menu");
                 if (!menu) return;
@@ -5503,38 +6124,111 @@
                     .then(response => response.json())
                     .then(savedVisibility => {
                         const map = (savedVisibility && typeof savedVisibility === 'object') ? savedVisibility : {};
+                        const overrides = loadColumnCategoryOverrides();
 
-                        // "Show All" action merged into the column dropdown (sticky first item)
                         const showAllLi = document.createElement("li");
-                        showAllLi.innerHTML = '<a class="dropdown-item" href="#" id="show-all-columns-btn"><i class="fa fa-eye"></i> Show All</a>';
+                        showAllLi.className = "col-vis-full";
+                        showAllLi.innerHTML = '<a class="dropdown-item py-1" href="#" id="show-all-columns-btn"><i class="fa fa-eye"></i> Show All</a>';
                         menu.appendChild(showAllLi);
-                        const dividerLi = document.createElement("li");
-                        dividerLi.innerHTML = '<hr class="dropdown-divider my-1">';
-                        menu.appendChild(dividerLi);
+
+                        const hintLi = document.createElement("li");
+                        hintLi.className = "col-vis-full";
+                        hintLi.innerHTML = '<div class="px-2 pb-1 text-muted" style="font-size:0.7rem;">Drag columns between General · Pricing · Advertisement · Others</div>';
+                        menu.appendChild(hintLi);
+
+                        const groupsLi = document.createElement("li");
+                        groupsLi.className = "col-vis-full";
+                        const groupsWrap = document.createElement("div");
+                        groupsWrap.className = "col-vis-groups";
+
+                        const lists = {};
+                        COL_VIS_CATEGORY_KEYS.forEach(function(cat) {
+                            const group = document.createElement("div");
+                            group.className = "col-vis-group";
+                            group.dataset.category = cat;
+
+                            const titleEl = document.createElement("div");
+                            titleEl.className = "col-vis-group-title";
+                            titleEl.textContent = COL_VIS_CATEGORY_LABELS[cat];
+                            group.appendChild(titleEl);
+
+                            const list = document.createElement("ul");
+                            list.className = "col-vis-group-list";
+                            list.dataset.category = cat;
+                            group.appendChild(list);
+                            groupsWrap.appendChild(group);
+                            lists[cat] = list;
+
+                            // Drop onto group / list
+                            [group, list].forEach(function(zone) {
+                                zone.addEventListener("dragover", function(e) {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    group.classList.add("col-vis-drop-over");
+                                    e.dataTransfer.dropEffect = "move";
+                                });
+                                zone.addEventListener("dragleave", function(e) {
+                                    if (!group.contains(e.relatedTarget)) {
+                                        group.classList.remove("col-vis-drop-over");
+                                    }
+                                });
+                                zone.addEventListener("drop", function(e) {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    group.classList.remove("col-vis-drop-over");
+                                    const itemKey = e.dataTransfer.getData("text/col-vis-key");
+                                    if (!itemKey) return;
+                                    const next = loadColumnCategoryOverrides();
+                                    next[itemKey] = cat;
+                                    saveColumnCategoryOverrides(next);
+                                    buildColumnDropdown();
+                                });
+                            });
+                        });
 
                         table.getColumns().forEach(col => {
                             const def = col.getDefinition();
                             if (!def.field) return;
 
-                            const li = document.createElement("li");
-                            const label = document.createElement("label");
-                            label.style.display = "block";
-                            label.style.padding = "5px 10px";
-                            label.style.cursor = "pointer";
+                            const title = def.title || def.field;
+                            const itemKey = colVisItemKey(def.field, title);
+                            const cat = resolveColumnCategory(def.field, title, overrides);
 
+                            const li = document.createElement("li");
+                            li.className = "col-vis-item";
+                            li.draggable = true;
+                            li.dataset.itemKey = itemKey;
+                            li.dataset.field = def.field;
+
+                            li.addEventListener("dragstart", function(e) {
+                                e.stopPropagation();
+                                li.classList.add("col-vis-dragging");
+                                e.dataTransfer.setData("text/col-vis-key", itemKey);
+                                e.dataTransfer.effectAllowed = "move";
+                            });
+                            li.addEventListener("dragend", function() {
+                                li.classList.remove("col-vis-dragging");
+                                menu.querySelectorAll(".col-vis-drop-over").forEach(function(el) {
+                                    el.classList.remove("col-vis-drop-over");
+                                });
+                            });
+
+                            const label = document.createElement("label");
                             const checkbox = document.createElement("input");
                             checkbox.type = "checkbox";
                             checkbox.value = def.field;
-                            // Prefer saved value; anything explicitly false in the DB map = hidden.
-                            // Otherwise fall back to the column's current visibility.
                             checkbox.checked = map.hasOwnProperty(def.field) ? (map[def.field] !== false) : col.isVisible();
-                            checkbox.style.marginRight = "8px";
+                            checkbox.style.marginRight = "6px";
 
                             label.appendChild(checkbox);
-                            label.appendChild(document.createTextNode(def.title));
+                            label.appendChild(document.createTextNode(title));
+                            label.title = title + " (drag to move category)";
                             li.appendChild(label);
-                            menu.appendChild(li);
+                            lists[cat].appendChild(li);
                         });
+
+                        groupsLi.appendChild(groupsWrap);
+                        menu.appendChild(groupsLi);
                     })
                     .catch(err => console.error('Error loading column visibility:', err));
             }
@@ -5694,9 +6388,20 @@
                 }, 100);
             });
 
-            // Toggle column from dropdown
+            // Toggle column from dropdown — save visibility, then close the menu
             (function() {
                 var colMenu = document.getElementById("column-dropdown-menu");
+                function closeColumnDropdown() {
+                    var toggleBtn = document.getElementById('columnVisibilityDropdown');
+                    if (!toggleBtn) return;
+                    if (typeof bootstrap !== 'undefined' && bootstrap.Dropdown) {
+                        var dd = bootstrap.Dropdown.getInstance(toggleBtn) ||
+                            bootstrap.Dropdown.getOrCreateInstance(toggleBtn);
+                        dd.hide();
+                    } else if (window.jQuery) {
+                        $(toggleBtn).dropdown('hide');
+                    }
+                }
                 if (colMenu) {
                     colMenu.addEventListener("change", function(e) {
                         if (e.target.type === 'checkbox') {
@@ -5708,18 +6413,18 @@
                                 col.hide();
                             }
                             saveColumnVisibilityToServer();
+                            closeColumnDropdown();
                         }
                     });
-                    // "Show All" is now an item inside the dropdown (rebuilt dynamically),
-                    // so bind via delegation and keep the menu open on click.
+                    // "Show All" — show every column, save, then close
                     colMenu.addEventListener("click", function(e) {
                         var showAll = e.target.closest('#show-all-columns-btn');
                         if (showAll) {
                             e.preventDefault();
-                            e.stopPropagation();
                             table.getColumns().forEach(col => col.show());
                             buildColumnDropdown();
                             saveColumnVisibilityToServer();
+                            closeColumnDropdown();
                         }
                     });
                 }
@@ -5745,7 +6450,16 @@
                     });
                 }
 
-                // View SKU chart
+                // L30 View / L7 View arrow — daily snapshot chart (same style as A L30 View badge)
+                if (e.target.closest('.view-sku-views-chart')) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const btn = e.target.closest('.view-sku-views-chart');
+                    showSkuViewsChart(btn.getAttribute('data-sku'), btn.getAttribute('data-metric') || 'views');
+                    return;
+                }
+
+                // View SKU multi-metric chart (SKU / CVR entry points)
                 if (e.target.closest('.view-sku-chart')) {
                     e.preventDefault();
                     e.stopPropagation();

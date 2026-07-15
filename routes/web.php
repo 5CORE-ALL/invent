@@ -226,6 +226,7 @@ use App\Http\Controllers\ProductMaster\ToOrderAnalysisController;
 use App\Http\Controllers\PurchaseMaster\CategoryController;
 use App\Http\Controllers\PurchaseMaster\ChinaLoadController;
 use App\Http\Controllers\PurchaseMaster\ComparisonController;
+use App\Http\Controllers\PurchaseMaster\AdsLinkController;
 use App\Http\Controllers\PurchaseMaster\SkuLinkLmpController;
 use App\Http\Controllers\PurchaseMaster\ClaimReimbursementController;
 use App\Http\Controllers\PurchaseMaster\ContainerPlanningController;
@@ -3003,6 +3004,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/remove', 'removeLink')->name('amazon.ads.campaign-link.remove');
         Route::post('/push', 'pushLinked')->name('amazon.ads.campaign-link.push');
         Route::post('/push-all', 'pushAll')->name('amazon.ads.campaign-link.push-all');
+        Route::post('/merge', 'mergeCampaigns')->name('amazon.ads.campaign-link.merge');
         Route::get('/compare', 'compare')->name('amazon.ads.campaign-link.compare');
     });
 
@@ -3814,6 +3816,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/ebay2-campaign-data-by-sku', [EbayTwoController::class, 'getCampaignDataBySku'])->name('ebay2.campaign.data.by.sku');
     Route::get('/ebay3-campaign-data-by-sku', [EbayThreeController::class, 'getCampaignDataBySku'])->name('ebay3.campaign.data.by.sku');
     Route::get('/ebay-metrics-history', [EbayController::class, 'getMetricsHistory'])->name('ebay.metrics.history');
+    Route::get('/ebay-badge-chart-data', [EbayController::class, 'getEbayBadgeChartData'])->name('ebay.badge.chart.data');
     Route::get('/ebay-ads-spend', [EbayController::class, 'getEbayAdsSpend'])->name('ebay.ads.spend');
     Route::get('/ebay-kw-pmt-spend-totals', [EbayController::class, 'getKwPmtSpendTotals'])->name('ebay.kw.pmt.spend.totals');
     Route::post('/update-ebay-rating', [EbayController::class, 'updateEbayRating']);
@@ -4329,6 +4332,24 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/supplier/{supplierName}', 'getSupplierRemarks')->name('follow.up.history.supplier.remarks');
         Route::post('/store', 'store')->name('follow.up.history.store');
         Route::delete('/delete/{id}', 'destroy')->name('follow.up.history.delete');
+    });
+
+    // Ads Link
+    Route::controller(AdsLinkController::class)->prefix('purchase-master/ads-link')->group(function () {
+        Route::get('/', 'index')->name('ads.link.index');
+        Route::get('/data', 'getData')->name('ads.link.data');
+        Route::get('/parents', 'getParents')->name('ads.link.parents');
+        Route::get('/filtered-skus', 'getFilteredSkus')->name('ads.link.filtered-skus');
+        Route::get('/history', 'getHistory')->name('ads.link.history');
+        Route::post('/linked-skus/add', 'addLinkedSku')->name('ads.link.linked-skus.add');
+        Route::post('/linked-skus/bulk-link', 'bulkLinkSkus')->name('ads.link.linked-skus.bulk-link');
+        Route::post('/linked-skus/remove', 'removeLinkedSku')->name('ads.link.linked-skus.remove');
+        Route::post('/fields/list', 'saveListField')->name('ads.link.fields.list');
+        Route::post('/fields/spl', 'saveSplField')->name('ads.link.fields.spl');
+        Route::get('/campaigns', 'getCampaigns')->name('ads.link.campaigns');
+        Route::post('/campaigns/link', 'linkCampaign')->name('ads.link.campaigns.link');
+        Route::post('/campaigns/unlink', 'unlinkCampaign')->name('ads.link.campaigns.unlink');
+        Route::post('/campaigns/merge', 'mergeKeywords')->name('ads.link.campaigns.merge');
     });
 
     // SKU Link LMP
@@ -5444,6 +5465,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/ebay3/campaign-ads/rule', 'saveRule')->name('ebay3.campaign.ads.rule.save');
         Route::get('/ebay3/campaign-ads/dil-rule', 'getDilRule')->name('ebay3.campaign.ads.dil.rule');
         Route::post('/ebay3/campaign-ads/dil-rule', 'saveDilRule')->name('ebay3.campaign.ads.dil.rule.save');
+        Route::get('/ebay3/campaign-ads/sbid-views-rule', 'getSbidViewsRule')->name('ebay3.campaign.ads.sbid.views.rule');
+        Route::post('/ebay3/campaign-ads/sbid-views-rule', 'saveSbidViewsRule')->name('ebay3.campaign.ads.sbid.views.rule.save');
         Route::post('/ebay3/campaign-ads/push-sbid', 'pushSbid')->name('ebay3.campaign.ads.push.sbid');
         Route::post('/ebay3/campaign-ads/push-selected', 'pushSelected')->name('ebay3.campaign.ads.push.selected');
         Route::get('/ebay3/campaign-ads/campaigns', 'getCampaignList')->name('ebay3.campaign.ads.campaigns');

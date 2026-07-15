@@ -15,11 +15,17 @@ use Illuminate\Support\Facades\DB;
  *
  * Each band has a direction (inc | dec | none) and a step (%/day). The settings
  * are stored (shared across users) in ebay_sbid_rules under key ebay1_sbid_views
- * so both the UI and the ebay:update-suggestedbid cron use the same rule.
+ * (eBay 1) or ebay3_sbid_views (eBay 3) so both the UI and the
+ * ebay*:update-suggestedbid cron use the same rule.
+ *
+ * Extra guard: when E L30 sold ≤ no_dec_max_el30 (default 0), never decrease
+ * the bid — even if the L7 colour band says "dec".
  */
 final class SbidViewsRule
 {
     public const KEY = 'ebay1_sbid_views';
+
+    public const KEY_EBAY3 = 'ebay3_sbid_views';
 
     /** @return array<string,mixed> */
     public static function defaults(): array
@@ -33,6 +39,8 @@ final class SbidViewsRule
             'green_step' => 0.0,
             'red_dir'    => 'inc',
             'red_step'   => 1.0,
+            // If E L30 sold ≤ this qty, skip any Decrease step (keep C Bid).
+            'no_dec_max_el30' => 0.0,
         ];
     }
 
@@ -73,6 +81,7 @@ final class SbidViewsRule
             'green_step' => $num($in['green_step'] ?? null, $d['green_step']),
             'red_dir'    => $dir($in['red_dir']    ?? null, $d['red_dir']),
             'red_step'   => $num($in['red_step']   ?? null, $d['red_step']),
+            'no_dec_max_el30' => $num($in['no_dec_max_el30'] ?? null, $d['no_dec_max_el30']),
         ];
     }
 
@@ -98,8 +107,9 @@ final class SbidViewsRule
      * @param float                $l7       row l7_views
      * @param float                $avg      average l7_views across the processed set
      * @param array<string,mixed>  $settings resolved settings (see settings())
+     * @param float|null           $el30Sold E L30 units sold (ebay_l30); when ≤ no_dec_max_el30, Decrease is skipped
      */
-    public static function apply(float $baseBid, float $l7, float $avg, array $settings): float
+    public static function apply(float $baseBid, float $l7, float $avg, array $settings, ?float $el30Sold = null): float
     {
         // No current C Bid → nothing to adjust (stays skipped/0).
         if ($baseBid <= 0) {
@@ -112,6 +122,13 @@ final class SbidViewsRule
         if ($band !== '') {
             $dir  = $settings[$band . '_dir'] ?? 'none';
             $step = (float) ($settings[$band . '_step'] ?? 0);
+
+            // If E L30 sold ≤ threshold, never decrease the bid.
+            $noDecMax = (float) ($settings['no_dec_max_el30'] ?? 0);
+            if ($dir === 'dec' && $el30Sold !== null && $el30Sold <= $noDecMax) {
+                $dir = 'none';
+            }
+
             if ($dir === 'inc') {
                 $bid = $baseBid + $step;
             } elseif ($dir === 'dec') {

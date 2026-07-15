@@ -25,7 +25,62 @@ class FacebookMarketplaceController extends Controller
      */
     public function index()
     {
-        return view('sales.facebook_marketplace');
+        $y = self::computeYesterdaySales();
+
+        return view('sales.facebook_marketplace', [
+            'ySales'     => $y['sales'],
+            'ySalesDate' => $y['date'],
+            'yQuantity'  => $y['quantity'],
+            'yOrders'    => $y['orders'],
+        ]);
+    }
+
+    /**
+     * Y Sales — sold_price × qty for Pacific (California) wall-clock yesterday.
+     * Same source/rule as the FB Marketplace row on /all-marketplace-master.
+     * Prefers order_date; falls back to created_at (PT calendar day) when order_date is null.
+     *
+     * @return array{sales: float, date: string, quantity: int, orders: int}
+     */
+    public static function computeYesterdaySales(): array
+    {
+        $tz = 'America/Los_Angeles';
+        $yesterday = Carbon::yesterday($tz)->toDateString();
+        $rangeStartUtc = Carbon::parse($yesterday, $tz)->startOfDay()->utc();
+        $rangeEndUtc = Carbon::parse($yesterday, $tz)->endOfDay()->utc();
+
+        $sales = 0.0;
+        $qty = 0;
+        $orderSet = [];
+
+        FacebookMarketplaceSale::query()
+            ->where(function ($q) use ($yesterday, $rangeStartUtc, $rangeEndUtc) {
+                $q->whereBetween('order_date', [$yesterday, $yesterday])
+                    ->orWhere(function ($q2) use ($rangeStartUtc, $rangeEndUtc) {
+                        $q2->whereNull('order_date')
+                            ->whereBetween('created_at', [
+                                $rangeStartUtc->toDateTimeString(),
+                                $rangeEndUtc->toDateTimeString(),
+                            ]);
+                    });
+            })
+            ->get(['sold_price', 'qty_sold', 'order_number'])
+            ->each(function ($r) use (&$sales, &$qty, &$orderSet) {
+                $lineQty = (int) $r->qty_sold;
+                $sales += (float) $r->sold_price * $lineQty;
+                $qty += $lineQty;
+                $orderNo = trim((string) ($r->order_number ?? ''));
+                if ($orderNo !== '') {
+                    $orderSet[$orderNo] = true;
+                }
+            });
+
+        return [
+            'sales'    => round($sales, 2),
+            'date'     => $yesterday,
+            'quantity' => $qty,
+            'orders'   => count($orderSet),
+        ];
     }
 
     /**
@@ -172,6 +227,12 @@ class FacebookMarketplaceController extends Controller
         $summary['ads_percent'] = round($adsPct, 1);
         $summary['npft_percent'] = round($gpft - $adsPct, 1);
         $summary['nroi_percent'] = round($roi - $adsPct, 1);
+
+        $y = self::computeYesterdaySales();
+        $summary['y_sales'] = $y['sales'];
+        $summary['y_sales_date'] = $y['date'];
+        $summary['y_quantity'] = $y['quantity'];
+        $summary['y_orders'] = $y['orders'];
 
         return response()->json([
             'data' => $computed['rows'],

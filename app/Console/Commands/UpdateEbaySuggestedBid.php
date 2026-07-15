@@ -170,6 +170,7 @@ class UpdateEbaySuggestedBid extends Command
         $avgL7Views = $l7Count > 0 ? ($l7Sum / $l7Count) : 0.0;
         $this->info("Sbid (Views): avg L7 across {$l7Count} processed listing(s) = " . round($avgL7Views, 2)
             . " | caps [{$sbidViewsSettings['min_cap']}, {$sbidViewsSettings['max_cap']}]"
+            . " | no-dec when E L30 ≤ {$sbidViewsSettings['no_dec_max_el30']}"
             . " | pink {$sbidViewsSettings['pink_dir']} {$sbidViewsSettings['pink_step']}"
             . " | green {$sbidViewsSettings['green_dir']} {$sbidViewsSettings['green_step']}"
             . " | red {$sbidViewsSettings['red_dir']} {$sbidViewsSettings['red_step']}");
@@ -213,18 +214,25 @@ class UpdateEbaySuggestedBid extends Command
                         // Sbid (Views): adjust the CURRENT C Bid (bid_percentage) by the
                         // row's L7 View colour band (direction + step), clamped to the
                         // Min/Max caps. Green = no change (keep current C Bid). No current
-                        // C Bid → skip (nothing to adjust).
+                        // C Bid → skip (nothing to adjust). If E L30 sold ≤ no_dec_max_el30,
+                        // Decrease steps are skipped.
                         $baseBid = (float) ($listing->bid_percentage ?? 0);
                         $l7views = (float) ($ebayMetric->l7_views ?? 0);
-                        $newBid  = \App\Support\SbidViewsRule::apply($baseBid, $l7views, $avgL7Views, $sbidViewsSettings);
+                        $newBid  = \App\Support\SbidViewsRule::apply(
+                            $baseBid,
+                            $l7views,
+                            $avgL7Views,
+                            $sbidViewsSettings,
+                            $soldL30
+                        );
 
                         $listing->new_bid = $newBid;
                         $listing->sku = $pm->sku;
 
                         if ($newBid <= 0) {
-                            $this->warn("SKU: {$pm->sku} | Listing ID: {$ebayMetric->item_id} | Views: {$views} | L7: {$l7views} | C Bid: {$baseBid} → No current C Bid (skipped)");
+                            $this->warn("SKU: {$pm->sku} | Listing ID: {$ebayMetric->item_id} | Views: {$views} | L7: {$l7views} | E L30: {$soldL30} | C Bid: {$baseBid} → No current C Bid (skipped)");
                         } else {
-                            $this->info("SKU: {$pm->sku} | Listing ID: {$ebayMetric->item_id} | Views: {$views} | L7: {$l7views} | C Bid: {$baseBid} | SBID (Views): {$newBid}");
+                            $this->info("SKU: {$pm->sku} | Listing ID: {$ebayMetric->item_id} | Views: {$views} | L7: {$l7views} | E L30: {$soldL30} | C Bid: {$baseBid} | SBID (Views): {$newBid}");
                             $updatedListings++;
                         }
                     }

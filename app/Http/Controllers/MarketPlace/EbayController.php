@@ -2297,6 +2297,72 @@ class EbayController extends Controller
         }
     }
 
+    /**
+     * Daily snapshot series for eBay 1 summary badges (amazon_channel_summary_data.channel = ebay).
+     * avg_l30_view = round(total_views / 30) — average daily L30 views.
+     */
+    public function getEbayBadgeChartData(Request $request)
+    {
+        try {
+            $metric = $request->input('metric', 'avg_l30_view');
+            $days = intval($request->input('days', 30));
+
+            $allowedMetrics = [
+                'total_views',
+                'avg_l30_view',
+                'avg_l7_views',
+            ];
+
+            if (! in_array($metric, $allowedMetrics, true)) {
+                return response()->json(['success' => false, 'message' => 'Invalid metric'], 400);
+            }
+
+            $query = AmazonChannelSummary::where('channel', 'ebay')
+                ->orderBy('snapshot_date', 'asc');
+
+            if ($days > 0) {
+                $query->where('snapshot_date', '>=', now()->subDays($days)->toDateString());
+            }
+
+            $rows = $query->get();
+
+            $chartData = $rows->map(function ($row) use ($metric) {
+                $summary = $row->summary_data ?? [];
+                $totalViews = floatval($summary['total_views'] ?? 0);
+
+                if ($metric === 'avg_l30_view') {
+                    // Prefer stored value when present; otherwise derive from total_views.
+                    $raw = array_key_exists('avg_l30_view', $summary)
+                        ? $summary['avg_l30_view']
+                        : round($totalViews / 30);
+                } elseif ($metric === 'avg_l7_views') {
+                    $raw = $summary['avg_l7_views'] ?? 0;
+                } else {
+                    $raw = $summary[$metric] ?? 0;
+                }
+
+                $sd = $row->snapshot_date;
+                $dateStr = '';
+                if ($sd) {
+                    $dateStr = $sd instanceof \DateTimeInterface
+                        ? $sd->format('M d')
+                        : date('M d', strtotime((string) $sd));
+                }
+
+                return [
+                    'date' => $dateStr,
+                    'value' => floatval($raw ?? 0),
+                ];
+            })->values()->toArray();
+
+            return response()->json(['success' => true, 'data' => $chartData]);
+        } catch (\Exception $e) {
+            Log::error('getEbayBadgeChartData error: ' . $e->getMessage());
+
+            return response()->json(['success' => false, 'message' => 'Error fetching chart data'], 500);
+        }
+    }
+
     public function getMetricsHistory(Request $request)
     {
         $days = $request->input('days', 30); // Default to last 30 days
@@ -2334,6 +2400,7 @@ class EbayController extends Controller
                         'date_formatted' => Carbon::parse($record->record_date)->format('M d'),
                         'price' => round($data['price'] ?? 0, 2),
                         'views' => $data['views'] ?? 0,
+                        'l7_views' => $data['l7_views'] ?? 0,
                         'cvr_percent' => round($data['cvr_percent'] ?? 0, 2),
                         'ad_percent' => round($data['ad_percent'] ?? 0, 2),
                     ];
@@ -2933,6 +3000,8 @@ class EbayController extends Controller
             $totalEbayL30 = 0;
             $totalWeightedPrice = 0;
             $totalViews = 0;
+            $totalL7Views = 0;
+            $l7ViewsCount = 0;
             
             // Grand totals (from ALL data)
             $grandTotalKwSpend = 0;
@@ -2950,6 +3019,7 @@ class EbayController extends Controller
             foreach ($filteredData as $row) {
                 $inv = floatval($row['INV'] ?? 0);
                 $ebayL30 = floatval($row['eBay L30'] ?? 0);
+                $ebayStock = floatval($row['eBay Stock'] ?? $row['E Stock'] ?? 0);
                 
                 $totalPftAmt += floatval($row['Total_pft'] ?? 0);
                 $totalSalesAmt += floatval($row['T_Sale_l30'] ?? 0);
@@ -2957,6 +3027,12 @@ class EbayController extends Controller
                 $totalFbaInv += $inv;
                 $totalEbayL30 += $ebayL30;
                 $totalViews += floatval($row['views'] ?? 0);
+
+                // Avg L7 badge: same as JS — rows with E Stock > 0
+                if ($ebayStock > 0) {
+                    $totalL7Views += floatval($row['l7_views'] ?? 0);
+                    $l7ViewsCount++;
+                }
                 
                 // Count sold and 0-sold (EXACT JavaScript logic)
                 if ($ebayL30 == 0) {  // Use == for proper float comparison
@@ -3004,6 +3080,7 @@ class EbayController extends Controller
             
             // Calculate averages and percentages (EXACT JavaScript logic)
             $avgPrice = $totalEbayL30 > 0 ? $totalWeightedPrice / $totalEbayL30 : 0;
+            $avgL7Views = $l7ViewsCount > 0 ? ($totalL7Views / $l7ViewsCount) : 0;
             $tcosPercent = $totalSalesAmt > 0 ? (($grandTotalSpend / $totalSalesAmt) * 100) : 0;
             $groiPercent = $totalLpAmt > 0 ? (($totalPftAmt / $totalLpAmt) * 100) : 0;
             $nroiPercent = $groiPercent - $tcosPercent;
@@ -3035,6 +3112,10 @@ class EbayController extends Controller
                 'total_fba_inv' => round($totalFbaInv, 2),
                 'total_ebay_l30' => round($totalEbayL30, 2),
                 'total_views' => (int) $totalViews,
+                // Average daily L30 views (Σ L30 views / 30), rounded
+                'avg_l30_view' => (int) round($totalViews / 30),
+                // Avg L7 views across E Stock > 0 rows, rounded (matches L7 badge)
+                'avg_l7_views' => (int) round($avgL7Views),
                 
                 // Calculated Percentages
                 'tcos_percent' => round($tcosPercent, 2),

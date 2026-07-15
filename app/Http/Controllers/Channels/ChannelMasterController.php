@@ -1486,10 +1486,8 @@ class ChannelMasterController extends Controller
             if (! Schema::hasTable('facebook_marketplace_sales')) {
                 return null;
             }
-            $tz = 'America/Los_Angeles';
-            $yesterday = Carbon::yesterday($tz)->toDateString();
 
-            return $this->sumFbMarketplaceSalesForPacificDate($yesterday);
+            return (float) (FacebookMarketplaceController::computeYesterdaySales()['sales'] ?? 0);
         } catch (\Throwable $e) {
             Log::warning('FB Marketplace Y Sales failed: ' . $e->getMessage());
 
@@ -1602,8 +1600,8 @@ class ChannelMasterController extends Controller
             ? ($adSpend / $shopifyNetSales) * 100
             : ($adSpend > 0 ? 100.0 : 0.0);
         $nPftPct = $gpftPct - $adsPct;
-        // N ROI = G ROI − Ads% (same TCOS base as Ads%, matches /facebook-ads)
-        $nRoi = $roiPct - $adsPct;
+        // NROI% = (Gross Profit − Ad Spend) / COGS × 100 — do not cut Ads% from GROI%.
+        $nRoi = $totalCogs > 0 ? (($totalPft - $adSpend) / $totalCogs) * 100 : 0.0;
 
         $ySales = $this->computeFbMarketplaceYSalesLikeAmazon();
         $l7Sales = $this->computeFbMarketplaceL7SalesLikeAmazon();
@@ -11728,7 +11726,8 @@ class ChannelMasterController extends Controller
             ? ($adSpend / $shopifyNetSales) * 100
             : ($adSpend > 0 ? 100.0 : 0.0);
         $nPftPct = $gProfitPct - $adsPct;
-        $nRoi = $gRoi - $adsPct;
+        // NROI% = (Gross Profit − Ad Spend) / COGS × 100 — do not cut Ads% from GROI%.
+        $nRoi = $totalCogs > 0 ? (($totalProfit - $adSpend) / $totalCogs) * 100 : 0.0;
 
         $channelData = ChannelMaster::where('channel', 'FB Marketplace')->first();
         $mapMissCounts = $this->getMapAndMissCounts('fb_marketplace');
@@ -13830,7 +13829,7 @@ class ChannelMasterController extends Controller
                 'ads_pct' => 'tcos_percent',
                 'pft' => null,       // computed: net profit $ = (gprofit%/100)*l30_sales - total_ad_spend
                 'npft' => 'npft_percent',
-                'nroi' => null,      // computed: npft / tcos * 100
+                'nroi' => null,      // computed: (gross pft − ad spend) / cogs × 100
                 'missing_l' => 'miss_count',
                 'nmap' => 'nmap_count',
                 // Snapshot stores Map under 'map_count'; without this entry the chart
@@ -14067,10 +14066,17 @@ class ChannelMasterController extends Controller
                         $adSpend = floatval($summaryData['total_ad_spend'] ?? 0);
                         $value = round(($gprofitPercent / 100) * $sales - $adSpend, 2);
                     } elseif ($metric === 'nroi') {
-                        // N ROI = GROI% - TCOS%
-                        $groi = floatval($summaryData['groi_percent'] ?? 0);
-                        $tcos = floatval($summaryData['tcos_percent'] ?? 0);
-                        $value = round($groi - $tcos, 1);
+                        // NROI% = (Gross Profit − Ad Spend) / COGS × 100 — same as page badge
+                        // (do not cut Ads%/TCOS% from GROI%).
+                        $pft = floatval($summaryData['total_pft'] ?? 0);
+                        if ($pft == 0.0) {
+                            $gprofitPercent = floatval($summaryData['gprofit_percent'] ?? 0);
+                            $sales = floatval($summaryData['l30_sales'] ?? 0);
+                            $pft = ($gprofitPercent / 100) * $sales;
+                        }
+                        $spend = floatval($summaryData['total_ad_spend'] ?? 0);
+                        $cogs = floatval($summaryData['cogs'] ?? 0);
+                        $value = $cogs > 0 ? round((($pft - $spend) / $cogs) * 100, 1) : 0;
                     } else {
                         $value = floatval($summaryData[$metricKey] ?? 0);
                     }
