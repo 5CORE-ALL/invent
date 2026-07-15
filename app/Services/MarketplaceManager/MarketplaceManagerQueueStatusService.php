@@ -25,6 +25,7 @@ final class MarketplaceManagerQueueStatusService
         'ImportAliexpressOrderToShopify' => 'Import AliExpress order → Shopify',
         'ImportAlibabaOrderToShopify' => 'Import Alibaba order → Shopify',
         'ImportNeweggOrderToShopify' => 'Import Newegg order → Shopify',
+        'SyncMarketplaceOrdersJob' => 'Fetch orders (+ Shopify import if enabled)',
     ];
 
     /** @var array<string, class-string> */
