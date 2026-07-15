@@ -9,11 +9,14 @@ use App\Services\Crm\ShopifyService;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\View;
 use Illuminate\View\View as ViewInstance;
+use App\Cache\ResilientFileStore;
 use App\Models\Permission;
 use App\Models\FbaManualData;
 use App\Observers\FbaManualDataObserver;
+use App\Support\StoragePathGuard;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Blade;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
 class AppServiceProvider extends ServiceProvider
@@ -32,19 +35,20 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        // File cache (permissions sidebar, ShouldBeUnique locks): optimize:clear can wipe
-        // storage/framework/cache/data; recreate + ensure writable before any Cache::put.
-        foreach ([
-            storage_path('framework/cache/data'),
-            storage_path('framework/sessions'),
-            storage_path('framework/views'),
-            storage_path('logs'),
-            base_path('bootstrap/cache'),
-        ] as $dir) {
-            if (! is_dir($dir)) {
-                @mkdir($dir, 0775, true);
-            }
-        }
+        // File cache (sidebar badges, ShouldBeUnique locks): optimize:clear can wipe
+        // storage/framework/cache/data; recreate before any Cache::put/lock.
+        StoragePathGuard::ensure();
+
+        // Override default "file" driver so missing shard dirs retry instead of 500.
+        Cache::extend('file', function ($app, array $config) {
+            return Cache::repository(
+                (new ResilientFileStore(
+                    $app['files'],
+                    $config['path'],
+                    $config['permission'] ?? null
+                ))->setLockDirectory($config['lock_path'] ?? null)
+            );
+        });
 
         // Register FbaManualData observer
         FbaManualData::observe(FbaManualDataObserver::class);

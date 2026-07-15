@@ -32,9 +32,17 @@ class AmazonAdsMissingController extends Controller
      */
     public static function missingTotalCount(): int
     {
-        return (int) Cache::remember(self::SIDEBAR_COUNT_CACHE_KEY, 300, function () {
-            return (new self)->computeMissingTotal();
-        });
+        try {
+            return (int) Cache::remember(self::SIDEBAR_COUNT_CACHE_KEY, 300, function () {
+                return (new self)->computeMissingTotal();
+            });
+        } catch (\Throwable $e) {
+            try {
+                return (new self)->computeMissingTotal();
+            } catch (\Throwable $e2) {
+                return 0;
+            }
+        }
     }
 
     public static function forgetMissingTotalCache(): void

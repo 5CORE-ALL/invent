@@ -89,23 +89,39 @@ class AllMarketplaceMasterBadgeCalculator implements PageBadgeCalculator
     /** Sidebar Missing Listing badge — same Missing L total as /all-marketplace-master. */
     public static function missingLCountForSidebar(): int
     {
-        $cached = Cache::get(self::MISSING_L_CACHE_KEY);
-        if ($cached !== null) {
-            return (int) $cached;
+        try {
+            $cached = Cache::get(self::MISSING_L_CACHE_KEY);
+            if ($cached !== null) {
+                return (int) $cached;
+            }
+        } catch (\Throwable $e) {
+            // File cache dirs may be missing mid-request after optimize:clear.
         }
 
-        return (int) round((float) (BadgeData::dataForPage(self::PAGE_NAME, ['missing_l' => 0])['missing_l'] ?? 0));
+        try {
+            return (int) round((float) (BadgeData::dataForPage(self::PAGE_NAME, ['missing_l' => 0])['missing_l'] ?? 0));
+        } catch (\Throwable $e) {
+            return 0;
+        }
     }
 
     /** Sidebar Missing Mapping badge — same N Map total as /all-marketplace-master. */
     public static function nmapCountForSidebar(): int
     {
-        $cached = Cache::get(self::NMAP_CACHE_KEY);
-        if ($cached !== null) {
-            return (int) $cached;
+        try {
+            $cached = Cache::get(self::NMAP_CACHE_KEY);
+            if ($cached !== null) {
+                return (int) $cached;
+            }
+        } catch (\Throwable $e) {
+            // File cache dirs may be missing mid-request after optimize:clear.
         }
 
-        return (int) round((float) (BadgeData::dataForPage(self::PAGE_NAME, ['nmap' => 0])['nmap'] ?? 0));
+        try {
+            return (int) round((float) (BadgeData::dataForPage(self::PAGE_NAME, ['nmap' => 0])['nmap'] ?? 0));
+        } catch (\Throwable $e) {
+            return 0;
+        }
     }
 
     /**

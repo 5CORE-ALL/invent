@@ -1327,6 +1327,14 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(55)
             ->runInBackground()
             ->appendOutputTo($log);
+
+        // After optimize:clear, file-cache shard dirs can vanish; recreate so sidebar badges don't 500.
+        $schedule->command('storage:ensure --fix')
+            ->everyMinute()
+            ->name('storage-ensure-dirs')
+            ->withoutOverlapping(50)
+            ->runInBackground()
+            ->appendOutputTo($log);
     }
 
     /**

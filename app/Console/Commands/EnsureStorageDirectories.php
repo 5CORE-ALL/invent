@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Support\StoragePathGuard;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
 
@@ -25,6 +26,10 @@ class EnsureStorageDirectories extends Command
 
         $fix = $this->option('fix');
         $allOk = true;
+
+        if ($fix) {
+            StoragePathGuard::ensure();
+        }
 
         foreach ($dirs as $dir) {
             $exists = is_dir($dir);
