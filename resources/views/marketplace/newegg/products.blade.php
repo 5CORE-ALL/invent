@@ -15,6 +15,8 @@
             @endif
         </p>
 
+        @include('marketplace._queue-status', ['slug' => 'newegg'])
+
         @include('marketplace.newegg._nav', ['active' => 'products'])
 
         @if($apiError)

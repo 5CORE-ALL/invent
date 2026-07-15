@@ -544,6 +544,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/orders/push', [\App\Http\Controllers\MarketplaceController::class, 'pushOrderToShopify'])->name('marketplace.orders.push');
         Route::post('/orders/delete-ready', [\App\Http\Controllers\MarketplaceController::class, 'deleteReadyOrder'])->name('marketplace.orders.delete-ready');
         Route::post('/orders/mark-imported', [\App\Http\Controllers\MarketplaceController::class, 'markOrderAlreadyImported'])->name('marketplace.orders.mark-imported');
+        Route::get('/queue-status', [\App\Http\Controllers\MarketplaceController::class, 'queueStatus'])->name('marketplace.queue.status');
     });
 
     // TopDawg Sales Dashboard (topdawg_order_metrics, margin 0.95, no ship)

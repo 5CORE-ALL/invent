@@ -189,11 +189,18 @@ class NeweggLinkMapSyncService
     /**
      * @return array<string, mixed>
      */
-    protected function getProgress(): array
+    public function getProgress(): array
     {
         $state = Cache::get(self::CACHE_KEY);
 
-        return is_array($state) ? $state : [];
+        return is_array($state) ? $state : [
+            'running' => false,
+            'page' => 0,
+            'total_page' => null,
+            'total_upserted' => 0,
+            'message' => '',
+            'done' => false,
+        ];
     }
 
     /**

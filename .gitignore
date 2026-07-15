@@ -38,6 +38,21 @@
 .vscode
 .DS_Store
 Thumbs.db
+
+# One-off local/dev SSH deploy, probe, and test scripts (production cron workers stay tracked)
+/scripts/ssh-*.php
+/scripts/test-*.php
+/scripts/macy-*.php
+/scripts/patch-*.php
+/scripts/probe-*.php
+/scripts/inspect-*.php
+/scripts/compare-*.php
+/scripts/audit-*.php
+/scripts/clone-*.php
+/scripts/dump-*.php
+/scripts/ae-*.php
+/scripts/check-*.php
+/scripts/fix-*.php
 vendor/symfony/polyfill-php83/Php83.php
 .htaccess
 composer.lock

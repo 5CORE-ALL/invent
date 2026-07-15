@@ -7,6 +7,7 @@ use App\Http\Controllers\MarketPlace\AliexpressSyncController;
 use App\Http\Controllers\MarketPlace\NeweggSyncController;
 use App\Http\Controllers\MarketPlace\ReverbSyncController;
 use App\Http\Controllers\MarketPlace\TopDawgSyncController;
+use App\Services\MarketplaceManager\MarketplaceManagerQueueStatusService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -213,5 +214,18 @@ class MarketplaceController extends Controller
             'newegg' => app(NeweggSyncController::class)->markOrderAlreadyImported($request),
             default => response()->json(['success' => false, 'message' => 'Not supported for this marketplace.'], 404),
         };
+    }
+
+    public function queueStatus(string $marketplace): JsonResponse
+    {
+        $marketplace = strtolower($marketplace);
+        if (! in_array($marketplace, ['reverb', 'aliexpress', 'alibaba', 'newegg'], true)) {
+            return response()->json(['success' => false, 'message' => 'Queue status not available for this marketplace.'], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'status' => app(MarketplaceManagerQueueStatusService::class)->snapshot($marketplace),
+        ]);
     }
 }

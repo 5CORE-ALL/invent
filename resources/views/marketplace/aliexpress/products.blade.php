@@ -15,6 +15,8 @@
             @endif
         </p>
 
+        @include('marketplace._queue-status', ['slug' => 'aliexpress'])
+
         @include('marketplace.aliexpress._nav', ['active' => 'products'])
 
         @if($apiError)

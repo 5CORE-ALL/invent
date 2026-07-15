@@ -7,6 +7,8 @@
         @include('marketplace._page-heading', ['slug' => 'reverb', 'heading' => 'Reverb Orders'])
         <p class="text-muted mb-3">Orders from <strong>July 7, 2026</strong> onward (same cutoff as AliExpress). Older historical Reverb rows stay in the database but are hidden here. Push to Shopify manually or enable auto-import in <a href="{{ route('marketplace.settings', 'reverb') }}">Settings</a>.</p>
 
+        @include('marketplace._queue-status', ['slug' => 'reverb'])
+
         @include('marketplace.reverb._nav', ['active' => 'orders'])
 
         @if($apiError)

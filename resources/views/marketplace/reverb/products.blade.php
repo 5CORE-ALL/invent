@@ -21,6 +21,8 @@
             <div class="alert alert-info py-2">Queued {{ (int) $liveQueued }} SKU(s) for live inventory sync (Shopify → marketplace).</div>
         @endif
 
+        @include('marketplace._queue-status', ['slug' => 'reverb'])
+
         @include('marketplace.reverb._nav', ['active' => 'products'])
 
         @if($apiError)

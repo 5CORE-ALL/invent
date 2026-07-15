@@ -12,12 +12,30 @@ $queue = MarketplaceManagerRegistry::QUEUE;
 $out = [
     'queue' => $queue,
     'jobs_pending' => null,
+    'jobs_waiting' => null,
+    'jobs_running' => null,
+    'jobs_delayed' => null,
     'jobs_by_legacy_queue' => [],
     'failed_recent' => [],
 ];
 
 if (Schema::hasTable('jobs')) {
+    $now = now();
     $out['jobs_pending'] = (int) DB::table('jobs')->where('queue', $queue)->count();
+    $out['jobs_running'] = (int) DB::table('jobs')
+        ->where('queue', $queue)
+        ->whereNotNull('reserved_at')
+        ->count();
+    $out['jobs_delayed'] = (int) DB::table('jobs')
+        ->where('queue', $queue)
+        ->whereNull('reserved_at')
+        ->where('available_at', '>', $now)
+        ->count();
+    $out['jobs_waiting'] = (int) DB::table('jobs')
+        ->where('queue', $queue)
+        ->whereNull('reserved_at')
+        ->where('available_at', '<=', $now)
+        ->count();
     foreach (['aliexpress', 'alibaba', 'reverb'] as $legacy) {
         $count = (int) DB::table('jobs')->where('queue', $legacy)->count();
         if ($count > 0) {
