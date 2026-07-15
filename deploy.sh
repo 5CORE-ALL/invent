@@ -144,6 +144,8 @@ for worker_script in \
     "${PROJECT_DIR}/scripts/cron-aliexpress-worker.sh"
 do
     if [ -x "${worker_script}" ]; then
+        # Windows CRLF checkouts break bash on the server.
+        sed -i 's/\r$//' "${worker_script}" 2>/dev/null || true
         bash "${worker_script}"
         echo "  ✓ Invoked $(basename "${worker_script}")"
     fi
