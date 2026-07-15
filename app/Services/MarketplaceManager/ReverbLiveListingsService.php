@@ -197,8 +197,15 @@ final class ReverbLiveListingsService
             if ($want === $reverbQty) {
                 continue;
             }
-            PushLinkedSkuInventoryFromShopify::dispatch([$sku], $want, null);
-            $queued++;
+            try {
+                PushLinkedSkuInventoryFromShopify::dispatch([$sku], $want, null);
+                $queued++;
+            } catch (\Throwable $e) {
+                Log::warning('ReverbLiveListingsService: could not queue inventory sync (cache lock / storage)', [
+                    'sku' => $sku,
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
 
         return $queued;
