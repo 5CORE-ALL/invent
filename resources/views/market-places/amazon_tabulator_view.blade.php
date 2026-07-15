@@ -987,6 +987,30 @@
             return String(s).trim().replace(/\s+/g, ' ');
         }
 
+        // Amazon channel Ads% (TACOS) — same value as the Ads badge /all-marketplace-master.
+        // Used for PFT% = GPFT% − Ads%, SPFT = SGPFT − Ads%, and net SROI (NROI-badge formula).
+        const AMAZON_CHANNEL_ADS_PCT = {{ $amazonAdsPercent !== null ? (float) $amazonAdsPercent : 0 }};
+
+        /**
+         * Net SROI — same shape as the NROI badge:
+         *   (gross profit $ − ad spend $) / COGS × 100
+         * where ad spend $ = SPRICE × Ads%/100 and COGS = LP.
+         * Returns null when SPRICE/LP are missing.
+         */
+        function amazonComputeNetSroi(rowData) {
+            if (!rowData) return null;
+            const sprice = parseFloat(rowData.SPRICE);
+            const lp = parseFloat(rowData.LP_productmaster);
+            if (!isFinite(sprice) || sprice <= 0 || !isFinite(lp) || lp <= 0) return null;
+            const ship = parseFloat(rowData.Ship_productmaster) || 0;
+            const marginRaw = parseFloat(rowData.percentage);
+            const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : 0.80;
+            const adsFrac = (parseFloat(AMAZON_CHANNEL_ADS_PCT) || 0) / 100;
+            const grossPft = (sprice * margin) - ship - lp;
+            const adSpend = sprice * adsFrac;
+            return ((grossPft - adSpend) / lp) * 100;
+        }
+
         function amazonModalFmtPct(v) {
             if (v == null || v === '') return '—';
             const n = parseFloat(v);
@@ -1168,10 +1192,14 @@
         }
         /** S PFT % — same colors as Spft% column */
         function amazonModalSpftColoredHtml(row) {
-            const value = row['Spft%'];
-            if (value === null || value === undefined || value === '') return '<span class="text-muted">—</span>';
-            const percent = parseFloat(value);
-            if (isNaN(percent)) return '<span class="text-muted">—</span>';
+            // SPFT = SGPFT − Ads% (channel TACOS)
+            const rawGpft = row.SGPFT;
+            if (rawGpft === null || rawGpft === undefined || rawGpft === '') {
+                return '<span class="text-muted">—</span>';
+            }
+            const sgpft = parseFloat(rawGpft);
+            if (isNaN(sgpft)) return '<span class="text-muted">—</span>';
+            const percent = sgpft - (parseFloat(AMAZON_CHANNEL_ADS_PCT) || 0);
             let color = '';
             if (percent < 10) color = '#a00211';
             else if (percent >= 10 && percent < 20) color = '#3591dc';
@@ -1180,12 +1208,10 @@
             else color = '#e83e8c';
             return '<span style="color: ' + color + '; font-weight: 600;">' + Math.round(percent) + '%</span>';
         }
-        /** SROI % — same colors as SROI column */
+        /** SROI % — same colors as SROI column (NROI-badge formula) */
         function amazonModalSroiColoredHtml(row) {
-            const value = row.SROI;
-            if (value === null || value === undefined || value === '') return '<span class="text-muted">—</span>';
-            const percent = parseFloat(value);
-            if (isNaN(percent)) return '<span class="text-muted">—</span>';
+            const percent = amazonComputeNetSroi(row);
+            if (percent === null || !isFinite(percent)) return '<span class="text-muted">—</span>';
             let color = '';
             if (percent < 50) color = '#a00211';
             else if (percent >= 50 && percent < 75) color = '#ffc107';
@@ -1224,7 +1250,9 @@
                     tr.append($('<td class="text-end"></td>').html(amazonModalCountEmphasisHtml(row['A_L30'])));
                     tr.append($('<td class="text-end"></td>').html(amazonModalCvrL30ColoredHtml(row)));
                     tr.append($('<td class="text-end"></td>').html(amazonModalGpftPftColoredHtml(row['GPFT%'])));
-                    tr.append($('<td class="text-end"></td>').html(amazonModalGpftPftColoredHtml(row['PFT%'])));
+                    // PFT% = GPFT% − Ads% (channel TACOS)
+                    const modalPft = (parseFloat(row['GPFT%']) || 0) - (parseFloat(AMAZON_CHANNEL_ADS_PCT) || 0);
+                    tr.append($('<td class="text-end"></td>').html(amazonModalGpftPftColoredHtml(modalPft)));
                     tr.append($('<td class="text-end"></td>').html(amazonModalGroiColoredHtml(row['GROI%'])));
                     tr.append($('<td class="text-end"></td>').html(amazonModalLmpColoredHtml(row)));
                     tr.append($('<td class="text-end"></td>').html(amazonModalSpriceInputHtml(row)));
@@ -3090,19 +3118,19 @@
                     return;
                 }
 
+                // Target ROI% = displayed net SROI (same as NROI badge shape):
+                //   ((sprice×margin − ship − lp) − sprice×Ads%/100) / lp × 100 = Target
+                //   -> sprice = (lp × (1 + Target/100) + ship) / (margin − Ads%/100)
+                const adsFrac = (parseFloat(AMAZON_CHANNEL_ADS_PCT) || 0) / 100;
                 const roiMultiplier = 1 + (targetRoiPct / 100);
 
                 // Pre-collect targets so we know the batch size up front (drives the
                 // success/error progress callback) and we never iterate the table twice.
-                //
-                // We back-solve sprice so the resulting SROI column matches Target ROI%:
-                //     ROI% = ((sprice * margin - ship - lp) / lp) * 100   (same formula the
-                //     backend uses in saveSpriceToDatabase)
-                //   -> sprice = (lp * (1 + ROI%/100) + ship) / margin
                 // `margin` is the take-home rate on the row (row.percentage, e.g. 0.80 for
                 // Amazon). Falls back to 0.80 if the row didn't carry the field, matching
                 // the hard-coded backend value used for SROI/SGPFT.
                 const rowsToProcess = [];
+                const skippedAdsMargin = [];
                 table.getRows().forEach(function(r) {
                     const rd = r.getData();
                     const sku = rd['(Child) sku'];
@@ -3112,18 +3140,29 @@
                     const ship = parseFloat(rd.Ship_productmaster) || 0;
                     const marginRaw = parseFloat(rd.percentage);
                     const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : 0.80;
-                    const candidate = (lp * roiMultiplier + ship) / margin;
+                    const netMargin = margin - adsFrac;
+                    if (netMargin <= 0) {
+                        skippedAdsMargin.push(sku);
+                        return;
+                    }
+                    const candidate = (lp * roiMultiplier + ship) / netMargin;
                     const sprice = +candidate.toFixed(2);
                     if (!isFinite(sprice) || sprice <= 0) return;
                     rowsToProcess.push({ row: r, sku: sku, sprice: sprice });
                 });
 
                 if (rowsToProcess.length === 0) {
-                    showToast('warning', 'No selected rows have a usable LP > 0');
+                    showToast('warning', skippedAdsMargin.length
+                        ? 'No selected rows could be priced (LP missing, or Ads% ≥ take-home margin)'
+                        : 'No selected rows have a usable LP > 0');
                     return;
                 }
 
-                if (!confirm(`Compute & save S PRC for ${rowsToProcess.length} selected SKU(s) using (LP \u00d7 (1 + ${targetRoiPct}%/100) + Ship) / margin?`)) {
+                let confirmMsg = `Compute & save S PRC for ${rowsToProcess.length} selected SKU(s) so SNROI (NROI formula) = ${targetRoiPct}%?\n\n(sprice = (LP \u00d7 (1 + Target/100) + Ship) / (margin \u2212 Ads%))`;
+                if (skippedAdsMargin.length) {
+                    confirmMsg += `\n\nNote: ${skippedAdsMargin.length} row(s) skipped because Ads% \u2265 take-home margin.`;
+                }
+                if (!confirm(confirmMsg)) {
                     return;
                 }
 
@@ -4574,7 +4613,7 @@
                             if (rowData.is_parent_summary) {
                                 const pk = amazonParentKeyFromRow(rowData);
                                 if (!pk) return '';
-                                return `<button type="button" class="btn btn-link p-0 parent-pricing-eye-btn" data-parent="${escAttr(pk)}" title="Child SKU pricing (incl. S PRC, push, S PFT, SROI)" style="color: #0dcaf0;"><i class="fas fa-eye" style="font-size: 16px;"></i></button>`;
+                                return `<button type="button" class="btn btn-link p-0 parent-pricing-eye-btn" data-parent="${escAttr(pk)}" title="Child SKU pricing (incl. S PRC, push, SNPFT, SNROI)" style="color: #0dcaf0;"><i class="fas fa-eye" style="font-size: 16px;"></i></button>`;
                             }
 
                             const sku = rowData['(Child) sku'] || '';
@@ -4678,10 +4717,15 @@
                         title: "PFT %",
                         field: "PFT%",
                         hozAlign: "center",
+                        sorter: function(a, b, aRow, bRow) {
+                            const ads = parseFloat(AMAZON_CHANNEL_ADS_PCT) || 0;
+                            return ((parseFloat(aRow.getData()['GPFT%'] || 0) - ads) - (parseFloat(bRow.getData()['GPFT%'] || 0) - ads));
+                        },
                         formatter: function(cell) {
-                            const value = cell.getValue();
-                            if (value === null || value === undefined) return '0.00%';
-                            const percent = parseFloat(value);
+                            const rowData = cell.getRow().getData();
+                            const ads = parseFloat(AMAZON_CHANNEL_ADS_PCT) || 0;
+                            // PFT% = GPFT% − Ads% (channel TACOS)
+                            const percent = (parseFloat(rowData['GPFT%'] || 0)) - ads;
                             let color = '';
                             
                             if (percent < 10) color = '#a00211'; // red
@@ -4692,7 +4736,6 @@
                             
                             return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                         },
-                        sorter: "number",
                         width: 50
                     },
                     {
@@ -5343,14 +5386,26 @@
                         width: 80
                     },
                     {
-                        title: "S PFT",
+                        title: "SNPFT",
                         field: "Spft%",
                         hozAlign: "center",
+                        sorter: function(a, b, aRow, bRow) {
+                            const ads = parseFloat(AMAZON_CHANNEL_ADS_PCT) || 0;
+                            const aVal = parseFloat(aRow.getData().SGPFT);
+                            const bVal = parseFloat(bRow.getData().SGPFT);
+                            const aSpft = isNaN(aVal) ? 0 : (aVal - ads);
+                            const bSpft = isNaN(bVal) ? 0 : (bVal - ads);
+                            return aSpft - bSpft;
+                        },
                         formatter: function(cell) {
-                            const value = cell.getValue();
-                            if (value === null || value === undefined) return '';
-                            const percent = parseFloat(value);
-                            if (isNaN(percent)) return '';
+                            const rowData = cell.getRow().getData();
+                            // SPFT = SGPFT − Ads% (net of channel ad spend)
+                            const rawGpft = rowData.SGPFT;
+                            if (rawGpft === null || rawGpft === undefined || rawGpft === '') return '';
+                            const sgpft = parseFloat(rawGpft);
+                            if (isNaN(sgpft)) return '';
+                            const ads = parseFloat(AMAZON_CHANNEL_ADS_PCT) || 0;
+                            const percent = sgpft - ads;
                             
                             let color = '';
                             // Same as PFT% color logic
@@ -5365,14 +5420,19 @@
                         width: 80
                     },
                     {
-                        title: "SROI",
+                        title: "SNROI",
                         field: "SROI",
                         hozAlign: "center",
+                        // Same formula as NROI badge: (PFT$ − Ad Spend$) / COGS × 100
+                        sorter: function(a, b, aRow, bRow) {
+                            const aNet = amazonComputeNetSroi(aRow.getData());
+                            const bNet = amazonComputeNetSroi(bRow.getData());
+                            return ((aNet == null || !isFinite(aNet)) ? 0 : aNet)
+                                 - ((bNet == null || !isFinite(bNet)) ? 0 : bNet);
+                        },
                         formatter: function(cell) {
-                            const value = cell.getValue();
-                            if (value === null || value === undefined) return '';
-                            const percent = parseFloat(value);
-                            if (isNaN(percent)) return '';
+                            const percent = amazonComputeNetSroi(cell.getRow().getData());
+                            if (percent === null || !isFinite(percent)) return '';
                             
                             let color = '';
                             // Same as ROI% color logic
@@ -6311,14 +6371,16 @@
                 $('#ml-count').text(mlCount.toLocaleString());
                 
                 // Ads% (from /all-marketplace-master, Amazon channel).
-                const amazonAdsPercent = {{ $amazonAdsPercent !== null ? (float) $amazonAdsPercent : 0 }};
+                const amazonAdsPercent = parseFloat(AMAZON_CHANNEL_ADS_PCT) || 0;
 
                 // GROI% = (Total PFT / Total COGS) * 100
                 const groiPercent = totalLpAmt > 0 ? ((totalPftAmt / totalLpAmt) * 100) : 0;
                 $('#groi-percent-badge').text('GROI: ' + Math.round(groiPercent) + '%');
 
-                // NROI% = GROI% − Ads%
-                const nroiPercent = groiPercent - amazonAdsPercent;
+                // NROI% = (Total PFT − Ad Spend) / COGS × 100
+                // Ad Spend estimated from channel Ads% × sales (same Ads% basis as the Ads badge).
+                const adSpendEst = (amazonAdsPercent / 100) * totalSalesAmt;
+                const nroiPercent = totalLpAmt > 0 ? ((totalPftAmt - adSpendEst) / totalLpAmt) * 100 : 0;
                 $('#nroi-percent-badge').text('NROI: ' + Math.round(nroiPercent) + '%');
                 
                 $('#total-pft-amt-badge').text('PFT: $' + Math.round(totalPftAmt));
@@ -7457,8 +7519,8 @@
                                     <th class="text-end">LMP</th>
                                     <th class="text-end">S PRC</th>
                                     <th class="text-center">Push</th>
-                                    <th class="text-end">S PFT %</th>
-                                    <th class="text-end">SROI %</th>
+                                    <th class="text-end">SNPFT %</th>
+                                    <th class="text-end">SNROI %</th>
                                 </tr>
                             </thead>
                             <tbody id="parent-pricing-breakdown-tbody"></tbody>

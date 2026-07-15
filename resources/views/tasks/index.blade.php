@@ -2433,7 +2433,7 @@
                         <strong>Assign Assignee</strong>
                         <small class="d-block text-muted">Add assignee to tasks that have none</small>
                     </a>
-                    @if($isAdmin)
+                    @if($isAdmin || !empty($canDeleteAnyTask))
                     <a href="#" class="list-group-item list-group-item-action" id="bulk-assign-assignor-btn">
                         <i class="mdi mdi-account-star text-primary me-2"></i>
                         <strong>Assign Assignor</strong>

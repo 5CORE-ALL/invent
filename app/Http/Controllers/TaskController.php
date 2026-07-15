@@ -1924,6 +1924,7 @@ class TaskController extends Controller
         try {
             $user = Auth::user();
             $isAdmin = \App\Support\SuperAdminAccess::isTaskAdmin($user);
+            $canBulkEditAny = $isAdmin || TaskPolicy::userHasSpecialTaskPermission($user);
 
             // Check if this is for automated tasks
             // Either based on is_automated flag or specific actions only for automated tasks
@@ -2072,8 +2073,8 @@ class TaskController extends Controller
             case 'tid':
             case 'assignee':
             case 'etc':
-                // Other bulk operations require admin privileges
-                if (!$isAdmin) {
+                // Bulk field edits: admins + special task-permission users
+                if (!$canBulkEditAny) {
                     return response()->json([
                         'success' => false,
                         'message' => 'Unauthorized. Only administrators can perform bulk updates.'
@@ -2168,8 +2169,8 @@ class TaskController extends Controller
                 ]);
             
             case 'assign_assignor':
-                // Bulk assign assignor (admin only)
-                if (!$isAdmin) {
+                // Bulk assign assignor (admin / special task-permission users)
+                if (!$canBulkEditAny) {
                     return response()->json([
                         'success' => false,
                         'message' => 'Only admins can change assignor'
