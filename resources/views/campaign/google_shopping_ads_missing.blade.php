@@ -110,6 +110,50 @@
         .gs-ads-missing .campaign-dot-red {
             background-color: #dc2626;
         }
+        .gs-ads-missing .link-chip .chip-x {
+            cursor: pointer;
+            color: #e03131;
+        }
+        .gs-ads-missing .link-add-btn {
+            border: 1px solid #adb5bd;
+            background: #fff;
+            border-radius: 6px;
+            padding: 0 6px;
+            line-height: 1.4;
+            cursor: pointer;
+            color: #2f9e44;
+        }
+        .gs-ads-missing .link-add-btn:hover { background: #f1f3f5; }
+        .gs-campaign-picker {
+            position: absolute;
+            z-index: 2000;
+            width: 300px;
+            max-height: 280px;
+            background: #fff;
+            border: 1px solid #ced4da;
+            border-radius: 6px;
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+            padding: 6px;
+            display: flex;
+            flex-direction: column;
+        }
+        .gs-campaign-picker.d-none { display: none !important; }
+        .gs-campaign-picker .gs-picker-list { overflow-y: auto; margin-top: 6px; }
+        .gs-campaign-picker .gs-picker-option {
+            padding: 4px 6px;
+            font-size: 0.78rem;
+            cursor: pointer;
+            border-radius: 4px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .gs-campaign-picker .gs-picker-option:hover { background: #e7f5ff; }
+        .gs-campaign-picker .gs-picker-empty {
+            padding: 6px;
+            color: #868e96;
+            font-size: 0.78rem;
+        }
     </style>
 @endsection
 
@@ -125,7 +169,7 @@
                             <span class="gs-missing-badge-label">Parent</span>
                             <span class="gs-missing-badge-value tabular-nums" id="gsParentValue">0</span>
                         </div>
-                        <div class="gs-missing-badge gs-missing-badge--missing" id="gsMissingWrap" title="Missing: in-stock parents (Inv &gt; 0) in the current view with no matched Google Shopping campaign.">
+                        <div class="gs-missing-badge gs-missing-badge--missing" id="gsMissingWrap" title="Missing: in-stock parents (Inv &gt; 0) in the current view with no linked Google Shopping campaign.">
                             <span class="gs-missing-badge-label">Missing</span>
                             <span class="gs-missing-badge-value tabular-nums" id="gsMissingValue">0</span>
                         </div>
@@ -145,6 +189,10 @@
     <script>
         (function () {
             var missingDataUrl = @json(route('google.shopping.ads.missing.data'));
+            var campaignsUrl = @json(route('google.shopping.ads.missing.campaigns'));
+            var linkUrl = @json(route('google.shopping.ads.missing.link'));
+            var unlinkUrl = @json(route('google.shopping.ads.missing.unlink'));
+            var csrfToken = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
 
             function esc(str) {
                 return String(str == null ? '' : str)
@@ -163,30 +211,20 @@
 
             function inventoryHeaderFilter(headerValue, rowValue) {
                 var inv = Number(rowValue) || 0;
-                if (headerValue === 'in') {
-                    return inv > 0;
-                }
-                if (headerValue === 'zero') {
-                    return inv <= 0;
-                }
+                if (headerValue === 'in') { return inv > 0; }
+                if (headerValue === 'zero') { return inv <= 0; }
                 return true;
             }
 
             function missingHeaderFilter(headerValue, rowValue) {
                 var len = Array.isArray(rowValue) ? rowValue.length : 0;
-                if (headerValue === 'missing') {
-                    return len === 0;
-                }
-                if (headerValue === 'linked') {
-                    return len > 0;
-                }
+                if (headerValue === 'missing') { return len === 0; }
+                if (headerValue === 'linked') { return len > 0; }
                 return true;
             }
 
             function linkNamesAccessor(value) {
-                if (!Array.isArray(value)) {
-                    return '';
-                }
+                if (!Array.isArray(value)) { return ''; }
                 return value.map(function (c) { return c && c.campaign_name ? c.campaign_name : ''; })
                     .filter(function (n) { return n !== ''; })
                     .join(', ');
@@ -200,176 +238,313 @@
                 return '<span class="campaign-dot campaign-dot-' + dot + '" title="' + esc(title) + '"></span>';
             }
 
+            function postJson(url, payload) {
+                return fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken,
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: JSON.stringify(payload)
+                }).then(function (res) {
+                    return res.json().then(function (body) { return { ok: res.ok, body: body }; });
+                });
+            }
+
             function campaignsFormatter(cell) {
+                var d = cell.getData();
                 var list = cell.getValue() || [];
-                if (!Array.isArray(list) || !list.length) {
-                    return '';
-                }
-                return list.map(function (c) {
-                    return '<span class="link-chip" title="' + esc(c.campaign_name) + '">'
+                var chips = (Array.isArray(list) ? list : []).map(function (c) {
+                    var canRemove = c && c.source === 'manual' && c.id;
+                    return '<span class="link-chip" title="' + esc(c.campaign_name) + (c.source === 'manual' ? ' (manual)' : ' (auto)') + '">'
                         + statusDot(c)
                         + esc(c.campaign_name)
+                        + (canRemove
+                            ? ' <i class="fa fa-times chip-x" data-id="' + c.id + '" data-sku="' + esc(d.sku) + '"></i>'
+                            : '')
                         + '</span>';
                 }).join('');
+                return chips
+                    + '<button type="button" class="link-add-btn" data-sku="' + esc(d.sku) + '" title="Link a campaign">'
+                    + '<i class="fa fa-plus"></i></button>';
             }
 
-            var table = new Tabulator('#gsAdsMissingTable', {
-                ajaxURL: missingDataUrl,
-                ajaxResponse: function (url, params, response) {
-                    return (response && Array.isArray(response.data)) ? response.data : (response || []);
-                },
-                index: 'sku',
-                layout: 'fitColumns',
-                height: 'calc(100vh - 220px)',
-                pagination: true,
-                paginationSize: 100,
-                paginationSizeSelector: [25, 50, 100, 200, 500],
-                paginationCounter: 'rows',
-                initialSort: [{ column: 'parent', dir: 'asc' }],
-                rowFormatter: function (row) {
-                    if (row.getData().is_parent) {
-                        row.getElement().classList.add('parent-row');
-                    }
-                },
-                columns: [
-                    {
-                        title: 'Parent', field: 'parent', headerFilter: 'input', headerFilterPlaceholder: 'Search Parent...',
-                        cssClass: 'text-primary', widthGrow: 1, tooltip: true,
-                        hozAlign: 'center', headerHozAlign: 'center',
-                        formatter: function (cell) {
-                            var v = cell.getValue() || '';
-                            return '<span class="parent-name">' + esc(v) + '</span>'
-                                + ' <i class="fa fa-copy parent-copy-btn" role="button" tabindex="0" title="Copy parent name" data-parent="' + esc(v) + '"></i>';
+            var campaignNames = [];
+            var campaignsLoadPromise = null;
+
+            function ensureCampaignNames() {
+                if (campaignsLoadPromise) { return campaignsLoadPromise; }
+                campaignsLoadPromise = fetch(campaignsUrl, { headers: { 'Accept': 'application/json' } })
+                    .then(function (res) { return res.json(); })
+                    .then(function (json) {
+                        campaignNames = (json && Array.isArray(json.data))
+                            ? json.data.map(function (c) { return c.campaign_name; })
+                            : [];
+                        return campaignNames;
+                    })
+                    .catch(function () {
+                        campaignNames = [];
+                        return campaignNames;
+                    });
+                return campaignsLoadPromise;
+            }
+
+            function buildTable() {
+                var table = new Tabulator('#gsAdsMissingTable', {
+                    ajaxURL: missingDataUrl,
+                    ajaxResponse: function (url, params, response) {
+                        return (response && Array.isArray(response.data)) ? response.data : (response || []);
+                    },
+                    index: 'sku',
+                    layout: 'fitColumns',
+                    height: 'calc(100vh - 220px)',
+                    pagination: true,
+                    paginationSize: 100,
+                    paginationSizeSelector: [25, 50, 100, 200, 500],
+                    paginationCounter: 'rows',
+                    initialSort: [{ column: 'parent', dir: 'asc' }],
+                    rowFormatter: function (row) {
+                        if (row.getData().is_parent) {
+                            row.getElement().classList.add('parent-row');
                         }
                     },
-                    {
-                        title: 'Inv', field: 'inventory', width: 110,
-                        hozAlign: 'right', headerHozAlign: 'right',
-                        headerSort: true, sorter: 'number',
-                        headerFilter: 'list',
-                        headerFilterParams: { values: { '': 'All', in: 'In Stock', zero: 'Zero Inv' } },
-                        headerFilterFunc: inventoryHeaderFilter,
-                        formatter: function (cell) {
-                            var v = cell.getValue();
-                            return (v == null || v === '') ? '' : Number(v).toLocaleString('en-US');
+                    columns: [
+                        {
+                            title: 'Parent', field: 'parent', headerFilter: 'input', headerFilterPlaceholder: 'Search Parent...',
+                            cssClass: 'text-primary', widthGrow: 1, tooltip: true,
+                            hozAlign: 'center', headerHozAlign: 'center',
+                            formatter: function (cell) {
+                                var v = cell.getValue() || '';
+                                return '<span class="parent-name">' + esc(v) + '</span>'
+                                    + ' <i class="fa fa-copy parent-copy-btn" role="button" tabindex="0" title="Copy parent name" data-parent="' + esc(v) + '"></i>';
+                            }
+                        },
+                        {
+                            title: 'Inv', field: 'inventory', width: 110,
+                            hozAlign: 'right', headerHozAlign: 'right',
+                            headerSort: true, sorter: 'number',
+                            headerFilter: 'list',
+                            headerFilterParams: { values: { '': 'All', in: 'In Stock', zero: 'Zero Inv' } },
+                            headerFilterFunc: inventoryHeaderFilter,
+                            formatter: function (cell) {
+                                var v = cell.getValue();
+                                return (v == null || v === '') ? '' : Number(v).toLocaleString('en-US');
+                            }
+                        },
+                        {
+                            title: 'Campaign', field: 'campaigns', widthGrow: 3,
+                            hozAlign: 'center', headerHozAlign: 'center',
+                            headerSort: true, sorter: linkCountSorter,
+                            headerFilter: 'list',
+                            headerFilterParams: { values: { '': 'All', missing: 'Missing', linked: 'Linked' } },
+                            headerFilterFunc: missingHeaderFilter,
+                            formatter: campaignsFormatter,
+                            accessorDownload: linkNamesAccessor
                         }
-                    },
-                    {
-                        title: 'Campaign', field: 'campaigns', widthGrow: 3,
-                        hozAlign: 'center', headerHozAlign: 'center',
-                        headerSort: true, sorter: linkCountSorter,
-                        headerFilter: 'list',
-                        headerFilterParams: { values: { '': 'All', missing: 'Missing', linked: 'Linked' } },
-                        headerFilterFunc: missingHeaderFilter,
-                        formatter: campaignsFormatter,
-                        accessorDownload: linkNamesAccessor
-                    }
-                ]
-            });
-
-            table.on('tableBuilt', function () {
-                table.setFilter(onlyParentsFilter);
-            });
-
-            var exportBtn = document.getElementById('gsMissingExportBtn');
-            if (exportBtn) {
-                exportBtn.addEventListener('click', function () {
-                    var stamp = new Date().toISOString().slice(0, 10);
-                    table.download('csv', 'missing-google-shopping-ads-' + stamp + '.csv');
+                    ]
                 });
-            }
 
-            function updateMissingBadge(rowsData) {
-                var rows = rowsData || table.getData('active');
-                var missing = 0;
-                rows.forEach(function (r) {
-                    if (!r || (Number(r.inventory) || 0) <= 0) { return; }
-                    if (!r.campaigns || !r.campaigns.length) { missing++; }
+                table.on('tableBuilt', function () {
+                    table.setFilter(onlyParentsFilter);
                 });
-                var missingEl = document.getElementById('gsMissingValue');
-                var missingWrap = document.getElementById('gsMissingWrap');
-                if (missingEl) { missingEl.textContent = Number(missing).toLocaleString('en-US'); }
-                if (missingWrap) { missingWrap.classList.toggle('is-alert', missing > 0); }
-            }
 
-            function updateParentBadge() {
-                var all = table.getData();
-                var parents = all.reduce(function (n, r) { return n + (r && r.is_parent ? 1 : 0); }, 0);
-                var el = document.getElementById('gsParentValue');
-                if (el) { el.textContent = Number(parents).toLocaleString('en-US'); }
-            }
-
-            table.on('dataFiltered', function (filters, rows) {
-                updateMissingBadge((rows || []).map(function (rc) { return rc.getData(); }));
-                updateParentBadge();
-            });
-
-            var badgePanel = document.createElement('div');
-            badgePanel.className = 'gs-badge-panel d-none';
-            badgePanel.innerHTML = '<div class="gs-badge-panel-title"></div><div class="gs-badge-panel-list"></div>';
-            document.body.appendChild(badgePanel);
-            var badgePanelTitle = badgePanel.querySelector('.gs-badge-panel-title');
-            var badgePanelList = badgePanel.querySelector('.gs-badge-panel-list');
-
-            function openBadgePanel(anchorEl, title, names) {
-                badgePanelTitle.textContent = title + ' (' + names.length + ')';
-                badgePanelList.innerHTML = names.length
-                    ? names.map(function (n) { return '<div class="gs-badge-panel-item" title="' + esc(n) + '">' + esc(n) + '</div>'; }).join('')
-                    : '<div class="gs-badge-panel-empty">Nothing to show</div>';
-                var rect = anchorEl.getBoundingClientRect();
-                badgePanel.style.top = (window.scrollY + rect.bottom + 4) + 'px';
-                badgePanel.style.left = (window.scrollX + rect.left) + 'px';
-                badgePanel.classList.remove('d-none');
-            }
-
-            function parentNamesFrom(rows, predicate) {
-                var out = [];
-                rows.forEach(function (r) {
-                    if (predicate(r)) { out.push(r.parent || r.sku || ''); }
+                document.getElementById('gsMissingExportBtn').addEventListener('click', function () {
+                    table.download('csv', 'missing-google-shopping-ads-' + new Date().toISOString().slice(0, 10) + '.csv');
                 });
-                return out;
-            }
 
-            function bindBadge(wrapId, titleText, getNames) {
-                var el = document.getElementById(wrapId);
-                if (!el) { return; }
-                el.addEventListener('click', function () {
-                    openBadgePanel(el, titleText, getNames());
-                });
-            }
-            bindBadge('gsParentWrap', 'Parents', function () {
-                return parentNamesFrom(table.getData(), function (r) { return r.is_parent; });
-            });
-            bindBadge('gsMissingWrap', 'Missing', function () {
-                return parentNamesFrom(table.getData('active'), function (r) {
-                    return r && (Number(r.inventory) || 0) > 0 && (!r.campaigns || !r.campaigns.length);
-                });
-            });
-
-            document.addEventListener('click', function (e) {
-                if (badgePanel.classList.contains('d-none')) { return; }
-                if (badgePanel.contains(e.target) || e.target.closest('.gs-missing-badge')) { return; }
-                badgePanel.classList.add('d-none');
-            });
-            document.addEventListener('keydown', function (e) {
-                if (e.key === 'Escape') { badgePanel.classList.add('d-none'); }
-            });
-
-            var tableEl = document.getElementById('gsAdsMissingTable');
-            tableEl.addEventListener('click', function (e) {
-                var copyBtn = e.target.closest('.parent-copy-btn');
-                if (!copyBtn) { return; }
-                var txt = copyBtn.getAttribute('data-parent') || '';
-                if (navigator.clipboard && navigator.clipboard.writeText) {
-                    navigator.clipboard.writeText(txt);
+                function updateMissingBadge(rowsData) {
+                    var rows = rowsData || table.getData('active');
+                    var missing = 0;
+                    rows.forEach(function (r) {
+                        if (!r || (Number(r.inventory) || 0) <= 0) { return; }
+                        if (!r.campaigns || !r.campaigns.length) { missing++; }
+                    });
+                    var missingEl = document.getElementById('gsMissingValue');
+                    var missingWrap = document.getElementById('gsMissingWrap');
+                    if (missingEl) { missingEl.textContent = Number(missing).toLocaleString('en-US'); }
+                    if (missingWrap) { missingWrap.classList.toggle('is-alert', missing > 0); }
                 }
-                copyBtn.classList.remove('fa-copy');
-                copyBtn.classList.add('fa-check');
-                setTimeout(function () {
-                    copyBtn.classList.remove('fa-check');
-                    copyBtn.classList.add('fa-copy');
-                }, 900);
-            });
+
+                function updateParentBadge() {
+                    var all = table.getData();
+                    var parents = all.reduce(function (n, r) { return n + (r && r.is_parent ? 1 : 0); }, 0);
+                    var el = document.getElementById('gsParentValue');
+                    if (el) { el.textContent = Number(parents).toLocaleString('en-US'); }
+                }
+
+                table.on('dataFiltered', function (filters, rows) {
+                    updateMissingBadge((rows || []).map(function (rc) { return rc.getData(); }));
+                    updateParentBadge();
+                });
+
+                var badgePanel = document.createElement('div');
+                badgePanel.className = 'gs-badge-panel d-none';
+                badgePanel.innerHTML = '<div class="gs-badge-panel-title"></div><div class="gs-badge-panel-list"></div>';
+                document.body.appendChild(badgePanel);
+                var badgePanelTitle = badgePanel.querySelector('.gs-badge-panel-title');
+                var badgePanelList = badgePanel.querySelector('.gs-badge-panel-list');
+
+                function openBadgePanel(anchorEl, title, names) {
+                    badgePanelTitle.textContent = title + ' (' + names.length + ')';
+                    badgePanelList.innerHTML = names.length
+                        ? names.map(function (n) { return '<div class="gs-badge-panel-item" title="' + esc(n) + '">' + esc(n) + '</div>'; }).join('')
+                        : '<div class="gs-badge-panel-empty">Nothing to show</div>';
+                    var rect = anchorEl.getBoundingClientRect();
+                    badgePanel.style.top = (window.scrollY + rect.bottom + 4) + 'px';
+                    badgePanel.style.left = (window.scrollX + rect.left) + 'px';
+                    badgePanel.classList.remove('d-none');
+                }
+
+                function parentNamesFrom(rows, predicate) {
+                    var out = [];
+                    rows.forEach(function (r) {
+                        if (predicate(r)) { out.push(r.parent || r.sku || ''); }
+                    });
+                    return out;
+                }
+
+                function bindBadge(wrapId, titleText, getNames) {
+                    var el = document.getElementById(wrapId);
+                    if (!el) { return; }
+                    el.addEventListener('click', function () {
+                        openBadgePanel(el, titleText, getNames());
+                    });
+                }
+                bindBadge('gsParentWrap', 'Parents', function () {
+                    return parentNamesFrom(table.getData(), function (r) { return r.is_parent; });
+                });
+                bindBadge('gsMissingWrap', 'Missing', function () {
+                    return parentNamesFrom(table.getData('active'), function (r) {
+                        return r && (Number(r.inventory) || 0) > 0 && (!r.campaigns || !r.campaigns.length);
+                    });
+                });
+
+                document.addEventListener('click', function (e) {
+                    if (badgePanel.classList.contains('d-none')) { return; }
+                    if (badgePanel.contains(e.target) || e.target.closest('.gs-missing-badge')) { return; }
+                    badgePanel.classList.add('d-none');
+                });
+                document.addEventListener('keydown', function (e) {
+                    if (e.key === 'Escape') { badgePanel.classList.add('d-none'); }
+                });
+
+                // Campaign picker (+ like /amazon-ads/missing)
+                var picker = document.createElement('div');
+                picker.className = 'gs-campaign-picker d-none';
+                picker.innerHTML = '<input type="text" class="form-control form-control-sm gs-picker-input" placeholder="Search campaign...">'
+                    + '<div class="gs-picker-list"></div>';
+                document.body.appendChild(picker);
+                var pickerInput = picker.querySelector('.gs-picker-input');
+                var pickerList = picker.querySelector('.gs-picker-list');
+                var pickerSku = null;
+
+                function renderPickerList(filter) {
+                    var f = (filter || '').toLowerCase();
+                    var matches = campaignNames.filter(function (n) {
+                        return n && (!f || String(n).toLowerCase().indexOf(f) !== -1);
+                    }).slice(0, 100);
+                    if (!matches.length) {
+                        pickerList.innerHTML = '<div class="gs-picker-empty">No matching campaigns</div>';
+                        return;
+                    }
+                    pickerList.innerHTML = matches.map(function (n) {
+                        return '<div class="gs-picker-option" data-name="' + esc(n) + '" title="' + esc(n) + '">' + esc(n) + '</div>';
+                    }).join('');
+                }
+
+                function openPicker(btn, sku) {
+                    pickerSku = sku;
+                    var rect = btn.getBoundingClientRect();
+                    picker.style.top = (window.scrollY + rect.bottom + 2) + 'px';
+                    picker.style.left = (window.scrollX + rect.left) + 'px';
+                    picker.classList.remove('d-none');
+                    pickerInput.value = '';
+                    pickerList.innerHTML = '<div class="gs-picker-empty">Loading campaigns...</div>';
+                    pickerInput.focus();
+                    ensureCampaignNames().then(function () {
+                        if (pickerSku !== sku) { return; }
+                        renderPickerList(pickerInput.value);
+                    });
+                }
+
+                function closePicker() {
+                    picker.classList.add('d-none');
+                    pickerSku = null;
+                }
+
+                pickerInput.addEventListener('input', function () {
+                    renderPickerList(this.value);
+                });
+
+                pickerList.addEventListener('click', function (e) {
+                    var opt = e.target.closest('.gs-picker-option');
+                    if (!opt || !pickerSku) { return; }
+                    var name = opt.getAttribute('data-name');
+                    var sku = pickerSku;
+                    closePicker();
+                    postJson(linkUrl, { sku: sku, campaign_name: name }).then(function (out) {
+                        var r = table.getRow(sku);
+                        if (out.ok && out.body && r) {
+                            r.update({ campaigns: out.body.campaigns || [] });
+                            updateMissingBadge();
+                        } else if (!out.ok) {
+                            window.alert((out.body && out.body.message) || 'Failed to link campaign.');
+                        }
+                    });
+                });
+
+                document.addEventListener('click', function (e) {
+                    if (picker.classList.contains('d-none')) { return; }
+                    if (picker.contains(e.target) || e.target.closest('.link-add-btn')) { return; }
+                    closePicker();
+                });
+                document.addEventListener('keydown', function (e) {
+                    if (e.key === 'Escape') { closePicker(); }
+                });
+
+                document.getElementById('gsAdsMissingTable').addEventListener('click', function (e) {
+                    var copyBtn = e.target.closest('.parent-copy-btn');
+                    if (copyBtn) {
+                        var txt = copyBtn.getAttribute('data-parent') || '';
+                        if (navigator.clipboard && navigator.clipboard.writeText) {
+                            navigator.clipboard.writeText(txt);
+                        }
+                        copyBtn.classList.remove('fa-copy');
+                        copyBtn.classList.add('fa-check');
+                        setTimeout(function () {
+                            copyBtn.classList.remove('fa-check');
+                            copyBtn.classList.add('fa-copy');
+                        }, 900);
+                        return;
+                    }
+
+                    var addBtn = e.target.closest('.link-add-btn');
+                    if (addBtn) {
+                        openPicker(addBtn, addBtn.getAttribute('data-sku'));
+                        return;
+                    }
+
+                    var x = e.target.closest('.chip-x');
+                    if (x) {
+                        var id = Number(x.getAttribute('data-id'));
+                        var sku2 = x.getAttribute('data-sku');
+                        postJson(unlinkUrl, { id: id }).then(function (out) {
+                            if (out.ok && out.body) {
+                                var r = table.getRow(sku2);
+                                if (r) {
+                                    r.update({ campaigns: out.body.campaigns || [] });
+                                }
+                                updateMissingBadge();
+                            }
+                        });
+                    }
+                });
+            }
+
+            // Load table immediately; campaign list is fetched only when + is clicked.
+            buildTable();
         })();
     </script>
 @endsection

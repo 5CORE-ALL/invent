@@ -1011,6 +1011,20 @@
             return ((grossPft - adSpend) / lp) * 100;
         }
 
+        /**
+         * Sroi (SGROI) — same formula as GROI% but with SPRICE:
+         *   ((SPRICE × 0.80 − ship − lp) / lp) × 100
+         * Returns null when SPRICE/LP are missing.
+         */
+        function amazonComputeSroi(rowData) {
+            if (!rowData) return null;
+            const sprice = parseFloat(rowData.SPRICE);
+            const lp = parseFloat(rowData.LP_productmaster);
+            if (!isFinite(sprice) || sprice <= 0 || !isFinite(lp) || lp <= 0) return null;
+            const ship = parseFloat(rowData.Ship_productmaster) || 0;
+            return ((sprice * 0.80 - ship - lp) / lp) * 100;
+        }
+
         function amazonModalFmtPct(v) {
             if (v == null || v === '') return '—';
             const n = parseFloat(v);
@@ -1217,6 +1231,16 @@
             else if (percent >= 50 && percent < 75) color = '#ffc107';
             else if (percent >= 75 && percent <= 125) color = '#28a745';
             else color = '#e83e8c';
+            return '<span style="color: ' + color + '; font-weight: 600;">' + Math.round(percent) + '%</span>';
+        }
+        /** Sroi (gross) — same colors as GROI% column */
+        function amazonModalSgroiColoredHtml(row) {
+            const percent = amazonComputeSroi(row);
+            if (percent === null || !isFinite(percent)) return '<span class="text-muted">—</span>';
+            let color = '#a00211';
+            if (percent >= 50 && percent < 75) color = '#ffc107';
+            else if (percent >= 75 && percent <= 125) color = '#28a745';
+            else if (percent > 125) color = '#e83e8c';
             return '<span style="color: ' + color + '; font-weight: 600;">' + Math.round(percent) + '%</span>';
         }
         function collectChildRowsForAmazonParent(parentKey) {
@@ -2862,6 +2886,7 @@
                             SGPFT: 0,
                             'Spft%': 0,
                             SROI: 0,
+                            SGROI: 0,
                             SPRICE_STATUS: null,
                             S_STATUS: null,
                             PLS_STATUS: null,
@@ -3023,6 +3048,9 @@
                                     }
                                     if (response.sroi_percent !== undefined) {
                                         updateData['SROI'] = response.sroi_percent;
+                                    }
+                                    if (response.sgroi_percent !== undefined) {
+                                        updateData['SGROI'] = response.sgroi_percent;
                                     }
                                     
                                     row.update(updateData);
@@ -3188,6 +3216,7 @@
                             if (response.sgpft_percent !== undefined) updateData['SGPFT'] = response.sgpft_percent;
                             if (response.spft_percent !== undefined) updateData['Spft%'] = response.spft_percent;
                             if (response.sroi_percent !== undefined) updateData['SROI'] = response.sroi_percent;
+                            if (response.sgroi_percent !== undefined) updateData['SGROI'] = response.sgroi_percent;
                             item.row.update(updateData);
                             item.row.reformat();
                         },
@@ -3337,6 +3366,7 @@
                             if (response.sgpft_percent !== undefined) updateData['SGPFT'] = response.sgpft_percent;
                             if (response.spft_percent !== undefined) updateData['Spft%'] = response.spft_percent;
                             if (response.sroi_percent !== undefined) updateData['SROI'] = response.sroi_percent;
+                            if (response.sgroi_percent !== undefined) updateData['SGROI'] = response.sgroi_percent;
                             item.row.update(updateData);
                             item.row.reformat();
                         },
@@ -3764,6 +3794,9 @@
                             }
                             if (response.sroi_percent !== undefined) {
                                 u.SROI = response.sroi_percent;
+                            }
+                            if (response.sgroi_percent !== undefined) {
+                                u.SGROI = response.sgroi_percent;
                             }
                             if (response.SPRICE_STATUS != null) {
                                 u.SPRICE_STATUS = response.SPRICE_STATUS;
@@ -5386,6 +5419,32 @@
                         width: 80
                     },
                     {
+                        title: "Sroi",
+                        field: "SGROI",
+                        hozAlign: "center",
+                        // Same formula as GROI%: ((SPRICE × 0.80 − ship − lp) / lp) × 100
+                        sorter: function(a, b, aRow, bRow) {
+                            const aVal = amazonComputeSroi(aRow.getData());
+                            const bVal = amazonComputeSroi(bRow.getData());
+                            return ((aVal == null || !isFinite(aVal)) ? 0 : aVal)
+                                 - ((bVal == null || !isFinite(bVal)) ? 0 : bVal);
+                        },
+                        formatter: function(cell) {
+                            const percent = amazonComputeSroi(cell.getRow().getData());
+                            if (percent === null || !isFinite(percent)) return '';
+
+                            let color = '';
+                            // Same color logic as GROI%
+                            if (percent < 50) color = '#a00211'; // red
+                            else if (percent >= 50 && percent < 75) color = '#ffc107'; // yellow
+                            else if (percent >= 75 && percent <= 125) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink
+
+                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                        },
+                        width: 65
+                    },
+                    {
                         title: "SNPFT",
                         field: "Spft%",
                         hozAlign: "center",
@@ -5583,6 +5642,9 @@
                             }
                             if (response.sroi_percent !== undefined) {
                                 updates['SROI'] = response.sroi_percent;
+                            }
+                            if (response.sgroi_percent !== undefined) {
+                                updates['SGROI'] = response.sgroi_percent;
                             }
                             row.update(updates);
                         },

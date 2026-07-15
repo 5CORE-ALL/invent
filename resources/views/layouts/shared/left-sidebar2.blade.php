@@ -908,7 +908,7 @@
                             <a href="{{ route('customer.care.orders.on.hold') }}">Orders On Hold</a>
                         </li>
                         <li>
-                            <a href="{{ route('customer.care.qc.and.packing') }}">QC And Packing</a>
+                            <a href="{{ route('customer.care.qc.and.packing') }}">QC PKG issues</a>
                         </li>
                         <li>
                             <a href="{{ route('customer.care.label.issues') }}">Label Issues</a>

@@ -51,6 +51,8 @@ use App\Http\Controllers\Campaigns\GoogleYoutubeAdsCampaignsController;
 use App\Http\Controllers\Campaigns\GoogleShoppingCampaignsController;
 use App\Http\Controllers\Campaigns\GoogleShoppingAdsMissingController;
 use App\Http\Controllers\Campaigns\GoogleSerpAdsMissingController;
+use App\Http\Controllers\Campaigns\GoogleYoutubeAdsMissingController;
+use App\Http\Controllers\Campaigns\TiktokAdsMissingController;
 use App\Http\Controllers\Campaigns\GoogleAdsController;
 use App\Http\Controllers\Campaigns\TiktokAdsController;
 use App\Http\Controllers\Campaigns\WalmartMissingAdsController;
@@ -245,6 +247,7 @@ use App\Http\Controllers\PurchaseMaster\OnSeaTransitController;
 use App\Http\Controllers\PurchaseMaster\PurchaseController;
 use App\Http\Controllers\PurchaseMaster\PurchaseOrderController;
 use App\Http\Controllers\PurchaseMaster\QcImprovementReqBeforeItemPkgController;
+use App\Http\Controllers\PurchaseMaster\QcMastersController;
 use App\Http\Controllers\PurchaseMaster\QualityEnhanceController;
 use App\Http\Controllers\PurchaseMaster\ReadyToShipController;
 use App\Http\Controllers\PurchaseMaster\RFQController;
@@ -2043,6 +2046,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             'parent' => $row->parent,
             'qty' => (float) ($shopify?->qty ?? 0),
             'image_url' => $imageUrl,
+            'product_master_id' => (int) ($row->id ?? 0) ?: null,
+            'ctn_instructions' => isset($values['ctn_instructions'])
+                ? mb_substr((string) $values['ctn_instructions'], 0, 100)
+                : '',
         ]);
     })->name('customer.care.qc.and.packing.sku.details');
     Route::get('/customer-care/qc-and-packing/issues', function () {
@@ -4155,6 +4162,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/id-master-data-view', [CategoryController::class, 'getIdMasterData'])->name('id.master.data');
     Route::get('/dim-wt-master', [CategoryController::class, 'dimWtMaster'])->name('dim.wt.master');
     Route::get('/qc-upgrade', [CategoryController::class, 'qcUpgrade'])->name('qc.upgrade');
+    Route::get('/qc-masters', [CategoryController::class, 'qcMasters'])->name('qc.masters');
+    Route::post('/qc-masters/update', [QcMastersController::class, 'update'])->name('qc.masters.update');
+    Route::post('/qc-masters/upload-image', [QcMastersController::class, 'uploadImage'])->name('qc.masters.upload.image');
+    Route::post('/qc-masters/delete-image', [QcMastersController::class, 'deleteImage'])->name('qc.masters.delete.image');
+    Route::post('/qc-masters/upload-video', [QcMastersController::class, 'uploadVideo'])->name('qc.masters.upload.video');
+    Route::post('/qc-masters/delete-video', [QcMastersController::class, 'deleteVideo'])->name('qc.masters.delete.video');
     Route::get('/dim-wt-master-ctn', [CategoryController::class, 'dimWtMasterCtn'])->name('dim.wt.master.ctn');
     Route::get('/dim-wt-master-data-view', [CategoryController::class, 'getDimWtMasterData'])->name('dim.wt.master.data');
     Route::get('/dim-wt-master/skus', [CategoryController::class, 'getSkusForDimWtDropdown'])->name('dim.wt.master.skus');
@@ -5605,10 +5618,13 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/walmart/running/ads/data', 'getWalmartRunningAdsData');
         Route::get('/adv-walmart/ad-running/save-data', 'getAdvWalmartRunningSaveData')->name('adv-walmart.ad-running.save-data');
     });
-    // Missing Google Shopping Ads — parent grid + Inv (same parent grouping as /amazon-ads/missing)
+    // Missing Google Shopping Ads — parent grid + Inv + manual campaign link (+ like /amazon-ads/missing)
     Route::controller(GoogleShoppingAdsMissingController::class)->group(function () {
         Route::get('/google/shopping/missing', 'index')->name('google.shopping.ads.missing');
         Route::get('/google/shopping/missing/data', 'data')->name('google.shopping.ads.missing.data');
+        Route::get('/google/shopping/missing/campaigns', 'campaigns')->name('google.shopping.ads.missing.campaigns');
+        Route::post('/google/shopping/missing/link', 'link')->name('google.shopping.ads.missing.link');
+        Route::post('/google/shopping/missing/unlink', 'unlink')->name('google.shopping.ads.missing.unlink');
     });
 
     Route::controller(GoogleShoppingCampaignsController::class)->group(function () {
@@ -5636,10 +5652,13 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/google/shopping/google-shopping/audit/save', 'auditPageSave')->name('google.shopping.audit.save');
     });
 
-    // Missing Google SERP Ads — parent grid + Inv (same as Missing Google Shopping Ads)
+    // Missing Google SERP Ads — parent grid + Inv + manual campaign link (+ like /amazon-ads/missing)
     Route::controller(GoogleSerpAdsMissingController::class)->group(function () {
         Route::get('/google/shopping/google-serp/missing', 'index')->name('google.serp.ads.missing');
         Route::get('/google/shopping/google-serp/missing/data', 'data')->name('google.serp.ads.missing.data');
+        Route::get('/google/shopping/google-serp/missing/campaigns', 'campaigns')->name('google.serp.ads.missing.campaigns');
+        Route::post('/google/shopping/google-serp/missing/link', 'link')->name('google.serp.ads.missing.link');
+        Route::post('/google/shopping/google-serp/missing/unlink', 'unlink')->name('google.serp.ads.missing.unlink');
     });
 
     // Google SERP campaigns — same grid + rule storage as Google Shopping above, but filtered to
@@ -5660,6 +5679,16 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/google/shopping/google-serp/audit', 'auditPage')->name('google.serp.audit');
         Route::get('/google/shopping/google-serp/audit/data', 'auditPageData')->name('google.serp.audit.data');
         Route::post('/google/shopping/google-serp/audit/save', 'auditPageSave')->name('google.serp.audit.save');
+    });
+
+    // YouTube Missing Ads — grandparents + multi-parent quick search
+    Route::controller(GoogleYoutubeAdsMissingController::class)->group(function () {
+        Route::get('/google/shopping/youtube-ads/missing', 'index')->name('google.youtube.ads.missing');
+        Route::get('/google/shopping/youtube-ads/missing/data', 'data')->name('google.youtube.ads.missing.data');
+        Route::post('/google/shopping/youtube-ads/missing/grandparent', 'createGrandparent')->name('google.youtube.ads.missing.grandparent.create');
+        Route::get('/google/shopping/youtube-ads/missing/parents/search', 'searchParents')->name('google.youtube.ads.missing.parents.search');
+        Route::post('/google/shopping/youtube-ads/missing/parents/link', 'linkParent')->name('google.youtube.ads.missing.parents.link');
+        Route::post('/google/shopping/youtube-ads/missing/parents/unlink', 'unlinkParent')->name('google.youtube.ads.missing.parents.unlink');
     });
 
     // YouTube Ads — same grid + rule storage as Google Shopping above, but filtered to
@@ -5718,6 +5747,16 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/tiktok/utilized/data', 'getUtilizedData')->name('tiktok.utilized.data');
         Route::post('/tiktok/utilized/upload', 'uploadUtilized')->name('tiktok.utilized.upload');
         Route::post('/tiktok/utilized/update', 'updateUtilized')->name('tiktok.utilized.update');
+    });
+
+    // TikTok Missing Ads — same grandparents as YouTube, separate parent links (tiktok_g_parents)
+    Route::controller(TiktokAdsMissingController::class)->group(function () {
+        Route::get('/tiktok/ads/missing', 'index')->name('tiktok.ads.missing');
+        Route::get('/tiktok/ads/missing/data', 'data')->name('tiktok.ads.missing.data');
+        Route::post('/tiktok/ads/missing/grandparent', 'createGrandparent')->name('tiktok.ads.missing.grandparent.create');
+        Route::get('/tiktok/ads/missing/parents/search', 'searchParents')->name('tiktok.ads.missing.parents.search');
+        Route::post('/tiktok/ads/missing/parents/link', 'linkParent')->name('tiktok.ads.missing.parents.link');
+        Route::post('/tiktok/ads/missing/parents/unlink', 'unlinkParent')->name('tiktok.ads.missing.parents.unlink');
     });
     Route::prefix('repricer/amazon-search')->name('repricer.amazon-search.')->group(function () {
         Route::get('/', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'index'])->name('index');

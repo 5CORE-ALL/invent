@@ -935,6 +935,8 @@ class ProductMasterController extends Controller
             $product->Values = $values;
             $product->save();
 
+            \App\Http\Controllers\PurchaseMaster\CategoryController::forgetNotVerifiedSidebarCountCache();
+
             return response()->json([
                 'success' => true,
                 'message' => 'Verified status updated successfully',
@@ -998,6 +1000,8 @@ class ProductMasterController extends Controller
             if (! empty($notFound)) {
                 $message .= ' '.count($notFound).' SKU(s) not found.';
             }
+
+            \App\Http\Controllers\PurchaseMaster\CategoryController::forgetNotVerifiedSidebarCountCache();
 
             return response()->json([
                 'success' => true,

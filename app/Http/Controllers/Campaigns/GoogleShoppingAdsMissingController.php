@@ -3,9 +3,13 @@
 namespace App\Http\Controllers\Campaigns;
 
 use App\Http\Controllers\Controller;
+use App\Models\GoogleAdsMissingLink;
 use App\Models\ShopifySku;
-use App\Support\GoogleShoppingCampaignNameMatcher;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -15,7 +19,15 @@ class GoogleShoppingAdsMissingController extends Controller
 {
     private const CAMPAIGNS_TABLE = 'google_ads_campaigns';
 
+    private const CHANNEL = 'shopping';
+
     private const SIDEBAR_COUNT_CACHE_KEY = 'google_shopping_ads_missing_sidebar_count';
+
+    /** @var Collection<string, Collection<int, GoogleAdsMissingLink>>|null */
+    private ?Collection $manualLinksCache = null;
+
+    /** @var array<string, string>|null */
+    private ?array $campaignStatusMapCache = null;
 
     public function index()
     {
@@ -23,7 +35,7 @@ class GoogleShoppingAdsMissingController extends Controller
     }
 
     /**
-     * In-stock parents with no matching Google Shopping campaign (same rules as the page badge).
+     * In-stock parents with no manually linked Google Shopping campaign.
      * Cached briefly for the left-sidebar badge.
      */
     public static function missingTotalCount(): int
@@ -40,10 +52,8 @@ class GoogleShoppingAdsMissingController extends Controller
 
     /**
      * One synthetic parent row per distinct parent — same method as /amazon-ads/missing:
-     * raw "PARENT …" SKU rows are ignored, children are grouped by their (normalized) parent,
-     * and each group yields a single parent row whose SKU is "PARENT {parent}". Inventory is the
-     * SUM of the children's Shopify inv. Campaigns are auto-matched from google_ads_campaigns
-     * (SHOPPING, excluding SERP/YouTube name patterns) via GoogleShoppingCampaignNameMatcher.
+     * soft-deleted and DC rows skipped; inventory = SUM child Shopify inv.
+     * Campaigns are manual links only (via +).
      */
     public function data(): JsonResponse
     {
@@ -51,7 +61,6 @@ class GoogleShoppingAdsMissingController extends Controller
             return response()->json(['data' => []]);
         }
 
-        // Match Product Master page: Eloquent SoftDeletes — skip deleted_at rows.
         $rows = DB::table('product_master')
             ->select('parent', 'sku', 'Values')
             ->whereNull('deleted_at')
@@ -61,7 +70,6 @@ class GoogleShoppingAdsMissingController extends Controller
 
         $inventoryByParent = $this->buildInventorySumByParent($rows);
 
-        // Skip DC products (Values.status = DC).
         $parents = [];
         foreach ($rows as $r) {
             $sku = trim((string) ($r->sku ?? ''));
@@ -76,9 +84,10 @@ class GoogleShoppingAdsMissingController extends Controller
         }
         ksort($parents);
 
-        $campaignsByParentSku = $this->matchedCampaignsByParentSku(array_values($parents));
+        $manualBySku = $this->manualLinksBySku();
+        $statusMap = $this->campaignStatusMapForLinks($manualBySku);
 
-        $data = collect($parents)->map(function ($parent, $parentKey) use ($inventoryByParent, $campaignsByParentSku) {
+        $data = collect($parents)->map(function ($parent, $parentKey) use ($inventoryByParent, $manualBySku, $statusMap) {
             $sku = 'PARENT '.$parent;
 
             return [
@@ -86,7 +95,7 @@ class GoogleShoppingAdsMissingController extends Controller
                 'sku' => $sku,
                 'is_parent' => true,
                 'inventory' => (int) round($inventoryByParent[$parentKey] ?? 0),
-                'campaigns' => $campaignsByParentSku[$sku] ?? [],
+                'campaigns' => $this->formatManualCampaigns($manualBySku->get($sku) ?? collect(), $statusMap),
             ];
         })->values();
 
@@ -94,8 +103,86 @@ class GoogleShoppingAdsMissingController extends Controller
     }
 
     /**
-     * Count in-stock parents (inventory > 0) with no matched Google Shopping campaign.
+     * Distinct Google Shopping campaigns for the manual link picker.
      */
+    public function campaigns(): JsonResponse
+    {
+        if (! Schema::hasTable(self::CAMPAIGNS_TABLE)) {
+            return response()->json(['data' => []]);
+        }
+
+        $rows = DB::table(self::CAMPAIGNS_TABLE)
+            ->selectRaw('campaign_name, MAX(campaign_id) AS campaign_id')
+            ->where('advertising_channel_type', 'SHOPPING')
+            ->whereNotNull('campaign_name')
+            ->where('campaign_name', '!=', '')
+            ->whereRaw('UPPER(campaign_name) NOT LIKE ?', ['% SEARCH%'])
+            ->whereRaw('UPPER(campaign_name) NOT LIKE ?', ['% YT'])
+            ->groupBy('campaign_name')
+            ->orderBy('campaign_name')
+            ->get();
+
+        return response()->json(['data' => $rows]);
+    }
+
+    /**
+     * Manually link a Google Shopping campaign to a PARENT sku.
+     */
+    public function link(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'sku' => ['required', 'string', 'max:255'],
+            'campaign_name' => ['required', 'string', 'max:255'],
+        ]);
+
+        $campaignId = null;
+        if (Schema::hasTable(self::CAMPAIGNS_TABLE)) {
+            $campaignId = DB::table(self::CAMPAIGNS_TABLE)
+                ->where('campaign_name', $validated['campaign_name'])
+                ->max('campaign_id');
+        }
+
+        GoogleAdsMissingLink::firstOrCreate(
+            [
+                'channel' => self::CHANNEL,
+                'sku' => $validated['sku'],
+                'campaign_name' => $validated['campaign_name'],
+            ],
+            [
+                'campaign_id' => $campaignId,
+                'user_id' => Auth::id(),
+                'created_at' => Carbon::now(),
+            ]
+        );
+
+        $this->manualLinksCache = null;
+        $this->campaignStatusMapCache = null;
+        self::forgetMissingTotalCache();
+
+        return response()->json($this->campaignsResponseForSku($validated['sku']));
+    }
+
+    /**
+     * Remove a manually linked campaign by its id.
+     */
+    public function unlink(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'id' => ['required', 'integer'],
+        ]);
+
+        $link = GoogleAdsMissingLink::find($validated['id']);
+        $sku = (string) ($link?->sku ?? '');
+        if ($link && (string) $link->channel === self::CHANNEL) {
+            $link->delete();
+            $this->manualLinksCache = null;
+            $this->campaignStatusMapCache = null;
+            self::forgetMissingTotalCache();
+        }
+
+        return response()->json($this->campaignsResponseForSku($sku));
+    }
+
     private function computeMissingTotal(): int
     {
         if (! Schema::hasTable('product_master')) {
@@ -124,7 +211,7 @@ class GoogleShoppingAdsMissingController extends Controller
             $parents[strtoupper($parent)] = $parent;
         }
 
-        $campaignsByParentSku = $this->matchedCampaignsByParentSku(array_values($parents));
+        $manualBySku = $this->manualLinksBySku();
 
         $total = 0;
         foreach ($parents as $parentKey => $parent) {
@@ -132,7 +219,7 @@ class GoogleShoppingAdsMissingController extends Controller
                 continue;
             }
             $sku = 'PARENT '.$parent;
-            if (($campaignsByParentSku[$sku] ?? []) === []) {
+            if (! ($manualBySku->get($sku)?->isNotEmpty() ?? false)) {
                 $total++;
             }
         }
@@ -141,80 +228,124 @@ class GoogleShoppingAdsMissingController extends Controller
     }
 
     /**
-     * Latest SHOPPING campaigns (excluding SERP/YT name patterns) matched to each PARENT sku.
-     *
-     * @param  list<string>  $parents  display parent names
-     * @return array<string, list<array{campaign_id: string, campaign_name: string, status: string, dot: string}>>
+     * @return Collection<string, Collection<int, GoogleAdsMissingLink>>
      */
-    private function matchedCampaignsByParentSku(array $parents): array
+    private function manualLinksBySku(): Collection
     {
-        if ($parents === [] || ! Schema::hasTable(self::CAMPAIGNS_TABLE)) {
-            return [];
+        if ($this->manualLinksCache === null) {
+            $this->manualLinksCache = GoogleAdsMissingLink::query()
+                ->where('channel', self::CHANNEL)
+                ->orderBy('id')
+                ->get()
+                ->groupBy(fn ($l) => (string) $l->sku);
         }
 
-        $query = DB::table(self::CAMPAIGNS_TABLE)
-            ->where('advertising_channel_type', 'SHOPPING')
-            ->whereNotNull('campaign_name')
-            ->where('campaign_name', '!=', '');
-
-        // Same scope as /google/shopping/google-shopping: exclude SERP / YouTube name patterns.
-        $query->whereRaw('UPPER(campaign_name) NOT LIKE ?', ['% SEARCH%'])
-            ->whereRaw('UPPER(campaign_name) NOT LIKE ?', ['% YT']);
-
-        // Latest row per campaign_id (highest id) for current status/name.
-        $latestIds = (clone $query)
-            ->selectRaw('MAX(id) AS max_id')
-            ->groupBy('campaign_id')
-            ->pluck('max_id')
-            ->filter()
-            ->map(fn ($v) => (int) $v)
-            ->all();
-
-        if ($latestIds === []) {
-            return [];
-        }
-
-        $campaignRows = DB::table(self::CAMPAIGNS_TABLE)
-            ->whereIn('id', $latestIds)
-            ->get(['campaign_id', 'campaign_name', 'campaign_status']);
-
-        $out = [];
-        foreach ($parents as $parent) {
-            $sku = 'PARENT '.$parent;
-            $matched = [];
-            $seen = [];
-            foreach ($campaignRows as $c) {
-                $name = (string) ($c->campaign_name ?? '');
-                if (! GoogleShoppingCampaignNameMatcher::matches($name, $sku)) {
-                    continue;
-                }
-                $cid = (string) ($c->campaign_id ?? '');
-                if ($cid !== '' && isset($seen[$cid])) {
-                    continue;
-                }
-                if ($cid !== '') {
-                    $seen[$cid] = true;
-                }
-                $status = strtoupper(trim((string) ($c->campaign_status ?? '')));
-                $dot = $status === 'ENABLED' ? 'green' : ($status !== '' ? 'red' : '');
-                $matched[] = [
-                    'campaign_id' => $cid,
-                    'campaign_name' => $name,
-                    'status' => $status,
-                    'dot' => $dot,
-                ];
-            }
-            if ($matched !== []) {
-                $out[$sku] = $matched;
-            }
-        }
-
-        return $out;
+        return $this->manualLinksCache;
     }
 
     /**
-     * SUM(shopify_skus.inv) for child (non-PARENT) SKUs, keyed by normalized-uppercase parent name.
+     * @param  Collection<int, GoogleAdsMissingLink>  $links
+     * @param  array<string, string>  $statusMap
+     * @return list<array{id: int, campaign_id: ?string, campaign_name: string, status: string, dot: string, source: string}>
+     */
+    private function formatManualCampaigns(Collection $links, array $statusMap): array
+    {
+        return $links
+            ->map(function ($l) use ($statusMap) {
+                $name = (string) $l->campaign_name;
+                $status = $statusMap[$this->normalizeCampaignName($name)] ?? '';
+                $dot = $status === 'ENABLED' ? 'green' : ($status !== '' ? 'red' : '');
+
+                return [
+                    'id' => (int) $l->id,
+                    'campaign_id' => $l->campaign_id,
+                    'campaign_name' => $name,
+                    'status' => $status,
+                    'dot' => $dot,
+                    'source' => 'manual',
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return array{ok: bool, sku: string, campaigns: list<array{id: int, campaign_id: ?string, campaign_name: string, status: string, dot: string, source: string}>}
+     */
+    private function campaignsResponseForSku(string $sku): array
+    {
+        if ($sku === '') {
+            return ['ok' => true, 'sku' => '', 'campaigns' => []];
+        }
+
+        $links = $this->manualLinksBySku()->get($sku) ?? collect();
+
+        return [
+            'ok' => true,
+            'sku' => $sku,
+            'campaigns' => $this->formatManualCampaigns(
+                $links,
+                $this->campaignStatusMapForLinks(collect([$sku => $links]))
+            ),
+        ];
+    }
+
+    /**
+     * Status lookup only for campaign names that are actually linked.
      *
+     * @param  Collection<string, Collection<int, GoogleAdsMissingLink>>  $manualBySku
+     * @return array<string, string>
+     */
+    private function campaignStatusMapForLinks(Collection $manualBySku): array
+    {
+        if ($this->campaignStatusMapCache !== null) {
+            return $this->campaignStatusMapCache;
+        }
+
+        $names = $manualBySku
+            ->flatten(1)
+            ->pluck('campaign_name')
+            ->filter(fn ($n) => is_string($n) && trim($n) !== '')
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($names === [] || ! Schema::hasTable(self::CAMPAIGNS_TABLE)) {
+            return $this->campaignStatusMapCache = [];
+        }
+
+        $latestIds = DB::table(self::CAMPAIGNS_TABLE)
+            ->selectRaw('campaign_name, MAX(id) AS max_id')
+            ->whereIn('campaign_name', $names)
+            ->groupBy('campaign_name')
+            ->pluck('max_id', 'campaign_name');
+
+        $map = [];
+        if ($latestIds->isNotEmpty()) {
+            $byId = DB::table(self::CAMPAIGNS_TABLE)
+                ->whereIn('id', $latestIds->values()->all())
+                ->get(['id', 'campaign_name', 'campaign_status'])
+                ->keyBy('id');
+
+            foreach ($latestIds as $name => $id) {
+                $row = $byId->get((int) $id);
+                $key = $this->normalizeCampaignName((string) $name);
+                if ($key === '') {
+                    continue;
+                }
+                $map[$key] = strtoupper(trim((string) ($row->campaign_status ?? '')));
+            }
+        }
+
+        return $this->campaignStatusMapCache = $map;
+    }
+
+    private function normalizeCampaignName(string $name): string
+    {
+        return strtoupper(rtrim(preg_replace('/\s+/', ' ', trim($name)), '.'));
+    }
+
+    /**
      * @param  \Illuminate\Support\Collection  $rows
      * @return array<string, float>
      */
@@ -248,9 +379,6 @@ class GoogleShoppingAdsMissingController extends Controller
         return $totals;
     }
 
-    /**
-     * True when product_master.Values.status is DC (discontinued).
-     */
     private function isDcProduct(object $row): bool
     {
         $values = $row->Values ?? null;

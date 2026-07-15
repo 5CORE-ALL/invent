@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Dim Wt Master (CTN)', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => 'Dim Wt CTN', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
 @section('css')
     @vite(['node_modules/admin-resources/rwd-table/rwd-table.min.css'])
@@ -192,6 +192,15 @@
             color: #000;
         }
 
+        /* Parent SKU rows – light yellow background */
+        .table-responsive tbody tr.parent-row,
+        .table-responsive tbody tr.parent-row:nth-child(even) {
+            background-color: #fef9c3 !important;
+        }
+        .table-responsive tbody tr.parent-row:hover {
+            background-color: #fdf3a8 !important;
+        }
+
         .table-responsive .text-center {
             text-align: center;
         }
@@ -223,14 +232,15 @@
             table-layout: auto;
         }
 
-        /* Verified column – red/green dot dropdown */
+        /* Verified column – red/green dot (no outer ring) */
         .verified-data-dropdown {
             width: 28px;
             height: 28px;
             min-width: 28px;
             padding: 0;
-            border-radius: 50%;
-            border: 2px solid rgba(0,0,0,0.15);
+            border: none;
+            border-radius: 0;
+            background-color: transparent;
             font-size: 14px;
             line-height: 1;
             cursor: pointer;
@@ -243,25 +253,27 @@
             background-position: center;
         }
         .verified-data-dropdown.not-verified {
-            background-color: #fff;
-            border-color: #dc3545;
             color: #dc3545;
         }
-        .verified-data-dropdown.not-verified:hover {
-            background-color: rgba(220, 53, 69, 0.1);
-            box-shadow: 0 0 0 2px rgba(220, 53, 69, 0.3);
-        }
         .verified-data-dropdown.verified {
-            background-color: #fff;
-            border-color: #28a745;
             color: #28a745;
-        }
-        .verified-data-dropdown.verified:hover {
-            background-color: rgba(40, 167, 69, 0.1);
-            box-shadow: 0 0 0 2px rgba(40, 167, 69, 0.3);
         }
         .verified-data-dropdown option[value="0"] { color: #dc3545; }
         .verified-data-dropdown option[value="1"] { color: #28a745; }
+
+        /* N Verify filter badge */
+        .badge-filter {
+            opacity: 0.85;
+            transition: opacity 0.15s ease, box-shadow 0.15s ease;
+            user-select: none;
+        }
+        .badge-filter:hover {
+            opacity: 1;
+        }
+        .badge-filter.badge-filter-active {
+            opacity: 1;
+            box-shadow: 0 0 0 2px #fff, 0 0 0 4px rgba(0, 0, 0, 0.35);
+        }
 
         #dim-wt-master-ctn-datatable td.td-ctn-instructions {
             max-width: 11rem;
@@ -289,27 +301,6 @@
             font-size: 11px;
             line-height: 1.35;
         }
-
-        .status-badges-full {
-            width: 100%;
-            flex-wrap: wrap;
-        }
-        .status-badges-full .status-badge-item {
-            flex: 1;
-            min-width: 80px;
-            padding: 8px 12px;
-            border-radius: 8px;
-            font-size: 14px;
-            font-weight: 700;
-            color: #000;
-            text-align: center;
-            white-space: nowrap;
-        }
-        .status-badges-full .status-badge-item.bg-active { background-color: #bbf7d0; }
-        .status-badges-full .status-badge-item.bg-inactive { background-color: #fecaca; }
-        .status-badges-full .status-badge-item.bg-dc { background-color: #fecaca; }
-        .status-badges-full .status-badge-item.bg-upcoming { background-color: #fef08a; }
-        .status-badges-full .status-badge-item.bg-2bdc { background-color: #bfdbfe; }
 
         /* Ensure table fits container - auto layout so columns fit content */
         #dim-wt-master-ctn-datatable {
@@ -461,8 +452,8 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
 
     @include('layouts.shared.page-title', [
-        'page_title' => 'Dim Wt Master (CTN)',
-        'sub_title' => 'Same data as Dimensions & Weight Master',
+        'page_title' => 'Dim Wt CTN',
+        'sub_title' => 'Same data as Dim Wt Items',
     ])
 
     <div class="row">
@@ -494,15 +485,15 @@
                                         <option value="carton_data" selected>Carton Data</option>
                                     </select>
                                 </div>
+                                <span class="badge bg-danger rounded-1 d-inline-flex align-items-center badge-filter" id="notVerifiedBadge" title="Click to show only Not-Verified SKUs (red dots)" style="font-size: 0.95rem; padding: 0.5rem 0.9rem; font-weight: 500; cursor: pointer;">
+                                    N Verify <span id="notVerifiedCount" class="ms-2 fw-bold">0</span>
+                                </span>
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="d-flex justify-content-end flex-wrap gap-2">
                                 <button type="button" class="btn btn-primary" id="pushDataBtn" disabled>
                                     <i class="fas fa-cloud-upload-alt me-1"></i> Push Data
-                                </button>
-                                <button type="button" class="btn btn-warning" id="bulkEditBtn" disabled title="Edit selected SKUs in bulk">
-                                    <i class="fas fa-edit me-1"></i> Bulk Edit
                                 </button>
                                 <button type="button" class="btn btn-info" data-bs-toggle="modal" data-bs-target="#importExcelModal">
                                     <i class="fas fa-file-upload me-1"></i> Import
@@ -514,12 +505,6 @@
                                     <i class="fas fa-file-excel me-1"></i> Download
                                 </button>
                             </div>
-                        </div>
-                    </div>
-
-                    <div class="row mb-2">
-                        <div class="col-12">
-                            <div id="statusBadgesBar" class="status-badges-full d-flex align-items-center justify-content-between gap-2"></div>
                         </div>
                     </div>
 
@@ -583,8 +568,8 @@
                                     <th><span class="th-vertical-label">CBM<br>E</span></th>
                                     <th><span class="th-vertical-label">CTN Weight<br>(KG)</span></th>
                                     <th><span class="th-vertical-label">CTN WT<br>(LB)</span></th>
-                                    <th class="th-ctn-instructions"><span class="th-vertical-label">Instructions<br>CTN</span></th>
-                                    <th class="col-instructions-item-pkg"><span class="th-vertical-label" style="font-size: 9px;">Instructions<br>item PKG</span></th>
+                                    <th class="th-ctn-instructions"><span class="th-vertical-label">CTN pkg</span></th>
+                                    <th class="col-instructions-item-pkg"><span class="th-vertical-label" style="font-size: 9px;">item PKG</span></th>
                                     <th class="text-center"><span class="th-vertical-label">Verified</span></th>
                                     <th><span class="th-vertical-label">Action</span></th>
                                 </tr>
@@ -873,9 +858,9 @@
             let tableData = [];
             let filteredData = [];
             let productUniqueParents = [];
-            let bulkEditList = null; // When set, save will update all these products with form values
             let isProductNavigationActive = false;
             let currentProductParentIndex = -1;
+            let verifiedFilter = null; // null = all, 0 = not verified only (red dots)
 
             // Get CSRF token from meta tag
             const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
@@ -1008,7 +993,6 @@
                             filteredData = [...tableData];
                             renderTable(filteredData);
                             updateCounts();
-                            updateStatusBadgesBar();
                             refreshProductPlaybackState();
                         } else {
                             console.error('Invalid data format received from server');
@@ -1035,6 +1019,7 @@
                 data.forEach(item => {
                     const row = document.createElement('tr');
                     const isParentRow = item.SKU && String(item.SKU).toUpperCase().includes('PARENT');
+                    if (isParentRow) row.classList.add('parent-row');
                     const cellVal = (val, decimals) => isParentRow ? '--' : formatNumber(val || 0, decimals);
 
                     // Checkbox column
@@ -1177,7 +1162,7 @@
                     const ctnCbmCalculated = (parseFloat(item.ctn_l) || 0) * (parseFloat(item.ctn_w) || 0) * (parseFloat(item.ctn_h) || 0) / 1000000;
                     const ctnCbmCell = document.createElement('td');
                     ctnCbmCell.className = 'text-center';
-                    ctnCbmCell.textContent = cellVal(ctnCbmCalculated, 1);
+                    ctnCbmCell.textContent = cellVal(ctnCbmCalculated, 2);
                     row.appendChild(ctnCbmCell);
 
                     // CTN (QTY) column
@@ -1220,46 +1205,36 @@
                         } else if (!isNaN(lbStored)) {
                             lbShow = lbStored;
                         }
-                        ctnWeightLbCell.textContent = !isNaN(lbShow) ? lbShow.toFixed(2) : '-';
+                        ctnWeightLbCell.textContent = !isNaN(lbShow) ? lbShow.toFixed(1) : '-';
                     }
                     row.appendChild(ctnWeightLbCell);
 
-                    // CTN text — max 100 chars, stored in Values.ctn_instructions
+                    // Instructions CTN – magnifying glass, full text on hover (edit via modal)
                     const instrCell = document.createElement('td');
-                    instrCell.className = 'td-ctn-instructions';
+                    instrCell.className = 'td-ctn-instructions text-center';
                     if (isParentRow) {
                         instrCell.textContent = '--';
                     } else {
-                        const instrRaw = item.ctn_instructions != null ? String(item.ctn_instructions) : '';
-                        const instrInput = document.createElement('input');
-                        instrInput.type = 'text';
-                        instrInput.className = 'form-control form-control-sm ctn-instructions-input';
-                        instrInput.maxLength = 100;
-                        instrInput.value = instrRaw;
-                        instrInput.setAttribute('data-prev', instrRaw);
-                        instrInput.setAttribute('data-id', String(item.id));
-                        instrInput.setAttribute('data-sku', String(item.SKU || ''));
-                        instrInput.setAttribute('data-parent', String(item.Parent || ''));
-                        instrInput.title = instrRaw || 'Instructions CTN (max 100 characters)';
-                        instrInput.addEventListener('focusout', function() {
-                            saveCtnInstructionsInline(this);
-                        });
-                        instrCell.appendChild(instrInput);
+                        const instrRaw = item.ctn_instructions != null ? String(item.ctn_instructions).trim() : '';
+                        const hasInstr = instrRaw !== '';
+                        const iconColor = hasInstr ? '#28a745' : '#dc3545';
+                        const iconTitle = hasInstr ? instrRaw : 'No instructions available';
+                        instrCell.innerHTML = `<i class="fas fa-search" style="color:${iconColor}; font-size:14px; cursor:pointer;" title="${escapeHtml(iconTitle)}"></i>`;
                     }
                     row.appendChild(instrCell);
 
-                    // Instructions item PKG (instructions_item_pkg table)
+                    // Instructions item PKG (instructions_item_pkg table) – magnifying glass, full text on hover
                     const pkgCell = document.createElement('td');
                     pkgCell.className = 'col-instructions-item-pkg';
+                    pkgCell.classList.add('text-center');
                     if (isParentRow) {
                         pkgCell.textContent = '--';
                     } else {
                         const rawPkg = item.instructions_item_pkg != null ? String(item.instructions_item_pkg).trim() : '';
-                        if (!rawPkg) {
-                            pkgCell.textContent = '-';
-                        } else {
-                            pkgCell.textContent = rawPkg;
-                        }
+                        const hasPkg = rawPkg !== '';
+                        const iconColor = hasPkg ? '#28a745' : '#dc3545';
+                        const iconTitle = hasPkg ? rawPkg : 'No instructions available';
+                        pkgCell.innerHTML = `<i class="fas fa-search" style="color:${iconColor}; font-size:14px; cursor:pointer;" title="${escapeHtml(iconTitle)}"></i>`;
                     }
                     row.appendChild(pkgCell);
 
@@ -1301,7 +1276,6 @@
                         const sku = this.getAttribute('data-sku');
                         const product = tableData.find(d => d.SKU === sku);
                         if (product) {
-                            bulkEditList = null;
                             editDimWt(product);
                         }
                     });
@@ -1349,7 +1323,7 @@
                         const isTailUtilityCol = headerText.includes('verified') || /\baction\b/.test(headerText);
                         const isCtnWeightCol = headerText.includes('ctn') && (headerText.includes('weight') || headerText.includes('wt'));
                         const isInstructionsCtnCol = th.classList.contains('th-ctn-instructions');
-                        const isInstructionsItemPkgCol = headerText.includes('instructions') && headerText.includes('item') && headerText.includes('pkg');
+                        const isInstructionsItemPkgCol = headerText.includes('pkg');
                         visible = isLeadIdentityCol || isTailUtilityCol || isCtnDim || isCartonMetric || isCtnWeightCol || headerText.includes('status') || headerText === 'inv' || isInstructionsCtnCol || isInstructionsItemPkgCol;
                     }
 
@@ -1367,6 +1341,7 @@
                 let skuCount = 0;
                 let wtActKgMissingCount = 0;
                 let cbmMissingCount = 0;
+                let notVerifiedCount = 0;
 
                 tableData.forEach(item => {
                     if (item.Parent) parentSet.add(item.Parent);
@@ -1382,6 +1357,11 @@
                     // Count missing data for each column (only for child SKUs)
                     if (isMissing(item.wt_act_kg)) wtActKgMissingCount++;
                     if (isMissing(item.cbm)) cbmMissingCount++;
+
+                    // Red dots = not verified (child SKUs only)
+                    const isVerified = item.verified_data === 1 || item.verified_data === true ||
+                        (item.Values && (item.Values.verified_data === 1 || item.Values.verified_data === true));
+                    if (!isVerified) notVerifiedCount++;
                 });
                 
                 const setHeaderCount = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = `(${val})`; };
@@ -1389,35 +1369,9 @@
                 setHeaderCount('skuCount', skuCount);
                 setHeaderCount('wtActKgMissingCount', wtActKgMissingCount);
                 setHeaderCount('cbmMissingCount', cbmMissingCount);
-            }
 
-            function updateStatusBadgesBar() {
-                const bar = document.getElementById('statusBadgesBar');
-                if (!bar) return;
-                const statusCounts = { active: 0, inactive: 0, DC: 0, upcoming: 0, '2BDC': 0 };
-                (tableData || []).forEach(item => {
-                    const sku = String(item.SKU || item.sku || '').toUpperCase();
-                    if (sku.includes('PARENT')) return;
-                    let raw = item.status;
-                    if ((raw == null || raw === '') && item.Values) {
-                        const V = typeof item.Values === 'string' ? (function(){ try { return JSON.parse(item.Values); } catch(e) { return {}; } })() : item.Values;
-                        raw = V && V.status;
-                    }
-                    const s = String(raw || '').trim();
-                    const lower = s.toLowerCase();
-                    if (lower === 'active') statusCounts.active++;
-                    else if (lower === 'inactive') statusCounts.inactive++;
-                    else if (s.toUpperCase() === 'DC') statusCounts.DC++;
-                    else if (lower === 'upcoming') statusCounts.upcoming++;
-                    else if (s.toUpperCase() === '2BDC') statusCounts['2BDC']++;
-                });
-                bar.innerHTML = `
-                    <span class="status-badge-item bg-active">Active ${statusCounts.active}</span>
-                    <span class="status-badge-item bg-inactive">Inactive ${statusCounts.inactive}</span>
-                    <span class="status-badge-item bg-dc">DC ${statusCounts.DC}</span>
-                    <span class="status-badge-item bg-upcoming">Upcoming ${statusCounts.upcoming}</span>
-                    <span class="status-badge-item bg-2bdc">2BDC ${statusCounts['2BDC']}</span>
-                `;
+                const notVerifiedCountEl = document.getElementById('notVerifiedCount');
+                if (notVerifiedCountEl) notVerifiedCountEl.textContent = notVerifiedCount;
             }
 
             function refreshProductPlaybackState() {
@@ -1546,6 +1500,15 @@
                         return false;
                     }
 
+                    // N Verify filter (red dots only)
+                    if (verifiedFilter !== null) {
+                        const isParentSku = item.SKU && String(item.SKU).toUpperCase().includes('PARENT');
+                        if (isParentSku) return false;
+                        const isVerified = item.verified_data === 1 || item.verified_data === true ||
+                            (item.Values && (item.Values.verified_data === 1 || item.Values.verified_data === true));
+                        if (verifiedFilter === 0 && isVerified) return false;
+                    }
+
                     return true;
                 });
                 renderTable(filteredData);
@@ -1577,6 +1540,17 @@
                 });
                 const sectionFilterEl = document.getElementById('dimWtSectionFilter');
                 if (sectionFilterEl) sectionFilterEl.addEventListener('change', applyDimWtSectionFilter);
+
+                const notVerifiedBadge = document.getElementById('notVerifiedBadge');
+                if (notVerifiedBadge) notVerifiedBadge.addEventListener('click', () => toggleVerifiedFilter(0));
+            }
+
+            // Toggle N Verify filter (click again to clear)
+            function toggleVerifiedFilter(value) {
+                verifiedFilter = (verifiedFilter === value) ? null : value;
+                const notVerifiedBadge = document.getElementById('notVerifiedBadge');
+                if (notVerifiedBadge) notVerifiedBadge.classList.toggle('badge-filter-active', verifiedFilter === 0);
+                applyFilters();
             }
 
             // Toast notification function
@@ -2165,17 +2139,10 @@
                 });
             }
 
-            // Update Push Button State and Bulk Edit button
+            // Update Push Button State
             function updatePushButtonState() {
                 const checkedBoxes = document.querySelectorAll('.row-checkbox:checked');
                 const pushBtn = document.getElementById('pushDataBtn');
-                const bulkEditBtn = document.getElementById('bulkEditBtn');
-                // Count non-parent selected (parent SKUs excluded from bulk edit)
-                let nonParentCount = 0;
-                checkedBoxes.forEach(cb => {
-                    const sku = (cb.getAttribute('data-sku') || '').toUpperCase();
-                    if (sku && !sku.includes('PARENT')) nonParentCount++;
-                });
                 if (checkedBoxes.length > 0) {
                     pushBtn.disabled = false;
                     pushBtn.innerHTML = `<i class="fas fa-cloud-upload-alt me-1"></i> Push Data (${checkedBoxes.length})`;
@@ -2183,41 +2150,6 @@
                     pushBtn.disabled = true;
                     pushBtn.innerHTML = '<i class="fas fa-cloud-upload-alt me-1"></i> Push Data';
                 }
-                if (nonParentCount > 0) {
-                    if (bulkEditBtn) {
-                        bulkEditBtn.disabled = false;
-                        bulkEditBtn.innerHTML = nonParentCount > 1
-                            ? `<i class="fas fa-edit me-1"></i> Bulk Edit (${nonParentCount})`
-                            : '<i class="fas fa-edit me-1"></i> Bulk Edit';
-                    }
-                } else {
-                    if (bulkEditBtn) {
-                        bulkEditBtn.disabled = true;
-                        bulkEditBtn.innerHTML = '<i class="fas fa-edit me-1"></i> Bulk Edit';
-                    }
-                }
-            }
-
-            // Bulk Edit: open edit modal with first selected item; save updates all selected
-            function setupBulkEdit() {
-                const bulkEditBtn = document.getElementById('bulkEditBtn');
-                if (!bulkEditBtn) return;
-                bulkEditBtn.addEventListener('click', function() {
-                    const checkedBoxes = document.querySelectorAll('.row-checkbox:checked');
-                    const selected = [];
-                    checkedBoxes.forEach(checkbox => {
-                        const sku = checkbox.getAttribute('data-sku');
-                        if (!sku || String(sku).toUpperCase().includes('PARENT')) return;
-                        const item = tableData.find(d => d.SKU === sku);
-                        if (item) selected.push(item);
-                    });
-                    if (selected.length === 0) {
-                        showToast('warning', 'Please select at least one non-parent SKU to bulk edit');
-                        return;
-                    }
-                    bulkEditList = selected;
-                    editDimWt(selected[0]);
-                });
             }
 
             // Push Data functionality
@@ -2437,12 +2369,10 @@
                 lbEl.value = !isNaN(kg) ? (kg * CTN_KG_TO_LB_MODAL).toFixed(4) : '';
             }
 
-            // Edit Dim Wt Master (CTN)
+            // Edit Dim Wt CTN
             function editDimWt(product) {
                 const modal = new bootstrap.Modal(document.getElementById('editDimWtModal'));
-                document.getElementById('editDimWtModalLabel').textContent = (bulkEditList && bulkEditList.length > 0)
-                    ? ('Bulk Edit (' + bulkEditList.length + ' items)')
-                    : 'Edit Dim Wt Master (CTN)';
+                document.getElementById('editDimWtModalLabel').textContent = 'Edit Dim Wt CTN';
                 
                 // Populate form fields
                 document.getElementById('editProductId').value = product.id || '';
@@ -2517,59 +2447,6 @@
                         })(),
                         ctn_instructions: (document.getElementById('editCtnInstructions').value || '').trim().slice(0, 100) || null
                     };
-                    
-                    if (bulkEditList && bulkEditList.length > 0) {
-                        let successCount = 0;
-                        let failCount = 0;
-                        let pkgFailCount = 0;
-                        const pkgText = document.getElementById('editInstructionsItemPkg').value;
-                        for (const product of bulkEditList) {
-                            const formData = {
-                                ...baseFormData,
-                                product_id: product.id,
-                                sku: product.SKU,
-                                parent: product.Parent || ''
-                            };
-                            try {
-                                const response = await fetch('/dim-wt-master/update', {
-                                    method: 'POST',
-                                    headers: {
-                                        'Content-Type': 'application/json',
-                                        'X-CSRF-TOKEN': csrfToken
-                                    },
-                                    body: JSON.stringify(formData)
-                                });
-                                const data = await response.json();
-                                if (response.ok) {
-                                    successCount++;
-                                    try {
-                                        await saveInstructionsItemPkg(product.id, product.SKU, pkgText);
-                                    } catch (pkgErr) {
-                                        pkgFailCount++;
-                                        console.error(pkgErr);
-                                    }
-                                } else {
-                                    failCount++;
-                                }
-                            } catch (e) {
-                                failCount++;
-                            }
-                        }
-                        bulkEditList = null;
-                        document.getElementById('editDimWtModalLabel').textContent = 'Edit Dim Wt Master (CTN)';
-                        if (failCount === 0 && pkgFailCount === 0) {
-                            showToast('success', successCount + ' item(s) updated successfully!');
-                        } else if (failCount === 0 && pkgFailCount > 0) {
-                            showToast('warning', successCount + ' row(s) saved; Instructions item PKG failed for ' + pkgFailCount + ' item(s).');
-                        } else {
-                            showToast('warning', successCount + ' updated, ' + failCount + ' failed.');
-                        }
-                        const modal = bootstrap.Modal.getInstance(document.getElementById('editDimWtModal'));
-                        modal.hide();
-                        loadData();
-                        updatePushButtonState();
-                        return;
-                    }
                     
                     const formData = {
                         ...baseFormData,
@@ -2646,6 +2523,8 @@
                                     if (product.Values) product.Values.verified_data = verifiedValue;
                                     else if (!product.Values) product.Values = { verified_data: verifiedValue };
                                 }
+                                updateCounts();
+                                if (verifiedFilter !== null) applyFilters();
                             } else {
                                 showToast('danger', data.message || 'Failed to update verified status');
                                 dropdown.value = verifiedValue === 1 ? '0' : '1';
@@ -2672,13 +2551,7 @@
             setupImport();
             setupSkuExport();
             setupSelectAll();
-            setupBulkEdit();
             setupPushData();
-            // Reset bulk edit state when edit modal is closed (e.g. without saving)
-            document.getElementById('editDimWtModal').addEventListener('hidden.bs.modal', function() {
-                bulkEditList = null;
-                document.getElementById('editDimWtModalLabel').textContent = 'Edit Dim Wt Master (CTN)';
-            });
         });
     </script>
     <script>

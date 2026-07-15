@@ -15,6 +15,7 @@ use App\Models\ProductCategory;
 use App\Models\ProductGroup;
 use App\Models\ProductMaster;
 use App\Models\QcImprovementReqBeforeItemPkg;
+use App\Models\QcMastersEntry;
 use App\Models\RfqForm;
 use App\Models\Supplier;
 use App\Models\ShippingMasterHistory;
@@ -523,11 +524,37 @@ class CategoryController extends Controller
     }
 
     /**
+     * QC Masters — Tabulator grid over the same product_master dataset as dim-wt-master.
+     */
+    public function qcMasters()
+    {
+        return view('qc_masters');
+    }
+
+    /**
      * Same grid and API as dimWtMaster(); carton-focused default section on the CTN view.
      */
     public function dimWtMasterCtn()
     {
         return view('dim-wt-master-ctn');
+    }
+
+    /**
+     * Sidebar badge: child SKUs that are not verified (N Verify), same logic as dim-wt-master.blade.php.
+     */
+    public static function notVerifiedCountForSidebar(): int
+    {
+        return (int) Cache::remember('dim_wt_items_n_verify_sidebar_count', 300, function () {
+            return ProductMaster::query()
+                ->whereRaw("UPPER(sku) NOT LIKE '%PARENT%'")
+                ->whereRaw("COALESCE(JSON_UNQUOTE(JSON_EXTRACT(`Values`, '$.verified_data')), '0') NOT IN ('1', 'true')")
+                ->count();
+        });
+    }
+
+    public static function forgetNotVerifiedSidebarCountCache(): void
+    {
+        Cache::forget('dim_wt_items_n_verify_sidebar_count');
     }
 
     public function getDimWtMasterData(Request $request)
@@ -550,6 +577,11 @@ class CategoryController extends Controller
             ->keyBy('product_master_id');
 
         $qcImprovementBeforeItemPkgByProductId = QcImprovementReqBeforeItemPkg::query()
+            ->whereIn('product_master_id', $products->pluck('id'))
+            ->get()
+            ->keyBy('product_master_id');
+
+        $qcMastersEntriesByProductId = QcMastersEntry::query()
             ->whereIn('product_master_id', $products->pluck('id'))
             ->get()
             ->keyBy('product_master_id');
@@ -677,6 +709,32 @@ class CategoryController extends Controller
             $qcBefore = $qcImprovementBeforeItemPkgByProductId->get($product->id);
             $row['qc_improvement_req_before_item_pkg'] = $qcBefore && $qcBefore->qc_improvement_req !== null
                 ? (string) $qcBefore->qc_improvement_req
+                : '';
+
+            $qcEntry = $qcMastersEntriesByProductId->get($product->id);
+            $row['qc_problem_issue'] = $qcEntry && $qcEntry->problem_issue !== null
+                ? (string) $qcEntry->problem_issue
+                : '';
+            $row['qc_suggestion_improve'] = $qcEntry && $qcEntry->suggestion_improve !== null
+                ? (string) $qcEntry->suggestion_improve
+                : '';
+            $row['qc_issue_image'] = $qcEntry && $qcEntry->image_path
+                ? '/storage/'.ltrim((string) $qcEntry->image_path, '/')
+                : null;
+            $row['qc_issue_image_kb'] = $qcEntry && $qcEntry->image_size_kb !== null
+                ? (int) $qcEntry->image_size_kb
+                : null;
+            $row['qc_issue_video'] = $qcEntry && $qcEntry->video_path
+                ? '/storage/'.ltrim((string) $qcEntry->video_path, '/')
+                : null;
+            $row['qc_issue_video_kb'] = $qcEntry && $qcEntry->video_size_kb !== null
+                ? (int) $qcEntry->video_size_kb
+                : null;
+            $row['qc_user_history'] = $qcEntry && is_array($qcEntry->user_history)
+                ? $qcEntry->user_history
+                : [];
+            $row['qc_user_history_label'] = $qcEntry
+                ? $qcEntry->latestUserHistoryLabel()
                 : '';
 
             $normSkuKey = $normalizeDimWtSku($product->sku);

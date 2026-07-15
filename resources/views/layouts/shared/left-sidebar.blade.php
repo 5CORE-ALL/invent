@@ -385,7 +385,7 @@
                             <a href="{{ route('customer.care.orders.on.hold') }}">on hold / Mapping</a>
                         </li>
                         <li>
-                            <a href="{{ route('customer.care.qc.and.packing') }}">QC And Packing</a>
+                            <a href="{{ route('customer.care.qc.and.packing') }}">QC PKG issues</a>
                         </li>
                         <li>
                             <a href="{{ route('customer.care.label.issues') }}">Label Issues</a>
@@ -2004,6 +2004,12 @@
                             <a href="{{ Route::has('google.youtube.ads.campaigns') ? route('google.youtube.ads.campaigns') : url('/google/shopping/youtube-ads') }}">Youtube ads</a>
                         </li>
                         <li>
+                            <a href="{{ route('google.youtube.ads.missing') }}">YouTube Missing Ads</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('tiktok.ads.missing') }}">TikTok Missing Ads</a>
+                        </li>
+                        <li>
                             <a href="{{ route('google.youtube.ads.audit') }}">Youtube Ads Audit</a>
                         </li>
 
@@ -2362,13 +2368,22 @@
                             <a href="{{ route('id.master') }}">ID Master</a>
                         </li>
                         <li>
-                            <a href="{{ route('dim.wt.master') }}">Dimensions & Weight Master</a>
+                            <a href="{{ route('dim.wt.master') }}">
+                                Dim Wt Items
+                                @php $dimWtNotVerifiedCount = \App\Http\Controllers\PurchaseMaster\CategoryController::notVerifiedCountForSidebar(); @endphp
+                                @if($dimWtNotVerifiedCount > 0)
+                                    <span class="badge bg-danger rounded-pill">{{ $dimWtNotVerifiedCount }}</span>
+                                @endif
+                            </a>
                         </li>
                         <li>
-                            <a href="{{ route('dim.wt.master.ctn') }}">Dim Wt Master (CTN)</a>
+                            <a href="{{ route('dim.wt.master.ctn') }}">Dim Wt CTN</a>
                         </li>
                         <li>
                             <a href="{{ route('qc.upgrade') }}">QC Upgrade</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('qc.masters') }}">QC Masters</a>
                         </li>
                         <li>
                             <a href="{{ route('shipping.master') }}">Shipping Master</a>

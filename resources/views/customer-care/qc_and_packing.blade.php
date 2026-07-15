@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => $pageTitle ?? 'QC And Packing', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => $pageTitle ?? 'QC PKG issues', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
 @php
     $woOrderId = (bool) ($showOrderIdField ?? false);
@@ -1164,7 +1164,7 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => $pageTitle ?? 'QC And Packing',
+        'page_title' => $pageTitle ?? 'QC PKG issues',
         'sub_title' => 'Customer Care',
     ])
 
@@ -1765,6 +1765,17 @@
                                     name="replacement_tracking" maxlength="50" placeholder="Optional tracking number">
                             </div>
 
+                            @if (!($hideRootCauseAndInstructionsCtnColumns ?? false))
+                                <div class="col-md-6">
+                                    <label for="hold_issue_ctn_pkg" class="form-label">CTN PKG</label>
+                                    <input type="hidden" id="hold_issue_product_master_id" value="">
+                                    <input type="text" class="form-control" id="hold_issue_ctn_pkg"
+                                        name="ctn_pkg" maxlength="100"
+                                        placeholder="CTN packaging instructions (max 100)"
+                                        autocomplete="off" title="">
+                                </div>
+                            @endif
+
                             @if ($showCarrierColumn ?? false)
                                 {{-- Carrier dropdown — same options as the inline cell editor on the
                                      Carrier Claims / Carrier Scan Issues boards. Backed by the
@@ -2057,6 +2068,8 @@
             const trackingNumberInput = document.getElementById('hold_issue_tracking_number');
             const issueLinkInput = document.getElementById('hold_issue_issue_link');
             const replacementTrackingInput = document.getElementById('hold_issue_replacement_tracking');
+            const ctnPkgInput = document.getElementById('hold_issue_ctn_pkg');
+            const productMasterIdInput = document.getElementById('hold_issue_product_master_id');
             const cAction1Input = document.getElementById('hold_issue_c_action_1');
             const cAction1RemarkInput = document.getElementById('hold_issue_c_action_1_remark');
             const departmentInput = document.getElementById('hold_issue_department');
@@ -2928,17 +2941,52 @@
                     return '<td class="qc-ctn-instr-cell text-center">' + dotHtml + '</td>';
                 }
                 const valEsc = escAttr(instrRaw);
+                const tip = instr.length > 0 ? instrRaw : 'No instructions';
+                const tipEsc = escAttr(tip);
                 const rowId = String(row.id);
                 return '<td class="qc-ctn-instr-cell">' +
                     '<div class="qc-ctn-instr-wrap d-flex align-items-center justify-content-center gap-1 flex-nowrap">' +
                     dotHtml +
                     '<input type="text" class="form-control form-control-sm qc-ctn-instructions-input" maxlength="100" value="' +
-                    valEsc + '" ' +
+                    valEsc + '" title="' + tipEsc + '" ' +
                     'data-product-id="' + escAttr(String(pid)) + '" data-sku="' + escAttr(row.sku || '') +
                     '" data-parent="' + escAttr(row.parent || '') + '" ' +
                     'data-ctn-list="' + escAttr(listKind) + '" data-ctn-row-id="' + escAttr(rowId) + '">' +
                     '<button type="button" class="qc-copy-ctn-instr" title="Copy Instructions CTN" aria-label="Copy Instructions CTN"><i class="bi bi-clipboard"></i></button>' +
                     '</div></td>';
+            }
+
+            async function saveCtnPkgFromModal() {
+                if (!ctnPkgInput) return;
+                const productId = productMasterIdInput ? parseInt(productMasterIdInput.value, 10) : NaN;
+                const sku = (skuInput?.value || '').trim();
+                const parent = (parentInput?.value || '').trim();
+                const newV = (ctnPkgInput.value || '').trim().slice(0, 100);
+                if (!sku || Number.isNaN(productId) || productId <= 0) return;
+                try {
+                    const res = await fetch('/dim-wt-master/update', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken,
+                        },
+                        body: JSON.stringify({
+                            product_id: productId,
+                            sku: sku,
+                            parent: parent || '',
+                            ctn_instructions: newV.length ? newV : null,
+                        }),
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok) {
+                        throw new Error(data.message || 'Failed to save CTN PKG');
+                    }
+                    ctnPkgInput.title = newV.length ? newV : 'No instructions';
+                } catch (e) {
+                    console.error(e);
+                    showAlert(e.message || 'Issue saved, but CTN PKG could not be updated.');
+                }
             }
 
             async function saveQcCtnInstructionsFromInput(input) {
@@ -2993,12 +3041,14 @@
                         dot.setAttribute('title', has ? newV : 'No instructions');
                         dot.setAttribute('aria-label', has ? 'Has data' : 'No data');
                     }
+                    input.title = newV.length > 0 ? newV : 'No instructions';
                 } catch (e) {
                     alert(e.message || 'Could not save Instructions CTN');
                     const r = listKind === 'history' ?
                         holdIssueHistoryRows.find(x => x.id === rowId) :
                         holdIssueRows.find(x => x.id === rowId);
                     input.value = r ? String(r.ctn_instructions || '') : '';
+                    input.title = (input.value || '').trim() ? input.value : 'No instructions';
                 }
             }
 
@@ -4076,6 +4126,11 @@
                 if (trackingNumberInput) trackingNumberInput.value = '';
                 if (issueLinkInput) issueLinkInput.value = '';
                 replacementTrackingInput.value = '';
+                if (ctnPkgInput) {
+                    ctnPkgInput.value = '';
+                    ctnPkgInput.title = 'No instructions';
+                }
+                if (productMasterIdInput) productMasterIdInput.value = '';
                 {
                     const carrierSel = document.getElementById('hold_issue_issue_carrier');
                     if (carrierSel) carrierSel.value = '';
@@ -4148,6 +4203,14 @@
                 if (trackingNumberInput) trackingNumberInput.value = record.tracking_number || '';
                 if (issueLinkInput) issueLinkInput.value = record.issue_link || '';
                 replacementTrackingInput.value = record.replacement_tracking || '';
+                if (productMasterIdInput) {
+                    productMasterIdInput.value = record.product_master_id != null ? String(record.product_master_id) : '';
+                }
+                if (ctnPkgInput) {
+                    const ctnVal = record.ctn_instructions != null ? String(record.ctn_instructions) : '';
+                    ctnPkgInput.value = ctnVal;
+                    ctnPkgInput.title = ctnVal.trim() ? ctnVal : 'No instructions';
+                }
                 {
                     const carrierSel = document.getElementById('hold_issue_issue_carrier');
                     if (carrierSel) {
@@ -4278,6 +4341,11 @@
                 qtyInput.value = '';
                 parentInput.value = '';
                 resetSkuImage();
+                if (ctnPkgInput) {
+                    ctnPkgInput.value = '';
+                    ctnPkgInput.title = 'No instructions';
+                }
+                if (productMasterIdInput) productMasterIdInput.value = '';
 
                 if (!sku) return;
 
@@ -4297,6 +4365,14 @@
                     qtyInput.value = data.qty ?? 0;
                     parentInput.value = data.parent ?? '';
                     setSkuImage(data.image_url ?? '');
+                    if (productMasterIdInput) {
+                        productMasterIdInput.value = data.product_master_id ? String(data.product_master_id) : '';
+                    }
+                    if (ctnPkgInput) {
+                        const ctnVal = data.ctn_instructions != null ? String(data.ctn_instructions) : '';
+                        ctnPkgInput.value = ctnVal;
+                        ctnPkgInput.title = ctnVal.trim() ? ctnVal : 'No instructions';
+                    }
                 } catch (e) {
                     // Keep inputs blank on request errors.
                 }
@@ -4517,19 +4593,11 @@
                         return;
                     }
 
-                    if (isEdit) {
-                        await loadHoldIssueRows();
-                    } else if (Array.isArray(data?.rows)) {
-                        data.rows.reverse().forEach(rowData => {
-                            holdIssueRows.unshift(normalizeRecord(rowData));
-                        });
-                        buildDeptFilters();
-                        renderRows();
-                    } else {
-                        holdIssueRows.unshift(normalizeRecord(data?.row || {}));
-                        buildDeptFilters();
-                        renderRows();
-                    }
+                    // Persist CTN PKG to product_master Values.ctn_instructions (same source as table column)
+                    await saveCtnPkgFromModal();
+
+                    // Reload so Instructions CTN column reflects saved CTN PKG
+                    await loadHoldIssueRows();
                     loadHoldIssueHistoryRows();
                     showAlert(data?.message || (isEdit ? 'Hold issue updated successfully.' :
                         'Hold issue saved successfully.'), 'success');

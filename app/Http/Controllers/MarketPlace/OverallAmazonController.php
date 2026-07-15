@@ -520,6 +520,7 @@ class OverallAmazonController extends Controller
             $row['SPRICE'] = null;
             $row['Spft'] = null;
             $row['SROI'] = null;
+            $row['SGROI'] = null;
             $row['ad_spend'] = null;
             $row['Listed'] = null;
             $row['Live'] = null;
@@ -728,11 +729,14 @@ class OverallAmazonController extends Controller
                 $row['Spft%'] = round((float) $row['SGPFT'] - $amazonAdsPercent, 2);
             }
 
-            // Net SROI — same shape as NROI badge: (gross PFT$ − ad spend$) / LP × 100
+            // Sroi (SGROI) — same formula as GROI% but with SPRICE:
+            //   ((SPRICE × 0.80 − ship − lp) / lp) × 100
+            // Net SROI (SNROI) — same shape as NROI badge: (gross PFT$ − ad spend$) / LP × 100
             // where ad spend$ = SPRICE × Ads%/100.
             $spriceForRoi = floatval($row['SPRICE'] ?? 0);
             if ($spriceForRoi > 0 && $lp > 0) {
                 $grossPft = ($spriceForRoi * 0.80) - $ship - $lp;
+                $row['SGROI'] = round(($grossPft / $lp) * 100, 2);
                 $adSpend = $spriceForRoi * ($amazonAdsPercent / 100);
                 $row['SROI'] = round((($grossPft - $adSpend) / $lp) * 100, 2);
             }
@@ -851,6 +855,7 @@ class OverallAmazonController extends Controller
                 'SPRICE' => '',
                 'Spft%' => '',
                 'SROI' => '',
+                'SGROI' => '',
                 'SGPFT' => '',
                 'ad_spend' => '',
                 'Listed' => null,
@@ -1228,17 +1233,21 @@ class OverallAmazonController extends Controller
         // SPFT = SGPFT − Ads%
         $spft = round($sgpft - $adsPct, 2);
         
+        // Sroi (SGROI) — same formula as GROI% with SPRICE:
+        //   ((SPRICE × 0.80 − ship − lp) / lp) × 100
         // Net SROI — same shape as NROI badge: (gross PFT$ − ad spend$) / LP × 100
         // where ad spend$ = SPRICE × Ads%/100.
         if ($lp > 0) {
             $grossPft = ($spriceFloat * 0.80) - $ship - $lp;
+            $sgroi = round(($grossPft / $lp) * 100, 2);
             $adSpend = $spriceFloat * ($adsPct / 100);
             $sroi = round((($grossPft - $adSpend) / $lp) * 100, 2);
         } else {
+            $sgroi = 0;
             $sroi = 0;
         }
         
-        Log::info('Calculated values', ['sprice' => $spriceFloat, 'sgpft' => $sgpft, 'spft' => $spft, 'sroi' => $sroi]);
+        Log::info('Calculated values', ['sprice' => $spriceFloat, 'sgpft' => $sgpft, 'spft' => $spft, 'sgroi' => $sgroi, 'sroi' => $sroi]);
 
         $amazonDataView = AmazonDataView::firstOrNew(['sku' => $sku]);
 
@@ -1252,6 +1261,7 @@ class OverallAmazonController extends Controller
             'SPRICE' => $spriceFloat,
             'SPFT' => $spft,
             'SROI' => $sroi,
+            'SGROI' => $sgroi,
             'SGPFT' => $sgpft,
         ]);
 
@@ -1264,6 +1274,7 @@ class OverallAmazonController extends Controller
             'data' => $spriceFloat,
             'spft_percent' => $spft,
             'sroi_percent' => $sroi,
+            'sgroi_percent' => $sgroi,
             'sgpft_percent' => $sgpft
         ]);
     }
@@ -1302,6 +1313,7 @@ class OverallAmazonController extends Controller
                     $existing['SPRICE'] = null;
                     $existing['SPFT'] = null;
                     $existing['SROI'] = null;
+                    $existing['SGROI'] = null;
                     $existing['SGPFT'] = null;
                     $existing['SPRICE_STATUS'] = null;
                     
