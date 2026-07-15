@@ -56,11 +56,14 @@
                 <div id="summary-stats" class="d-flex align-items-center flex-wrap gap-1">
                     <span class="badge bg-success fs-6 p-2" id="total-pft-amt-badge" style="color: black; font-weight: bold; display: none;">PFT: $0</span>
                     <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-badge" style="color: black; font-weight: bold;">Sales: $0</span>
-                    <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge" style="color: black; font-weight: bold;">GPFT: 0%</span>
+                    <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge" style="color: black; font-weight: bold;" title="GPFT% from visible rows (same aggregate as /macys/daily-sales).">GPFT: 0%</span>
+                    <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: white; font-weight: bold;" title="GROI% / ROI% from visible rows.">GROI: 0%</span>
+                    <span class="badge fs-6 p-2" id="ads-percent-badge" style="background-color: #d63384; color: white; font-weight: bold;" title="Macys has no ads — Ads%/TACOS is always 0% (same as /all-marketplace-master).">Ads: 0%</span>
+                    <span class="badge fs-6 p-2" id="npft-percent-badge" style="background-color: #0f766e; color: white; font-weight: bold;" title="NPFT% = GPFT% (Macys has no ads — same as /all-marketplace-master N PFT).">NPFT: 0%</span>
+                    <span class="badge fs-6 p-2" id="nroi-percent-badge" style="background-color: #6f42c1; color: white; font-weight: bold;" title="NROI% = GROI% (Macys has no ads — same as /all-marketplace-master N ROI).">NROI: 0%</span>
                     <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold; display: none;">Price: $0</span>
                     <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter 0 sold items">0 Sold: 0</span>
                     <span class="badge fs-6 p-2" id="more-sold-count-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter items with sales">&gt; 0 Sold: 0</span>
-                    <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: black; font-weight: bold;">ROI%: 0%</span>
                     <span class="badge bg-danger fs-6 p-2" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amazon">&lt; Amz: 0</span>
                     <span class="badge fs-6 p-2" id="more-amz-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices greater than Amazon">&gt; Amz: 0</span>
                     <span class="badge bg-danger fs-6 p-2" id="missing-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter missing prices">Miss: 0</span>
@@ -1340,28 +1343,29 @@
                     width: 50
                 },
                 {
-                    title: "PFT%",
+                    title: "NPFT",
                     field: "PFT %",
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
-                        const value = cell.getValue();
-                        if (value === null || value === undefined) return '';
-                        const percent = parseFloat(value);
+                        // Macys has no ads — NPFT% = GPFT%
+                        const rowData = cell.getRow().getData();
+                        const percent = parseFloat(rowData['GPFT%'] ?? cell.getValue());
+                        if (!isFinite(percent)) return '';
                         let color = '';
-                        
+
                         if (percent < 10) color = '#a00211';
                         else if (percent >= 10 && percent < 15) color = '#ffc107';
                         else if (percent >= 15 && percent < 20) color = '#3591dc';
                         else if (percent >= 20 && percent <= 40) color = '#28a745';
                         else color = '#e83e8c';
-                        
+
                         return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                     },
                     width: 50
                 },
                 {
-                    title: "ROI%",
+                    title: "GROI%",
                     field: "ROI%",
                     hozAlign: "center",
                     sorter: "number",
@@ -1370,12 +1374,32 @@
                         if (value === null || value === undefined) return '';
                         const percent = parseFloat(value);
                         let color = '';
-                        
+
                         if (percent < 40) color = '#a00211';
                         else if (percent < 75) color = '#ffc107';
                         else if (percent < 125) color = '#28a745';
                         else color = '#d63384';
-                        
+
+                        return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                    },
+                    width: 50
+                },
+                {
+                    title: "NROI",
+                    field: "NROI",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        // Macys has no ads — NROI% = GROI% (ROI%)
+                        const percent = parseFloat(cell.getRow().getData()['ROI%']);
+                        if (!isFinite(percent)) return '';
+                        let color = '';
+
+                        if (percent < 40) color = '#a00211';
+                        else if (percent < 75) color = '#ffc107';
+                        else if (percent < 125) color = '#28a745';
+                        else color = '#d63384';
+
                         return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                     },
                     width: 50
@@ -1491,42 +1515,45 @@
                     width: 50
                 },
                 {
-                    title: "SPFT",
+                    title: "SNPFT",
                     field: "SPFT",
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
-                        const value = cell.getValue();
-                        if (value === null || value === undefined) return '';
-                        const percent = parseFloat(value);
+                        // Macys has no ads — SNPFT = SGPFT
+                        const rowData = cell.getRow().getData();
+                        const percent = parseFloat(rowData.SGPFT ?? cell.getValue());
+                        if (!isFinite(percent)) return '';
                         let color = '';
-                        
+
                         if (percent < 10) color = '#a00211';
                         else if (percent >= 10 && percent < 15) color = '#ffc107';
                         else if (percent >= 15 && percent < 20) color = '#3591dc';
                         else if (percent >= 20 && percent <= 40) color = '#28a745';
                         else color = '#e83e8c';
-                        
+
                         return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                     },
                     width: 50
                 },
                 {
-                    title: "SROI",
+                    title: "SNROI",
                     field: "SROI",
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
+                        // Macys has no ads — SNROI = gross SROI (no Ads% cut)
                         const value = cell.getValue();
                         if (value === null || value === undefined) return '';
                         const percent = parseFloat(value);
+                        if (!isFinite(percent)) return '';
                         let color = '';
-                        
+
                         if (percent < 40) color = '#a00211';
                         else if (percent < 75) color = '#ffc107';
                         else if (percent < 125) color = '#28a745';
                         else color = '#d63384';
-                        
+
                         return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                     },
                     width: 50
@@ -1818,7 +1845,13 @@
             $('#total-pft-amt-badge').text(`PFT: $${Math.round(totalPft).toLocaleString()}`);
             $('#total-sales-amt-badge').text(`Sales: $${Math.round(totalSales).toLocaleString()}`);
             $('#avg-gpft-badge').text(`GPFT: ${Math.round(avgGpft)}%`);
-            $('#roi-percent-badge').text(`ROI%: ${Math.round(avgRoi)}%`);
+            // GROI from dollar totals when possible (matches /macys/daily-sales + master); else avg of row ROI%
+            const groiBadge = totalCogs > 0 ? (totalPft / totalCogs) * 100 : avgRoi;
+            $('#roi-percent-badge').text(`GROI: ${Math.round(groiBadge)}%`);
+            // Macys has no ads — Ads%=0, NPFT=GPFT, NROI=GROI (same as /all-marketplace-master).
+            $('#ads-percent-badge').text('Ads: 0%');
+            $('#npft-percent-badge').text('NPFT: ' + Math.round(avgGpft) + '%');
+            $('#nroi-percent-badge').text('NROI: ' + Math.round(groiBadge) + '%');
             $('#avg-price-badge').text(`Price: $${Math.round(avgPrice).toLocaleString()}`);
             $('#total-inv-badge').text(`Total INV: ${Math.round(totalInv).toLocaleString()}`);
             $('#zero-sold-count-badge').text(`0 Sold: ${zeroSoldCount}`);

@@ -4090,6 +4090,23 @@ class ChannelMasterController extends Controller
     }
 
     /**
+     * eBay 3 KW / PMT / total spend breakdown — same source as /all-marketplace-master
+     * and /ebay3/campaign-ads (via fetchAdMetricsFromTables('ebaythree')).
+     *
+     * @return array{kw_spent: float, pmt_spent: float, total_ad_spend: float}
+     */
+    public function getEbaythreeMasterAdBreakdown(): array
+    {
+        $metrics = $this->fetchAdMetricsFromTables('ebaythree');
+
+        return [
+            'kw_spent' => (float) ($metrics['KW Spent'] ?? 0),
+            'pmt_spent' => (float) ($metrics['PMT Spent'] ?? 0),
+            'total_ad_spend' => (float) ($metrics['Total Ad Spend'] ?? 0),
+        ];
+    }
+
+    /**
      * Fast method: Get channel data from pre-calculated table
      * This method reads from channel_master_calculated_data table which is updated daily
      * Much faster than calculating on-the-fly
@@ -7548,6 +7565,9 @@ class ChannelMasterController extends Controller
             'Shopping Spent' => 0,
             'SERP Spent' => 0,
             'Total Ad Spend' => 0,
+            // Macys has no ads — keep Ads%/TACOS at 0 so master matches /macys-pricing.
+            'Ads%'       => '0%',
+            'TACOS %'    => '0%',
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
