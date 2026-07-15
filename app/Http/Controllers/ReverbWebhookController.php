@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Jobs\ImportReverbOrderToShopify;
+use App\Jobs\ImportReverbManagerOrderToShopify;
 use App\Jobs\PushLinkedSkuInventoryFromShopify;
 use App\Models\ReverbMetric;
 use App\Models\ReverbOrderMetric;
@@ -87,8 +87,8 @@ class ReverbWebhookController extends Controller
             return;
         }
 
-        ImportReverbOrderToShopify::dispatch($metric->id)->onQueue('reverb');
-        Log::info('ReverbWebhookController: dispatched ImportReverbOrderToShopify', ['order_number' => $orderNumber]);
+        ImportReverbManagerOrderToShopify::dispatch($metric->id);
+        Log::info('ReverbWebhookController: dispatched ImportReverbManagerOrderToShopify', ['order_number' => $orderNumber]);
     }
 
     protected function handleOrderShipped(array $payload): void
