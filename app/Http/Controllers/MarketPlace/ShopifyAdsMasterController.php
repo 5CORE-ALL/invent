@@ -43,22 +43,6 @@ class ShopifyAdsMasterController extends Controller
     public const SNAPSHOT_TIMEZONE = 'America/Los_Angeles';
 
     /**
-     * Rolled-up Spend + TCOS for the four parent channels the /shopify-ads-master
-     * page treats as "all channels" (Google Shopping, Google SERP, Facebook,
-     * Instagram — sub-rows excluded so Facebook · G Video etc. don't double count).
-     * Used by the Shopify row on /all-marketplace-master so its "Total Ad Spend"
-     * and "TACOS %" agree with the badges that page shows.
-     *
-     * Side-effect-free (no snapshot writes) — safe to call multiple times.
-     *
-     * @return array{
-     *     total_spend: float,
-     *     net_sales: float,
-     *     tcos_pct: float,
-     *     breakdown: array<string, float>
-     * }
-     */
-    /**
      * Facebook (CH=FB) spend for Active campaigns only — matches the default
      * Status=active filter on /facebook-ads (Spend badge).
      * Used by /all-marketplace-master FB Marketplace Ads% / Spend / N PFT / N ROI
@@ -84,6 +68,22 @@ class ShopifyAdsMasterController extends Controller
         ];
     }
 
+    /**
+     * Rolled-up Spend + TCOS for the parent channels the /shopify-ads-master
+     * SPEND / TCOS badges sum (Google Shopping, Google SERP, Youtube ads,
+     * Facebook, Instagram — sub-rows excluded so Facebook · G Video etc. don't
+     * double count). Used by the Shopify row on /all-marketplace-master so its
+     * Spend and Ads%/TACOS match those badges.
+     *
+     * Side-effect-free (no snapshot writes) — safe to call multiple times.
+     *
+     * @return array{
+     *     total_spend: float,
+     *     net_sales: float,
+     *     tcos_pct: float,
+     *     breakdown: array<string, float>
+     * }
+     */
     public function getRolledUpSpend(): array
     {
         // Same set updateBadges() in the blade sums (parents only). loadFacebookContext()
@@ -93,6 +93,7 @@ class ShopifyAdsMasterController extends Controller
             $rows = [
                 $this->googleShoppingMetrics(),
                 $this->googleSerpMetrics(),
+                $this->googleYoutubeAdsMetrics(),
                 $this->metaChannelMetrics('Facebook', 'FB'),
                 $this->metaChannelMetrics('Instagram', 'Insta'),
             ];

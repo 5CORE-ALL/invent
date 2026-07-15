@@ -1200,8 +1200,8 @@ class ChannelMasterController extends Controller
             // and the master Shopify row use. Single source of truth: this method.
             $profit = $this->computeShopifyDirectProfitCogsForRange($l30Start, $l30End);
 
-            // Rolled-up ad spend (Google Shopping + SERP + Facebook + Instagram, no
-            // sub-rows) from /shopify-ads-master. tcos_pct here is what the badge
+            // Rolled-up ad spend (Google Shopping + SERP + Youtube + Facebook + Instagram, no
+            // sub-rows) from /shopify-ads-master. tcos_pct here is what the TCOS badge
             // on that page shows, computed against /shopify net sales (not the
             // l30_sales below — minor PST/window differences). We expose both so
             // callers can pick whichever denominator makes sense for their layout.
@@ -1268,8 +1268,19 @@ class ChannelMasterController extends Controller
             // and GROI agree with that page when summed over the same window.
             $profit  = $this->computeShopifyDirectProfitCogsForRange($l30Start, $l30End);
 
-            // Google Ads spend (Shopping + Search) for the same window — same
-            // source the /shopify page reports as `total_ad_spend`.
+            // Spend + TCOS from /shopify-ads-master SPEND / TCOS badges
+            // (Google Shopping + SERP + Youtube + Facebook + Instagram parents).
+            $totalAdSpend = 0.0;
+            $tcosPct      = 0.0;
+            try {
+                $rollup = app(ShopifyAdsMasterController::class)->getRolledUpSpend();
+                $totalAdSpend = (float) ($rollup['total_spend'] ?? 0);
+                $tcosPct      = (float) ($rollup['tcos_pct']    ?? 0);
+            } catch (\Throwable $e) {
+                Log::warning('Shopify Direct rollup spend failed: ' . $e->getMessage());
+            }
+
+            // Shopping / SERP breakdown columns still come from Google Ads only.
             $adSpend = $this->fetchShopifyDirectAdSpendForRange($l30Start, $l30End);
 
             return [
@@ -1280,7 +1291,8 @@ class ChannelMasterController extends Controller
                 'l60_orders'     => $l60['orders'],
                 'total_pft'      => $profit['total_pft'],
                 'total_cogs'     => $profit['total_cogs'],
-                'total_ad_spend' => $adSpend['total'],
+                'total_ad_spend' => $totalAdSpend,
+                'tcos_pct'       => $tcosPct,
                 'shopping_spent' => $adSpend['shopping'],
                 'serp_spent'     => $adSpend['serp'],
             ];
@@ -1736,23 +1748,24 @@ class ChannelMasterController extends Controller
 
             // Profit / ROI / Ads metrics — connect /all-marketplace-master Shopify row
             // to the same numbers /shopify computes for its NPFT / NROI cards (same
-            // 0.95 margin, same Google Ads window). Without this overlay these cells
-            // read 0 because there's no getShopifyChannelData() handler defined.
+            // 0.95 margin). Without this overlay these cells read 0 because there's
+            // no getShopifyChannelData() handler defined.
             $totalPft  = (float) ($live['total_pft']  ?? 0);
             $totalCogs = (float) ($live['total_cogs'] ?? 0);
 
-            // Total Ad Spend + TCOS use Google Ads only (Shopping + Search) — the SAME
-            // source /shopify's TACOS card uses — so this row's Ads%/TACOS matches that
-            // page. (Meta/Facebook+Instagram spend from /shopify-ads-master is intentionally
-            // excluded here to stay consistent with /shopify.)
+            // Spend + TCOS match /shopify-ads-master SPEND (2nd badge) and TCOS badges.
             $totalAdSpend  = (float) ($live['total_ad_spend'] ?? 0);
             $shoppingSpend = (float) ($live['shopping_spent'] ?? 0);
             $serpSpend     = (float) ($live['serp_spent']     ?? 0);
 
             $gpftPct  = $l30Sales  > 0 ? ($totalPft / $l30Sales) * 100 : 0.0;
             $groi     = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0.0;
-            $tacosPct = $l30Sales > 0 ? ($totalAdSpend / $l30Sales) * 100 : 0.0;
-            $adsPct   = $tacosPct;                            // same definition on this page
+            // Prefer the rolled-up TCOS from /shopify-ads-master (Spend / Shopify net sales).
+            $tacosPct = (float) ($live['tcos_pct'] ?? 0);
+            if ($tacosPct <= 0 && $l30Sales > 0) {
+                $tacosPct = ($totalAdSpend / $l30Sales) * 100;
+            }
+            $adsPct   = $tacosPct;
             $nPftPct  = $gpftPct - $tacosPct;
             $netPft   = $totalPft - $totalAdSpend;
             $nRoi     = $totalCogs > 0 ? ($netPft / $totalCogs) * 100 : 0.0;
