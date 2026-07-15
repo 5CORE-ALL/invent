@@ -14,6 +14,8 @@ use App\Http\Controllers\AdvertisementMaster\Shopping_Advt\GoogleShoppingControl
 use App\Http\Controllers\AdvertisementMaster\VariationsAdsController;
 use App\Http\Controllers\AmazonAdsController;
 use App\Http\Controllers\AmazonAds\AmazonAdsPushLogController;
+use App\Http\Controllers\AmazonAds\AmazonCampaignLinkController;
+use App\Http\Controllers\AmazonAds\AmazonNegativeCampaignLinkController;
 use App\Http\Controllers\ArrivedContainerController;
 use App\Http\Controllers\Auth\UserController;
 use App\Http\Controllers\Kpi\KpiShippingController;
@@ -2990,6 +2992,32 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/amazon-ads/bgt-rule', [AmazonAdsController::class, 'saveBgtRule'])->name('amazon.ads.bgt-rule.save');
     Route::get('/amazon-ads/sbid-rule', [AmazonAdsController::class, 'getSbidRule'])->name('amazon.ads.sbid-rule');
     Route::post('/amazon-ads/sbid-rule', [AmazonAdsController::class, 'saveSbidRule'])->name('amazon.ads.sbid-rule.save');
+
+    // Amazon SP campaign linking (like /purchase-master/sku-link-lmp) — link campaigns into groups.
+    Route::controller(AmazonCampaignLinkController::class)->prefix('amazon-ads/campaign-link')->group(function () {
+        Route::get('/', 'index')->name('amazon.ads.campaign-link.index');
+        Route::get('/data', 'getData')->name('amazon.ads.campaign-link.data');
+        Route::get('/campaigns', 'getCampaigns')->name('amazon.ads.campaign-link.campaigns');
+        Route::get('/keywords', 'getKeywords')->name('amazon.ads.campaign-link.keywords');
+        Route::post('/link', 'bulkLink')->name('amazon.ads.campaign-link.link');
+        Route::post('/remove', 'removeLink')->name('amazon.ads.campaign-link.remove');
+        Route::post('/push', 'pushLinked')->name('amazon.ads.campaign-link.push');
+        Route::post('/push-all', 'pushAll')->name('amazon.ads.campaign-link.push-all');
+        Route::get('/compare', 'compare')->name('amazon.ads.campaign-link.compare');
+    });
+
+    // Amazon SP campaign linking for NEGATIVE keywords.
+    Route::controller(AmazonNegativeCampaignLinkController::class)->prefix('amazon-ads/negative-link')->group(function () {
+        Route::get('/', 'index')->name('amazon.ads.negative-link.index');
+        Route::get('/data', 'getData')->name('amazon.ads.negative-link.data');
+        Route::get('/campaigns', 'getCampaigns')->name('amazon.ads.negative-link.campaigns');
+        Route::get('/keywords', 'getKeywords')->name('amazon.ads.negative-link.keywords');
+        Route::post('/link', 'bulkLink')->name('amazon.ads.negative-link.link');
+        Route::post('/remove', 'removeLink')->name('amazon.ads.negative-link.remove');
+        Route::post('/push', 'pushLinked')->name('amazon.ads.negative-link.push');
+        Route::post('/push-all', 'pushAll')->name('amazon.ads.negative-link.push-all');
+        Route::get('/compare', 'compare')->name('amazon.ads.negative-link.compare');
+    });
 
     // Amazon Ads Audit page (campaign audit log with red/green dot + history)
     Route::get('/amazon-ads/audit', [\App\Http\Controllers\AmazonAdsAuditController::class, 'index'])->name('amazon.ads.audit');
