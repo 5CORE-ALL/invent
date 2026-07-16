@@ -3101,22 +3101,23 @@
                         moreSoldCount++;
                     }
 
-                    // Miss = no sheet price, INV > 0, not NRA (same as BestBuy)
+                    // Miss / Map / N Map — same rules as BestBuy + all-marketplace-master / map-issues
                     const priceForMiss = parseFloat(row['Tiendamia Price']) || 0;
                     const invForMiss = parseFloat(row.INV) || 0;
                     const nrpForMiss = String(row.nrp || '').trim().toUpperCase();
+                    const isReq = nrpForMiss !== 'NRA';
                     const isMissing = priceForMiss === 0;
-                    if (isMissing && invForMiss > 0 && nrpForMiss !== 'NRA') {
+                    if (isMissing && invForMiss > 0 && isReq) {
                         missingCount++;
                     }
 
                     const mapValue = row['MAP'];
-                    if (mapValue === 'Map' && !isMissing) {
-                        mapCount++;
-                    }
-
-                    if (ttIsStrictNMapMapValue(mapValue, isMissing)) {
-                        invTTStockCount++;
+                    if (isReq && invForMiss > 0 && !isMissing) {
+                        if (mapValue === 'Map') {
+                            mapCount++;
+                        } else if (ttIsStrictNMapMapValue(mapValue, false)) {
+                            invTTStockCount++;
+                        }
                     }
                 });
 

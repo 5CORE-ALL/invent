@@ -90,13 +90,6 @@ class BestBuyPricingController extends Controller
                 return strtoupper($item->sku);
             });
 
-        // The uploaded price sheet is the source of truth. If any price rows exist
-        // (i.e. a sheet has been uploaded), a SKU missing from that sheet is NOT
-        // offered on Best Buy, so it must show no price (0 → MISSING) instead of
-        // falling back to the stale BestbuyUsaProduct price. Only when no sheet has
-        // ever been uploaded do we fall back to the metric price.
-        $hasUploadedPriceData = BestbuyPriceData::exists();
-
         // Fetch Amazon pricing data
         $amazonData = AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy('sku');
 
@@ -135,14 +128,13 @@ class BestBuyPricingController extends Controller
             $row["INV"] = $shopify->inv ?? 0;
             $row["L30"] = $shopify->quantity ?? 0;
 
-            // Best Buy Metrics - price comes from the uploaded BestbuyPriceData sheet.
-            // If a sheet has been uploaded but this SKU isn't in it, it's not offered → 0 (MISSING).
-            // Only fall back to the BestbuyUsaProduct price when no sheet has ever been uploaded.
+            // Price: uploaded sheet first; if SKU not on sheet → bestbuy_usa_products.price (same as Tiendamia).
             $row["BB L30"] = $bestbuyMetric->m_l30 ?? 0;
             $row["BB Price"] = $priceData
-                ? ($priceData->price ?? 0)
-                : ($hasUploadedPriceData ? 0 : ($bestbuyMetric->price ?? 0));
+                ? floatval($priceData->price ?? 0)
+                : floatval($bestbuyMetric->price ?? 0);
             $row["BB INV"] = $bestbuyMetric->stock ?? 0; // Marketplace inventory/stock for mapping
+            $row["Price Source"] = $priceData ? 'sheet' : (floatval($row["BB Price"]) > 0 ? 'product' : '');
             
             // Amazon Price
             $row["A Price"] = $amazon ? floatval($amazon->price ?? 0) : 0;

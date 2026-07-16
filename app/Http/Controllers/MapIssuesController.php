@@ -16,6 +16,7 @@ use App\Models\EbayThreeListingStatus;
 use App\Models\EbayTwoListingStatus;
 use App\Models\MacyProduct;
 use App\Models\MacysListingStatus;
+use App\Models\MacysPriceData;
 use App\Models\NeweggDataView;
 use App\Models\NeweggPricing;
 use App\Models\ProductMaster;
@@ -27,6 +28,7 @@ use App\Models\ShopifySku;
 use App\Models\TemuListingStatus;
 use App\Models\TemuPricing;
 use App\Models\TiendamiaDataView;
+use App\Models\TiendamiaPriceUpload;
 use App\Models\TiendamiaProduct;
 use Illuminate\Http\Request;
 
@@ -132,23 +134,23 @@ class MapIssuesController extends Controller
         $reverbByNorm    = $this->buildReverbLookupByNormalizedSku($skus);
         $nrStatusReverb  = $this->buildReverbNrReqStatusLookup($skus);
 
-        // Macy's: stock, price and stored SKU come from macy_products (listed = price > 0,
-        // like the macys-pricing page), and REQ/NR comes from macys_listing_statuses' "nr_req" key.
-        $macyByNorm      = $this->buildMacyLookupByNormalizedSku($skus);
-        $nrStatusMacy    = $this->buildNrReqStatusLookup(MacysListingStatus::class, $skus);
+        // Macy's: stock/SKU from macy_products; price = sheet first, else product.price
+        // (same as macys-pricing / Tiendamia). REQ/NR from macys_listing_statuses.
+        $macyByNorm         = $this->buildMacyLookupByNormalizedSku($skus);
+        $macyPriceByNorm    = $this->buildMacyPriceLookupByNormalizedSku($skus);
+        $nrStatusMacy       = $this->buildNrReqStatusLookup(MacysListingStatus::class, $skus);
 
-        // Best Buy: stock and stored SKU come from bestbuy_usa_products; price comes from
-        // bestbuy_price_data (fallback to product price) — listed = price > 0, like the
-        // bestbuy-pricing page. REQ/NR comes from bestbuy_usa_listing_statuses' "nr_req" key.
+        // Best Buy: stock/SKU from bestbuy_usa_products; price = sheet first, else product.price
+        // (same as bestbuy-pricing / Tiendamia). REQ/NR from bestbuy_usa_listing_statuses.
         $bestbuyByNorm      = $this->buildBestbuyLookupByNormalizedSku($skus);
         $bestbuyPriceByNorm = $this->buildBestbuyPriceLookupByNormalizedSku($skus);
         $nrStatusBestbuy    = $this->buildNrReqStatusLookup(BestbuyUSAListingStatus::class, $skus);
 
-        // Tiendamia: stock and stored SKU come from tiendamia_products (listed = the SKU exists
-        // in tiendamia_products, like the tiendamia-pricing page's Missing rule). REQ/NR comes
-        // from tiendamia_data_views' "NRP" key (RA = REQ, NRA = NR).
-        $tiendamiaByNorm    = $this->buildTiendamiaLookupByNormalizedSku($skus);
-        $nrStatusTiendamia  = $this->buildTiendamiaNrReqStatusLookup($skus);
+        // Tiendamia: stock/SKU from tiendamia_products; price = sheet first, else product.price
+        // (same as tiendamia-pricing). REQ/NR from tiendamia_data_views "NRP" (RA = REQ, NRA = NR).
+        $tiendamiaByNorm      = $this->buildTiendamiaLookupByNormalizedSku($skus);
+        $tiendamiaPriceBySku  = $this->buildTiendamiaPriceLookupExact();
+        $nrStatusTiendamia    = $this->buildTiendamiaNrReqStatusLookup($skus);
 
         // Temu: stock (temu_pricing.quantity), price (base_price) and stored SKU come from
         // temu_pricing (listed = a live pricing row with base price > 0, same as the
@@ -398,10 +400,14 @@ class MapIssuesController extends Controller
             }
 
             // ---- Macy's ----
-            $macyStock = floatval($macy->stock ?? 0);
-            $macyPrice = floatval($macy->price ?? 0);
-            $macyListed = $macyPrice > 0; // live listing, same as the macys-pricing page
-            $macySku = $macy->sku ?? null;
+            $macyStock = floatval($macy?->stock ?? 0);
+            $macySheetPrice = ($key !== '' && array_key_exists($key, $macyPriceByNorm))
+                ? floatval($macyPriceByNorm[$key])
+                : null;
+            $macyProductPrice = floatval($macy?->price ?? 0);
+            $macyPrice = $macySheetPrice !== null ? $macySheetPrice : $macyProductPrice;
+            $macyListed = $macyPrice > 0;
+            $macySku = $macy?->sku ?? null;
             $macyReason = $macySku !== null ? $this->skuDifferenceReason($pm->sku, $macySku) : '';
             $macyHasIssue = $macyReason !== '';
             if ($macyHasIssue) {
@@ -428,11 +434,13 @@ class MapIssuesController extends Controller
             }
 
             // ---- Best Buy ----
-            $bestbuyStock = floatval($bestbuy->stock ?? 0);
-            $bestbuyDataPrice = $key !== '' ? ($bestbuyPriceByNorm[$key] ?? null) : null;
-            $bestbuyPrice = $bestbuyDataPrice !== null ? floatval($bestbuyDataPrice) : floatval($bestbuy->price ?? 0);
-            $bestbuyListed = $bestbuyPrice > 0; // live listing, same as the bestbuy-pricing page
-            $bestbuySku = $bestbuy->sku ?? null;
+            $bestbuyStock = floatval($bestbuy?->stock ?? 0);
+            $bestbuyDataPrice = ($key !== '' && array_key_exists($key, $bestbuyPriceByNorm))
+                ? floatval($bestbuyPriceByNorm[$key])
+                : null;
+            $bestbuyPrice = $bestbuyDataPrice !== null ? $bestbuyDataPrice : floatval($bestbuy?->price ?? 0);
+            $bestbuyListed = $bestbuyPrice > 0;
+            $bestbuySku = $bestbuy?->sku ?? null;
             $bestbuyReason = $bestbuySku !== null ? $this->skuDifferenceReason($pm->sku, $bestbuySku) : '';
             $bestbuyHasIssue = $bestbuyReason !== '';
             if ($bestbuyHasIssue) {
@@ -459,9 +467,13 @@ class MapIssuesController extends Controller
             }
 
             // ---- Tiendamia ----
-            $tiendamiaStock = floatval($tiendamia->stock ?? 0);
-            $tiendamiaListed = $tiendamia !== null; // SKU exists in tiendamia_products
-            $tiendamiaSku = $tiendamia->sku ?? null;
+            $tiendamiaStock = floatval($tiendamia?->stock ?? 0);
+            // Listed = sheet price, else product table price (same as tiendamia-pricing)
+            $tiendamiaSheetPrice = floatval($tiendamiaPriceBySku[trim((string) $pm->sku)] ?? 0);
+            $tiendamiaProductPrice = floatval($tiendamia?->price ?? 0);
+            $tiendamiaPrice = $tiendamiaSheetPrice > 0 ? $tiendamiaSheetPrice : $tiendamiaProductPrice;
+            $tiendamiaListed = $tiendamiaPrice > 0;
+            $tiendamiaSku = $tiendamia?->sku ?? null;
             $tiendamiaReason = $tiendamiaSku !== null ? $this->skuDifferenceReason($pm->sku, $tiendamiaSku) : '';
             $tiendamiaHasIssue = $tiendamiaReason !== '';
             if ($tiendamiaHasIssue) {
@@ -470,13 +482,11 @@ class MapIssuesController extends Controller
             $tiendamiaNrReq = $this->isReqStatus($nrStatusTiendamia, $pm->sku) ? 'REQ' : 'NR';
             $tiendamiaIsNotMap = false;
             $tiendamiaWithin3 = false;
-            if ($tiendamiaListed && $tiendamiaNrReq === 'REQ' && $inv > 0 && $tiendamiaStock > 0) {
+            // Map / N Map — same gate as tiendamia-pricing: listed (sheet or product price), REQ, INV > 0;
+            // Map when |INV − Tiendamia Stock| ≤ 3, else N Map.
+            if ($tiendamiaListed && $tiendamiaNrReq === 'REQ' && $inv > 0) {
                 $tiendamiaDiffUnits = abs($inv - $tiendamiaStock);
-                if ($inv * 0.03 < 3) {
-                    $tiendamiaIsNotMap = $tiendamiaDiffUnits > 3;
-                } else {
-                    $tiendamiaIsNotMap = round(($tiendamiaDiffUnits / $inv) * 100) > 3;
-                }
+                $tiendamiaIsNotMap = $tiendamiaDiffUnits > 3;
                 if ($tiendamiaIsNotMap) {
                     $tiendamiaNotMapCount++;
                 }
@@ -1532,8 +1542,12 @@ class MapIssuesController extends Controller
     private function buildBestbuyPriceLookupByNormalizedSku(array $productSkus): array
     {
         $byNorm = [];
+        $lookupSkus = array_values(array_unique(array_merge(
+            $productSkus,
+            array_map('strtoupper', $productSkus)
+        )));
 
-        foreach (BestbuyPriceData::select('sku', 'price')->whereIn('sku', $productSkus)->get() as $row) {
+        foreach (BestbuyPriceData::select('sku', 'price')->whereIn('sku', $lookupSkus)->get() as $row) {
             $k = ShopifySku::normalizeSkuForShopifyLookup((string) $row->sku);
             if ($k !== '' && ! isset($byNorm[$k])) {
                 $byNorm[$k] = floatval($row->price ?? 0);
@@ -1541,6 +1555,58 @@ class MapIssuesController extends Controller
         }
 
         return $byNorm;
+    }
+
+    /**
+     * Build a normalized-SKU => Macy's price lookup from macys_price_data (uploaded sheet).
+     *
+     * @param  array<int, string>  $productSkus
+     * @return array<string, float>
+     */
+    private function buildMacyPriceLookupByNormalizedSku(array $productSkus): array
+    {
+        $byNorm = [];
+        $lookupSkus = array_values(array_unique(array_merge(
+            $productSkus,
+            array_map('strtoupper', $productSkus)
+        )));
+
+        foreach (MacysPriceData::select('sku', 'price')->whereIn('sku', $lookupSkus)->get() as $row) {
+            $k = ShopifySku::normalizeSkuForShopifyLookup((string) $row->sku);
+            if ($k !== '' && ! isset($byNorm[$k])) {
+                $byNorm[$k] = floatval($row->price ?? 0);
+            }
+        }
+
+        return $byNorm;
+    }
+
+    /**
+     * Exact case-sensitive SKU => price from the uploaded Tiendamia price sheet
+     * (offer_sku / product_sku), same matching as tiendamia-pricing.
+     *
+     * @return array<string, float>
+     */
+    private function buildTiendamiaPriceLookupExact(): array
+    {
+        $bySku = [];
+        foreach (
+            TiendamiaPriceUpload::select('offer_sku', 'product_sku', 'price')
+                ->whereNotNull('price')
+                ->get() as $row
+        ) {
+            $offer = trim((string) ($row->offer_sku ?? ''));
+            $product = trim((string) ($row->product_sku ?? ''));
+            $price = floatval($row->price ?? 0);
+            if ($offer !== '' && ! isset($bySku[$offer])) {
+                $bySku[$offer] = $price;
+            }
+            if ($product !== '' && ! isset($bySku[$product])) {
+                $bySku[$product] = $price;
+            }
+        }
+
+        return $bySku;
     }
 
     /**
@@ -1555,7 +1621,7 @@ class MapIssuesController extends Controller
         $byNorm = [];
         $upper = array_map('strtoupper', $productSkus);
 
-        foreach (TiendamiaProduct::select('sku', 'stock')->whereIn('sku', $upper)->get() as $row) {
+        foreach (TiendamiaProduct::select('sku', 'stock', 'price')->whereIn('sku', $upper)->get() as $row) {
             $k = ShopifySku::normalizeSkuForShopifyLookup((string) $row->sku);
             if ($k !== '' && ! isset($byNorm[$k])) {
                 $byNorm[$k] = $row;
@@ -1575,7 +1641,7 @@ class MapIssuesController extends Controller
         }
 
         TiendamiaProduct::query()
-            ->select('sku', 'stock', 'id')
+            ->select('sku', 'stock', 'price', 'id')
             ->whereNotNull('sku')
             ->where('sku', '!=', '')
             ->orderBy('id')

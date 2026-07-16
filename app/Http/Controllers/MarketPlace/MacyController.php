@@ -93,15 +93,12 @@ class MacyController extends Controller
         $macysByNormSku = $this->buildMacyProductLookupByNormalizedSku($skus);
 
         // Uploaded price sheet (macys_price_data) — SKUs stored uppercased on import.
-        // This is the source of truth for the displayed price: if a sheet has been
-        // uploaded but a SKU isn't in it, it's not offered → price 0 (MISSING). Only
-        // fall back to the macy_products (Mirakl) price when no sheet was ever uploaded.
+        // Displayed price = sheet if present, else macy_products.price (same as Tiendamia).
         $priceDataCollection = MacysPriceData::whereIn('sku', $skus)
             ->get()
             ->keyBy(function ($item) {
                 return strtoupper($item->sku);
             });
-        $hasUploadedPriceData = MacysPriceData::exists();
 
         // NR/REQ + SPRICE data from MacyDataView
         $dataViews = MacyDataView::whereIn("sku", $skus)->pluck("value", "sku");
@@ -156,14 +153,13 @@ class MacyController extends Controller
             $row["INV"] = $shopify ? (int) ($shopify->inv ?? 0) : 0;
             $row["L30"] = $shopify ? (int) ($shopify->quantity ?? 0) : 0;
 
-            // MC L30 / MC INV from macy_products (Mirakl sync). MC Price now comes from the
-            // uploaded macys_price_data sheet; if a sheet is uploaded but the SKU isn't in it,
-            // it's not offered → 0 (MISSING). Falls back to the Mirakl price only when no sheet exists.
+            // MC L30 / MC INV from macy_products. MC Price: sheet first, else product table.
             $row["MC L30"] = $macysMetric->m_l30 ?? 0;
             $row["MC Price"] = $priceData
                 ? floatval($priceData->price ?? 0)
-                : ($hasUploadedPriceData ? 0.0 : ($macysMetric ? floatval($macysMetric->price ?? 0) : 0.0));
+                : ($macysMetric ? floatval($macysMetric->price ?? 0) : 0.0);
             $row["MC INV"] = $macysMetric ? (int) ($macysMetric->stock ?? 0) : 0;
+            $row["Price Source"] = $priceData ? 'sheet' : (floatval($row["MC Price"]) > 0 ? 'product' : '');
 
             // Amazon price
             $row["A Price"] = $amazon ? floatval($amazon->price ?? 0) : null;

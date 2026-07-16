@@ -1841,6 +1841,12 @@ class ChannelMasterController extends Controller
             'Tiktok Shop 2' => fn () => $this->getTiktok2LiveMapMissNMapFromPricingData(
                 Request::create('/tiktok-2-data-json', 'GET')
             ),
+            'Tiendamia' => fn () => $this->getTiendamiaLiveMapMissNMapFromPricingData(
+                Request::create('/tiendamia-data-json', 'GET')
+            ),
+            'Tienda Mia' => fn () => $this->getTiendamiaLiveMapMissNMapFromPricingData(
+                Request::create('/tiendamia-data-json', 'GET')
+            ),
         ];
 
         foreach ($rows as &$row) {
@@ -1943,6 +1949,72 @@ class ChannelMasterController extends Controller
             Log::warning('Shein live map/miss/nmap fallback: ' . $e->getMessage());
 
             return $this->getMapAndMissCounts('shein');
+        }
+    }
+
+    /**
+     * Map / Miss / NMap for Tiendamia — same rules as tiendamia-pricing badges.
+     * Price on that page = sheet first, else tiendamia_products.price.
+     * Miss: not NRA + INV>0 + price=0
+     * Map / NMap: not NRA + INV>0 + price>0 + |INV − Tiendamia Stock| ≤ 3 (map) or > 3 (NMap)
+     */
+    private function getTiendamiaLiveMapMissNMapFromPricingData(Request $request): array
+    {
+        try {
+            $ctrl = app(\App\Http\Controllers\MarketPlace\TiendamiaPricingController::class);
+            $response = $ctrl->tiendamiaDataJson($request);
+            $rows = json_decode($response->getContent(), true);
+            if (! is_array($rows)) {
+                return $this->getMapAndMissCounts('tiendamia');
+            }
+
+            $map = 0;
+            $miss = 0;
+            $nmap = 0;
+
+            foreach ($rows as $row) {
+                if (is_object($row)) {
+                    $row = (array) $row;
+                }
+                if (! is_array($row)) {
+                    continue;
+                }
+
+                $parent = trim((string) ($row['Parent'] ?? ''));
+                if ($parent !== '' && str_starts_with(strtoupper($parent), 'PARENT')) {
+                    continue;
+                }
+
+                $inv = (float) ($row['INV'] ?? 0);
+                $ttStock = (float) ($row['Tiendamia Stock'] ?? 0);
+                $price = (float) ($row['Tiendamia Price'] ?? 0);
+                $nrp = strtoupper(trim((string) ($row['nrp'] ?? 'RA')));
+                $isReq = ($nrp !== 'NRA');
+
+                if ($isReq && $inv > 0 && $price == 0.0) {
+                    $miss++;
+                }
+
+                if ($isReq && $inv > 0 && $price > 0) {
+                    $diff = abs($inv - $ttStock);
+                    if ($diff <= 3) {
+                        $map++;
+                    } else {
+                        $nmap++;
+                    }
+                }
+            }
+
+            return [
+                'map' => $map,
+                'miss' => $miss,
+                'nmap' => $nmap,
+                'total_views' => 0,
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('Tiendamia live map/miss/nmap fallback: ' . $e->getMessage());
+
+            return $this->getMapAndMissCounts('tiendamia');
         }
     }
 
@@ -8992,8 +9064,8 @@ class ChannelMasterController extends Controller
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Tiendamia')->first();
 
-        // Get Map and Miss counts from amazon_channel_summary_data table
-        $mapMissCounts = $this->getMapAndMissCounts('tiendamia');
+        // Live counts from tiendamia-pricing (sheet price Missing L + Map / N Map)
+        $mapMissCounts = $this->getTiendamiaLiveMapMissNMapFromPricingData($request);
 
         $result[] = [
             'Channel '   => 'Tiendamia',

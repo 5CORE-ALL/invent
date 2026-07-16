@@ -95,8 +95,8 @@ class TiendamiaPricingController extends Controller
                 return strtoupper($item->sku);
             });
 
-        // Uploaded price sheet (tiendamia_price_uploads) is the ONLY source for displayed price.
-        // Never fall back to tiendamia_products.price. Exact case-sensitive match on offer_sku / product_sku.
+        // Price sheet lookup (exact case-sensitive on offer_sku / product_sku).
+        // Displayed price = sheet if present, else tiendamia_products.price.
         $priceBySku = [];
         foreach (
             TiendamiaPriceUpload::select('product_sku', 'offer_sku', 'price', 'quantity', 'offer_state')
@@ -169,9 +169,9 @@ class TiendamiaPricingController extends Controller
             $skuTrimmed = trim((string) $sku);
             $skuUpper = strtoupper($skuTrimmed);
 
-            // Add data from tiendamia_products (m_l30, m_l60, stock only — never price)
-            if (isset($tiendamiaData[$skuUpper])) {
-                $tiendamiaItem = $tiendamiaData[$skuUpper];
+            // Metrics from tiendamia_products (API); price from sheet first, then product table.
+            $tiendamiaItem = $tiendamiaData[$skuUpper] ?? null;
+            if ($tiendamiaItem) {
                 $processedItem["M L30"] = $tiendamiaItem->m_l30 ?? 0;
                 $processedItem["M L60"] = $tiendamiaItem->m_l60 ?? 0;
                 $processedItem["Tiendamia Stock"] = $tiendamiaItem->stock ?? 0;
@@ -181,17 +181,19 @@ class TiendamiaPricingController extends Controller
                 $processedItem["Tiendamia Stock"] = 0;
             }
 
-            // Price: exact case-sensitive match from uploaded sheet only. Not in sheet → 0.
-            // Missing L = missing sheet price (same idea as BestBuy Miss), not missing inventory sync.
+            // Price: sheet (exact case-sensitive) first; if SKU not on sheet → tiendamia_products.price.
             $priceItem = $priceBySku[$skuTrimmed] ?? null;
             if ($priceItem) {
-                $processedItem["Tiendamia Price"] = $priceItem->price ?? 0;
+                $processedItem["Tiendamia Price"] = floatval($priceItem->price ?? 0);
                 $processedItem["Price Quantity"] = $priceItem->quantity ?? 0;
                 $processedItem["Offer State"] = $priceItem->offer_state ?? '';
+                $processedItem["Price Source"] = 'sheet';
             } else {
-                $processedItem["Tiendamia Price"] = 0;
+                $productPrice = $tiendamiaItem ? floatval($tiendamiaItem->price ?? 0) : 0.0;
+                $processedItem["Tiendamia Price"] = $productPrice;
                 $processedItem["Price Quantity"] = 0;
                 $processedItem["Offer State"] = '';
+                $processedItem["Price Source"] = $productPrice > 0 ? 'product' : '';
             }
             $processedItem["Missing"] = floatval($processedItem["Tiendamia Price"]) > 0 ? '' : 'M';
 
