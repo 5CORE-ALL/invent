@@ -304,6 +304,40 @@ final class ShopifyLiveVerifiedCatalogService
     }
 
     /**
+     * Drop SKUs whose normalized form appears in $excludeSkus.
+     *
+     * @param  array<int, string>  $skus
+     * @param  array<int, string>  $excludeSkus
+     * @return list<string>
+     */
+    public function excludeSkusByNormalizedList(array $skus, array $excludeSkus): array
+    {
+        $deny = [];
+        foreach ($excludeSkus as $sku) {
+            $n = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
+            if ($n !== '') {
+                $deny[$n] = true;
+            }
+        }
+        if ($deny === []) {
+            return array_values(array_map('strval', $skus));
+        }
+
+        $out = [];
+        $seen = [];
+        foreach ($skus as $sku) {
+            $n = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
+            if ($n === '' || isset($seen[$n]) || isset($deny[$n])) {
+                continue;
+            }
+            $seen[$n] = true;
+            $out[] = (string) $sku;
+        }
+
+        return $out;
+    }
+
+    /**
      * @param  array<int, string>  $linkedSkus
      * @param  array<string, int>  $marketplaceStockMap
      * @return array{matched: int, mismatch: int, zero: int, unlinked: int, linked: int}|null

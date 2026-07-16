@@ -31,11 +31,13 @@
                     @elseif(($linkTab ?? '') === 'unlinked')
                         {{ $products->total() }} not on Alibaba (in-stock Shopify)
                     @elseif(($linkTab ?? '') === 'matched')
-                        {{ $products->total() }} linked — qty matched
+                        {{ $products->total() }} active &amp; qty matched
+                    @elseif(($linkTab ?? '') === 'matched_inactive')
+                        {{ $products->total() }} inactive &amp; qty matched
                     @elseif(($linkTab ?? '') === 'mismatch')
-                        {{ $products->total() }} linked — qty mismatch
+                        {{ $products->total() }} qty mismatch
                     @elseif(($linkTab ?? '') === 'zero')
-                        {{ $products->total() }} linked — zero on Shopify
+                        {{ $products->total() }} zero on Shopify
                     @else
                         {{ $products->total() }} Shopify SKU(s)
                     @endif
@@ -75,7 +77,7 @@
                     </div>
                 </form>
 
-                @php $counts = $counts ?? ['all' => 0, 'matched' => 0, 'mismatch' => 0, 'zero' => 0, 'unlinked' => 0, 'linked' => 0]; @endphp
+                @php $counts = $counts ?? ['all' => 0, 'matched' => 0, 'matched_inactive' => 0, 'mismatch' => 0, 'zero' => 0, 'unlinked' => 0, 'linked' => 0]; @endphp
                 <ul class="nav nav-tabs nav-bordered mb-3" role="tablist">
                     <li class="nav-item">
                         <a href="{{ request()->url() }}?link=all&search_name={{ urlencode($searchName) }}&search_sku={{ urlencode($searchSku) }}" class="nav-link {{ ($linkTab ?? '') === 'all' ? 'active' : '' }}">All {{ $counts['all'] ?? 0 }}</a>
@@ -84,13 +86,16 @@
                         <a href="{{ request()->url() }}?link=matched&search_name={{ urlencode($searchName) }}&search_sku={{ urlencode($searchSku) }}" class="nav-link {{ ($linkTab ?? '') === 'matched' ? 'active' : '' }}">Active &amp; Matched {{ $counts['matched'] ?? 0 }}</a>
                     </li>
                     <li class="nav-item">
-                        <a href="{{ request()->url() }}?link=mismatch&search_name={{ urlencode($searchName) }}&search_sku={{ urlencode($searchSku) }}" class="nav-link {{ ($linkTab ?? '') === 'mismatch' ? 'active' : '' }}">Linked — Mismatch {{ $counts['mismatch'] ?? 0 }}</a>
+                        <a href="{{ request()->url() }}?link=matched_inactive&search_name={{ urlencode($searchName) }}&search_sku={{ urlencode($searchSku) }}" class="nav-link {{ ($linkTab ?? '') === 'matched_inactive' ? 'active' : '' }}">Inactive &amp; Matched {{ $counts['matched_inactive'] ?? 0 }}</a>
                     </li>
                     <li class="nav-item">
-                        <a href="{{ request()->url() }}?link=zero&search_name={{ urlencode($searchName) }}&search_sku={{ urlencode($searchSku) }}" class="nav-link {{ ($linkTab ?? '') === 'zero' ? 'active' : '' }}">Linked — Zero on Shopify {{ $counts['zero'] ?? 0 }}</a>
+                        <a href="{{ request()->url() }}?link=mismatch&search_name={{ urlencode($searchName) }}&search_sku={{ urlencode($searchSku) }}" class="nav-link {{ ($linkTab ?? '') === 'mismatch' ? 'active' : '' }}">Mismatch {{ $counts['mismatch'] ?? 0 }}</a>
                     </li>
                     <li class="nav-item">
-                        <a href="{{ request()->url() }}?link=unlinked&search_name={{ urlencode($searchName) }}&search_sku={{ urlencode($searchSku) }}" class="nav-link {{ ($linkTab ?? '') === 'unlinked' ? 'active' : '' }}">Not on marketplace {{ $counts['unlinked'] ?? 0 }}</a>
+                        <a href="{{ request()->url() }}?link=zero&search_name={{ urlencode($searchName) }}&search_sku={{ urlencode($searchSku) }}" class="nav-link {{ ($linkTab ?? '') === 'zero' ? 'active' : '' }}">Zero on Shopify {{ $counts['zero'] ?? 0 }}</a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="{{ request()->url() }}?link=unlinked&search_name={{ urlencode($searchName) }}&search_sku={{ urlencode($searchSku) }}" class="nav-link {{ ($linkTab ?? '') === 'unlinked' ? 'active' : '' }}">Not on Alibaba {{ $counts['unlinked'] ?? 0 }}</a>
                     </li>
                 </ul>
 

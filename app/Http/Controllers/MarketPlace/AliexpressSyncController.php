@@ -150,7 +150,7 @@ class AliexpressSyncController extends Controller
         if ($linkTab === 'linked_zero') {
             $linkTab = 'zero';
         }
-        if (! in_array($linkTab, ['all', 'matched', 'mismatch', 'zero', 'unlinked'], true)) {
+        if (! in_array($linkTab, ['all', 'matched', 'matched_inactive', 'mismatch', 'zero', 'unlinked'], true)) {
             $linkTab = 'all';
         }
         $stateTab = $this->parseAeStateTab($request);
@@ -159,7 +159,7 @@ class AliexpressSyncController extends Controller
         $apiError = null;
         $forceLive = $request->boolean('refresh_live');
         $emptyStateCounts = $this->emptyAeStateCounts();
-        $emptyCounts = ['all' => 0, 'matched' => 0, 'mismatch' => 0, 'zero' => 0, 'unlinked' => 0, 'linked' => 0];
+        $emptyCounts = ['all' => 0, 'matched' => 0, 'matched_inactive' => 0, 'mismatch' => 0, 'zero' => 0, 'unlinked' => 0, 'linked' => 0];
 
         if (! Schema::hasTable('shopify_skus')) {
             $apiError = 'shopify_skus table missing. Run Shopify inventory sync first.';
@@ -191,6 +191,7 @@ class AliexpressSyncController extends Controller
         $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock);
         $counts = $classified['counts'] ?? $emptyCounts;
         $counts['all'] = $catalog->countDistinctActiveSkus();
+        $counts['matched_inactive'] = 0;
         $liveService = app(AliexpressLiveListingsService::class);
 
         if (! $catalog->hasAnyActive()) {
@@ -199,6 +200,7 @@ class AliexpressSyncController extends Controller
 
         $matchedQty = $classified['matched'] ?? [];
         $matchedActive = $matchedQty;
+        $matchedInactive = [];
         $matchedNormToSku = [];
         foreach ($matchedQty as $sku) {
             $n = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
@@ -217,13 +219,16 @@ class AliexpressSyncController extends Controller
                 $matchedQty,
                 $matchedStateIndex['skusByState']['onselling'] ?? []
             );
+            $matchedInactive = $catalog->excludeSkusByNormalizedList($matchedQty, $matchedActive);
             $counts['matched'] = count($matchedActive);
+            $counts['matched_inactive'] = count($matchedInactive);
             $counts['linked_with_inv'] = $counts['matched'];
         }
 
         $linkedVerified = match ($linkTab) {
             'mismatch' => $classified['mismatch'] ?? [],
             'zero' => $classified['zero'] ?? [],
+            'matched_inactive' => $matchedInactive,
             'matched' => $matchedActive,
             default => [],
         };
@@ -241,7 +246,7 @@ class AliexpressSyncController extends Controller
             $linkedNormToSku
         );
 
-        if (in_array($linkTab, ['matched', 'mismatch', 'zero'], true) && ! $stateIndex['ready'] && ! $forceLive) {
+        if (in_array($linkTab, ['matched', 'matched_inactive', 'mismatch', 'zero'], true) && ! $stateIndex['ready'] && ! $forceLive) {
             WarmAliexpressLiveListingsCache::dispatch();
         }
 
@@ -260,7 +265,7 @@ class AliexpressSyncController extends Controller
             });
         }
 
-        if (in_array($linkTab, ['matched', 'mismatch', 'zero'], true)) {
+        if (in_array($linkTab, ['matched', 'matched_inactive', 'mismatch', 'zero'], true)) {
             if ($linkedVerified === []) {
                 $query->whereRaw('1 = 0');
             } elseif ($stateTab !== 'all') {
@@ -287,7 +292,7 @@ class AliexpressSyncController extends Controller
 
         // Page hydrate: when cache has no state for this page, fetch live product info for IDs on page.
         $pageLiveByProduct = [];
-        if (in_array($linkTab, ['matched', 'mismatch', 'zero'], true)) {
+        if (in_array($linkTab, ['matched', 'matched_inactive', 'mismatch', 'zero'], true)) {
             $needIds = [];
             foreach ($skus as $sku) {
                 $metric = $aeMap[$sku] ?? null;
@@ -350,10 +355,10 @@ class AliexpressSyncController extends Controller
             'searchSku' => $searchSku,
             'searchName' => $searchName,
             'linkTab' => $linkTab,
-            'stateTab' => in_array($linkTab, ['matched', 'mismatch', 'zero'], true) ? $stateTab : 'all',
+            'stateTab' => in_array($linkTab, ['matched', 'matched_inactive', 'mismatch', 'zero'], true) ? $stateTab : 'all',
             'counts' => $counts,
-            'stateCounts' => in_array($linkTab, ['matched', 'mismatch', 'zero'], true) ? $stateIndex['counts'] : $emptyStateCounts,
-            'stateCacheReady' => in_array($linkTab, ['matched', 'mismatch', 'zero'], true) ? $stateIndex['ready'] : false,
+            'stateCounts' => in_array($linkTab, ['matched', 'matched_inactive', 'mismatch', 'zero'], true) ? $stateIndex['counts'] : $emptyStateCounts,
+            'stateCacheReady' => in_array($linkTab, ['matched', 'matched_inactive', 'mismatch', 'zero'], true) ? $stateIndex['ready'] : false,
             'apiError' => $apiError,
             'connected' => $this->apiConfig->isConfigured('aliexpress'),
             'shopifyCatalogSyncedAt' => $catalog->latestSyncedAt(),
