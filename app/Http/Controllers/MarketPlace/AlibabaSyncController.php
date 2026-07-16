@@ -140,17 +140,20 @@ class AlibabaSyncController extends Controller
     {
         $searchSku = trim((string) $request->input('search_sku', ''));
         $searchName = trim((string) $request->input('search_name', ''));
-        $linkTab = strtolower((string) $request->input('link', 'linked'));
-        if (in_array($linkTab, ['all', 'not_in_shopify'], true)) {
-            $linkTab = 'linked';
+        $linkTab = strtolower((string) $request->input('link', 'matched'));
+        if (in_array($linkTab, ['all', 'not_in_shopify', 'linked', 'linked_with_inv'], true)) {
+            $linkTab = 'matched';
         }
-        if (! in_array($linkTab, ['linked', 'linked_zero', 'unlinked'], true)) {
-            $linkTab = 'linked';
+        if ($linkTab === 'linked_zero') {
+            $linkTab = 'zero';
+        }
+        if (! in_array($linkTab, ['matched', 'mismatch', 'zero', 'unlinked'], true)) {
+            $linkTab = 'matched';
         }
         $page = max(1, (int) $request->input('page', 1));
         $perPage = 50;
         $apiError = null;
-        $emptyCounts = ['linked_with_inv' => 0, 'linked_zero_inv' => 0, 'unlinked' => 0, 'linked' => 0];
+        $emptyCounts = ['matched' => 0, 'mismatch' => 0, 'zero' => 0, 'unlinked' => 0, 'linked' => 0];
 
         if (! Schema::hasTable('shopify_skus')) {
             $apiError = 'shopify_skus table missing. Run Shopify inventory sync first.';
@@ -170,15 +173,21 @@ class AlibabaSyncController extends Controller
 
         $catalog = app(ShopifyLiveVerifiedCatalogService::class);
         $linkedSkus = $this->linkedAlibabaSkus();
-        $counts = $catalog->listingCounts($linkedSkus) ?? $emptyCounts;
+        $allLinkedVerified = $catalog->filterLinkedToVerified($linkedSkus);
+        $mpStock = $this->alibabaStockMapForSkus($allLinkedVerified);
+        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock);
+        $counts = $classified['counts'] ?? $emptyCounts;
 
         if (! $catalog->hasAnyActive()) {
             $apiError = trim(($apiError ? $apiError.' ' : '').'Shared Shopify live catalog is empty — refresh Shopify from Marketplace Manager.');
         }
 
-        $split = $catalog->splitLinkedByInventory($linkedSkus);
-        $linkedVerified = $linkTab === 'linked_zero' ? $split['zero_inv'] : $split['with_inv'];
-        $allLinkedVerified = $catalog->filterLinkedToVerified($linkedSkus);
+        $linkedVerified = match ($linkTab) {
+            'mismatch' => $classified['mismatch'] ?? [],
+            'zero' => $classified['zero'] ?? [],
+            'matched' => $classified['matched'] ?? [],
+            default => [],
+        };
 
         $query = ShopifySku::query()
             ->whereNotNull('sku')
@@ -195,7 +204,7 @@ class AlibabaSyncController extends Controller
             });
         }
 
-        if ($linkTab === 'linked' || $linkTab === 'linked_zero') {
+        if (in_array($linkTab, ['matched', 'mismatch', 'zero'], true)) {
             $catalog->restrictShopifySkuQuery($query, $linkedVerified);
         } else {
             $catalog->restrictShopifySkuQuery($query, null, true);

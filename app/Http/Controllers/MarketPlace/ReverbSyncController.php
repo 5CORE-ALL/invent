@@ -143,13 +143,16 @@ class ReverbSyncController extends Controller
     {
         $searchSku = trim((string) $request->input('search_sku', ''));
         $searchName = trim((string) $request->input('search_name', ''));
-        $linkTab = strtolower((string) $request->input('link', 'linked'));
-        // Legacy redirects
-        if (in_array($linkTab, ['all', 'not_in_shopify'], true)) {
-            $linkTab = 'linked';
+        $linkTab = strtolower((string) $request->input('link', 'matched'));
+        // Legacy tab redirects
+        if (in_array($linkTab, ['all', 'not_in_shopify', 'linked', 'linked_with_inv'], true)) {
+            $linkTab = 'matched';
         }
-        if (! in_array($linkTab, ['linked', 'linked_zero', 'unlinked'], true)) {
-            $linkTab = 'linked';
+        if ($linkTab === 'linked_zero') {
+            $linkTab = 'zero';
+        }
+        if (! in_array($linkTab, ['matched', 'mismatch', 'zero', 'unlinked'], true)) {
+            $linkTab = 'matched';
         }
         $stateTab = $this->parseReverbStateTab($request);
         $page = max(1, (int) $request->input('page', 1));
@@ -157,9 +160,9 @@ class ReverbSyncController extends Controller
         $apiError = null;
         $forceLive = $request->boolean('refresh_live');
         $liveQueued = 0;
-        $liveMode = in_array($linkTab, ['linked', 'linked_zero'], true);
+        $liveMode = in_array($linkTab, ['matched', 'mismatch', 'zero'], true);
         $emptyStateCounts = $this->emptyReverbStateCounts();
-        $emptyCounts = ['linked_with_inv' => 0, 'linked_zero_inv' => 0, 'unlinked' => 0, 'linked' => 0];
+        $emptyCounts = ['matched' => 0, 'mismatch' => 0, 'zero' => 0, 'unlinked' => 0, 'linked' => 0];
         $catalog = app(ShopifyLiveVerifiedCatalogService::class);
 
         if (! Schema::hasTable('shopify_skus')) {
@@ -190,18 +193,21 @@ class ReverbSyncController extends Controller
         }
 
         if ($forceLive) {
-            // Marketplace live cache only — Shopify master is warmed once from Marketplace Manager.
             WarmReverbLiveListingsCache::dispatch();
         }
 
         $linkedSkus = $this->linkedReverbSkus();
-        $counts = $this->shopifyListingCounts($linkedSkus, [], $catalog);
+        $mpStock = $this->reverbStockMapForSkus($catalog->filterLinkedToVerified($linkedSkus));
+        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock);
+        $counts = $classified['counts'] ?? $emptyCounts;
         $liveService = app(ReverbLiveListingsService::class);
-        $split = $catalog->splitLinkedByInventory($linkedSkus);
 
-        // Linked with/zero inventory = Shopify-first pagination, live hydrate page.
-        if ($linkTab === 'linked' || $linkTab === 'linked_zero') {
-            $tabLinked = $linkTab === 'linked_zero' ? $split['zero_inv'] : $split['with_inv'];
+        if ($liveMode) {
+            $tabLinked = match ($linkTab) {
+                'mismatch' => $classified['mismatch'] ?? [],
+                'zero' => $classified['zero'] ?? [],
+                default => $classified['matched'] ?? [],
+            };
 
             return $this->syncProductsShopifyFirstLinked(
                 $request,
@@ -1064,65 +1070,13 @@ class ReverbSyncController extends Controller
         ?ShopifyLiveVerifiedCatalogService $catalog = null
     ): array {
         $catalog = $catalog ?? app(ShopifyLiveVerifiedCatalogService::class);
-
-        if ($catalog->tablesReady() && $catalog->hasAnyActive()) {
-            $fromCatalog = $catalog->listingCounts($linkedSkus);
-            if ($fromCatalog !== null) {
-                return $fromCatalog;
-            }
+        $mpStock = $this->reverbStockMapForSkus($catalog->filterLinkedToVerified($linkedSkus));
+        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock);
+        if ($classified !== null) {
+            return $classified['counts'];
         }
 
-        // Fallback only when catalog empty — prefer Refresh Shopify.
-        $empty = ['linked_with_inv' => 0, 'linked_zero_inv' => 0, 'unlinked' => 0, 'linked' => 0];
-        $base = ShopifySku::query()->whereNotNull('sku')->where('sku', '!=', '');
-        $allSkus = (clone $base)->pluck('sku')->all();
-        $inStock = (clone $base)->where(function ($q) {
-            $q->where('available_to_sell', '>', 0)
-                ->orWhere('inv', '>', 0)
-                ->orWhere('on_hand', '>', 0);
-        })->pluck('sku')->all();
-        $inStockNorm = [];
-        foreach ($inStock as $sku) {
-            $n = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
-            if ($n !== '') {
-                $inStockNorm[$n] = true;
-            }
-        }
-        $linkedWith = 0;
-        $linkedZero = 0;
-        $seen = [];
-        $allNorm = [];
-        foreach ($allSkus as $sku) {
-            $n = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
-            if ($n !== '') {
-                $allNorm[$n] = true;
-            }
-        }
-        foreach ($linkedSkus as $sku) {
-            $n = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
-            if ($n === '' || isset($seen[$n]) || ! isset($allNorm[$n])) {
-                continue;
-            }
-            $seen[$n] = true;
-            if (isset($inStockNorm[$n])) {
-                $linkedWith++;
-            } else {
-                $linkedZero++;
-            }
-        }
-        $unlinked = 0;
-        foreach ($inStockNorm as $n => $_) {
-            if (! isset($seen[$n])) {
-                $unlinked++;
-            }
-        }
-
-        return [
-            'linked_with_inv' => $linkedWith,
-            'linked_zero_inv' => $linkedZero,
-            'unlinked' => $unlinked,
-            'linked' => $linkedWith + $linkedZero,
-        ] + $empty;
+        return ['matched' => 0, 'mismatch' => 0, 'zero' => 0, 'unlinked' => 0, 'linked' => 0];
     }
 
     /**

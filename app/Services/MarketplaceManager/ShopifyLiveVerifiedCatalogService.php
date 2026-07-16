@@ -159,40 +159,88 @@ final class ShopifyLiveVerifiedCatalogService
     }
 
     /**
-     * Listing tab counts (shared across marketplaces).
-     * linked_with_inv / linked_zero_inv / unlinked (Not on marketplace).
+     * Shared Shopify live inventory by normalized SKU (max across variants).
+     *
+     * @return array<string, int> normalized SKU => qty
+     */
+    public function shopifyInventoryByNorm(string $store = self::STORE_MAIN): array
+    {
+        if (! $this->tablesReady()) {
+            return [];
+        }
+
+        $out = [];
+        $this->activeVariantQuery($store)
+            ->select(['v.sku', 'v.inventory_quantity'])
+            ->orderBy('v.id')
+            ->chunk(1000, function ($rows) use (&$out) {
+                foreach ($rows as $row) {
+                    $n = ShopifySku::normalizeSkuForShopifyLookup((string) ($row->sku ?? ''));
+                    if ($n === '') {
+                        continue;
+                    }
+                    $qty = (int) ($row->inventory_quantity ?? 0);
+                    if (! isset($out[$n]) || $qty > $out[$n]) {
+                        $out[$n] = $qty;
+                    }
+                }
+            });
+
+        return $out;
+    }
+
+    /**
+     * Classify linked SKUs vs marketplace stock (shared Shopify catalog qty).
+     * Priority: shopify qty <= 0 → zero; else qty match → matched; else → mismatch.
      *
      * @param  array<int, string>  $linkedSkus
-     * @return array{linked_with_inv: int, linked_zero_inv: int, unlinked: int, linked: int}|null
+     * @param  array<string, int>  $marketplaceStockMap  UPPER / normalize keys from stockMapForSkus
+     * @return array{
+     *   matched: list<string>,
+     *   mismatch: list<string>,
+     *   zero: list<string>,
+     *   counts: array{matched: int, mismatch: int, zero: int, unlinked: int, linked: int}
+     * }|null
      */
-    public function listingCounts(array $linkedSkus, string $store = self::STORE_MAIN): ?array
-    {
+    public function classifyLinkedInventoryMatch(
+        array $linkedSkus,
+        array $marketplaceStockMap,
+        string $store = self::STORE_MAIN
+    ): ?array {
         if (! $this->tablesReady() || ! $this->hasAnyActive($store)) {
             return null;
         }
 
-        $verifiedNorm = $this->normalizedKeys($store);
+        $shopifyInv = $this->shopifyInventoryByNorm($store);
+        $map = $this->normalizedToSkuMap($store);
         $inStockNorm = [];
-        foreach ($this->inStockActiveSkuList($store) as $sku) {
-            $n = ShopifySku::normalizeSkuForShopifyLookup($sku);
-            if ($n !== '') {
+        foreach ($shopifyInv as $n => $qty) {
+            if ($qty > 0) {
                 $inStockNorm[$n] = true;
             }
         }
 
-        $linkedWithInv = 0;
-        $linkedZeroInv = 0;
+        $matched = [];
+        $mismatch = [];
+        $zero = [];
         $seen = [];
+
         foreach ($linkedSkus as $sku) {
             $n = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
-            if ($n === '' || isset($seen[$n]) || ! isset($verifiedNorm[$n])) {
+            if ($n === '' || isset($seen[$n]) || ! isset($map[$n])) {
                 continue;
             }
             $seen[$n] = true;
-            if (isset($inStockNorm[$n])) {
-                $linkedWithInv++;
+            $canonical = $map[$n];
+            $shopifyQty = (int) ($shopifyInv[$n] ?? 0);
+            $mpQty = MarketplaceListingStockResolver::qtyFromMap($marketplaceStockMap, $canonical, (string) $sku);
+
+            if ($shopifyQty <= 0) {
+                $zero[] = $canonical;
+            } elseif ($mpQty !== null && $mpQty === $shopifyQty) {
+                $matched[] = $canonical;
             } else {
-                $linkedZeroInv++;
+                $mismatch[] = $canonical;
             }
         }
 
@@ -204,46 +252,51 @@ final class ShopifyLiveVerifiedCatalogService
         }
 
         return [
-            'linked_with_inv' => $linkedWithInv,
-            'linked_zero_inv' => $linkedZeroInv,
-            'unlinked' => $unlinked,
-            'linked' => $linkedWithInv + $linkedZeroInv,
+            'matched' => $matched,
+            'mismatch' => $mismatch,
+            'zero' => $zero,
+            'counts' => [
+                'matched' => count($matched),
+                'mismatch' => count($mismatch),
+                'zero' => count($zero),
+                'unlinked' => $unlinked,
+                'linked' => count($matched) + count($mismatch) + count($zero),
+                // Back-compat aliases used briefly in blades
+                'linked_with_inv' => count($matched),
+                'linked_zero_inv' => count($zero),
+            ],
         ];
     }
 
     /**
-     * Split linked verified SKUs by shared live inventory.
-     *
+     * @param  array<int, string>  $linkedSkus
+     * @param  array<string, int>  $marketplaceStockMap
+     * @return array{matched: int, mismatch: int, zero: int, unlinked: int, linked: int}|null
+     */
+    public function listingCounts(array $linkedSkus, array $marketplaceStockMap = [], string $store = self::STORE_MAIN): ?array
+    {
+        $classified = $this->classifyLinkedInventoryMatch($linkedSkus, $marketplaceStockMap, $store);
+
+        return $classified['counts'] ?? null;
+    }
+
+    /**
+     * @deprecated use classifyLinkedInventoryMatch
      * @param  array<int, string>  $linkedSkus
      * @return array{with_inv: list<string>, zero_inv: list<string>}
      */
     public function splitLinkedByInventory(array $linkedSkus, string $store = self::STORE_MAIN): array
     {
-        $with = [];
-        $zero = [];
-        $inStockNorm = [];
-        foreach ($this->inStockActiveSkuList($store) as $sku) {
-            $n = ShopifySku::normalizeSkuForShopifyLookup($sku);
-            if ($n !== '') {
-                $inStockNorm[$n] = true;
-            }
-        }
-        $map = $this->normalizedToSkuMap($store);
-        $seen = [];
-        foreach ($linkedSkus as $sku) {
-            $n = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
-            if ($n === '' || isset($seen[$n]) || ! isset($map[$n])) {
-                continue;
-            }
-            $seen[$n] = true;
-            if (isset($inStockNorm[$n])) {
-                $with[] = $map[$n];
-            } else {
-                $zero[] = $map[$n];
-            }
+        $classified = $this->classifyLinkedInventoryMatch($linkedSkus, [], $store);
+        if ($classified === null) {
+            return ['with_inv' => [], 'zero_inv' => []];
         }
 
-        return ['with_inv' => $with, 'zero_inv' => $zero];
+        // Without marketplace map, "with_inv" = shopify > 0 (matched+mismatch), zero = shopify 0
+        return [
+            'with_inv' => array_values(array_merge($classified['matched'], $classified['mismatch'])),
+            'zero_inv' => $classified['zero'],
+        ];
     }
 
     /**

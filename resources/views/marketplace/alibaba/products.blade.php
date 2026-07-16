@@ -6,8 +6,8 @@
         <a href="{{ route('marketplace.manager.show', 'alibaba') }}" class="text-muted small"><i class="ri-arrow-left-line"></i> Alibaba Manager</a>
         @include('marketplace._page-heading', ['slug' => 'alibaba', 'heading' => 'Alibaba Listings'])
         <p class="text-muted mb-3">
-            Linked tabs split by shared Shopify inventory.
-            Refresh Shopify from <a href="{{ route('marketplace.manager.index') }}">Marketplace Manager</a>. Use <strong>Sync Alibaba link map</strong> for SKU ↔ product_id mappings.
+            Linked tabs: Matched (Shopify qty = marketplace qty), Mismatch, Zero on Shopify, Not on marketplace.
+            Refresh Shopify from <a href="{{ route('marketplace.manager.index') }}">Marketplace Manager</a>.
         </p>
 
         @if(!empty($shopifyCatalogSyncedAt))
@@ -27,10 +27,14 @@
                 <span class="badge bg-primary">
                     @if(($linkTab ?? '') === 'unlinked')
                         {{ $products->total() }} not on Alibaba (in-stock Shopify)
-                    @elseif(($linkTab ?? '') === 'linked_zero')
-                        {{ $products->total() }} linked with 0 Shopify inventory
+                    @elseif(($linkTab ?? '') === 'matched')
+                        {{ $products->total() }} linked — qty matched
+                    @elseif(($linkTab ?? '') === 'mismatch')
+                        {{ $products->total() }} linked — qty mismatch
+                    @elseif(($linkTab ?? '') === 'zero')
+                        {{ $products->total() }} linked — zero on Shopify
                     @else
-                        {{ $products->total() }} linked with Shopify inventory
+                        {{ $products->total() }} Shopify SKU(s)
                     @endif
                 </span>
                 <div class="d-flex gap-2 flex-wrap">
@@ -68,13 +72,16 @@
                     </div>
                 </form>
 
-                @php $counts = $counts ?? ['linked_with_inv' => 0, 'linked_zero_inv' => 0, 'unlinked' => 0, 'linked' => 0]; @endphp
+                @php $counts = $counts ?? ['matched' => 0, 'mismatch' => 0, 'zero' => 0, 'unlinked' => 0, 'linked' => 0]; @endphp
                 <ul class="nav nav-tabs nav-bordered mb-3" role="tablist">
                     <li class="nav-item">
-                        <a href="{{ request()->url() }}?link=linked&search_name={{ urlencode($searchName) }}&search_sku={{ urlencode($searchSku) }}" class="nav-link {{ ($linkTab ?? '') === 'linked' ? 'active' : '' }}">Linked (With Inventory) {{ $counts['linked_with_inv'] ?? 0 }}</a>
+                        <a href="{{ request()->url() }}?link=matched&search_name={{ urlencode($searchName) }}&search_sku={{ urlencode($searchSku) }}" class="nav-link {{ ($linkTab ?? '') === 'matched' ? 'active' : '' }}">Linked — Matched {{ $counts['matched'] ?? 0 }}</a>
                     </li>
                     <li class="nav-item">
-                        <a href="{{ request()->url() }}?link=linked_zero&search_name={{ urlencode($searchName) }}&search_sku={{ urlencode($searchSku) }}" class="nav-link {{ ($linkTab ?? '') === 'linked_zero' ? 'active' : '' }}">Linked (0 Inventory) {{ $counts['linked_zero_inv'] ?? 0 }}</a>
+                        <a href="{{ request()->url() }}?link=mismatch&search_name={{ urlencode($searchName) }}&search_sku={{ urlencode($searchSku) }}" class="nav-link {{ ($linkTab ?? '') === 'mismatch' ? 'active' : '' }}">Linked — Mismatch {{ $counts['mismatch'] ?? 0 }}</a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="{{ request()->url() }}?link=zero&search_name={{ urlencode($searchName) }}&search_sku={{ urlencode($searchSku) }}" class="nav-link {{ ($linkTab ?? '') === 'zero' ? 'active' : '' }}">Linked — Zero on Shopify {{ $counts['zero'] ?? 0 }}</a>
                     </li>
                     <li class="nav-item">
                         <a href="{{ request()->url() }}?link=unlinked&search_name={{ urlencode($searchName) }}&search_sku={{ urlencode($searchSku) }}" class="nav-link {{ ($linkTab ?? '') === 'unlinked' ? 'active' : '' }}">Not on marketplace {{ $counts['unlinked'] ?? 0 }}</a>
