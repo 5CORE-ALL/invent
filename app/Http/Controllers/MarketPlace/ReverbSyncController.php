@@ -1072,35 +1072,28 @@ class ReverbSyncController extends Controller
         $catalog = $catalog ?? app(ShopifyLiveVerifiedCatalogService::class);
 
         if ($catalog->tablesReady() && $catalog->hasAnyActive()) {
-            $all = $catalog->countDistinctActiveSkus();
-            $verifiedNorm = $shopifyNormKeys !== [] ? $shopifyNormKeys : $catalog->normalizedKeys();
-            $linked = 0;
-            $seen = [];
-            foreach ($linkedSkus as $sku) {
-                $n = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
-                if ($n === '' || isset($seen[$n]) || ! isset($verifiedNorm[$n])) {
-                    continue;
-                }
-                $seen[$n] = true;
-                $linked++;
+            $fromCatalog = $catalog->listingCounts(
+                $linkedSkus,
+                fn (array $keys) => $this->countAeNotInShopify($keys)
+            );
+            if ($fromCatalog !== null) {
+                return $fromCatalog;
             }
-
-            return [
-                'all' => $all,
-                'linked' => $linked,
-                'unlinked' => max(0, $all - $linked),
-                'not_in_shopify' => $this->countAeNotInShopify($verifiedNorm),
-            ];
         }
 
-        // Fallback only when catalog empty — prefer Refresh live.
+        // Fallback only when catalog empty — prefer Refresh Shopify.
         $base = ShopifySku::query()->whereNotNull('sku')->where('sku', '!=', '');
+        $base->where(function ($q) {
+            $q->where('available_to_sell', '>', 0)
+                ->orWhere('inv', '>', 0)
+                ->orWhere('on_hand', '>', 0);
+        });
         $all = (clone $base)->count();
         $linked = $linkedSkus === [] ? 0 : (clone $base)->whereIn('sku', $linkedSkus)->count();
 
         return [
             'all' => $all,
-            'linked' => $linked,
+            'linked' => $linkedSkus === [] ? 0 : ShopifySku::query()->whereNotNull('sku')->where('sku', '!=', '')->whereIn('sku', $linkedSkus)->count(),
             'unlinked' => max(0, $all - $linked),
             'not_in_shopify' => $this->countAeNotInShopify($shopifyNormKeys),
         ];
@@ -1153,7 +1146,11 @@ class ReverbSyncController extends Controller
         string $searchSku,
         string $searchName
     ): array {
-        $skus = $catalog->tablesReady() ? $catalog->activeSkuList() : [];
+        $skus = $catalog->tablesReady()
+            ? ((in_array($linkTab, ['all', 'unlinked'], true))
+                ? $catalog->inStockActiveSkuList()
+                : $catalog->activeSkuList())
+            : [];
         if ($skus === []) {
             return [];
         }

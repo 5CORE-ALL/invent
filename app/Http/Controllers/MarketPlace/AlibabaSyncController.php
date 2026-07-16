@@ -215,12 +215,12 @@ class AlibabaSyncController extends Controller
         if ($linkTab === 'linked') {
             $catalog->restrictShopifySkuQuery($query, $linkedVerified);
         } elseif ($linkTab === 'unlinked') {
-            $catalog->restrictShopifySkuQuery($query, null);
+            $catalog->restrictShopifySkuQuery($query, null, true);
             if ($linkedVerified !== []) {
                 $query->whereNotIn('sku', $linkedVerified);
             }
         } else {
-            $catalog->restrictShopifySkuQuery($query, null);
+            $catalog->restrictShopifySkuQuery($query, null, true);
         }
 
         $paginator = $query->orderBy('sku')->paginate($perPage, ['*'], 'page', $page)->withQueryString();

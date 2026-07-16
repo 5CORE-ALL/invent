@@ -13,8 +13,8 @@
             @elseif(!empty($liveMode))
                 Page is paginated. Reverb Qty is live for the current page only.
             @else
-                <strong>All</strong> shows live-verified <em>active</em> Shopify SKUs from the shared catalog sync — not the full local shopify_skus dump.
-                Qty comes from the shared Shopify store (updated by catalog sync). Open <strong>Linked</strong> for live Reverb quantities.
+                <strong>All</strong> shows live-verified <em>active</em> Shopify SKUs with shared live inventory &gt; 0.
+                Qty comes from the shared Shopify store. Open <strong>Linked</strong> for marketplace quantities (includes zero-stock linked SKUs).
             @endif
         </p>
 
@@ -118,7 +118,7 @@
 
                 <ul class="nav nav-tabs nav-bordered mb-3" role="tablist">
                     <li class="nav-item">
-                        <a href="{{ request()->url() }}?link=all&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? 'all') === 'all' ? 'active' : '' }}">All (live) {{ $counts['all'] ?? 0 }}</a>
+                        <a href="{{ request()->url() }}?link=all&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? 'all') === 'all' ? 'active' : '' }}">All (stock) {{ $counts['all'] ?? 0 }}</a>
                     </li>
                     <li class="nav-item">
                         <a href="{{ request()->url() }}?link=linked&state={{ urlencode($stateTab) }}&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'linked' ? 'active' : '' }}">Linked {{ $counts['linked'] ?? 0 }}</a>

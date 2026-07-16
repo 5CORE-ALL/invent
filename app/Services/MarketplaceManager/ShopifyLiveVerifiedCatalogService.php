@@ -35,6 +35,15 @@ final class ShopifyLiveVerifiedCatalogService
             ->where('v.sku', '!=', '');
     }
 
+    /**
+     * Active variants with shared live inventory > 0 (catalog qty from Shopify sync).
+     */
+    public function inStockActiveVariantQuery(string $store = self::STORE_MAIN): Builder
+    {
+        return $this->activeVariantQuery($store)
+            ->where('v.inventory_quantity', '>', 0);
+    }
+
     public function countDistinctActiveSkus(string $store = self::STORE_MAIN): int
     {
         if (! $this->tablesReady()) {
@@ -46,16 +55,46 @@ final class ShopifyLiveVerifiedCatalogService
             ->count('v.sku');
     }
 
+    public function countDistinctInStockActiveSkus(string $store = self::STORE_MAIN): int
+    {
+        if (! $this->tablesReady()) {
+            return 0;
+        }
+
+        return (int) $this->inStockActiveVariantQuery($store)
+            ->distinct()
+            ->count('v.sku');
+    }
+
     /**
      * @return list<string>
      */
     public function activeSkuList(string $store = self::STORE_MAIN): array
     {
-        if (! $this->tablesReady()) {
+        return $this->skuListFromQuery($this->tablesReady() ? $this->activeVariantQuery($store) : null);
+    }
+
+    /**
+     * Active + inventory_quantity > 0 — used for listings "All" tab.
+     *
+     * @return list<string>
+     */
+    public function inStockActiveSkuList(string $store = self::STORE_MAIN): array
+    {
+        return $this->skuListFromQuery($this->tablesReady() ? $this->inStockActiveVariantQuery($store) : null);
+    }
+
+    /**
+     * @param  Builder|null  $query
+     * @return list<string>
+     */
+    protected function skuListFromQuery(?Builder $query): array
+    {
+        if ($query === null) {
             return [];
         }
 
-        return $this->activeVariantQuery($store)
+        return $query
             ->orderBy('v.sku')
             ->distinct()
             ->pluck('v.sku')
@@ -121,6 +160,8 @@ final class ShopifyLiveVerifiedCatalogService
 
     /**
      * Listing tab counts from live-verified active catalog (shared across marketplaces).
+     * "All" / "unlinked" = active with Shopify live inventory > 0.
+     * "Linked" = linked ∩ active (any qty — so OOS linked stay manageable).
      *
      * @param  array<int, string>  $linkedSkus
      * @param  callable(array<string, true>): int  $countNotInShopify  receives normalized active keys
@@ -133,8 +174,17 @@ final class ShopifyLiveVerifiedCatalogService
         }
 
         $verifiedNorm = $this->normalizedKeys($store);
-        $all = $this->countDistinctActiveSkus($store);
+        $inStockNorm = [];
+        foreach ($this->inStockActiveSkuList($store) as $sku) {
+            $n = ShopifySku::normalizeSkuForShopifyLookup($sku);
+            if ($n !== '') {
+                $inStockNorm[$n] = true;
+            }
+        }
+
+        $all = count($inStockNorm);
         $linked = 0;
+        $linkedInStock = 0;
         $seen = [];
         foreach ($linkedSkus as $sku) {
             $n = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
@@ -143,12 +193,15 @@ final class ShopifyLiveVerifiedCatalogService
             }
             $seen[$n] = true;
             $linked++;
+            if (isset($inStockNorm[$n])) {
+                $linkedInStock++;
+            }
         }
 
         return [
             'all' => $all,
             'linked' => $linked,
-            'unlinked' => max(0, $all - $linked),
+            'unlinked' => max(0, $all - $linkedInStock),
             'not_in_shopify' => (int) $countNotInShopify($verifiedNorm),
         ];
     }
@@ -158,9 +211,10 @@ final class ShopifyLiveVerifiedCatalogService
      *
      * @param  \Illuminate\Database\Eloquent\Builder<\App\Models\ShopifySku>  $query
      * @param  list<string>|null  $extraSkuAllowList  when set, intersect with verified (e.g. linked/state)
+     * @param  bool  $inStockOnly  when true and no allow-list, only SKUs with catalog inventory > 0 (All tab)
      * @return \Illuminate\Database\Eloquent\Builder<\App\Models\ShopifySku>
      */
-    public function restrictShopifySkuQuery($query, ?array $extraSkuAllowList = null, string $store = self::STORE_MAIN)
+    public function restrictShopifySkuQuery($query, ?array $extraSkuAllowList = null, bool $inStockOnly = false, string $store = self::STORE_MAIN)
     {
         if (! $this->tablesReady() || ! $this->hasAnyActive($store)) {
             return $query->whereRaw('1 = 0');
@@ -175,7 +229,7 @@ final class ShopifyLiveVerifiedCatalogService
             return $query->whereIn('sku', $allow);
         }
 
-        $verified = $this->activeSkuList($store);
+        $verified = $inStockOnly ? $this->inStockActiveSkuList($store) : $this->activeSkuList($store);
         if ($verified === []) {
             return $query->whereRaw('1 = 0');
         }
