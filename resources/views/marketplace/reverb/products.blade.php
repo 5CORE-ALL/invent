@@ -50,9 +50,17 @@
                 </span>
                 <div class="d-flex gap-2 flex-wrap">
                     @if(in_array(($linkTab ?? ''), ['all', 'matched', 'matched_inactive', 'mismatch', 'zero', 'unlinked'], true))
-                        <a href="{{ request()->fullUrlWithQuery(['refresh_live' => 1]) }}" class="btn btn-sm btn-outline-success">
+                        <a href="{{ request()->fullUrlWithQuery(['refresh_live' => 1, 'clear_cache' => null]) }}" class="btn btn-sm btn-outline-success">
                             <i class="ri-flashlight-line"></i> Refresh live
                         </a>
+                        <a href="{{ request()->fullUrlWithQuery(['clear_cache' => 1, 'refresh_live' => null]) }}" class="btn btn-sm btn-outline-secondary" onclick="return confirm('Clear the warm Reverb live listings cache? Counts will refresh after Refresh live.');">
+                            <i class="ri-delete-bin-line"></i> Clear cache
+                        </a>
+                    @endif
+                    @if(($linkTab ?? '') === 'mismatch')
+                        <button type="button" class="btn btn-sm btn-warning" id="btn-sync-mismatch-now">
+                            <i class="ri-upload-2-line"></i> Sync Mismatch inventory now
+                        </button>
                     @endif
                     <button type="button" class="btn btn-sm btn-outline-primary" id="btn-refresh-api">
                         <i class="ri-refresh-line"></i> Sync Reverb link map
@@ -317,6 +325,54 @@ document.getElementById('btn-refresh-api')?.addEventListener('click', function (
     }
 
     runPage(true);
+});
+
+document.getElementById('btn-sync-mismatch-now')?.addEventListener('click', function () {
+    var btn = this;
+    if (!confirm('Sync all Mismatch SKUs from live Shopify → Reverb right now (no queue)? This runs in batches and may take a few minutes.')) {
+        return;
+    }
+    btn.disabled = true;
+    var original = btn.innerHTML;
+    var url = '{{ route('marketplace.manager.reverb.sync.mismatch.inventory') }}';
+    var offset = 0;
+    var totals = { updated: 0, failed: 0, skipped: 0 };
+
+    function tick() {
+        btn.innerHTML = '<i class="ri-loader-4-line"></i> Syncing… ' + offset;
+        return fetch(url, {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ offset: offset, limit: 25 }),
+        }).then(function (r) { return r.json(); }).then(function (data) {
+            if (!data.success) {
+                alert(data.message || 'Sync failed.');
+                btn.disabled = false;
+                btn.innerHTML = original;
+                return;
+            }
+            totals.updated += data.updated || 0;
+            totals.failed += data.failed || 0;
+            totals.skipped += data.skipped || 0;
+            offset = data.offset || offset;
+            if (data.done) {
+                alert((data.message || 'Done.') + '\nUpdated: ' + totals.updated + ', Failed: ' + totals.failed + ', Skipped: ' + totals.skipped);
+                location.reload();
+                return;
+            }
+            setTimeout(tick, 200);
+        }).catch(function () {
+            alert('Request failed.');
+            btn.disabled = false;
+            btn.innerHTML = original;
+        });
+    }
+
+    tick();
 });
 </script>
 @endsection

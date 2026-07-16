@@ -158,8 +158,13 @@ class AliexpressSyncController extends Controller
         $perPage = 50;
         $apiError = null;
         $forceLive = $request->boolean('refresh_live');
+        $clearCache = $request->boolean('clear_cache');
         $emptyStateCounts = $this->emptyAeStateCounts();
         $emptyCounts = ['all' => 0, 'matched' => 0, 'matched_inactive' => 0, 'mismatch' => 0, 'zero' => 0, 'unlinked' => 0, 'linked' => 0];
+        $liveService = app(AliexpressLiveListingsService::class);
+        if ($clearCache) {
+            $liveService->clearCache();
+        }
 
         if (! Schema::hasTable('shopify_skus')) {
             $apiError = 'shopify_skus table missing. Run Shopify inventory sync first.';
@@ -187,12 +192,14 @@ class AliexpressSyncController extends Controller
         $catalog = app(ShopifyLiveVerifiedCatalogService::class);
         $linkedSkus = $this->linkedAliexpressSkus();
         $allLinkedVerified = $catalog->filterLinkedToVerified($linkedSkus);
-        $mpStock = $this->aliexpressStockMapForSkus($allLinkedVerified);
+        $mpStock = MarketplaceListingStockResolver::stockMapFromLiveListingRows($liveService->peekCached());
+        if ($mpStock === []) {
+            $mpStock = $this->aliexpressStockMapForSkus($allLinkedVerified);
+        }
         $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock);
         $counts = $classified['counts'] ?? $emptyCounts;
         $counts['all'] = $catalog->countDistinctActiveSkus();
         $counts['matched_inactive'] = 0;
-        $liveService = app(AliexpressLiveListingsService::class);
 
         if (! $catalog->hasAnyActive()) {
             $apiError = trim(($apiError ? $apiError.' ' : '').'Shared Shopify live catalog is empty — refresh Shopify from Marketplace Manager.');
@@ -630,6 +637,69 @@ class AliexpressSyncController extends Controller
             'success' => true,
             'queued' => true,
             'message' => 'Inventory sync queued. It runs in the background from live Shopify (usually a few minutes). Keep inventory sync ON — webhook + 15-min schedule also push automatically.',
+        ]);
+    }
+
+    /**
+     * Push Shopify → AliExpress inventory for mismatch SKUs immediately (no queue).
+     */
+    public function syncMismatchInventoryNow(Request $request): JsonResponse
+    {
+        @set_time_limit(300);
+
+        $settings = MarketplaceSyncSettings::getFor('aliexpress');
+        if (! ($settings['inventory']['inventory_sync'] ?? false) && ! ($settings['pricing']['price_sync'] ?? false)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Turn on Inventory sync (or Price sync) in settings first.',
+            ], 422);
+        }
+
+        $catalog = app(ShopifyLiveVerifiedCatalogService::class);
+        $liveService = app(AliexpressLiveListingsService::class);
+        $linkedSkus = $this->linkedAliexpressSkus();
+        $mpStock = MarketplaceListingStockResolver::stockMapFromLiveListingRows($liveService->peekCached());
+        if ($mpStock === []) {
+            $mpStock = $this->aliexpressStockMapForSkus($catalog->filterLinkedToVerified($linkedSkus));
+        }
+        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock);
+        $mismatch = $classified['mismatch'] ?? [];
+
+        $offset = max(0, (int) $request->input('offset', 0));
+        $limit = max(1, min(40, (int) $request->input('limit', 25)));
+        $total = count($mismatch);
+        $batch = array_slice($mismatch, $offset, $limit);
+
+        if ($batch === []) {
+            return response()->json([
+                'success' => true,
+                'done' => true,
+                'total' => $total,
+                'offset' => $offset,
+                'updated' => 0,
+                'failed' => 0,
+                'skipped' => 0,
+                'message' => $total === 0 ? 'No mismatch SKUs to sync.' : 'All mismatch batches finished.',
+            ]);
+        }
+
+        $result = app(AliexpressInventorySyncService::class)->syncSkusFromShopify($batch);
+        $nextOffset = $offset + count($batch);
+        $done = $nextOffset >= $total;
+
+        return response()->json([
+            'success' => true,
+            'done' => $done,
+            'queued' => false,
+            'total' => $total,
+            'offset' => $nextOffset,
+            'batch' => count($batch),
+            'updated' => (int) ($result['updated'] ?? 0),
+            'failed' => (int) ($result['failed'] ?? 0),
+            'skipped' => (int) ($result['skipped'] ?? 0),
+            'message' => $result['message'] ?? ($done
+                ? 'Mismatch inventory sync complete.'
+                : 'Synced batch '.$nextOffset.' / '.$total.'…'),
         ]);
     }
 

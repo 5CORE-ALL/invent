@@ -61,6 +61,15 @@ final class NeweggLiveListingsService
         }
     }
 
+    public function clearCache(): void
+    {
+        try {
+            Cache::forget(self::CACHE_KEY);
+        } catch (\Throwable $e) {
+            // ignore
+        }
+    }
+
     /**
      * @param  array<int, string>  $productIds  Newegg Item #s and/or Seller Part #s
      * @return array<string, array{product_id: string, sku: string, state: string, inventory: int|null, title: ?string, price: ?float}>

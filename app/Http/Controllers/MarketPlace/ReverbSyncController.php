@@ -159,11 +159,17 @@ class ReverbSyncController extends Controller
         $perPage = 50;
         $apiError = null;
         $forceLive = $request->boolean('refresh_live');
+        $clearCache = $request->boolean('clear_cache');
         $liveQueued = 0;
         $liveMode = in_array($linkTab, ['matched', 'matched_inactive', 'mismatch', 'zero'], true);
         $emptyStateCounts = $this->emptyReverbStateCounts();
         $emptyCounts = ['all' => 0, 'matched' => 0, 'matched_inactive' => 0, 'mismatch' => 0, 'zero' => 0, 'unlinked' => 0, 'linked' => 0];
         $catalog = app(ShopifyLiveVerifiedCatalogService::class);
+        $liveService = app(ReverbLiveListingsService::class);
+
+        if ($clearCache) {
+            $liveService->clearCache();
+        }
 
         if (! Schema::hasTable('shopify_skus')) {
             $apiError = 'shopify_skus table missing. Run Shopify inventory sync first.';
@@ -198,12 +204,18 @@ class ReverbSyncController extends Controller
 
         $linkedSkus = $this->linkedReverbSkus();
         $allLinkedVerified = $catalog->filterLinkedToVerified($linkedSkus);
-        $mpStock = $this->reverbStockMapForSkus($allLinkedVerified);
+        // Prefer warm live Reverb cache for mismatch/matched classification (not local pricing maps).
+        $mpStock = MarketplaceListingStockResolver::stockMapFromLiveListingRows($liveService->peekCached());
+        if ($mpStock === []) {
+            $mpStock = $this->reverbStockMapForSkus($allLinkedVerified);
+            if (! $forceLive && ! $clearCache) {
+                WarmReverbLiveListingsCache::dispatch();
+            }
+        }
         $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock);
         $counts = $classified['counts'] ?? $emptyCounts;
         $counts['all'] = $catalog->countDistinctActiveSkus();
         $counts['matched_inactive'] = 0;
-        $liveService = app(ReverbLiveListingsService::class);
 
         // Qty-matched split: marketplace-active vs inactive (ended/draft/other/unknown).
         $matchedQty = $classified['matched'] ?? [];
@@ -405,8 +417,11 @@ class ReverbSyncController extends Controller
         $pageRows = $this->shopifySkuRowsForVerifiedPage($pageSkus, $catalog);
         $aeMap = $this->reverbMetricMapForSkus($pageSkus);
 
-        // 1) Live Shopify qty for this page only
-        $liveShopifyQty = MarketplaceListingStockResolver::dbShopifyQtyMapForRows($pageRows);
+        // 1) Live Shopify Admin qty for this page (not stale shopify_skus / local maps)
+        $liveShopifyQty = $liveService->liveShopifyQtyBySkus($pageSkus);
+        if ($liveShopifyQty === []) {
+            $liveShopifyQty = MarketplaceListingStockResolver::dbShopifyQtyMapForRows($pageRows);
+        }
 
         // 2) Live Reverb qty/state for this page's listing IDs only (parallel)
         $listingIds = [];
@@ -418,13 +433,7 @@ class ReverbSyncController extends Controller
         }
         $liveReverb = $liveService->liveDetailsByListingIds($listingIds);
 
-        $mismatchRows = [];
-        $shopifyByUpper = [];
-        foreach ($liveShopifyQty as $upper => $qty) {
-            $shopifyByUpper[(string) $upper] = (int) $qty;
-        }
-
-        $enriched = collect($pageRows)->map(function (ShopifySku $row) use ($aeMap, $liveShopifyQty, $liveReverb, &$mismatchRows) {
+        $enriched = collect($pageRows)->map(function (ShopifySku $row) use ($aeMap, $liveShopifyQty, $liveReverb) {
             $sku = (string) $row->sku;
             $metric = $aeMap[$sku] ?? null;
             $linked = $this->isShopifySkuLinkedOnReverb($metric, $sku);
@@ -434,16 +443,8 @@ class ReverbSyncController extends Controller
 
             $state = (string) ($live['state'] ?? '');
             $rvQty = null;
-            if ($linked && $live !== null && MarketplaceLiveInventoryRules::reverbMayUpdateInventory($state)) {
+            if ($linked && $live !== null) {
                 $rvQty = (int) ($live['inventory'] ?? 0);
-                if ($shopifyQty !== null) {
-                    $mismatchRows[] = [
-                        'sku' => $sku,
-                        'inventory' => $rvQty,
-                        'state' => $state,
-                        'product_id' => $pid,
-                    ];
-                }
             }
 
             return (object) [
@@ -465,7 +466,6 @@ class ReverbSyncController extends Controller
             ];
         });
 
-        $liveQueued = $liveService->queueSyncForMismatches($mismatchRows, $shopifyByUpper);
         $paginator->setCollection($enriched);
 
         return view('marketplace.reverb.products', [
@@ -481,7 +481,7 @@ class ReverbSyncController extends Controller
             'apiError' => $apiError,
             'connected' => $this->apiConfig->isConfigured('reverb'),
             'liveMode' => true,
-            'liveQueued' => $liveQueued,
+            'liveQueued' => 0,
             'shopifyCatalogReady' => $catalog->hasAnyActive(),
             'shopifyCatalogSyncedAt' => $catalog->latestSyncedAt(),
         ]);
@@ -840,6 +840,85 @@ class ReverbSyncController extends Controller
             'success' => true,
             'queued' => true,
             'message' => 'Inventory sync queued. It runs in the background from live Shopify (usually a few minutes). Keep inventory sync ON — webhook + 15-min schedule also push automatically.',
+        ]);
+    }
+
+    /**
+     * Push Shopify → Reverb inventory for mismatch SKUs immediately (no queue).
+     */
+    public function syncMismatchInventoryNow(Request $request): JsonResponse
+    {
+        @set_time_limit(300);
+
+        $settings = MarketplaceSyncSettings::getFor('reverb');
+        if (! ($settings['inventory']['inventory_sync'] ?? false) && ! ($settings['pricing']['price_sync'] ?? false)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Turn on Inventory sync (or Price sync) in settings first.',
+            ], 422);
+        }
+
+        $catalog = app(ShopifyLiveVerifiedCatalogService::class);
+        $liveService = app(ReverbLiveListingsService::class);
+        $linkedSkus = $this->linkedReverbSkus();
+        $mpStock = MarketplaceListingStockResolver::stockMapFromLiveListingRows($liveService->peekCached());
+        if ($mpStock === []) {
+            $mpStock = $this->reverbStockMapForSkus($catalog->filterLinkedToVerified($linkedSkus));
+        }
+        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock);
+        $mismatch = $classified['mismatch'] ?? [];
+
+        $requested = $request->input('skus');
+        if (is_array($requested) && $requested !== []) {
+            $allow = [];
+            foreach ($requested as $sku) {
+                $n = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
+                if ($n !== '') {
+                    $allow[$n] = true;
+                }
+            }
+            $mismatch = array_values(array_filter($mismatch, static function (string $sku) use ($allow) {
+                $n = ShopifySku::normalizeSkuForShopifyLookup($sku);
+
+                return $n !== '' && isset($allow[$n]);
+            }));
+        }
+
+        $offset = max(0, (int) $request->input('offset', 0));
+        $limit = max(1, min(40, (int) $request->input('limit', 25)));
+        $total = count($mismatch);
+        $batch = array_slice($mismatch, $offset, $limit);
+
+        if ($batch === []) {
+            return response()->json([
+                'success' => true,
+                'done' => true,
+                'total' => $total,
+                'offset' => $offset,
+                'updated' => 0,
+                'failed' => 0,
+                'skipped' => 0,
+                'message' => $total === 0 ? 'No mismatch SKUs to sync.' : 'All mismatch batches finished.',
+            ]);
+        }
+
+        $result = app(ReverbInventorySyncService::class)->syncSkusFromShopify($batch);
+        $nextOffset = $offset + count($batch);
+        $done = $nextOffset >= $total;
+
+        return response()->json([
+            'success' => true,
+            'done' => $done,
+            'queued' => false,
+            'total' => $total,
+            'offset' => $nextOffset,
+            'batch' => count($batch),
+            'updated' => (int) ($result['updated'] ?? 0),
+            'failed' => (int) ($result['failed'] ?? 0),
+            'skipped' => (int) ($result['skipped'] ?? 0),
+            'message' => $result['message'] ?? ($done
+                ? 'Mismatch inventory sync complete.'
+                : 'Synced batch '.$nextOffset.' / '.$total.'…'),
         ]);
     }
 

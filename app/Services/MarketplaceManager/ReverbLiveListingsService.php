@@ -64,6 +64,15 @@ final class ReverbLiveListingsService
         }
     }
 
+    public function clearCache(): void
+    {
+        try {
+            Cache::forget(self::CACHE_KEY);
+        } catch (\Throwable $e) {
+            // ignore
+        }
+    }
+
     /**
      * Live Reverb details for a page of listing IDs only (parallel GETs).
      *

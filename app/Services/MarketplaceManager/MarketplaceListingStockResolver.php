@@ -458,6 +458,41 @@ final class MarketplaceListingStockResolver
     }
 
     /**
+     * Build UPPER/norm SKU => inventory map from a warm live-listings cache payload.
+     *
+     * @param  array<int, array{sku?: string, inventory?: int|null}>|null  $rows
+     * @return array<string, int>
+     */
+    public static function stockMapFromLiveListingRows(?array $rows): array
+    {
+        if (! is_array($rows) || $rows === []) {
+            return [];
+        }
+
+        $map = [];
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $sku = trim((string) ($row['sku'] ?? ''));
+            if ($sku === '') {
+                continue;
+            }
+            if (! array_key_exists('inventory', $row) || $row['inventory'] === null) {
+                continue;
+            }
+            $qty = (int) $row['inventory'];
+            $map[strtoupper($sku)] = $qty;
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+            if ($norm !== '') {
+                $map[$norm] = $qty;
+            }
+        }
+
+        return $map;
+    }
+
+    /**
      * Batch stock map for listings index.
      * Keys include UPPER(trim(sku)) and normalizeSkuForShopifyLookup(sku) for each found row.
      *
