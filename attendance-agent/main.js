@@ -14,7 +14,7 @@ const Store = require('electron-store');
 
 const execFileAsync = promisify(execFile);
 const store = new Store();
-const AGENT_VERSION = '1.1.0';
+const AGENT_VERSION = '1.2.0';
 
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {

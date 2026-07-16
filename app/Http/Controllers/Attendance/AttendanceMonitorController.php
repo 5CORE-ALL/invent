@@ -79,14 +79,6 @@ class AttendanceMonitorController extends Controller
         $period = $this->timelineService->employeePeriodStats($user, $from, $to, $timezone);
         $day = $this->timelineService->employeeDayDetail($user, $date, $timezone, $dayReset);
         $desktopApps = $this->timelineService->employeePeriodDesktopApps($user, $from, $to, $timezone);
-        $suspiciousSignals = $this->timelineService->employeePeriodSuspiciousSignals($user, $from, $to, $timezone);
-
-        $flags = AttendanceAiFlag::query()
-            ->where('user_id', $user->id)
-            ->whereBetween('flag_date', [$from, $to])
-            ->orderByDesc('created_at')
-            ->limit(30)
-            ->get();
 
         $policy = AttendancePolicy::resolveForUser($user);
 
@@ -98,7 +90,6 @@ class AttendanceMonitorController extends Controller
             'day' => $day,
             'period' => $period,
             'desktop_apps' => $desktopApps,
-            'suspicious_signals' => $suspiciousSignals,
             'date' => $date,
             'from' => $from,
             'to' => $to,
@@ -106,9 +97,7 @@ class AttendanceMonitorController extends Controller
             'period_options' => $periodOptions,
             'timezone' => $timezone,
             'day_reset' => $dayReset,
-            'flags' => $flags,
             'policy' => $policy,
-            'can_admin' => AttendanceAccess::canAdmin(),
         ]);
     }
 

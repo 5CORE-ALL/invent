@@ -81,10 +81,6 @@
     }
     @keyframes shotSpin { to { transform: rotate(360deg); } }
     .shot-end { padding: .75rem; text-align: center; font-size: .78rem; color: #94a3b8; }
-    .flag-card { border-left: 3px solid #fd7e14; padding: .65rem .75rem; background: #fffbf5; border-radius: 6px; margin-bottom: .5rem; font-size: .82rem; }
-    .flag-card.severity-high { border-left-color: #dc3545; background: #fff5f5; }
-    .flag-card.severity-medium { border-left-color: #fd7e14; }
-    .flag-card.severity-low { border-left-color: #94a3b8; }
     .act-live-dot { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; display: inline-block; margin-right: .2rem; animation: actPulse 2s infinite; vertical-align: middle; }
     @keyframes actPulse { 0%,100%{opacity:1} 50%{opacity:.35} }
 </style>
@@ -96,8 +92,7 @@
     $periodStats = $period;
 @endphp
 <div class="container-fluid" id="employeeActivity"
-     data-csrf="{{ csrf_token() }}"
-     data-analyze-url="{{ route('attendance.analyze', $employee) }}">
+     data-csrf="{{ csrf_token() }}">
 
     <div class="row mb-3">
         <div class="col-12">
@@ -151,11 +146,6 @@
                         <button type="button" class="btn btn-sm btn-outline-primary" id="btnRefresh">
                             <i class="ri-refresh-line"></i> Refresh
                         </button>
-                        @if($can_admin)
-                        <button type="button" class="btn btn-sm btn-outline-danger" id="btnRunAi">
-                            <i class="ri-robot-2-line"></i> AI
-                        </button>
-                        @endif
                     </form>
                 </div>
             </div>
@@ -186,8 +176,8 @@
     </div>
 
     <div class="row g-2 mb-3">
-        <div class="col-lg-6">
-            <div class="act-card p-3 h-100">
+        <div class="col-12">
+            <div class="act-card p-3">
                 <h6 class="mb-2"><i class="ri-apps-line me-1"></i> Desktop apps</h6>
                 @if(count($desktop_apps) > 0)
                 <div class="act-apps">
@@ -201,43 +191,6 @@
                 </div>
                 @else
                 <p class="text-muted small mb-0">No desktop app activity in this period. Data is collected by the desktop agent while clocked in.</p>
-                @endif
-            </div>
-        </div>
-        <div class="col-lg-6">
-            <div class="act-card p-3 h-100">
-                <h6 class="mb-2"><i class="ri-alarm-warning-line me-1"></i> Suspicious activity</h6>
-                @if($flags->isNotEmpty() || count($suspicious_signals) > 0)
-                    @foreach($flags as $flag)
-                    <div class="flag-card severity-{{ $flag->severity }}">
-                        <div class="d-flex justify-content-between gap-2">
-                            <strong>{{ $flag->title }}</strong>
-                            <span class="badge bg-{{ $flag->status === 'open' ? 'warning' : 'secondary' }}">{{ $flag->status }}</span>
-                        </div>
-                        <div class="text-muted small">{{ $flag->typeLabel() }} · {{ $flag->flag_date?->format('M j, Y') }} · {{ $flag->source }}</div>
-                        @if($flag->description)
-                        <p class="mb-1 mt-1">{{ $flag->description }}</p>
-                        @endif
-                        @if($can_admin && $flag->status === 'open')
-                        <div class="btn-group btn-group-sm">
-                            <button class="btn btn-outline-success btn-review" data-id="{{ $flag->id }}" data-status="reviewed">Reviewed</button>
-                            <button class="btn btn-outline-secondary btn-review" data-id="{{ $flag->id }}" data-status="dismissed">Dismiss</button>
-                        </div>
-                        @endif
-                    </div>
-                    @endforeach
-                    @foreach($suspicious_signals as $signal)
-                    <div class="flag-card severity-{{ $signal['severity'] }}">
-                        <div class="d-flex justify-content-between gap-2">
-                            <strong>{{ $signal['title'] }}</strong>
-                            <span class="badge bg-light text-dark border">detected</span>
-                        </div>
-                        <div class="text-muted small">{{ $signal['source'] }}</div>
-                        <p class="mb-0 mt-1">{{ $signal['description'] }}</p>
-                    </div>
-                    @endforeach
-                @else
-                <p class="text-muted small mb-0">No suspicious activity detected for this period.</p>
                 @endif
             </div>
         </div>
@@ -381,25 +334,6 @@
     });
 
     toggleCustomRangeFields();
-
-    document.getElementById('btnRunAi')?.addEventListener('click', async function() {
-        const url = root.dataset.analyzeUrl + '?date={{ $date }}';
-        const r = await fetch(url, { method: 'POST', headers: { 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' }});
-        const data = await r.json();
-        if (data.ok) { alert('AI analysis complete. Risk score: ' + data.risk_score); location.reload(); }
-        else alert('Analysis failed');
-    });
-
-    document.querySelectorAll('.btn-review').forEach(btn => {
-        btn.addEventListener('click', async function() {
-            await fetch('/attendance/flags/' + this.dataset.id + '/review', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' },
-                body: JSON.stringify({ status: this.dataset.status })
-            });
-            location.reload();
-        });
-    });
 
     const shotGrid = document.getElementById('shotGrid');
     const shotLoader = document.getElementById('shotLoader');
