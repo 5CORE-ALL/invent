@@ -14,7 +14,7 @@ const Store = require('electron-store');
 
 const execFileAsync = promisify(execFile);
 const store = new Store();
-const AGENT_VERSION = '1.2.0';
+const AGENT_VERSION = '1.2.1';
 
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
@@ -28,6 +28,31 @@ const IGNORED_PROCESSES = new Set([
     'powershell', 'pwsh', 'cmd', 'conhost', 'windowsterminal',
     'electron', 'searchhost', 'shellexperiencehost', 'applicationframehost',
 ]);
+
+// Inline script so packaged builds work (PowerShell cannot -File scripts inside app.asar).
+const ACTIVE_WINDOW_PS = `
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+public class WinForeground {
+    [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);
+    [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out int processId);
+}
+"@
+$h = [WinForeground]::GetForegroundWindow()
+$sb = New-Object System.Text.StringBuilder 512
+[void][WinForeground]::GetWindowText($h, $sb, 512)
+$processId = 0
+[void][WinForeground]::GetWindowThreadProcessId($h, [ref]$processId)
+$proc = ''
+if ($processId -gt 0) {
+    $p = Get-Process -Id $processId -ErrorAction SilentlyContinue
+    if ($p) { $proc = $p.ProcessName }
+}
+Write-Output ($sb.ToString() + '|||' + $proc)
+`.trim();
 
 let tray = null;
 let win = null;
@@ -132,14 +157,18 @@ function applyWindowResult(result) {
         lastLive = { title, process, app: process };
         return true;
     }
+    // Keep useful titles even when the process is a host/shell we ignore.
     if (title) {
-        lastKnownWindow = { title, process: lastKnownWindow.process || process };
+        const keptProcess = (process && !isIgnoredProcess(process))
+            ? process
+            : (lastKnownWindow.process || '');
+        lastKnownWindow = { title, process: keptProcess || process };
         lastLive = {
             title,
-            process: lastKnownWindow.process || process,
-            app: lastKnownWindow.process || process || title,
+            process: keptProcess || process || title,
+            app: keptProcess || process || title,
         };
-        return Boolean(lastKnownWindow.process || process);
+        return true;
     }
     return false;
 }
@@ -149,16 +178,28 @@ async function getActiveWindow() {
         return { title: '', process: '' };
     }
     try {
-        const script = path.join(__dirname, 'scripts', 'get-active-window.ps1');
+        const encoded = Buffer.from(ACTIVE_WINDOW_PS, 'utf16le').toString('base64');
         const { stdout } = await execFileAsync(
             'powershell.exe',
-            ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-File', script],
+            ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encoded],
             { timeout: 6000, windowsHide: true }
         );
-        const parts = stdout.trim().split('|||');
+        const parts = String(stdout || '').trim().split('|||');
         return { title: parts[0] || '', process: parts[1] || '' };
     } catch {
-        return lastKnownWindow;
+        // Dev / unpacked fallback
+        try {
+            const script = path.join(__dirname, 'scripts', 'get-active-window.ps1');
+            const { stdout } = await execFileAsync(
+                'powershell.exe',
+                ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-File', script],
+                { timeout: 6000, windowsHide: true }
+            );
+            const parts = String(stdout || '').trim().split('|||');
+            return { title: parts[0] || '', process: parts[1] || '' };
+        } catch {
+            return { title: lastKnownWindow.title || '', process: lastKnownWindow.process || '' };
+        }
     }
 }
 

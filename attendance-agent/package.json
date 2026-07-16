@@ -1,6 +1,6 @@
 {
   "name": "5core-attendance-agent",
-    "version": "1.2.0",
+    "version": "1.2.1",
   "description": "5Core employee attendance desktop agent — clock in/out, app tracking, screenshots",
   "main": "main.js",
   "scripts": {
@@ -31,6 +31,9 @@
       "**/*",
       "!dist/**",
       "!node_modules/.cache/**"
+    ],
+    "asarUnpack": [
+      "scripts/**"
     ],
     "win": {
       "target": [

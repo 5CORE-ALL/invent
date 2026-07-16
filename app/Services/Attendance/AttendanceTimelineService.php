@@ -630,11 +630,12 @@ class AttendanceTimelineService
   {
     $interval = max(1, (int) config('attendance.heartbeat_interval_seconds', 15));
     $unproductive = array_map('strtolower', config('attendance.unproductive_apps', []));
+    [$fromBound, $toBound] = $this->appTimezoneBounds($fromAt, $toAt);
 
     $logs = AttendanceActivityLog::query()
       ->where('user_id', $userId)
       ->where('source', 'desktop')
-      ->whereBetween('recorded_at', [$fromAt, $toAt])
+      ->whereBetween('recorded_at', [$fromBound, $toBound])
       ->where(function ($q) {
         $q->where(function ($inner) {
           $inner->whereNotNull('app_name')->where('app_name', '!=', '');
@@ -739,22 +740,31 @@ class AttendanceTimelineService
   /**
    * @return \Illuminate\Database\Eloquent\Builder<\App\Models\AttendanceScreenshot>
    */
+  /**
+   * Convert a display-timezone window into APP_TIMEZONE naive datetimes for MySQL.
+   *
+   * @return array{0: string, 1: string}
+   */
+  private function appTimezoneBounds(Carbon $fromAt, Carbon $toAt): array
+  {
+    $appTz = (string) config('app.timezone', 'UTC');
+
+    return [
+      $fromAt->clone()->timezone($appTz)->format('Y-m-d H:i:s'),
+      $toAt->clone()->timezone($appTz)->format('Y-m-d H:i:s'),
+    ];
+  }
+
   private function screenshotDayQuery(int $userId, string $date, string $timezone)
   {
     [$segStart, $segEnd] = $this->calendarWindow($date, $timezone);
     $nowInTz = now()->timezone($timezone);
     $windowEnd = $nowInTz->lt($segEnd) ? $nowInTz : $segEnd;
-
-    // captured_at is stored in APP_TIMEZONE (naive MySQL datetime). Convert the
-    // display-timezone window into app time so IST "today" matches LA-stored rows.
-    $appTz = (string) config('app.timezone', 'UTC');
+    [$fromBound, $toBound] = $this->appTimezoneBounds($segStart, $windowEnd);
 
     return \App\Models\AttendanceScreenshot::query()
       ->where('user_id', $userId)
-      ->whereBetween('captured_at', [
-        $segStart->clone()->timezone($appTz)->format('Y-m-d H:i:s'),
-        $windowEnd->clone()->timezone($appTz)->format('Y-m-d H:i:s'),
-      ]);
+      ->whereBetween('captured_at', [$fromBound, $toBound]);
   }
 
   /**
