@@ -791,6 +791,9 @@
                                         <input type="text" id="skuSearch" class="form-control-sm header-search-120"
                                             placeholder="Search" style="font-size: 9px; padding: 2px 4px;">
                                     </th>
+                                    <th class="shipping-rate-header">
+                                        <span class="th-vertical-label">Label<br>Qty</span>
+                                    </th>
                                     <th class="th-has-filter">
                                         <div class="th-vertical-label" style="font-size: 9px;">STATUS</div>
                                         <select id="filterSTATUS" class="form-control form-control-sm mt-1 missing-data-filter" style="font-size: 9px; padding: 2px 4px;" data-column="STATUS">
@@ -852,15 +855,6 @@
                                     <th class="th-has-filter shipping-rate-header" data-pm-ship-col="ebay2">
                                         <div class="th-vertical-label">Ebay2<br>ship</div>
                                         <select id="filterEbay2ShipCol" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px; max-width: 100%;" title="Filter Ebay2 ship">
-                                            <option value="all">All</option>
-                                            <option value="missing">Missing</option>
-                                            <option value="dash">− / —</option>
-                                            <option value="zero">0</option>
-                                        </select>
-                                    </th>
-                                    <th class="th-has-filter shipping-rate-header" data-pm-ship-col="shein">
-                                        <div class="th-vertical-label">Shein<br>ship</div>
-                                        <select id="filterSheinShipCol" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px; max-width: 100%;" title="Filter Shein ship">
                                             <option value="all">All</option>
                                             <option value="missing">Missing</option>
                                             <option value="dash">− / —</option>
@@ -1013,6 +1007,13 @@
                         <input type="hidden" id="editProductId" name="product_id">
                         <input type="hidden" id="editSku" name="sku">
                         <input type="hidden" id="editParent" name="parent">
+
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <label for="editLabelQty" class="form-label fw-bold">Label Qty</label>
+                                <input type="number" step="1" min="0" class="form-control fw-bold" id="editLabelQty" name="label_qty" placeholder="Label Qty">
+                            </div>
+                        </div>
                         
                         <div class="row mb-1">
                             <div class="col-12">
@@ -1138,10 +1139,6 @@
                             <div class="col-md-3">
                                 <label for="editEbay2Ship" class="form-label fw-bold">Ebay2 ship</label>
                                 <input type="number" step="0.01" class="form-control fw-bold" id="editEbay2Ship" name="ebay2_ship" placeholder="Ebay2 ship">
-                            </div>
-                            <div class="col-md-3">
-                                <label for="editSheinShip" class="form-label fw-bold">Shein ship</label>
-                                <input type="number" step="0.01" class="form-control fw-bold" id="editSheinShip" name="shein_ship" placeholder="Shein ship">
                             </div>
                             <div class="col-md-3">
                                 <label for="editGofo" class="form-label fw-bold">GOFO</label>
@@ -1619,6 +1616,18 @@
                     skuCell.textContent = skuDisplay ? escapeHtml(skuDisplay) : '-';
                     row.appendChild(skuCell);
 
+                    // Label Qty column (from Product Master Values.label_qty)
+                    const labelQtyCell = document.createElement('td');
+                    labelQtyCell.className = 'text-center shipping-rate-cell';
+                    const labelQtyRaw = item.label_qty ?? item['Label QTY'] ?? item.Label_QTY;
+                    if (labelQtyRaw === null || labelQtyRaw === undefined || labelQtyRaw === '') {
+                        labelQtyCell.textContent = '-';
+                    } else {
+                        const labelQtyNum = parseInt(labelQtyRaw, 10);
+                        labelQtyCell.textContent = Number.isFinite(labelQtyNum) ? String(labelQtyNum) : String(labelQtyRaw);
+                    }
+                    row.appendChild(labelQtyCell);
+
                     // Status column – colored dot (same as product master)
                     const statusCell = document.createElement('td');
                     statusCell.className = 'text-center';
@@ -1698,7 +1707,6 @@
                     appendCarrierShipCell(item.temu_ship);
                     appendCarrierShipCell(item.temu_gofo);
                     appendCarrierShipCell(item.ebay2_ship);
-                    appendCarrierShipCell(item.shein_ship);
                     appendCarrierShipCell(item.gofo);
                     appendCarrierShipCell(item.fedex);
                     appendCarrierShipCell(item.ups);
@@ -1923,14 +1931,14 @@
              *  /dim-wt-master/update payload). Used by the missing-indicator
              *  click handler to focus the right input. */
             const SHIPPING_COLUMN_INDEX_TO_FIELD = {
-                5:  'inv',
-                6:  'ship',
-                7:  'ship_bb',
-                8:  'tt_ship',
-                9:  'temu_ship',
-                10: 'temu_gofo',
-                11: 'ebay2_ship',
-                12: 'shein_ship',
+                4:  'label_qty',
+                6:  'inv',
+                7:  'ship',
+                8:  'ship_bb',
+                9:  'tt_ship',
+                10: 'temu_ship',
+                11: 'temu_gofo',
+                12: 'ebay2_ship',
                 13: 'gofo',
                 14: 'fedex',
                 15: 'ups',
@@ -1958,6 +1966,7 @@
             /** Human-readable field labels used by the small "Enter Missing
              *  Data" modal title. */
             const SHIPPING_FIELD_LABELS = {
+                label_qty:       'Label Qty',
                 wt_act_kg:       'Item Weight ACT (Kg)',
                 wt_act:          'Item WT ACT (LB)',
                 wt_decl:         'Item WT DECL (LB)',
@@ -1977,7 +1986,6 @@
                 temu_ship:       'Temu ship',
                 temu_gofo:       'Temu GOFO',
                 ebay2_ship:      'Ebay2 ship',
-                shein_ship:      'Shein ship',
                 gofo:            'GOFO',
                 fedex:           'Fedex',
                 ups:             'UPS',
@@ -1990,9 +1998,10 @@
             };
 
             /** Per-field input step (most fields are dollars / cm, so 0.01;
-             *  ctn_qty is a whole-number count). */
+             *  ctn_qty / label_qty are whole-number counts). */
             const SHIPPING_FIELD_STEP = {
-                ctn_qty: '1'
+                ctn_qty: '1',
+                label_qty: '1'
             };
 
             /** Fields that the small modal cannot save: they live outside the
@@ -2799,7 +2808,6 @@
                 const filterTtShipCol = document.getElementById('filterTtShipCol')?.value || 'all';
                 const filterTemuShipCol = document.getElementById('filterTemuShipCol')?.value || 'all';
                 const filterEbay2ShipCol = document.getElementById('filterEbay2ShipCol')?.value || 'all';
-                const filterSheinShipCol = document.getElementById('filterSheinShipCol')?.value || 'all';
                 const filterGofoCol = document.getElementById('filterGofoCol')?.value || 'all';
                 const filterTemuGofoCol = document.getElementById('filterTemuGofoCol')?.value || 'all';
                 const filterFedexCol = document.getElementById('filterFedexCol')?.value || 'all';
@@ -2872,7 +2880,6 @@
                     if (!matchesMarketplaceShipColFilter(item, 'tt_ship', filterTtShipCol)) return false;
                     if (!matchesMarketplaceShipColFilter(item, 'temu_ship', filterTemuShipCol)) return false;
                     if (!matchesMarketplaceShipColFilter(item, 'ebay2_ship', filterEbay2ShipCol)) return false;
-                    if (!matchesMarketplaceShipColFilter(item, 'shein_ship', filterSheinShipCol)) return false;
                     if (!matchesMarketplaceShipColFilter(item, 'gofo', filterGofoCol)) return false;
                     if (!matchesMarketplaceShipColFilter(item, 'temu_gofo', filterTemuGofoCol)) return false;
                     if (!matchesMarketplaceShipColFilter(item, 'fedex', filterFedexCol)) return false;
@@ -2911,7 +2918,7 @@
                     const el = document.getElementById(id);
                     if (el) el.addEventListener('change', applyFilters);
                 });
-                ['filterShipCol', 'filterShipBbCol', 'filterTtShipCol', 'filterTemuShipCol', 'filterTemuGofoCol', 'filterEbay2ShipCol', 'filterSheinShipCol', 'filterGofoCol', 'filterFedexCol', 'filterUpsCol', 'filterUspsCol', 'filterUniCol'].forEach(id => {
+                ['filterShipCol', 'filterShipBbCol', 'filterTtShipCol', 'filterTemuShipCol', 'filterTemuGofoCol', 'filterEbay2ShipCol', 'filterGofoCol', 'filterFedexCol', 'filterUpsCol', 'filterUspsCol', 'filterUniCol'].forEach(id => {
                     const el = document.getElementById(id);
                     if (el) el.addEventListener('change', applyFilters);
                 });
@@ -2961,12 +2968,15 @@
             function setupExcelExport() {
                 document.getElementById('downloadExcel').addEventListener('click', function() {
                     // Columns to export (excluding Image, Action, and Parent)
-                    const columns = ["SKU", "Status", "INV", "Ship", "Ship BB", "TT 1 Ship", "Temu ship", "Temu GOFO", "Ebay2 ship", "Shein ship", "GOFO", "Fedex", "UPS", "USPS", "UNI", "Pick Pack", "Avg", "FBA SKU", "FBA ship", "FBA manual ship", "Weight ACT (Kg)", "WT ACT (LB)", "Item Weight (OZ)", "WT DECL (LB)", "Length (inch)", "Width (inch)", "Height (Inch)", "Length (CM)", "Width (CM)", "Height (CM)", "CTN L (CM)", "CTN W (CM)", "CTN H (CM)", "CTN (CBM)", "CTN (QTY)", "CTN (CBM/Each)"];
+                    const columns = ["SKU", "Label Qty", "Status", "INV", "Ship", "Ship BB", "TT 1 Ship", "Temu ship", "Temu GOFO", "Ebay2 ship", "GOFO", "Fedex", "UPS", "USPS", "UNI", "Pick Pack", "Avg", "FBA SKU", "FBA ship", "FBA manual ship", "Weight ACT (Kg)", "WT ACT (LB)", "Item Weight (OZ)", "WT DECL (LB)", "Length (inch)", "Width (inch)", "Height (Inch)", "Length (CM)", "Width (CM)", "Height (CM)", "CTN L (CM)", "CTN W (CM)", "CTN H (CM)", "CTN (CBM)", "CTN (QTY)", "CTN (CBM/Each)"];
 
                     // Column definitions with their data keys
                     const columnDefs = {
                         "SKU": {
                             key: "SKU"
+                        },
+                        "Label Qty": {
+                            key: "label_qty"
                         },
                         "Status": {
                             key: "status"
@@ -2991,9 +3001,6 @@
                         },
                         "Ebay2 ship": {
                             key: "ebay2_ship"
-                        },
-                        "Shein ship": {
-                            key: "shein_ship"
                         },
                         "GOFO": {
                             key: "gofo"
@@ -3152,7 +3159,7 @@
                                             value = value === '' || value === null || value === undefined ? '' : parseFloat((parseFloat(value) || 0).toFixed(2));
                                         }
                                         // Format numeric columns (WT ACT KG, L, W, H, CBM, CTN fields, etc.)
-                                        else if (["wt_act_kg", "l", "w", "h", "l_cm", "w_cm", "h_cm", "ctn_l", "ctn_w", "ctn_h", "ctn_cbm", "ctn_qty", "ctn_cbm_each", "ship", "tt_ship", "temu_ship", "ebay2_ship", "shein_ship", "gofo", "temu_gofo", "fedex", "ups", "usps", "uni", "fba_ship", "fba_manual_ship"].includes(key)) {
+                                        else if (["wt_act_kg", "l", "w", "h", "l_cm", "w_cm", "h_cm", "ctn_l", "ctn_w", "ctn_h", "ctn_cbm", "ctn_qty", "ctn_cbm_each", "ship", "tt_ship", "temu_ship", "ebay2_ship", "gofo", "temu_gofo", "fedex", "ups", "usps", "uni", "fba_ship", "fba_manual_ship"].includes(key)) {
                                             value = value === '' || value === null || value === undefined ? '' : (parseFloat(value) || 0);
                                         }
 
@@ -3267,10 +3274,10 @@
                 downloadSampleBtn.addEventListener('click', function() {
                     // Create sample data with all columns
                     const sampleData = [
-                        ['SKU', 'Ship', 'Ship BB', 'TT 1 Ship', 'Temu ship', 'Ebay2 ship', 'Shein ship', 'GOFO', 'Fedex', 'UPS', 'USPS', 'UNI', 'Weight ACT (Kg)', 'WT ACT (LB)', 'WT DECL (LB)', 'Length (inch)', 'Width (inch)', 'Height (Inch)', 'Length (CM)', 'Width (CM)', 'Height (CM)', 'CTN L (CM)', 'CTN W (CM)', 'CTN H (CM)', 'CTN (CBM)', 'CTN (QTY)', 'CTN (CBM/Each)'],
-                        ['SKU001', '3.25', '3.10', '2.95', '3.15', '3.45', '3.20', '1.50', '4.20', '3.90', '2.80', '3.10', '6.2', '1.5', '1.2', '10.5', '8.3', '5.2', '26.67', '21.08', '13.21', '30', '25', '20', '0.015', '12', '0.00125'],
-                        ['SKU002', '4.10', '3.95', '3.80', '4.00', '4.25', '4.05', '2.00', '5.10', '4.75', '3.50', '4.00', '9.1', '2.0', '1.8', '12.0', '9.0', '6.0', '30.48', '22.86', '15.24', '35', '28', '22', '0.0216', '15', '0.00144'],
-                        ['SKU003', '2.80', '2.65', '2.60', '2.70', '2.95', '2.75', '1.20', '3.50', '3.20', '2.40', '2.70', '5.4', '1.2', '1.0', '9.5', '7.5', '4.5', '24.13', '19.05', '11.43', '28', '24', '18', '0.0121', '10', '0.00121']
+                        ['SKU', 'Ship', 'Ship BB', 'TT 1 Ship', 'Temu ship', 'Ebay2 ship', 'GOFO', 'Fedex', 'UPS', 'USPS', 'UNI', 'Weight ACT (Kg)', 'WT ACT (LB)', 'WT DECL (LB)', 'Length (inch)', 'Width (inch)', 'Height (Inch)', 'Length (CM)', 'Width (CM)', 'Height (CM)', 'CTN L (CM)', 'CTN W (CM)', 'CTN H (CM)', 'CTN (CBM)', 'CTN (QTY)', 'CTN (CBM/Each)'],
+                        ['SKU001', '3.25', '3.10', '2.95', '3.15', '3.45', '1.50', '4.20', '3.90', '2.80', '3.10', '6.2', '1.5', '1.2', '10.5', '8.3', '5.2', '26.67', '21.08', '13.21', '30', '25', '20', '0.015', '12', '0.00125'],
+                        ['SKU002', '4.10', '3.95', '3.80', '4.00', '4.25', '2.00', '5.10', '4.75', '3.50', '4.00', '9.1', '2.0', '1.8', '12.0', '9.0', '6.0', '30.48', '22.86', '15.24', '35', '28', '22', '0.0216', '15', '0.00144'],
+                        ['SKU003', '2.80', '2.65', '2.60', '2.70', '2.95', '1.20', '3.50', '3.20', '2.40', '2.70', '5.4', '1.2', '1.0', '9.5', '7.5', '4.5', '24.13', '19.05', '11.43', '28', '24', '18', '0.0121', '10', '0.00121']
                     ];
 
                     // Create workbook
@@ -3285,7 +3292,6 @@
                         { wch: 12 }, // TT 1 Ship
                         { wch: 12 }, // Temu ship
                         { wch: 12 }, // Ebay2 ship
-                        { wch: 12 }, // Shein ship
                         { wch: 10 }, // GOFO
                         { wch: 10 }, // Fedex
                         { wch: 10 }, // UPS
@@ -3683,6 +3689,9 @@
                 document.getElementById('editProductId').value = product.id || '';
                 document.getElementById('editSku').value = product.SKU || '';
                 document.getElementById('editParent').value = product.Parent || '';
+                const labelQtyVal = product.label_qty ?? product['Label QTY'] ?? product.Label_QTY;
+                document.getElementById('editLabelQty').value =
+                    (labelQtyVal !== null && labelQtyVal !== undefined && labelQtyVal !== '') ? labelQtyVal : '';
                 document.getElementById('editWtActKg').value = product.wt_act_kg || '';
                 document.getElementById('editWtAct').value = product.wt_act || '';
                 document.getElementById('editWtDecl').value = product.wt_decl || '';
@@ -3725,7 +3734,6 @@
                 document.getElementById('editTtShip').value = shipNum(product.tt_ship);
                 document.getElementById('editTemuShip').value = shipNum(product.temu_ship);
                 document.getElementById('editEbay2Ship').value = shipNum(product.ebay2_ship);
-                document.getElementById('editSheinShip').value = shipNum(product.shein_ship);
                 document.getElementById('editGofo').value = shipNum(product.gofo);
                 document.getElementById('editTemuGofo').value = shipNum(product.temu_gofo);
                 document.getElementById('editFedex').value = shipNum(product.fedex);
@@ -3792,12 +3800,12 @@
                         const n = parseFloat(t);
                         if (Number.isFinite(n)) baseFormData[propName] = n;
                     };
+                    addNumericIfPresent('editLabelQty', 'label_qty');
                     addNumericIfPresent('editShip', 'ship');
                     addNumericIfPresent('editShipBb', 'ship_bb');
                     addNumericIfPresent('editTtShip', 'tt_ship');
                     addNumericIfPresent('editTemuShip', 'temu_ship');
                     addNumericIfPresent('editEbay2Ship', 'ebay2_ship');
-                    addNumericIfPresent('editSheinShip', 'shein_ship');
                     addNumericIfPresent('editGofo', 'gofo');
                     addNumericIfPresent('editTemuGofo', 'temu_gofo');
                     addNumericIfPresent('editFedex', 'fedex');
@@ -4079,7 +4087,6 @@
                 { key: 'temu_ship',  label: 'Temu ship' },
                 { key: 'temu_gofo',  label: 'Temu GOFO' },
                 { key: 'ebay2_ship', label: 'Ebay2 ship' },
-                { key: 'shein_ship', label: 'Shein ship' },
                 { key: 'gofo',       label: 'GOFO' },
                 { key: 'fedex',      label: 'Fedex' },
                 { key: 'ups',        label: 'UPS' },

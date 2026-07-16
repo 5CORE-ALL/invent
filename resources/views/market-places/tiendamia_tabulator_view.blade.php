@@ -167,8 +167,9 @@
                     <form action="{{ route('tiendamia.upload.csv') }}" method="POST" enctype="multipart/form-data">
                         @csrf
                         <div class="d-flex align-items-center gap-2">
-                            <input type="file" name="csv_file" class="form-control" accept=".csv" required
-                                style="max-width: 300px;">
+                            <input type="file" name="csv_file" class="form-control"
+                                accept=".csv,.txt,.tsv,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,text/plain,text/tab-separated-values"
+                                required style="max-width: 300px;">
                             <button type="submit" class="btn btn-primary">
                                 <i class="fas fa-upload"></i> Upload File
                             </button>
@@ -220,7 +221,7 @@
                             title="Summary metric for daily trend">ROI%: 0%</span>
                         <span class="badge bg-danger fs-6 p-2 badge-no-chart" id="missing-count-badge" data-metric="missing_count"
                             style="color: white; font-weight: bold; cursor: default;"
-                            title="Click to filter ½s for daily trend">Miss: 0</span>
+                            title="Click to filter missing sheet prices (INV&gt;0, not NRA)">Miss: 0</span>
                         <span class="badge fs-6 p-2 badge-no-chart" id="map-count-badge" data-metric="map_count"
                             style="background-color: #198754; color: #fff; font-weight: bold; cursor: default;"
                             title="Click to filter ½s for daily trend">Map: 0</span>
@@ -1889,17 +1890,21 @@
                         hozAlign: "center",
                         width: 70,
                         formatter: function(cell) {
-                            const value = cell.getValue();
                             const rowData = cell.getRow().getData();
                             const isParent = rowData.Parent && String(rowData.Parent).startsWith('PARENT ');
                             
-                            if (isParent && (value === '-' || value === null)) {
+                            if (isParent) {
                                 return '<span style="color:#6c757d;">-</span>';
                             }
-                            
-                            // Same as Amazon: exclude NRP='NRA' from showing Missing L
+
+                            // Missing L = no sheet price (same as BestBuy Miss). Hide for NRA / INV = 0.
+                            const price = parseFloat(rowData['Tiendamia Price']) || 0;
+                            const inv = parseFloat(rowData.INV) || 0;
                             const nrpValue = String(rowData.nrp || '').trim().toUpperCase();
-                            if (value === 'M' && nrpValue !== 'NRA') {
+                            if (nrpValue === 'NRA' || inv <= 0) {
+                                return '';
+                            }
+                            if (price === 0) {
                                 return '<span style="color: #dc3545; font-weight: bold; font-size: 16px;">M</span>';
                             }
                             return '';
@@ -2883,13 +2888,14 @@
                 // 0 Sold / > 0 Sold filtering is owned by the #tl30-filter dropdown above —
                 // the legacy badges just toggle that dropdown value. See the dropdown block.
 
-                // Missing filter (parent rows always visible)
+                // Missing filter — sheet price missing (INV > 0, not NRA); same as BestBuy Miss
                 if (missingFilterActive) {
                     table.addFilter(function(data) {
                         if (isParentRow(data)) return true;
-                        // Same as column logic: show Missing L only if Missing='M' AND NRP != 'NRA'
+                        const price = parseFloat(data['Tiendamia Price']) || 0;
+                        const inv = parseFloat(data.INV) || 0;
                         const nrpValue = String(data.nrp || '').trim().toUpperCase();
-                        return data.Missing === 'M' && nrpValue !== 'NRA';
+                        return price === 0 && inv > 0 && nrpValue !== 'NRA';
                     });
                 }
 
@@ -3095,8 +3101,12 @@
                         moreSoldCount++;
                     }
 
-                    const isMissing = String(row['Missing'] || '').trim().toUpperCase() === 'M';
-                    if (isMissing) {
+                    // Miss = no sheet price, INV > 0, not NRA (same as BestBuy)
+                    const priceForMiss = parseFloat(row['Tiendamia Price']) || 0;
+                    const invForMiss = parseFloat(row.INV) || 0;
+                    const nrpForMiss = String(row.nrp || '').trim().toUpperCase();
+                    const isMissing = priceForMiss === 0;
+                    if (isMissing && invForMiss > 0 && nrpForMiss !== 'NRA') {
                         missingCount++;
                     }
 

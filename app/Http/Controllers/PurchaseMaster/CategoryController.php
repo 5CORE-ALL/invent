@@ -975,13 +975,13 @@ class CategoryController extends Controller
                 'tt_ship' => 'nullable|numeric',
                 'temu_ship' => 'nullable|numeric',
                 'ebay2_ship' => 'nullable|numeric',
-                'shein_ship' => 'nullable|numeric',
                 'gofo' => 'nullable|numeric',
                 'temu_gofo' => 'nullable|numeric',
                 'fedex' => 'nullable|numeric',
                 'ups' => 'nullable|numeric',
                 'usps' => 'nullable|numeric',
                 'uni' => 'nullable|numeric',
+                'label_qty' => 'nullable|integer',
                 'fba_ship_calculation' => 'nullable|numeric',
                 'fba_manual_ship' => 'nullable|numeric',
             ]);
@@ -1077,11 +1077,15 @@ class CategoryController extends Controller
                 }
             }
 
-            foreach (['ship', 'ship_bb', 'tt_ship', 'temu_ship', 'ebay2_ship', 'shein_ship', 'gofo', 'temu_gofo', 'fedex', 'ups', 'usps', 'uni'] as $shipField) {
+            foreach (['ship', 'ship_bb', 'tt_ship', 'temu_ship', 'ebay2_ship', 'gofo', 'temu_gofo', 'fedex', 'ups', 'usps', 'uni'] as $shipField) {
                 if (array_key_exists($shipField, $validated)) {
                     $v = $validated[$shipField];
                     $values[$shipField] = ($v !== null && $v !== '') ? (float) $v : null;
                 }
+            }
+            if (array_key_exists('label_qty', $validated)) {
+                $v = $validated['label_qty'];
+                $values['label_qty'] = ($v !== null && $v !== '') ? (int) $v : null;
             }
 
             // Snapshot of the OLD Values (before save) for change tracking
@@ -1164,7 +1168,6 @@ class CategoryController extends Controller
             'temu_ship' => 'Temu ship',
             'temu_gofo' => 'Temu GOFO',
             'ebay2_ship' => 'Ebay2 ship',
-            'shein_ship' => 'Shein ship',
             'gofo' => 'GOFO',
             'fedex' => 'Fedex',
             'ups' => 'UPS',
@@ -1193,6 +1196,7 @@ class CategoryController extends Controller
             'cbm' => 'CBM',
             'cbm_e' => 'CBM (E)',
             'ctn_gwt' => 'CTN GWT',
+            'label_qty' => 'Label Qty',
         ];
     }
 
@@ -1219,7 +1223,8 @@ class CategoryController extends Controller
             'cbm', 'cbm_e', 'ctn_gwt',
             'ctn_l', 'ctn_w', 'ctn_h', 'ctn_cbm', 'ctn_qty', 'ctn_cbm_each',
             'ctn_weight_kg', 'ctn_weight_lb', 'ctn_instructions',
-            'ship', 'ship_bb', 'tt_ship', 'temu_ship', 'ebay2_ship', 'shein_ship',
+            'label_qty',
+            'ship', 'ship_bb', 'tt_ship', 'temu_ship', 'ebay2_ship',
             'gofo', 'temu_gofo', 'fedex', 'ups', 'usps', 'uni',
         ];
 
@@ -1589,7 +1594,6 @@ class CategoryController extends Controller
             'tt_ship' => 'nullable|numeric',
             'temu_ship' => 'nullable|numeric',
             'ebay2_ship' => 'nullable|numeric',
-            'shein_ship' => 'nullable|numeric',
             'label_qty' => 'nullable|integer',
         ]);
 
@@ -1625,9 +1629,6 @@ class CategoryController extends Controller
             if (isset($validated['ebay2_ship'])) {
                 $values['ebay2_ship'] = $validated['ebay2_ship'] !== null && $validated['ebay2_ship'] !== '' ? (float) $validated['ebay2_ship'] : null;
             }
-            if (isset($validated['shein_ship'])) {
-                $values['shein_ship'] = $validated['shein_ship'] !== null && $validated['shein_ship'] !== '' ? (float) $validated['shein_ship'] : null;
-            }
             if (isset($validated['label_qty'])) {
                 $values['label_qty'] = $validated['label_qty'] !== null && $validated['label_qty'] !== '' ? (int) $validated['label_qty'] : null;
             }
@@ -1646,7 +1647,6 @@ class CategoryController extends Controller
                     'tt_ship' => $values['tt_ship'] ?? null,
                     'temu_ship' => $values['temu_ship'] ?? null,
                     'ebay2_ship' => $values['ebay2_ship'] ?? null,
-                    'shein_ship' => $values['shein_ship'] ?? null,
                     'label_qty' => $values['label_qty'] ?? null,
                 ],
             ]);
@@ -1698,7 +1698,6 @@ class CategoryController extends Controller
             'tt_ship' => 'nullable|numeric',
             'temu_ship' => 'nullable|numeric',
             'ebay2_ship' => 'nullable|numeric',
-            'shein_ship' => 'nullable|numeric',
             'label_qty' => 'nullable|integer',
         ]);
 
@@ -1734,9 +1733,6 @@ class CategoryController extends Controller
             if (isset($validated['ebay2_ship'])) {
                 $values['ebay2_ship'] = $validated['ebay2_ship'] !== null && $validated['ebay2_ship'] !== '' ? (float) $validated['ebay2_ship'] : null;
             }
-            if (isset($validated['shein_ship'])) {
-                $values['shein_ship'] = $validated['shein_ship'] !== null && $validated['shein_ship'] !== '' ? (float) $validated['shein_ship'] : null;
-            }
             if (isset($validated['label_qty'])) {
                 $values['label_qty'] = $validated['label_qty'] !== null && $validated['label_qty'] !== '' ? (int) $validated['label_qty'] : null;
             }
@@ -1755,7 +1751,6 @@ class CategoryController extends Controller
                     'tt_ship' => $values['tt_ship'] ?? null,
                     'temu_ship' => $values['temu_ship'] ?? null,
                     'ebay2_ship' => $values['ebay2_ship'] ?? null,
-                    'shein_ship' => $values['shein_ship'] ?? null,
                     'label_qty' => $values['label_qty'] ?? null,
                 ],
             ]);
@@ -1809,7 +1804,6 @@ class CategoryController extends Controller
                 'tt_ship' => 'tt_ship',
                 'temu_ship' => 'temu_ship',
                 'ebay2_ship' => 'ebay2_ship',
-                'shein_ship' => 'shein_ship',
                 'label_qty' => 'label_qty',
             ];
 
@@ -1901,15 +1895,6 @@ class CategoryController extends Controller
                     $ebay2ShipValue = trim($row[$columnIndices['ebay2_ship']]);
                     if ($ebay2ShipValue !== '') {
                         $values['ebay2_ship'] = $ebay2ShipValue;
-                        $hasChanges = true;
-                    }
-                }
-
-                // Update SHEIN SHIP if column exists and has value
-                if (isset($columnIndices['shein_ship']) && isset($row[$columnIndices['shein_ship']])) {
-                    $sheinShipValue = trim($row[$columnIndices['shein_ship']]);
-                    if ($sheinShipValue !== '') {
-                        $values['shein_ship'] = $sheinShipValue;
                         $hasChanges = true;
                     }
                 }
@@ -7132,7 +7117,6 @@ PROMPT;
                 'tt_ship' => 'tt_ship',
                 'temu_ship' => 'temu_ship',
                 'ebay2_ship' => 'ebay2_ship',
-                'shein_ship' => 'shein_ship',
                 'gofo' => 'gofo',
                 'temu_gofo' => 'temu_gofo',
                 'temu__gofo' => 'temu_gofo',
@@ -7199,7 +7183,7 @@ PROMPT;
                         $value = trim($row[$colIndex]);
                         if ($value !== '') {
                             // Convert to float for numeric fields
-                            if (in_array($field, ['wt_act', 'wt_act_kg', 'wt_decl', 'l', 'w', 'h', 'l_cm', 'w_cm', 'h_cm', 'cbm', 'ctn_l', 'ctn_w', 'ctn_h', 'ctn_cbm', 'ctn_qty', 'ctn_cbm_each', 'cbm_e', 'ctn_gwt', 'ctn_weight_kg', 'ctn_weight_lb', 'ship', 'ship_bb', 'tt_ship', 'temu_ship', 'ebay2_ship', 'shein_ship', 'gofo', 'temu_gofo', 'fedex', 'ups', 'usps', 'uni'])) {
+                            if (in_array($field, ['wt_act', 'wt_act_kg', 'wt_decl', 'l', 'w', 'h', 'l_cm', 'w_cm', 'h_cm', 'cbm', 'ctn_l', 'ctn_w', 'ctn_h', 'ctn_cbm', 'ctn_qty', 'ctn_cbm_each', 'cbm_e', 'ctn_gwt', 'ctn_weight_kg', 'ctn_weight_lb', 'ship', 'ship_bb', 'tt_ship', 'temu_ship', 'ebay2_ship', 'gofo', 'temu_gofo', 'fedex', 'ups', 'usps', 'uni'])) {
                                 $value = is_numeric($value) ? (float) $value : null;
                                 // Treat 0 (or blank) as "no change" — keep the old value
                                 if ($value === null || $value == 0) {
@@ -7266,7 +7250,7 @@ PROMPT;
                         'cbm', 'cbm_e', 'ctn_gwt',
                         'ctn_l', 'ctn_w', 'ctn_h', 'ctn_cbm', 'ctn_qty', 'ctn_cbm_each',
                         'ctn_weight_kg', 'ctn_weight_lb', 'ctn_instructions',
-                        'ship', 'ship_bb', 'tt_ship', 'temu_ship', 'ebay2_ship', 'shein_ship',
+                        'ship', 'ship_bb', 'tt_ship', 'temu_ship', 'ebay2_ship',
                         'gofo', 'temu_gofo', 'fedex', 'ups', 'usps', 'uni',
                     ];
                     $importHistoryRows = [];

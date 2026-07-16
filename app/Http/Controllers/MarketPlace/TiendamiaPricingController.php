@@ -95,11 +95,23 @@ class TiendamiaPricingController extends Controller
                 return strtoupper($item->sku);
             });
 
-        // Fetch Tiendamia price data from tiendamia_price_uploads
-        // Get ALL price data since SKU formats may not match exactly
-        $priceData = TiendamiaPriceUpload::select('product_sku', 'offer_sku', 'price', 'quantity', 'offer_state')
-            ->whereNotNull('price')
-            ->get();
+        // Uploaded price sheet (tiendamia_price_uploads) is the ONLY source for displayed price.
+        // Never fall back to tiendamia_products.price. Exact case-sensitive match on offer_sku / product_sku.
+        $priceBySku = [];
+        foreach (
+            TiendamiaPriceUpload::select('product_sku', 'offer_sku', 'price', 'quantity', 'offer_state')
+                ->whereNotNull('price')
+                ->get() as $priceRow
+        ) {
+            $offerKey = trim((string) ($priceRow->offer_sku ?? ''));
+            $productKey = trim((string) ($priceRow->product_sku ?? ''));
+            if ($offerKey !== '') {
+                $priceBySku[$offerKey] = $priceRow;
+            }
+            if ($productKey !== '' && !isset($priceBySku[$productKey])) {
+                $priceBySku[$productKey] = $priceRow;
+            }
+        }
 
         // Fetch Tiendamia view data for SPRICE
         $tiendamiaViewData = TiendamiaDataView::whereIn("sku", $skus)->get()->keyBy("sku");
@@ -154,84 +166,24 @@ class TiendamiaPricingController extends Controller
                 $processedItem["image_path"] = $values["image_path"] ?? ($productMaster->image_path ?? null);
             }
 
-            $skuUpper = strtoupper($sku);
+            $skuTrimmed = trim((string) $sku);
+            $skuUpper = strtoupper($skuTrimmed);
 
-            // Add data from tiendamia_products (m_l30, m_l60, stock)
+            // Add data from tiendamia_products (m_l30, m_l60, stock only — never price)
             if (isset($tiendamiaData[$skuUpper])) {
                 $tiendamiaItem = $tiendamiaData[$skuUpper];
                 $processedItem["M L30"] = $tiendamiaItem->m_l30 ?? 0;
                 $processedItem["M L60"] = $tiendamiaItem->m_l60 ?? 0;
                 $processedItem["Tiendamia Stock"] = $tiendamiaItem->stock ?? 0;
-                $processedItem["Missing"] = '';
             } else {
                 $processedItem["M L30"] = 0;
                 $processedItem["M L60"] = 0;
                 $processedItem["Tiendamia Stock"] = 0;
-                $processedItem["Missing"] = 'M';
             }
 
-            // Add price data from tiendamia_price_uploads
-            // Try to find price data by matching the SKU
-            $priceItem = null;
-            
-            // Debug: Log the SKU we're trying to match (only for first 5 items)
-            if ($slNo <= 6) {
-                Log::info("Tiendamia SKU matching for: {$sku} (uppercase: {$skuUpper})");
-            }
-            
-            foreach ($priceData as $priceRow) {
-                $offerSkuUpper = strtoupper(trim($priceRow->offer_sku ?? ''));
-                $productSkuUpper = strtoupper(trim($priceRow->product_sku ?? ''));
-                
-                // Check if SKU matches either offer_sku or product_sku (exact match)
-                if ($offerSkuUpper === $skuUpper || $productSkuUpper === $skuUpper) {
-                    $priceItem = $priceRow;
-                    if ($slNo <= 6) {
-                        Log::info("Found exact match! offer_sku: {$offerSkuUpper}, product_sku: {$productSkuUpper}, price: {$priceRow->price}");
-                    }
-                    break;
-                }
-            }
-            
-            // If not found with exact match, try partial matches
-            if (!$priceItem) {
-                if ($slNo <= 6) {
-                    Log::info("No exact match found, trying partial match...");
-                }
-                
-                foreach ($priceData as $priceRow) {
-                    $offerSkuUpper = strtoupper(trim($priceRow->offer_sku ?? ''));
-                    $productSkuUpper = strtoupper(trim($priceRow->product_sku ?? ''));
-                    
-                    // Try partial matches (for cases like "04 CS" matching "CS 04 2W")
-                    if (!empty($offerSkuUpper) && !empty($skuUpper)) {
-                        if (strpos($offerSkuUpper, $skuUpper) !== false || 
-                            strpos($skuUpper, $offerSkuUpper) !== false) {
-                            $priceItem = $priceRow;
-                            if ($slNo <= 6) {
-                                Log::info("Found partial match with offer_sku! offer_sku: {$offerSkuUpper}, price: {$priceRow->price}");
-                            }
-                            break;
-                        }
-                    }
-                    
-                    if (!empty($productSkuUpper) && !empty($skuUpper)) {
-                        if (strpos($productSkuUpper, $skuUpper) !== false || 
-                            strpos($skuUpper, $productSkuUpper) !== false) {
-                            $priceItem = $priceRow;
-                            if ($slNo <= 6) {
-                                Log::info("Found partial match with product_sku! product_sku: {$productSkuUpper}, price: {$priceRow->price}");
-                            }
-                            break;
-                        }
-                    }
-                }
-            }
-            
-            if (!$priceItem && $slNo <= 6) {
-                Log::info("No match found at all for SKU: {$sku}");
-            }
-            
+            // Price: exact case-sensitive match from uploaded sheet only. Not in sheet → 0.
+            // Missing L = missing sheet price (same idea as BestBuy Miss), not missing inventory sync.
+            $priceItem = $priceBySku[$skuTrimmed] ?? null;
             if ($priceItem) {
                 $processedItem["Tiendamia Price"] = $priceItem->price ?? 0;
                 $processedItem["Price Quantity"] = $priceItem->quantity ?? 0;
@@ -241,6 +193,7 @@ class TiendamiaPricingController extends Controller
                 $processedItem["Price Quantity"] = 0;
                 $processedItem["Offer State"] = '';
             }
+            $processedItem["Missing"] = floatval($processedItem["Tiendamia Price"]) > 0 ? '' : 'M';
 
             // MAP: same tolerance as other marketplaces — |INV − Tiendamia Stock| ≤ 3 → Map
             $inv = (float) $processedItem["INV"];
@@ -339,12 +292,16 @@ class TiendamiaPricingController extends Controller
     public function uploadTiendamiaCsv(Request $request)
     {
         $request->validate([
-            'csv_file' => 'required|file|mimes:csv,txt,tsv,xlsx,xls'
+            'csv_file' => 'required|file|max:51200',
         ]);
 
         try {
             $file = $request->file('csv_file');
             $extension = strtolower($file->getClientOriginalExtension());
+            // Use extension (not MIME) — browsers often send odd MIME for .xlsx and Laravel mimes rejects them.
+            if (! in_array($extension, ['csv', 'txt', 'tsv', 'xlsx', 'xls'], true)) {
+                return back()->with('error', 'Invalid file type. Please upload .csv, .txt, .tsv, .xlsx, or .xls');
+            }
             
             $imported = 0;
             $skipped = 0;
@@ -411,8 +368,9 @@ class TiendamiaPricingController extends Controller
                 $rawProductSku = $row[$productSkuIndex] ?? null;
                 
                 if ($rawOfferSku !== null && trim((string)$rawOfferSku) !== '') {
-                    $offerSku = strtoupper(trim(preg_replace('/\s+/', ' ', str_replace("\xC2\xA0", ' ', $rawOfferSku))));
-                    $productSku = strtoupper(trim(preg_replace('/\s+/', ' ', str_replace("\xC2\xA0", ' ', $rawProductSku ?? ''))));
+                    // Preserve original casing — price lookup is case-sensitive against Product Master SKU.
+                    $offerSku = trim(preg_replace('/\s+/', ' ', str_replace("\xC2\xA0", ' ', (string) $rawOfferSku)));
+                    $productSku = trim(preg_replace('/\s+/', ' ', str_replace("\xC2\xA0", ' ', (string) ($rawProductSku ?? ''))));
                     
                     $price = isset($row[$priceIndex]) ? floatval($row[$priceIndex]) : 0;
                     $quantity = isset($row[$quantityIndex]) ? intval($row[$quantityIndex]) : 0;
