@@ -506,6 +506,7 @@ class ProductMasterController extends Controller
         $operation = $request->input('operation', 'create');
         $originalSku = $request->input('original_sku');
         $originalParent = $request->input('original_parent');
+        $originalId = $request->input('original_id');
 
         try {
             // Values array is already prepared above during validation
@@ -517,18 +518,26 @@ class ProductMasterController extends Controller
                 $values['image_path'] = 'storage/'.$imagePath;
             }
 
-            if ($operation === 'update' && $originalSku) {
-                // Find the product by original SKU and parent.
-                // Frontend sends '' when Parent is null; DB may store NULL or ''.
-                $query = ProductMaster::where('sku', $originalSku);
-                if ($originalParent !== null && $originalParent !== '') {
-                    $query->where('parent', $originalParent);
-                } else {
-                    $query->where(function ($q) {
-                        $q->whereNull('parent')->orWhere('parent', '');
-                    });
+            if ($operation === 'update' && ($originalId || $originalSku)) {
+                // Prefer id (stable). Fall back to SKU; parent filter only when needed.
+                $product = null;
+                if ($originalId) {
+                    $product = ProductMaster::find($originalId);
                 }
-                $product = $query->first();
+                if (! $product && $originalSku) {
+                    $bySku = ProductMaster::where('sku', $originalSku)->get();
+                    if ($bySku->count() === 1) {
+                        $product = $bySku->first();
+                    } elseif ($bySku->count() > 1) {
+                        if ($originalParent !== null && $originalParent !== '') {
+                            $product = $bySku->firstWhere('parent', $originalParent);
+                        } else {
+                            $product = $bySku->first(function ($row) {
+                                return $row->parent === null || $row->parent === '';
+                            });
+                        }
+                    }
+                }
 
                 if (! $product) {
                     return response()->json([
@@ -555,12 +564,22 @@ class ProductMasterController extends Controller
                     }
                 }
 
+                $newParent = ($validated['parent'] === null || $validated['parent'] === '')
+                    ? null
+                    : $validated['parent'];
+
                 // Check if changing SKU/parent would create a duplicate
-                if ($validated['sku'] !== $originalSku || $validated['parent'] !== $originalParent) {
-                    $duplicate = ProductMaster::where('sku', $validated['sku'])
-                        ->where('parent', $validated['parent'])
-                        ->where('id', '!=', $product->id)
-                        ->first();
+                if ($validated['sku'] !== $originalSku || $newParent !== $product->parent) {
+                    $duplicateQuery = ProductMaster::where('sku', $validated['sku'])
+                        ->where('id', '!=', $product->id);
+                    if ($newParent === null) {
+                        $duplicateQuery->where(function ($q) {
+                            $q->whereNull('parent')->orWhere('parent', '');
+                        });
+                    } else {
+                        $duplicateQuery->where('parent', $newParent);
+                    }
+                    $duplicate = $duplicateQuery->first();
 
                     if ($duplicate) {
                         return response()->json([
@@ -572,7 +591,7 @@ class ProductMasterController extends Controller
                 }
 
                 $product->sku = $validated['sku'];
-                $product->parent = $validated['parent'];
+                $product->parent = $newParent;
                 $product->Values = $values;
                 $product->save();
 

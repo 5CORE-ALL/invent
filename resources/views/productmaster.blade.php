@@ -5296,6 +5296,7 @@
                 const newSaveBtn = saveBtn.cloneNode(true);
                 saveBtn.parentNode.replaceChild(newSaveBtn, saveBtn);
 
+                newSaveBtn.setAttribute('data-original-id', product.id || '');
                 newSaveBtn.setAttribute('data-original-sku', product.SKU || '');
                 newSaveBtn.setAttribute('data-original-parent', product.Parent || '');
                 newSaveBtn.innerHTML = '<i class="fas fa-save me-2"></i> Update Product';
@@ -5305,6 +5306,7 @@
 
                     const formData = getFormData();
                     formData.append('operation', 'update');
+                    formData.append('original_id', this.getAttribute('data-original-id') || '');
                     formData.append('original_sku', this.getAttribute('data-original-sku'));
                     formData.append('original_parent', this.getAttribute('data-original-parent'));
 
