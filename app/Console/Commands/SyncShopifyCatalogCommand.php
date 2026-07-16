@@ -21,7 +21,11 @@ class SyncShopifyCatalogCommand extends Command
 
         $this->info('Syncing Shopify catalog (main)...');
         $result = $sync->syncCatalog('main');
-        $this->info("Upserted ~{$result['products']} product rows, ~{$result['variants']} variant rows.");
+        $this->info("Upserted ~{$result['products']} product rows, ~{$result['variants']} variant rows"
+            .(! empty($result['pruned_products']) || ! empty($result['pruned_variants'])
+                ? " (pruned {$result['pruned_products']} products / {$result['pruned_variants']} variants)"
+                : '')
+            .'.');
 
         return self::SUCCESS;
     }

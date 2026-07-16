@@ -11,7 +11,7 @@ class ShopifyCatalogSyncService
 {
     /**
      * @param  'main'|'pls'  $store
-     * @return array{products: int, variants: int}
+     * @return array{products: int, variants: int, pruned_products?: int, pruned_variants?: int, completed?: bool}
      */
     public function syncCatalog(string $store): array
     {
@@ -39,6 +39,9 @@ class ShopifyCatalogSyncService
         $hasMore = true;
         $productCount = 0;
         $variantCount = 0;
+        $seenProductIds = [];
+        $seenVariantIds = [];
+        $completedFully = true;
 
         while ($hasMore) {
             $queryParams = [
@@ -60,6 +63,7 @@ class ShopifyCatalogSyncService
                     'status' => $response->status(),
                     'body' => substr($response->body(), 0, 2000),
                 ]);
+                $completedFully = false;
                 break;
             }
 
@@ -71,6 +75,8 @@ class ShopifyCatalogSyncService
                 if ($pid <= 0) {
                     continue;
                 }
+
+                $seenProductIds[$pid] = true;
 
                 $productRow = ShopifyCatalogProduct::updateOrCreate(
                     [
@@ -94,6 +100,8 @@ class ShopifyCatalogSyncService
                     if ($vid <= 0) {
                         continue;
                     }
+
+                    $seenVariantIds[$vid] = true;
 
                     ShopifyCatalogVariant::updateOrCreate(
                         [
@@ -122,7 +130,34 @@ class ShopifyCatalogSyncService
             }
         }
 
-        return ['products' => $productCount, 'variants' => $variantCount];
+        $prunedProducts = 0;
+        $prunedVariants = 0;
+        if ($completedFully && $seenProductIds !== []) {
+            $staleProductIds = ShopifyCatalogProduct::query()
+                ->where('store', $store)
+                ->whereNotIn('shopify_id', array_keys($seenProductIds))
+                ->pluck('id');
+            if ($staleProductIds->isNotEmpty()) {
+                $prunedVariants += ShopifyCatalogVariant::query()
+                    ->whereIn('shopify_catalog_product_id', $staleProductIds)
+                    ->delete();
+                $prunedProducts = ShopifyCatalogProduct::query()
+                    ->whereIn('id', $staleProductIds)
+                    ->delete();
+            }
+            $prunedVariants += ShopifyCatalogVariant::query()
+                ->where('store', $store)
+                ->whereNotIn('shopify_variant_id', array_keys($seenVariantIds))
+                ->delete();
+        }
+
+        return [
+            'products' => $productCount,
+            'variants' => $variantCount,
+            'pruned_products' => $prunedProducts,
+            'pruned_variants' => $prunedVariants,
+            'completed' => $completedFully,
+        ];
     }
 
     /**

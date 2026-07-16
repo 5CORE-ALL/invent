@@ -7,18 +7,25 @@
         @include('marketplace._page-heading', ['slug' => 'reverb', 'heading' => 'Reverb Listings'])
         <p class="text-muted mb-3">
             @if(!empty($liveMode) && ($linkTab ?? '') === 'linked')
-                <strong>Linked</strong> lists Shopify SKUs that are linked to Reverb (paginated 50/page).
+                <strong>Linked</strong> = live-verified active Shopify SKUs (from catalog sync) that are linked to Reverb.
                 <strong>Shopify Qty</strong> and <strong>Reverb Qty</strong> are loaded live for the current page only.
-                Mismatches on this page are auto-queued to sync. Use <em>Refresh live</em> to warm the full Reverb catalog in the background.
+                Use <em>Refresh live</em> to re-sync active Shopify catalog + warm Reverb in the background.
             @elseif(!empty($liveMode))
                 Page is paginated. Reverb Qty is live for the current page only.
             @else
-                Paginated Shopify catalog. Open <strong>Linked</strong> for live Shopify + live Reverb quantities.
+                <strong>All</strong> shows live-verified <em>active</em> Shopify SKUs stored in catalog sync — not the full local shopify_skus dump.
+                Open <strong>Linked</strong> for live Shopify + live Reverb quantities.
             @endif
         </p>
 
         @if(!empty($liveQueued))
             <div class="alert alert-info py-2">Queued {{ (int) $liveQueued }} SKU(s) for live inventory sync (Shopify → marketplace).</div>
+        @endif
+
+        @if(isset($shopifyCatalogReady) && empty($shopifyCatalogReady))
+            <div class="alert alert-warning py-2">Live-verified Shopify catalog is empty. Click <em>Refresh live</em> to sync active products from Shopify Admin.</div>
+        @elseif(!empty($shopifyCatalogSyncedAt))
+            <p class="small text-muted mb-2">Shopify catalog last synced: {{ $shopifyCatalogSyncedAt }}</p>
         @endif
 
         @include('marketplace._queue-status', ['slug' => 'reverb'])
@@ -35,15 +42,15 @@
                     @if(($linkTab ?? 'all') === 'not_in_shopify')
                         {{ $products->total() }} live Reverb SKU(s) not in Shopify
                     @elseif(!empty($liveMode) && ($linkTab ?? '') === 'linked')
-                        {{ $products->total() }} linked Shopify SKU(s) (live qty on page)
+                        {{ $products->total() }} linked live-verified Shopify SKU(s)
                     @elseif(!empty($liveMode))
                         {{ $products->total() }} live linked Reverb SKU(s)
                     @else
-                        {{ $products->total() }} Shopify SKU(s)
+                        {{ $products->total() }} live-verified active Shopify SKU(s)
                     @endif
                 </span>
                 <div class="d-flex gap-2 flex-wrap">
-                    @if(in_array(($linkTab ?? ''), ['linked', 'not_in_shopify'], true))
+                    @if(in_array(($linkTab ?? ''), ['all', 'linked', 'unlinked', 'not_in_shopify'], true))
                         <a href="{{ request()->fullUrlWithQuery(['refresh_live' => 1]) }}" class="btn btn-sm btn-outline-success">
                             <i class="ri-flashlight-line"></i> Refresh live
                         </a>
@@ -111,7 +118,7 @@
 
                 <ul class="nav nav-tabs nav-bordered mb-3" role="tablist">
                     <li class="nav-item">
-                        <a href="{{ request()->url() }}?link=all&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? 'all') === 'all' ? 'active' : '' }}">All {{ $counts['all'] ?? 0 }}</a>
+                        <a href="{{ request()->url() }}?link=all&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? 'all') === 'all' ? 'active' : '' }}">All (live) {{ $counts['all'] ?? 0 }}</a>
                     </li>
                     <li class="nav-item">
                         <a href="{{ request()->url() }}?link=linked&state={{ urlencode($stateTab) }}&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'linked' ? 'active' : '' }}">Linked {{ $counts['linked'] ?? 0 }}</a>
@@ -199,7 +206,7 @@
                                         @if(($linkTab ?? 'all') === 'not_in_shopify')
                                             No live Reverb listings found without a matching Shopify SKU.
                                         @else
-                                            No Shopify SKUs found.
+                                            No live-verified active Shopify SKUs found. Click Refresh live to sync from Shopify.
                                         @endif
                                         @if(($linkTab ?? 'all') === 'linked')
                                             None linked yet — click <strong>Sync Reverb link map</strong> after SKUs exist in Reverb.
