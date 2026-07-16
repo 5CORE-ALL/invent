@@ -43,22 +43,33 @@ final class AmazonAcosSbgtRule
 
     /**
      * Active rule (cached). Falls back to {@see defaults} when the table is missing or empty.
+     * If file cache dirs are missing/unwritable, loads from DB without caching.
      *
      * @return array{bands: array<int, array{acos_from: float, acos_to: float, sbgt: int, label: string, color: string}>}
      */
     public static function resolvedRule(): array
     {
-        return Cache::remember(self::CACHE_KEY, 86400, static function (): array {
-            if (! Schema::hasTable('amazon_acos_sbgt_rule_settings')) {
-                return self::defaults();
-            }
-            $row = AmazonAcosSbgtRuleSetting::query()->orderBy('id')->first();
-            if ($row === null || ! is_array($row->rule) || $row->rule === []) {
-                return self::defaults();
-            }
+        try {
+            return Cache::remember(self::CACHE_KEY, 86400, static fn (): array => self::loadResolvedRule());
+        } catch (\Throwable) {
+            return self::loadResolvedRule();
+        }
+    }
 
-            return self::normalizeRule($row->rule);
-        });
+    /**
+     * @return array{bands: array<int, array{acos_from: float, acos_to: float, sbgt: int, label: string, color: string}>}
+     */
+    private static function loadResolvedRule(): array
+    {
+        if (! Schema::hasTable('amazon_acos_sbgt_rule_settings')) {
+            return self::defaults();
+        }
+        $row = AmazonAcosSbgtRuleSetting::query()->orderBy('id')->first();
+        if ($row === null || ! is_array($row->rule) || $row->rule === []) {
+            return self::defaults();
+        }
+
+        return self::normalizeRule($row->rule);
     }
 
     public static function forgetResolvedCache(): void

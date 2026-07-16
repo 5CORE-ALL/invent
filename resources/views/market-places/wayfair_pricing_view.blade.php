@@ -27,26 +27,6 @@
             background: #f8fafc !important; border-top: 1px solid #e2e8f0 !important;
             padding: 10px 16px !important;
         }
-        .wf-manual-dropdown { position: relative; display: inline-block; }
-        .wf-manual-dropdown .dropdown-menu {
-            position: absolute; top: 100%; left: 0; z-index: 1050;
-            display: none; min-width: 200px; padding: .5rem 0; margin: 0;
-            background: #fff; border: 1px solid #dee2e6; border-radius: .375rem;
-            box-shadow: 0 .125rem .25rem rgba(0,0,0,.075);
-        }
-        .wf-manual-dropdown.show .dropdown-menu { display: block; }
-        .wf-dropdown-item {
-            display: block; width: 100%; padding: .5rem 1rem; clear: both;
-            font-weight: 400; color: #212529; text-decoration: none;
-            background: transparent; border: 0; cursor: pointer; white-space: nowrap;
-        }
-        .wf-dropdown-item:hover { background: #e9ecef; }
-        .wf-sc { display:inline-block; width:12px; height:12px; border-radius:50%; margin-right:6px; border:1px solid #ddd; }
-        .wf-sc.def { background:#6c757d; }
-        .wf-sc.red { background:#dc3545; }
-        .wf-sc.yellow { background:#ffc107; }
-        .wf-sc.green { background:#28a745; }
-        .wf-sc.pink { background:#e83e8c; }
         /* SKU column: smooth width change when hover expands (+20% via JS) */
         #wayfair-pricing-table .tabulator-col[tabulator-field="sku"],
         #wayfair-pricing-table .tabulator-cell[tabulator-field="sku"] {
@@ -58,30 +38,31 @@
         }
         /* NRP (REQ / NR) emoji select — matches eBay NR/REQ style */
 
-        /* Summary badges — horizontal scroll on narrow viewports (same as Faire / AliExpress pricing) */
-        #wf-summary-stats .ebay2-summary-badge-row {
-            display: flex;
-            flex-wrap: nowrap;
-            align-items: stretch;
-            gap: clamp(0.2rem, 0.5vw, 0.45rem);
-            width: 100%;
-            overflow-x: auto;
-            -webkit-overflow-scrolling: touch;
-            scrollbar-width: thin;
+        /* Column visibility dropdown — 4 columns (same pattern as amazon-tabulator-view) */
+        #wf-column-dropdown-menu.column-dropdown-multicol {
+            min-width: 560px;
+            max-height: 420px;
+            overflow-y: auto;
+            padding: 6px 4px;
+            column-count: 4;
+            column-gap: 4px;
         }
-        #wf-summary-stats .ebay2-summary-badge-row > .badge {
-            flex: 1 1 0;
-            min-width: 0;
-            font-size: clamp(0.62rem, 0.35rem + 0.85vw, 1.05rem);
-            padding: clamp(0.28rem, 0.4vw, 0.5rem) clamp(0.2rem, 0.5vw, 0.5rem);
-            font-weight: bold;
-            box-sizing: border-box;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            text-align: center;
+        #wf-column-dropdown-menu.column-dropdown-multicol > li {
+            break-inside: avoid;
+            -webkit-column-break-inside: avoid;
+            page-break-inside: avoid;
+        }
+        #wf-column-dropdown-menu.column-dropdown-multicol .dropdown-item {
+            padding: 3px 10px;
             white-space: nowrap;
         }
+        @media (max-width: 768px) {
+            #wf-column-dropdown-menu.column-dropdown-multicol {
+                min-width: 320px;
+                column-count: 2;
+            }
+        }
+
     </style>
 @endsection
 
@@ -93,161 +74,114 @@
 
     <div class="row">
         <div class="col-12">
-            <div class="alert alert-info py-2 mb-3">
-                <strong>Sales</strong> match <a href="{{ route('wayfair.daily.sales') }}" class="alert-link">Wayfair Sales Data</a>
-                (L30, unit price × quantity; join on <strong>Supplier Part Number</strong> / SKU). <strong>Analytics</strong> column is your uploaded base cost (New Base Cost / Current Base Cost; optional stock).
-            </div>
-
-            <div class="card border-warning mb-3">
-                <div class="card-header bg-warning bg-opacity-25 py-2">
-                    <strong><i class="fas fa-upload me-1"></i> Base cost upload</strong>
-                    <span class="text-muted small ms-2">Table below shows merged product masters, sales, and uploaded base costs.</span>
-                </div>
-                <div class="card-body py-2 d-flex flex-wrap align-items-center gap-2">
-                    <button type="button" class="btn btn-sm btn-warning" data-bs-toggle="modal" data-bs-target="#uploadWayfairPriceModal">
-                        <i class="fas fa-upload"></i> Upload price
-                    </button>
-                </div>
-            </div>
-
             <div class="card">
                 <div class="card-body">
                     <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                        {{-- Summary badges before All Rows filter --}}
+                        <span class="badge bg-dark fs-6 p-2" id="wf-rows-count-badge" style="color:white;font-weight:700;" title="Number of rows currently shown (after filters)">Row: 0</span>
+                        <span class="badge bg-success fs-6 p-2 d-none" id="wf-total-profit-badge" style="font-weight:700;" aria-hidden="true">PFT: $0</span>
+                        <span class="badge bg-primary fs-6 p-2" id="wf-total-sales-badge" style="color:black;font-weight:700;">Sales: $0</span>
+                        <span class="badge bg-info fs-6 p-2" id="wf-avg-gpft-badge" style="color:black;font-weight:700;" title="Order-style GPFT%: margin × L30 sales − LP×sold (margin from Marketplace % for Wayfair).">GPFT: 0%</span>
+                        <span class="badge fs-6 p-2" id="wf-avg-roi-badge" style="background-color:#6f42c1;color:white;font-weight:700;" title="GROI% = (Σ PFT ÷ Σ COGS) × 100.">GROI: 0%</span>
+                        <span class="badge bg-warning fs-6 p-2 d-none" id="wf-avg-price-badge" style="color:black;font-weight:700;" aria-hidden="true" title="Weighted average price (Σ sales ÷ Σ units).">Price: $0.00</span>
+                        <span class="badge bg-info fs-6 p-2" id="wf-total-views-badge" style="color:black;font-weight:700;" title="Σ OV L30 (views) across filtered SKUs.">Views: 0</span>
+                        <span class="badge fs-6 p-2" id="wf-total-fqty-badge" style="background-color:#20c997;color:black;font-weight:700;" title="Total units sold (Σ al30).">Qty: 0</span>
+                        <span class="badge bg-success fs-6 p-2" id="wf-avg-cvr-badge" style="color:black;font-weight:700;" title="CVR = (Σ sold ÷ Σ OV L30) × 100.">CVR: 0%</span>
+                        <span class="badge bg-secondary fs-6 p-2" id="wf-nmap-count-badge" style="color:white;font-weight:700;cursor:pointer;" title="Click to filter N Map (listed, INV &gt; 0, price &gt; 0, |INV − Wayfair stock| &gt; 3)">N Map: 0</span>
+                        <span class="badge bg-secondary fs-6 p-2" id="wf-missing-badge" style="color:white;font-weight:700;cursor:pointer;" title="Click to filter ML — Missing Listing (not NR, INV &gt; 0, no uploaded Wayfair price)">ML: 0</span>
+                        <span class="badge bg-success fs-6 p-2" id="wf-more-sold-badge" style="color:black;font-weight:700;cursor:pointer;" title="Click to filter: sold &gt; 0">Sold &gt;0: 0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="wf-zero-sold-badge" style="color:white;font-weight:700;cursor:pointer;" title="Click to filter: 0 sold (al30)">0 Sold: 0</span>
+
                         <select id="wf-row-type-filter" class="form-select form-select-sm" style="width:120px;">
                             <option value="all" selected>All Rows</option>
                             <option value="parents">Parents</option>
                             <option value="skus">SKUs</option>
                         </select>
-                        <select id="wf-inv-filter" class="form-select form-select-sm" style="width:140px;">
-                            <option value="all">All Inventory</option>
-                            <option value="zero">0 Inventory</option>
-                            <option value="more" selected>More than 0</option>
+                        <select id="wf-inv-filter" class="form-select form-select-sm" style="width:auto; display:inline-block;">
+                            <option value="all">INV</option>
+                            <option value="zero">Zero</option>
+                            <option value="more" selected>More</option>
                         </select>
-                        <select id="wf-stock-filter" class="form-select form-select-sm" style="width:150px;">
-                            <option value="all">Wayfair stock</option>
-                            <option value="zero">0 Wayfair stock</option>
-                            <option value="more">Wayfair stock &gt; 0</option>
+                        <select id="wf-gpft-filter" class="form-select form-select-sm" style="width:auto; display:inline-block;">
+                            <option value="all">GPFT%</option>
+                            <option value="negative">Negative</option>
+                            <option value="0-10">0-10%</option>
+                            <option value="10-20">10-20%</option>
+                            <option value="20-30">20-30%</option>
+                            <option value="30-40">30-40%</option>
+                            <option value="40plus">Above 40%</option>
                         </select>
-                        <div class="d-flex flex-column gap-1" style="width:130px;" title="CVR = sold (al30) ÷ OV L30">
-                            <select id="wf-gpft-filter" class="form-select form-select-sm">
-                                <option value="all">GPFT%</option>
-                                <option value="negative">Negative</option>
-                                <option value="0-10">0–10%</option>
-                                <option value="10-20">10–20%</option>
-                                <option value="20-30">20–30%</option>
-                                <option value="30-40">30–40%</option>
-                                <option value="40-50">40–50%</option>
-                                <option value="50plus">Above 50%</option>
-                            </select>
-                            <select id="wf-cvr-filter" class="form-select form-select-sm">
-                                <option value="all">All CVR%</option>
-                                <option value="0-0">0%</option>
-                                <option value="0-2">0-2%</option>
-                                <option value="2-4">2-4%</option>
-                                <option value="4-7">4-7%</option>
-                                <option value="7-13">7-13%</option>
-                                <option value="13plus">13%+</option>
-                            </select>
-                        </div>
-                        <select id="wf-roi-filter" class="form-select form-select-sm" style="width:130px;">
-                            <option value="all">ROI%</option>
+                        <select id="wf-cvr-filter" class="form-select form-select-sm" style="width:auto; display:inline-block;" title="CVR = sold (al30) ÷ OV L30">
+                            <option value="all">CVR%</option>
+                            <option value="0-0">0%</option>
+                            <option value="0-3">0-3%</option>
+                            <option value="3-7">3-7%</option>
+                            <option value="7-13">7-13%</option>
+                            <option value="13plus">13%+</option>
+                        </select>
+                        <select id="wf-roi-filter" class="form-select form-select-sm" style="width:auto; display:inline-block;">
+                            <option value="all">GROI%</option>
                             <option value="lt40">&lt; 40%</option>
-                            <option value="40-75">40–75%</option>
-                            <option value="75-125">75–125%</option>
-                            <option value="gt125">125%+</option>
+                            <option value="40-60">40–60%</option>
+                            <option value="60-80">60–80%</option>
+                            <option value="80-100">80–100%</option>
+                            <option value="gt100">100%+</option>
                         </select>
-                        {{-- Sold dropdown (mirrors Amazon tabulator + /doba + /shopify-b2c + /macys + /purchasing-power).
-                             Backed by `al30` (Wayfair daily L30 sold qty). Adds Amazon-style
-                             "Sold > 0" / "0 Sold" options at the top while keeping the granular
-                             1–10 / 10+ buckets below. This dropdown is the single source of truth —
-                             #wf-zero-sold-badge / #wf-more-sold-badge click handlers just toggle
-                             this dropdown so badges + dropdown can never disagree.
-                             Note: binary cases (`0 Sold`, `Sold > 0`) intentionally do NOT enforce
-                             inv > 0 — matches Amazon styling + existing badge click semantics.
-                             The granular 1–10 / 10+ cases retain inv > 0 (restock-decision focus). --}}
-                        <select id="wf-fqty-filter" class="form-select form-select-sm" style="width:130px;" title="Units sold (Wayfair daily L30 / al30)">
-                            <option value="all">Sold</option>
-                            <option value="more">Sold &gt; 0</option>
-                            <option value="0">0 Sold</option>
-                            <option value="0-10">1–10</option>
-                            <option value="10plus">10+</option>
+                        <select id="wf-dil-filter" class="form-select form-select-sm" style="width:auto; display:inline-block;">
+                            <option value="all">DIL%</option>
+                            <option value="red">Red &lt;25%</option>
+                            <option value="green">Green 25-50%</option>
+                            <option value="pink">Pink 50%+</option>
                         </select>
-                        <select id="wf-map-filter" class="form-select form-select-sm" style="width:120px;">
-                            <option value="all">Map</option>
-                            <option value="map">Map only</option>
-                            <option value="nmap">N Map only</option>
-                        </select>
-                        <div class="wf-manual-dropdown">
-                            <button class="btn btn-light btn-sm wf-dil-toggle" type="button" id="wf-dil-btn">
-                                <span class="wf-sc def"></span>DIL%
-                            </button>
-                            <ul class="dropdown-menu">
-                                <li><a class="wf-dropdown-item wf-dil-item active" href="#" data-color="all">
-                                    <span class="wf-sc def"></span>All DIL</a></li>
-                                <li><a class="wf-dropdown-item wf-dil-item" href="#" data-color="red">
-                                    <span class="wf-sc red"></span>Red (&lt;16.7%)</a></li>
-                                <li><a class="wf-dropdown-item wf-dil-item" href="#" data-color="yellow">
-                                    <span class="wf-sc yellow"></span>Yellow (16.7–25%)</a></li>
-                                <li><a class="wf-dropdown-item wf-dil-item" href="#" data-color="green">
-                                    <span class="wf-sc green"></span>Green (25–50%)</a></li>
-                                <li><a class="wf-dropdown-item wf-dil-item" href="#" data-color="pink">
-                                    <span class="wf-sc pink"></span>Pink (50%+)</a></li>
-                            </ul>
-                        </div>
                         <input type="text" id="wf-pricing-parent-search" class="form-control form-control-sm" style="max-width:200px;" placeholder="Search parent..." title="Filter by Parent column">
                         <input type="text" id="wf-pricing-sku-search" class="form-control form-control-sm" style="max-width:220px;" placeholder="Search SKU...">
-                        <button type="button" id="wf-refresh-pricing" class="btn btn-sm btn-outline-primary">
-                            <i class="fa fa-refresh"></i> Refresh
-                        </button>
-                        <button type="button" id="wf-export-pricing" class="btn btn-sm btn-success">
-                            <i class="fas fa-file-csv"></i> Export CSV
+                        <button type="button" id="wf-export-pricing" class="btn btn-sm btn-success" title="Export CSV" aria-label="Export CSV">
+                            <i class="fas fa-file-csv"></i>
                         </button>
                         <div class="dropdown d-inline-block">
-                            <button class="btn btn-sm btn-secondary dropdown-toggle" type="button" id="wfColumnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-                                <i class="fa fa-eye"></i> Columns
+                            <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
+                                id="wfColumnVisibilityDropdown" data-bs-toggle="dropdown" data-bs-auto-close="outside"
+                                aria-expanded="false" title="Columns">
+                                <i class="fas fa-columns"></i>
                             </button>
-                            <ul class="dropdown-menu py-1" aria-labelledby="wfColumnVisibilityDropdown" id="wf-column-dropdown-menu" style="max-height: 400px; overflow-y: auto; min-width: 220px;">
+                            <ul class="dropdown-menu column-dropdown-multicol" aria-labelledby="wfColumnVisibilityDropdown" id="wf-column-dropdown-menu">
                             </ul>
                         </div>
-                        <button type="button" id="wf-show-all-columns-btn" class="btn btn-sm btn-outline-secondary">
-                            <i class="fa fa-eye"></i> Show all
-                        </button>
                         <button id="wf-price-mode-btn" type="button" class="btn btn-sm btn-secondary" title="Cycle: Off → Decrease → Increase → Same SPRICE (enter one price, applies to all selected rows)">
-                            <i class="fas fa-exchange-alt"></i> Pricing mode
+                            <i class="fas fa-exchange-alt"></i> Prc M
                         </button>
 
-                        {{-- Target ROI% bulk control — back-solves S PRC for selected rows so SROI = Target ROI%.
-                             Wayfair's SGPFT / SROI server-side formulas do NOT include shipping, so the back-solve omits it too.
+                        {{-- Target ROI% bulk control — Amazon-style compact UI; Wayfair back-solve omits ship.
                              Formula: sprice = LP × (1 + ROI%/100) / margin   (margin = per-row `_margin`, default 0.95) --}}
                         <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
                             id="wf-target-roi-controls"
-                            title="Target ROI% — sets S PRC = LP × (1 + Target ROI%/100) / margin on every checked row (back-solves so SROI column equals the target)">
+                            title="Target ROI% — sets S PRC so the SROI column equals the target">
                             <label for="wf-target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
-                                Target ROI%:
+                                <span style="font-size:1em;" aria-hidden="true">🎯</span> ROI%:
                             </label>
                             <input type="number" id="wf-target-roi-input" class="form-control form-control-sm text-end"
-                                placeholder="e.g. 30" step="0.1" style="width: 80px;"
-                                title="Target ROI% applied to all checked rows when you click 'Apply S PRC'">
-                            <button id="wf-apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
-                                title="Compute & save S PRC = LP × (1 + Target ROI%/100) / margin for every checked row">
-                                <i class="fas fa-calculator"></i> Apply S PRC
+                                placeholder="30" step="0.1" style="width: 52px;"
+                                title="Target ROI% applied to all selected rows — matches the SROI column">
+                            <button id="wf-apply-target-roi-btn" class="btn btn-sm btn-primary" type="button"
+                                title="Compute & save S PRC so SROI = Target ROI% for every selected row">
+                                <i class="fas fa-calculator"></i>
                             </button>
                         </div>
 
-                        {{-- Target GPFT% bulk control — back-solves S PRC for selected rows so SGPFT = Target GPFT%.
+                        {{-- Target GPFT% bulk control — Amazon-style compact UI.
                              Formula: sprice = LP / (margin − GPFT%/100). Target GPFT% must be < margin*100. --}}
                         <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
                             id="wf-target-gpft-controls"
-                            title="Target GPFT% — sets S PRC = LP / (margin − Target GPFT%/100) on every checked row (back-solves so SGPFT column equals the target)">
+                            title="Target GPFT% — sets S PRC so the SGPFT column equals the target">
                             <label for="wf-target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
-                                Target GPFT%:
+                                <span style="font-size:1em;" aria-hidden="true">🎯</span> GPFT%:
                             </label>
                             <input type="number" id="wf-target-gpft-input" class="form-control form-control-sm text-end"
-                                placeholder="e.g. 30" step="0.1" style="width: 80px;"
-                                title="Target GPFT% applied to all checked rows when you click 'Apply S PRC'. Must be less than the Wayfair take-home margin (typically < 95%).">
-                            <button id="wf-apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
-                                title="Compute & save S PRC = LP / (margin − Target GPFT%/100) for every checked row">
-                                <i class="fas fa-calculator"></i> Apply S PRC
+                                placeholder="30" step="0.1" style="width: 52px;"
+                                title="Target GPFT% applied to all selected rows — matches the SGPFT column. Must be less than take-home margin (typically &lt; 95%).">
+                            <button id="wf-apply-target-gpft-btn" class="btn btn-sm btn-primary" type="button"
+                                title="Compute & save S PRC so SGPFT = Target GPFT% for every selected row">
+                                <i class="fas fa-calculator"></i>
                             </button>
                         </div>
 
@@ -266,6 +200,10 @@
                                 <i class="fas fa-step-forward"></i>
                             </button>
                         </div>
+
+                        <button type="button" class="btn btn-sm btn-warning" data-bs-toggle="modal" data-bs-target="#uploadWayfairPriceModal" title="Upload Wayfair base cost sheet">
+                            <i class="fas fa-upload"></i> Upload price
+                        </button>
                     </div>
 
                     <div id="wf-discount-container" class="p-2 bg-light border rounded mb-2" style="display:none;">
@@ -282,25 +220,6 @@
                             <button id="wf-clear-sprice-btn" type="button" class="btn btn-danger btn-sm">
                                 <i class="fas fa-eraser"></i> Clear SPRICE
                             </button>
-                        </div>
-                    </div>
-
-                    <div id="wf-summary-stats" class="mt-2 p-3 bg-light rounded mb-3">
-                        <div class="d-flex flex-wrap gap-2 ebay2-summary-badge-row" role="group" aria-label="Summary metrics">
-                            <span class="badge bg-primary fs-6 p-2" id="wf-total-sales-badge" style="font-weight:700;">Sales: $0</span>
-                            <span class="badge bg-warning fs-6 p-2" id="wf-total-fqty-badge" style="font-weight:700;color:#111;">Sold: 0</span>
-                            <span class="badge bg-success fs-6 p-2 d-none" id="wf-total-profit-badge" style="font-weight:700;" aria-hidden="true">Profit: 0</span>
-                            <span class="badge bg-info fs-6 p-2" id="wf-avg-gpft-badge" style="font-weight:700;color:#111;" title="Order-style GPFT%: margin × L30 sales − LP×sold (margin from Marketplace % for Wayfair).">GPFT: 0%</span>
-                            <span class="badge bg-secondary fs-6 p-2" id="wf-avg-roi-badge" style="font-weight:700;color:#fff;" title="GROI% = (Σ PFT ÷ Σ COGS) × 100.">GROI: 0%</span>
-                            <span class="badge fs-6 p-2" id="wf-ads-percent-badge" style="background-color:#d63384;color:white;font-weight:700;" title="Wayfair has no ads — Ads%/TACOS is always 0% (same as /all-marketplace-master).">Ads: 0%</span>
-                            <span class="badge fs-6 p-2" id="wf-npft-percent-badge" style="background-color:#0f766e;color:white;font-weight:700;" title="NPFT% = GPFT% (Wayfair has no ads — same as /all-marketplace-master N PFT).">NPFT: 0%</span>
-                            <span class="badge fs-6 p-2" id="wf-nroi-percent-badge" style="background-color:#6f42c1;color:white;font-weight:700;" title="NROI% = GROI% (Wayfair has no ads — same as /all-marketplace-master N ROI).">NROI: 0%</span>
-                            <span class="badge bg-danger fs-6 p-2" id="wf-missing-badge" style="font-weight:700;cursor:pointer;" title="Click to filter: Missing L — not NR, INV &gt; 0, no uploaded Wayfair price.">Missing L: 0</span>
-                            <span class="badge fs-6 p-2" id="wf-test-badge" style="font-weight:700;background:#6f42c1;color:#fff;" title="Test: actual count via getRows(active)">Test: 0</span>
-                            <span class="badge fs-6 p-2" id="wf-map-count-badge" style="font-weight:700;background:#198754;color:#fff;cursor:pointer;" title="Click to filter: listed, INV &gt; 0, price &gt; 0, |INV − Wayfair stock| ≤ 3">Map: 0</span>
-                            <span class="badge fs-6 p-2" id="wf-nmap-count-badge" style="font-weight:700;background:#a71d2a;color:#fff;cursor:pointer;" title="Click to filter: listed, INV &gt; 0, price &gt; 0, |INV − Wayfair stock| &gt; 3">N Map: 0</span>
-                            <span class="badge fs-6 p-2" id="wf-zero-sold-badge" style="font-weight:700;background:#dc3545;color:#fff;cursor:pointer;" title="Click to filter: 0 sold (al30)">0 Sold: 0</span>
-                            <span class="badge fs-6 p-2" id="wf-more-sold-badge" style="font-weight:700;background:#28a745;color:#fff;cursor:pointer;" title="Click to filter: sold &gt; 0">&gt;0 Sold: 0</span>
                         </div>
                     </div>
 
@@ -379,8 +298,8 @@
         let wfMissingActive = false;
         let wfMapActive = false;
         let wfNMapActive = false;
-        // wfZeroSoldActive / wfMoreSoldActive removed — Sold filter is now owned by the
-        // #wf-fqty-filter dropdown (which is also driven by the 0 Sold / >0 Sold badges).
+        // Sold filter via badges: 'all' | '0' | 'more' (al30)
+        let wfSoldFilter = 'all';
 
         let wfDecreaseModeActive = false;
         let wfIncreaseModeActive = false;
@@ -659,7 +578,7 @@
                 return;
             }
             $btn.removeClass('btn-danger btn-primary btn-warning').addClass('btn-secondary')
-                .html('<i class="fas fa-exchange-alt"></i> Pricing mode');
+                .html('<i class="fas fa-exchange-alt"></i> Prc M');
             if (selectCol) selectCol.hide();
             wfSelectedSkus.clear();
             wfUpdateSelectedCount();
@@ -826,31 +745,33 @@
         }
 
         function updateSummary() {
-            if (!table) { $('#wf-test-badge').text('Test: no table'); return; }
+            if (!table) return;
             let rows;
             try {
                 rows = table.getData('active');
-            } catch(e) {
-                $('#wf-test-badge').text('Test: err=' + e.message);
+            } catch (e) {
                 return;
             }
-            $('#wf-test-badge').text('Test: rows=' + (rows ? rows.length : 'null'));
-            if (!rows || !rows.length) return;
+            if (!rows) return;
 
-            let totalSales = 0, totalFqty = 0, totalProfit = 0, totalCogs = 0;
+            let totalSales = 0, totalFqty = 0, totalProfit = 0, totalCogs = 0, totalViews = 0;
             let missingCount = 0, mapCount = 0, nmapCount = 0;
             let zeroSold = 0, moreSold = 0;
+            let visibleRowCount = 0;
 
             rows.forEach(row => {
+                visibleRowCount++;
                 if (row.is_parent) return;
                 const isMissing = wfRowIsMissing(row);
                 const fqty = parseFloat(row.al30) || 0;
                 const sales = parseFloat(row.sales) || 0;
                 const lp = parseFloat(row.lp) || 0;
+                const views = parseFloat(row.ov_l30) || 0;
                 const listProfitPerUnit = parseFloat(row.profit) || 0;
 
                 totalSales += sales;
                 totalFqty += fqty;
+                totalViews += views;
                 totalCogs += lp * fqty;
 
                 const keep = wayfairMarginFromRow(row);
@@ -874,24 +795,27 @@
 
             const pftPct = totalSales > 0 ? (totalProfit / totalSales) * 100 : 0;
             const roiPct = totalCogs > 0 ? (totalProfit / totalCogs) * 100 : 0;
+            const avgPrice = totalFqty > 0 ? (totalSales / totalFqty) : 0;
+            const avgCvr = totalViews > 0 ? (totalFqty / totalViews) * 100 : 0;
 
+            // Same labels/order as /amazon-tabulator-view (Wayfair Ads%=0 → PFT=GPFT, NROI=GROI).
+            $('#wf-rows-count-badge').text('Row: ' + visibleRowCount.toLocaleString());
             $('#wf-total-sales-badge').text('Sales: $' + Math.round(totalSales).toLocaleString());
-            $('#wf-total-fqty-badge').text('Sold: ' + totalFqty.toLocaleString());
-            $('#wf-total-profit-badge').text('Profit: ' + Math.round(totalProfit).toLocaleString());
+            $('#wf-total-fqty-badge').text('Qty: ' + totalFqty.toLocaleString());
+            $('#wf-total-profit-badge').text('PFT: $' + Math.round(totalProfit).toLocaleString());
             $('#wf-avg-gpft-badge').text('GPFT: ' + Math.round(pftPct) + '%');
             $('#wf-avg-roi-badge').text('GROI: ' + Math.round(roiPct) + '%');
-            // Wayfair has no ads — Ads%=0, NPFT=GPFT, NROI=GROI (same as /all-marketplace-master).
-            $('#wf-ads-percent-badge').text('Ads: 0%');
-            $('#wf-npft-percent-badge').text('NPFT: ' + Math.round(pftPct) + '%');
-            $('#wf-nroi-percent-badge').text('NROI: ' + Math.round(roiPct) + '%');
-            $('#wf-missing-badge').text('Missing L: ' + missingCount.toLocaleString());
-            $('#wf-map-count-badge').text('Map: ' + mapCount.toLocaleString());
+            $('#wf-avg-price-badge').text('Price: $' + avgPrice.toFixed(2));
+            $('#wf-total-views-badge').text('Views: ' + Math.round(totalViews).toLocaleString());
+            $('#wf-avg-cvr-badge').text('CVR: ' + avgCvr.toFixed(1) + '%');
+            $('#wf-missing-badge').text('ML: ' + missingCount.toLocaleString());
             $('#wf-nmap-count-badge').text('N Map: ' + nmapCount.toLocaleString());
             $('#wf-zero-sold-badge').text('0 Sold: ' + zeroSold.toLocaleString());
-            $('#wf-more-sold-badge').text('>0 Sold: ' + moreSold.toLocaleString());
+            $('#wf-more-sold-badge').text('Sold >0: ' + moreSold.toLocaleString());
 
-            // Test badge uses the same rows — if it matches Missing L the pipeline is correct.
-            $('#wf-test-badge').text('Test: ' + missingCount.toLocaleString());
+            // Active filter colors — same pattern as Amazon N Map / ML badges.
+            $('#wf-nmap-count-badge').toggleClass('bg-secondary', !wfNMapActive).toggleClass('bg-danger', wfNMapActive);
+            $('#wf-missing-badge').toggleClass('bg-secondary', !wfMissingActive).toggleClass('bg-danger', wfMissingActive);
         }
 
         // Play / Pause parent navigation state
@@ -977,13 +901,10 @@
             const parentSearch = ($('#wf-pricing-parent-search').val() || '').toLowerCase().trim();
             const rowType = $('#wf-row-type-filter').val();
             const invFilter = $('#wf-inv-filter').val();
-            const stockFilter = $('#wf-stock-filter').val();
             const gpftFilter = $('#wf-gpft-filter').val();
             const cvrFilter = $('#wf-cvr-filter').val();
             const roiFilter = $('#wf-roi-filter').val();
-            const fqtyFilter = $('#wf-fqty-filter').val();
-            const mapFilter = $('#wf-map-filter').val();
-            const dilColor = $('.wf-dil-item.active').data('color') || 'all';
+            const dilFilter = $('#wf-dil-filter').val();
 
             if (skuSearch) {
                 table.addFilter(d => (d.sku || '').toLowerCase().includes(skuSearch));
@@ -1008,18 +929,16 @@
             } else if (invFilter === 'more') {
                 table.addFilter(d => (parseInt(d.inv, 10) || 0) > 0);
             }
-            if (stockFilter === 'zero') {
-                table.addFilter(d => (parseInt(d.ae_stock, 10) || 0) === 0);
-            } else if (stockFilter === 'more') {
-                table.addFilter(d => (parseInt(d.ae_stock, 10) || 0) > 0);
-            }
             if (gpftFilter !== 'all') {
                 table.addFilter(function(d) {
                     const gpft = parseFloat(d.gpft) || 0;
                     if (gpftFilter === 'negative') return gpft < 0;
-                    if (gpftFilter === '50plus') return gpft >= 50;
-                    const parts = gpftFilter.split('-').map(Number);
-                    return gpft >= parts[0] && gpft < parts[1];
+                    if (gpftFilter === '0-10') return gpft >= 0 && gpft < 10;
+                    if (gpftFilter === '10-20') return gpft >= 10 && gpft < 20;
+                    if (gpftFilter === '20-30') return gpft >= 20 && gpft < 30;
+                    if (gpftFilter === '30-40') return gpft >= 30 && gpft < 40;
+                    if (gpftFilter === '40plus') return gpft >= 40;
+                    return true;
                 });
             }
             if (cvrFilter !== 'all') {
@@ -1029,9 +948,8 @@
                     const cvrPercent = ov > 0 ? (sold / ov) * 100 : 0;
                     const cvrRounded = Math.round(cvrPercent * 100) / 100;
                     if (cvrFilter === '0-0') return cvrRounded === 0;
-                    if (cvrFilter === '0-2') return cvrRounded > 0 && cvrRounded <= 2;
-                    if (cvrFilter === '2-4') return cvrRounded > 2 && cvrRounded <= 4;
-                    if (cvrFilter === '4-7') return cvrRounded > 4 && cvrRounded <= 7;
+                    if (cvrFilter === '0-3') return cvrRounded > 0 && cvrRounded <= 3;
+                    if (cvrFilter === '3-7') return cvrRounded > 3 && cvrRounded <= 7;
                     if (cvrFilter === '7-13') return cvrRounded > 7 && cvrRounded <= 13;
                     if (cvrFilter === '13plus') return cvrRounded > 13;
                     return true;
@@ -1042,40 +960,24 @@
                     if (d.is_parent) return true;
                     const roi = parseFloat(d.groi) || 0;
                     if (roiFilter === 'lt40') return roi < 40;
-                    if (roiFilter === '40-75') return roi >= 40 && roi < 75;
-                    if (roiFilter === '75-125') return roi >= 75 && roi < 125;
-                    if (roiFilter === 'gt125') return roi >= 125;
-                    return true;
+                    if (roiFilter === 'gt100') return roi > 100;
+                    const parts = roiFilter.split('-').map(Number);
+                    return roi >= parts[0] && roi <= parts[1];
                 });
             }
-            if (fqtyFilter !== 'all') {
-                table.addFilter(function(d) {
-                    const fqty = parseFloat(d.al30) || 0;
-                    // Binary Amazon-style cases: no inv > 0 constraint (matches Amazon + the
-                    // legacy badge click behavior). Granular 1–10 / 10+ buckets keep the
-                    // inv > 0 gate so they remain useful for restock decisions.
-                    if (fqtyFilter === '0')    return fqty === 0;
-                    if (fqtyFilter === 'more') return fqty > 0;
-                    if ((parseInt(d.inv, 10) || 0) <= 0) return false;
-                    if (fqtyFilter === '0-10')   return fqty > 0 && fqty <= 10;
-                    if (fqtyFilter === '10plus') return fqty > 10;
-                    return true;
-                });
+            if (wfSoldFilter === '0') {
+                table.addFilter(d => (parseFloat(d.al30) || 0) === 0);
+            } else if (wfSoldFilter === 'more') {
+                table.addFilter(d => (parseFloat(d.al30) || 0) > 0);
             }
-            if (mapFilter === 'map') {
-                table.addFilter(d => wfRowMapStatus(d) === 'map');
-            } else if (mapFilter === 'nmap') {
-                table.addFilter(d => wfRowMapStatus(d) === 'nmap');
-            }
-            if (dilColor !== 'all') {
+            if (dilFilter !== 'all') {
                 table.addFilter(function(d) {
                     const inv = parseFloat(d.inv) || 0;
                     const ovL30 = parseFloat(d.ov_l30) || 0;
                     const dil = inv === 0 ? 0 : (ovL30 / inv) * 100;
-                    if (dilColor === 'red') return dil < 16.66;
-                    if (dilColor === 'yellow') return dil >= 16.66 && dil < 25;
-                    if (dilColor === 'green') return dil >= 25 && dil < 50;
-                    if (dilColor === 'pink') return dil >= 50;
+                    if (dilFilter === 'red') return dil < 25;
+                    if (dilFilter === 'green') return dil >= 25 && dil < 50;
+                    if (dilFilter === 'pink') return dil >= 50;
                     return true;
                 });
             }
@@ -1084,7 +986,6 @@
             }
             if (wfMapActive) table.addFilter(d => wfRowMapStatus(d) === 'map');
             if (wfNMapActive) table.addFilter(d => wfRowMapStatus(d) === 'nmap');
-            // Sold filter is owned by #wf-fqty-filter dropdown above — see fqtyFilter block.
 
             updateSummary();
         }
@@ -1324,10 +1225,37 @@
                         }
                     },
                     {
-                        title: 'Sold', field: 'al30', sorter: 'number', hozAlign: 'center', width: 55,
+                        title: 'A L30', field: 'al30', sorter: 'number', hozAlign: 'center', width: 55,
                         formatter: function(cell) {
                             const v = parseInt(cell.getValue(), 10) || 0;
                             return '<span style="font-weight:700;">' + v + '</span>';
+                        }
+                    },
+                    {
+                        // Same color bands as /amazon-tabulator-view CVR L30
+                        title: 'CVR', field: 'cvr', hozAlign: 'center', width: 55,
+                        headerTooltip: 'CVR = A L30 ÷ OV L30',
+                        sorter: function(a, b, aRow, bRow) {
+                            const calc = function(d) {
+                                const sold = parseFloat(d.al30) || 0;
+                                const ov = parseFloat(d.ov_l30) || 0;
+                                return ov === 0 ? 0 : (sold / ov) * 100;
+                            };
+                            return calc(aRow.getData()) - calc(bRow.getData());
+                        },
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            const sold = parseFloat(d.al30) || 0;
+                            const ov = parseFloat(d.ov_l30) || 0;
+                            if (ov === 0) {
+                                return '<span style="color:#a00211;font-weight:600;">0%</span>';
+                            }
+                            const cvr = (sold / ov) * 100;
+                            let color = '#a00211';
+                            if (cvr > 4 && cvr <= 7) color = '#ffc107';
+                            else if (cvr > 7 && cvr <= 13) color = '#28a745';
+                            else if (cvr > 13) color = '#e83e8c';
+                            return '<span style="color:' + color + ';font-weight:600;">' + Math.round(cvr) + '%</span>';
                         }
                     },
                     {
@@ -1339,8 +1267,8 @@
                         }
                     },
                     {
-                        // Missing L: not NR + INV > 0 + no uploaded Wayfair price (Macys / channel-master pattern).
-                        title: 'Missing L', field: 'missing', hozAlign: 'center',
+                        // Miss L — same role as Amazon Miss L / ML badge.
+                        title: 'Miss L', field: 'missing', hozAlign: 'center',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '';
@@ -1349,12 +1277,12 @@
                         }
                     },
                     {
-                        // Map: listed + INV > 0 + price > 0; |INV − Wayfair stock| ≤ 3 vs > 3.
-                        title: 'Map',
+                        // Miss M — mapping match/mismatch (Amazon Miss M / N Map).
+                        title: 'Miss M',
                         field: 'map',
                         hozAlign: 'center',
                         width: 90,
-                        headerTooltip: 'Map when listed, INV > 0, price > 0, and |INV − Wayfair stock| ≤ 3.',
+                        headerTooltip: 'Map when listed, INV > 0, price > 0, and |INV − Wayfair stock| ≤ 3; N Map when |diff| > 3.',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '';
@@ -1370,41 +1298,43 @@
                         }
                     },
                     {
-                        title: 'GPFT', field: 'gpft', sorter: 'number', hozAlign: 'right',
+                        title: 'GPFT %', field: 'gpft', sorter: 'number', hozAlign: 'right',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             const v = parseFloat(cell.getValue());
                             if (isNaN(v)) return '<span style="color:#6c757d;">–</span>';
                             if (v === 0 && !d.is_parent) return '0%';
                             if (v === 0 && d.is_parent) return '<span style="color:#6c757d;">–</span>';
-                            let color = v < 10 ? '#a00211' : v < 15 ? '#ffc107' : v < 20 ? '#3591dc' : v <= 40 ? '#28a745' : '#e83e8c';
+                            // Same bands as /amazon-tabulator-view GPFT %
+                            let color = v < 10 ? '#a00211' : v < 20 ? '#3591dc' : v < 30 ? '#ffc107' : v < 50 ? '#28a745' : '#e83e8c';
                             return '<span style="color:' + color + ';font-weight:' + (d.is_parent ? '700' : '600') + ';">' + Math.round(v) + '%</span>';
                         }
                     },
                     {
-                        title: 'NPFT', field: 'npft', sorter: 'number', hozAlign: 'right',
+                        title: 'PFT %', field: 'npft', sorter: 'number', hozAlign: 'right',
                         formatter: function(cell) {
-                            // Wayfair has no ads — NPFT% = GPFT%
+                            // Wayfair has no ads — PFT% = GPFT% (same as Amazon when Ads%=0)
                             const d = cell.getRow().getData();
                             const v = parseFloat(d.gpft);
                             if (isNaN(v)) return '<span style="color:#6c757d;">–</span>';
                             if (v === 0 && !d.is_parent) return '0%';
                             if (v === 0 && d.is_parent) return '<span style="color:#6c757d;">–</span>';
-                            let color = v < 10 ? '#a00211' : v < 15 ? '#ffc107' : v < 20 ? '#3591dc' : v <= 40 ? '#28a745' : '#e83e8c';
+                            let color = v < 10 ? '#a00211' : v < 20 ? '#3591dc' : v < 30 ? '#ffc107' : v < 50 ? '#28a745' : '#e83e8c';
                             return '<span style="color:' + color + ';font-weight:' + (d.is_parent ? '700' : '600') + ';">' + Math.round(v) + '%</span>';
                         }
                     },
                     {
-                        title: 'GROI', field: 'groi', sorter: 'number', hozAlign: 'right',
+                        title: 'GROI%', field: 'groi', sorter: 'number', hozAlign: 'right',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
                             const v = parseFloat(cell.getValue()) || 0;
+                            // Same bands as /amazon-tabulator-view GROI%
                             let color;
-                            if (v < 40) color = '#a00211';
+                            if (v < 50) color = '#a00211';
                             else if (v < 75) color = '#ffc107';
-                            else if (v < 125) color = '#28a745';
-                            else color = '#d63384';
+                            else if (v <= 125) color = '#28a745';
+                            else color = '#e83e8c';
                             return '<span style="color:' + color + ';font-weight:700;">' + Math.round(v) + '%</span>';
                         }
                     },
@@ -1416,10 +1346,10 @@
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
                             const v = parseFloat(d.groi) || 0;
                             let color;
-                            if (v < 40) color = '#a00211';
+                            if (v < 50) color = '#a00211';
                             else if (v < 75) color = '#ffc107';
-                            else if (v < 125) color = '#28a745';
-                            else color = '#d63384';
+                            else if (v <= 125) color = '#28a745';
+                            else color = '#e83e8c';
                             return '<span style="color:' + color + ';font-weight:700;">' + Math.round(v) + '%</span>';
                         }
                     },
@@ -1457,7 +1387,7 @@
                         }
                     },
                     {
-                        title: 'Sprice', field: 'sprice', sorter: 'number', hozAlign: 'right',
+                        title: 'S PRC', field: 'sprice', sorter: 'number', hozAlign: 'right',
                         editor: 'number', editorParams: { min: 0, step: 0.01 },
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
@@ -1466,13 +1396,14 @@
                         }
                     },
                     {
-                        title: 'SGPFT', field: 'sgpft', sorter: 'number', hozAlign: 'right',
+                        title: 'S GPFT', field: 'sgpft', sorter: 'number', hozAlign: 'right',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
                             const v = parseFloat(cell.getValue());
                             if (isNaN(v) || v === 0) return '0%';
-                            let color = v < 10 ? '#a00211' : v < 15 ? '#ffc107' : v < 20 ? '#3591dc' : v <= 40 ? '#28a745' : '#e83e8c';
+                            // Same bands as Amazon GPFT % / S GPFT
+                            let color = v < 10 ? '#a00211' : v < 20 ? '#3591dc' : v < 30 ? '#ffc107' : v < 50 ? '#28a745' : '#e83e8c';
                             return '<span style="color:' + color + ';font-weight:600;">' + Math.round(v) + '%</span>';
                         }
                     },
@@ -1484,7 +1415,7 @@
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
                             const v = parseFloat(d.sgpft);
                             if (isNaN(v) || v === 0) return '0%';
-                            let color = v < 10 ? '#a00211' : v < 15 ? '#ffc107' : v < 20 ? '#3591dc' : v <= 40 ? '#28a745' : '#e83e8c';
+                            let color = v < 10 ? '#a00211' : v < 20 ? '#3591dc' : v < 30 ? '#ffc107' : v < 50 ? '#28a745' : '#e83e8c';
                             return '<span style="color:' + color + ';font-weight:600;">' + Math.round(v) + '%</span>';
                         }
                     },
@@ -1496,11 +1427,12 @@
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
                             const v = parseFloat(cell.getValue());
                             if (isNaN(v) || v === 0) return '<span style="font-weight:700;">0%</span>';
+                            // Same bands as Amazon GROI% / SNROI
                             let color;
-                            if (v < 40) color = '#a00211';
+                            if (v < 50) color = '#a00211';
                             else if (v < 75) color = '#ffc107';
-                            else if (v < 125) color = '#28a745';
-                            else color = '#d63384';
+                            else if (v <= 125) color = '#28a745';
+                            else color = '#e83e8c';
                             return '<span style="color:' + color + ';font-weight:700;">' + Math.round(v) + '%</span>';
                         }
                     },
@@ -1824,27 +1756,10 @@
             });
 
             $('#wf-pricing-parent-search, #wf-pricing-sku-search').on('input', function() { applyFilters(); });
-            $('#wf-row-type-filter, #wf-inv-filter, #wf-stock-filter, #wf-gpft-filter, #wf-cvr-filter, #wf-roi-filter, #wf-fqty-filter, #wf-map-filter').on('change', function() {
+            $('#wf-row-type-filter, #wf-inv-filter, #wf-gpft-filter, #wf-cvr-filter, #wf-roi-filter, #wf-dil-filter').on('change', function() {
                 wfClearSkuSelections();
                 applyFilters();
             });
-
-            $(document).on('click', '.wf-dil-toggle', function(e) {
-                e.stopPropagation();
-                $(this).closest('.wf-manual-dropdown').toggleClass('show');
-            });
-            $(document).on('click', '.wf-dil-item', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                $('.wf-dil-item').removeClass('active');
-                $(this).addClass('active');
-                const circle = $(this).find('.wf-sc').clone();
-                $('#wf-dil-btn').html('').append(circle).append('DIL%');
-                $(this).closest('.wf-manual-dropdown').removeClass('show');
-                wfClearSkuSelections();
-                applyFilters();
-            });
-            $(document).on('click', function() { $('.wf-manual-dropdown').removeClass('show'); });
 
             // ---- Edit B/S Links (double-click on B/S cell) ----
             let wfEditLinksRow = null;
@@ -1917,44 +1832,28 @@
                 }
             });
 
-            // These three badges are mutually exclusive with the Sold filter, so they also
-            // reset the #wf-fqty-filter dropdown back to "Sold" (all) — matches the prior
-            // behavior of clearing the wfZeroSoldActive / wfMoreSoldActive flags.
             $('#wf-missing-badge').on('click', function() {
                 wfMissingActive = !wfMissingActive;
                 wfMapActive = wfNMapActive = false;
-                $('#wf-fqty-filter').val('all');
-                wfClearSkuSelections();
-                applyFilters();
-            });
-            $('#wf-map-count-badge').on('click', function() {
-                wfMapActive = !wfMapActive;
-                wfMissingActive = wfNMapActive = false;
-                $('#wf-fqty-filter').val('all');
+                wfSoldFilter = 'all';
                 wfClearSkuSelections();
                 applyFilters();
             });
             $('#wf-nmap-count-badge').on('click', function() {
                 wfNMapActive = !wfNMapActive;
                 wfMissingActive = wfMapActive = false;
-                $('#wf-fqty-filter').val('all');
+                wfSoldFilter = 'all';
                 wfClearSkuSelections();
                 applyFilters();
             });
-            // Sold badges just toggle the #wf-fqty-filter dropdown so the dropdown stays
-            // the single source of truth for the Sold filter (mirrors Amazon tabulator).
-            // Clicking the same badge twice clears the filter (toggle semantics preserved).
-            // Mutex with Missing/Map/NMap badges retained by clearing those flags here.
             $('#wf-zero-sold-badge').on('click', function() {
-                const next = $('#wf-fqty-filter').val() === '0' ? 'all' : '0';
-                $('#wf-fqty-filter').val(next);
+                wfSoldFilter = wfSoldFilter === '0' ? 'all' : '0';
                 wfMissingActive = wfMapActive = wfNMapActive = false;
                 wfClearSkuSelections();
                 applyFilters();
             });
             $('#wf-more-sold-badge').on('click', function() {
-                const next = $('#wf-fqty-filter').val() === 'more' ? 'all' : 'more';
-                $('#wf-fqty-filter').val(next);
+                wfSoldFilter = wfSoldFilter === 'more' ? 'all' : 'more';
                 wfMissingActive = wfMapActive = wfNMapActive = false;
                 wfClearSkuSelections();
                 applyFilters();
@@ -2005,9 +1904,6 @@
                 );
             });
 
-            $('#wf-refresh-pricing').on('click', function() {
-                table.setData('{{ route("wayfair.pricing.data") }}');
-            });
             $('#wf-export-pricing').on('click', function() {
                 table.download('csv', 'wayfair_analytics_data.csv');
             });
@@ -2029,18 +1925,6 @@
                     }
                 });
             }
-            document.getElementById('wf-show-all-columns-btn')?.addEventListener('click', function() {
-                if (!table) return;
-                table.getColumns().forEach(function(col) {
-                    const f = col.getField();
-                    if (f && f !== '_wf_select') {
-                        col.show();
-                    }
-                });
-                wfBuildColumnDropdown();
-                wfSaveColumnVisibilityToServer();
-            });
-
             $('#wfUploadPriceSheetBtn').on('click', function() {
                 const file = document.getElementById('wfPriceSheetFile').files[0];
                 if (!file) {

@@ -422,14 +422,14 @@
                         <i class="fas fa-equals"></i> Same Price Mode
                     </button>
                     
-                    <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#uploadPriceModal">
-                        <i class="fa fa-dollar-sign"></i> Upload Price
+                    <button type="button" class="btn btn-sm btn-success" id="sync-api-price-btn" title="Fetch listed prices from Walmart API into W Prc">
+                        <i class="fa fa-sync"></i> Sync API Price
                     </button>
                     <button type="button" class="btn btn-sm btn-info" data-bs-toggle="modal" data-bs-target="#uploadListingModal">
                         <i class="fa fa-eye"></i> Upload Listing
                     </button>
-                    <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#uploadOrderModal">
-                        <i class="fa fa-shopping-cart"></i> Upload Order
+                    <button type="button" class="btn btn-sm btn-primary" id="sync-api-orders-btn" title="Fetch orders from Walmart API into W L30">
+                        <i class="fa fa-shopping-cart"></i> Sync Orders
                     </button>
                     <button type="button" class="btn btn-sm btn-secondary" id="toggle-ads-columns-btn">
                         <i class="fa fa-ad"></i> Show Ads Columns
@@ -505,34 +505,6 @@
         </div>
     </div>
 
-    <!-- Upload Price Modal -->
-    <div class="modal fade" id="uploadPriceModal" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header bg-success text-white">
-                    <h5 class="modal-title"><i class="fa fa-dollar-sign me-2"></i>Upload Price Data</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <form id="uploadPriceForm" action="{{ route('walmart-sheet-upload-price') }}" method="POST" enctype="multipart/form-data">
-                        @csrf
-                        <div class="mb-3">
-                            <label class="form-label fw-bold"><i class="fa fa-file-excel text-success me-1"></i>Choose File</label>
-                            <input type="file" class="form-control" name="price_file" accept=".xlsx,.xls,.csv" required>
-                        </div>
-                        <div class="alert alert-warning">
-                            <i class="fa fa-exclamation-triangle me-2"></i><strong>Warning:</strong> This will TRUNCATE (clear) the table before uploading!
-                        </div>
-                    </form>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="submit" form="uploadPriceForm" class="btn btn-success"><i class="fa fa-upload me-1"></i>Upload</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <!-- Upload Listing Modal -->
     <div class="modal fade" id="uploadListingModal" tabindex="-1">
         <div class="modal-dialog">
@@ -556,34 +528,6 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                     <button type="submit" form="uploadListingForm" class="btn btn-info"><i class="fa fa-upload me-1"></i>Upload</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Upload Order Modal -->
-    <div class="modal fade" id="uploadOrderModal" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header bg-primary text-white">
-                    <h5 class="modal-title"><i class="fa fa-shopping-cart me-2"></i>Upload Order Data</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <form id="uploadOrderForm" action="{{ route('walmart-sheet-upload-order') }}" method="POST" enctype="multipart/form-data">
-                        @csrf
-                        <div class="mb-3">
-                            <label class="form-label fw-bold"><i class="fa fa-file-excel text-success me-1"></i>Choose File</label>
-                            <input type="file" class="form-control" name="order_file" accept=".xlsx,.xls,.csv" required>
-                        </div>
-                        <div class="alert alert-warning">
-                            <i class="fa fa-exclamation-triangle me-2"></i><strong>Warning:</strong> This will TRUNCATE (clear) the table before uploading!
-                        </div>
-                    </form>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="submit" form="uploadOrderForm" class="btn btn-primary"><i class="fa fa-upload me-1"></i>Upload</button>
                 </div>
             </div>
         </div>
@@ -1355,6 +1299,74 @@
             clearSpriceForSelected();
         });
 
+        $('#sync-api-price-btn').on('click', function() {
+            const $btn = $(this);
+            if ($btn.prop('disabled')) return;
+
+            $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Syncing...');
+
+            fetch('{{ route('walmart-sheet-sync-listed-prices') }}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({})
+            })
+            .then(response => response.json().then(data => ({ ok: response.ok, data })))
+            .then(({ ok, data }) => {
+                if (!ok || data.error) {
+                    throw new Error(data.error || 'Sync failed');
+                }
+                showToast(data.success || 'Listed prices synced from Walmart API', 'success');
+                if (table) {
+                    table.setData('/walmart-sheet-upload-data-json');
+                }
+            })
+            .catch(error => {
+                console.error('Sync API price failed:', error);
+                showToast(error.message || 'Failed to sync listed prices', 'error');
+            })
+            .finally(() => {
+                $btn.prop('disabled', false).html('<i class="fa fa-sync"></i> Sync API Price');
+            });
+        });
+
+        $('#sync-api-orders-btn').on('click', function() {
+            const $btn = $(this);
+            if ($btn.prop('disabled')) return;
+
+            $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Syncing...');
+
+            fetch('{{ route('walmart-sheet-sync-orders') }}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({ days: 60 })
+            })
+            .then(response => response.json().then(data => ({ ok: response.ok, data })))
+            .then(({ ok, data }) => {
+                if (!ok || data.error) {
+                    throw new Error(data.error || 'Sync failed');
+                }
+                showToast(data.success || 'Orders synced from Walmart API', 'success');
+                if (table) {
+                    table.setData('/walmart-sheet-upload-data-json');
+                }
+            })
+            .catch(error => {
+                console.error('Sync API orders failed:', error);
+                showToast(error.message || 'Failed to sync orders', 'error');
+            })
+            .finally(() => {
+                $btn.prop('disabled', false).html('<i class="fa fa-shopping-cart"></i> Sync Orders');
+            });
+        });
+
         $('#discount-percentage-input').on('keypress', function(e) {
             if (e.which === 13) {
                 applyDiscount();
@@ -1451,7 +1463,7 @@
                         // Ensure minimum price
                         newSPrice = Math.max(0.99, newSPrice);
 
-                        // Update only sprice (don't change w_price)
+                        // Update editable S PRC only (W Prc stays from API)
                         row.update({
                             sprice: newSPrice
                         });
@@ -1490,8 +1502,7 @@
                     if (amazonPrice && amazonPrice > 0) {
                         // Update the row using the row object's update method
                         row.update({
-                            sprice: amazonPrice,
-                            w_price: amazonPrice
+                            sprice: amazonPrice
                         });
                         
                         // Store update for backend saving
@@ -3029,9 +3040,9 @@
             // < AMZ Filter (mutually exclusive with > AMZ)
             if (ltAmzFilterActive) {
                 table.addFilter(function(data) {
-                    const wPriceVal = parseFloat(data['w_price']) || 0;
+                    const apiPriceVal = parseFloat(data['api_price']) || 0;
                     const aPriceVal = parseFloat(data['a_price']) || 0;
-                    return wPriceVal > 0 && aPriceVal > 0 && wPriceVal < aPriceVal;
+                    return apiPriceVal > 0 && aPriceVal > 0 && apiPriceVal < aPriceVal;
                 });
             }
             
@@ -3040,7 +3051,7 @@
                 table.addFilter(function(data) {
                     const apiPriceVal = parseFloat(data.api_price) || 0;
                     const aPriceVal = parseFloat(data.a_price) || 0;
-                    return wPriceVal > 0 && aPriceVal > 0 && wPriceVal < aPriceVal;
+                    return apiPriceVal > 0 && aPriceVal > 0 && apiPriceVal < aPriceVal;
                 });
             }
 

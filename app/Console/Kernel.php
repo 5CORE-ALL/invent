@@ -1228,6 +1228,20 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
+        $ist($schedule->command('walmart:fetch-listed-prices')
+            ->cron('0 */3 * * *')
+            ->name('walmart-fetch-listed-prices')
+            ->withoutOverlapping(170)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        $ist($schedule->command('walmart:fetch-orders --days=60')
+            ->dailyAt('01:20')
+            ->name('walmart-fetch-orders')
+            ->withoutOverlapping(170)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
         $ist($schedule->command('sync:tiktok-sheet-data')
             ->everyMinute()
             ->name('sync-tiktok-sheet')

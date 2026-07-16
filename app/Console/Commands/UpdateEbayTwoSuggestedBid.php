@@ -8,7 +8,6 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use GuzzleHttp\Client;
 use Illuminate\Support\Facades\Cache;
-use App\Models\EbayMetric;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use Exception;
@@ -16,7 +15,7 @@ use Exception;
 class UpdateEbayTwoSuggestedBid extends Command
 {
     protected $signature = 'ebay2:update-suggestedbid {--dry-run : Run without making actual API calls}';
-    protected $description = 'Bulk update eBay2 ad bids using suggested_bid percentages';
+    protected $description = 'Bulk update eBay2 ad bids using Sbid (Views) — same logic as ebay3:update-suggestedbid';
 
     public function __construct()
     {
@@ -84,12 +83,26 @@ class UpdateEbayTwoSuggestedBid extends Command
                 return 1;
             }
 
+            // SKU normalization — same as ebay3:update-suggestedbid
+            $normalizeSku = function ($sku) {
+                $sku = trim($sku);
+                $sku = preg_replace('/\s+/u', ' ', $sku);
+                $sku = preg_replace('/[^\S\r\n]+/u', ' ', $sku);
+                return strtoupper($sku);
+            };
+
             $this->info('Loading Shopify and eBay metrics data...');
             $shopifyData = [];
             $ebayMetrics = collect();
             
             if (!empty($skus)) {
-                $shopifyData = ShopifySku::mapByProductSkus($skus);
+                $shopifyRaw = ShopifySku::whereIn("sku", $skus)->get();
+                $shopifyData = collect();
+                foreach ($shopifyRaw as $item) {
+                    $normalizedKey = $normalizeSku($item->sku);
+                    $shopifyData[$normalizedKey] = $item;
+                }
+
                 $ebayMetrics = Ebay2Metric::whereIn("sku", $skus)->get();
             }
             DB::connection()->disconnect();
@@ -99,60 +112,66 @@ class UpdateEbayTwoSuggestedBid extends Command
                 return 0;
             }
         
-        // Normalize SKUs by replacing non-breaking spaces with regular spaces for matching
-        $ebayMetricsNormalized = $ebayMetrics->mapWithKeys(function($item) {
-            $normalizedSku = str_replace(["\xC2\xA0", "\u{00A0}"], ' ', $item->sku);
-            return [$normalizedSku => $item];
-        });
+        // Normalize eBay metrics data keys
+        $ebayMetricsNormalized = collect();
+        foreach ($ebayMetrics as $item) {
+            $normalizedKey = $normalizeSku($item->sku);
+            $ebayMetricsNormalized[$normalizedKey] = $item;
+        }
 
-            // Load campaign listings efficiently
-            $this->info('Loading campaign listings...');
-            $campaignListings = DB::connection('apicentral')
-                ->table('ebay2_campaign_ads_listings')
-                ->select('listing_id', 'campaign_id', 'bid_percentage', 'suggested_bid')
-                ->where('funding_strategy', 'COST_PER_SALE')
-                ->get()
-                ->keyBy('listing_id')
-                ->map(function ($item) {
-                    return (object) [
-                        'listing_id' => $item->listing_id,
-                        'campaign_id' => $item->campaign_id,
-                        'bid_percentage' => $item->bid_percentage,
-                        'suggested_bid' => $item->suggested_bid,
-                        'new_bid' => null
-                    ];
-                });
+        // Load campaign listings efficiently
+        $this->info('Loading campaign listings...');
+        $campaignListings = DB::connection('apicentral')
+            ->table('ebay2_campaign_ads_listings')
+            ->select('listing_id', 'campaign_id', 'bid_percentage', 'suggested_bid')
+            ->where('funding_strategy', 'COST_PER_SALE')
+            ->get()
+            ->keyBy('listing_id')
+            ->map(function ($item) {
+                return (object) [
+                    'listing_id' => $item->listing_id,
+                    'campaign_id' => $item->campaign_id,
+                    'bid_percentage' => $item->bid_percentage,
+                    'suggested_bid' => $item->suggested_bid,
+                    'new_bid' => null
+                ];
+            });
 
             if ($campaignListings->isEmpty()) {
                 $this->info('No campaign listings found.');
                 return 0;
             }
 
-            // Get L30 data (clicks) from ebaygeneral report for SCVR calculation
+            // Get L30 data (clicks and sales) from ebaygeneral report
             $this->info('Loading eBay general report data...');
-            $ebayGeneralL30 = Ebay2GeneralReport::select('listing_id', 'clicks')
+            $ebayGeneralL30 = Ebay2GeneralReport::select('listing_id', 'clicks', 'sales')
                 ->where('report_range', 'L30')
                 ->get()
                 ->keyBy('listing_id');
 
-        $sbidRuleRow = DB::table('ebay_sbid_rules')->where('key', 'ebay2')->first();
-        $sbidRuleData = $sbidRuleRow ? (json_decode($sbidRuleRow->rule, true) ?: []) : [];
-        $sbidBands = $sbidRuleData['bands'] ?? $this->defaultBands();
-        $l30SoldEsBidMax = (float) ($sbidRuleData['l30_sold_es_bid_max'] ?? 0);
-        $l7ViewsThreshold = (float) ($sbidRuleData['l7_views_threshold'] ?? 70);
-        $this->info('SBID Rule bands: ' . collect($sbidBands)->map(fn($b) => "SCVR≤{$b['scvr_max']}%→{$b['bid']}")->implode(', '));
-        $this->info("SBID ES Bid fallback: L30 sold ≤ {$l30SoldEsBidMax} or L7 views < {$l7ViewsThreshold}");
+        // Sbid (Views) — daily ±%/day adjustment of the base S Bid by L7 View colour
+        // band, clamped to Min/Max caps (same rule the UI shows). The colour band
+        // needs the average l7_views across the listings this command processes.
+        // Settings key: ebay2_sbid_views (mirrors ebay1_sbid_views / ebay3_sbid_views).
+        $sbidViewsSettings = \App\Support\SbidViewsRule::settings(\App\Support\SbidViewsRule::KEY_EBAY2);
+        $l7Sum = 0.0; $l7Count = 0;
+        foreach ($ebayMetricsNormalized as $m) {
+            if ($m && $m->item_id && $campaignListings->has($m->item_id)) {
+                $l7Sum += (float) ($m->l7_views ?? 0);
+                $l7Count++;
+            }
+        }
+        $avgL7Views = $l7Count > 0 ? ($l7Sum / $l7Count) : 0.0;
+        $this->info("Sbid (Views): avg L7 across {$l7Count} processed listing(s) = " . round($avgL7Views, 2)
+            . " | caps [{$sbidViewsSettings['min_cap']}, {$sbidViewsSettings['max_cap']}]"
+            . " | pink {$sbidViewsSettings['pink_dir']} {$sbidViewsSettings['pink_step']}"
+            . " | green {$sbidViewsSettings['green_dir']} {$sbidViewsSettings['green_step']}"
+            . " | red {$sbidViewsSettings['red_dir']} {$sbidViewsSettings['red_step']}"
+            . " | no-dec when E L30 ≤ {$sbidViewsSettings['no_dec_max_el30']}");
 
-        $dilRule = DB::table('ebay_sbid_rules')->where('key', 'ebay2_dil')->first();
-        $dilBands = $dilRule
-            ? (json_decode($dilRule->rule, true)['bands'] ?? $this->defaultDilBands())
-            : $this->defaultDilBands();
-            
         // Process ProductMaster data in chunks and update campaign listings
-        $this->info('Processing bid updates based on SCVR (eBay L30 / Views) thresholds...');
+        $this->info('Processing bid updates based on Sbid (Views)...');
         $updatedListings = 0;
-        // Track SKU-specific bids to handle multiple SKUs with same listing_id
-        $skuBids = []; // [listing_id => [sku => bid]]
         
         ProductMaster::whereNull('deleted_at')
             ->orderBy("parent", "asc")
@@ -161,74 +180,54 @@ class UpdateEbayTwoSuggestedBid extends Command
             ->chunk($chunkSize, function ($productMasters) use (
                 $shopifyData, 
                 $ebayMetricsNormalized, 
-                $campaignListings, 
-                $ebayGeneralL30,
-                $sbidBands,
-                $dilBands,
-                $l30SoldEsBidMax,
-                $l7ViewsThreshold,
+                $campaignListings,
+                $sbidViewsSettings,
+                $avgL7Views,
+                $ebayGeneralL30, 
                 &$updatedListings,
-                &$skuBids
+                $normalizeSku
             ) {
                 foreach ($productMasters as $pm) {
-                    $shopify = $shopifyData[$pm->sku] ?? null;
-                    $ebayMetric = $ebayMetricsNormalized[$pm->sku] ?? null;
+                    $normalizedSku = $normalizeSku($pm->sku);
+                    $shopify = $shopifyData[$normalizedSku] ?? null;
+                    $ebayMetric = $ebayMetricsNormalized[$normalizedSku] ?? null;
 
-                    if (!$ebayMetric) {
-                        continue;
-                    }
-                    
-                    if (!$ebayMetric->item_id) {
-                        continue;
-                    }
-                    
-                    if (!$campaignListings->has($ebayMetric->item_id)) {
-                        continue;
-                    }
+                    if ($ebayMetric && $ebayMetric->item_id && $campaignListings->has($ebayMetric->item_id)) {
+                        $listing = $campaignListings[$ebayMetric->item_id];
 
-                    $listing = $campaignListings[$ebayMetric->item_id];
-                    
-                    $soldL30 = (float) ($ebayMetric->ebay_l30 ?? 0);
-                    $views   = (float) ($ebayMetric->views ?? 0);
-                    $l7Views = (float) ($ebayMetric->l7_views ?? 0);
-                    $esbid   = (float) ($listing->suggested_bid ?? 0);
-                    $scvr    = $views > 0 ? ($soldL30 / $views) * 100 : 0;
+                        $soldL30  = (float) ($ebayMetric->ebay_l30 ?? 0);   // Esold
+                        $views    = (float) ($ebayMetric->views ?? 0);      // Views L30
+                        $scvr     = $views > 0 ? ($soldL30 / $views) * 100 : 0; // CVR
 
-                    $inv = (float) ($shopify->inv ?? 0);
-                    $qty = (float) ($shopify->quantity ?? 0);
-                    $dil = $inv > 0 ? ($qty / $inv) * 100 : 0;
+                        // DIL = (L30 sold / inventory) * 100, from Shopify data
+                        $inv = (float) ($shopify->inv ?? 0);
+                        $qty = (float) ($shopify->quantity ?? 0);
+                        $dil = $inv > 0 ? ($qty / $inv) * 100 : 0;
 
-                    if ($soldL30 <= $l30SoldEsBidMax || $l7Views < $l7ViewsThreshold) {
-                        $newBid = $esbid;
-                    } else {
-                        $newBid = $this->resolveCombinedBid($scvr, $sbidBands, $dil, $dilBands, [
-                            'ebay_price' => (float) ($ebayMetric->ebay_price ?? 0),
-                            'ebay_l30'   => $soldL30,
-                            'views'      => $views,
-                        ]);
-                    }
+                        // Sbid (Views): adjust the CURRENT C Bid (bid_percentage) by the
+                        // row's L7 View colour band (direction + step), clamped to the
+                        // Min/Max caps. Green = no change (keep current C Bid). No current
+                        // C Bid → skip (nothing to adjust).
+                        $baseBid = (float) ($listing->bid_percentage ?? 0);
+                        $l7views = (float) ($ebayMetric->l7_views ?? 0);
+                        $newBid  = \App\Support\SbidViewsRule::apply(
+                            $baseBid,
+                            $l7views,
+                            $avgL7Views,
+                            $sbidViewsSettings,
+                            $soldL30
+                        );
 
-                    if ($newBid <= 0) {
-                        continue;
+                        $listing->new_bid = $newBid;
+                        $listing->sku = $pm->sku;
+
+                        if ($newBid <= 0) {
+                            $this->warn("SKU: {$pm->sku} | Listing ID: {$ebayMetric->item_id} | Views: {$views} | L7: {$l7views} | C Bid: {$baseBid} → No current C Bid (skipped)");
+                        } else {
+                            $this->info("SKU: {$pm->sku} | Listing ID: {$ebayMetric->item_id} | Views: {$views} | L7: {$l7views} | C Bid: {$baseBid} | SBID (Views): {$newBid}");
+                            $updatedListings++;
+                        }
                     }
-                    
-                    $listingId = $ebayMetric->item_id;
-                    if (!isset($skuBids[$listingId])) {
-                        $skuBids[$listingId] = [];
-                    }
-                    $skuBids[$listingId][$pm->sku] = $newBid;
-                    
-                    $listing->new_bid = min($skuBids[$listingId]);
-                    $listing->sku = $pm->sku;
-                    $listing->all_skus = array_keys($skuBids[$listingId]);
-                    
-                    $allSkusStr = implode(', ', array_keys($skuBids[$listingId]));
-                    $allBidsStr = implode(', ', array_map(function($sku) use ($skuBids, $listingId) {
-                        return "{$sku}:{$skuBids[$listingId][$sku]}";
-                    }, array_keys($skuBids[$listingId])));
-                    $finalBid = min($skuBids[$listingId]);
-                    $this->info("SKU: {$pm->sku} | Listing ID: {$listingId} | SCVR: " . round($scvr, 2) . "% | DIL: " . round($dil, 2) . "% | SBID: {$newBid} | All SKUs: [{$allSkusStr}] | All Bids: [{$allBidsStr}] | Final Bid (min): {$finalBid}");
-                    $updatedListings++;
                 }
             });
         
@@ -237,8 +236,8 @@ class UpdateEbayTwoSuggestedBid extends Command
         $groupedByCampaign = collect($campaignListings)->groupBy('campaign_id');
 
         if ($groupedByCampaign->isEmpty()) {
-            $this->info('No campaign listings found.');
-            return;
+            $this->info('No campaign listings to update.');
+            return 0;
         }
 
         if ($dryRun) {
@@ -260,8 +259,7 @@ class UpdateEbayTwoSuggestedBid extends Command
                             'bidPercentage' => (string) $listing->new_bid
                         ];
                         $sku = $listing->sku ?? 'unknown';
-                        $allSkus = isset($listing->all_skus) ? implode(', ', $listing->all_skus) : $sku;
-                        $this->info("[DRY RUN] Would send to eBay - SKUs: {$allSkus} | Listing ID: {$listing->listing_id} | Bid Percentage: {$listing->new_bid}");
+                        $this->info("[DRY RUN] Would send to eBay - SKU: {$sku} | Listing ID: {$listing->listing_id} | Bid Percentage: {$listing->new_bid}");
                     }
                 }
 
@@ -301,8 +299,7 @@ class UpdateEbayTwoSuggestedBid extends Command
                         'bidPercentage' => (string) $listing->new_bid
                     ];
                     $sku = $listing->sku ?? 'unknown';
-                    $allSkus = isset($listing->all_skus) ? implode(', ', $listing->all_skus) : $sku;
-                    $this->info("Sending to eBay - SKUs: {$allSkus} | Listing ID: {$listing->listing_id} | Bid Percentage: {$listing->new_bid}");
+                    $this->info("Sending to eBay - SKU: {$sku} | Listing ID: {$listing->listing_id} | Bid Percentage: {$listing->new_bid}");
                 }
             }
 
@@ -326,14 +323,6 @@ class UpdateEbayTwoSuggestedBid extends Command
                 } else {
                     $this->warn("Campaign {$campaignId}: Response: " . substr($responseBody, 0, 200));
                 }
-            } catch (\GuzzleHttp\Exception\ClientException $e) {
-                $statusCode = $e->getResponse()->getStatusCode();
-                
-                if ($statusCode === 404) {
-                    $this->warn("Campaign {$campaignId} not found (404). Skipping...");
-                } else {
-                    $this->error("Failed to update campaign {$campaignId} (Status: {$statusCode}).");
-                }
             } catch (\Exception $e) {
                 $this->error("Failed to update campaign {$campaignId}: " . $e->getMessage());
             }
@@ -351,90 +340,6 @@ class UpdateEbayTwoSuggestedBid extends Command
         } finally {
             DB::connection()->disconnect();
         }
-    }
-
-    private function resolveCombinedBid(float $scvr, array $sbidBands, float $dil, array $dilBands, array $ctx = []): float
-    {
-        if ($this->isPinkBand($dil, $dilBands)) {
-            return $this->pinkBid($dilBands);
-        }
-        if ($this->isPinkBand($scvr, $sbidBands)) {
-            return $this->pinkBid($sbidBands);
-        }
-
-        return $this->getBidFromRule($scvr, $sbidBands, $ctx);
-    }
-
-    private function isPinkBand(float $value, array $bands): bool
-    {
-        $n = count($bands);
-        if ($n === 0) {
-            return false;
-        }
-        foreach ($bands as $i => $band) {
-            $max = (float) ($band['scvr_max'] ?? $band['dil_max'] ?? 9999);
-            if ($value <= $max) {
-                return $i === $n - 1;
-            }
-        }
-        return true;
-    }
-
-    private function pinkBid(array $bands): float
-    {
-        $last = end($bands);
-        return (float) ($last['bid'] ?? 2.1);
-    }
-
-    private function defaultDilBands(): array
-    {
-        return [
-            ['dil_max' => 16.66, 'bid' => 9.1, 'label' => 'Red',    'color' => '#a00211'],
-            ['dil_max' => 25,    'bid' => 7.1, 'label' => 'Yellow', 'color' => '#ffc107'],
-            ['dil_max' => 50,    'bid' => 4.1, 'label' => 'Green',  'color' => '#28a745'],
-            ['dil_max' => 9999,  'bid' => 2.1, 'label' => 'Pink',   'color' => '#e83e8c'],
-        ];
-    }
-
-    private function getBidFromRule(float $scvr, array $bands, array $ctx = []): float
-    {
-        if ($scvr <= 0) {
-            return 0.0;
-        }
-        $ctx['scvr'] = $scvr;
-        foreach ($bands as $band) {
-            if ($scvr <= (float)($band['scvr_max'] ?? 9999)) {
-                return $this->resolveBandBid($band, $ctx);
-            }
-        }
-        $last = end($bands);
-        return $last ? $this->resolveBandBid($last, $ctx) : 2.1;
-    }
-
-    private function resolveBandBid(array $band, array $ctx): float
-    {
-        $sub = $band['sub'] ?? null;
-        if (is_array($sub) && !empty($sub['metric']) && !empty($sub['bands']) && is_array($sub['bands'])) {
-            $val = (float)($ctx[$sub['metric']] ?? 0);
-            foreach ($sub['bands'] as $sb) {
-                if ($val <= (float)($sb['max'] ?? 9999)) {
-                    return (float)($sb['bid'] ?? $band['bid'] ?? 2.1);
-                }
-            }
-            $lastSub = end($sub['bands']);
-            return (float)($lastSub['bid'] ?? $band['bid'] ?? 2.1);
-        }
-        return (float)($band['bid'] ?? 9.1);
-    }
-
-    private function defaultBands(): array
-    {
-        return [
-            ['scvr_max' => 4,    'bid' => 9.1],
-            ['scvr_max' => 7,    'bid' => 7.1],
-            ['scvr_max' => 13,   'bid' => 4.1],
-            ['scvr_max' => 9999, 'bid' => 2.1],
-        ];
     }
 
     private function getEbayAccessToken()

@@ -11,34 +11,47 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Artisan;
 
 /**
- * eBay 2 mirror of {@see EbayCampaignAdsController} — same SBID + DIL rule logic
- * but driven off the eBay-2 dataset:
+ * eBay 2 mirror of {@see EbayCampaignAdsController} / {@see Ebay3CampaignAdsController}
+ * — same SBID + DIL rule logic but driven off the eBay-2 dataset:
  *   - Campaign data: `ebay2_campaign_ads`
  *   - Metrics:       `ebay_2_metrics` (App\Models\Ebay2Metric)
- *   - Rule keys:     `ebay2` (SCVR bands) and `ebay2_dil` (DIL bands)
- *                    in the shared `ebay_sbid_rules` table
+ *   - Rule keys:     `ebay2_sbid_views` (Sbid Views caps / daily steps) and
+ *                    `ebay2_dil` (DIL colour bands) in `ebay_sbid_rules`
+ *                    (`ebay2` SCVR bands kept only for legacy getRule/saveRule)
  *   - Token / push:  Ebay2ApiService + `ebay2:update-suggestedbid`
  */
 class Ebay2CampaignAdsController extends Controller
 {
     use ProvidesEbayCampaignAdsBadgeSummary;
+
+    /**
+     * Sbid (Views) settings — Min/Max caps + per-colour daily direction/step.
+     * Stored under key `ebay2_sbid_views` (mirrors ebay1_sbid_views / ebay3_sbid_views).
+     */
+    public function getSbidViewsRule()
+    {
+        return response()->json(\App\Support\SbidViewsRule::settings(\App\Support\SbidViewsRule::KEY_EBAY2));
+    }
+
+    public function saveSbidViewsRule(Request $request)
+    {
+        $settings = \App\Support\SbidViewsRule::sanitize($request->all());
+
+        DB::table('ebay_sbid_rules')->updateOrInsert(
+            ['key' => \App\Support\SbidViewsRule::KEY_EBAY2],
+            ['rule' => json_encode($settings), 'updated_at' => now()]
+        );
+
+        return response()->json(['success' => true, 'rule' => $settings]);
+    }
+
     public function index()
     {
-        $rule = DB::table('ebay_sbid_rules')->where('key', 'ebay2')->first();
-        $ruleData = $rule ? json_decode($rule->rule, true) : $this->defaultRule();
-        if (!isset($ruleData['l7_views_threshold'])) {
-            $ruleData['l7_views_threshold'] = 70;
-        }
-        if (!isset($ruleData['l30_sold_es_bid_max'])) {
-            $ruleData['l30_sold_es_bid_max'] = 0;
-        }
-
         $dil = DB::table('ebay_sbid_rules')->where('key', 'ebay2_dil')->first();
         $dilData = $dil ? json_decode($dil->rule, true) : $this->defaultDilRule();
 
         return view('campaign.ebay2-campaign-ads', [
-            'sbidRule' => $ruleData,
-            'dilRule'  => $dilData,
+            'dilRule' => $dilData,
         ]);
     }
 
@@ -130,13 +143,17 @@ class Ebay2CampaignAdsController extends Controller
             return response()->json(['error' => 'No listings selected'], 422);
         }
 
-        $ruleConfig = $this->sbidRuleConfig();
-        $bands      = $ruleConfig['bands'] ?? [];
-        $dilBands   = $this->dilBands();
-
         $metrics = \App\Models\Ebay2Metric::whereIn('item_id', $listingIds)->get()->keyBy('item_id');
 
-        $shopifyMap = $this->shopifyByNormSku($metrics->pluck('sku')->filter()->unique()->values()->all());
+        // Sbid (Views): settings + avg L7 views (prefer the UI's avg to match screen).
+        $sbidViewsSettings = \App\Support\SbidViewsRule::settings(\App\Support\SbidViewsRule::KEY_EBAY2);
+        $avgL7Views = $request->input('avg_l7_views');
+        if (!is_numeric($avgL7Views)) {
+            $l7Sum = 0.0; $l7Count = 0;
+            foreach ($metrics as $m) { $l7Sum += (float) ($m->l7_views ?? 0); $l7Count++; }
+            $avgL7Views = $l7Count > 0 ? ($l7Sum / $l7Count) : 0.0;
+        }
+        $avgL7Views = (float) $avgL7Views;
 
         $ads = DB::table('ebay2_campaign_ads')
             ->whereIn('listing_id', $listingIds)
@@ -167,29 +184,15 @@ class Ebay2CampaignAdsController extends Controller
                 continue;
             }
 
-            $metric = $metrics->get($lid);
-            $views  = (float)($metric?->views ?? 0);
-            $l7     = (float)($metric?->l7_views ?? 0);
-            $l30    = (float)($metric?->ebay_l30 ?? 0);
-            $scvr   = $views > 0 ? ($l30 / $views) * 100 : 0;
-            $esBid  = (float)($ad?->suggested_bid ?? 0);
-
-            $shop = $metric ? ($shopifyMap[$this->normSku($metric->sku)] ?? null) : null;
-            $inv  = (float)($shop->inv ?? 0);
-            $qty  = (float)($shop->quantity ?? 0);
-            $dil  = $inv > 0 ? ($qty / $inv) * 100 : 0;
-
-            if ($this->shouldUseEsBid($l30, $l7, $ruleConfig)) {
-                $newBid = $esBid;
-            } else {
-                $newBid = $this->resolveCombinedBid($scvr, $bands, $dil, $dilBands, [
-                    'ebay_price' => (float)($metric?->ebay_price ?? 0),
-                    'ebay_l30'   => $l30,
-                    'views'      => $views,
-                ]);
-            }
+            // Sbid (Views): adjust the current C Bid (bid_percentage) by the row's
+            // L7 View band (direction/step), clamped to caps. No C Bid → skip.
+            $metric  = $metrics->get($lid);
+            $baseBid = (float) ($ad->bid_percentage ?? 0);
+            $l7views = (float) ($metric?->l7_views ?? 0);
+            $el30Sold = (float) ($metric?->ebay_l30 ?? 0);
+            $newBid  = \App\Support\SbidViewsRule::apply($baseBid, $l7views, $avgL7Views, $sbidViewsSettings, $el30Sold);
             if ($newBid <= 0) {
-                $results[] = ['listing_id' => $lid, 'status' => 'skipped', 'reason' => 'No SBID — ES Bid fallback with no ES Bid, or 0 CVR & DIL not Pink'];
+                $results[] = ['listing_id' => $lid, 'status' => 'skipped', 'reason' => 'No current C Bid to adjust'];
                 $skipped++;
                 continue;
             }
@@ -230,118 +233,6 @@ class Ebay2CampaignAdsController extends Controller
         ]);
     }
 
-    /**
-     * Dynamic SBID — bid from SCVR bands.
-     * Returns 0.0 when SCVR (CVR) is 0 — no L30 sales means no signal to bid on.
-     * Callers MUST treat 0 as "skip / no SBID".
-     *
-     * $ctx may carry extra metric values (ebay_price, ebay_l30, views) so that a
-     * matched band can resolve its bid dynamically from a nested sub-rule.
-     */
-    private function getBidFromBands(float $scvr, array $bands, array $ctx = []): float
-    {
-        if ($scvr <= 0) {
-            return 0.0;
-        }
-        $ctx['scvr'] = $scvr;
-        foreach ($bands as $band) {
-            if ($scvr <= (float)($band['scvr_max'] ?? 9999)) {
-                return $this->resolveBandBid($band, $ctx);
-            }
-        }
-        $last = end($bands);
-        return $last ? $this->resolveBandBid($last, $ctx) : 2.1;
-    }
-
-    /**
-     * Resolve a single band's bid. If the band carries a dynamic sub-rule, the bid
-     * is chosen from its sub-bands using the configured metric value; otherwise the
-     * band's flat bid is used.
-     */
-    private function resolveBandBid(array $band, array $ctx): float
-    {
-        $sub = $band['sub'] ?? null;
-        if (is_array($sub) && !empty($sub['metric']) && !empty($sub['bands']) && is_array($sub['bands'])) {
-            $val = (float)($ctx[$sub['metric']] ?? 0);
-            foreach ($sub['bands'] as $sb) {
-                if ($val <= (float)($sb['max'] ?? 9999)) {
-                    return (float)($sb['bid'] ?? $band['bid'] ?? 2.1);
-                }
-            }
-            $lastSub = end($sub['bands']);
-            return (float)($lastSub['bid'] ?? $band['bid'] ?? 2.1);
-        }
-        return (float)($band['bid'] ?? 9.1);
-    }
-
-    /**
-     * Combined SCVR + DIL bid.
-     * If EITHER the SCVR value or the DIL value lands in its Pink (catch-all / last)
-     * band, the Pink bid is returned (e.g. 2.1) — even when both are Pink. Otherwise
-     * the normal SCVR rule decides (and still returns 0 / skip when SCVR = 0).
-     */
-    private function resolveCombinedBid(float $scvr, array $sbidBands, float $dil, array $dilBands, array $ctx = []): float
-    {
-        if ($this->isPinkBand($dil, $dilBands)) {
-            return $this->pinkBid($dilBands);
-        }
-        if ($this->isPinkBand($scvr, $sbidBands)) {
-            return $this->pinkBid($sbidBands);
-        }
-        return $this->getBidFromBands($scvr, $sbidBands, $ctx);
-    }
-
-    /** True when $value falls in the last (catch-all / Pink) band. */
-    private function isPinkBand(float $value, array $bands): bool
-    {
-        $n = count($bands);
-        if ($n === 0) {
-            return false;
-        }
-        foreach ($bands as $i => $band) {
-            $max = (float)($band['scvr_max'] ?? $band['dil_max'] ?? 9999);
-            if ($value <= $max) {
-                return $i === $n - 1;
-            }
-        }
-        return true;
-    }
-
-    /** Bid of the last (Pink / catch-all) band. */
-    private function pinkBid(array $bands): float
-    {
-        $last = end($bands);
-        return (float)($last['bid'] ?? 2.1);
-    }
-
-    /** Normalize a SKU for matching shopify_skus (unicode spaces → single space, upper). */
-    private function normSku(?string $s): string
-    {
-        $s = (string)$s;
-        $s = str_replace(["\xC2\xA0", "\xE2\x80\xAF", "\xE2\x80\x87", "\xE2\x80\x8B"], ' ', $s);
-        return strtoupper(preg_replace('/\s+/u', ' ', trim($s)));
-    }
-
-    /** Load DIL bands from rule (fallback to defaults). */
-    private function dilBands(): array
-    {
-        $dil = DB::table('ebay_sbid_rules')->where('key', 'ebay2_dil')->first();
-        return $dil ? (json_decode($dil->rule, true)['bands'] ?? $this->defaultDilRule()['bands']) : $this->defaultDilRule()['bands'];
-    }
-
-    /** Shopify rows keyed by normalized SKU for DIL (inv / quantity). */
-    private function shopifyByNormSku(array $skus): array
-    {
-        $map = [];
-        foreach (\App\Models\ShopifySku::whereIn('sku', $skus)->get() as $s) {
-            $k = $this->normSku($s->sku);
-            if ($k !== '' && !isset($map[$k])) {
-                $map[$k] = $s;
-            }
-        }
-        return $map;
-    }
-
     public function getCampaignList()
     {
         $campaigns = DB::table('ebay2_campaign_ads')
@@ -365,19 +256,18 @@ class Ebay2CampaignAdsController extends Controller
             return response()->json(['error' => 'listing_ids and campaign_id required'], 422);
         }
 
-        $ruleConfig = $this->sbidRuleConfig();
-        $bands      = $ruleConfig['bands'] ?? [];
-        $dilBands   = $this->dilBands();
-
-        $metrics = \App\Models\Ebay2Metric::whereIn('item_id', $listingIds)
-            ->get()->keyBy('item_id');
-
-        $shopifyMap = $this->shopifyByNormSku($metrics->pluck('sku')->filter()->unique()->values()->all());
+        // New enrollments have no C Bid yet — start from ES Bid (suggested_bid),
+        // falling back to the Sbid (Views) min cap. Daily cron then adjusts via Views.
+        $sbidViewsSettings = \App\Support\SbidViewsRule::settings(\App\Support\SbidViewsRule::KEY_EBAY2);
+        $minCap = (float) ($sbidViewsSettings['min_cap'] ?? 1);
 
         $ads = DB::table('ebay2_campaign_ads')
             ->whereIn('listing_id', $listingIds)
             ->get()
             ->keyBy('listing_id');
+
+        $metrics = \App\Models\Ebay2Metric::whereIn('item_id', $listingIds)
+            ->get()->keyBy('item_id');
 
         try {
             $service = new \App\Services\Ebay2ApiService();
@@ -394,31 +284,12 @@ class Ebay2CampaignAdsController extends Controller
         foreach ($listingIds as $lid) {
             $lid    = (string)$lid;
             $metric = $metrics->get($lid);
-            $views  = (float)($metric?->views ?? 0);
-            $l7     = (float)($metric?->l7_views ?? 0);
-            $l30    = (float)($metric?->ebay_l30 ?? 0);
-            $scvr   = $views > 0 ? ($l30 / $views) * 100 : 0;
-
-            $shop = $metric ? ($shopifyMap[$this->normSku($metric->sku)] ?? null) : null;
-            $inv  = (float)($shop->inv ?? 0);
-            $qty  = (float)($shop->quantity ?? 0);
-            $dil  = $inv > 0 ? ($qty / $inv) * 100 : 0;
-
-            $adRow = $ads->get($lid);
-            $esBid = (float)($adRow?->suggested_bid ?? 0);
-
-            if ($this->shouldUseEsBid($l30, $l7, $ruleConfig)) {
-                $bid = $esBid;
-            } else {
-                $bid = $this->resolveCombinedBid($scvr, $bands, $dil, $dilBands, [
-                    'ebay_price' => (float)($metric?->ebay_price ?? 0),
-                    'ebay_l30'   => $l30,
-                    'views'      => $views,
-                ]);
-            }
+            $adRow  = $ads->get($lid);
+            $esBid  = (float)($adRow?->suggested_bid ?? 0);
+            $bid    = $esBid > 0 ? $esBid : $minCap;
 
             if ($bid <= 0) {
-                $results[] = ['listing_id' => $lid, 'sku' => $metric?->sku, 'status' => 'skipped', 'reason' => 'No SBID — ES Bid fallback with no ES Bid, or 0 CVR & DIL not Pink'];
+                $results[] = ['listing_id' => $lid, 'sku' => $metric?->sku, 'status' => 'skipped', 'reason' => 'No ES Bid and no Sbid Views min cap'];
                 $skipped++;
                 continue;
             }
@@ -478,30 +349,7 @@ class Ebay2CampaignAdsController extends Controller
         }
     }
 
-    /** Parsed ebay2 SBID rule with defaults for missing keys. */
-    private function sbidRuleConfig(): array
-    {
-        $rule = DB::table('ebay_sbid_rules')->where('key', 'ebay2')->first();
-        $data = $rule ? (json_decode($rule->rule, true) ?: []) : $this->defaultRule();
-        if (!isset($data['l7_views_threshold'])) {
-            $data['l7_views_threshold'] = 70;
-        }
-        if (!isset($data['l30_sold_es_bid_max'])) {
-            $data['l30_sold_es_bid_max'] = 0;
-        }
-
-        return $data;
-    }
-
-    /** True when S Bid should fall back to raw ES Bid (suggested_bid). */
-    private function shouldUseEsBid(float $l30Sold, float $l7Views, array $rule): bool
-    {
-        $l30Max = (float) ($rule['l30_sold_es_bid_max'] ?? 0);
-        $l7Thr  = (float) ($rule['l7_views_threshold'] ?? 70);
-
-        return $l30Sold <= $l30Max || $l7Views < $l7Thr;
-    }
-
+    /** Default SCVR bands — kept for legacy getRule/saveRule. */
     private function defaultRule(): array
     {
         return [

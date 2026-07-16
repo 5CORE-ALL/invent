@@ -9,6 +9,9 @@ use Throwable;
 /**
  * File cache that recovers when storage/framework/cache/data (or shard dirs)
  * disappear mid-request after optimize:clear / cache:clear.
+ *
+ * Writes are best-effort: if the shard still cannot be created (permissions),
+ * put/add/forever return false so Cache::remember still returns the computed value.
  */
 class ResilientFileStore extends FileStore
 {
@@ -20,17 +23,26 @@ class ResilientFileStore extends FileStore
 
     public function put($key, $value, $seconds)
     {
-        return $this->retryMissingDir(fn () => parent::put($key, $value, $seconds), $this->path($key));
+        return $this->softWrite(
+            fn () => parent::put($key, $value, $seconds),
+            $this->path($key)
+        );
     }
 
     public function add($key, $value, $seconds)
     {
-        return $this->retryMissingDir(fn () => parent::add($key, $value, $seconds), $this->path($key));
+        return $this->softWrite(
+            fn () => parent::add($key, $value, $seconds),
+            $this->path($key)
+        );
     }
 
     public function forever($key, $value)
     {
-        return $this->retryMissingDir(fn () => parent::forever($key, $value), $this->path($key));
+        return $this->softWrite(
+            fn () => parent::forever($key, $value),
+            $this->path($key)
+        );
     }
 
     public function lock($name, $seconds = 0, $owner = null)
@@ -44,10 +56,31 @@ class ResilientFileStore extends FileStore
     /**
      * @template T
      * @param  callable(): T  $callback
+     * @return T|false
+     */
+    protected function softWrite(callable $callback, string $path)
+    {
+        try {
+            return $this->retryMissingDir($callback, $path);
+        } catch (Throwable $e) {
+            if (! $this->isMissingDirectoryError($e)) {
+                throw $e;
+            }
+
+            // Directory still missing/unwritable after recreate — do not abort the job.
+            return false;
+        }
+    }
+
+    /**
+     * @template T
+     * @param  callable(): T  $callback
      * @return T
      */
     protected function retryMissingDir(callable $callback, string $path)
     {
+        StoragePathGuard::ensureCacheShardForPath($path);
+
         try {
             return $callback();
         } catch (Throwable $e) {

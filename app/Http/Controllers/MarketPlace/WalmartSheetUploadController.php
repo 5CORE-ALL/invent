@@ -4,9 +4,7 @@ namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use App\Models\WalmartPriceData;
 use App\Models\WalmartListingViewsData;
-use App\Models\WalmartOrderData;
 use App\Models\WalmartDailyData;
 use App\Models\WalmartPricingSales;
 use App\Models\ProductMaster;
@@ -16,6 +14,7 @@ use App\Models\AmazonDatasheet;
 use App\Models\WalmartDataView;
 use App\Models\ProductStockMapping;
 use App\Models\WalmartListingStatus;
+use App\Services\WalmartApiService;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -33,89 +32,49 @@ class WalmartSheetUploadController extends Controller
     }
 
     /**
-     * Upload Price Data - TRUNCATE and INSERT
+     * Sync listed prices from Walmart GET /v3/items into walmart_pricing.
+     * Replaces the old manual price-file upload.
      */
-    public function uploadPriceData(Request $request)
+    public function syncListedPricesFromApi(WalmartApiService $walmart)
     {
-        $request->validate([
-            'price_file' => 'required|file'
-        ]);
-
         try {
-            $file = $request->file('price_file');
-            $rows = $this->parseFile($file);
+            set_time_limit(300);
 
-            if (empty($rows)) {
-                return response()->json(['error' => 'File is empty'], 400);
-            }
+            $stats = $walmart->syncListedPrices();
 
-            $headers = array_shift($rows);
-            $headers = array_map('trim', $headers);
-            
-            // TRUNCATE TABLE
-            DB::statement('SET FOREIGN_KEY_CHECKS=0;');
-            WalmartPriceData::truncate();
-            DB::statement('SET FOREIGN_KEY_CHECKS=1;');
-            
-            Log::info('Walmart Price Data table truncated before import');
+            return response()->json([
+                'success' => "Synced {$stats['upserted']} listed prices from Walmart API"
+                    . " ({$stats['with_price']} with price).",
+                'stats' => $stats,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Error syncing Walmart listed prices: ' . $e->getMessage());
+            return response()->json(['error' => 'Error syncing listed prices: ' . $e->getMessage()], 500);
+        }
+    }
 
-            $imported = 0;
-            $skipped = 0;
+    /**
+     * Sync orders from Walmart GET /v3/orders into walmart_daily_data.
+     * Replaces the old manual order-file upload for W L30 qty/metrics.
+     */
+    public function syncOrdersFromApi(Request $request, WalmartApiService $walmart)
+    {
+        try {
+            set_time_limit(300);
 
-            DB::beginTransaction();
-            try {
-                foreach ($rows as $row) {
-                    $row = array_map('trim', $row);
-                    
-                    // Skip empty rows
-                    if (count(array_filter($row)) === 0) {
-                        $skipped++;
-                        continue;
-                    }
-                    
-                    $rowData = array_combine($headers, $row);
-                    
-                    $sku = strtoupper($rowData['SKU'] ?? '');
-                    if (empty($sku)) {
-                        $skipped++;
-                        continue;
-                    }
+            $days = (int) $request->input('days', 60);
+            $days = max(1, min($days, 90));
 
-                    WalmartPriceData::create([
-                        'sku' => $sku,
-                        'item_id' => $rowData['Item ID'] ?? null,
-                        'product_name' => $rowData['Product Name'] ?? null,
-                        'lifecycle_status' => $rowData['Lifecycle Status'] ?? null,
-                        'publish_status' => $rowData['Publish Status'] ?? null,
-                        'price' => !empty($rowData['Price']) ? floatval($rowData['Price']) : null,
-                        'currency' => $rowData['Currency'] ?? null,
-                        'comparison_price' => !empty($rowData['Comparison Price']) ? floatval($rowData['Comparison Price']) : null,
-                        'buy_box_price' => !empty($rowData['Buy Box Item Price']) ? floatval($rowData['Buy Box Item Price']) : null,
-                        'buy_box_shipping_price' => !empty($rowData['Buy Box Shipping Price']) ? floatval($rowData['Buy Box Shipping Price']) : null,
-                        'msrp' => !empty($rowData['MSRP']) ? floatval($rowData['MSRP']) : null,
-                        'ratings' => !empty($rowData['Average Rating']) ? floatval($rowData['Average Rating']) : null,
-                        'reviews_count' => !empty($rowData['Reviews Count']) ? intval($rowData['Reviews Count']) : null,
-                        'brand' => $rowData['Brand'] ?? null,
-                        'product_category' => $rowData['Product Category'] ?? null,
-                    ]);
+            $stats = $walmart->syncOrders($days);
 
-                    $imported++;
-                }
-
-                DB::commit();
-                
-                return response()->json([
-                    'success' => "Successfully imported $imported price records (skipped $skipped)",
-                    'imported' => $imported,
-                    'skipped' => $skipped
-                ]);
-            } catch (\Exception $e) {
-                DB::rollBack();
-                throw $e;
-            }
-        } catch (\Exception $e) {
-            Log::error('Error importing Walmart price data: ' . $e->getMessage());
-            return response()->json(['error' => 'Error importing file: ' . $e->getMessage()], 500);
+            return response()->json([
+                'success' => "Synced {$stats['upserted_lines']} order line(s) from Walmart API"
+                    . " ({$stats['fetched_orders']} orders, last {$stats['days']} days).",
+                'stats' => $stats,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Error syncing Walmart orders: ' . $e->getMessage());
+            return response()->json(['error' => 'Error syncing orders: ' . $e->getMessage()], 500);
         }
     }
 
@@ -214,96 +173,6 @@ class WalmartSheetUploadController extends Controller
         }
     }
 
-    /**
-     * Upload Order Data - TRUNCATE and INSERT
-     */
-    public function uploadOrderData(Request $request)
-    {
-        $request->validate([
-            'order_file' => 'required|file'
-        ]);
-
-        try {
-            $file = $request->file('order_file');
-            $rows = $this->parseFile($file);
-
-            if (empty($rows)) {
-                return response()->json(['error' => 'File is empty'], 400);
-            }
-
-            $headers = array_shift($rows);
-            $headers = array_map('trim', $headers);
-            
-            // TRUNCATE TABLE
-            DB::statement('SET FOREIGN_KEY_CHECKS=0;');
-            WalmartOrderData::truncate();
-            DB::statement('SET FOREIGN_KEY_CHECKS=1;');
-            
-            Log::info('Walmart Order Data table truncated before import');
-
-            $imported = 0;
-            $skipped = 0;
-
-            DB::beginTransaction();
-            try {
-                foreach ($rows as $row) {
-                    $row = array_map('trim', $row);
-                    
-                    // Skip empty rows
-                    if (count(array_filter($row)) === 0) {
-                        $skipped++;
-                        continue;
-                    }
-                    
-                    $rowData = array_combine($headers, $row);
-                    
-                    $sku = strtoupper($rowData['SKU'] ?? '');
-                    if (empty($sku)) {
-                        $skipped++;
-                        continue;
-                    }
-
-                    WalmartOrderData::create([
-                        'sku' => $sku,
-                        'po_number' => $rowData['PO#'] ?? null,
-                        'order_number' => $rowData['Order#'] ?? null,
-                        'order_date' => !empty($rowData['Order Date']) ? date('Y-m-d', strtotime($rowData['Order Date'])) : null,
-                        'ship_by' => !empty($rowData['Ship By']) ? date('Y-m-d', strtotime($rowData['Ship By'])) : null,
-                        'delivery_date' => !empty($rowData['Delivery Date']) ? date('Y-m-d', strtotime($rowData['Delivery Date'])) : null,
-                        'customer_name' => $rowData['Customer Name'] ?? null,
-                        'customer_address' => $rowData['Customer Shipping Address'] ?? null,
-                        'qty' => !empty($rowData['Qty']) ? intval($rowData['Qty']) : null,
-                        'item_cost' => !empty($rowData['Item Cost']) ? floatval($rowData['Item Cost']) : null,
-                        'shipping_cost' => !empty($rowData['Shipping Cost']) ? floatval($rowData['Shipping Cost']) : null,
-                        'tax' => !empty($rowData['Tax']) ? floatval($rowData['Tax']) : null,
-                        'status' => $rowData['Status'] ?? null,
-                        'carrier' => $rowData['Carrier'] ?? null,
-                        'tracking_number' => $rowData['Tracking Number'] ?? null,
-                        'tracking_url' => $rowData['Tracking Url'] ?? null,
-                        'item_description' => $rowData['Item Description'] ?? null,
-                        'shipping_method' => $rowData['Shipping Method'] ?? null,
-                        'fulfillment_entity' => $rowData['Fulfillment Entity'] ?? null,
-                    ]);
-
-                    $imported++;
-                }
-
-                DB::commit();
-                
-                return response()->json([
-                    'success' => "Successfully imported $imported order records (skipped $skipped)",
-                    'imported' => $imported,
-                    'skipped' => $skipped
-                ]);
-            } catch (\Exception $e) {
-                DB::rollBack();
-                throw $e;
-            }
-        } catch (\Exception $e) {
-            Log::error('Error importing Walmart order data: ' . $e->getMessage());
-            return response()->json(['error' => 'Error importing file: ' . $e->getMessage()], 500);
-        }
-    }
 
     /**
      * Parse file - supports CSV, TSV, Excel (.xlsx, .xls)
@@ -377,16 +246,23 @@ class WalmartSheetUploadController extends Controller
                 ->all();
             
             // 3. Fetch related data using ProductMaster SKUs
-            // Note: Not using walmart_price_data (manual uploads) - using API data only
-            $listingData = WalmartListingViewsData::whereIn('sku', $skus)->get()->keyBy('sku');
+            // Listed price comes from walmart_pricing (Walmart GET /v3/items) — not file uploads.
+            $listingData = WalmartListingViewsData::whereIn('sku', $skus)->get()->keyBy(function ($row) {
+                return strtoupper((string) $row->sku);
+            });
             
-            // Fetch Walmart Pricing data from walmart_pricing table (from API)
-            $walmartPricing = WalmartPricingSales::whereIn('sku', $skus)->get()->keyBy('sku');
+            // Fetch Walmart Pricing data from walmart_pricing table (from API).
+            // Key by UPPER(sku) so mixed-case API SKUs still match ProductMaster.
+            $skuLookup = collect($skus)->mapWithKeys(fn ($sku) => [strtoupper((string) $sku) => true]);
+            $walmartPricing = WalmartPricingSales::query()
+                ->get(['sku', 'item_id', 'item_name', 'current_price', 'buy_box_base_price', 'buy_box_total_price'])
+                ->filter(fn ($row) => isset($skuLookup[strtoupper((string) $row->sku)]))
+                ->keyBy(fn ($row) => strtoupper((string) $row->sku));
             
             // Aggregate orders by SKU (sum quantities and count orders)
-            // Using walmart_daily_data table with L30 period filter
+            // Using walmart_daily_data table with L30 period filter (filled from Walmart GET /v3/orders)
             $orderData = WalmartDailyData::selectRaw('
-                sku,
+                UPPER(sku) as sku,
                 COUNT(*) as total_orders,
                 SUM(quantity) as total_qty,
                 SUM(unit_price * quantity) as total_revenue,
@@ -397,9 +273,9 @@ class WalmartSheetUploadController extends Controller
             ->where('period', 'l30') // Filter for L30 period
             ->where('status', '!=', 'Cancelled') // Exclude cancelled orders
             ->whereIn('sku', $skus)
-            ->groupBy('sku')
+            ->groupBy(DB::raw('UPPER(sku)'))
             ->get()
-            ->keyBy('sku');
+            ->keyBy(fn ($row) => strtoupper((string) $row->sku));
             
             $shopifyData = ShopifySku::mapByProductSkus($skus);
             
@@ -1019,7 +895,9 @@ class WalmartSheetUploadController extends Controller
     public function getSummaryStats()
     {
         try {
-            $priceCount = WalmartPriceData::count();
+            $priceCount = WalmartPricingSales::whereNotNull('current_price')
+                ->where('current_price', '>', 0)
+                ->count();
             $listingCount = WalmartListingViewsData::count();
             $orderCount = WalmartDailyData::where('period', 'l30')->count();
             

@@ -3789,9 +3789,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     // Walmart Sheet Upload Routes (Separate Controller) - Like Temu with Truncate
     Route::get('/walmart-sheet-upload', [App\Http\Controllers\MarketPlace\WalmartSheetUploadController::class, 'index'])->name('walmart.sheet.upload');
-    Route::post('/walmart-sheet-upload-price', [App\Http\Controllers\MarketPlace\WalmartSheetUploadController::class, 'uploadPriceData'])->name('walmart-sheet-upload-price');
+    Route::post('/walmart-sheet-sync-listed-prices', [App\Http\Controllers\MarketPlace\WalmartSheetUploadController::class, 'syncListedPricesFromApi'])->name('walmart-sheet-sync-listed-prices');
     Route::post('/walmart-sheet-upload-listing-views', [App\Http\Controllers\MarketPlace\WalmartSheetUploadController::class, 'uploadListingViewsData'])->name('walmart-sheet-upload-listing-views');
-    Route::post('/walmart-sheet-upload-order', [App\Http\Controllers\MarketPlace\WalmartSheetUploadController::class, 'uploadOrderData'])->name('walmart-sheet-upload-order');
+    Route::post('/walmart-sheet-sync-orders', [App\Http\Controllers\MarketPlace\WalmartSheetUploadController::class, 'syncOrdersFromApi'])->name('walmart-sheet-sync-orders');
     Route::get('/walmart-sheet-upload-data-json', [App\Http\Controllers\MarketPlace\WalmartSheetUploadController::class, 'getCombinedDataJson'])->name('walmart-sheet-upload-data-json');
     Route::get('/walmart-sheet-upload-summary', [App\Http\Controllers\MarketPlace\WalmartSheetUploadController::class, 'getSummaryStats'])->name('walmart-sheet-upload-summary');
     Route::post('/walmart-sheet-save-amazon-prices', [App\Http\Controllers\MarketPlace\WalmartSheetUploadController::class, 'saveAmazonPriceUpdates'])->name('walmart-sheet-save-amazon-prices');
@@ -5455,6 +5455,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/ebay2/campaign-ads/rule', 'saveRule')->name('ebay2.campaign.ads.rule.save');
         Route::get('/ebay2/campaign-ads/dil-rule', 'getDilRule')->name('ebay2.campaign.ads.dil.rule');
         Route::post('/ebay2/campaign-ads/dil-rule', 'saveDilRule')->name('ebay2.campaign.ads.dil.rule.save');
+        Route::get('/ebay2/campaign-ads/sbid-views-rule', 'getSbidViewsRule')->name('ebay2.campaign.ads.sbid.views.rule');
+        Route::post('/ebay2/campaign-ads/sbid-views-rule', 'saveSbidViewsRule')->name('ebay2.campaign.ads.sbid.views.rule.save');
         Route::post('/ebay2/campaign-ads/push-sbid', 'pushSbid')->name('ebay2.campaign.ads.push.sbid');
         Route::post('/ebay2/campaign-ads/push-selected', 'pushSelected')->name('ebay2.campaign.ads.push.selected');
         Route::get('/ebay2/campaign-ads/campaigns', 'getCampaignList')->name('ebay2.campaign.ads.campaigns');
