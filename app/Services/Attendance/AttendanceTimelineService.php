@@ -745,9 +745,16 @@ class AttendanceTimelineService
     $nowInTz = now()->timezone($timezone);
     $windowEnd = $nowInTz->lt($segEnd) ? $nowInTz : $segEnd;
 
+    // captured_at is stored in APP_TIMEZONE (naive MySQL datetime). Convert the
+    // display-timezone window into app time so IST "today" matches LA-stored rows.
+    $appTz = (string) config('app.timezone', 'UTC');
+
     return \App\Models\AttendanceScreenshot::query()
       ->where('user_id', $userId)
-      ->whereBetween('captured_at', [$segStart, $windowEnd]);
+      ->whereBetween('captured_at', [
+        $segStart->clone()->timezone($appTz)->format('Y-m-d H:i:s'),
+        $windowEnd->clone()->timezone($appTz)->format('Y-m-d H:i:s'),
+      ]);
   }
 
   /**
