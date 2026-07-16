@@ -404,36 +404,36 @@
                         <option value="blank">Blank S PRC only</option>
                     </select>
 
-                    {{-- Target ROI% bulk control — back-solves S PRC for selected rows so SROI = Target ROI%. --}}
-                    {{-- Formula: sprice = (LP × (1 + ROI%/100) + Ship) / margin  (margin = take-home %, e.g. 0.80 for Amazon) --}}
+                    {{-- Target ROI% bulk control — back-solves S PRC so the Sroi column = Target ROI%. --}}
+                    {{-- Formula: sprice = (LP × (1 + ROI%/100) + Ship) / 0.80  (same 0.80 take-home as Sroi / GROI%) --}}
                     <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
                         id="target-roi-controls"
-                        title="Target ROI% — sets S PRC = (LP × (1 + Target ROI%/100) + Ship) / margin on every selected row (accounts for Amazon fees + shipping)">
+                        title="Target ROI% — sets S PRC so the Sroi column equals the target (gross; does not target SNROI)">
                         <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
                             <span style="font-size:1em;" aria-hidden="true">🎯</span> ROI%:
                         </label>
                         <input type="number" id="target-roi-input" class="form-control form-control-sm text-end"
                             placeholder="30" step="0.1" style="width: 90px;"
-                            title="Target ROI% applied to all selected rows when you click 'Apply S PRC'">
-                        <button id="apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
-                            title="Compute & save S PRC = (LP \u00d7 (1 + Target ROI%/100) + Ship) / margin for every selected row">
+                            title="Target ROI% applied to all selected rows — matches the Sroi column">
+                        <button id="apply-target-roi-btn" class="btn btn-sm btn-primary" type="button"
+                            title="Compute & save S PRC so Sroi = Target ROI% for every selected row">
                             <i class="fas fa-calculator"></i>
                         </button>
                     </div>
 
-                    {{-- Target GPFT% bulk control — back-solves S PRC for selected rows so SGPFT = Target GPFT%. --}}
-                    {{-- Formula: sprice = (LP + Ship) / (margin − GPFT%/100). Target GPFT% must be < margin*100 (else denominator ≤ 0). --}}
+                    {{-- Target GPFT% bulk control — back-solves S PRC so S GPFT (Sgpft) = Target GPFT%. --}}
+                    {{-- Formula: sprice = (LP + Ship) / (0.80 − GPFT%/100). Target GPFT% must be < 80. --}}
                     <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
                         id="target-gpft-controls"
-                        title="Target GPFT% — sets S PRC = (LP + Ship) / (margin − Target GPFT%/100) on every selected row (back-solves so SGPFT column equals the target)">
+                        title="Target GPFT% — sets S PRC so the S GPFT column equals the target (gross; does not target SNPFT)">
                         <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
                             <span style="font-size:1em;" aria-hidden="true">🎯</span> GPFT%:
                         </label>
                         <input type="number" id="target-gpft-input" class="form-control form-control-sm text-end"
                             placeholder="30" step="0.1" style="width: 90px;"
-                            title="Target GPFT% applied to all selected rows when you click 'Apply S PRC'. Must be less than the Amazon take-home margin (e.g. < 80%).">
-                        <button id="apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
-                            title="Compute & save S PRC = (LP + Ship) / (margin \u2212 Target GPFT%/100) for every selected row">
+                            title="Target GPFT% applied to all selected rows — matches the S GPFT column. Must be < 80%.">
+                        <button id="apply-target-gpft-btn" class="btn btn-sm btn-primary" type="button"
+                            title="Compute & save S PRC so S GPFT = Target GPFT% for every selected row">
                             <i class="fas fa-calculator"></i>
                         </button>
                     </div>
@@ -3105,15 +3105,11 @@
             /*
              * Target ROI% bulk apply
              * -----------------------
-             * For every selected row with a usable LP, back-solve the sale price so that the
-             * resulting SROI column matches Target ROI% after Amazon takes its margin and
-             * after shipping is paid out:
-             *     sprice = (LP * (1 + targetRoi% / 100) + Ship) / margin
-             * `margin` is the row's take-home rate (row.percentage, e.g. 0.80 for Amazon),
-             * with a 0.80 fallback matching the backend's hard-coded SROI rate. The save
-             * goes through the existing /save-amazon-sprice endpoint so SGPFT / SPFT / SROI
-             * get recomputed server-side exactly like an inline S PRC edit. Rounding is
-             * plain 2-decimal — no .99 / .49 retail snapping.
+             * Back-solves S PRC so the Sroi column (gross, same formula as GROI% with SPRICE)
+             * equals Target ROI%. Does NOT target SNROI (ads-adjusted).
+             *     Sroi = ((sprice × 0.80 − ship − lp) / lp) × 100
+             *  -> sprice = (LP × (1 + Target/100) + Ship) / 0.80
+             * Uses the same hard-coded 0.80 take-home as amazonComputeSroi / saveSpriceToDatabase.
              */
             $('#apply-target-roi-btn').on('click', function() {
                 const $btn = $(this);
@@ -3146,19 +3142,13 @@
                     return;
                 }
 
-                // Target ROI% = displayed net SROI (same as NROI badge shape):
-                //   ((sprice×margin − ship − lp) − sprice×Ads%/100) / lp × 100 = Target
-                //   -> sprice = (lp × (1 + Target/100) + ship) / (margin − Ads%/100)
-                const adsFrac = (parseFloat(AMAZON_CHANNEL_ADS_PCT) || 0) / 100;
+                // Target ROI% → Sroi (gross), not SNROI:
+                //   ((sprice × 0.80 − ship − lp) / lp) × 100 = Target
+                //   -> sprice = (lp × (1 + Target/100) + ship) / 0.80
+                const margin = 0.80;
                 const roiMultiplier = 1 + (targetRoiPct / 100);
 
-                // Pre-collect targets so we know the batch size up front (drives the
-                // success/error progress callback) and we never iterate the table twice.
-                // `margin` is the take-home rate on the row (row.percentage, e.g. 0.80 for
-                // Amazon). Falls back to 0.80 if the row didn't carry the field, matching
-                // the hard-coded backend value used for SROI/SGPFT.
                 const rowsToProcess = [];
-                const skippedAdsMargin = [];
                 table.getRows().forEach(function(r) {
                     const rd = r.getData();
                     const sku = rd['(Child) sku'];
@@ -3166,30 +3156,18 @@
                     const lp = parseFloat(rd.LP_productmaster) || 0;
                     if (lp <= 0) return; // skip rows without a usable cost
                     const ship = parseFloat(rd.Ship_productmaster) || 0;
-                    const marginRaw = parseFloat(rd.percentage);
-                    const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : 0.80;
-                    const netMargin = margin - adsFrac;
-                    if (netMargin <= 0) {
-                        skippedAdsMargin.push(sku);
-                        return;
-                    }
-                    const candidate = (lp * roiMultiplier + ship) / netMargin;
+                    const candidate = (lp * roiMultiplier + ship) / margin;
                     const sprice = +candidate.toFixed(2);
                     if (!isFinite(sprice) || sprice <= 0) return;
                     rowsToProcess.push({ row: r, sku: sku, sprice: sprice });
                 });
 
                 if (rowsToProcess.length === 0) {
-                    showToast('warning', skippedAdsMargin.length
-                        ? 'No selected rows could be priced (LP missing, or Ads% ≥ take-home margin)'
-                        : 'No selected rows have a usable LP > 0');
+                    showToast('warning', 'No selected rows have a usable LP > 0');
                     return;
                 }
 
-                let confirmMsg = `Compute & save S PRC for ${rowsToProcess.length} selected SKU(s) so SNROI (NROI formula) = ${targetRoiPct}%?\n\n(sprice = (LP \u00d7 (1 + Target/100) + Ship) / (margin \u2212 Ads%))`;
-                if (skippedAdsMargin.length) {
-                    confirmMsg += `\n\nNote: ${skippedAdsMargin.length} row(s) skipped because Ads% \u2265 take-home margin.`;
-                }
+                const confirmMsg = `Compute & save S PRC for ${rowsToProcess.length} selected SKU(s) so Sroi = ${targetRoiPct}%?\n\n(sprice = (LP \u00d7 (1 + Target/100) + Ship) / 0.80)`;
                 if (!confirm(confirmMsg)) {
                     return;
                 }
@@ -3227,7 +3205,7 @@
                             if (successCount + errorCount === total) {
                                 $btn.prop('disabled', false).html('<i class="fas fa-calculator"></i>');
                                 if (errorCount === 0) {
-                                    showToast('success', `S PRC saved for ${successCount} SKU(s) @ Target ROI ${targetRoiPct}%`);
+                                    showToast('success', `S PRC saved for ${successCount} SKU(s) — Sroi = ${targetRoiPct}%`);
                                 } else {
                                     showToast('error', `Saved ${successCount} of ${total} (${errorCount} failed)`);
                                 }
@@ -3265,15 +3243,11 @@
             /*
              * Target GPFT% bulk apply
              * ------------------------
-             * Mirrors the Target-ROI flow but back-solves so the resulting SGPFT column equals
-             * Target GPFT% after Amazon takes its margin and after shipping is paid out:
-             *     GPFT% = ((sprice * margin - ship - lp) / sprice) * 100   (same formula the
-             *     backend uses in saveSpriceToDatabase for SGPFT)
-             *   -> sprice = (lp + ship) / (margin - GPFT%/100)
-             * Constraint: the denominator (margin − target/100) must be > 0. With an Amazon
-             * take-home of 0.80 that means Target GPFT% must be strictly < 80; anything ≥ the
-             * margin would require an infinite/negative price, so those targets are rejected
-             * up-front instead of silently producing absurd values.
+             * Back-solves S PRC so the S GPFT (Sgpft) column equals Target GPFT%.
+             * Does NOT target SNPFT (ads-adjusted). Same hard-coded 0.80 as saveSpriceToDatabase:
+             *     SGPFT = ((sprice × 0.80 − ship − lp) / sprice) × 100
+             *  -> sprice = (lp + ship) / (0.80 − GPFT%/100)
+             * Target GPFT% must be strictly < 80.
              */
             $('#apply-target-gpft-btn').on('click', function() {
                 const $btn = $(this);
@@ -3303,10 +3277,15 @@
                     return;
                 }
 
+                const margin = 0.80;
                 const targetFraction = targetGpftPct / 100;
+                const denom = margin - targetFraction;
+                if (denom <= 0) {
+                    showToast('error', `Target GPFT% ${targetGpftPct}% is too high \u2014 must be less than 80%.`);
+                    return;
+                }
 
                 const rowsToProcess = [];
-                const skippedHighGpft = []; // rows where target >= margin (denominator <= 0)
                 table.getRows().forEach(function(r) {
                     const rd = r.getData();
                     const sku = rd['(Child) sku'];
@@ -3314,13 +3293,6 @@
                     const lp = parseFloat(rd.LP_productmaster) || 0;
                     if (lp <= 0) return; // need a cost to back-solve
                     const ship = parseFloat(rd.Ship_productmaster) || 0;
-                    const marginRaw = parseFloat(rd.percentage);
-                    const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : 0.80;
-                    const denom = margin - targetFraction;
-                    if (denom <= 0) {
-                        skippedHighGpft.push(sku);
-                        return;
-                    }
                     const candidate = (lp + ship) / denom;
                     const sprice = +candidate.toFixed(2);
                     if (!isFinite(sprice) || sprice <= 0) return;
@@ -3328,18 +3300,11 @@
                 });
 
                 if (rowsToProcess.length === 0) {
-                    if (skippedHighGpft.length > 0) {
-                        showToast('error', `Target GPFT% ${targetGpftPct}% is too high \u2014 must be less than the Amazon take-home margin (e.g. < 80%).`);
-                    } else {
-                        showToast('warning', 'No selected rows have a usable LP > 0');
-                    }
+                    showToast('warning', 'No selected rows have a usable LP > 0');
                     return;
                 }
 
-                let confirmMsg = `Compute & save S PRC for ${rowsToProcess.length} selected SKU(s) using (LP + Ship) / (margin \u2212 ${targetGpftPct}%/100)?`;
-                if (skippedHighGpft.length > 0) {
-                    confirmMsg += `\n\nNote: ${skippedHighGpft.length} row(s) will be skipped because Target GPFT% ${targetGpftPct}% \u2265 their take-home margin.`;
-                }
+                const confirmMsg = `Compute & save S PRC for ${rowsToProcess.length} selected SKU(s) so S GPFT = ${targetGpftPct}%?\n\n(sprice = (LP + Ship) / (0.80 \u2212 ${targetGpftPct}%/100))`;
                 if (!confirm(confirmMsg)) {
                     return;
                 }
@@ -3377,7 +3342,7 @@
                             if (successCount + errorCount === total) {
                                 $btn.prop('disabled', false).html('<i class="fas fa-calculator"></i>');
                                 if (errorCount === 0) {
-                                    showToast('success', `S PRC saved for ${successCount} SKU(s) @ Target GPFT ${targetGpftPct}%`);
+                                    showToast('success', `S PRC saved for ${successCount} SKU(s) — S GPFT = ${targetGpftPct}%`);
                                 } else {
                                     showToast('error', `Saved ${successCount} of ${total} (${errorCount} failed)`);
                                 }
