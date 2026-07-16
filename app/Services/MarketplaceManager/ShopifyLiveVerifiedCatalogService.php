@@ -159,15 +159,13 @@ final class ShopifyLiveVerifiedCatalogService
     }
 
     /**
-     * Listing tab counts from live-verified active catalog (shared across marketplaces).
-     * "All" / "unlinked" = active with Shopify live inventory > 0.
-     * "Linked" = linked ∩ active (any qty — so OOS linked stay manageable).
+     * Listing tab counts (shared across marketplaces).
+     * linked_with_inv / linked_zero_inv / unlinked (Not on marketplace).
      *
      * @param  array<int, string>  $linkedSkus
-     * @param  callable(array<string, true>): int  $countNotInShopify  receives normalized active keys
-     * @return array{all: int, linked: int, unlinked: int, not_in_shopify: int}|null  null = catalog not ready
+     * @return array{linked_with_inv: int, linked_zero_inv: int, unlinked: int, linked: int}|null
      */
-    public function listingCounts(array $linkedSkus, callable $countNotInShopify, string $store = self::STORE_MAIN): ?array
+    public function listingCounts(array $linkedSkus, string $store = self::STORE_MAIN): ?array
     {
         if (! $this->tablesReady() || ! $this->hasAnyActive($store)) {
             return null;
@@ -182,9 +180,8 @@ final class ShopifyLiveVerifiedCatalogService
             }
         }
 
-        $all = count($inStockNorm);
-        $linked = 0;
-        $linkedInStock = 0;
+        $linkedWithInv = 0;
+        $linkedZeroInv = 0;
         $seen = [];
         foreach ($linkedSkus as $sku) {
             $n = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
@@ -192,18 +189,61 @@ final class ShopifyLiveVerifiedCatalogService
                 continue;
             }
             $seen[$n] = true;
-            $linked++;
             if (isset($inStockNorm[$n])) {
-                $linkedInStock++;
+                $linkedWithInv++;
+            } else {
+                $linkedZeroInv++;
+            }
+        }
+
+        $unlinked = 0;
+        foreach ($inStockNorm as $n => $_) {
+            if (! isset($seen[$n])) {
+                $unlinked++;
             }
         }
 
         return [
-            'all' => $all,
-            'linked' => $linked,
-            'unlinked' => max(0, $all - $linkedInStock),
-            'not_in_shopify' => (int) $countNotInShopify($verifiedNorm),
+            'linked_with_inv' => $linkedWithInv,
+            'linked_zero_inv' => $linkedZeroInv,
+            'unlinked' => $unlinked,
+            'linked' => $linkedWithInv + $linkedZeroInv,
         ];
+    }
+
+    /**
+     * Split linked verified SKUs by shared live inventory.
+     *
+     * @param  array<int, string>  $linkedSkus
+     * @return array{with_inv: list<string>, zero_inv: list<string>}
+     */
+    public function splitLinkedByInventory(array $linkedSkus, string $store = self::STORE_MAIN): array
+    {
+        $with = [];
+        $zero = [];
+        $inStockNorm = [];
+        foreach ($this->inStockActiveSkuList($store) as $sku) {
+            $n = ShopifySku::normalizeSkuForShopifyLookup($sku);
+            if ($n !== '') {
+                $inStockNorm[$n] = true;
+            }
+        }
+        $map = $this->normalizedToSkuMap($store);
+        $seen = [];
+        foreach ($linkedSkus as $sku) {
+            $n = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
+            if ($n === '' || isset($seen[$n]) || ! isset($map[$n])) {
+                continue;
+            }
+            $seen[$n] = true;
+            if (isset($inStockNorm[$n])) {
+                $with[] = $map[$n];
+            } else {
+                $zero[] = $map[$n];
+            }
+        }
+
+        return ['with_inv' => $with, 'zero_inv' => $zero];
     }
 
     /**
@@ -211,7 +251,7 @@ final class ShopifyLiveVerifiedCatalogService
      *
      * @param  \Illuminate\Database\Eloquent\Builder<\App\Models\ShopifySku>  $query
      * @param  list<string>|null  $extraSkuAllowList  when set, intersect with verified (e.g. linked/state)
-     * @param  bool  $inStockOnly  when true and no allow-list, only SKUs with catalog inventory > 0 (All tab)
+     * @param  bool  $inStockOnly  when true and no allow-list, only SKUs with catalog inventory > 0
      * @return \Illuminate\Database\Eloquent\Builder<\App\Models\ShopifySku>
      */
     public function restrictShopifySkuQuery($query, ?array $extraSkuAllowList = null, bool $inStockOnly = false, string $store = self::STORE_MAIN)

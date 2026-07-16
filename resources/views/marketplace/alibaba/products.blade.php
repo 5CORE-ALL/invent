@@ -6,8 +6,8 @@
         <a href="{{ route('marketplace.manager.show', 'alibaba') }}" class="text-muted small"><i class="ri-arrow-left-line"></i> Alibaba Manager</a>
         @include('marketplace._page-heading', ['slug' => 'alibaba', 'heading' => 'Alibaba Listings'])
         <p class="text-muted mb-3">
-            Tabs use the shared live-verified Shopify catalog (active SKUs). Qty from the shared store.
-            Refresh Shopify once from <a href="{{ route('marketplace.manager.index') }}">Marketplace Manager</a>. Use <strong>Sync Alibaba link map</strong> for SKU ↔ product_id mappings.
+            Linked tabs split by shared Shopify inventory.
+            Refresh Shopify from <a href="{{ route('marketplace.manager.index') }}">Marketplace Manager</a>. Use <strong>Sync Alibaba link map</strong> for SKU ↔ product_id mappings.
         </p>
 
         @if(!empty($shopifyCatalogSyncedAt))
@@ -25,10 +25,12 @@
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <span class="badge bg-primary">
-                    @if(($linkTab ?? 'all') === 'not_in_shopify')
-                        {{ $products->total() }} on Alibaba, not in Shopify
+                    @if(($linkTab ?? '') === 'unlinked')
+                        {{ $products->total() }} not on Alibaba (in-stock Shopify)
+                    @elseif(($linkTab ?? '') === 'linked_zero')
+                        {{ $products->total() }} linked with 0 Shopify inventory
                     @else
-                        {{ $products->total() }} Shopify SKU(s)
+                        {{ $products->total() }} linked with Shopify inventory
                     @endif
                 </span>
                 <div class="d-flex gap-2 flex-wrap">
@@ -66,19 +68,16 @@
                     </div>
                 </form>
 
-                @php $counts = $counts ?? ['all' => 0, 'linked' => 0, 'unlinked' => 0, 'not_in_shopify' => 0]; @endphp
+                @php $counts = $counts ?? ['linked_with_inv' => 0, 'linked_zero_inv' => 0, 'unlinked' => 0, 'linked' => 0]; @endphp
                 <ul class="nav nav-tabs nav-bordered mb-3" role="tablist">
                     <li class="nav-item">
-                        <a href="{{ request()->url() }}?link=all&search_name={{ urlencode($searchName) }}&search_sku={{ urlencode($searchSku) }}" class="nav-link {{ ($linkTab ?? 'all') === 'all' ? 'active' : '' }}">All (stock) {{ $counts['all'] ?? 0 }}</a>
+                        <a href="{{ request()->url() }}?link=linked&search_name={{ urlencode($searchName) }}&search_sku={{ urlencode($searchSku) }}" class="nav-link {{ ($linkTab ?? '') === 'linked' ? 'active' : '' }}">Linked (With Inventory) {{ $counts['linked_with_inv'] ?? 0 }}</a>
                     </li>
                     <li class="nav-item">
-                        <a href="{{ request()->url() }}?link=linked&search_name={{ urlencode($searchName) }}&search_sku={{ urlencode($searchSku) }}" class="nav-link {{ ($linkTab ?? '') === 'linked' ? 'active' : '' }}">Linked {{ $counts['linked'] ?? 0 }}</a>
+                        <a href="{{ request()->url() }}?link=linked_zero&search_name={{ urlencode($searchName) }}&search_sku={{ urlencode($searchSku) }}" class="nav-link {{ ($linkTab ?? '') === 'linked_zero' ? 'active' : '' }}">Linked (0 Inventory) {{ $counts['linked_zero_inv'] ?? 0 }}</a>
                     </li>
                     <li class="nav-item">
-                        <a href="{{ request()->url() }}?link=unlinked&search_name={{ urlencode($searchName) }}&search_sku={{ urlencode($searchSku) }}" class="nav-link {{ ($linkTab ?? '') === 'unlinked' ? 'active' : '' }}">Not on Alibaba {{ $counts['unlinked'] ?? 0 }}</a>
-                    </li>
-                    <li class="nav-item">
-                        <a href="{{ request()->url() }}?link=not_in_shopify&search_name={{ urlencode($searchName) }}&search_sku={{ urlencode($searchSku) }}" class="nav-link {{ ($linkTab ?? '') === 'not_in_shopify' ? 'active' : '' }}">Not in Shopify {{ $counts['not_in_shopify'] ?? 0 }}</a>
+                        <a href="{{ request()->url() }}?link=unlinked&search_name={{ urlencode($searchName) }}&search_sku={{ urlencode($searchSku) }}" class="nav-link {{ ($linkTab ?? '') === 'unlinked' ? 'active' : '' }}">Not on marketplace {{ $counts['unlinked'] ?? 0 }}</a>
                     </li>
                 </ul>
 

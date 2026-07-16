@@ -6,12 +6,8 @@
         <a href="{{ route('marketplace.manager.show', 'newegg') }}" class="text-muted small"><i class="ri-arrow-left-line"></i> Newegg Manager</a>
         @include('marketplace._page-heading', ['slug' => 'newegg', 'heading' => 'Newegg Listings'])
         <p class="text-muted mb-3">
-            @if(($linkTab ?? '') === 'linked')
-                <strong>Linked</strong> = live-verified active Shopify SKUs linked to Newegg.
-                <em>Refresh live</em> warms Newegg status only. Refresh shared Shopify from <a href="{{ route('marketplace.manager.index') }}">Marketplace Manager</a>.
-            @else
-                Tabs use the shared Shopify live catalog. Qty comes from the shared store (no per-page Shopify API).
-            @endif
+            Linked tabs split by shared Shopify inventory. <em>Refresh live</em> warms Newegg status only.
+            Refresh Shopify from <a href="{{ route('marketplace.manager.index') }}">Marketplace Manager</a>.
         </p>
 
         @if(!empty($shopifyCatalogSyncedAt))
@@ -29,16 +25,16 @@
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <span class="badge bg-primary">
-                    @if(($linkTab ?? 'all') === 'not_in_shopify')
-                        {{ $products->total() }} on Newegg, not in Shopify
-                    @elseif(($linkTab ?? '') === 'linked')
-                        {{ $products->total() }} linked Shopify SKU(s)
+                    @if(($linkTab ?? '') === 'unlinked')
+                        {{ $products->total() }} not on Newegg (in-stock Shopify)
+                    @elseif(($linkTab ?? '') === 'linked_zero')
+                        {{ $products->total() }} linked with 0 Shopify inventory
                     @else
-                        {{ $products->total() }} Shopify SKU(s)
+                        {{ $products->total() }} linked with Shopify inventory
                     @endif
                 </span>
                 <div class="d-flex gap-2 flex-wrap">
-                    @if(($linkTab ?? '') === 'linked')
+                    @if(in_array(($linkTab ?? ''), ['linked', 'linked_zero'], true))
                         <a href="{{ request()->fullUrlWithQuery(['refresh_live' => 1]) }}" class="btn btn-sm btn-outline-success">
                             <i class="ri-flashlight-line"></i> Refresh live
                         </a>
@@ -60,12 +56,12 @@
             </div>
             <div class="card-body">
                 @php
-                    $counts = $counts ?? ['all' => 0, 'linked' => 0, 'unlinked' => 0, 'not_in_shopify' => 0];
+                    $counts = $counts ?? ['linked_with_inv' => 0, 'linked_zero_inv' => 0, 'unlinked' => 0, 'linked' => 0];
                     $stateCounts = $stateCounts ?? ['all' => 0, 'active' => 0, 'inactive' => 0, 'other' => 0];
                     $stateTab = $stateTab ?? 'all';
                     $qName = urlencode($searchName ?? '');
                     $qSku = urlencode($searchSku ?? '');
-                    $isLinkedTab = ($linkTab ?? '') === 'linked';
+                    $isLinkedTab = in_array(($linkTab ?? ''), ['linked', 'linked_zero'], true);
                 @endphp
                 <form method="get" class="mb-3">
                     <div class="row g-2 align-items-end flex-wrap">
@@ -103,16 +99,13 @@
 
                 <ul class="nav nav-tabs nav-bordered mb-3" role="tablist">
                     <li class="nav-item">
-                        <a href="{{ request()->url() }}?link=all&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? 'all') === 'all' ? 'active' : '' }}">All (stock) {{ $counts['all'] ?? 0 }}</a>
+                        <a href="{{ request()->url() }}?link=linked&state={{ urlencode($stateTab) }}&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'linked' ? 'active' : '' }}">Linked (With Inventory) {{ $counts['linked_with_inv'] ?? 0 }}</a>
                     </li>
                     <li class="nav-item">
-                        <a href="{{ request()->url() }}?link=linked&state={{ urlencode($stateTab) }}&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'linked' ? 'active' : '' }}">Linked {{ $counts['linked'] ?? 0 }}</a>
+                        <a href="{{ request()->url() }}?link=linked_zero&state={{ urlencode($stateTab) }}&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'linked_zero' ? 'active' : '' }}">Linked (0 Inventory) {{ $counts['linked_zero_inv'] ?? 0 }}</a>
                     </li>
                     <li class="nav-item">
-                        <a href="{{ request()->url() }}?link=unlinked&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'unlinked' ? 'active' : '' }}">Not on Newegg {{ $counts['unlinked'] ?? 0 }}</a>
-                    </li>
-                    <li class="nav-item">
-                        <a href="{{ request()->url() }}?link=not_in_shopify&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'not_in_shopify' ? 'active' : '' }}">Not in Shopify {{ $counts['not_in_shopify'] ?? 0 }}</a>
+                        <a href="{{ request()->url() }}?link=unlinked&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'unlinked' ? 'active' : '' }}">Not on marketplace {{ $counts['unlinked'] ?? 0 }}</a>
                     </li>
                 </ul>
 

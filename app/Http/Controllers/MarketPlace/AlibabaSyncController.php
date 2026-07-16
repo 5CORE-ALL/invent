@@ -140,18 +140,21 @@ class AlibabaSyncController extends Controller
     {
         $searchSku = trim((string) $request->input('search_sku', ''));
         $searchName = trim((string) $request->input('search_name', ''));
-        $linkTab = strtolower((string) $request->input('link', 'all'));
-        if (! in_array($linkTab, ['all', 'linked', 'unlinked', 'not_in_shopify'], true)) {
-            $linkTab = 'all';
+        $linkTab = strtolower((string) $request->input('link', 'linked'));
+        if (in_array($linkTab, ['all', 'not_in_shopify'], true)) {
+            $linkTab = 'linked';
+        }
+        if (! in_array($linkTab, ['linked', 'linked_zero', 'unlinked'], true)) {
+            $linkTab = 'linked';
         }
         $page = max(1, (int) $request->input('page', 1));
         $perPage = 50;
         $apiError = null;
+        $emptyCounts = ['linked_with_inv' => 0, 'linked_zero_inv' => 0, 'unlinked' => 0, 'linked' => 0];
 
         if (! Schema::hasTable('shopify_skus')) {
             $apiError = 'shopify_skus table missing. Run Shopify inventory sync first.';
             $products = new LengthAwarePaginator([], 0, $perPage, $page);
-            $counts = ['all' => 0, 'linked' => 0, 'unlinked' => 0, 'not_in_shopify' => 0];
 
             return view('marketplace.alibaba.products', [
                 'products' => $products,
@@ -159,7 +162,7 @@ class AlibabaSyncController extends Controller
                 'searchSku' => $searchSku,
                 'searchName' => $searchName,
                 'linkTab' => $linkTab,
-                'counts' => $counts,
+                'counts' => $emptyCounts,
                 'apiError' => $apiError,
                 'connected' => $this->apiConfig->isConfigured('alibaba'),
             ]);
@@ -167,35 +170,15 @@ class AlibabaSyncController extends Controller
 
         $catalog = app(ShopifyLiveVerifiedCatalogService::class);
         $linkedSkus = $this->linkedAlibabaSkus();
-        $shopifyNormKeys = ($catalog->tablesReady() && $catalog->hasAnyActive())
-            ? $catalog->normalizedKeys()
-            : $this->shopifyNormalizedSkuKeys();
-        $counts = $catalog->listingCounts(
-            $linkedSkus,
-            fn (array $keys) => $this->countAeNotInShopify($keys)
-        ) ?? $this->shopifyListingCounts($linkedSkus, $shopifyNormKeys);
+        $counts = $catalog->listingCounts($linkedSkus) ?? $emptyCounts;
 
         if (! $catalog->hasAnyActive()) {
             $apiError = trim(($apiError ? $apiError.' ' : '').'Shared Shopify live catalog is empty — refresh Shopify from Marketplace Manager.');
         }
 
-        if ($linkTab === 'not_in_shopify') {
-            $paginator = $this->paginateAeNotInShopify($searchSku, $searchName, $shopifyNormKeys, $page, $perPage);
-
-            return view('marketplace.alibaba.products', [
-                'products' => $paginator,
-                'title' => 'Alibaba — Listings',
-                'searchSku' => $searchSku,
-                'searchName' => $searchName,
-                'linkTab' => $linkTab,
-                'counts' => $counts,
-                'apiError' => $apiError,
-                'connected' => $this->apiConfig->isConfigured('alibaba'),
-                'shopifyCatalogSyncedAt' => $catalog->latestSyncedAt(),
-            ]);
-        }
-
-        $linkedVerified = $catalog->filterLinkedToVerified($linkedSkus);
+        $split = $catalog->splitLinkedByInventory($linkedSkus);
+        $linkedVerified = $linkTab === 'linked_zero' ? $split['zero_inv'] : $split['with_inv'];
+        $allLinkedVerified = $catalog->filterLinkedToVerified($linkedSkus);
 
         $query = ShopifySku::query()
             ->whereNotNull('sku')
@@ -212,15 +195,13 @@ class AlibabaSyncController extends Controller
             });
         }
 
-        if ($linkTab === 'linked') {
+        if ($linkTab === 'linked' || $linkTab === 'linked_zero') {
             $catalog->restrictShopifySkuQuery($query, $linkedVerified);
-        } elseif ($linkTab === 'unlinked') {
-            $catalog->restrictShopifySkuQuery($query, null, true);
-            if ($linkedVerified !== []) {
-                $query->whereNotIn('sku', $linkedVerified);
-            }
         } else {
             $catalog->restrictShopifySkuQuery($query, null, true);
+            if ($allLinkedVerified !== []) {
+                $query->whereNotIn('sku', $allLinkedVerified);
+            }
         }
 
         $paginator = $query->orderBy('sku')->paginate($perPage, ['*'], 'page', $page)->withQueryString();

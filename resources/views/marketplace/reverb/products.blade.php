@@ -6,15 +6,11 @@
         <a href="{{ route('marketplace.manager.show', 'reverb') }}" class="text-muted small"><i class="ri-arrow-left-line"></i> Reverb Manager</a>
         @include('marketplace._page-heading', ['slug' => 'reverb', 'heading' => 'Reverb Listings'])
         <p class="text-muted mb-3">
-            @if(!empty($liveMode) && ($linkTab ?? '') === 'linked')
-                <strong>Linked</strong> = live-verified active Shopify SKUs (from catalog sync) that are linked to Reverb.
-                <strong>Shopify Qty</strong> and <strong>Reverb Qty</strong> are loaded live for the current page only.
-                Use <em>Refresh live</em> for Reverb listing states only. Refresh shared Shopify from <strong>Marketplace Manager</strong>.
-            @elseif(!empty($liveMode))
-                Page is paginated. Reverb Qty is live for the current page only.
+            @if(!empty($liveMode))
+                Linked tabs split by shared Shopify inventory. <em>Refresh live</em> warms Reverb states only.
+                Refresh Shopify from <a href="{{ route('marketplace.manager.index') }}">Marketplace Manager</a>.
             @else
-                <strong>All</strong> shows live-verified <em>active</em> Shopify SKUs with shared live inventory &gt; 0.
-                Qty comes from the shared Shopify store. Open <strong>Linked</strong> for marketplace quantities (includes zero-stock linked SKUs).
+                <strong>Not on Reverb</strong> = in-stock active Shopify SKUs not linked to Reverb.
             @endif
         </p>
 
@@ -39,18 +35,18 @@
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <span class="badge bg-primary">
-                    @if(($linkTab ?? 'all') === 'not_in_shopify')
-                        {{ $products->total() }} live Reverb SKU(s) not in Shopify
-                    @elseif(!empty($liveMode) && ($linkTab ?? '') === 'linked')
-                        {{ $products->total() }} linked live-verified Shopify SKU(s)
+                    @if(($linkTab ?? '') === 'unlinked')
+                        {{ $products->total() }} not on Reverb (in-stock Shopify)
+                    @elseif(!empty($liveMode) && ($linkTab ?? '') === 'linked_zero')
+                        {{ $products->total() }} linked with 0 Shopify inventory
                     @elseif(!empty($liveMode))
-                        {{ $products->total() }} live linked Reverb SKU(s)
+                        {{ $products->total() }} linked with Shopify inventory
                     @else
-                        {{ $products->total() }} live-verified active Shopify SKU(s)
+                        {{ $products->total() }} Shopify SKU(s)
                     @endif
                 </span>
                 <div class="d-flex gap-2 flex-wrap">
-                    @if(in_array(($linkTab ?? ''), ['all', 'linked', 'unlinked', 'not_in_shopify'], true))
+                    @if(in_array(($linkTab ?? ''), ['linked', 'linked_zero', 'unlinked'], true))
                         <a href="{{ request()->fullUrlWithQuery(['refresh_live' => 1]) }}" class="btn btn-sm btn-outline-success">
                             <i class="ri-flashlight-line"></i> Refresh live
                         </a>
@@ -72,12 +68,12 @@
             </div>
             <div class="card-body">
                 @php
-                    $counts = $counts ?? ['all' => 0, 'linked' => 0, 'unlinked' => 0, 'not_in_shopify' => 0];
+                    $counts = $counts ?? ['linked_with_inv' => 0, 'linked_zero_inv' => 0, 'unlinked' => 0, 'linked' => 0];
                     $stateCounts = $stateCounts ?? ['all' => 0, 'live' => 0, 'sold' => 0, 'out_of_stock' => 0, 'ended' => 0, 'draft' => 0, 'other' => 0];
                     $stateTab = $stateTab ?? 'all';
                     $qName = urlencode($searchName ?? '');
                     $qSku = urlencode($searchSku ?? '');
-                    $isLinkedTab = ($linkTab ?? '') === 'linked';
+                    $isLinkedTab = in_array(($linkTab ?? ''), ['linked', 'linked_zero'], true);
                 @endphp
                 <form method="get" class="mb-3">
                     <div class="row g-2 align-items-end flex-wrap">
@@ -118,16 +114,13 @@
 
                 <ul class="nav nav-tabs nav-bordered mb-3" role="tablist">
                     <li class="nav-item">
-                        <a href="{{ request()->url() }}?link=all&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? 'all') === 'all' ? 'active' : '' }}">All (stock) {{ $counts['all'] ?? 0 }}</a>
+                        <a href="{{ request()->url() }}?link=linked&state={{ urlencode($stateTab) }}&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'linked' ? 'active' : '' }}">Linked (With Inventory) {{ $counts['linked_with_inv'] ?? 0 }}</a>
                     </li>
                     <li class="nav-item">
-                        <a href="{{ request()->url() }}?link=linked&state={{ urlencode($stateTab) }}&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'linked' ? 'active' : '' }}">Linked {{ $counts['linked'] ?? 0 }}</a>
+                        <a href="{{ request()->url() }}?link=linked_zero&state={{ urlencode($stateTab) }}&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'linked_zero' ? 'active' : '' }}">Linked (0 Inventory) {{ $counts['linked_zero_inv'] ?? 0 }}</a>
                     </li>
                     <li class="nav-item">
-                        <a href="{{ request()->url() }}?link=unlinked&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'unlinked' ? 'active' : '' }}">Not on Reverb {{ $counts['unlinked'] ?? 0 }}</a>
-                    </li>
-                    <li class="nav-item">
-                        <a href="{{ request()->url() }}?link=not_in_shopify&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'not_in_shopify' ? 'active' : '' }}">Not in Shopify {{ $counts['not_in_shopify'] ?? 0 }}</a>
+                        <a href="{{ request()->url() }}?link=unlinked&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'unlinked' ? 'active' : '' }}">Not on marketplace {{ $counts['unlinked'] ?? 0 }}</a>
                     </li>
                 </ul>
 
