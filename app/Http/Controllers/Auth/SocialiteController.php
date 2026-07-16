@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers\Auth;
 
+use App\Http\Controllers\Attendance\AttendanceAgentController;
 use App\Http\Controllers\Controller;
+use App\Helpers\PermissionHelper;
 use App\Models\User;
 use App\Providers\RouteServiceProvider;
 use Auth;
@@ -11,7 +13,6 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Laravel\Socialite\Facades\Socialite;
-use App\Helpers\PermissionHelper;
 
 class SocialiteController extends Controller
 {
@@ -19,65 +20,78 @@ class SocialiteController extends Controller
     {
         return Socialite::driver('google')->redirect();
     }
+
     public function googleAuthentication(): RedirectResponse
     {
         try {
-            // Validate Google response
             $googleUser = Socialite::driver('google')->user();
 
-            if (!$googleUser || !$googleUser->email) {
+            if (! $googleUser || ! $googleUser->email) {
                 throw new Exception('Invalid Google user data');
             }
 
-            // Check if email already exists (even without Google ID)
             $user = User::where('email', $googleUser->email)
                 ->orWhere('google_id', $googleUser->id)
                 ->first();
 
             if ($user) {
                 if (! $user->is_active) {
+                    if ($desktop = AttendanceAgentController::failDesktopGoogleIfPending('account_inactive')) {
+                        return $desktop;
+                    }
+
                     return redirect()
                         ->route('login')
                         ->withErrors(['email' => 'This account is inactive. Contact an administrator.']);
                 }
 
-                // Update Google ID if missing (for existing users)
                 if (empty($user->google_id)) {
                     $user->update(['google_id' => $googleUser->id]);
                 }
 
-                // Set logined = 1 when user logs in
                 $user->update(['logined' => 1]);
 
                 Auth::login($user, true);
                 PermissionHelper::cacheUserPermissions($user->id);
+
+                if ($desktop = AttendanceAgentController::completeDesktopGoogleIfPending($user)) {
+                    return $desktop;
+                }
+
                 return redirect()->intended(RouteServiceProvider::HOME);
             }
 
-            // Prefer full name from given_name + family_name (Google often sends short "name")
             $given = $googleUser->user['given_name'] ?? '';
             $family = $googleUser->user['family_name'] ?? '';
-            $fullName = trim($given . ($given && $family ? ' ' : '') . $family);
+            $fullName = trim($given.($given && $family ? ' ' : '').$family);
             if ($fullName === '') {
                 $fullName = $googleUser->name ?? explode('@', $googleUser->email)[0];
             }
 
-            // Create new user with additional validation
             $userData = User::create([
                 'name' => $fullName,
                 'email' => $googleUser->email,
                 'google_id' => $googleUser->id,
                 'password' => bcrypt(Str::random(24)),
-                'email_verified_at' => now(), // Google emails are verified
-                'logined' => 1, // Set logined = 1 for new users
+                'email_verified_at' => now(),
+                'logined' => 1,
             ]);
 
             Auth::login($userData, true);
             PermissionHelper::cacheUserPermissions($userData->id);
-            return redirect()->intended(RouteServiceProvider::HOME);
 
+            if ($desktop = AttendanceAgentController::completeDesktopGoogleIfPending($userData)) {
+                return $desktop;
+            }
+
+            return redirect()->intended(RouteServiceProvider::HOME);
         } catch (Exception $e) {
-            Log::error('Google Auth Error: ' . $e->getMessage());
+            Log::error('Google Auth Error: '.$e->getMessage());
+
+            if ($desktop = AttendanceAgentController::failDesktopGoogleIfPending('sign_in_failed')) {
+                return $desktop;
+            }
+
             return redirect()
                 ->route('login')
                 ->withErrors(['error' => 'Google authentication failed. Please try again.']);

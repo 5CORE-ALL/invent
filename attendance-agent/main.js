@@ -861,7 +861,7 @@ function getTrayIcon() {
 function createWindow() {
     win = new BrowserWindow({
         width: 560,
-        height: 520,
+        height: 620,
         minWidth: 520,
         minHeight: 520,
         maxHeight: 520,
@@ -1043,25 +1043,16 @@ function createLoopbackServer(expectedState) {
 ipcMain.handle('googleLogin', async () => {
     let server;
     try {
-        const { data: pingData } = await axios.get(`${getAgentApiPath()}/ping`, { timeout: 10000 });
-        const clientId = pingData?.google_client_id;
-        if (!clientId) {
-            return { ok: false, message: 'Google sign-in is not configured on the server yet.' };
-        }
-
         const state = crypto.randomBytes(16).toString('hex');
         const loopback = createLoopbackServer(state);
         server = loopback.server;
         const port = await loopback.listen;
         const redirectUri = `http://127.0.0.1:${port}/callback`;
 
-        const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
-        authUrl.searchParams.set('client_id', clientId);
+        // Open portal Google sign-in in the system browser (same OAuth as web login).
+        // Google redirects back to the portal, which then sends a one-time code to this loopback.
+        const authUrl = new URL(`${getApiBase()}/attendance/desktop-google`);
         authUrl.searchParams.set('redirect_uri', redirectUri);
-        authUrl.searchParams.set('response_type', 'code');
-        authUrl.searchParams.set('scope', 'openid email profile');
-        authUrl.searchParams.set('access_type', 'online');
-        authUrl.searchParams.set('prompt', 'select_account');
         authUrl.searchParams.set('state', state);
 
         await shell.openExternal(authUrl.toString());

@@ -16,6 +16,8 @@ Route::prefix('attendance/desktop-api')->name('attendance.desktop-api.')->group(
         'ok' => true,
         'service' => '5core-attendance-agent',
         'version' => config('attendance.agent_version', '1.0.0'),
+        // Portal web Google OAuth is preferred; desktop client id is optional/legacy.
+        'google_sign_in' => (bool) config('services.google.client_id'),
         'google_client_id' => config('services.google_desktop.client_id'),
     ]))->name('ping');
 

@@ -11,7 +11,10 @@ use App\Services\Attendance\AttendanceScreenshotService;
 use App\Services\Attendance\AttendanceService;
 use App\Support\AttendanceAccess;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -67,6 +70,44 @@ class AttendanceAgentController extends Controller
         ]);
     }
 
+    /**
+     * Start Google sign-in for the desktop agent via the system browser.
+     * Reuses the portal's web Google OAuth client (same as inventory login).
+     */
+    public function googleAuthStart(Request $request): RedirectResponse
+    {
+        $redirectUri = (string) $request->query('redirect_uri', '');
+        $state = (string) $request->query('state', '');
+
+        if ($state === '' || strlen($state) > 128) {
+            abort(422, 'Invalid state.');
+        }
+
+        if (! preg_match('#^http://(127\.0\.0\.1|localhost):\d+(/callback)?$#', $redirectUri)) {
+            abort(422, 'Invalid redirect URI.');
+        }
+
+        if (Auth::check()) {
+            $user = Auth::user();
+            if (! ($user->is_active ?? true)) {
+                return self::desktopAgentLoopbackRedirect($redirectUri, $state, error: 'account_inactive');
+            }
+
+            return self::desktopAgentLoopbackRedirect($redirectUri, $state, user: $user);
+        }
+
+        if (! config('services.google.client_id') || ! config('services.google.client_secret')) {
+            abort(500, 'Google sign-in is not configured on the server.');
+        }
+
+        $request->session()->put('desktop_agent_oauth', [
+            'redirect_uri' => $redirectUri,
+            'state' => $state,
+        ]);
+
+        return Socialite::driver('google')->redirect();
+    }
+
     public function googleLogin(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -85,9 +126,26 @@ class AttendanceAgentController extends Controller
             throw ValidationException::withMessages(['redirect_uri' => ['Invalid redirect URI.']]);
         }
 
+        // Preferred path: one-time code from portal Google OAuth (web Socialite).
+        $cached = Cache::pull('desktop_agent_oauth_'.$validated['code']);
+        if (is_array($cached) && ! empty($cached['user_id'])) {
+            $user = User::query()->find($cached['user_id']);
+            if (! $user) {
+                throw ValidationException::withMessages(['email' => ['Google sign-in expired. Please try again.']]);
+            }
+            if (! ($user->is_active ?? true)) {
+                throw ValidationException::withMessages(['email' => ['This account is inactive. Contact an administrator.']]);
+            }
+
+            return $this->issueAgentToken($user, $validated);
+        }
+
+        // Legacy path: direct desktop OAuth client (GOOGLE_DESKTOP_* credentials).
         $clientId = config('services.google_desktop.client_id');
         $clientSecret = config('services.google_desktop.client_secret');
-        abort_if(! $clientId || ! $clientSecret, 500, 'Google sign-in is not configured on the server.');
+        if (! $clientId || ! $clientSecret) {
+            throw ValidationException::withMessages(['email' => ['Google sign-in failed. Please try again.']]);
+        }
 
         try {
             $googleUser = Socialite::buildProvider(GoogleProvider::class, [
@@ -132,6 +190,71 @@ class AttendanceAgentController extends Controller
             ]);
         }
 
+        return $this->issueAgentToken($user, $validated);
+    }
+
+    /**
+     * After portal Google OAuth succeeds, send the desktop agent a one-time code
+     * via its loopback listener (when a desktop sign-in was in progress).
+     */
+    public static function completeDesktopGoogleIfPending(User $user): ?RedirectResponse
+    {
+        $pending = session()->pull('desktop_agent_oauth');
+        if (! is_array($pending) || empty($pending['redirect_uri']) || empty($pending['state'])) {
+            return null;
+        }
+
+        return self::desktopAgentLoopbackRedirect(
+            (string) $pending['redirect_uri'],
+            (string) $pending['state'],
+            user: $user,
+        );
+    }
+
+    public static function failDesktopGoogleIfPending(string $error): ?RedirectResponse
+    {
+        $pending = session()->pull('desktop_agent_oauth');
+        if (! is_array($pending) || empty($pending['redirect_uri']) || empty($pending['state'])) {
+            return null;
+        }
+
+        return self::desktopAgentLoopbackRedirect(
+            (string) $pending['redirect_uri'],
+            (string) $pending['state'],
+            error: $error,
+        );
+    }
+
+    private static function desktopAgentLoopbackRedirect(
+        string $redirectUri,
+        string $state,
+        ?User $user = null,
+        ?string $error = null,
+    ): RedirectResponse {
+        $params = ['state' => $state];
+
+        if ($error) {
+            $params['error'] = $error;
+        } elseif ($user) {
+            $code = Str::random(64);
+            Cache::put('desktop_agent_oauth_'.$code, [
+                'user_id' => $user->id,
+            ], now()->addMinutes(5));
+            $params['code'] = $code;
+        } else {
+            $params['error'] = 'sign_in_failed';
+        }
+
+        $separator = str_contains($redirectUri, '?') ? '&' : '?';
+
+        return redirect()->away($redirectUri.$separator.http_build_query($params));
+    }
+
+    /**
+     * @param  array<string, mixed>  $validated
+     */
+    private function issueAgentToken(User $user, array $validated): JsonResponse
+    {
         abort_unless(AttendanceAccess::isInternalEmployee($user), 403, 'Attendance agent is for internal team members only.');
 
         $device = $this->deviceService->registerOrUpdate($user, $validated);
