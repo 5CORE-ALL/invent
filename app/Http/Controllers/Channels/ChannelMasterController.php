@@ -1191,10 +1191,12 @@ class ChannelMasterController extends Controller
         ];
 
         try {
-            $today    = Carbon::now();
-            $l30Start = $today->copy()->subDays(30)->startOfDay();
-            $l30End   = $today->copy()->endOfDay();
-            $l30      = $this->computeShopifyDirectMetricsFromOrders($l30Start, $l30End);
+            // L30 window MUST match /shopify Net Sales exactly (Pacific, 30
+            // inclusive days ending today = subDays(29)). Using Carbon::now()
+            // + subDays(30) here previously drifted ~1 day vs /shopify and
+            // made /shopify-b2c-pricing Total Sales disagree with that page.
+            [$l30Start, $l30End] = \App\Http\Controllers\ShopifyRawDataController::shopifyDirectL30Range();
+            $l30 = $this->computeShopifyDirectMetricsFromOrders($l30Start, $l30End);
 
             // Profit + COGS using the same 0.95 margin /shopify's NPFT / NROI cards
             // and the master Shopify row use. Single source of truth: this method.
@@ -1782,6 +1784,64 @@ class ChannelMasterController extends Controller
             if ($l7Sales !== null) {
                 $row['L7 Sales'] = $l7Sales;
             }
+
+            // CVR + Total Views from /shopify-b2c-pricing CVR% badge (INV>0 OV L30 ÷ Views)
+            $cvrSnap = $this->getShopifyB2CCvrFromPricingSkus();
+            $row['Total Views'] = $cvrSnap['total_views'];
+            $row['CVR'] = $cvrSnap['cvr_pct'];
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
+     * Shopify B2C CVR matching /shopify-b2c-pricing CVR% badge (default INV > 0 filter):
+     *   sum(quantity) ÷ sum(views) × 100 on shopify_skus where inv > 0.
+     * quantity = OV L30; views = L30 product page sessions.
+     *
+     * @return array{total_views: int, cvr_pct: float}
+     */
+    private function getShopifyB2CCvrFromPricingSkus(): array
+    {
+        try {
+            $agg = ShopifySku::query()
+                ->where('inv', '>', 0)
+                ->selectRaw('COALESCE(SUM(views), 0) as total_views, COALESCE(SUM(quantity), 0) as total_l30')
+                ->first();
+
+            $views = (float) ($agg->total_views ?? 0);
+            $l30 = (float) ($agg->total_l30 ?? 0);
+            $cvr = $views > 0 ? round(($l30 / $views) * 100, 2) : 0.0;
+
+            return [
+                'total_views' => (int) round($views),
+                'cvr_pct' => $cvr,
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('Shopify B2C CVR snapshot failed: ' . $e->getMessage());
+
+            return ['total_views' => 0, 'cvr_pct' => 0.0];
+        }
+    }
+
+    /**
+     * Overlay /shopify-b2c-pricing CVR% + Views onto the Active Channel "Shopify" row
+     * (channel_master name is "Shopify", not "Shopify B2C") so /all-marketplace-master
+     * CVR matches that page's badge instead of showing "-" (Total Views was 0).
+     */
+    private function overlayLiveShopifyB2CCvrOnChannelRows(array $rows): array
+    {
+        $snap = $this->getShopifyB2CCvrFromPricingSkus();
+
+        foreach ($rows as &$row) {
+            $name = trim((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
+            // Live table uses "Shopify"; keep "Shopify B2C" match for any legacy/direct path.
+            if (strcasecmp($name, 'Shopify') !== 0 && strcasecmp($name, 'Shopify B2C') !== 0) {
+                continue;
+            }
+            $row['Total Views'] = $snap['total_views'];
+            $row['CVR'] = $snap['cvr_pct'];
         }
         unset($row);
 
@@ -1860,6 +1920,11 @@ class ChannelMasterController extends Controller
             $row['NMap'] = $counts['nmap'];
             if (array_key_exists('total_views', $counts)) {
                 $row['Total Views'] = $counts['total_views'];
+            }
+            // Reverb (and any channel that returns cvr_pct): listing CVR from pricing page,
+            // not Qty ÷ Views (order units disagree with RV L30 ÷ Views / Amazon formula).
+            if (array_key_exists('cvr_pct', $counts) && $counts['cvr_pct'] !== null) {
+                $row['CVR'] = $counts['cvr_pct'];
             }
         }
         unset($row);
@@ -4359,6 +4424,8 @@ class ChannelMasterController extends Controller
                     'Miss' => $channel->miss,
                     'NMap' => $channel->nmap,
                     'Total Views' => $channel->total_views,
+                    // Listing CVR (persisted by channel:calculate-data). Overlay may still refresh live.
+                    'CVR' => $channel->listing_cvr !== null ? (float) $channel->listing_cvr : null,
                     
                     'NR' => $channel->nr,
                     'Update' => $channel->update_flag,
@@ -4379,6 +4446,8 @@ class ChannelMasterController extends Controller
             $formattedData = $this->overlayLivePurchasingPowerMetricsOnChannelRows($formattedData);
             // Shopify: overlay live Net Sales from shopify_raw_orders (matches /shopify Net Sales card)
             $formattedData = $this->overlayLiveShopifyDirectMetricsOnChannelRows($formattedData);
+            // Shopify B2C: overlay CVR + Total Views from /shopify-b2c-pricing CVR% badge
+            $formattedData = $this->overlayLiveShopifyB2CCvrOnChannelRows($formattedData);
             // FB Marketplace: overlay live Sales / GPFT / ROI from /facebook-marketplace
             $formattedData = $this->overlayLiveFbMarketplaceMetricsOnChannelRows($formattedData);
             // TikTok 2: overlay live L30/GPFT/ROI from /tiktok-two/daily-sales
@@ -5102,6 +5171,8 @@ class ChannelMasterController extends Controller
         // so the "Shopify" Active Channel row Sales column reflects the same value the user sees
         // on /shopify. Applied before daily snapshot + chart aggregation so both pick it up.
         $finalData = $this->overlayLiveShopifyDirectMetricsOnChannelRows($finalData);
+        // Shopify B2C: overlay CVR + Total Views from /shopify-b2c-pricing CVR% badge
+        $finalData = $this->overlayLiveShopifyB2CCvrOnChannelRows($finalData);
         // FB Marketplace: overlay live Sales / GPFT / ROI from /facebook-marketplace
         $finalData = $this->overlayLiveFbMarketplaceMetricsOnChannelRows($finalData);
         // TikTok 2: overlay live L30/GPFT/ROI from /tiktok-two/daily-sales
@@ -8135,6 +8206,8 @@ class ChannelMasterController extends Controller
             'Miss' => $mapMissCounts['miss'],
             'NMap' => $mapMissCounts['nmap'],
             'Total Views' => $mapMissCounts['total_views'] ?? 0,
+            // Amazon / reverb-pricing formula: Σ(RV L30) ÷ Σ(Views) × 100 (INV > 0)
+            'CVR' => $mapMissCounts['cvr_pct'] ?? null,
             'missing_link' => $channelData->missing_link ?? $this->defaultMissingLinkForChannel('Reverb'),
             ...$this->getChannelHealthAndReviewsStub(),
         ];
@@ -12494,6 +12567,9 @@ class ChannelMasterController extends Controller
         // Get Map and Miss counts from amazon_channel_summary_data table
         $mapMissCounts = $this->getMapAndMissCounts('shopify_b2c');
 
+        // CVR + Views from /shopify-b2c-pricing CVR% badge (INV > 0: OV L30 ÷ Views)
+        $cvrSnap = $this->getShopifyB2CCvrFromPricingSkus();
+
         $result[] = [
             'Channel '   => 'Shopify B2C',
             'L-60 Sales' => intval($l60Sales),
@@ -12526,7 +12602,8 @@ class ChannelMasterController extends Controller
             'Map'        => $mapMissCounts['map'],
             'Miss'       => $mapMissCounts['miss'],
             'NMap'       => $mapMissCounts['nmap'],
-            'Total Views' => $mapMissCounts['total_views'] ?? 0,
+            'Total Views' => $cvrSnap['total_views'],
+            'CVR'        => $cvrSnap['cvr_pct'],
             ...$this->getChannelHealthAndReviewsStub(),
             'Inv at LP'  => $this->getInvAtLpShopify(),
         ];
@@ -14070,15 +14147,24 @@ class ChannelMasterController extends Controller
                             $totalAdSold += floatval($sd['ad_sold'] ?? 0);
                             $totalClicks += floatval($sd['clicks'] ?? 0);
                         } elseif ($metric === 'cvr') {
-                            // Units-based listing CVR — matches /temu-decrease (qty / views).
-                            // Falls back to l30_orders for snapshots saved before total_quantity
-                            // was persisted, so older days don't suddenly read zero on the chart.
-                            $qtyForCvr = floatval($sd['total_quantity'] ?? 0);
-                            if ($qtyForCvr <= 0) {
-                                $qtyForCvr = floatval($sd['l30_orders'] ?? 0);
+                            // Prefer listing_cvr (Shopify OV L30 ÷ Views). Otherwise qty/views.
+                            // Derive implied units from listing_cvr × views so Σ still works.
+                            $viewsForCvr = floatval($sd['total_views'] ?? 0);
+                            if (array_key_exists('listing_cvr', $sd) && $sd['listing_cvr'] !== null && $sd['listing_cvr'] !== '' && $viewsForCvr > 0) {
+                                $totalQtyCvr += (floatval($sd['listing_cvr']) / 100.0) * $viewsForCvr;
+                                $totalViewsCvr += $viewsForCvr;
+                            } else {
+                                // Shopify/Temu order-qty ÷ product-views disagrees with page CVR badges.
+                                if ($this->channelRequiresPersistedListingCvr((string) ($row->channel ?? ''))) {
+                                    continue;
+                                }
+                                $qtyForCvr = floatval($sd['total_quantity'] ?? 0);
+                                if ($qtyForCvr <= 0) {
+                                    $qtyForCvr = floatval($sd['l30_orders'] ?? 0);
+                                }
+                                $totalQtyCvr += $qtyForCvr;
+                                $totalViewsCvr += $viewsForCvr;
                             }
-                            $totalQtyCvr += $qtyForCvr;
-                            $totalViewsCvr += floatval($sd['total_views'] ?? 0);
                         } elseif ($metric === 'gprofit' || $metric === 'npft' || $metric === 'pft') {
                             $totalPft += $channelPft;
                             $totalSales += $channelL30Sales;
@@ -14183,18 +14269,13 @@ class ChannelMasterController extends Controller
                         }
                         $value = $clicks > 0 ? round(($adSold / $clicks) * 100, 1) : 0;
                     } elseif ($metric === 'cvr') {
-                        // Units-based: qty / views — matches /temu-decrease badge formula.
-                        // Falls back to l30_orders for older snapshots that pre-date the
-                        // total_quantity field, otherwise the chart would graph zero for those days.
-                        $qty = floatval($summaryData['total_quantity'] ?? 0);
-                        if ($qty <= 0) {
-                            $qty = floatval($summaryData['l30_orders'] ?? 0);
+                        $cvrResolved = $this->resolveListingCvrPercentFromSummary($summaryData, $channel);
+                        // Shopify/Temu days before listing_cvr used order qty ÷ views and
+                        // disagreed with page badges — skip those so the chart stays honest.
+                        if ($cvrResolved === null) {
+                            continue;
                         }
-                        $views = floatval($summaryData['total_views'] ?? 0);
-                        // 2 decimals: rolling-window CVR moves <0.05% per day, so 1-decimal
-                        // rounding collapsed multiple consecutive days into the same value
-                        // and the trend looked flat for ~3 days at a time.
-                        $value = $views > 0 ? round(($qty / $views) * 100, 2) : 0;
+                        $value = $cvrResolved;
                     } elseif ($metric === 'pft') {
                         $gprofitPercent = floatval($summaryData['gprofit_percent'] ?? 0);
                         $sales = floatval($summaryData['l30_sales'] ?? 0);
@@ -14407,6 +14488,46 @@ class ChannelMasterController extends Controller
     }
 
     /**
+     * Listing CVR% from a daily snapshot.
+     * Prefer persisted listing_cvr:
+     *   Shopify — INV>0 OV L30 ÷ Views (/shopify-b2c-pricing)
+     *   Temu / Temu 2 — sum(temu_l30) ÷ sum(product_clicks) (/temu-decrease)
+     * Otherwise order-units ÷ views. Returns null for Shopify/Temu snapshots that lack
+     * listing_cvr so charts/dots never use order-qty ÷ views (disagrees with page badges).
+     */
+    private function resolveListingCvrPercentFromSummary(array $sd, ?string $channel = null): ?float
+    {
+        if (array_key_exists('listing_cvr', $sd) && $sd['listing_cvr'] !== null && $sd['listing_cvr'] !== '') {
+            return round(floatval($sd['listing_cvr']), 2);
+        }
+
+        $normalized = $channel
+            ? strtolower(str_replace([' ', '-', '&', '/'], '', trim($channel)))
+            : '';
+        if (in_array($normalized, ['shopify', 'shopifyb2c', 'temu', 'temu2', 'reverb'], true)) {
+            return null;
+        }
+
+        $qty = floatval($sd['total_quantity'] ?? 0);
+        if ($qty <= 0) {
+            $qty = floatval($sd['l30_orders'] ?? 0);
+        }
+        $views = floatval($sd['total_views'] ?? 0);
+
+        return $views > 0 ? round(($qty / $views) * 100, 2) : 0.0;
+    }
+
+    /** Channels whose listing CVR must not be recomputed from order qty ÷ views. */
+    private function channelRequiresPersistedListingCvr(?string $channel): bool
+    {
+        $normalized = $channel
+            ? strtolower(str_replace([' ', '-', '&', '/'], '', trim($channel)))
+            : '';
+
+        return in_array($normalized, ['shopify', 'shopifyb2c', 'temu', 'temu2', 'reverb'], true);
+    }
+
+    /**
      * Extract a single metric value from ChannelMasterSummary summary_data (same logic as chart).
      */
     private function getMetricValueFromSummaryData(string $channel, string $metric, array $summaryData, array $metricMap): ?float
@@ -14450,14 +14571,7 @@ class ChannelMasterController extends Controller
             return $clicks > 0 ? round(($adSold / $clicks) * 100, 2) : null;
         }
         if ($metric === 'cvr') {
-           
-            $qty = floatval($summaryData['total_quantity'] ?? 0);
-            if ($qty <= 0) {
-                $qty = floatval($summaryData['l30_orders'] ?? 0);
-            }
-            $views = floatval($summaryData['total_views'] ?? 0);
-            
-            return $views > 0 ? round(($qty / $views) * 100, 2) : 0.0;
+            return $this->resolveListingCvrPercentFromSummary($summaryData, $channel);
         }
         if ($metric === 'nroi') {
             $groi = floatval($summaryData['groi_percent'] ?? 0);
@@ -14893,6 +15007,10 @@ class ChannelMasterController extends Controller
                     'l30_orders' => floatval($row['L30 Orders'] ?? 0),
                     'total_quantity' => floatval($totalQuantity), // Total quantity (units sold) from marketplace_daily_metrics
                     'total_views' => floatval($row['Total Views'] ?? 0),
+                    // Listing CVR (OV L30 ÷ Views for Shopify; qty÷views elsewhere). Distinct from Ads CVR.
+                    'listing_cvr' => (array_key_exists('CVR', $row) && $row['CVR'] !== null && $row['CVR'] !== '')
+                        ? floatval(preg_replace('/[^0-9.\-]/', '', (string) $row['CVR']))
+                        : null,
                     'growth' => floatval($row['Growth'] ?? 0),
                     'clicks' => intval($row['clicks'] ?? 0),
                     

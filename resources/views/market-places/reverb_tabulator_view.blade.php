@@ -146,6 +146,9 @@
                         <span class="badge fs-6 p-2 flex-shrink-0" id="groi-badge" style="background-color: #6f42c1; color: white; font-weight: bold;" title="Weighted GROI% = Σ[sold_qty×(RV Price×take%−LP−Ship)] ÷ Σ(sold_qty×LP) — same method as /temu-decrease, using normal ship">GROI: 0%</span>
                         <span class="badge fs-6 p-2 flex-shrink-0" id="npft-badge" style="background-color: #0d6efd; color: white; font-weight: bold;" title="NPFT% = GPFT% (Reverb Ads% is Bump — not cut from net; same as /all-marketplace-master N PFT).">NPFT: 0%</span>
                         <span class="badge fs-6 p-2 flex-shrink-0" id="nroi-badge" style="background-color: #6610f2; color: white; font-weight: bold;" title="NROI% = GROI% (Reverb Ads% is Bump — not cut from net; same as /all-marketplace-master N ROI).">NROI: 0%</span>
+                        <span class="badge fs-6 p-2 flex-shrink-0" id="total-views-badge" style="background-color: #0d6efd; color: white; font-weight: bold;" title="Sum of Views for currently filtered rows (same as Amazon Sess30 — raw, not ÷10)">Views: 0</span>
+                        <span class="badge fs-6 p-2 flex-shrink-0" id="avg-cvr-badge" style="background-color: #20c997; color: #000; font-weight: bold;" title="Overall CVR = Σ(RV L30) ÷ Σ(Views) × 100 — same Amazon formula as A_L30 ÷ Sess30">CVR: 0%</span>
+                        <span class="badge fs-6 p-2 flex-shrink-0" id="rd-qty-sum-badge" style="background-color: #17a2b8; color: white; font-weight: bold;" title="Sum of RD Qty column (reverb_daily_qty) for currently filtered rows">RD Qty: 0</span>
                         <span class="badge bg-danger fs-6 p-2 flex-shrink-0" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="SKUs with reverb_daily_qty = 0">0 Sold: 0</span>
                         <span class="badge fs-6 p-2 flex-shrink-0" id="more-sold-count-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="SKUs with reverb_daily_qty &gt; 0">&gt; 0 Sold: 0</span>
                         <span class="badge bg-danger fs-6 p-2 flex-shrink-0" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amazon">&lt; Amz: 0</span>
@@ -1485,8 +1488,9 @@
                     width: 50,
                     sorter: "number",
                     formatter: function(cell) {
+                        // Raw views (Amazon Sess30 style) — no ÷10
                         const views = parseFloat(cell.getValue()) || 0;
-                        return Math.round(views / 10);
+                        return Math.round(views).toLocaleString();
                     }
                 },
                 {
@@ -1495,22 +1499,23 @@
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
+                        // Amazon formula: units ÷ sessions × 100 (RV L30 ÷ Views)
                         const rowData = cell.getRow().getData();
                         const l30 = parseFloat(rowData['RV L30']) || 0;
                         const views = parseFloat(rowData['Views']) || 0;
-                        const adjustedViews = views / 10;
-                        
-                        if (adjustedViews === 0) return '<span style="color: #6c757d;">0%</span>';
-                        
-                        const cvr = (l30 / adjustedViews) * 100;
+
+                        if (views === 0) {
+                            return '<span style="color: #a00211; font-weight: 600;">0%</span>';
+                        }
+
+                        const cvr = (l30 / views) * 100;
                         let color = '';
-                        
                         if (cvr <= 4) color = '#a00211';
                         else if (cvr > 4 && cvr <= 7) color = '#ffc107';
                         else if (cvr > 7 && cvr <= 13) color = '#28a745';
                         else color = '#e83e8c';
-                        
-                        return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span>`;
+
+                        return `<span style="color: ${color}; font-weight: 600;">${Math.round(cvr)}%</span>`;
                     },
                     width: 50
                 },
@@ -2184,15 +2189,13 @@
                 });
             }
 
-            // CVR filter (Walmart slab ranges)
+            // CVR filter — Amazon formula: RV L30 ÷ Views × 100
             const cvrFilter = $('#cvr-filter').val();
             if (cvrFilter !== 'all') {
                 table.addFilter(function(data) {
-                    // Use Reverb fields: RV L30 and Views (adjusted Views/10)
                     const wl30 = parseFloat(data['RV L30']) || 0;
                     const views = parseFloat(data['Views']) || 0;
-                    const adjustedViews = views / 10;
-                    const cvrPercent = adjustedViews > 0 ? (wl30 / adjustedViews) * 100 : 0;
+                    const cvrPercent = views > 0 ? (wl30 / views) * 100 : 0;
 
                     if (cvrFilter === '0-0') return cvrPercent === 0;
                     if (cvrFilter === '0-3') return cvrPercent > 0 && cvrPercent <= 3;
@@ -2345,6 +2348,8 @@
             let zeroSoldCount = 0, moreSoldCount = 0;
             let lessAmzCount = 0, moreAmzCount = 0;
             let totalRdQty = 0;
+            let totalRvL30 = 0;
+            let totalViewsRaw = 0;
             // Sold-quantity-weighted totals (same method as /temu-decrease, using normal ship)
             let totalRevenueQtyPrice = 0; // Σ(sold_qty × RV Price)
             let totalProfitLive = 0;      // Σ(sold_qty × (RV Price × take% − LP − Ship))
@@ -2353,6 +2358,8 @@
             data.forEach(row => {
                 totalGpft += parseFloat(row['GPFT%']) || 0;
                 totalRoi += parseFloat(row['ROI%']) || 0;
+                totalRvL30 += parseFloat(row['RV L30']) || 0;
+                totalViewsRaw += parseFloat(row['Views']) || 0;
 
                 const rdQty = parseInt(row.reverb_daily_qty, 10) || 0;
                 const lp = parseFloat(row['LP_productmaster']) || 0;
@@ -2407,6 +2414,11 @@
             // NPFT = GPFT, NROI = GROI — Ads% is Bump on master and is not cut from net metrics.
             $('#npft-badge').text(`NPFT: ${Math.round(gpftPct)}%`);
             $('#nroi-badge').text(`NROI: ${Math.round(groiPct)}%`);
+            // Amazon formula: Σ units ÷ Σ views × 100 (no Views÷10)
+            const overallCvr = totalViewsRaw > 0 ? (totalRvL30 / totalViewsRaw) * 100 : 0;
+            $('#total-views-badge').text(`Views: ${Math.round(totalViewsRaw).toLocaleString()}`);
+            $('#avg-cvr-badge').text(`CVR: ${overallCvr.toFixed(1)}%`);
+            $('#rd-qty-sum-badge').text(`RD Qty: ${totalRdQty.toLocaleString()}`);
             $('#zero-sold-count-badge').text(`0 Sold: ${zeroSoldCount}`);
             $('#more-sold-count-badge').text(`> 0 Sold: ${moreSoldCount}`);
             $('#less-amz-badge').text(`< Amz: ${lessAmzCount}`);

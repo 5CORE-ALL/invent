@@ -119,6 +119,14 @@ class CalculateChannelMasterData extends Command
                         $this->info("  - Ads % (Bump): " . ($channelData['Ads%'] ?? 'N/A'));
                         $this->info("  - N PFT %: " . ($channelData['N PFT'] ?? 'N/A'));
                     }
+
+                    // Shopify listing CVR (matches /shopify-b2c-pricing CVR% badge)
+                    if (strcasecmp($channelName, 'Shopify') === 0 || strcasecmp($channelName, 'Shopify B2C') === 0) {
+                        $this->newLine();
+                        $this->info("Processing {$channelName} listing CVR (/shopify-b2c-pricing):");
+                        $this->info("  - Total Views: " . ($channelData['Total Views'] ?? 'N/A'));
+                        $this->info("  - Listing CVR: " . (isset($channelData['CVR']) ? $channelData['CVR'] . '%' : 'N/A'));
+                    }
                     
                     // Log PLS-specific calculations
                     if ($channelName === 'PLS') {
@@ -270,6 +278,10 @@ class CalculateChannelMasterData extends Command
             'miss' => (int) ($data['Miss'] ?? 0),
             'nmap' => (int) ($data['NMap'] ?? 0),
             'total_views' => (int) ($data['Total Views'] ?? 0),
+            // Listing CVR column (OV L30 ÷ Views) — not Ads CVR. Set by Shopify/Temu overlays.
+            'listing_cvr' => array_key_exists('CVR', $data) && $data['CVR'] !== null && $data['CVR'] !== ''
+                ? $parseNumber($data['CVR'])
+                : null,
             
             // Other
             'nr' => (int) ($data['NR'] ?? 0),

@@ -34,6 +34,7 @@ use App\Console\Commands\FetchReverbDailyData;
 use App\Console\Commands\FetchWayfairDailyData;
 use App\Console\Commands\FetchShopifyB2BMetrics;
 use App\Console\Commands\FetchShopifyB2CMetrics;
+use App\Console\Commands\FetchShopifyProductViews;
 use App\Console\Commands\SyncShopifyLiveInventory;
 use App\Jobs\Crm\SendFollowUpReminderJob;
 use App\Models\Crm\FollowUp;
@@ -106,6 +107,7 @@ class Kernel extends ConsoleKernel
         FetchWayfairDailyData::class,
         FetchShopifyB2BMetrics::class,
         FetchShopifyB2CMetrics::class,
+        FetchShopifyProductViews::class,
         \App\Console\Commands\UpdateEbayCompetitorPrices::class,
         \App\Console\Commands\UpdateEbaySkuCompetitorPrices::class,
         \App\Console\Commands\UpdateAmazonCompetitorPrices::class,
@@ -854,6 +856,13 @@ class Kernel extends ConsoleKernel
             ->twiceDaily(10, 18)
             ->name('shopify-b2c-metrics')
             ->withoutOverlapping(120)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        $ist($schedule->command('app:fetch-shopify-product-views --days=30')
+            ->twiceDaily(10, 18)
+            ->name('shopify-product-views')
+            ->withoutOverlapping(60)
             ->runInBackground()
             ->appendOutputTo($log));
 

@@ -1502,6 +1502,8 @@ class ReverbController extends Controller
 
     /**
      * Missing L / Map / NMap totals — same rules as reverb-pricing badges and all-marketplace-master.
+     * CVR matches /reverb-pricing + Amazon: Σ(RV L30) ÷ Σ(Views) × 100 on INV > 0 rows
+     * (default inventory filter on reverb-pricing; no Views÷10).
      */
     public function computeReverbMapMissCounts(array $rows): array
     {
@@ -1509,6 +1511,8 @@ class ReverbController extends Controller
         $miss = 0;
         $nmap = 0;
         $views = 0;
+        $cvrViews = 0;
+        $cvrRvL30 = 0;
 
         foreach ($rows as $row) {
             if (is_object($row)) {
@@ -1527,6 +1531,14 @@ class ReverbController extends Controller
             $nrReq = strtoupper(trim((string) ($row['nr_req'] ?? 'REQ')));
             $isReq = ($nrReq === 'REQ');
             $isMissing = (($row['Missing'] ?? '') === 'M');
+            $rowViews = (int) ($row['Views'] ?? 0);
+            $rowRvL30 = (int) ($row['RV L30'] ?? 0);
+
+            // Pricing-page CVR / Views badges (INV > 0 filter)
+            if ($inv > 0) {
+                $cvrViews += $rowViews;
+                $cvrRvL30 += $rowRvL30;
+            }
 
             if ($isMissing && $isReq && $inv > 0) {
                 $miss++;
@@ -1536,19 +1548,25 @@ class ReverbController extends Controller
                 $mapValue = (string) ($row['MAP'] ?? '');
                 if ($mapValue === 'Map') {
                     $map++;
-                    $views += (int) ($row['Views'] ?? 0);
+                    $views += $rowViews;
                 } elseif (str_contains($mapValue, 'N Map|')) {
                     $nmap++;
-                    $views += (int) ($row['Views'] ?? 0);
+                    $views += $rowViews;
                 }
             }
         }
+
+        // Prefer INV>0 views (matches /reverb-pricing Views badge); fall back to Map/NMap sum.
+        $totalViews = $cvrViews > 0 ? $cvrViews : $views;
+        $cvrPct = $totalViews > 0 ? round(($cvrRvL30 / $totalViews) * 100, 2) : 0.0;
 
         return [
             'map' => $map,
             'miss' => $miss,
             'nmap' => $nmap,
-            'total_views' => $views,
+            'total_views' => $totalViews,
+            'total_rv_l30' => $cvrRvL30,
+            'cvr_pct' => $cvrPct,
         ];
     }
 
@@ -1572,6 +1590,9 @@ class ReverbController extends Controller
             $summary['map_count'] = (int) ($counts['map'] ?? 0);
             $summary['nmap_count'] = (int) ($counts['nmap'] ?? 0);
             $summary['total_views'] = (int) ($counts['total_views'] ?? 0);
+            if (array_key_exists('cvr_pct', $counts) && $counts['cvr_pct'] !== null) {
+                $summary['listing_cvr'] = round((float) $counts['cvr_pct'], 2);
+            }
             $summary['map_miss_updated_at'] = now()->toDateTimeString();
 
             ChannelMasterSummary::updateOrCreate(
@@ -1586,12 +1607,17 @@ class ReverbController extends Controller
             );
 
             if (Schema::hasTable('channel_master_calculated_data')) {
-                ChannelMasterCalculatedData::where('channel', 'Reverb')->update([
+                $calcUpdate = [
                     'miss' => (int) ($counts['miss'] ?? 0),
                     'map' => (int) ($counts['map'] ?? 0),
                     'nmap' => (int) ($counts['nmap'] ?? 0),
                     'total_views' => (int) ($counts['total_views'] ?? 0),
-                ]);
+                ];
+                if (array_key_exists('cvr_pct', $counts) && $counts['cvr_pct'] !== null
+                    && Schema::hasColumn('channel_master_calculated_data', 'listing_cvr')) {
+                    $calcUpdate['listing_cvr'] = round((float) $counts['cvr_pct'], 2);
+                }
+                ChannelMasterCalculatedData::where('channel', 'Reverb')->update($calcUpdate);
             }
         } catch (\Throwable $e) {
             Log::warning('syncReverbMapMissToChannelHistory failed: ' . $e->getMessage());

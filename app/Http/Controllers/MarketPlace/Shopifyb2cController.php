@@ -477,11 +477,25 @@ class Shopifyb2cController extends Controller
             ->whereRaw('UPPER(TRIM(campaign_name)) = ?', [strtoupper(trim($sku))])
             ->sum('metrics_cost_micros') / 1000000;
 
-        $ads = $salesL30 > 0 ? ($googleSpent / $salesL30) * 100 : 0;
+        // Channel Ads% (TCOS badge) — same as Amazon AMAZON_CHANNEL_ADS_PCT for PFT / SNROI
+        $channelAdsPct = 0.0;
+        try {
+            $snapshot = app(\App\Http\Controllers\Channels\ChannelMasterController::class)
+                ->getShopifyDirectL30Snapshot();
+            $channelAdsPct = (float) ($snapshot['tcos_pct'] ?? 0);
+        } catch (\Throwable $e) {
+            $channelAdsPct = 0;
+        }
+        $rowAds = $salesL30 > 0 ? ($googleSpent / $salesL30) * 100 : 0;
+        $ads = $channelAdsPct > 0 ? $channelAdsPct : $rowAds;
 
-        // Calculate net values
+        // Calculate net values (SNPFT = SGPFT − channel Ads%)
         $snpft = $sgpft - $ads;
-        $snroi = $sroi - $ads;
+
+        // SNROI — same shape as Amazon net SROI / NROI badge:
+        // (suggested gross $ − SPRICE × Ads%/100) / LP × 100
+        $adSpendUnit = $sprice * ($ads / 100);
+        $snroi = floatval($lp) > 0 ? (($grossProfit - $adSpendUnit) / floatval($lp)) * 100 : 0;
 
         // Save to database
         $shopifyDataView = Shopifyb2cDataView::firstOrNew(['sku' => $sku]);
@@ -840,6 +854,16 @@ class Shopifyb2cController extends Controller
             $googleSpentBySku[$sku] = $googleSpentData[$skuUpper] ?? 0;
         }
 
+        // Channel Ads% (TCOS badge) — used for SNROI when row ADS% is 0, same as NROI badge
+        $channelAdsPct = 0.0;
+        try {
+            $snapshot = app(\App\Http\Controllers\Channels\ChannelMasterController::class)
+                ->getShopifyDirectL30Snapshot();
+            $channelAdsPct = (float) ($snapshot['tcos_pct'] ?? 0);
+        } catch (\Throwable $e) {
+            Log::warning('Shopify B2C SNROI channel ads fetch failed: ' . $e->getMessage());
+        }
+
         $processedItems = [];
 
         foreach ($productMasterRows as $sku => $productMaster) {
@@ -957,11 +981,23 @@ class Shopifyb2cController extends Controller
             $processedItem["CVR%"] = $views > 0 ? ($ovL30 / $views) * 100 : 0;
 
             // Add Google Ads Spend for this SKU
-            $processedItem["googleSpent"] = $googleSpentBySku[$sku] ?? 0;
+            $adSpend = (float) ($googleSpentBySku[$sku] ?? 0);
+            $processedItem["googleSpent"] = $adSpend;
 
             // Calculate ADS% = (googleSpent / Sales L30) * 100
             $salesL30 = $processedItem["Sales L30"];
-            $processedItem["ADS%"] = $salesL30 > 0 ? (($googleSpentBySku[$sku] ?? 0) / $salesL30) * 100 : 0;
+            $processedItem["ADS%"] = $salesL30 > 0 ? ($adSpend / $salesL30) * 100 : 0;
+
+            // NROI% — Amazon unit formula (same shape as SNROI / GROI with channel Ads%):
+            //   ((Price × 0.95 − Ship − LP − Price × Ads%/100) / LP) × 100
+            // Not gated on B2C L30 qty (old COGS = LP × qty made NROI always 0 with no sales).
+            if ($price > 0 && floatval($lp) > 0) {
+                $unitGross = ($price * $percentageValue) - floatval($lp) - floatval($ship);
+                $adSpendUnit = $price * ($channelAdsPct / 100);
+                $processedItem["NROI%"] = (($unitGross - $adSpendUnit) / floatval($lp)) * 100;
+            } else {
+                $processedItem["NROI%"] = 0;
+            }
 
             // Get SPRICE from shopifyb2c_data_view
             $processedItem["SPRICE"] = 0;
@@ -980,7 +1016,22 @@ class Shopifyb2cController extends Controller
                 $processedItem["SGPFT"] = isset($valuesArr["SGPFT"]) ? floatval($valuesArr["SGPFT"]) : 0;
                 $processedItem["SNPFT"] = isset($valuesArr["SNPFT"]) ? floatval($valuesArr["SNPFT"]) : 0;
                 $processedItem["SROI"] = isset($valuesArr["SROI"]) ? floatval($valuesArr["SROI"]) : 0;
-                $processedItem["SNROI"] = isset($valuesArr["SNROI"]) ? floatval($valuesArr["SNROI"]) : 0;
+
+                // SNROI — same shape as Amazon net SROI / NROI badge:
+                //   (suggested gross $ − SPRICE × channel Ads%/100) / LP × 100
+                $sprice = (float) $processedItem["SPRICE"];
+                if ($sprice > 0 && floatval($lp) > 0) {
+                    $sGrossUnit = ($sprice * $percentageValue) - floatval($lp) - floatval($ship);
+                    $adSpendUnit = $sprice * ($channelAdsPct / 100);
+                    $processedItem["SNROI"] = (($sGrossUnit - $adSpendUnit) / floatval($lp)) * 100;
+                    // SNPFT = SGPFT − channel Ads% (same as Amazon SNPFT)
+                    if (isset($processedItem["SGPFT"])) {
+                        $processedItem["SNPFT"] = (float) $processedItem["SGPFT"] - $channelAdsPct;
+                    }
+                } elseif (isset($valuesArr["SNROI"])) {
+                    // Fall back to stored value when we can't recompute (no SPRICE / LP)
+                    $processedItem["SNROI"] = floatval($valuesArr["SNROI"]);
+                }
             }
 
             $processedItems[] = $processedItem;
