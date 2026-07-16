@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\ShopifyCatalogProduct;
 use App\Models\ShopifyCatalogVariant;
+use App\Models\ShopifySku;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -52,16 +53,30 @@ class ShopifyCatalogSyncService
                 $queryParams['page_info'] = $pageInfo;
             }
 
-            $response = $requestBase->timeout(120)->retry(2, 500)->get(
-                "https://{$domain}/admin/api/2025-01/products.json",
-                $queryParams
-            );
+            $response = null;
+            for ($attempt = 1; $attempt <= 10; $attempt++) {
+                $response = $requestBase->timeout(120)->get(
+                    "https://{$domain}/admin/api/2025-01/products.json",
+                    $queryParams
+                );
+                if ($response->status() === 429) {
+                    $wait = max(2, (int) ($response->header('Retry-After') ?: ($attempt * 2)));
+                    Log::warning('ShopifyCatalogSyncService: rate limited, backing off', [
+                        'store' => $store,
+                        'attempt' => $attempt,
+                        'wait_seconds' => $wait,
+                    ]);
+                    sleep($wait);
+                    continue;
+                }
+                break;
+            }
 
-            if (! $response->successful()) {
+            if (! $response || ! $response->successful()) {
                 Log::error('ShopifyCatalogSyncService: page failed', [
                     'store' => $store,
-                    'status' => $response->status(),
-                    'body' => substr($response->body(), 0, 2000),
+                    'status' => $response ? $response->status() : null,
+                    'body' => $response ? substr($response->body(), 0, 2000) : null,
                 ]);
                 $completedFully = false;
                 break;
@@ -120,13 +135,32 @@ class ShopifyCatalogSyncService
                         ]
                     );
                     $variantCount++;
+
+                    // Shared live store: keep shopify_skus qty in sync for marketplace listings (one sync for all MPs).
+                    $sku = isset($variant['sku']) ? trim((string) $variant['sku']) : '';
+                    if ($store === 'main' && $sku !== '' && array_key_exists('inventory_quantity', $variant)) {
+                        $qty = (int) $variant['inventory_quantity'];
+                        ShopifySku::query()->updateOrCreate(
+                            ['sku' => $sku],
+                            [
+                                'variant_id' => (string) $vid,
+                                'available_to_sell' => $qty,
+                                'inv' => $qty,
+                                'on_hand' => $qty,
+                                'product_title' => $product['title'] ?? null,
+                                'variant_title' => $variant['title'] ?? null,
+                                'price' => isset($variant['price']) ? (float) $variant['price'] : null,
+                                'updated_at' => $now,
+                            ]
+                        );
+                    }
                 }
             }
 
             $pageInfo = $this->nextPageInfo($response);
             $hasMore = (bool) $pageInfo;
             if ($hasMore) {
-                usleep(500000);
+                usleep(700000); // stay under Shopify REST 2 req/s bucket
             }
         }
 

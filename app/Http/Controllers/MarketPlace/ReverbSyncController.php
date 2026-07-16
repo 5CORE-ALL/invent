@@ -16,7 +16,6 @@ use App\Services\MarketplaceManager\ReverbDetailFormatter;
 use App\Services\MarketplaceManager\ReverbInventorySyncService;
 use App\Services\MarketplaceManager\ReverbLinkMapSyncService;
 use App\Jobs\WarmReverbLiveListingsCache;
-use App\Jobs\WarmShopifyLiveCatalogCache;
 use App\Services\MarketplaceManager\ReverbLiveListingsService;
 use App\Services\MarketplaceManager\ShopifyLiveVerifiedCatalogService;
 use App\Services\MarketplaceManager\ReverbOrderDetailService;
@@ -186,9 +185,8 @@ class ReverbSyncController extends Controller
         }
 
         if ($forceLive) {
-            // Warm full Reverb + active Shopify catalog in background — never block page.
+            // Marketplace live cache only — Shopify master is warmed once from Marketplace Manager.
             WarmReverbLiveListingsCache::dispatch();
-            WarmShopifyLiveCatalogCache::dispatch();
         }
 
         $linkedSkus = $this->linkedReverbSkus();
@@ -242,7 +240,7 @@ class ReverbSyncController extends Controller
         $pageSkus = collect($paginator->items())->all();
         $pageRows = $this->shopifySkuRowsForVerifiedPage($pageSkus, $catalog);
         $aeMap = $this->reverbMetricMapForSkus($pageSkus);
-        $liveShopifyQty = MarketplaceListingStockResolver::liveShopifyQtyMapForRows($pageRows, true);
+        $liveShopifyQty = MarketplaceListingStockResolver::dbShopifyQtyMapForRows($pageRows);
         $listingIds = [];
         foreach ($aeMap as $metric) {
             if ($metric && ! empty($metric->product_id)) {
@@ -374,7 +372,7 @@ class ReverbSyncController extends Controller
         $aeMap = $this->reverbMetricMapForSkus($pageSkus);
 
         // 1) Live Shopify qty for this page only
-        $liveShopifyQty = MarketplaceListingStockResolver::liveShopifyQtyMapForRows($pageRows, true);
+        $liveShopifyQty = MarketplaceListingStockResolver::dbShopifyQtyMapForRows($pageRows);
 
         // 2) Live Reverb qty/state for this page's listing IDs only (parallel)
         $listingIds = [];

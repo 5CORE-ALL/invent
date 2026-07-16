@@ -19,6 +19,7 @@ use App\Services\MarketplaceManager\AliexpressOrderDetailService;
 use App\Services\MarketplaceManager\AliexpressOrderPushService;
 use App\Services\MarketplaceManager\AliexpressOrderSyncService;
 use App\Services\MarketplaceManager\MarketplaceListingStockResolver;
+use App\Services\MarketplaceManager\ShopifyLiveVerifiedCatalogService;
 use App\Services\ShopifyApiService;
 use App\Services\Support\MarketplaceApiConfigService;
 use Illuminate\Http\JsonResponse;
@@ -174,13 +175,24 @@ class AliexpressSyncController extends Controller
         }
 
         if ($forceLive) {
+            // Marketplace live cache only — shared Shopify master is refreshed from Marketplace Manager.
             WarmAliexpressLiveListingsCache::dispatch();
         }
 
+        $catalog = app(ShopifyLiveVerifiedCatalogService::class);
         $linkedSkus = $this->linkedAliexpressSkus();
-        $shopifyNormKeys = $this->shopifyNormalizedSkuKeys();
-        $counts = $this->shopifyListingCounts($linkedSkus, $shopifyNormKeys);
+        $shopifyNormKeys = ($catalog->tablesReady() && $catalog->hasAnyActive())
+            ? $catalog->normalizedKeys()
+            : $this->shopifyNormalizedSkuKeys();
+        $counts = $catalog->listingCounts(
+            $linkedSkus,
+            fn (array $keys) => $this->countAeNotInShopify($keys)
+        ) ?? $this->shopifyListingCounts($linkedSkus, $shopifyNormKeys);
         $liveService = app(AliexpressLiveListingsService::class);
+
+        if (! $catalog->hasAnyActive()) {
+            $apiError = trim(($apiError ? $apiError.' ' : '').'Shared Shopify live catalog is empty — refresh Shopify from Marketplace Manager.');
+        }
 
         if ($linkTab === 'not_in_shopify') {
             $paginator = $this->paginateAeNotInShopify($searchSku, $searchName, $shopifyNormKeys, $page, $perPage);
@@ -197,11 +209,13 @@ class AliexpressSyncController extends Controller
                 'stateCacheReady' => false,
                 'apiError' => $apiError,
                 'connected' => $this->apiConfig->isConfigured('aliexpress'),
+                'shopifyCatalogSyncedAt' => $catalog->latestSyncedAt(),
             ]);
         }
 
+        $linkedVerified = $catalog->filterLinkedToVerified($linkedSkus);
         $linkedNormToSku = [];
-        foreach ($linkedSkus as $sku) {
+        foreach ($linkedVerified as $sku) {
             $n = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
             if ($n !== '') {
                 $linkedNormToSku[$n] = (string) $sku;
@@ -210,7 +224,7 @@ class AliexpressSyncController extends Controller
         $stateIndex = $this->aeStateIndexFromCache(
             $liveService,
             static fn (string $norm): bool => isset($linkedNormToSku[$norm]),
-            count($linkedSkus),
+            count($linkedVerified),
             $linkedNormToSku
         );
 
@@ -234,20 +248,21 @@ class AliexpressSyncController extends Controller
         }
 
         if ($linkTab === 'linked') {
-            if ($linkedSkus === []) {
+            if ($linkedVerified === []) {
                 $query->whereRaw('1 = 0');
             } elseif ($stateTab !== 'all') {
                 $stateSkus = $stateIndex['skusByState'][$stateTab] ?? [];
-                if ($stateSkus === []) {
-                    $query->whereRaw('1 = 0');
-                } else {
-                    $query->whereIn('sku', $stateSkus);
-                }
+                $catalog->restrictShopifySkuQuery($query, $stateSkus);
             } else {
-                $query->whereIn('sku', $linkedSkus);
+                $catalog->restrictShopifySkuQuery($query, $linkedVerified);
             }
-        } elseif ($linkTab === 'unlinked' && $linkedSkus !== []) {
-            $query->whereNotIn('sku', $linkedSkus);
+        } elseif ($linkTab === 'unlinked') {
+            $catalog->restrictShopifySkuQuery($query, null);
+            if ($linkedVerified !== []) {
+                $query->whereNotIn('sku', $linkedVerified);
+            }
+        } else {
+            $catalog->restrictShopifySkuQuery($query, null);
         }
 
         $paginator = $query->orderBy('sku')->paginate($perPage, ['*'], 'page', $page)->withQueryString();
@@ -255,7 +270,7 @@ class AliexpressSyncController extends Controller
         $skus = collect($pageRows)->pluck('sku')->filter()->values()->all();
         $aeMap = $this->aliexpressMetricMapForSkus($skus);
         $aeStockMap = $this->aliexpressStockMapForSkus($skus);
-        $liveShopifyQty = MarketplaceListingStockResolver::liveShopifyQtyMapForRows($pageRows, true);
+        $liveShopifyQty = MarketplaceListingStockResolver::dbShopifyQtyMapForRows($pageRows);
 
         // Page hydrate: when cache has no state for this page, fetch live product info for IDs on page.
         $pageLiveByProduct = [];
@@ -328,6 +343,7 @@ class AliexpressSyncController extends Controller
             'stateCacheReady' => $linkTab === 'linked' ? $stateIndex['ready'] : false,
             'apiError' => $apiError,
             'connected' => $this->apiConfig->isConfigured('aliexpress'),
+            'shopifyCatalogSyncedAt' => $catalog->latestSyncedAt(),
         ]);
     }
 

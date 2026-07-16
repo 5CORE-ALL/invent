@@ -9,12 +9,12 @@
             @if(!empty($liveMode) && ($linkTab ?? '') === 'linked')
                 <strong>Linked</strong> = live-verified active Shopify SKUs (from catalog sync) that are linked to Reverb.
                 <strong>Shopify Qty</strong> and <strong>Reverb Qty</strong> are loaded live for the current page only.
-                Use <em>Refresh live</em> to re-sync active Shopify catalog + warm Reverb in the background.
+                Use <em>Refresh live</em> for Reverb listing states only. Refresh shared Shopify from <strong>Marketplace Manager</strong>.
             @elseif(!empty($liveMode))
                 Page is paginated. Reverb Qty is live for the current page only.
             @else
-                <strong>All</strong> shows live-verified <em>active</em> Shopify SKUs stored in catalog sync — not the full local shopify_skus dump.
-                Open <strong>Linked</strong> for live Shopify + live Reverb quantities.
+                <strong>All</strong> shows live-verified <em>active</em> Shopify SKUs from the shared catalog sync — not the full local shopify_skus dump.
+                Qty comes from the shared Shopify store (updated by catalog sync). Open <strong>Linked</strong> for live Reverb quantities.
             @endif
         </p>
 
@@ -23,7 +23,7 @@
         @endif
 
         @if(isset($shopifyCatalogReady) && empty($shopifyCatalogReady))
-            <div class="alert alert-warning py-2">Live-verified Shopify catalog is empty. Click <em>Refresh live</em> to sync active products from Shopify Admin.</div>
+            <div class="alert alert-warning py-2">Shared Shopify live catalog is empty. In <a href="{{ route('marketplace.manager.index') }}">Marketplace Manager</a> click <em>Refresh Shopify</em>, wait, then reload.</div>
         @elseif(!empty($shopifyCatalogSyncedAt))
             <p class="small text-muted mb-2">Shopify catalog last synced: {{ $shopifyCatalogSyncedAt }}</p>
         @endif

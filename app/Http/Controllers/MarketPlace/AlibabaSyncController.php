@@ -16,6 +16,7 @@ use App\Services\MarketplaceManager\AlibabaLinkMapSyncService;
 use App\Services\MarketplaceManager\AlibabaOrderDetailService;
 use App\Services\MarketplaceManager\AlibabaOrderPushService;
 use App\Services\MarketplaceManager\AlibabaOrderSyncService;
+use App\Services\MarketplaceManager\ShopifyLiveVerifiedCatalogService;
 use App\Services\ShopifyApiService;
 use App\Services\Support\MarketplaceApiConfigService;
 use Illuminate\Http\JsonResponse;
@@ -164,9 +165,19 @@ class AlibabaSyncController extends Controller
             ]);
         }
 
+        $catalog = app(ShopifyLiveVerifiedCatalogService::class);
         $linkedSkus = $this->linkedAlibabaSkus();
-        $shopifyNormKeys = $this->shopifyNormalizedSkuKeys();
-        $counts = $this->shopifyListingCounts($linkedSkus, $shopifyNormKeys);
+        $shopifyNormKeys = ($catalog->tablesReady() && $catalog->hasAnyActive())
+            ? $catalog->normalizedKeys()
+            : $this->shopifyNormalizedSkuKeys();
+        $counts = $catalog->listingCounts(
+            $linkedSkus,
+            fn (array $keys) => $this->countAeNotInShopify($keys)
+        ) ?? $this->shopifyListingCounts($linkedSkus, $shopifyNormKeys);
+
+        if (! $catalog->hasAnyActive()) {
+            $apiError = trim(($apiError ? $apiError.' ' : '').'Shared Shopify live catalog is empty — refresh Shopify from Marketplace Manager.');
+        }
 
         if ($linkTab === 'not_in_shopify') {
             $paginator = $this->paginateAeNotInShopify($searchSku, $searchName, $shopifyNormKeys, $page, $perPage);
@@ -180,8 +191,11 @@ class AlibabaSyncController extends Controller
                 'counts' => $counts,
                 'apiError' => $apiError,
                 'connected' => $this->apiConfig->isConfigured('alibaba'),
+                'shopifyCatalogSyncedAt' => $catalog->latestSyncedAt(),
             ]);
         }
+
+        $linkedVerified = $catalog->filterLinkedToVerified($linkedSkus);
 
         $query = ShopifySku::query()
             ->whereNotNull('sku')
@@ -198,12 +212,15 @@ class AlibabaSyncController extends Controller
             });
         }
 
-        if ($linkTab === 'linked' && $linkedSkus !== []) {
-            $query->whereIn('sku', $linkedSkus);
-        } elseif ($linkTab === 'unlinked' && $linkedSkus !== []) {
-            $query->whereNotIn('sku', $linkedSkus);
-        } elseif ($linkTab === 'linked') {
-            $query->whereRaw('1 = 0');
+        if ($linkTab === 'linked') {
+            $catalog->restrictShopifySkuQuery($query, $linkedVerified);
+        } elseif ($linkTab === 'unlinked') {
+            $catalog->restrictShopifySkuQuery($query, null);
+            if ($linkedVerified !== []) {
+                $query->whereNotIn('sku', $linkedVerified);
+            }
+        } else {
+            $catalog->restrictShopifySkuQuery($query, null);
         }
 
         $paginator = $query->orderBy('sku')->paginate($perPage, ['*'], 'page', $page)->withQueryString();
@@ -247,6 +264,7 @@ class AlibabaSyncController extends Controller
             'counts' => $counts,
             'apiError' => $apiError,
             'connected' => $this->apiConfig->isConfigured('alibaba'),
+            'shopifyCatalogSyncedAt' => $catalog->latestSyncedAt(),
         ]);
     }
 

@@ -510,6 +510,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Marketplace Manager (LitCommerce-style hub — AliExpress, Alibaba, more later)
     Route::prefix('marketplace-manager')->name('marketplace.manager.')->group(function () {
         Route::get('/', [\App\Http\Controllers\MarketplaceManager\MarketplaceManagerController::class, 'index'])->name('index');
+        Route::post('/refresh-shopify', [\App\Http\Controllers\MarketplaceManager\MarketplaceManagerController::class, 'refreshShopify'])->name('refresh.shopify');
+        Route::get('/refresh-shopify/status', [\App\Http\Controllers\MarketplaceManager\MarketplaceManagerController::class, 'refreshShopifyStatus'])->name('refresh.shopify.status');
         Route::get('/aliexpress/connect', [\App\Http\Controllers\MarketPlace\AliexpressSyncController::class, 'connect'])->name('aliexpress.connect');
         Route::post('/aliexpress/test-connection', [\App\Http\Controllers\MarketPlace\AliexpressSyncController::class, 'testConnection'])->name('aliexpress.test');
         Route::post('/aliexpress/refresh-products', [\App\Http\Controllers\MarketPlace\AliexpressSyncController::class, 'refreshProducts'])->name('aliexpress.refresh');

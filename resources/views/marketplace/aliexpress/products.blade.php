@@ -7,13 +7,16 @@
         @include('marketplace._page-heading', ['slug' => 'aliexpress', 'heading' => 'AliExpress Listings'])
         <p class="text-muted mb-3">
             @if(($linkTab ?? '') === 'linked')
-                <strong>Linked</strong> lists Shopify SKUs linked to AliExpress.
-                Use the <strong>State</strong> dropdown to filter by AE status (counts from live cache).
-                Click <em>Refresh live</em> to warm status counts, then reload.
+                <strong>Linked</strong> = live-verified active Shopify SKUs linked to AliExpress.
+                <em>Refresh live</em> warms AE status only. Refresh shared Shopify from <a href="{{ route('marketplace.manager.index') }}">Marketplace Manager</a>.
             @else
-                <strong>Shopify Qty</strong> is loaded live for the current page. Use <strong>Sync AE link map</strong> to refresh SKU ↔ product_id mappings.
+                Tabs use the shared Shopify live catalog. Qty comes from the shared store (no per-page Shopify API).
             @endif
         </p>
+
+        @if(!empty($shopifyCatalogSyncedAt))
+            <p class="small text-muted mb-2">Shopify catalog last synced: {{ $shopifyCatalogSyncedAt }}</p>
+        @endif
 
         @include('marketplace._queue-status', ['slug' => 'aliexpress'])
 

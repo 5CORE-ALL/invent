@@ -7,13 +7,16 @@
         @include('marketplace._page-heading', ['slug' => 'newegg', 'heading' => 'Newegg Listings'])
         <p class="text-muted mb-3">
             @if(($linkTab ?? '') === 'linked')
-                <strong>Linked</strong> lists Shopify SKUs linked to Newegg.
-                Use the <strong>State</strong> dropdown to filter by Newegg status (active / inactive from pricing cache).
-                Click <em>Refresh live</em> to warm status counts, then reload.
+                <strong>Linked</strong> = live-verified active Shopify SKUs linked to Newegg.
+                <em>Refresh live</em> warms Newegg status only. Refresh shared Shopify from <a href="{{ route('marketplace.manager.index') }}">Marketplace Manager</a>.
             @else
-                <strong>Shopify Qty</strong> is loaded live for the current page. Use <strong>Sync Newegg link map</strong> to refresh SKU ↔ product_id mappings.
+                Tabs use the shared Shopify live catalog. Qty comes from the shared store (no per-page Shopify API).
             @endif
         </p>
+
+        @if(!empty($shopifyCatalogSyncedAt))
+            <p class="small text-muted mb-2">Shopify catalog last synced: {{ $shopifyCatalogSyncedAt }}</p>
+        @endif
 
         @include('marketplace._queue-status', ['slug' => 'newegg'])
 

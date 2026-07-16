@@ -118,4 +118,94 @@ final class ShopifyLiveVerifiedCatalogService
 
         return $at ? (string) $at : null;
     }
+
+    /**
+     * Listing tab counts from live-verified active catalog (shared across marketplaces).
+     *
+     * @param  array<int, string>  $linkedSkus
+     * @param  callable(array<string, true>): int  $countNotInShopify  receives normalized active keys
+     * @return array{all: int, linked: int, unlinked: int, not_in_shopify: int}|null  null = catalog not ready
+     */
+    public function listingCounts(array $linkedSkus, callable $countNotInShopify, string $store = self::STORE_MAIN): ?array
+    {
+        if (! $this->tablesReady() || ! $this->hasAnyActive($store)) {
+            return null;
+        }
+
+        $verifiedNorm = $this->normalizedKeys($store);
+        $all = $this->countDistinctActiveSkus($store);
+        $linked = 0;
+        $seen = [];
+        foreach ($linkedSkus as $sku) {
+            $n = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
+            if ($n === '' || isset($seen[$n]) || ! isset($verifiedNorm[$n])) {
+                continue;
+            }
+            $seen[$n] = true;
+            $linked++;
+        }
+
+        return [
+            'all' => $all,
+            'linked' => $linked,
+            'unlinked' => max(0, $all - $linked),
+            'not_in_shopify' => (int) $countNotInShopify($verifiedNorm),
+        ];
+    }
+
+    /**
+     * Restrict a ShopifySku eloquent query to live-verified active catalog SKUs.
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder<\App\Models\ShopifySku>  $query
+     * @param  list<string>|null  $extraSkuAllowList  when set, intersect with verified (e.g. linked/state)
+     * @return \Illuminate\Database\Eloquent\Builder<\App\Models\ShopifySku>
+     */
+    public function restrictShopifySkuQuery($query, ?array $extraSkuAllowList = null, string $store = self::STORE_MAIN)
+    {
+        if (! $this->tablesReady() || ! $this->hasAnyActive($store)) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        if ($extraSkuAllowList !== null) {
+            $allow = $this->filterLinkedToVerified($extraSkuAllowList, $store);
+            if ($allow === []) {
+                return $query->whereRaw('1 = 0');
+            }
+
+            return $query->whereIn('sku', $allow);
+        }
+
+        $verified = $this->activeSkuList($store);
+        if ($verified === []) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        return $query->whereIn('sku', $verified);
+    }
+
+    /**
+     * Linked SKUs that exist in the live-verified active catalog (canonical catalog SKU strings).
+     *
+     * @param  array<int, string>  $linkedSkus
+     * @return list<string>
+     */
+    public function filterLinkedToVerified(array $linkedSkus, string $store = self::STORE_MAIN): array
+    {
+        $map = $this->normalizedToSkuMap($store);
+        if ($map === []) {
+            return [];
+        }
+        $out = [];
+        $seen = [];
+        foreach ($linkedSkus as $sku) {
+            $n = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
+            if ($n === '' || isset($seen[$n]) || ! isset($map[$n])) {
+                continue;
+            }
+            $seen[$n] = true;
+            $out[] = $map[$n];
+        }
+
+        return $out;
+    }
 }

@@ -5,7 +5,14 @@
     <div class="col-12">
         <a href="{{ route('marketplace.manager.show', 'alibaba') }}" class="text-muted small"><i class="ri-arrow-left-line"></i> Alibaba Manager</a>
         @include('marketplace._page-heading', ['slug' => 'alibaba', 'heading' => 'Alibaba Listings'])
-        <p class="text-muted mb-3">Shopify catalog from <code>shopify_skus</code> (your synced Shopify inventory), with Alibaba link status from <code>alibaba_metrics</code>. Use <strong>Sync Alibaba link map</strong> to refresh SKU ↔ product_id mappings from Alibaba.</p>
+        <p class="text-muted mb-3">
+            Tabs use the shared live-verified Shopify catalog (active SKUs). Qty from the shared store.
+            Refresh Shopify once from <a href="{{ route('marketplace.manager.index') }}">Marketplace Manager</a>. Use <strong>Sync Alibaba link map</strong> for SKU ↔ product_id mappings.
+        </p>
+
+        @if(!empty($shopifyCatalogSyncedAt))
+            <p class="small text-muted mb-2">Shopify catalog last synced: {{ $shopifyCatalogSyncedAt }}</p>
+        @endif
 
         @include('marketplace._queue-status', ['slug' => 'alibaba'])
 
