@@ -518,10 +518,15 @@ class ProductMasterController extends Controller
             }
 
             if ($operation === 'update' && $originalSku) {
-                // Find the product by original SKU and parent
+                // Find the product by original SKU and parent.
+                // Frontend sends '' when Parent is null; DB may store NULL or ''.
                 $query = ProductMaster::where('sku', $originalSku);
-                if ($originalParent !== null) {
+                if ($originalParent !== null && $originalParent !== '') {
                     $query->where('parent', $originalParent);
+                } else {
+                    $query->where(function ($q) {
+                        $q->whereNull('parent')->orWhere('parent', '');
+                    });
                 }
                 $product = $query->first();
 

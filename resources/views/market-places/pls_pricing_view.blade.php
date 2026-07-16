@@ -36,6 +36,44 @@
         .copy-sku-btn:hover {
             color: #0d6efd !important;
         }
+
+        /* Filter + summary badges — same UI as /ebay-tabulator-view */
+        #pls-filter-bar .form-select {
+            width: auto !important;
+            max-width: 140px;
+            padding-right: 1.35rem !important;
+            padding-left: 0.5rem !important;
+            background-position: right 0.35rem center !important;
+        }
+        #pls-filter-bar { gap: 8px 10px !important; }
+        #summary-stats {
+            order: -1;
+            padding: 0.5rem 0.7rem !important;
+            margin-top: 0 !important;
+            margin-bottom: 0.5rem !important;
+        }
+        #summary-stats .ebay2-summary-badge-row,
+        #summary-stats .d-flex { gap: 8px !important; }
+        #summary-stats .ebay2-summary-badge-row {
+            display: flex;
+            flex-wrap: nowrap;
+            align-items: stretch;
+            gap: 0.3rem;
+            width: 100%;
+            overflow: hidden;
+        }
+        #summary-stats .ebay2-summary-badge-row > .badge {
+            flex: 0 0 auto;
+            font-size: var(--summary-badge-fs, 0.6rem);
+            padding: 0.25rem 0.45rem;
+            font-weight: bold;
+            box-sizing: border-box;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            white-space: nowrap;
+        }
     </style>
 @endsection
 
@@ -52,26 +90,23 @@
     <div class="toast-container"></div>
     <div class="row">
         <div class="card shadow-sm">
-            <div class="card-body py-3">
-                <div class="d-flex align-items-center flex-wrap gap-2">
+            <div class="card-body py-2 d-flex flex-column">
+                <div class="d-flex align-items-center flex-wrap gap-2" id="pls-filter-bar">
                     <select id="inventory-filter" class="form-select form-select-sm" style="width: auto;">
-                        <option value="all">All Inventory</option>
-                        <option value="zero">0 Inventory</option>
-                        <option value="more" selected>More than 0</option>
+                        <option value="all" selected>INV</option>
+                        <option value="zero">0 INV</option>
+                        <option value="more">INV &gt; 0</option>
                     </select>
 
-                    <div class="d-flex flex-column gap-1" style="width: auto;">
-                        <select id="gpft-filter" class="form-select form-select-sm" style="width: auto;">
-                            <option value="all">GPFT%</option>
-                            <option value="negative">Negative</option>
-                            <option value="0-10">0-10%</option>
-                            <option value="10-20">10-20%</option>
-                            <option value="20-30">20-30%</option>
-                            <option value="30-40">30-40%</option>
-                            <option value="40-50">40-50%</option>
-                            <option value="50plus">Above 50%</option>
-                        </select>
-                    </div>
+                    <select id="gpft-filter" class="form-select form-select-sm" style="width: auto;">
+                        <option value="all">GPFT%</option>
+                        <option value="negative">Negative</option>
+                        <option value="0-10">0-10%</option>
+                        <option value="10-20">10-20%</option>
+                        <option value="20-30">20-30%</option>
+                        <option value="30-40">30-40%</option>
+                        <option value="40plus">Above 40%</option>
+                    </select>
 
                     <select id="roi-filter" class="form-select form-select-sm" style="width: auto;">
                         <option value="all">ROI%</option>
@@ -82,79 +117,63 @@
                     </select>
 
                     <select id="dil-filter" class="form-select form-select-sm" style="width: auto;">
-                        <option value="all">All DIL%</option>
-                        <option value="red">Red (&lt;16.7%)</option>
-                        <option value="yellow">Yellow (16.7-25%)</option>
-                        <option value="green">Green (25-50%)</option>
-                        <option value="pink">Pink (50%+)</option>
-                    </select>
-
-                    {{-- Sold dropdown (mirrors Amazon tabulator + every other /pricing page).
-                         Backed by `pls_l30` (PLS L30 sold qty). --}}
-                    <select id="sold-filter" class="form-select form-select-sm" style="width: auto;"
-                            title="Filter by PLS L30 sold quantity">
-                        <option value="all">Sold</option>
-                        <option value="sold">Sold &gt; 0</option>
-                        <option value="zero">0 Sold</option>
+                        <option value="all">DIL%</option>
+                        <option value="red">Red &lt;25%</option>
+                        <option value="green">Green 25-50%</option>
+                        <option value="pink">Pink 50%+</option>
                     </select>
 
                     <div class="dropdown d-inline-block">
-                        <button class="btn btn-sm btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">
-                            <i class="fa fa-eye"></i> Columns
+                        <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
+                            id="columnVisibilityDropdown" data-bs-toggle="dropdown" data-bs-auto-close="outside"
+                            aria-expanded="false" title="Columns">
+                            <i class="fa fa-eye"></i>
                         </button>
-                        <ul class="dropdown-menu" id="column-dropdown-menu" style="max-height: 400px; overflow-y: auto;"></ul>
+                        <ul class="dropdown-menu" aria-labelledby="columnVisibilityDropdown" id="column-dropdown-menu"
+                            style="max-height: 400px; overflow-y: auto;"></ul>
                     </div>
-                    <button id="show-all-columns-btn" class="btn btn-sm btn-outline-secondary">
-                        <i class="fa fa-eye"></i> Show All
+
+                    <button id="export-btn" class="btn btn-sm btn-info" title="Export CSV">
+                        <i class="fas fa-file-excel"></i>
                     </button>
 
-                    <button id="export-btn" class="btn btn-sm btn-info">
-                        <i class="fas fa-file-excel"></i> Export CSV
-                    </button>
-
-                    <button id="pls-price-mode-btn" type="button" class="btn btn-sm btn-secondary">
+                    <button id="pls-price-mode-btn" type="button" class="btn btn-sm btn-secondary"
+                        title="Cycle: Off → Decrease → Increase → Same Price → Amz Prc → Off">
                         <i class="fas fa-exchange-alt"></i> Price %
                     </button>
 
-                    {{-- Target ROI% bulk control — back-solves S PRC for selected rows so SROI = Target ROI%.
-                         PLS server-side SGPFT / SROI formula (PlsController::savePlsSprice lines 865-871) treats
-                         take-home as 100% — i.e. `(sprice − lp − ship) / sprice`, no margin factor — so the
-                         back-solve omits the margin too. Formula: sprice = LP × (1 + ROI%/100) + Ship --}}
+                    {{-- Target ROI% / GPFT% — compact UI matches /ebay-tabulator-view (🎯 label + icon-only apply).
+                         PLS take-home is 100%: sprice = LP × (1 + ROI%/100) + Ship --}}
                     <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
                         id="pls-target-roi-controls"
-                        title="Target ROI% — sets S PRC = LP × (1 + Target ROI%/100) + Ship on every selected row (back-solves so SROI column equals the target)">
+                        title="Target ROI% — sets S PRC = LP × (1 + Target ROI%/100) + Ship on every selected row">
                         <label for="pls-target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
-                            Target ROI%:
+                            <span style="font-size:1em;" aria-hidden="true">🎯</span> ROI%:
                         </label>
                         <input type="number" id="pls-target-roi-input" class="form-control form-control-sm text-end"
-                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
-                            title="Target ROI% applied to all selected rows when you click 'Apply S PRC'">
+                            placeholder="30" step="0.1" style="width: 56px;"
+                            title="Target ROI% applied to all selected rows when you click Apply">
                         <button id="pls-apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
                             title="Compute & save S PRC = LP × (1 + Target ROI%/100) + Ship for every selected row">
-                            <i class="fas fa-calculator"></i> Apply S PRC
+                            <i class="fas fa-calculator"></i>
                         </button>
                     </div>
 
-                    {{-- Target GPFT% bulk control — back-solves S PRC for selected rows so SGPFT = Target GPFT%.
-                         Formula: sprice = (LP + Ship) / (1 − GPFT%/100). Target GPFT% must be < 100. --}}
+                    {{-- Formula: sprice = (LP + Ship) / (1 − GPFT%/100). Target GPFT% must be < 100. --}}
                     <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
                         id="pls-target-gpft-controls"
                         title="Target GPFT% — sets S PRC = (LP + Ship) / (1 − Target GPFT%/100) on every selected row">
                         <label for="pls-target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
-                            Target GPFT%:
+                            <span style="font-size:1em;" aria-hidden="true">🎯</span> GPFT%:
                         </label>
                         <input type="number" id="pls-target-gpft-input" class="form-control form-control-sm text-end"
-                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
-                            title="Target GPFT% applied to all selected rows when you click 'Apply S PRC'. Must be less than 100% (PLS take-home).">
+                            placeholder="30" step="0.1" style="width: 56px;"
+                            title="Target GPFT% applied to all selected rows when you click Apply. Must be less than 100%.">
                         <button id="pls-apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
                             title="Compute & save S PRC = (LP + Ship) / (1 − Target GPFT%/100) for every selected row">
-                            <i class="fas fa-calculator"></i> Apply S PRC
+                            <i class="fas fa-calculator"></i>
                         </button>
                     </div>
-
-                    <button id="pls-sugg-amz-prc-btn" type="button" class="btn btn-sm btn-warning">
-                        <i class="fab fa-amazon"></i> Sugg Amz Prc
-                    </button>
 
                     <button id="pls-clear-sprice-btn" class="btn btn-sm btn-danger" style="display: none;">
                         <i class="fas fa-eraser"></i> Clear SPRICE
@@ -177,15 +196,38 @@
                     </div>
                 </div>
 
+                {{-- Summary badges — names + UI match /ebay-tabulator-view --}}
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
-                    <h6 class="mb-3">Summary</h6>
-                    <div class="d-flex gap-2 mb-2">
-                        <span class="badge bg-info fs-6 p-2 flex-fill text-center" id="total-l30-badge">PLS L30: 0</span>
-                        <span class="badge bg-warning fs-6 p-2 flex-fill text-center" id="avg-price-badge">Price: $0</span>
-                        <span class="badge bg-danger fs-6 p-2 flex-fill text-center" id="avg-gpft-badge">GPFT%: 0%</span>
-                        <span class="badge fs-6 p-2 flex-fill text-center" id="avg-roi-badge" style="background-color: purple; color: white;">ROI%: 0%</span>
-                        <span class="badge bg-danger fs-6 p-2 flex-fill text-center" id="missing-price-badge" style="cursor: pointer;">Missing: 0</span>
-                        <span class="badge bg-danger fs-6 p-2 flex-fill text-center" id="not-mapped-badge" style="cursor: pointer;">N MP: 0</span>
+                    <div class="ebay2-summary-badge-row" role="group" aria-label="Summary metrics">
+                        <span class="badge bg-dark fs-6 p-2" id="rows-count-badge"
+                            style="color: white; font-weight: bold;"
+                            title="Number of rows currently shown after filters">Rows: 0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge"
+                            style="color: white; font-weight: bold; cursor: pointer;"
+                            title="Click to filter 0 sold items (INV&gt;0)">0 Sold: 0</span>
+                        <span class="badge fs-6 p-2" id="more-sold-count-badge"
+                            style="background-color: #b6e0fe; color: #0f172a; font-weight: 700; cursor: pointer;"
+                            title="Click to filter items with sales (INV&gt;0)">&gt; 0 Sold: 0</span>
+                        <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-badge"
+                            style="color: black; font-weight: bold;"
+                            title="Σ (Price × PLS L30) across filtered rows">Sales: $0</span>
+                        <span class="badge fs-6 p-2" id="qty-sold-badge"
+                            style="background-color: #6f42c1; color: white; font-weight: bold;"
+                            title="Σ PLS L30 units sold on filtered rows">Qty: 0</span>
+                        <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge"
+                            style="color: black; font-weight: bold;"
+                            title="Weighted GPFT% = Σ Profit / Σ Sales × 100">GPFT: 0%</span>
+                        <span class="badge bg-secondary fs-6 p-2" id="groi-percent-badge"
+                            style="color: white; font-weight: bold;"
+                            title="Weighted GROI% = Σ Profit / Σ COGS × 100">GROI: 0%</span>
+                        <span class="badge bg-warning fs-6 p-2" id="avg-price-badge"
+                            style="color: black; font-weight: bold;">Prc: $0.00</span>
+                        <span class="badge bg-secondary fs-6 p-2" id="missing-l-count-badge"
+                            style="color: white; font-weight: bold; cursor: pointer;"
+                            title="Click to filter Missing L (INV&gt;0, not listed on PLS)">M L: 0</span>
+                        <span class="badge bg-secondary fs-6 p-2" id="missing-m-count-badge"
+                            style="color: white; font-weight: bold; cursor: pointer;"
+                            title="Click to filter Missing M (INV vs PLS Stock mismatch)">M M: 0</span>
                     </div>
                 </div>
             </div>
@@ -193,17 +235,20 @@
             <div class="card-body" style="padding: 0;">
                 <!-- Discount Input Box (shown when Price % mode is active and SKUs are selected) -->
                 <div id="pls-discount-input-container" class="p-2 bg-light border-bottom" style="display: none;">
-                    <div class="d-flex align-items-center gap-2">
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
                         <span id="pls-selected-skus-count" class="fw-bold"></span>
-                        <span class="d-flex align-items-center gap-2">
+                        <span id="pls-discount-controls" class="d-flex align-items-center gap-2">
                             <select id="pls-discount-type-select" class="form-select form-select-sm" style="width: 120px;">
                                 <option value="percentage">Percentage</option>
                                 <option value="value">Value ($)</option>
                             </select>
+                            <label class="mb-0 fw-bold">Value:</label>
+                            <input type="number" id="pls-discount-input" class="form-control form-control-sm"
+                                placeholder="Enter %" step="0.01" style="width: 100px;">
                         </span>
-                        <label class="mb-0 fw-bold">Value:</label>
-                        <input type="number" id="pls-discount-input" class="form-control form-control-sm"
-                            placeholder="Enter %" step="0.01" style="width: 100px;">
+                        <span id="pls-amz-mode-hint" class="text-muted small d-none">
+                            <i class="fab fa-amazon text-warning"></i> Apply sets SPRICE = Amazon price
+                        </span>
                         <button id="pls-apply-discount-btn" class="btn btn-primary btn-sm">Apply</button>
                         <button id="pls-clear-sprice-selected-btn" class="btn btn-sm btn-danger">
                             <i class="fa fa-trash"></i> Clear SPRICE
@@ -261,6 +306,27 @@
     let plsUniqueParents = [];
     let isPlsPlayActive = false;
     let currentPlsParentIndex = -1;
+
+    // Badge filter toggles (same pattern as /ebay-tabulator-view)
+    let zeroSoldFilterActive = false;
+    let moreSoldFilterActive = false;
+    let missingLFilterActive = false;
+    let missingMFilterActive = false;
+
+    /** M L — INV>0 and marked Missing (not listed on PLS). */
+    function isPlsMissingL(row) {
+        return (row.missing || '') === 'M' && (parseInt(row.inventory) || 0) > 0;
+    }
+
+    /** M M — listed, INV>0, INV vs PLS Stock mismatch beyond tolerance. */
+    function isPlsMissingM(row) {
+        const inv = parseInt(row.inventory) || 0;
+        const plsInv = parseInt(row.pls_inventory) || 0;
+        if ((row.missing || '') === 'M') return false;
+        if (inv > 0 && plsInv === 0 && inv > 3) return true;
+        if (inv > 0 && plsInv > 0 && inv !== plsInv && Math.abs(inv - plsInv) > 3) return true;
+        return false;
+    }
 
     function showToast(message, type = 'info') {
         const toastContainer = document.querySelector('.toast-container');
@@ -335,16 +401,11 @@
             });
         });
 
-        $('#inventory-filter').on('change', function () { applyFilters(); });
-        $('#gpft-filter').on('change', function () { applyFilters(); });
-        $('#roi-filter').on('change', function () { applyFilters(); });
-        $('#dil-filter').on('change', function () { applyFilters(); });
-        $('#sold-filter').on('change', function () { applyFilters(); });
-
-        $('#sku-search').on('keyup', function () { applyFilters(); });
-        $('#parent-search').on('keyup', function () { applyFilters(); });
+        $('#inventory-filter, #gpft-filter, #roi-filter, #dil-filter').on('change', function () { applyFilters(); });
+        $('#sku-search, #parent-search').on('keyup', function () { applyFilters(); });
 
         function applyFilters() {
+            if (!table) return;
             table.clearFilter();
 
             // When Play navigation is active, only show rows matching the current parent
@@ -364,21 +425,18 @@
             const gpftFilter = $('#gpft-filter').val();
             const roiFilter = $('#roi-filter').val();
             const dilFilter = $('#dil-filter').val();
-            const soldFilter = $('#sold-filter').val();
             const skuSearch = ($('#sku-search').val() || '').toString().trim().toLowerCase();
             const parentSearch = ($('#parent-search').val() || '').toString().trim().toLowerCase();
             
-            // Use a single combined filter function
             table.addFilter(function(data) {
-                // SKU search
                 if (skuSearch && !((data.sku || '').toString().toLowerCase().includes(skuSearch))) return false;
-                // Parent search
                 if (parentSearch && !((data.parent || '').toString().toLowerCase().includes(parentSearch))) return false;
-                // Inventory filter
-                if (invFilter === 'zero' && parseInt(data.inventory) !== 0) return false;
-                if (invFilter === 'more' && parseInt(data.inventory) <= 0) return false;
+
+                const inv = parseInt(data.inventory) || 0;
+                if (invFilter === 'zero' && inv !== 0) return false;
+                if (invFilter === 'more' && inv <= 0) return false;
                 
-                // GPFT filter
+                // GPFT slabs — same as /ebay-tabulator-view (Above 40%)
                 if (gpftFilter !== 'all') {
                     const gpft = parseFloat(data.gpft_pct) || 0;
                     if (gpftFilter === 'negative' && gpft >= 0) return false;
@@ -386,11 +444,9 @@
                     if (gpftFilter === '10-20' && (gpft < 10 || gpft >= 20)) return false;
                     if (gpftFilter === '20-30' && (gpft < 20 || gpft >= 30)) return false;
                     if (gpftFilter === '30-40' && (gpft < 30 || gpft >= 40)) return false;
-                    if (gpftFilter === '40-50' && (gpft < 40 || gpft >= 50)) return false;
-                    if (gpftFilter === '50plus' && gpft < 50) return false;
+                    if (gpftFilter === '40plus' && gpft < 40) return false;
                 }
                 
-                // ROI filter
                 if (roiFilter !== 'all') {
                     const roi = parseFloat(data.roi_pct) || 0;
                     if (roiFilter === 'lt40' && roi >= 40) return false;
@@ -399,22 +455,25 @@
                     if (roiFilter === 'gt125' && roi < 125) return false;
                 }
                 
-                // DIL filter
+                // DIL slabs — same as /ebay-tabulator-view (Red <25%, Green 25-50%, Pink 50%+)
                 if (dilFilter !== 'all') {
                     const dil = parseFloat(data.dil_pct) || 0;
-                    if (dilFilter === 'red' && dil >= 16.7) return false;
-                    if (dilFilter === 'yellow' && (dil < 16.7 || dil >= 25)) return false;
+                    if (dilFilter === 'red' && dil >= 25) return false;
                     if (dilFilter === 'green' && (dil < 25 || dil >= 50)) return false;
                     if (dilFilter === 'pink' && dil < 50) return false;
                 }
 
-                // Sold filter (PLS L30 sold qty — `pls_l30` field). Mirrors the Amazon
-                // tabulator dropdown styling.
-                if (soldFilter && soldFilter !== 'all') {
+                // Badge toggles (INV > 0 for sold counts — mirrors eBay E Stock > 0)
+                if (zeroSoldFilterActive) {
                     const soldQty = parseInt(data.pls_l30) || 0;
-                    if (soldFilter === 'sold' && !(soldQty > 0))   return false;
-                    if (soldFilter === 'zero' && !(soldQty === 0)) return false;
+                    if (!(soldQty === 0 && inv > 0)) return false;
                 }
+                if (moreSoldFilterActive) {
+                    const soldQty = parseInt(data.pls_l30) || 0;
+                    if (!(soldQty > 0 && inv > 0)) return false;
+                }
+                if (missingLFilterActive && !isPlsMissingL(data)) return false;
+                if (missingMFilterActive && !isPlsMissingM(data)) return false;
 
                 return true;
             });
@@ -639,9 +698,8 @@
                         
                         const dil = (OVL30 / INV) * 100;
                         let color = '';
-                        
-                        if (dil < 16.66) color = '#a00211';
-                        else if (dil >= 16.66 && dil < 25) color = '#ffc107';
+                        // Same bands as /ebay-tabulator-view (red absorbs former yellow)
+                        if (dil < 25) color = '#a00211';
                         else if (dil >= 25 && dil < 50) color = '#28a745';
                         else color = '#e83e8c';
                         
@@ -1106,74 +1164,91 @@
         });
 
         function updateSummary() {
-            const data = table.getData('active');
-            let totalProducts = data.length;
-            let totalInventory = 0;
+            if (!table) return;
+            const allData = table.getData('all') || [];
+            const data = table.getData('active') || [];
             let totalPlsL30 = 0;
-            let totalPrice = 0;
-            let priceCount = 0;
-            let missingPrice = 0;
-            let notMappedCount = 0;
+            let totalWeightedPrice = 0;
+            let weightedL30 = 0;
+            let zeroSoldCount = 0;
+            let moreSoldCount = 0;
             let totalSales = 0;
             let totalProfit = 0;
             let totalCogs = 0;
 
             data.forEach(row => {
                 const inv = parseInt(row.inventory) || 0;
-                const l30 = parseInt(row.l30) || 0;
                 const plsL30 = parseInt(row.pls_l30) || 0;
                 const price = parseFloat(row.price) || 0;
-                const gpft = parseFloat(row.gpft_pct) || 0;
-                const roi = parseFloat(row.roi_pct) || 0;
-                const plsInv = parseInt(row.pls_inventory) || 0;
-                const missing = row.missing || '';
                 const lp = parseFloat(row.lp) || 0;
                 const ship = parseFloat(row.ship) || 0;
 
-                totalInventory += inv;
                 totalPlsL30 += plsL30;
 
-                if (price > 0) {
-                    totalPrice += price;
-                    priceCount++;
-                } else if (inv > 0) {
-                    missingPrice++;
+                if (inv > 0) {
+                    if (plsL30 === 0) zeroSoldCount++;
+                    else moreSoldCount++;
+                    if (price > 0 && plsL30 > 0) {
+                        totalWeightedPrice += price * plsL30;
+                        weightedL30 += plsL30;
+                    }
                 }
 
-                // Calculate weighted GPFT and ROI (by sales volume, using dynamic marketplace percentage)
                 if (plsL30 > 0 && price > 0) {
                     const sales = price * plsL30;
                     const profit = ((price * PLS_PERCENTAGE) - lp - ship) * plsL30;
                     const cogs = lp * plsL30;
-                    
                     totalSales += sales;
                     totalProfit += profit;
                     totalCogs += cogs;
                 }
-                
-                // Count N MP (Not Mapped) - same logic as MAP column formatter
-                if (missing !== 'M') {
-                    if (inv > 0 && plsInv === 0 && inv > 3) {
-                        notMappedCount++;
-                    } else if (inv > 0 && plsInv > 0) {
-                        if (inv !== plsInv && Math.abs(inv - plsInv) > 3) {
-                            notMappedCount++;
-                        }
-                    }
-                }
             });
 
-            const avgPrice = priceCount > 0 ? totalPrice / priceCount : 0;
-            const avgGpft = totalSales > 0 ? (totalProfit / totalSales) * 100 : 0;
-            const avgRoi = totalCogs > 0 ? (totalProfit / totalCogs) * 100 : 0;
+            let missingLCount = 0;
+            let missingMCount = 0;
+            allData.forEach(row => {
+                if (isPlsMissingL(row)) missingLCount++;
+                if (isPlsMissingM(row)) missingMCount++;
+            });
 
-            $('#total-l30-badge').text(`PLS L30: ${totalPlsL30.toLocaleString()}`);
-            $('#avg-price-badge').text(`Price: $${avgPrice.toFixed(2)}`);
-            $('#avg-gpft-badge').text(`GPFT%: ${avgGpft.toFixed(0)}%`);
-            $('#avg-roi-badge').text(`ROI%: ${avgRoi.toFixed(0)}%`);
-            $('#missing-price-badge').text(`Missing: ${missingPrice}`);
-            $('#not-mapped-badge').text(`N MP: ${notMappedCount}`);
+            const avgPrice = weightedL30 > 0 ? totalWeightedPrice / weightedL30 : 0;
+            const avgGpft = totalSales > 0 ? (totalProfit / totalSales) * 100 : 0;
+            const avgGroi = totalCogs > 0 ? (totalProfit / totalCogs) * 100 : 0;
+
+            $('#rows-count-badge').text('Rows: ' + data.length.toLocaleString());
+            $('#zero-sold-count-badge').text('0 Sold: ' + zeroSoldCount.toLocaleString());
+            $('#more-sold-count-badge').text('> 0 Sold: ' + moreSoldCount.toLocaleString());
+            $('#total-sales-amt-badge').text('Sales: $' + Math.round(totalSales).toLocaleString());
+            $('#qty-sold-badge').text('Qty: ' + totalPlsL30.toLocaleString());
+            $('#avg-price-badge').text('Prc: $' + avgPrice.toFixed(2));
+            $('#avg-gpft-badge').text('GPFT: ' + Math.round(avgGpft) + '%');
+            $('#groi-percent-badge').text('GROI: ' + Math.round(avgGroi) + '%');
+            $('#missing-l-count-badge').text('M L: ' + missingLCount.toLocaleString());
+            $('#missing-m-count-badge').text('M M: ' + missingMCount.toLocaleString());
+
+            fitSummaryBadges();
         }
+
+        function fitSummaryBadges() {
+            const row = document.querySelector('#summary-stats .ebay2-summary-badge-row');
+            if (!row) return;
+            const MAX_FS = 0.7;
+            const MIN_FS = 0.4;
+            let fs = MAX_FS;
+            row.style.setProperty('--summary-badge-fs', fs + 'rem');
+            let guard = 0;
+            while (row.scrollWidth > row.clientWidth && fs > MIN_FS && guard < 40) {
+                fs = Math.max(MIN_FS, fs - 0.02);
+                row.style.setProperty('--summary-badge-fs', fs + 'rem');
+                guard++;
+            }
+        }
+
+        let _fitBadgesTimer = null;
+        $(window).on('resize', function() {
+            clearTimeout(_fitBadgesTimer);
+            _fitBadgesTimer = setTimeout(fitSummaryBadges, 150);
+        });
 
         table.on('dataLoaded', function () { setTimeout(updateSummary, 100); });
         table.on('dataFiltered', function () { setTimeout(updateSummary, 100); });
@@ -1228,37 +1303,37 @@
             }
         });
 
-        // Toast notification function
-        // Badge click filters
-        $('#missing-price-badge').on('click', function() {
-            table.clearFilter();
-            table.addFilter(function(data) {
-                return parseFloat(data.price) === 0 && parseInt(data.inventory) > 0;
-            });
-            updateSummary();
-        });
-        
-        $('#not-mapped-badge').on('click', function() {
-            table.clearFilter();
-            table.addFilter(function(data) {
-                const inv = parseInt(data.inventory) || 0;
-                const plsInv = parseInt(data.pls_inventory) || 0;
-                const missing = data.missing || '';
-                
-                // Show N MP rows - same logic as MAP column
-                if (missing === 'M') return false;
-                
-                if (inv > 0 && plsInv === 0 && inv > 3) return true;
-                if (inv > 0 && plsInv > 0 && inv !== plsInv && Math.abs(inv - plsInv) > 3) return true;
-                
-                return false;
-            });
-            updateSummary();
+        // Badge click toggles (same pattern as /ebay-tabulator-view)
+        $('#zero-sold-count-badge').on('click', function() {
+            zeroSoldFilterActive = !zeroSoldFilterActive;
+            moreSoldFilterActive = false;
+            applyFilters();
         });
 
-        // Column dropdown
+        $('#more-sold-count-badge').on('click', function() {
+            moreSoldFilterActive = !moreSoldFilterActive;
+            zeroSoldFilterActive = false;
+            applyFilters();
+        });
+
+        $('#missing-l-count-badge').on('click', function() {
+            missingLFilterActive = !missingLFilterActive;
+            $(this).toggleClass('bg-secondary', !missingLFilterActive)
+                   .toggleClass('bg-danger', missingLFilterActive);
+            applyFilters();
+        });
+
+        $('#missing-m-count-badge').on('click', function() {
+            missingMFilterActive = !missingMFilterActive;
+            $(this).toggleClass('bg-secondary', !missingMFilterActive)
+                   .toggleClass('bg-danger', missingMFilterActive);
+            applyFilters();
+        });
+
+        // Column dropdown (icon-only eye; Show All lives inside the menu — same as /ebay-tabulator-view)
         function buildColumnDropdown() {
-            let html = '';
+            let html = '<li><a class="dropdown-item py-1" href="#" id="show-all-columns-btn"><i class="fa fa-eye"></i> Show All</a></li>';
+            html += '<li><hr class="dropdown-divider"></li>';
             table.getColumns().forEach(col => {
                 const field = col.getField(), title = col.getDefinition().title;
                 if (field && title) {
@@ -1280,7 +1355,10 @@
             }
         });
 
-        document.getElementById('show-all-columns-btn').addEventListener('click', function () {
+        document.getElementById('column-dropdown-menu').addEventListener('click', function (e) {
+            const showAll = e.target.closest('#show-all-columns-btn');
+            if (!showAll) return;
+            e.preventDefault();
             table.getColumns().forEach(col => col.show());
             buildColumnDropdown();
         });
@@ -1308,11 +1386,11 @@
             showToast('Export downloaded!', 'success');
         });
 
-        // ─── Price % (Increase / Decrease / Same Price) ───────────────────────
-
+        // ─── Price % (Decrease → Increase → Same Price → Amz Prc → Off) ───────
         let plsDecreaseModeActive = false;
         let plsIncreaseModeActive = false;
         let plsSamePriceModeActive = false;
+        let plsAmzPriceModeActive = false;
         let plsSelectedSkus = new Set();
 
         function roundToRetailPrice(price) {
@@ -1327,13 +1405,14 @@
             return +(roundedDollar - 0.51).toFixed(2);
         }
 
+        function plsAnyPriceModeActive() {
+            return plsDecreaseModeActive || plsIncreaseModeActive || plsSamePriceModeActive || plsAmzPriceModeActive;
+        }
+
         function plsUpdateSelectedCount() {
             const count = plsSelectedSkus.size;
             $('#pls-selected-skus-count').text(`${count} SKU${count !== 1 ? 's' : ''} selected`);
-            $('#pls-discount-input-container').toggle(
-                count > 0 || plsDecreaseModeActive || plsIncreaseModeActive || plsSamePriceModeActive
-            );
-            // Show/hide the standalone Clear SPRICE btn in toolbar
+            $('#pls-discount-input-container').toggle(count > 0 || plsAnyPriceModeActive());
             $('#pls-clear-sprice-btn').toggle(count > 0);
         }
 
@@ -1345,43 +1424,71 @@
             $('#pls-select-all-checkbox').prop('checked', allSelected);
         }
 
+        function syncPlsDiscountBarForMode() {
+            const amz = plsAmzPriceModeActive;
+            $('#pls-discount-controls').toggleClass('d-none', amz);
+            $('#pls-amz-mode-hint').toggleClass('d-none', !amz);
+            $('#pls-apply-discount-btn').text(amz ? 'Apply Amz Prc' : 'Apply');
+        }
+
         function syncPlsPriceModeUi() {
             if (!table || !table.getColumn) return;
             const $btn = $('#pls-price-mode-btn');
             const selectColumn = table.getColumn('_select');
+            $btn.removeClass('btn-secondary btn-danger btn-success btn-outline-primary btn-warning');
 
             if (plsDecreaseModeActive) {
-                $btn.removeClass('btn-secondary btn-success btn-outline-primary').addClass('btn-danger')
-                    .html('<i class="fas fa-arrow-down"></i> Decrease ON');
+                $btn.addClass('btn-danger')
+                    .html('<i class="fas fa-arrow-down"></i>')
+                    .attr('title', 'Decrease ON — click to cycle');
                 if (selectColumn) selectColumn.show();
+                syncPlsDiscountBarForMode();
+                plsUpdateSelectedCount();
                 return;
             }
             if (plsIncreaseModeActive) {
-                $btn.removeClass('btn-secondary btn-danger btn-outline-primary').addClass('btn-success')
-                    .html('<i class="fas fa-arrow-up"></i> Increase ON');
+                $btn.addClass('btn-success')
+                    .html('<i class="fas fa-arrow-up"></i>')
+                    .attr('title', 'Increase ON — click to cycle');
                 if (selectColumn) selectColumn.show();
+                syncPlsDiscountBarForMode();
+                plsUpdateSelectedCount();
                 return;
             }
             if (plsSamePriceModeActive) {
-                $btn.removeClass('btn-secondary btn-danger btn-success').addClass('btn-outline-primary')
-                    .html('<i class="fas fa-equals"></i> Same Price ON');
+                $btn.addClass('btn-outline-primary')
+                    .html('<i class="fas fa-equals"></i>')
+                    .attr('title', 'Same Price ON — click to cycle');
                 if (selectColumn) selectColumn.show();
+                syncPlsDiscountBarForMode();
+                plsUpdateSelectedCount();
+                return;
+            }
+            if (plsAmzPriceModeActive) {
+                $btn.addClass('btn-warning')
+                    .html('<i class="fab fa-amazon"></i>')
+                    .attr('title', 'Amz Prc ON — select SKUs, then Apply to set SPRICE = Amazon price');
+                if (selectColumn) selectColumn.show();
+                syncPlsDiscountBarForMode();
+                plsUpdateSelectedCount();
                 return;
             }
             // All modes off
-            $btn.removeClass('btn-danger btn-success btn-outline-primary').addClass('btn-secondary')
-                .html('<i class="fas fa-exchange-alt"></i> Price %');
+            $btn.addClass('btn-secondary')
+                .html('<i class="fas fa-exchange-alt"></i> Price %')
+                .attr('title', 'Cycle: Off → Decrease → Increase → Same Price → Amz Prc → Off');
             if (selectColumn) selectColumn.hide();
             plsSelectedSkus.clear();
             $('.pls-sku-select-checkbox').prop('checked', false);
             $('#pls-select-all-checkbox').prop('checked', false);
             $('#pls-discount-input-container').hide();
+            syncPlsDiscountBarForMode();
             plsUpdateSelectedCount();
         }
 
-        // Toggle through modes: off → Decrease → Increase → Same Price → off
+        // Cycle: off → Decrease → Increase → Same Price → Amz Prc → off
         $('#pls-price-mode-btn').on('click', function() {
-            if (!plsDecreaseModeActive && !plsIncreaseModeActive && !plsSamePriceModeActive) {
+            if (!plsAnyPriceModeActive()) {
                 plsDecreaseModeActive = true;
             } else if (plsDecreaseModeActive) {
                 plsDecreaseModeActive = false;
@@ -1389,8 +1496,11 @@
             } else if (plsIncreaseModeActive) {
                 plsIncreaseModeActive = false;
                 plsSamePriceModeActive = true;
-            } else {
+            } else if (plsSamePriceModeActive) {
                 plsSamePriceModeActive = false;
+                plsAmzPriceModeActive = true;
+            } else {
+                plsAmzPriceModeActive = false;
             }
             syncPlsPriceModeUi();
         });
@@ -1475,10 +1585,14 @@
             });
         }
 
-        // Apply discount/increase/same-price to selected SKUs
+        // Apply discount/increase/same-price/Amazon price to selected SKUs
         function plsApplyDiscount() {
-            if (!plsDecreaseModeActive && !plsIncreaseModeActive && !plsSamePriceModeActive) {
-                showToast('Turn on Price % (Decrease, Increase, or Same Price)', 'error');
+            if (!plsAnyPriceModeActive()) {
+                showToast('Turn on Price % (Decrease, Increase, Same Price, or Amz Prc)', 'error');
+                return;
+            }
+            if (plsAmzPriceModeActive) {
+                plsApplySuggestAmazonPrice();
                 return;
             }
             if (plsSelectedSkus.size === 0) {
@@ -1800,8 +1914,6 @@
             }
             showToast(message, updatedCount > 0 ? 'success' : 'info');
         }
-
-        $('#pls-sugg-amz-prc-btn').on('click', function() { plsApplySuggestAmazonPrice(); });
 
     });
 </script>
