@@ -278,70 +278,9 @@
             <div class="card-body py-3">
 
                 <div class="d-flex align-items-center flex-wrap gap-2">
-                    <!-- Section Filter Dropdown -->
-                    <div class="btn-group">
-                        <button type="button" class="btn btn-sm btn-primary dropdown-toggle" data-bs-toggle="dropdown">
-                            <i class="fas fa-layer-group"></i> <span id="current-section">Main Section</span>
-                        </button>
-                        <ul class="dropdown-menu" id="section-dropdown">
-                            <li><a class="dropdown-item section-option" href="#" data-section="all">
-                                <i class="fas fa-th"></i> Main Section
-                            </a></li>
-                            <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item section-option" href="#" data-section="ads">
-                                <i class="fas fa-ad"></i> ADS
-                            </a></li>
-                            <li><a class="dropdown-item section-option" href="#" data-section="inv">
-                                <i class="fas fa-boxes"></i> INVENTORY
-                            </a></li>
-                            <li><a class="dropdown-item section-option" href="#" data-section="margins">
-                                <i class="fas fa-percentage"></i> MARGINS
-                            </a></li>
-                            <li><a class="dropdown-item section-option" href="#" data-section="movement">
-                                <i class="fas fa-truck"></i> MOVEMENT
-                            </a></li>
-                            <li><a class="dropdown-item section-option" href="#" data-section="returns">
-                                <i class="fas fa-undo"></i> RETURNS
-                            </a></li>
-                            <li><a class="dropdown-item section-option" href="#" data-section="ah">
-                                <i class="fas fa-heartbeat"></i> ACCOUNT HEALTH
-                            </a></li>
-                            <li><a class="dropdown-item section-option" href="#" data-section="expenses">
-                                <i class="fas fa-dollar-sign"></i> EXPENSES
-                            </a></li>
-                            <li><a class="dropdown-item section-option" href="#" data-section="traffic">
-                                <i class="fas fa-chart-line"></i> TRAFFIC
-                            </a></li>
-                            <li><a class="dropdown-item section-option" href="#" data-section="reviews">
-                                <i class="fas fa-star"></i> REVIEWS
-                            </a></li>
-                            <li><a class="dropdown-item section-option" href="#" data-section="missing">
-                                <i class="fas fa-exclamation-triangle"></i> Missing
-                            </a></li>
-                            <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item section-option" href="#" data-section="B2C">
-                                <i class="fas fa-shopping-cart"></i> B2C
-                            </a></li>
-                            <li><a class="dropdown-item section-option" href="#" data-section="B2B">
-                                <i class="fas fa-building"></i> B2B
-                            </a></li>
-                            <li><a class="dropdown-item section-option" href="#" data-section="Dropship">
-                                <i class="fas fa-box"></i> Dropshipping
-                            </a></li>
-                        </ul>
-                    </div>
-                    
                     <!-- Search -->
                     <input type="text" id="channel-search" class="form-control form-control-sm"
                         placeholder="Search Channel..." style="width: 150px; display: inline-block;">
-
-                    <select id="inventory-filter" class="form-select form-select-sm"
-                        style="width: auto; display: inline-block;"
-                        title="Filter by Qty items (L30 order quantity total)">
-                        <option value="all" selected>Qty — All</option>
-                        <option value="zero">Qty — 0</option>
-                        <option value="more">Qty — &gt; 0</option>
-                    </select>
 
                     <!-- Type Filter (hidden from UI) -->
                     <select id="type-filter" class="form-select form-select-sm" style="width: auto; display: none;">
@@ -353,10 +292,10 @@
 
                     <!-- Column Visibility Dropdown -->
                     <div class="dropdown d-inline-block">
-                        <button class="btn btn-sm btn-outline-primary dropdown-toggle" type="button"
+                        <button class="btn btn-sm btn-outline-dark" type="button"
                             id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false"
-                            data-bs-auto-close="outside">
-                            <i class="fas fa-columns"></i> Columns
+                            data-bs-auto-close="outside" title="Columns" aria-label="Columns">
+                            <i class="fas fa-columns" style="color: #000;"></i>
                         </button>
                         <div class="dropdown-menu p-0" id="column-dropdown-menu"
                             aria-labelledby="columnVisibilityDropdown"
@@ -374,30 +313,15 @@
                         </div>
                     </div>
 
-                    <button id="show-all-columns-btn" class="btn btn-sm btn-outline-secondary">
-                        <i class="fas fa-eye"></i> Show All
-                    </button>
-
-                    <!-- Export Button -->
-                    <button id="export-btn" class="btn btn-sm btn-success">
-                        <i class="fas fa-file-excel"></i> Export
-                    </button>
-
-                    <!-- Refresh Button -->
-                    <button id="refresh-btn" class="btn btn-sm btn-info">
-                        <i class="fas fa-sync-alt"></i> Refresh
-                    </button>
-
-                    <button id="addChannelBtn" class="btn btn-sm btn-primary" data-bs-toggle="modal"
-                        data-bs-target="#addChannelModal">
-                        <i class="fas fa-plus-circle"></i> Add Channel
+                    <button id="addChannelBtn" class="btn btn-sm btn-outline-dark" data-bs-toggle="modal"
+                        data-bs-target="#addChannelModal" title="Add Channel" aria-label="Add Channel">
+                        <i class="fas fa-plus-circle" style="color: #000;"></i>
                     </button>
 
                 </div>
 
                 <!-- Summary Stats -->
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
-                    <h6 class="mb-1">Summary Statistics</h6>
                     <div class="d-flex flex-wrap gap-2 ebay2-summary-badge-row" role="group" aria-label="Summary metrics">
                         <span class="badge bg-primary fs-6 p-2" style="color: white; font-weight: bold;">
                             Channels: <span id="total-channels">0</span>
@@ -460,10 +384,10 @@
                             Missing L : <span id="total-miss">0</span>
                         </span>
                         <span class="badge bg-info fs-6 p-2" style="color: black; font-weight: bold;" title="Sum of (Inventory × Amazon Price)">
-                            inv: $<span id="inventory-value-amazon">0</span>
+                            inv: <span id="inventory-value-amazon">0</span>
                         </span>
                         <span class="badge bg-warning fs-6 p-2 badge-chart-link" data-metric="inv_at_lp" style="color: black; font-weight: bold; cursor:pointer;" title="View trend - Sum of (Shopify inventory × LP)">
-                            Inv@LP: $<span id="inv-at-lp">0</span>
+                            Inv@LP: <span id="inv-at-lp">0</span>
                         </span>
                         <span class="badge bg-secondary fs-6 p-2 badge-chart-link" data-metric="tat" style="color: white; font-weight: bold; cursor:pointer;" title="View trend - inv ÷ Sales (months of stock at current sales)">
                             TAT: <span id="tat-badge">0</span>
@@ -1198,17 +1122,41 @@
                             showToast('info', response.message || 'No channels to display.');
                         }
                         updateSummaryStats(response.data);
-                        // Update inv badge
+                        // Update inv badge — compact e.g. 1.7M
                         const invValEl = document.getElementById('inventory-value-amazon');
                         if (invValEl && response.inventory_value_amazon != null) {
-                            const val = parseFloat(response.inventory_value_amazon) || 0;
-                            invValEl.textContent = Math.round(val).toLocaleString('en-US');
+                            const val = Math.round(parseFloat(response.inventory_value_amazon) || 0);
+                            let compact;
+                            if (Math.abs(val) >= 1000000) {
+                                compact = (val / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+                            } else if (Math.abs(val) >= 1000) {
+                                compact = Math.round(val / 1000) + 'K';
+                            } else {
+                                compact = String(val);
+                            }
+                            invValEl.textContent = compact;
+                            const badge = invValEl.closest('.badge');
+                            if (badge) {
+                                badge.title = 'Sum of (Inventory × Amazon Price): $' + val.toLocaleString('en-US');
+                            }
                         }
-                        // Update Inv@LP badge (Shopify inv × LP)
+                        // Update Inv@LP badge (Shopify inv × LP) — compact e.g. 557K
                         const invAtLpEl = document.getElementById('inv-at-lp');
                         if (invAtLpEl && response.inv_at_lp != null) {
-                            const val = parseFloat(response.inv_at_lp) || 0;
-                            invAtLpEl.textContent = Math.round(val).toLocaleString('en-US');
+                            const val = Math.round(parseFloat(response.inv_at_lp) || 0);
+                            let compact;
+                            if (Math.abs(val) >= 1000000) {
+                                compact = (val / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+                            } else if (Math.abs(val) >= 1000) {
+                                compact = Math.round(val / 1000) + 'K';
+                            } else {
+                                compact = String(val);
+                            }
+                            invAtLpEl.textContent = compact;
+                            const badge = invAtLpEl.closest('.badge');
+                            if (badge) {
+                                badge.title = 'View trend - Sum of (Shopify inventory × LP): $' + val.toLocaleString('en-US');
+                            }
                         }
                         // Update TAT badge (inv / Sales)
                         const tatEl = document.getElementById('tat-badge');
@@ -3612,7 +3560,20 @@
 
                 // Update badges
                 $('#total-channels').text(totalChannels);
-                $('#total-l30-sales').text('$' + Math.round(totalL30Sales).toLocaleString('en-US'));
+                (function() {
+                    const val = Math.round(totalL30Sales);
+                    let compact;
+                    if (Math.abs(val) >= 1000000) {
+                        compact = (val / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+                    } else if (Math.abs(val) >= 1000) {
+                        compact = Math.round(val / 1000) + 'K';
+                    } else {
+                        compact = String(val);
+                    }
+                    $('#total-l30-sales').text(compact);
+                    $('#total-l30-sales').closest('.badge').attr('title',
+                        'Sum of Sales column (channel rolling L30 / window varies). $' + val.toLocaleString('en-US'));
+                })();
                 // Show NYS when no channel had any sales yesterday — clearer than "$0".
                 $('#total-y-sales').text(totalYSales > 0
                     ? '$' + Math.round(totalYSales).toLocaleString('en-US')
@@ -3635,7 +3596,7 @@
                 $('#cvr-pct-badge').text(cvrPct !== null ? Math.round(cvrPct) + '%' : '-');
                 // NPFT $ = gross profit $ − total ad spend (= L30 × (G% − Ad Spend/Sales) in aggregate)
                 $('#total-pft').text('$' + Math.round(netProfit).toLocaleString('en-US'));
-                $('#avg-npft').text(avgNpft.toFixed(1) + '%');
+                $('#avg-npft').text(Math.round(avgNpft) + '%');
                 $('#avg-nroi').text(Math.round(avgNroi) + '%');
                 $('#total-map').text(Math.round(totalMap).toLocaleString('en-US'));
                 $('#total-nmap').text(Math.round(totalNMap).toLocaleString('en-US'));
@@ -3659,13 +3620,12 @@
                 $('#seller-ratings-reviews-badge').text(sellerWeightedAvg + ' ★ | ' + sellerTotalRev);
             }
 
-            // Combine channel search, type (B2C/B2B/Dropship), and Qty inventory filter
+            // Combine channel search and type (B2C/B2B/Dropship) filters
             function applyMasterFilters() {
                 if (!table || typeof table.clearFilter !== 'function') return;
                 const q = ($('#channel-search').val() || '').trim().toLowerCase();
-                const inv = $('#inventory-filter').val() || 'all';
                 const typeVal = $('#type-filter').val() || 'all';
-                const needsFilter = q.length > 0 || inv !== 'all' || (typeVal && typeVal !== 'all');
+                const needsFilter = q.length > 0 || (typeVal && typeVal !== 'all');
                 if (!needsFilter) {
                     table.clearFilter(true);
                     return;
@@ -3675,19 +3635,12 @@
                     const ch = String(data['Channel '] || data['Channel'] || '').toLowerCase();
                     if (q && ch.indexOf(q) === -1) return false;
                     if (typeVal && typeVal !== 'all' && String(data['type'] || '') !== typeVal) return false;
-                    const qty = parseNumber(data['Qty'] || 0);
-                    if (inv === 'zero' && qty !== 0) return false;
-                    if (inv === 'more' && qty <= 0) return false;
                     return true;
                 });
             }
 
             // Channel Search
             $('#channel-search').on('keyup', function() {
-                applyMasterFilters();
-            });
-
-            $('#inventory-filter').on('change', function() {
                 applyMasterFilters();
             });
 
@@ -3819,101 +3772,6 @@
                     } else {
                         col.hide();
                     }
-                }
-            });
-
-            // Show All Columns
-            document.getElementById("show-all-columns-btn").addEventListener("click", function() {
-                table.getColumns().forEach(col => {
-                    col.show();
-                });
-                const mapColShowAll = table.getColumn('Map');
-                if (mapColShowAll) mapColShowAll.hide();
-                PERMANENTLY_HIDDEN_FIELDS.forEach(field => {
-                    const c = table.getColumn(field);
-                    if (c) c.hide();
-                });
-                buildColumnDropdown();
-            });
-
-            // Export to CSV
-            document.getElementById("export-btn").addEventListener("click", function() {
-                table.download("csv", "all_marketplace_master_" + new Date().toISOString().split('T')[0] +
-                    ".csv");
-            });
-
-            // Refresh Data
-            document.getElementById("refresh-btn").addEventListener("click", function() {
-                table.setData();
-            });
-
-            // ==========================================
-            // SECTION FILTER - Show/Hide Column Groups
-            // ==========================================
-            
-            const sectionColumns = {
-                'all': 'ALL', // Show all columns
-                'ads': ['L30 Sales', 'Total Ad Spend', 'Total Views', 'CVR', 'KW Spent', 'PT Spent', 'HL Spent', 'PMT Spent', 'KW ACOS', 'PT ACOS', 'HL ACOS', 'PMT ACOS', 'Shopping Spent', 'SERP Spent', 'clicks', 'KW Clicks', 'PT Clicks', 'HL Clicks', 'PMT Clicks', 'Shopping Clicks', 'SERP Clicks', 'Ad Sales', 'KW Sales', 'PT Sales', 'HL Sales', 'PMT Sales', 'Shopping Sales', 'SERP Sales', 'ad_sold', 'KW Sold', 'PT Sold', 'HL Sold', 'PMT Sold', 'Shopping Sold', 'SERP Sold', 'ACOS', 'Shopping ACOS', 'SERP ACOS', 'Ads CVR', 'KW CVR', 'PT CVR', 'HL CVR', 'PMT CVR', 'Shopping CVR', 'SERP CVR', 'TAcos %', 'Missing Ads'],
-                'inv': ['Avl', 'Res', 'Inb', 'Unf', 'Wrk', 'Total Inv', 'Allocated'],
-                'margins': ['G PFT%', 'G ROI%', 'N PFT%', 'N ROI%', 'COGS', 'Total Ad Spend', 'TAcos %', '_gross_pft'],
-                'movement': ['L30 Sales', 'Growth %', 'Y Sales', 'L7 Sales', 'L30 Orders', 'Qty items', 'Velocity'],
-                'returns': ['Return Rate', 'Return Units', 'Return Value'],
-                'ah': ['AH Score', 'Policy Violations', 'Customer Complaints', 'Shipping Health', 'CC Health', 'Returns %', 'A2Z Claims', 'Ratings & Reviews', 'Seller Rating & Reviews'],
-                'expenses': ['Total Ad Spend', 'Shipping Cost', 'FBA Fees', 'Storage Fees'],
-                'traffic': ['clicks', 'Sessions', 'Page Views', 'Conversion Rate', 'Total Views', 'CVR'],
-                'reviews': ['Total Reviews', 'Avg Rating', '5-Star', '4-Star', '1-Star', 'Ratings & Reviews', 'Seller Rating & Reviews'],
-                'missing': ['Miss', 'NMap', 'Missing Ads', 'Total Views']
-            };
-            
-            $('.section-option').on('click', function(e) {
-                e.preventDefault();
-                const section = $(this).data('section');
-                const sectionName = $(this).text().trim();
-                
-                console.log('Section selected:', section);
-                $('#current-section').text(sectionName);
-                
-                // Type filter: B2C, B2B, Dropship — filter rows by channel type
-                if (section === 'B2C' || section === 'B2B' || section === 'Dropship') {
-                    $('#type-filter').val(section);
-                    applyMasterFilters();
-                    return;
-                }
-                
-                if (section === 'all') {
-                    $('#type-filter').val('all');
-                    applyMasterFilters();
-                    // Show all columns (Map and permanently hidden cols stay hidden)
-                    table.getColumns().forEach(col => {
-                        if (col.getField() !== 'Channel ') { // Keep channel column always visible
-                            col.show();
-                        }
-                    });
-                    const mapColAll = table.getColumn('Map');
-                    if (mapColAll) mapColAll.hide();
-                    PERMANENTLY_HIDDEN_FIELDS.forEach(field => {
-                        const c = table.getColumn(field);
-                        if (c) c.hide();
-                    });
-                    console.log('✓ All columns visible');
-                } else {
-                    // Column section: show/hide column groups
-                    table.getColumns().forEach(col => {
-                        const field = col.getField();
-                        if (field !== 'Channel ') { // Keep channel column
-                            col.hide();
-                        }
-                    });
-                    
-                    const columnsToShow = sectionColumns[section] || [];
-                    columnsToShow.forEach(field => {
-                        const column = table.getColumn(field);
-                        if (column) {
-                            column.show();
-                        }
-                    });
-                    
-                    console.log(`✓ Showing ${section.toUpperCase()} columns:`, columnsToShow);
                 }
             });
 

@@ -8,6 +8,7 @@ use App\Models\ShopifyMetaCampaign;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class ShopifyAdsMasterController extends Controller
 {
@@ -71,7 +72,7 @@ class ShopifyAdsMasterController extends Controller
     /**
      * Rolled-up Spend + TCOS for the parent channels the /shopify-ads-master
      * SPEND / TCOS badges sum (Google Shopping, Google SERP, Youtube ads,
-     * Facebook, Instagram — sub-rows excluded so Facebook · G Video etc. don't
+     * TikTok Video Ads, Facebook, Instagram — sub-rows excluded so Facebook · G Video etc. don't
      * double count). Used by the Shopify row on /all-marketplace-master so its
      * Spend and Ads%/TACOS match those badges.
      *
@@ -94,6 +95,7 @@ class ShopifyAdsMasterController extends Controller
                 $this->googleShoppingMetrics(),
                 $this->googleSerpMetrics(),
                 $this->googleYoutubeAdsMetrics(),
+                $this->tiktokVideoAdsMetrics(),
                 $this->metaChannelMetrics('Facebook', 'FB'),
                 $this->metaChannelMetrics('Instagram', 'Insta'),
             ];
@@ -147,6 +149,7 @@ class ShopifyAdsMasterController extends Controller
             ['Google Shopping', 'shopify_google_shopping', $this->googleShoppingMetrics()],
             ['Google SERP', 'shopify_google_serp', $this->googleSerpMetrics()],
             ['Youtube ads', 'shopify_youtube_ads', $this->googleYoutubeAdsMetrics()],
+            ['TikTok Video Ads', 'shopify_tiktok_video_ads', $this->tiktokVideoAdsMetrics()],
         ];
 
         foreach ($flatChildSources as [$label, $source, $row]) {
@@ -303,6 +306,7 @@ class ShopifyAdsMasterController extends Controller
             $this->googleShoppingMetrics(),
             $this->googleSerpMetrics(),
             $this->googleYoutubeAdsMetrics(),
+            $this->tiktokVideoAdsMetrics(),
             $facebook,
             $instagram,
         ];
@@ -729,6 +733,38 @@ class ShopifyAdsMasterController extends Controller
     private function googleYoutubeAdsMetrics(): array
     {
         return $this->googleAdsChannelMetrics('Youtube ads', 'youtube');
+    }
+
+    /**
+     * TikTok Video Ads totals from /tiktok-video-ads.
+     * Uses the latest Pacific-day snapshot of merged campaign metrics
+     * (same numbers the TikTok page badges reflect after sheet upload).
+     */
+    private function tiktokVideoAdsMetrics(): array
+    {
+        try {
+            if (! Schema::hasTable('tiktok_campaign_metric_snapshots')) {
+                return $this->metricRow('TikTok Video Ads');
+            }
+
+            $latestDate = DB::table('tiktok_campaign_metric_snapshots')->max('snapshot_date');
+            if ($latestDate === null || $latestDate === '') {
+                return $this->metricRow('TikTok Video Ads');
+            }
+
+            $row = DB::table('tiktok_campaign_metric_snapshots')
+                ->where('snapshot_date', $latestDate)
+                ->selectRaw('COALESCE(SUM(spend), 0) as spend')
+                ->selectRaw('COALESCE(SUM(clk), 0) as clicks')
+                ->selectRaw('COALESCE(SUM(sold), 0) as sold')
+                ->selectRaw('COALESCE(SUM(sales), 0) as sales')
+                ->selectRaw('COUNT(DISTINCT campaign_id) as active')
+                ->first();
+
+            return $this->metricRow('TikTok Video Ads', $row);
+        } catch (\Throwable) {
+            return $this->metricRow('TikTok Video Ads');
+        }
     }
 
     /**

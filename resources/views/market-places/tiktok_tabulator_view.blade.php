@@ -2169,10 +2169,10 @@
                         }
                     },
                     {
-                        title: "Ad CVR %",
+                        title: "Ads CVR (clk)",
                         field: "ad_cvr_pct",
                         hozAlign: "right",
-                        width: 90,
+                        width: 110,
                         visible: false,
                         sorter: "number",
                         formatter: function(cell) {

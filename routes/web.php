@@ -111,7 +111,6 @@ use App\Http\Controllers\Sales\FacebookMarketplaceController;
 use App\Http\Controllers\MarketingMaster\InstagramAdsManagerController;
 use App\Http\Controllers\MarketingMaster\MovementPricingMaster;
 use App\Http\Controllers\MarketingMaster\ShoppableVideoController;
-use App\Http\Controllers\MarketingMaster\TiktokAdsManagerController;
 use App\Http\Controllers\MarketingMaster\VideoAdsMasterController;
 use App\Http\Controllers\MarketingMaster\VideoPostedController;
 use App\Http\Controllers\MarketingMaster\YoutubeAdsManagerController;
@@ -5347,23 +5346,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/youtube-web-to-video-data', 'youtubeWebToVideoData')->name('youtube.web.to.video.data');
         Route::get('/yt-img-caraousal-to-web', 'YtImgCaraousalToWeb')->name('yt.img.caraousal.to.web');
         Route::get('/yt-img-caraousal-to-web-data', 'YtImgCaraousalToWebData')->name('yt.img.caraousal.to.web.data');
-    });
-
-    Route::controller(TiktokAdsManagerController::class)->group(function () {
-        Route::get('/tiktok-ads-control/data', 'index')->name('tiktok.ads.index');
-        Route::get('/tiktok-web-to-video', 'tiktokWebToVideo')->name('tiktok.web.to.video');
-        Route::get('/tiktok-web-to-video-data', 'tiktokWebToVideoData')->name('tiktok.web.to.video.data');
-        Route::get('/tk-img-caraousal-to-web', 'TkImgCaraousalToWeb')->name('tk.img.caraousal.to.web');
-        Route::get('/tk-img-caraousal-to-web-data', 'TkImgCaraousalToWebData')->name('tk.img.caraousal.to.web.data');
-        Route::get('/tiktok-gmv-ads', 'tiktokGMVAds')->name('tiktok.gmv.ads');
-        Route::get('/tiktok-gmv-ads-data', 'tiktokGMVAdsData')->name('tiktok.gmv.ads.data');
-        Route::get('/tiktok-gmv-max', 'tiktokGmvMax')->name('tiktok.gmv.max');
-        Route::get('/tiktok-gmv-max-data', 'tiktokGmvMaxData')->name('tiktok.gmv.max.data');
-        Route::get('/tiktok-video-ad-analytics', 'tiktokVideoAd')->name('tiktok.video.ad.analytics');
-        Route::get('/tiktok-video-ad-analytics-data', 'tiktokVideoAdData')->name('tiktok.video.ad.analytics.data');
-        Route::post('/tiktok-video-ad-analytics/update-approval', 'updateVideoAdApproval')->name('tiktok.video.ad.update.approval');
-        Route::post('/tiktok/import', 'import')->name('tiktok.import');
-        Route::post('/tiktok-gmv-ad/update-status', 'updateGMVAdStatus')->name('tiktok.gmv.ad.update.status');
     });
 
     Route::controller(AmazonACOSController::class)->group(function () {

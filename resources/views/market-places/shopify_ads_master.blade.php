@@ -241,6 +241,7 @@
                             <option value="Google Shopping">Google Shopping</option>
                             <option value="Google SERP">Google SERP</option>
                             <option value="Youtube ads">Youtube ads</option>
+                            <option value="TikTok Video Ads">TikTok Video Ads</option>
                             <option value="Facebook">Facebook</option>
                             <option value="Facebook · G Video">Facebook · G Video</option>
                             <option value="Facebook · G Carousal">Facebook · G Carousal</option>
@@ -371,6 +372,7 @@
                 'Google Shopping': "{{ route('google.shopping.campaigns') }}",
                 'Google SERP':     "{{ route('google.serp.campaigns') }}",
                 'Youtube ads':     "{{ Route::has('google.youtube.ads.campaigns') ? route('google.youtube.ads.campaigns') : url('/google/shopping/youtube-ads') }}",
+                'TikTok Video Ads': "{{ route('tiktok.video.ads') }}",
                 'Facebook':        "{{ route('facebook.ads.channel') }}",
                 'Facebook · G Video':    "{{ route('facebook.ads.channel.group.video') }}",
                 'Facebook · G Carousal': "{{ route('facebook.ads.channel.group.carousal') }}",

@@ -1219,40 +1219,6 @@
                         </li>
 
 
-                        <li class="side-nav-item">
-                            <a data-bs-toggle="collapse" href="#tiktok-web-ads" aria-expanded="false"
-                                aria-controls="tiktok-web-ads" class="side-nav-link">
-                                <span>Tiktok Ads Manager</span>
-                                <span class="menu-arrow"></span>
-                            </a>
-                            <div class="collapse" id="tiktok-web-ads">
-                                <ul class="side-nav-second-level">
-                                    <li>
-                                        <a href="{{ route('tiktok.web.to.video') }}">Tiktok Video to Web</a>
-                                    </li>
-                                    <li>
-                                        <a href="{{ route('tk.img.caraousal.to.web') }}">Tiktok Img Caraousal to
-                                            Web</a>
-                                    </li>
-                                    <li><a href="{{ url('tiktok-gmv-max') }}">Tiktok GMV MAX</a></li>
-                                    <li><a href="{{ url('tiktok-video-ad-analytics') }}">Tiktok VIDEO AD</a></li>
-                                </ul>
-                            </div>
-                        </li>
-
-                        <li class="side-nav-item">
-                            <a data-bs-toggle="collapse" href="#tiktok-shop-ads" aria-expanded="false"
-                                aria-controls="tiktok-shop-ads" class="side-nav-link">
-                                <span>Tiktok Shop Ads</span>
-                                <span class="menu-arrow"></span>
-                            </a>
-                            <div class="collapse" id="tiktok-shop-ads">
-                                <ul class="side-nav-second-level">
-                                    <li><a href="{{ url('tiktok-gmv-ads') }}">Tiktok GMV Ads</a></li>
-                                </ul>
-                            </div>
-                        </li>
-
                         <li>
                             <a data-bs-toggle="collapse" href="#lqsSubmenu" aria-expanded="false"
                                 aria-controls="lqsSubmenu">
