@@ -5110,7 +5110,7 @@ class ChannelMasterController extends Controller
                 $nRoiRecalculated = $cogs > 0 ? ($netProfitAmount / $cogs) * 100 : 0;
                 $row['N ROI'] = round($nRoiRecalculated, 2);
             } else {
-                // Reverb: keep Ads%/TACOS as Bump% and N PFT/N ROI = GPFT/GROI from getReverbChannelData.
+                // Reverb: Ads%/TACOS stay as Bump%; N PFT/N ROI already Amazon-style from getReverbChannelData.
                 $row['TACOS %'] = $row['TACOS %'] ?? $row['Ads%'] ?? '0%';
             }
 
@@ -8160,13 +8160,16 @@ class ChannelMasterController extends Controller
         $gprofitL60 = $l60Sales > 0 ? ($totalProfitL60 / $l60Sales) * 100 : 0;
         $gRoi = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
         $gRoiL60 = $totalCogsL60 > 0 ? ($totalProfitL60 / $totalCogsL60) * 100 : 0;
-        // N PFT / N ROI = GPFT / GROI — Ads% stores Bump% for display but is not cut from net metrics.
-        $nPft = $gProfitPct;
-        $nRoi = $gRoi;
-        
-        // Calculate Bump % (matching frontend Bump badge: Bump Fees / Sales × 100)
+
+        // Calculate Bump % (matching frontend Ads% badge: Bump Fees / Sales × 100)
         $totalBumpFees = $l30['bump_fees'] ?? 0;
         $bumpPercentage = $l30Sales > 0 ? ($totalBumpFees / $l30Sales) * 100 : 0;
+
+        // Amazon-style net metrics: NPFT = GPFT − Ads%; NROI = (PFT$ − Ad Spend) / COGS × 100
+        $nPft = $gProfitPct - $bumpPercentage;
+        $nRoi = $totalCogs > 0
+            ? (($totalProfit - $totalBumpFees) / $totalCogs) * 100
+            : ($gRoi - $bumpPercentage);
 
         $channelData = ChannelMaster::where('channel', 'Reverb')->first();
         $mapMissCounts = $this->getReverbLiveMapMissNMapFromPricingData($request);
@@ -8194,7 +8197,7 @@ class ChannelMasterController extends Controller
             'Shopping Spent' => 0,
             'SERP Spent' => 0,
             'Total Ad Spend' => 0,
-            // Ads%/TACOS show Bump%; net NPFT/NROI do not subtract Bump (matches /reverb-pricing).
+            // Ads%/TACOS = Bump%; NPFT/NROI cut Ads% like Amazon /reverb-pricing.
             'Ads%'       => round($bumpPercentage, 2) . '%',
             'TACOS %'    => round($bumpPercentage, 2) . '%',
             'type'       => $channelData->type ?? '',
