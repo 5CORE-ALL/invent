@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
-use App\Jobs\ImportAliexpressOrderToShopify;
 use App\Jobs\WarmAliexpressLiveListingsCache;
 use App\Models\AliexpressMetric;
 use App\Models\AliexpressOrderMetric;
@@ -623,10 +622,35 @@ class AliexpressSyncController extends Controller
             ]);
         }
 
-        ImportAliexpressOrderToShopify::dispatch($order->id);
-        $order->update(['import_status' => 'queued']);
+        // Manual push is synchronous — only auto-import uses the queue.
+        $push = app(AliexpressOrderPushService::class);
+        try {
+            $shopifyOrderId = $push->importToShopify($order);
+        } catch (\Throwable $e) {
+            $order->update(['import_status' => 'import_failed']);
 
-        return response()->json(['success' => true, 'message' => 'Import queued. Ensure queue worker is running.']);
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage() ?: 'Shopify import failed.',
+            ], 422);
+        }
+
+        if ($shopifyOrderId) {
+            $order->refresh();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Pushed to Shopify.',
+                'shopify_order_id' => $shopifyOrderId,
+            ]);
+        }
+
+        $order->update(['import_status' => 'import_failed']);
+
+        return response()->json([
+            'success' => false,
+            'message' => $push->lastFailureReason ?: 'Shopify import failed.',
+        ], 422);
     }
 
     /**

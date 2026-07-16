@@ -165,7 +165,7 @@ document.querySelectorAll('.btn-push-order').forEach(function (btn) {
         })
         .then(function (r) { return r.json(); })
         .then(function (data) {
-            alert(data.message || (data.success ? 'Queued' : 'Failed'));
+            alert(data.message || (data.success ? 'Pushed to Shopify.' : 'Push failed'));
             if (data.success) location.reload();
         })
         .catch(function () { alert('Request failed.'); })

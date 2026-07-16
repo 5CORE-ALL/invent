@@ -430,7 +430,6 @@ class ReverbOrderSyncService
                     ->orWhereNotIn('import_status', [
                         'imported',
                         'pending_shopify',
-                        'import_failed',
                         'queued',
                         'skipped_pre_july7',
                     ]);

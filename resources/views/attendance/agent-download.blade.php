@@ -232,7 +232,7 @@
                                 <code>{{ $server_url }}</code>
                             </div>
                             <p class="da-step-desc mt-2 mb-0">
-                                Then sign in with your usual 5Core email and password.
+                                Then sign in with Google (same account as the 5Core portal), or use email and password.
                             </p>
                         </div>
                     </li>

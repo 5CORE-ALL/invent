@@ -83,7 +83,7 @@ class NeweggOrderSyncService
             }
         }
 
-        $autoImport = $import || (bool) (MarketplaceSyncSettings::getFor('newegg')['order']['auto_import_to_shopify'] ?? false);
+        $autoImport = (bool) $import;
         if ($autoImport) {
             $this->dispatchImportsForNewOrders();
         }
@@ -118,28 +118,36 @@ class NeweggOrderSyncService
 
     public function dispatchImportsForNewOrders(): int
     {
-        $ids = NeweggOrderMetric::query()
+        $settings = MarketplaceSyncSettings::getFor('newegg');
+        if (! ($settings['order']['auto_import_to_shopify'] ?? false)) {
+            return 0;
+        }
+
+        $orders = NeweggOrderMetric::query()
             ->whereNull('shopify_order_id')
             ->where(function ($q) {
-                $q->whereNull('import_status')->orWhereIn('import_status', ['ready', 'failed']);
+                $q->whereNull('import_status')
+                    ->orWhereIn('import_status', ['ready', 'import_failed', 'failed']);
             })
+            ->orderBy('id')
             ->limit(50)
-            ->pluck('id');
+            ->get();
 
-        $n = 0;
-        foreach ($ids as $id) {
+        $dispatched = 0;
+        foreach ($orders as $order) {
             try {
-                \App\Jobs\ImportNeweggOrderToShopify::dispatch((int) $id);
-                $n++;
+                \App\Jobs\ImportNeweggOrderToShopify::dispatch((int) $order->id);
+                $order->update(['import_status' => 'queued']);
+                $dispatched++;
             } catch (\Throwable $e) {
                 Log::warning('NeweggOrderSyncService: failed to queue import', [
-                    'id' => $id,
+                    'id' => $order->id,
                     'error' => $e->getMessage(),
                 ]);
             }
         }
 
-        return $n;
+        return $dispatched;
     }
 
     /**

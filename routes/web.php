@@ -365,6 +365,10 @@ Route::get('/adv/master/totalsale/ebay/cron', [ChannelAdsMasterController::class
 Route::prefix('auth')->group(function () {
     require __DIR__.'/auth.php';
 });
+
+// Desktop attendance agent — Google sign-in via system browser (web session + Socialite)
+Route::get('/attendance/desktop-google', [\App\Http\Controllers\Attendance\AttendanceAgentController::class, 'googleAuthStart'])
+    ->name('attendance.desktop-google');
 Route::get('/auth/logout-page', function () {
     // Prevent access if user is still logged in
     if (Auth::check()) {

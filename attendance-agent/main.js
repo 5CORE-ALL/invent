@@ -14,7 +14,7 @@ const Store = require('electron-store');
 
 const execFileAsync = promisify(execFile);
 const store = new Store();
-const AGENT_VERSION = '1.1.0';
+const AGENT_VERSION = '1.2.1';
 
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
@@ -28,6 +28,31 @@ const IGNORED_PROCESSES = new Set([
     'powershell', 'pwsh', 'cmd', 'conhost', 'windowsterminal',
     'electron', 'searchhost', 'shellexperiencehost', 'applicationframehost',
 ]);
+
+// Inline script so packaged builds work (PowerShell cannot -File scripts inside app.asar).
+const ACTIVE_WINDOW_PS = `
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+public class WinForeground {
+    [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);
+    [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out int processId);
+}
+"@
+$h = [WinForeground]::GetForegroundWindow()
+$sb = New-Object System.Text.StringBuilder 512
+[void][WinForeground]::GetWindowText($h, $sb, 512)
+$processId = 0
+[void][WinForeground]::GetWindowThreadProcessId($h, [ref]$processId)
+$proc = ''
+if ($processId -gt 0) {
+    $p = Get-Process -Id $processId -ErrorAction SilentlyContinue
+    if ($p) { $proc = $p.ProcessName }
+}
+Write-Output ($sb.ToString() + '|||' + $proc)
+`.trim();
 
 let tray = null;
 let win = null;
@@ -132,14 +157,18 @@ function applyWindowResult(result) {
         lastLive = { title, process, app: process };
         return true;
     }
+    // Keep useful titles even when the process is a host/shell we ignore.
     if (title) {
-        lastKnownWindow = { title, process: lastKnownWindow.process || process };
+        const keptProcess = (process && !isIgnoredProcess(process))
+            ? process
+            : (lastKnownWindow.process || '');
+        lastKnownWindow = { title, process: keptProcess || process };
         lastLive = {
             title,
-            process: lastKnownWindow.process || process,
-            app: lastKnownWindow.process || process || title,
+            process: keptProcess || process || title,
+            app: keptProcess || process || title,
         };
-        return Boolean(lastKnownWindow.process || process);
+        return true;
     }
     return false;
 }
@@ -149,16 +178,28 @@ async function getActiveWindow() {
         return { title: '', process: '' };
     }
     try {
-        const script = path.join(__dirname, 'scripts', 'get-active-window.ps1');
+        const encoded = Buffer.from(ACTIVE_WINDOW_PS, 'utf16le').toString('base64');
         const { stdout } = await execFileAsync(
             'powershell.exe',
-            ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-File', script],
+            ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encoded],
             { timeout: 6000, windowsHide: true }
         );
-        const parts = stdout.trim().split('|||');
+        const parts = String(stdout || '').trim().split('|||');
         return { title: parts[0] || '', process: parts[1] || '' };
     } catch {
-        return lastKnownWindow;
+        // Dev / unpacked fallback
+        try {
+            const script = path.join(__dirname, 'scripts', 'get-active-window.ps1');
+            const { stdout } = await execFileAsync(
+                'powershell.exe',
+                ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-File', script],
+                { timeout: 6000, windowsHide: true }
+            );
+            const parts = String(stdout || '').trim().split('|||');
+            return { title: parts[0] || '', process: parts[1] || '' };
+        } catch {
+            return { title: lastKnownWindow.title || '', process: lastKnownWindow.process || '' };
+        }
     }
 }
 
@@ -861,7 +902,7 @@ function getTrayIcon() {
 function createWindow() {
     win = new BrowserWindow({
         width: 560,
-        height: 520,
+        height: 620,
         minWidth: 520,
         minHeight: 520,
         maxHeight: 520,
@@ -1043,25 +1084,16 @@ function createLoopbackServer(expectedState) {
 ipcMain.handle('googleLogin', async () => {
     let server;
     try {
-        const { data: pingData } = await axios.get(`${getAgentApiPath()}/ping`, { timeout: 10000 });
-        const clientId = pingData?.google_client_id;
-        if (!clientId) {
-            return { ok: false, message: 'Google sign-in is not configured on the server yet.' };
-        }
-
         const state = crypto.randomBytes(16).toString('hex');
         const loopback = createLoopbackServer(state);
         server = loopback.server;
         const port = await loopback.listen;
         const redirectUri = `http://127.0.0.1:${port}/callback`;
 
-        const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
-        authUrl.searchParams.set('client_id', clientId);
+        // Open portal Google sign-in in the system browser (same OAuth as web login).
+        // Google redirects back to the portal, which then sends a one-time code to this loopback.
+        const authUrl = new URL(`${getApiBase()}/attendance/desktop-google`);
         authUrl.searchParams.set('redirect_uri', redirectUri);
-        authUrl.searchParams.set('response_type', 'code');
-        authUrl.searchParams.set('scope', 'openid email profile');
-        authUrl.searchParams.set('access_type', 'online');
-        authUrl.searchParams.set('prompt', 'select_account');
         authUrl.searchParams.set('state', state);
 
         await shell.openExternal(authUrl.toString());

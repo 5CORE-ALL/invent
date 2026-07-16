@@ -7,7 +7,7 @@ Windows app for employee clock-in, app tracking, idle time, and screenshots.
 1. Run **`5Core Attendance Setup 1.0.0.exe`** from IT (one-time install)
 2. Allow permissions if Windows asks (screen capture for monitoring)
 3. Open **5Core Attendance** from Start Menu or Desktop
-4. Enter server URL once → sign in → **Clock In**
+4. Enter server URL once → **Sign in with Google** (same as portal) → **Clock In**
 5. Click **—** to hide to system tray — **close the window, not the app**
 6. No CMD / terminal window needed
 
