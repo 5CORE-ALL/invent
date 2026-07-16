@@ -15,6 +15,7 @@ use App\Models\TiktokShopDataView;
 use App\Models\TiktokTwoShopDataView;
 use App\Models\TiktokShopListingStatus;
 use App\Models\TiktokSkuCompetitor;
+use App\Services\LmpSkuGroupService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -43,6 +44,7 @@ class TikTokPricingController extends Controller
             "mode" => $mode,
             "demo" => $demo,
             "tiktokPercentage" => $percentage,
+            "tiktokPageTitle" => "TikTok 1 Shop - Analytics",
         ]);
     }
 
@@ -508,13 +510,26 @@ class TikTokPricingController extends Controller
         // and attach lmp_price / lmp_entries / lmp_entries_total to each SKU row
         // so the front-end can render the LMP column and modal without N+1.
         $lmpDetailsLookup = collect();
-        $lmpLowestLookup = collect();
         try {
             $lmpLookups = TiktokSkuCompetitor::buildGroupedLookup('tiktok');
             $lmpDetailsLookup = $lmpLookups['details'];
-            $lmpLowestLookup = $lmpLookups['lowest'];
         } catch (\Throwable $e) {
             Log::warning('Could not fetch LMP data from tiktok_sku_competitors: ' . $e->getMessage());
+        }
+
+        // Sku Link LMP — same shared lmp_sku_links groups as /shein-pricing / ebay-tabulator-view
+        $lmpGroupService = new LmpSkuGroupService();
+        try {
+            $prepSkus = [];
+            foreach ($productMasterRows as $pm) {
+                $pmSku = trim((string) ($pm->sku ?? ''));
+                if ($pmSku !== '' && stripos($pmSku, 'PARENT') === false) {
+                    $prepSkus[] = $pmSku;
+                }
+            }
+            $lmpGroupService->prepareForSkus($prepSkus);
+        } catch (\Throwable $e) {
+            Log::warning('LmpSkuGroupService prepare failed (TikTok): ' . $e->getMessage());
         }
 
         // Process data
@@ -757,14 +772,36 @@ class TikTokPricingController extends Controller
             $processedItem["in_roas"] = round($inRoas, 2);
             $processedItem["status"] = $customStatus;
 
-            // Attach LMP (lowest competitor on TikTok Shop) to the row.
-            // The front-end renders the LMP column + modal using these keys.
-            $skuLookupKey = TiktokSkuCompetitor::normalizeSkuKey($sku);
-            $lmpEntries = $lmpDetailsLookup->get($skuLookupKey);
-            if (!$lmpEntries instanceof \Illuminate\Support\Collection) {
-                $lmpEntries = collect();
+            // Attach LMP (lowest competitor on TikTok Shop) merged across Sku Link LMP group.
+            // Same shared lmp_sku_links groups as /shein-pricing.
+            $linkedLmpSkus = $isParent
+                ? []
+                : $this->tiktokLinkedLmpSkusFor($lmpGroupService, (string) $sku);
+            $processedItem['linked_lmp_skus'] = $linkedLmpSkus;
+
+            $mergedLmpEntries = collect();
+            $seenLmp = [];
+            $skusForLmp = $linkedLmpSkus !== [] ? $linkedLmpSkus : [$sku];
+            foreach ($skusForLmp as $linkedSku) {
+                $linkedKey = TiktokSkuCompetitor::normalizeSkuKey($linkedSku);
+                $groupEntries = $lmpDetailsLookup->get($linkedKey);
+                if (!$groupEntries instanceof \Illuminate\Support\Collection) {
+                    continue;
+                }
+                foreach ($groupEntries as $entry) {
+                    $dedupeKey = ((string) ($entry->id ?? '')) . '|'
+                        . ((string) ($entry->product_id ?? '')) . '|'
+                        . strtoupper(trim((string) ($entry->product_link ?? '')));
+                    if (isset($seenLmp[$dedupeKey])) {
+                        continue;
+                    }
+                    $seenLmp[$dedupeKey] = true;
+                    $mergedLmpEntries->push($entry);
+                }
             }
-            $lowestLmp = $lmpLowestLookup->get($skuLookupKey);
+            $mergedLmpEntries = TiktokSkuCompetitor::sortCollectionByNumericPrice($mergedLmpEntries);
+            $lowestLmp = TiktokSkuCompetitor::lowestFromCollection($mergedLmpEntries);
+
             $processedItem['lmp_price'] = ($lowestLmp && isset($lowestLmp->price))
                 ? (is_numeric($lowestLmp->price) ? floatval($lowestLmp->price) : null)
                 : null;
@@ -773,12 +810,13 @@ class TikTokPricingController extends Controller
             $processedItem['lmp_title'] = $lowestLmp->product_title ?? null;
             $processedItem['lmp_seller'] = $lowestLmp->seller_name ?? null;
             $processedItem['lmp_region'] = $lowestLmp->region ?? null;
-            $processedItem['lmp_entries'] = $lmpEntries
+            $processedItem['lmp_entries'] = $mergedLmpEntries
                 ->map(function ($entry) {
                     return [
                         'id' => $entry->id,
                         'product_id' => $entry->product_id ?? null,
                         'price' => is_numeric($entry->price) ? floatval($entry->price) : null,
+                        'shipping_cost' => is_numeric($entry->shipping_cost ?? null) ? floatval($entry->shipping_cost) : 0,
                         'min_price' => $entry->min_price !== null && is_numeric($entry->min_price) ? floatval($entry->min_price) : null,
                         'max_price' => $entry->max_price !== null && is_numeric($entry->max_price) ? floatval($entry->max_price) : null,
                         'link' => $entry->product_link ?? null,
@@ -796,7 +834,7 @@ class TikTokPricingController extends Controller
                     ];
                 })
                 ->toArray();
-            $processedItem['lmp_entries_total'] = $lmpEntries->count();
+            $processedItem['lmp_entries_total'] = $mergedLmpEntries->count();
 
             $processedData[] = $processedItem;
         }
@@ -962,7 +1000,46 @@ class TikTokPricingController extends Controller
             'has_custom_sprice' => false,
             'SPRICE_STATUS' => $dash,
             'nrp' => $dash,
+            'linked_lmp_skus' => [],
+            'lmp_price' => null,
+            'lmp_link' => null,
+            'lmp_entries' => [],
+            'lmp_entries_total' => 0,
         ];
+    }
+
+    /**
+     * Sku Link LMP group for a TikTok row — same shared service as /shein-pricing.
+     *
+     * @return list<string>
+     */
+    private function tiktokLinkedLmpSkusFor(LmpSkuGroupService $lmpGroupService, string $sku): array
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return [];
+        }
+
+        try {
+            $group = $lmpGroupService->groupContaining($sku);
+        } catch (\Throwable $e) {
+            $group = [];
+        }
+
+        $members = $group !== [] ? $group : [$sku];
+        $seen = [];
+        $out = [];
+        foreach ($members as $member) {
+            $display = trim((string) $member);
+            $norm = strtoupper($display);
+            if ($norm === '' || isset($seen[$norm])) {
+                continue;
+            }
+            $seen[$norm] = true;
+            $out[] = $display;
+        }
+
+        return $out;
     }
 
     /**
@@ -1831,6 +1908,7 @@ class TikTokPricingController extends Controller
                         'seller_name' => $comp->seller_name,
                         'brand_name' => $comp->brand_name,
                         'price' => floatval($comp->price),
+                        'shipping_cost' => floatval($comp->shipping_cost ?? 0),
                         'min_price' => $comp->min_price !== null ? floatval($comp->min_price) : null,
                         'max_price' => $comp->max_price !== null ? floatval($comp->max_price) : null,
                         'rating' => $comp->rating !== null ? floatval($comp->rating) : null,
@@ -1866,6 +1944,7 @@ class TikTokPricingController extends Controller
                 'sku'           => 'required|string',
                 'product_id'    => 'required|string',
                 'price'         => 'required|numeric|min:0.01',
+                'shipping_cost' => 'nullable|numeric|min:0',
                 'product_link'  => 'nullable|string',
                 'product_title' => 'nullable|string',
                 'image'         => 'nullable|string',
@@ -1899,6 +1978,7 @@ class TikTokPricingController extends Controller
                 'marketplace'   => $marketplace,
                 'region'        => $region,
                 'price'         => $validated['price'],
+                'shipping_cost' => $validated['shipping_cost'] ?? 0,
                 'product_link'  => $validated['product_link'] ?? null,
                 'product_title' => $validated['product_title'] ?? null,
                 'image'         => $validated['image'] ?? null,
@@ -1911,11 +1991,12 @@ class TikTokPricingController extends Controller
                 'success' => true,
                 'message' => 'TikTok competitor added',
                 'data'    => [
-                    'id'           => $lmp->id,
-                    'sku'          => $lmp->sku,
-                    'product_id'   => $lmp->product_id,
-                    'price'        => floatval($lmp->price),
-                    'product_link' => $lmp->product_link,
+                    'id'            => $lmp->id,
+                    'sku'           => $lmp->sku,
+                    'product_id'    => $lmp->product_id,
+                    'price'         => floatval($lmp->price),
+                    'shipping_cost' => floatval($lmp->shipping_cost ?? 0),
+                    'product_link'  => $lmp->product_link,
                 ],
             ]);
         } catch (\Illuminate\Validation\ValidationException $e) {

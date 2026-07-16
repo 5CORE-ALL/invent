@@ -19,6 +19,7 @@ class TiktokSkuCompetitor extends Model
         'seller_name',
         'brand_name',
         'price',
+        'shipping_cost',
         'min_price',
         'max_price',
         'rating',
@@ -28,6 +29,7 @@ class TiktokSkuCompetitor extends Model
 
     protected $casts = [
         'price' => 'decimal:2',
+        'shipping_cost' => 'decimal:2',
         'min_price' => 'decimal:2',
         'max_price' => 'decimal:2',
         'rating' => 'decimal:2',

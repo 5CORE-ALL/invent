@@ -1577,8 +1577,9 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Overlay /facebook-marketplace Sales / GPFT / ROI + /facebook-ads spend onto the
-     * "FB Marketplace" Active Channel row so /all-marketplace-master matches those pages.
+     * Overlay /facebook-marketplace Sales / GPFT / ROI onto the
+     * "FB Marketplace" Active Channel row so /all-marketplace-master matches that page.
+     * Spend is not linked to Facebook ads.
      */
     private function overlayLiveFbMarketplaceMetricsOnChannelRows(array $rows): array
     {
@@ -1601,26 +1602,12 @@ class ChannelMasterController extends Controller
         $qty = (int) ($live['total_quantity'] ?? 0);
         $orders = (int) ($live['total_orders'] ?? 0);
 
-        // Facebook ads — same TCOS as /facebook-ads + /shopify-ads-master:
-        // Spend / Shopify S Sales (not FB Marketplace sales).
+        // FB Marketplace spend is disconnected from Facebook ads — no FB ads spend overlay.
         $adSpend = 0.0;
-        $shopifyNetSales = 0.0;
-        try {
-            $adSpend = (float) (app(ShopifyAdsMasterController::class)->getFacebookChannelSpend()['spend'] ?? 0);
-        } catch (\Throwable $e) {
-            Log::warning('FB Marketplace ads spend overlay failed: ' . $e->getMessage());
-        }
-        try {
-            $shopifyNetSales = (float) ShopifyAdsMasterController::advertisementMasterNetSales();
-        } catch (\Throwable $e) {
-            Log::warning('FB Marketplace Shopify S Sales lookup failed: ' . $e->getMessage());
-        }
-        $adsPct = $shopifyNetSales > 0
-            ? ($adSpend / $shopifyNetSales) * 100
-            : ($adSpend > 0 ? 100.0 : 0.0);
-        $nPftPct = $gpftPct - $adsPct;
-        // NROI% = (Gross Profit − Ad Spend) / COGS × 100 — do not cut Ads% from GROI%.
-        $nRoi = $totalCogs > 0 ? (($totalPft - $adSpend) / $totalCogs) * 100 : 0.0;
+        $adsPct = 0.0;
+        $nPftPct = $gpftPct;
+        // NROI% = Gross Profit / COGS × 100 (no ad spend deducted).
+        $nRoi = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0.0;
 
         $ySales = $this->computeFbMarketplaceYSalesLikeAmazon();
         $l7Sales = $this->computeFbMarketplaceL7SalesLikeAmazon();
@@ -11798,25 +11785,12 @@ class ChannelMasterController extends Controller
         $gprofitL60 = $l60Sales > 0 ? ($totalProfitL60 / $l60Sales) * 100 : 0;
         $gRoiL60 = $totalCogsL60 > 0 ? ($totalProfitL60 / $totalCogsL60) * 100 : 0;
 
-        // Facebook ads — same TCOS as /facebook-ads: Spend / Shopify S Sales
+        // FB Marketplace spend is disconnected from Facebook ads — no FB ads spend.
         $adSpend = 0.0;
-        $shopifyNetSales = 0.0;
-        try {
-            $adSpend = (float) (app(ShopifyAdsMasterController::class)->getFacebookChannelSpend()['spend'] ?? 0);
-        } catch (\Throwable $e) {
-            Log::warning('getFbMarketplaceChannelData ads spend failed: ' . $e->getMessage());
-        }
-        try {
-            $shopifyNetSales = (float) ShopifyAdsMasterController::advertisementMasterNetSales();
-        } catch (\Throwable $e) {
-            Log::warning('getFbMarketplaceChannelData Shopify S Sales failed: ' . $e->getMessage());
-        }
-        $adsPct = $shopifyNetSales > 0
-            ? ($adSpend / $shopifyNetSales) * 100
-            : ($adSpend > 0 ? 100.0 : 0.0);
-        $nPftPct = $gProfitPct - $adsPct;
-        // NROI% = (Gross Profit − Ad Spend) / COGS × 100 — do not cut Ads% from GROI%.
-        $nRoi = $totalCogs > 0 ? (($totalProfit - $adSpend) / $totalCogs) * 100 : 0.0;
+        $adsPct = 0.0;
+        $nPftPct = $gProfitPct;
+        // NROI% = Gross Profit / COGS × 100 (no ad spend deducted).
+        $nRoi = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0.0;
 
         $channelData = ChannelMaster::where('channel', 'FB Marketplace')->first();
         $mapMissCounts = $this->getMapAndMissCounts('fb_marketplace');

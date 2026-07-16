@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => $tiktokPageTitle ?? 'TikTok Shop - Analytics', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => $tiktokPageTitle ?? 'TikTok 1 Shop - Analytics', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -71,6 +71,135 @@
             background-color: #e83e8c;
         }
 
+        /* Sku Link LMP (mirrors /shein-pricing) */
+        .linked-sku-badge-wrap { display: inline-flex; align-items: center; gap: 2px; }
+        .linked-sku-badge-wrap .sku-link-lmp-remove { font-size: 0.55rem; opacity: 0.65; padding: 0; margin-left: 2px; }
+        .linked-sku-badge-wrap .sku-link-lmp-remove:hover { opacity: 1; }
+        .sku-link-lmp-suggestion-item { cursor: pointer; }
+        .sku-link-lmp-suggestion-item .form-check-input { pointer-events: none; }
+        .sku-link-lmp-selected-chip {
+            display: inline-flex; align-items: center; gap: 4px;
+            padding: 2px 8px; border-radius: 999px; background: #f1f5f9;
+            border: 1px solid #e2e8f0; font-size: 12px;
+        }
+        .sku-link-lmp-selected-chip button {
+            border: 0; background: transparent; padding: 0; line-height: 1;
+            font-size: 14px; color: #64748b;
+        }
+
+        /* Parent summary rows — light yellow (same pattern as /faire-pricing fr-parent-row) */
+        .tabulator-row.tt-parent-row,
+        .tabulator-row.tt-parent-row .tabulator-cell {
+            background-color: #fff3cd !important;
+            font-weight: 700 !important;
+            min-height: 48px !important;
+        }
+
+        /* Column visibility dropdown — 4 category panels (basics · pricing · advt · other) */
+        #column-dropdown-menu.show {
+            display: block;
+            min-width: min(92vw, 720px);
+            max-width: min(96vw, 780px);
+            padding: 0.4rem 0.5rem 0.55rem;
+            max-height: 420px;
+            overflow-y: auto;
+        }
+        #column-dropdown-menu > li.col-vis-full {
+            list-style: none;
+        }
+        #column-dropdown-menu .col-vis-groups {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(140px, 1fr));
+            gap: 8px;
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+        #column-dropdown-menu .col-vis-group {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            padding: 6px;
+            min-height: 120px;
+            display: flex;
+            flex-direction: column;
+        }
+        #column-dropdown-menu .col-vis-group-title {
+            font-size: 0.72rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #495057;
+            margin: 0 0 6px;
+            padding: 2px 4px;
+            border-bottom: 1px solid #dee2e6;
+            user-select: none;
+        }
+        #column-dropdown-menu .col-vis-group-list {
+            flex: 1;
+            min-height: 60px;
+            max-height: 300px;
+            overflow-y: auto;
+            margin: 0;
+            padding: 0;
+            list-style: none;
+        }
+        #column-dropdown-menu .col-vis-item {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+        #column-dropdown-menu .col-vis-item > label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 3px 5px;
+            cursor: pointer;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin: 0;
+            font-size: 0.8rem;
+            user-select: none;
+        }
+        #column-dropdown-menu .col-vis-item > label:hover {
+            background: rgba(0, 0, 0, 0.04);
+            border-radius: 3px;
+        }
+        @media (max-width: 768px) {
+            #column-dropdown-menu .col-vis-groups {
+                grid-template-columns: repeat(2, minmax(120px, 1fr));
+            }
+        }
+
+        /* Toolbar: keep controls above summary/table. Do NOT use overflow-x —
+           it clips Bootstrap dropdowns (Columns eye) and button bottoms.
+           Same stacking pattern as /shein-pricing. */
+        .tt-toolbar-row {
+            position: relative;
+            z-index: 1055;
+            row-gap: 4px;
+        }
+        .tt-toolbar-row .dropdown,
+        .tt-toolbar-row .btn-group,
+        .tt-toolbar-row .manual-dropdown-container {
+            position: relative;
+            z-index: 1056;
+        }
+        .tt-toolbar-row .dropdown-menu {
+            z-index: 1060 !important;
+        }
+        #summary-stats,
+        #utilized-count-section {
+            position: relative;
+            z-index: 1;
+        }
+        #tiktok-table-wrapper,
+        #tiktok-table {
+            position: relative;
+            z-index: 1;
+        }
+
         /* ========== DROPDOWN STYLING ========== */
         .manual-dropdown-container {
             position: relative;
@@ -81,7 +210,7 @@
             position: absolute;
             top: 100%;
             left: 0;
-            z-index: 1000;
+            z-index: 1060;
             display: none;
             min-width: 200px;
             padding: 0.5rem 0;
@@ -153,7 +282,7 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => $tiktokPageTitle ?? 'TikTok Shop - Analytics',
+        'page_title' => $tiktokPageTitle ?? 'TikTok 1 Shop - Analytics',
         'sub_title' => '',
     ])
     <div class="toast-container"></div>
@@ -161,25 +290,6 @@
         <div class="card shadow-sm">
             <div class="card-body py-3">
                 {{-- <h4>TikTok Analytics</h4> --}}
-
-                <!-- Upload Section -->
-                <div class="mb-3 p-3 bg-light rounded">
-                    <form action="{{ url($tiktokUploadPath ?? '/tiktok-upload-csv') }}" method="POST" enctype="multipart/form-data">
-                        @csrf
-                        <div class="d-flex align-items-center gap-2">
-                            <input type="file" name="csv_file" class="form-control" accept=".csv" required
-                                style="max-width: 300px;">
-                            <button type="submit" class="btn btn-primary">
-                                <i class="fas fa-upload"></i> Upload CSV
-                            </button>
-                            <a href="{{ url($tiktokDownloadSamplePath ?? '/tiktok-download-sample-csv') }}" class="btn btn-secondary">
-                                <i class="fas fa-download"></i> Download Sample
-                            </a>
-                        </div>
-                        <small class="text-muted">Upload CSV with columns: sku, price, Inv/stock, Video Views, Ads Views,
-                            Affl Views (updates existing SKUs or adds new ones)</small>
-                    </form>
-                </div>
 
                 @if (session('success'))
                     <div class="alert alert-success alert-dismissible fade show" role="alert">
@@ -195,46 +305,47 @@
                     </div>
                 @endif
 
-                <div class="d-flex align-items-center flex-wrap gap-2">
-                    <select id="row-type-filter" class="form-select form-select-sm" style="width: 130px;">
-                        <option value="all">All Rows</option>
+                <div class="d-flex align-items-center flex-wrap gap-2 tt-toolbar-row">
+                    <input type="text" id="sku-search" class="form-control form-control-sm flex-shrink-0" placeholder="Search SKU..." style="width: 150px;">
+                    <input type="text" id="parent-search" class="form-control form-control-sm flex-shrink-0" placeholder="Search Parent..." style="width: 150px;">
+
+                    <select id="row-type-filter" class="form-select form-select-sm flex-shrink-0" style="width: 110px;">
+                        <option value="all" selected>All Rows</option>
                         <option value="parent">Parent Rows</option>
-                        <option value="sku" selected>SKU Rows</option>
+                        <option value="sku">SKU Rows</option>
                     </select>
 
-                    <select id="inventory-filter" class="form-select form-select-sm" style="width: 130px;">
-                        <option value="all">All Inventory</option>
-                        <option value="zero">0 Inventory</option>
-                        <option value="more" selected>More than 0</option>
+                    <select id="inventory-filter" class="form-select form-select-sm flex-shrink-0" style="width: 110px;">
+                        <option value="all" selected>All INV</option>
+                        <option value="zero">0 INV</option>
+                        <option value="more">More than 0</option>
                     </select>
 
-                    <select id="tiktok-stock-filter" class="form-select form-select-sm" style="width: 130px;">
+                    <select id="tiktok-stock-filter" class="form-select form-select-sm flex-shrink-0" style="width: 110px;">
                         <option value="all">TT Stock</option>
                         <option value="zero">0 TT Stock</option>
                         <option value="more">More than 0</option>
                     </select>
 
-                    <div class="d-flex align-items-center gap-2 flex-wrap" title="CVR = TT L30 ÷ T views">
-                        <select id="gpft-filter" class="form-select form-select-sm" style="width: 130px;">
-                            <option value="all">GPFT%</option>
-                            <option value="negative">Negative</option>
-                            <option value="0-10">0-10%</option>
-                            <option value="10-20">10-20%</option>
-                            <option value="20-30">20-30%</option>
-                            <option value="30-40">30-40%</option>
-                            <option value="40plus">Above 40%</option>
-                        </select>
-                        <select id="cvr-filter" class="form-select form-select-sm" style="width: 130px;">
-                            <option value="all">All CVR%</option>
-                            <option value="0-0">0%</option>
-                            <option value="0-3">0-3%</option>
-                            <option value="3-7">3-7%</option>
-                            <option value="7-13">7-13%</option>
-                            <option value="13plus">13%+</option>
-                        </select>
-                    </div>
+                    <select id="gpft-filter" class="form-select form-select-sm flex-shrink-0" style="width: 110px;" title="CVR = TT L30 ÷ T views">
+                        <option value="all">GPFT%</option>
+                        <option value="negative">Negative</option>
+                        <option value="0-10">0-10%</option>
+                        <option value="10-20">10-20%</option>
+                        <option value="20-30">20-30%</option>
+                        <option value="30-40">30-40%</option>
+                        <option value="40plus">Above 40%</option>
+                    </select>
+                    <select id="cvr-filter" class="form-select form-select-sm flex-shrink-0" style="width: 100px;" title="CVR = TT L30 ÷ T views">
+                        <option value="all">CVR %</option>
+                        <option value="0-0">0%</option>
+                        <option value="0-3">0-3%</option>
+                        <option value="3-7">3-7%</option>
+                        <option value="7-13">7-13%</option>
+                        <option value="13plus">13%+</option>
+                    </select>
 
-                    <select id="roi-filter" class="form-select form-select-sm" style="width: 130px;">
+                    <select id="roi-filter" class="form-select form-select-sm flex-shrink-0" style="width: 100px;">
                         <option value="all">ROI %</option>
                         <option value="lt40">&lt;40%</option>
                         <option value="40-75">40 to 75%</option>
@@ -242,13 +353,13 @@
                         <option value="gt125">125%+</option>
                     </select>
 
-                    <select id="ad-click-filter" class="form-select form-select-sm" style="width: 130px;">
+                    <select id="ad-click-filter" class="form-select form-select-sm flex-shrink-0" style="width: 110px;">
                         <option value="all">Ad Click</option>
                         <option value="zero">0 Clicks</option>
                         <option value="has">Has Clicks</option>
                     </select>
 
-                    <select id="tl30-filter" class="form-select form-select-sm" style="width: 130px;"
+                    <select id="tl30-filter" class="form-select form-select-sm flex-shrink-0" style="width: 90px;"
                         title="Excludes 0 inventory items">
                         <option value="all">T L30</option>
                         <option value="0">0</option>
@@ -257,8 +368,8 @@
                     </select>
 
                     <!-- DIL Filter -->
-                    <div class="dropdown manual-dropdown-container">
-                        <button class="btn btn-light dropdown-toggle" type="button" id="dilFilterDropdown">
+                    <div class="dropdown manual-dropdown-container flex-shrink-0">
+                        <button class="btn btn-light dropdown-toggle btn-sm" type="button" id="dilFilterDropdown">
                             <span class="status-circle default"></span> DIL%
                         </button>
                         <ul class="dropdown-menu" aria-labelledby="dilFilterDropdown">
@@ -281,26 +392,44 @@
                     </div>
 
                     <!-- Column Visibility Dropdown -->
-                    <div class="dropdown d-inline-block">
+                    <div class="dropdown d-inline-block flex-shrink-0">
                         <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
-                            id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="fa fa-eye"></i> Columns
+                            id="columnVisibilityDropdown" data-bs-toggle="dropdown" data-bs-auto-close="outside"
+                            aria-expanded="false" title="Columns">
+                            <i class="fa fa-eye"></i>
                         </button>
-                        <ul class="dropdown-menu" aria-labelledby="columnVisibilityDropdown" id="column-dropdown-menu"
-                            style="max-height: 400px; overflow-y: auto;">
+                        <ul class="dropdown-menu" aria-labelledby="columnVisibilityDropdown" id="column-dropdown-menu">
                         </ul>
                     </div>
-                    <button id="show-all-columns-btn" class="btn btn-sm btn-outline-secondary">
-                        <i class="fa fa-eye"></i> Show All
-                    </button>
 
-                    <button id="export-btn" class="btn btn-sm btn-info">
-                        <i class="fas fa-file-excel"></i> Export CSV
-                    </button>
+                    {{-- Export / Upload / Sample merged into one dropdown --}}
+                    <div class="btn-group">
+                        <button type="button" class="btn btn-sm btn-info dropdown-toggle" data-bs-toggle="dropdown"
+                            aria-expanded="false" title="CSV actions">
+                            <i class="fas fa-file-excel"></i> CSV
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li>
+                                <a class="dropdown-item" href="#" id="export-btn">
+                                    <i class="fas fa-file-excel text-success"></i> Export CSV
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#ttCsvUploadModal">
+                                    <i class="fas fa-upload text-primary"></i> Upload CSV
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="{{ url($tiktokDownloadSamplePath ?? '/tiktok-download-sample-csv') }}">
+                                    <i class="fas fa-download text-info"></i> Download Sample
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
 
-                    <button id="price-mode-btn" class="btn btn-sm btn-secondary"
+                    <button id="price-mode-btn" class="btn btn-sm btn-warning"
                         title="Cycle: Off → Decrease → Increase → Same Price → Off">
-                        <i class="fas fa-exchange-alt"></i> Price Mode
+                        PRc
                     </button>
 
                     {{-- Target ROI% bulk control — back-solves SPRICE so SROI = Target ROI%. --}}
@@ -308,13 +437,15 @@
                     <div class="d-inline-flex align-items-center gap-1 p-1 border rounded bg-light"
                         id="tt-target-roi-controls"
                         title="Target ROI% — sets SPRICE = (LP × (1 + Target ROI%/100) + Ship) / margin on every selected row (back-solves so SROI column equals the target)">
-                        <label for="tt-target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">Target ROI%:</label>
+                        <label for="tt-target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
+                            ROI%:
+                        </label>
                         <input type="number" id="tt-target-roi-input" class="form-control form-control-sm text-end"
                             placeholder="e.g. 30" step="0.1" style="width: 80px;"
-                            title="Target ROI% applied to all selected rows when you click 'Apply SPRICE'">
+                            title="Target ROI% applied to all selected rows when you click 'Apply'">
                         <button id="tt-apply-target-roi-btn" class="btn btn-sm btn-primary" type="button"
                             title="Compute & save SPRICE = (LP × (1 + Target ROI%/100) + Ship) / margin for every selected row">
-                            <i class="fas fa-calculator"></i> Apply SPRICE
+                            <i class="fas fa-bullseye"></i>
                         </button>
                     </div>
 
@@ -323,19 +454,21 @@
                     <div class="d-inline-flex align-items-center gap-1 p-1 border rounded bg-light"
                         id="tt-target-gpft-controls"
                         title="Target GPFT% — sets SPRICE = (LP + Ship) / (margin − Target GPFT%/100) on every selected row (back-solves so SGPFT column equals the target)">
-                        <label for="tt-target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">Target GPFT%:</label>
+                        <label for="tt-target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
+                            GPFT%:
+                        </label>
                         <input type="number" id="tt-target-gpft-input" class="form-control form-control-sm text-end"
                             placeholder="e.g. 30" step="0.1" style="width: 80px;"
-                            title="Target GPFT% applied to all selected rows when you click 'Apply SPRICE'. Must be less than the TikTok take-home margin.">
+                            title="Target GPFT% applied to all selected rows when you click Apply. Must be less than the TikTok take-home margin.">
                         <button id="tt-apply-target-gpft-btn" class="btn btn-sm btn-primary" type="button"
                             title="Compute & save SPRICE = (LP + Ship) / (margin − Target GPFT%/100) for every selected row">
-                            <i class="fas fa-calculator"></i> Apply SPRICE
+                            <i class="fas fa-bullseye"></i>
                         </button>
                     </div>
 
-                    <button type="button" id="toggle-utilized-columns-btn" class="btn btn-sm btn-secondary">
-                        <i class="fa fa-filter"></i> Show Ads Columns
-                    </button>
+                    <span class="badge bg-primary fs-6 p-2" id="tt-selected-row-badge"
+                        title="Number of selected rows">Row: 0</span>
+
                 </div>
 
                 <!-- Ads/Utilized Count Section (shown when Show Ads Columns is on) -->
@@ -422,25 +555,16 @@
 
                 <!-- Summary Stats -->
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
-                    <h6 class="mb-3">Summary
-                        ({{ rtrim(rtrim(number_format((float) ($tiktokPercentage ?? 80), 2, '.', ''), '0'), '.') }}% Margin)
-                    </h6>
                     <div class="d-flex flex-wrap gap-2 ebay2-summary-badge-row" role="group" aria-label="Summary metrics">
                         <span class="badge bg-primary fs-6 p-2 tt-badge-chart tt-hover-chart" data-metric="total_sales"
                             id="total-sales-amt-badge" style="color: black; font-weight: bold; cursor: pointer;"
                             title="Click or hover (½s) for daily trend">Sales: $0</span>
-                        <span class="badge bg-success fs-6 p-2 tt-badge-chart tt-hover-chart" data-metric="total_pft"
-                            id="total-pft-amt-badge" style="color: black; font-weight: bold; cursor: pointer;"
-                            title="Click or hover (½s) for daily trend">PFT: $0</span>
                         <span class="badge bg-info fs-6 p-2 tt-badge-chart tt-hover-chart" data-metric="avg_gpft" id="avg-gpft-badge"
                             style="color: black; font-weight: bold; cursor: pointer;" title="Click or hover for daily trend">GPFT:
                             0%</span>
-                        <span class="badge bg-warning fs-6 p-2 tt-badge-chart tt-hover-chart" data-metric="avg_price"
-                            id="avg-price-badge" style="color: black; font-weight: bold; cursor: pointer;"
-                            title="Click or hover for daily trend">Price: $0</span>
                         <span class="badge bg-success fs-6 p-2 tt-badge-chart tt-hover-chart" data-metric="total_l30"
                             id="total-l30-badge" style="color: black; font-weight: bold; cursor: pointer;"
-                            title="Click or hover for daily trend">TT L30: 0</span>
+                            title="Click or hover for daily trend">L30: 0</span>
                         <span class="badge bg-danger fs-6 p-2 tt-hover-chart" id="zero-sold-count-badge" data-metric="zero_sold_count"
                             style="color: white; font-weight: bold; cursor: pointer;"
                             title="Click to filter · Hover ½s for daily trend">0 Sold: 0</span>
@@ -453,9 +577,6 @@
                         <span class="badge bg-danger fs-6 p-2 tt-hover-chart" id="missing-count-badge" data-metric="missing_count"
                             style="color: white; font-weight: bold; cursor: pointer;"
                             title="Click to filter · Hover ½s for daily trend">Missing L: 0</span>
-                        <span class="badge fs-6 p-2 tt-hover-chart" id="map-count-badge" data-metric="map_count"
-                            style="background-color: #198754; color: #fff; font-weight: bold; cursor: pointer;"
-                            title="Click to filter · Hover ½s for daily trend">Map: 0</span>
                         <span class="badge fs-6 p-2 tt-hover-chart" id="inv-tt-stock-badge" data-metric="nmap_count"
                             style="color: white; font-weight: bold; cursor: pointer; background-color: #a71d2a;"
                             title="Click to filter · Hover ½s for daily trend">N Map: 0</span>
@@ -484,11 +605,6 @@
                 </div>
                 <div id="tiktok-table-wrapper"
                     style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
-                    <!-- SKU & Parent Search -->
-                    <div class="p-2 bg-light border-bottom d-flex flex-wrap gap-2 align-items-center">
-                        <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU..." style="max-width: 220px;">
-                        <input type="text" id="parent-search" class="form-control form-control-sm" placeholder="Search Parent..." style="max-width: 220px;">
-                    </div>
                     <!-- Table body -->
                     <div id="tiktok-table" style="flex: 1;"></div>
                 </div>
@@ -610,6 +726,10 @@
                                     <label class="form-label"><strong>Price</strong> <span class="text-danger">*</span></label>
                                     <input type="number" class="form-control" id="ttAddCompPrice" placeholder="29.99" step="0.01" min="0.01" required>
                                 </div>
+                                <div class="col-md-1">
+                                    <label class="form-label"><strong>Ship</strong></label>
+                                    <input type="number" class="form-control" id="ttAddCompShip" placeholder="0.00" step="0.01" min="0">
+                                </div>
                                 <div class="col-md-2">
                                     <label class="form-label"><strong>Product Title</strong></label>
                                     <input type="text" class="form-control" id="ttAddCompTitle" placeholder="Optional">
@@ -631,8 +751,8 @@
                                         <option value="SG">SG</option>
                                     </select>
                                 </div>
-                                <div class="col-md-2 d-flex align-items-end">
-                                    <button type="submit" class="btn btn-success me-2" style="background:#ff0050;border-color:#ff0050;">
+                                <div class="col-md-1 d-flex align-items-end flex-wrap gap-1">
+                                    <button type="submit" class="btn btn-success" style="background:#ff0050;border-color:#ff0050;">
                                         <i class="fa fa-plus"></i> Add
                                     </button>
                                     <button type="reset" class="btn btn-secondary">
@@ -652,6 +772,64 @@
                         </div>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- Sku Link LMP Modal (same as /shein-pricing; shared sku.link.lmp.* routes) --}}
+    <div class="modal fade" id="skuLinkLmpModal" tabindex="-1" aria-labelledby="skuLinkLmpModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="skuLinkLmpModalLabel">Sku Link LMP</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small mb-2">Link one or more SKUs to <strong id="sku-link-lmp-source"></strong>. All linked SKUs will show each other's LMP.</p>
+                    <label for="sku-link-lmp-input" class="form-label mb-1">Search SKU to link</label>
+                    <input type="text" id="sku-link-lmp-input" class="form-control" placeholder="Search or enter SKU..." autocomplete="off">
+                    <div id="sku-link-lmp-suggestions" class="list-group mt-2 d-none" style="max-height: 220px; overflow-y: auto;"></div>
+                    <div id="sku-link-lmp-selected-wrap" class="mt-2 d-none">
+                        <div class="small text-muted mb-1">Selected to link (<span id="sku-link-lmp-selected-count">0</span>):</div>
+                        <div id="sku-link-lmp-selected-skus" class="d-flex flex-wrap"></div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="sku-link-lmp-save-btn">
+                        <i class="fas fa-link"></i> <span id="sku-link-lmp-save-btn-label">Link SKU(s)</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- CSV Upload Modal (opened from CSV dropdown) --}}
+    <div class="modal fade" id="ttCsvUploadModal" tabindex="-1" aria-labelledby="ttCsvUploadModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <form action="{{ url($tiktokUploadPath ?? '/tiktok-upload-csv') }}" method="POST" enctype="multipart/form-data">
+                    @csrf
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="ttCsvUploadModalLabel">
+                            <i class="fas fa-upload"></i> Upload CSV
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label for="tt-csv-file-input" class="form-label">Choose CSV file</label>
+                            <input type="file" name="csv_file" id="tt-csv-file-input" class="form-control" accept=".csv" required>
+                        </div>
+                        <small class="text-muted">Columns: sku, price, Inv/stock, Video Views, Ads Views, Affl Views (updates existing SKUs or adds new ones)</small>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-upload"></i> Upload CSV
+                        </button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>
@@ -682,16 +860,212 @@
         const DEFAULT_TIKTOK_MARGIN_PERCENT = Number(@json($tiktokPercentage ?? 80));
         const DEFAULT_TIKTOK_MARGIN_FACTOR = DEFAULT_TIKTOK_MARGIN_PERCENT / 100;
         // Ads section columns: hidden by default, only show when "Show Ads Columns" btn is clicked
-        const ADS_ONLY_COLUMN_FIELDS = ['hasCampaign', 'NR', 'ad_cvr_pct', 'ads_price', 'budget', 'spend', 'ad_sold',
-            'ad_clicks', 'acos', 'out_roas', 'in_roas', 'status', 'campaign_name'
+        const ADS_ONLY_COLUMN_FIELDS = ['NR', 'ad_cvr_pct', 'ads_price', 'budget', 'spend', 'ad_sold',
+            'ad_clicks', 'acos', 'status', 'campaign_name'
         ];
-        const ALWAYS_HIDDEN_COLUMNS = []; // Parent column visible like CVR/pricing master
+        const ALWAYS_HIDDEN_COLUMNS = ['out_roas', 'in_roas', 'T Profit'];
         let table = null;
         let totalDistinctCampaigns = 0; // from API: COUNT(DISTINCT campaign_name) in tiktok_campaign_reports
         let decreaseModeActive = false;
         let increaseModeActive = false;
         let samePriceModeActive = false;
         let selectedSkus = new Set();
+
+        // ── Sku Link LMP (mirrors /shein-pricing; shared sku.link.lmp.* routes) ──
+        const linkedSkuAddUrl = @json(route('sku.link.lmp.linked-skus.add'));
+        const linkedSkuBulkLinkUrl = @json(route('sku.link.lmp.linked-skus.bulk-link'));
+        const linkedSkuRemoveUrl = @json(route('sku.link.lmp.linked-skus.remove'));
+        const filteredSkusUrl = @json(route('sku.link.lmp.filtered-skus'));
+        const skuLinkLmpCsrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+
+        let linkedSkuModal = null;
+        let linkedSkuModalRow = null;
+        let linkedSkuModalSelectedSkus = new Set();
+        let linkedSkuSuggestionTimer = null;
+        let linkedSkuSuggestionRequestId = 0;
+
+        function rowSkuForLinkLmp(rowData) {
+            return String(rowData?.['(Child) sku'] || rowData?.sku || '').trim();
+        }
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text == null ? '' : String(text);
+            return div.innerHTML;
+        }
+        function escapeHtmlAttr(text) {
+            return escapeHtml(text).replace(/"/g, '&quot;');
+        }
+
+        function linkedLmpSkuFormatter(cell) {
+            const row = cell.getRow().getData();
+            const isParent = row.is_parent || (row.Parent && String(row.Parent).startsWith('PARENT '));
+            if (isParent) return '';
+            const rowSku = rowSkuForLinkLmp(row);
+            let skus = row.linked_lmp_skus || [];
+            if (typeof skus === 'string') { try { skus = JSON.parse(skus) || []; } catch (e) { skus = []; } }
+            if (!Array.isArray(skus)) skus = [];
+            if (!skus.length && rowSku) skus = [rowSku];
+            const seen = new Set();
+            skus = skus.filter(function (sku) {
+                const norm = String(sku || '').trim().toUpperCase();
+                if (!norm || seen.has(norm)) return false;
+                seen.add(norm); return true;
+            });
+            const badges = skus.length ? skus.map(function (sku) {
+                const skuText = String(sku || '').trim();
+                const isSelf = skuText.toUpperCase() === rowSku.toUpperCase();
+                const removeBtn = isSelf ? '' : `<button type="button" class="btn-close sku-link-lmp-remove" data-linked-sku="${escapeHtmlAttr(skuText)}" aria-label="Remove"></button>`;
+                return `<span class="linked-sku-badge-wrap badge bg-info-subtle text-dark border me-1 mb-1"><span class="linked-sku-badge">${escapeHtml(skuText)}</span>${removeBtn}</span>`;
+            }).join('') : '<span class="text-muted fst-italic">No SKUs</span>';
+            return `<div class="d-flex flex-wrap align-items-start py-1" style="line-height:1.6;">${badges}</div>`;
+        }
+
+        function linkedLmpSkuAddFormatter(cell) {
+            const row = cell.getRow().getData();
+            const isParent = row.is_parent || (row.Parent && String(row.Parent).startsWith('PARENT '));
+            if (isParent) return '';
+            const rowSku = rowSkuForLinkLmp(row);
+            if (!rowSku) return '';
+            return `<div class="d-flex align-items-center justify-content-center py-1">
+                <button type="button" class="btn btn-sm btn-outline-primary sku-link-lmp-add-btn" title="Link another SKU" style="padding:2px 8px;" data-sku="${escapeHtmlAttr(rowSku)}"><i class="fas fa-plus"></i></button>
+            </div>`;
+        }
+
+        function applyAffectedLinkedSkuRows(affected) {
+            if (!table || !Array.isArray(affected)) return;
+            table.replaceData();
+        }
+
+        function removeLinkedSkuFromRow(rowData, linkedSku) {
+            const sku = rowSkuForLinkLmp(rowData);
+            const target = String(linkedSku || '').trim();
+            if (!sku || !target) return;
+            if (!confirm(`Remove LMP link between "${sku}" and "${target}"?`)) return;
+            fetch(linkedSkuRemoveUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': skuLinkLmpCsrfToken, 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+                body: JSON.stringify({ sku: sku, linked_sku: target }),
+            }).then(r => r.json()).then(function (response) {
+                if (!response.success) throw new Error(response.message || 'Could not remove linked SKU.');
+                applyAffectedLinkedSkuRows(response.affected);
+            }).catch(function (err) { alert(err.message || 'Could not remove linked SKU.'); });
+        }
+
+        function updateLinkedSkuSelectedSummary() {
+            const wrap = document.getElementById('sku-link-lmp-selected-wrap');
+            const listEl = document.getElementById('sku-link-lmp-selected-skus');
+            const countEl = document.getElementById('sku-link-lmp-selected-count');
+            const saveLabel = document.getElementById('sku-link-lmp-save-btn-label');
+            const selected = Array.from(linkedSkuModalSelectedSkus);
+            if (countEl) countEl.textContent = String(selected.length);
+            if (saveLabel) saveLabel.textContent = selected.length > 1 ? 'Link ' + selected.length + ' SKUs' : 'Link SKU(s)';
+            if (!wrap || !listEl) return;
+            if (!selected.length) { wrap.classList.add('d-none'); listEl.innerHTML = ''; return; }
+            wrap.classList.remove('d-none');
+            listEl.innerHTML = selected.map(function (sku) {
+                return `<span class="sku-link-lmp-selected-chip">${escapeHtml(sku)}<button type="button" class="sku-link-lmp-selected-remove" data-sku="${escapeHtmlAttr(sku)}" title="Remove">&times;</button></span>`;
+            }).join('');
+        }
+
+        function renderLinkedSkuSuggestions(term) {
+            const wrap = document.getElementById('sku-link-lmp-suggestions');
+            if (!wrap) return;
+            const query = String(term || '').trim();
+            if (!query) { wrap.classList.add('d-none'); wrap.innerHTML = ''; return; }
+            clearTimeout(linkedSkuSuggestionTimer);
+            linkedSkuSuggestionTimer = setTimeout(function () {
+                const requestId = ++linkedSkuSuggestionRequestId;
+                fetch(`${filteredSkusUrl}?sku=${encodeURIComponent(query)}`, { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(r => r.json()).then(function (response) {
+                    if (requestId !== linkedSkuSuggestionRequestId) return;
+                    if (!response.success) throw new Error(response.message || 'Could not search SKUs.');
+                    const currentSku = rowSkuForLinkLmp(linkedSkuModalRow).toUpperCase();
+                    const existing = new Set((Array.isArray(linkedSkuModalRow?.linked_lmp_skus) ? linkedSkuModalRow.linked_lmp_skus : []).map(s => String(s || '').trim().toUpperCase()));
+                    const matches = (Array.isArray(response.skus) ? response.skus : []).map(s => String(s || '').trim())
+                        .filter(function (sku) { const norm = sku.toUpperCase(); return sku && norm !== currentSku && !existing.has(norm); }).slice(0, 12);
+                    if (!matches.length) { wrap.classList.add('d-none'); wrap.innerHTML = ''; return; }
+                    wrap.classList.remove('d-none');
+                    wrap.innerHTML = matches.map(function (sku) {
+                        const checked = linkedSkuModalSelectedSkus.has(sku);
+                        return `<label class="list-group-item list-group-item-action py-2 sku-link-lmp-suggestion-item d-flex align-items-center gap-2 mb-0"><input type="checkbox" class="form-check-input sku-link-lmp-suggestion-cb" value="${escapeHtmlAttr(sku)}" ${checked ? 'checked' : ''}><span class="flex-grow-1">${escapeHtml(sku)}</span></label>`;
+                    }).join('');
+                }).catch(function () { if (requestId !== linkedSkuSuggestionRequestId) return; wrap.classList.add('d-none'); wrap.innerHTML = ''; });
+            }, 200);
+        }
+
+        function getLinkedSkuModalSelections() {
+            const selected = Array.from(linkedSkuModalSelectedSkus);
+            const inputVal = String(document.getElementById('sku-link-lmp-input')?.value || '').trim();
+            const sourceNorm = rowSkuForLinkLmp(linkedSkuModalRow).toUpperCase();
+            if (inputVal && inputVal.toUpperCase() !== sourceNorm) {
+                if (!selected.some(s => s.toUpperCase() === inputVal.toUpperCase())) selected.push(inputVal);
+            }
+            return selected;
+        }
+
+        function openLinkedSkuModal(rowData) {
+            if (!linkedSkuModal || !rowSkuForLinkLmp(rowData)) return;
+            linkedSkuModalRow = rowData;
+            linkedSkuModalSelectedSkus = new Set();
+            document.getElementById('sku-link-lmp-source').textContent = rowSkuForLinkLmp(rowData);
+            const input = document.getElementById('sku-link-lmp-input');
+            input.value = '';
+            renderLinkedSkuSuggestions('');
+            updateLinkedSkuSelectedSummary();
+            linkedSkuModal.show();
+            setTimeout(function () { input?.focus(); }, 200);
+        }
+
+        function saveLinkedSkuFromModal() {
+            const sourceSku = rowSkuForLinkLmp(linkedSkuModalRow);
+            if (!sourceSku) return;
+            const toLink = getLinkedSkuModalSelections();
+            if (!toLink.length) { alert('Select one or more SKUs from the list, or enter a SKU to link.'); return; }
+            const allSkus = [sourceSku].concat(toLink);
+            const uniqueSkus = []; const seen = new Set();
+            allSkus.forEach(function (sku) { const norm = String(sku || '').trim().toUpperCase(); if (!norm || seen.has(norm)) return; seen.add(norm); uniqueSkus.push(String(sku).trim()); });
+            if (uniqueSkus.length < 2) { alert('Select at least one SKU to link.'); return; }
+            const btn = document.getElementById('sku-link-lmp-save-btn');
+            const original = btn?.innerHTML || '';
+            if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Linking...'; }
+            const isBulk = uniqueSkus.length > 2 || toLink.length > 1;
+            const fetchPromise = isBulk
+                ? fetch(linkedSkuBulkLinkUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': skuLinkLmpCsrfToken, 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }, body: JSON.stringify({ skus: uniqueSkus }) })
+                : fetch(linkedSkuAddUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': skuLinkLmpCsrfToken, 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }, body: JSON.stringify({ sku: sourceSku, linked_sku: toLink[0] }) });
+            fetchPromise.then(r => r.json()).then(function (response) {
+                if (!response.success) throw new Error(response.message || 'Could not link SKU(s).');
+                linkedSkuModalSelectedSkus = new Set();
+                linkedSkuModal?.hide();
+                applyAffectedLinkedSkuRows(response.affected);
+            }).catch(function (err) { alert(err.message || 'Could not link SKU(s).'); })
+            .finally(function () { if (btn) { btn.disabled = false; btn.innerHTML = original; } });
+        }
+
+        function initSkuLinkLmpModal() {
+            const modalEl = document.getElementById('skuLinkLmpModal');
+            if (modalEl) linkedSkuModal = bootstrap.Modal.getOrCreateInstance(modalEl);
+            document.getElementById('sku-link-lmp-input')?.addEventListener('input', function () { renderLinkedSkuSuggestions(this.value); });
+            document.getElementById('sku-link-lmp-suggestions')?.addEventListener('click', function (e) {
+                const item = e.target.closest('.sku-link-lmp-suggestion-item'); if (!item) return;
+                const cb = item.querySelector('.sku-link-lmp-suggestion-cb'); if (!cb || e.target === cb) return;
+                cb.checked = !cb.checked; cb.dispatchEvent(new Event('change', { bubbles: true }));
+            });
+            document.getElementById('sku-link-lmp-suggestions')?.addEventListener('change', function (e) {
+                const cb = e.target.closest('.sku-link-lmp-suggestion-cb'); if (!cb) return;
+                const sku = String(cb.value || '').trim(); if (!sku) return;
+                if (cb.checked) linkedSkuModalSelectedSkus.add(sku); else linkedSkuModalSelectedSkus.delete(sku);
+                updateLinkedSkuSelectedSummary();
+            });
+            document.getElementById('sku-link-lmp-selected-skus')?.addEventListener('click', function (e) {
+                const btn = e.target.closest('.sku-link-lmp-selected-remove'); if (!btn) return;
+                linkedSkuModalSelectedSkus.delete(String(btn.dataset.sku || '').trim());
+                document.querySelectorAll('.sku-link-lmp-suggestion-cb').forEach(function (cb) {
+                    if (cb.value === btn.dataset.sku) cb.checked = false;
+                });
+                updateLinkedSkuSelectedSummary();
+            });
+            document.getElementById('sku-link-lmp-save-btn')?.addEventListener('click', function () { saveLinkedSkuFromModal(); });
+        }
 
         // Toast notification function
         function showToast(message, type = 'info') {
@@ -841,6 +1215,7 @@
         });
 
         $(document).ready(function() {
+            initSkuLinkLmpModal();
             let ttAllSkuRows = [];
             let ttBadgeChartInstance = null;
             let ttBadgeChartDays = 30;
@@ -853,14 +1228,13 @@
                 total_pft: 'Profit',
                 avg_gpft: 'GPFT',
                 avg_price: 'Price',
-                total_l30: 'TT L30',
+                total_l30: 'L30',
                 avg_roi: 'ROI%',
                 avg_dil: 'Avg DIL%',
                 total_cogs: 'COGS',
                 zero_sold_count: '0 Sold',
                 sold_count: '> 0 Sold',
                 missing_count: 'Missing L',
-                map_count: 'Map',
                 nmap_count: 'N Map',
                 inv_tt_stock_count: 'N Map',
             };
@@ -1136,25 +1510,28 @@
             function syncPriceModeUi() {
                 const $btn = $('#price-mode-btn');
                 if (decreaseModeActive) {
-                    $btn.removeClass('btn-secondary btn-primary btn-info').addClass('btn-danger')
-                        .html('<i class="fas fa-arrow-down"></i> Decrease ON');
+                    $btn.removeClass('btn-warning btn-secondary btn-primary btn-info').addClass('btn-danger')
+                        .html('<i class="fas fa-arrow-down"></i>')
+                        .attr('title', 'Decrease ON — click to cycle');
                     syncDiscountInputUi();
                     return;
                 }
                 if (increaseModeActive) {
-                    $btn.removeClass('btn-secondary btn-danger btn-info').addClass('btn-primary')
-                        .html('<i class="fas fa-arrow-up"></i> Increase ON');
+                    $btn.removeClass('btn-warning btn-secondary btn-danger btn-info').addClass('btn-primary')
+                        .html('<i class="fas fa-arrow-up"></i>')
+                        .attr('title', 'Increase ON — click to cycle');
                     syncDiscountInputUi();
                     return;
                 }
                 if (samePriceModeActive) {
-                    $btn.removeClass('btn-secondary btn-danger btn-primary').addClass('btn-info')
-                        .html('<i class="fas fa-equals"></i> Same Price ON');
+                    $btn.removeClass('btn-warning btn-secondary btn-danger btn-primary').addClass('btn-info')
+                        .html('<i class="fas fa-equals"></i>')
+                        .attr('title', 'Same Price ON — click to cycle');
                     syncDiscountInputUi();
                     return;
                 }
-                $btn.removeClass('btn-danger btn-primary btn-info').addClass('btn-secondary')
-                    .html('<i class="fas fa-exchange-alt"></i> Price Mode');
+                $btn.removeClass('btn-danger btn-primary btn-info btn-secondary').addClass('btn-warning')
+                    .html('PRc');
                 selectedSkus.clear();
                 updateSelectedCount();
                 syncDiscountInputUi();
@@ -1176,9 +1553,9 @@
             // Toggle Utilized Columns - Show only columns that match tiktok/utilized page (like temu-decrease Show Ads Columns)
             let utilizedColumnsVisible = false;
             let originalColumnVisibilityUtilized = {};
-            const utilizedColumnFields = ['(Child) sku', 'hasCampaign', 'INV', 'L30', 'TT Dil%', 'TT L30', 'NR',
+            const utilizedColumnFields = ['(Child) sku', 'INV', 'L30', 'TT Dil%', 'TT L30', 'NR',
                 'variation_req', 'video_req', 'video_uploaded', 'nrp', 'ad_cvr_pct', 'ads_price', 'budget', 'spend',
-                'ad_sold', 'ad_clicks', 'acos', 'out_roas', 'in_roas', 'status', 'campaign_name'
+                'ad_sold', 'ad_clicks', 'acos', 'status', 'campaign_name'
             ];
 
             $('#toggle-utilized-columns-btn').on('click', function() {
@@ -1343,7 +1720,7 @@
                 }
                 if (!confirm(confirmMsg)) return;
 
-                $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Applying...');
+                $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
 
                 // Update rows client-side immediately (mirrors applyDiscount handler)
                 const updates = [];
@@ -1403,7 +1780,7 @@
                     targetPct: targetRoiPct,
                     label: `Target ROI ${targetRoiPct}%`,
                     $btn: $btn,
-                    btnHtml: '<i class="fas fa-calculator"></i> Apply SPRICE',
+                    btnHtml: '<i class="fas fa-bullseye"></i>',
                     computeSprice: function(rd) {
                         const lp = parseFloat(rd['LP_productmaster']) || 0;
                         if (lp <= 0) return null;
@@ -1429,7 +1806,7 @@
                     targetPct: targetGpftPct,
                     label: `Target GPFT ${targetGpftPct}%`,
                     $btn: $btn,
-                    btnHtml: '<i class="fas fa-calculator"></i> Apply SPRICE',
+                    btnHtml: '<i class="fas fa-bullseye"></i>',
                     computeSprice: function(rd) {
                         const lp = parseFloat(rd['LP_productmaster']) || 0;
                         if (lp <= 0) return null;
@@ -1450,7 +1827,6 @@
             let zeroSoldFilterActive = false;
             let moreSoldFilterActive = false;
             let missingFilterActive = false;
-            let mapFilterActive = false;
             let invTTStockFilterActive = false;
             let adsBadgeFilter = null;
 
@@ -1479,10 +1855,6 @@
                     sel: '#missing-count-badge',
                     glow: 'rgba(220, 53, 69, 0.8)'
                 }, {
-                    active: mapFilterActive,
-                    sel: '#map-count-badge',
-                    glow: 'rgba(40, 167, 69, 0.8)'
-                }, {
                     active: invTTStockFilterActive,
                     sel: '#inv-tt-stock-badge',
                     glow: 'rgba(167, 29, 42, 0.85)'
@@ -1504,7 +1876,6 @@
                 zeroSoldFilterActive = false;
                 moreSoldFilterActive = false;
                 missingFilterActive = false;
-                mapFilterActive = false;
                 invTTStockFilterActive = false;
             }
 
@@ -1514,30 +1885,20 @@
                     zeroSoldFilterActive = !zeroSoldFilterActive;
                     moreSoldFilterActive = false;
                     missingFilterActive = false;
-                    mapFilterActive = false;
                     invTTStockFilterActive = false;
                 } else if (type === 'more-sold') {
                     moreSoldFilterActive = !moreSoldFilterActive;
                     zeroSoldFilterActive = false;
                     missingFilterActive = false;
-                    mapFilterActive = false;
                     invTTStockFilterActive = false;
                 } else if (type === 'missing') {
                     missingFilterActive = !missingFilterActive;
-                    mapFilterActive = false;
-                    invTTStockFilterActive = false;
-                    zeroSoldFilterActive = false;
-                    moreSoldFilterActive = false;
-                } else if (type === 'map') {
-                    mapFilterActive = !mapFilterActive;
-                    missingFilterActive = false;
                     invTTStockFilterActive = false;
                     zeroSoldFilterActive = false;
                     moreSoldFilterActive = false;
                 } else if (type === 'nmap') {
                     invTTStockFilterActive = !invTTStockFilterActive;
                     missingFilterActive = false;
-                    mapFilterActive = false;
                     zeroSoldFilterActive = false;
                     moreSoldFilterActive = false;
                 }
@@ -1558,10 +1919,6 @@
             $('#missing-count-badge').on('click', function(e) {
                 e.stopPropagation();
                 ttOnSummaryFilterBadgeClick('missing');
-            });
-            $('#map-count-badge').on('click', function(e) {
-                e.stopPropagation();
-                ttOnSummaryFilterBadgeClick('map');
             });
             $('#inv-tt-stock-badge').on('click', function(e) {
                 e.stopPropagation();
@@ -1621,6 +1978,7 @@
             function updateSelectedCount() {
                 const count = selectedSkus.size;
                 $('#selected-skus-count').text(`${count} SKU${count !== 1 ? 's' : ''} selected`);
+                $('#tt-selected-row-badge').text(`Row: ${count}`);
                 $('#discount-input-container').toggle(count > 0);
             }
 
@@ -1901,10 +2259,25 @@
                 rowFormatter: function(row) {
                     const d = row.getData();
                     if (d.is_parent === true || (d.Parent && String(d.Parent).startsWith('PARENT '))) {
-                        row.getElement().style.backgroundColor = "rgba(255, 243, 205, 0.85)";
+                        row.getElement().classList.add('tt-parent-row');
                     }
                 },
                 columns: [{
+                        title: "<input type='checkbox' id='select-all-checkbox'>",
+                        field: "_select",
+                        hozAlign: "center",
+                        headerSort: false,
+                        width: 40,
+                        frozen: true,
+                        visible: true,
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            const sku = rowData['(Child) sku'];
+                            const isChecked = selectedSkus.has(sku) ? 'checked' : '';
+                            return `<input type='checkbox' class='sku-select-checkbox' data-sku='${sku}' ${isChecked}>`;
+                        }
+                    },
+                    {
                         title: "Image",
                         field: "image_path",
                         formatter: function(cell) {
@@ -2124,28 +2497,6 @@
                                 return '<span style="color: #dc3545; font-weight: bold; background-color: #ffe6e6; padding: 2px 6px; border-radius: 3px;">M</span>';
                             }
                             return '';
-                        }
-                    },
-                    {
-                        title: "Missing Ad",
-                        field: "hasCampaign",
-                        hozAlign: "center",
-                        width: 80,
-                        visible: false,
-                        formatter: function(cell) {
-                            const row = cell.getRow().getData();
-                            const hasCampaign = row.hasCampaign === true || row.hasCampaign ===
-                                'true' || row.hasCampaign === 1;
-                            const nraValue = (row.NR || '').trim();
-                            let dotColor, title;
-                            if (nraValue === 'NRA') {
-                                dotColor = 'yellow';
-                                title = 'NRA - Not Required';
-                            } else {
-                                dotColor = hasCampaign ? 'green' : 'red';
-                                title = hasCampaign ? 'Campaign Exists' : 'Campaign Missing';
-                            }
-                            return `<div style="display: flex; align-items: center; justify-content: center;"><span class="status-circle ${dotColor}" title="${title}"></span></div>`;
                         }
                     },
                     {
@@ -2713,21 +3064,6 @@
                         width: 60
                     },
                     {
-                        title: "<input type='checkbox' id='select-all-checkbox'>",
-                        field: "_select",
-                        hozAlign: "center",
-                        headerSort: false,
-                        width: 40,
-                        frozen: true,
-                        visible: true,
-                        formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            const sku = rowData['(Child) sku'];
-                            const isChecked = selectedSkus.has(sku) ? 'checked' : '';
-                            return `<input type='checkbox' class='sku-select-checkbox' data-sku='${sku}' ${isChecked}>`;
-                        }
-                    },
-                    {
                         title: "SPRICE",
                         field: "SPRICE",
                         hozAlign: "center",
@@ -2754,14 +3090,17 @@
                         width: 80
                     },
                     {
-                        title: "SGPFT",
+                        title: "SGPFT%",
                         field: "SGPFT",
                         hozAlign: "center",
                         sorter: "number",
                         formatter: function(cell) {
                             const value = cell.getValue();
-                            if (value === null || value === undefined) return '';
+                            if (value === null || value === undefined || value === '' || value === '-') {
+                                return '<span style="color:#6c757d;">-</span>';
+                            }
                             const percent = parseFloat(value);
+                            if (isNaN(percent)) return '<span style="color:#6c757d;">-</span>';
                             let color = '';
 
                             if (percent < 10) color = '#a00211';
@@ -2775,14 +3114,17 @@
                         width: 50
                     },
                     {
-                        title: "SPFT",
+                        title: "SPFT%",
                         field: "SPFT",
                         hozAlign: "center",
                         sorter: "number",
                         formatter: function(cell) {
                             const value = cell.getValue();
-                            if (value === null || value === undefined) return '';
+                            if (value === null || value === undefined || value === '' || value === '-') {
+                                return '<span style="color:#6c757d;">-</span>';
+                            }
                             const percent = parseFloat(value);
+                            if (isNaN(percent)) return '<span style="color:#6c757d;">-</span>';
                             let color = '';
 
                             if (percent < 10) color = '#a00211';
@@ -2796,7 +3138,7 @@
                         width: 50
                     },
                     {
-                        title: "SROI",
+                        title: "SROI%",
                         field: "SROI",
                         hozAlign: "center",
                         sorter: "number",
@@ -2805,8 +3147,11 @@
                         maxWidth: 50,
                         formatter: function(cell) {
                             const value = cell.getValue();
-                            if (value === null || value === undefined) return '';
+                            if (value === null || value === undefined || value === '' || value === '-') {
+                                return '<span style="color:#6c757d;">-</span>';
+                            }
                             const percent = parseFloat(value);
+                            if (isNaN(percent)) return '<span style="color:#6c757d;">-</span>';
                             let color = '';
 
                             if (percent < 40) color = '#a00211';
@@ -2929,6 +3274,43 @@
                                 '</select>'
                             );
                         }
+                    },
+                    {
+                        title: "Sku Link LMP",
+                        field: "linked_lmp_skus",
+                        hozAlign: "left",
+                        headerHozAlign: "center",
+                        width: 220,
+                        headerSort: false,
+                        cssClass: "linked-sku-col",
+                        formatter: linkedLmpSkuFormatter,
+                        cellClick: function(e, cell) {
+                            if (e.target.closest('.sku-link-lmp-remove')) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                removeLinkedSkuFromRow(
+                                    cell.getRow().getData(),
+                                    e.target.closest('.sku-link-lmp-remove').dataset.linkedSku || ''
+                                );
+                            }
+                        },
+                    },
+                    {
+                        title: "+",
+                        field: "linked_lmp_sku_add",
+                        hozAlign: "center",
+                        headerHozAlign: "center",
+                        width: 52,
+                        headerSort: false,
+                        cssClass: "linked-sku-add-col",
+                        formatter: linkedLmpSkuAddFormatter,
+                        cellClick: function(e, cell) {
+                            if (e.target.closest('.sku-link-lmp-add-btn')) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                openLinkedSkuModal(cell.getRow().getData());
+                            }
+                        },
                     }
                 ]
             });
@@ -3417,14 +3799,6 @@
                     });
                 }
 
-                // Map filter — listed + |INV − TT Stock| ≤ 3 (matches MAP column)
-                if (mapFilterActive) {
-                    table.addFilter(function(data) {
-                        if (isParentRow(data)) return true;
-                        return ttRowIsMap(data);
-                    });
-                }
-
                 // N Map filter — |INV − TT Stock| > 3 only (≤3 is Map)
                 if (invTTStockFilterActive) {
                     table.addFilter(function(data) {
@@ -3590,7 +3964,6 @@
                 let totalRoi = 0,
                     roiCount = 0;
                 let missingCount = 0,
-                    mapCount = 0,
                     invTTStockCount = 0;
 
                 data.forEach(row => {
@@ -3624,7 +3997,6 @@
                         moreSoldCount++;
                     }
                     if (ttRowIsMissing(row)) missingCount++;
-                    if (ttRowIsMap(row)) mapCount++;
                     if (ttRowIsNMap(row)) invTTStockCount++;
                 });
 
@@ -3633,15 +4005,12 @@
                 const avgRoi = roiCount > 0 ? totalRoi / roiCount : 0;
 
                 $('#total-sales-amt-badge').text(`Sales: $${Math.round(totalSales).toLocaleString()}`);
-                $('#total-pft-amt-badge').text(`PFT: $${Math.round(totalPft).toLocaleString()}`);
-                $('#avg-gpft-badge').text(`GPFT: ${avgGpft.toFixed(1)}%`);
-                $('#avg-price-badge').text(`Price: $${avgPrice.toFixed(2)}`);
-                $('#total-l30-badge').text(`TT L30: ${totalL30.toLocaleString()}`);
+                $('#avg-gpft-badge').text(`GPFT: ${Math.round(avgGpft)}%`);
+                $('#total-l30-badge').text(`L30: ${totalL30.toLocaleString()}`);
                 $('#zero-sold-count-badge').text(`0 Sold: ${zeroSoldCount}`);
                 $('#more-sold-count-badge').text(`> 0 Sold: ${moreSoldCount}`);
-                $('#roi-percent-badge').text(`ROI%: ${avgRoi.toFixed(1)}%`);
+                $('#roi-percent-badge').text(`ROI%: ${Math.round(avgRoi)}%`);
                 $('#missing-count-badge').text(`Missing L: ${missingCount}`);
-                $('#map-count-badge').text(`Map: ${mapCount}`);
                 $('#inv-tt-stock-badge').text('N Map: ' + invTTStockCount.toLocaleString());
             }
 
@@ -3734,26 +4103,98 @@
                 $('#roas-badge').text('ROAS: ' + roas.toFixed(2));
             }
 
-            // Build Column Visibility Dropdown
-            function buildColumnDropdown() {
-                const columns = table.getColumns();
-                let html = '';
+            // Build Column Visibility Dropdown — 4 groups: basics · pricing · advt · other
+            const COL_VIS_CATEGORY_KEYS = ['basics', 'pricing', 'advt', 'other'];
+            const COL_VIS_CATEGORY_LABELS = {
+                basics: 'basics',
+                pricing: 'pricing',
+                advt: 'advt',
+                other: 'other'
+            };
 
-                columns.forEach(col => {
-                    const field = col.getField();
-                    const title = col.getDefinition().title;
-                    if (field && field !== '_select' && title) {
-                        const isVisible = col.isVisible();
-                        html += `<li class="dropdown-item">
-                        <label style="cursor: pointer; display: flex; align-items: center; gap: 8px;">
-                            <input type="checkbox" class="column-toggle" data-field="${field}" ${isVisible ? 'checked' : ''}>
-                            ${title.replace(/<[^>]*>/g, '')}
-                        </label>
-                    </li>`;
-                    }
+            function classifyTtColumn(field, title) {
+                const f = String(field || '');
+                const t = String(title || field || '').replace(/<[^>]*>/g, '').trim();
+                const tl = t.toLowerCase();
+
+                // advt
+                if (
+                    /^(ad_cvr_pct|ads_price|budget|spend|ad_sold|ad_clicks|acos|status|campaign_name|video_views|ads_views|affl_views|t_views|TACOS%)$/i.test(f) ||
+                    /\b(ads?\s*cvr|budget|spend|ad\s*sold|ad\s*clicks|acos|campaign|video\s*views|ads\s*views|affl\s*views|^t\s*views$|tacos)\b/i.test(tl) ||
+                    /^status$/i.test(tl) ||
+                    /^price$/i.test(tl) // ads Price column
+                ) {
+                    return 'advt';
+                }
+
+                // basics — product / inventory / listing (before pricing so "TT Ship" isn't misfiled)
+                if (
+                    /^(image_path|Parent|\(Child\) sku|links_column|INV|L30|TT Dil%|TT L30|TT Stock|TT Ship|Missing|MAP|NR|variation_req|video_req|video_uploaded|nrp)$/i.test(f) ||
+                    /\b(image|parent|sku|links|inv|ov\s*l30|^dil$|tt\s*l30|tt\s*stock|tt\s*1?\s*ship|missing\s*l?|map|nra|variation|video\s*req|video\s*uploaded|nr\/?req)\b/i.test(tl)
+                ) {
+                    return 'basics';
+                }
+
+                // pricing
+                if (
+                    /^(TT Price|lmp_price|lmp_diff_pct|GPFT%|PFT %|ROI%|Profit|T Profit|Sales L30|LP_productmaster|Ship_productmaster|SPRICE|SGPFT|SPFT|SROI|linked_lmp_skus|linked_lmp_sku_add)$/i.test(f) ||
+                    /\b(prc|lmp|^diff$|gpft|pft|roi|profit|sales|^lp$|^ship$|sprice|sgpft|spft|sroi|sku\s*link)\b/i.test(tl) ||
+                    /^\+$/.test(t)
+                ) {
+                    return 'pricing';
+                }
+
+                return 'other';
+            }
+
+            function buildColumnDropdown() {
+                const menu = document.getElementById('column-dropdown-menu');
+                if (!menu || !table) return;
+                menu.innerHTML = '';
+
+                const groupsLi = document.createElement('li');
+                groupsLi.className = 'col-vis-full';
+                const groupsWrap = document.createElement('div');
+                groupsWrap.className = 'col-vis-groups';
+
+                const lists = {};
+                COL_VIS_CATEGORY_KEYS.forEach(function(cat) {
+                    const group = document.createElement('div');
+                    group.className = 'col-vis-group';
+                    const titleEl = document.createElement('div');
+                    titleEl.className = 'col-vis-group-title';
+                    titleEl.textContent = COL_VIS_CATEGORY_LABELS[cat];
+                    group.appendChild(titleEl);
+                    const list = document.createElement('ul');
+                    list.className = 'col-vis-group-list';
+                    group.appendChild(list);
+                    groupsWrap.appendChild(group);
+                    lists[cat] = list;
                 });
 
-                $('#column-dropdown-menu').html(html);
+                table.getColumns().forEach(function(col) {
+                    const field = col.getField();
+                    const title = col.getDefinition().title;
+                    if (!field || field === '_select' || !title) return;
+                    if (ALWAYS_HIDDEN_COLUMNS.includes(field)) return;
+
+                    const cleanTitle = String(title).replace(/<[^>]*>/g, '').trim();
+                    if (!cleanTitle) return;
+
+                    const cat = classifyTtColumn(field, cleanTitle);
+                    const li = document.createElement('li');
+                    li.className = 'col-vis-item';
+                    const isVisible = col.isVisible();
+                    li.innerHTML =
+                        '<label><input type="checkbox" class="column-toggle" data-field="' +
+                        field.replace(/"/g, '&quot;') + '"' +
+                        (isVisible ? ' checked' : '') + '> ' +
+                        cleanTitle.replace(/</g, '&lt;') + '</label>';
+                    lists[cat].appendChild(li);
+                });
+
+                groupsLi.appendChild(groupsWrap);
+                menu.appendChild(groupsLi);
             }
 
             /*
@@ -3800,9 +4241,9 @@
                     .then(visibility => {
                         if (visibility && typeof visibility === 'object' && Object.keys(visibility).length > 0) {
                             Object.keys(visibility).forEach(field => {
-                                if (ADS_ONLY_COLUMN_FIELDS.includes(field) ||
+                                if (field === '_select' || ADS_ONLY_COLUMN_FIELDS.includes(field) ||
                                     ALWAYS_HIDDEN_COLUMNS.includes(field))
-                            return; // never show ads or Parent from server
+                            return; // never hide checkbox; never show ads/always-hidden from server
                                 const col = table.getColumn(field);
                                 if (col) {
                                     // Server stores real booleans via boolean validation,
@@ -3820,6 +4261,11 @@
                                 if (col) col.hide();
                             } catch (e) {}
                         });
+                        // Checkbox column always first & visible
+                        try {
+                            const selectCol = table.getColumn('_select');
+                            if (selectCol) selectCol.show();
+                        } catch (e) {}
                         buildColumnDropdown();
                     })
                     .catch(err => console.error('Error loading TikTok column visibility:', err));
@@ -3879,25 +4325,9 @@
                 }
             });
 
-            // Show All Columns button (non-ads columns only; ads columns stay hidden until Show Ads Columns is clicked)
-            document.getElementById("show-all-columns-btn").addEventListener("click", function() {
-                table.getColumns().forEach(col => {
-                    const field = col.getField();
-                    if (field && field !== '_select') {
-                        if (ADS_ONLY_COLUMN_FIELDS.includes(field) || ALWAYS_HIDDEN_COLUMNS
-                            .includes(field)) {
-                            col.hide();
-                        } else {
-                            col.show();
-                        }
-                    }
-                });
-                buildColumnDropdown();
-                saveColumnVisibilityToServer();
-            });
-
-            // Export CSV button
-            $('#export-btn').on('click', function() {
+            // Export CSV button (from CSV dropdown)
+            $('#export-btn').on('click', function(e) {
+                e.preventDefault();
                 const exportData = [];
                 const visibleColumns = table.getColumns().filter(col => col.isVisible() && col
                 .getField() !== '_select');
@@ -4026,9 +4456,10 @@
                             <th style="width:30px;">#</th>
                             <th style="width:60px;">Image</th>
                             <th style="width:140px;">Product ID</th>
-                            <th style="width:260px;">Title</th>
+                            <th style="width:220px;">Title</th>
                             <th>Seller</th>
                             <th style="width:80px;">Price</th>
+                            <th style="width:70px;">Ship</th>
                             <th style="width:80px;">Range</th>
                             <th style="width:70px;">Rating</th>
                             <th style="width:80px;">Reviews</th>
@@ -4043,12 +4474,16 @@
 
                 competitors.forEach(function(item, index) {
                     const basePrice = parseFloat(item.price) || 0;
+                    const shipCost = parseFloat(item.shipping_cost) || 0;
                     const isLowest = lowestPrice && Math.abs(basePrice - parseFloat(lowestPrice)) < 0.01;
                     const rowClass = isLowest ? 'table-success' : '';
                     const priceFormatted = '$' + basePrice.toFixed(2);
                     const priceBadge = isLowest
                         ? `<span class="badge bg-success">${priceFormatted} <i class="fa fa-trophy"></i></span>`
                         : `<strong>${priceFormatted}</strong>`;
+                    const shipHtml = shipCost === 0
+                        ? '<span class="badge bg-info">FREE</span>'
+                        : '$' + shipCost.toFixed(2);
 
                     const productLink = item.link || item.product_link || '#';
                     const title = item.title || item.product_title || 'N/A';
@@ -4080,6 +4515,7 @@
                             <td style="font-size:11px;" title="${ttEscAttr(title)}">${ttEscAttr(String(title).substring(0, 80))}${String(title).length > 80 ? '…' : ''}</td>
                             <td style="font-size:11px;">${ttEscAttr(seller)}</td>
                             <td>${priceBadge}</td>
+                            <td class="text-center">${shipHtml}</td>
                             <td class="text-center">${rangeHtml}</td>
                             <td class="text-center">${rating}</td>
                             <td class="text-center">${reviews}</td>
@@ -4121,6 +4557,7 @@
                     sku: $('#ttAddCompSku').val(),
                     product_id: $('#ttAddCompProductId').val().trim(),
                     price: parseFloat($('#ttAddCompPrice').val()) || 0,
+                    shipping_cost: parseFloat($('#ttAddCompShip').val()) || 0,
                     product_title: $('#ttAddCompTitle').val().trim() || null,
                     product_link: $('#ttAddCompLink').val().trim() || null,
                     region: $('#ttAddCompRegion').val() || 'US',
@@ -4139,6 +4576,7 @@
                         if (resp.success) {
                             $('#ttAddCompProductId').val('');
                             $('#ttAddCompPrice').val('');
+                            $('#ttAddCompShip').val('');
                             $('#ttAddCompTitle').val('');
                             $('#ttAddCompLink').val('');
                             ttLoadCompetitorsModal(ttCurrentLmpSku);

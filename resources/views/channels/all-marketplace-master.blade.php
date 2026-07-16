@@ -299,17 +299,11 @@
                         </button>
                         <div class="dropdown-menu p-0" id="column-dropdown-menu"
                             aria-labelledby="columnVisibilityDropdown"
-                            style="max-height:none; overflow:visible;">
+                            style="max-height:none; overflow:visible; min-width:720px; width:max-content;">
                             <ul id="column-dropdown-list" class="list-unstyled mb-0 px-2 py-1"
-                                style="max-height:320px; overflow-y:auto;">
+                                style="display:grid; grid-template-columns:repeat(5, minmax(120px, 1fr)); gap:0 0.25rem; max-height:360px; overflow-y:auto;">
                                 <!-- Populated dynamically -->
                             </ul>
-                            <div class="border-top px-2 py-2 bg-white"
-                                style="position:sticky; bottom:0;">
-                                <button type="button" id="save-columns-btn" class="btn btn-sm btn-primary w-100">
-                                    <i class="fas fa-save"></i> Save
-                                </button>
-                            </div>
                         </div>
                     </div>
 
@@ -350,14 +344,11 @@
                         <span class="badge bg-secondary fs-6 p-2 badge-chart-link" data-metric="ad_spend" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
                             Spend: <span id="total-ad-spend">$0</span>
                         </span>
-                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="ads_pct" style="background-color: #6610f2; color: white; font-weight: bold; cursor:pointer;" title="Average TACOS % = Total Ad Spend / Total L30 Sales × 100">
-                            TACOS: <span id="avg-ads-percent">0%</span>
-                        </span>
                         <span class="badge fs-6 p-2 badge-chart-link" data-metric="ads_pct" style="background-color: #d63384; color: white; font-weight: bold; cursor:pointer;" title="Ads % = Total Ad Spend / Total L30 Sales × 100 (blended across channels — same as the Ads % column)">
                             Ads: <span id="ads-percent-badge">0%</span>
                         </span>
-                        <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="total_views" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">
-                            views: <span id="total-views-badge">0</span>
+                        <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="total_views" style="color: black; font-weight: bold; cursor:pointer;" title="View trend - Total Views (listing/Map traffic)">
+                            Clicks: <span id="total-views-badge">0</span>
                         </span>
                         <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="cvr" style="color: white; font-weight: bold; cursor:pointer;" title="Listing CVR (all channels): (sum of Qty) ÷ (sum of Total Views) × 100. Qty = units sold (not order count) — matches the per-channel /temu-decrease formula. Total Views = listing/Map traffic (e.g. ov_l30, eBay Views) — not ad clicks. Not the same as column &quot;AD CVR&quot; (ad sold ÷ ad clicks). The ratio can move sharply if views jump (new SKUs, sync) or qty windows differ by channel (e.g. Amazon {{ (int) \App\Http\Controllers\Sales\AmazonSalesController::DAILY_SALES_WINDOW_DAYS }}-day units vs views from live tabulator).">
                             CVR: <span id="cvr-pct-badge">0%</span>
@@ -370,12 +361,6 @@
                         </span>
                         <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="nroi" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
                             NROI: <span id="avg-nroi">0%</span>
-                        </span>
-                        <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="clicks" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">
-                            Clicks: <span id="total-clicks">0</span>
-                        </span>
-                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="map" style="background-color:#198754;color:#fff;font-weight:bold;cursor:pointer;" title="Sum of Map column (|INV − channel stock| within tolerance — same as pricing pages)">
-                            Map: <span id="total-map">0</span>
                         </span>
                         <span class="badge fs-6 p-2 badge-chart-link" data-metric="nmap" style="background-color:#a71d2a;color:#fff;font-weight:bold;cursor:pointer;" title="Sum of N Map column (not mapped / INV vs channel stock beyond tolerance — same as pricing pages)">
                             N Map: <span id="total-nmap">0</span>
@@ -394,9 +379,6 @@
                         </span>
                         <span class="badge bg-info fs-6 p-2" style="color: black; font-weight: bold;" title="Sum of ratings (weighted avg), average of reviews">
                             Reviews: <span id="ratings-reviews-badge">0 ★ | 0</span>
-                        </span>
-                        <span class="badge bg-dark fs-6 p-2" style="color: white; font-weight: bold;" title="Seller: sum of ratings (weighted avg), average of reviews">
-                            Seller review: <span id="seller-ratings-reviews-badge">0 ★ | 0</span>
                         </span>
                     </div>
                 </div>
@@ -584,6 +566,9 @@
                     </form>
                 </div>
                 <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-danger me-auto" id="archiveChannelBtn" title="Archive channel">
+                        <i class="fa fa-archive"></i> Archive
+                    </button>
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="submit" class="btn btn-primary" id="updateChannelBtn">Update Channel</button>
                 </div>
@@ -963,7 +948,7 @@
 
         // Track main Ad columns visibility (from Total Ad Spend to Missing Ads)
         let adColumnsVisible = false;
-        const mainAdColumnFields = ['Total Ad Spend', 'clicks', 'Ad Sales', 'ad_sold', 'ACOS', 'Ads CVR', 'Missing Ads'];
+        const mainAdColumnFields = ['Total Ad Spend'];
 
         function toggleMainAdColumns() {
             adColumnsVisible = !adColumnsVisible;
@@ -990,7 +975,7 @@
 
         // Track Ad Spend breakdown columns visibility
         let adSpendBreakdownVisible = false;
-        const adSpendBreakdownFields = ['KW Spent', 'PT Spent', 'HL Spent', 'PMT Spent', 'Shopping Spent', 'SERP Spent'];
+        const adSpendBreakdownFields = [];
 
         function toggleAdSpendBreakdownColumns() {
             adSpendBreakdownVisible = !adSpendBreakdownVisible;
@@ -1007,8 +992,7 @@
 
         // Track AD CLICKS breakdown columns visibility
         let clicksBreakdownVisible = false;
-        const clicksBreakdownFields = ['KW Clicks', 'PT Clicks', 'HL Clicks', 'PMT Clicks', 'Shopping Clicks',
-            'SERP Clicks'];
+        const clicksBreakdownFields = [];
 
         function toggleClicksBreakdownColumns() {
             clicksBreakdownVisible = !clicksBreakdownVisible;
@@ -1025,7 +1009,7 @@
 
         // Track AD SALES breakdown columns visibility
         let adSalesBreakdownVisible = false;
-        const adSalesBreakdownFields = ['KW Sales', 'PT Sales', 'HL Sales', 'PMT Sales', 'Shopping Sales', 'SERP Sales'];
+        const adSalesBreakdownFields = [];
 
         function toggleAdSalesBreakdownColumns() {
             adSalesBreakdownVisible = !adSalesBreakdownVisible;
@@ -1040,7 +1024,7 @@
 
         // Track AD SOLD breakdown columns visibility
         let adSoldBreakdownVisible = false;
-        const adSoldBreakdownFields = ['KW Sold', 'PT Sold', 'HL Sold', 'PMT Sold', 'Shopping Sold', 'SERP Sold'];
+        const adSoldBreakdownFields = [];
 
         function toggleAdSoldBreakdownColumns() {
             adSoldBreakdownVisible = !adSoldBreakdownVisible;
@@ -1055,7 +1039,7 @@
 
         // Track ACOS breakdown columns visibility
         let acosBreakdownVisible = false;
-        const acosBreakdownFields = ['KW ACOS', 'PT ACOS', 'HL ACOS', 'PMT ACOS', 'Shopping ACOS', 'SERP ACOS'];
+        const acosBreakdownFields = [];
 
         function toggleAcosBreakdownColumns() {
             acosBreakdownVisible = !acosBreakdownVisible;
@@ -1072,7 +1056,7 @@
 
         // Track AD CVR breakdown columns visibility
         let cvrBreakdownVisible = false;
-        const cvrBreakdownFields = ['KW CVR', 'PT CVR', 'HL CVR', 'PMT CVR', 'Shopping CVR', 'SERP CVR'];
+        const cvrBreakdownFields = [];
 
         function toggleCvrBreakdownColumns() {
             cvrBreakdownVisible = !cvrBreakdownVisible;
@@ -1209,7 +1193,7 @@
                         }
                     },
                     {
-                        title: "Channel",
+                        title: "MP",
                         field: "Channel ",
                         frozen: true,
                         formatter: function(cell) {
@@ -1228,7 +1212,7 @@
                         // Alias: short display label set per channel in the Edit modal.
                         // Clicking it opens the channel's tabulator view (the same
                         // "Blade page link" / missing_link used by the channel name).
-                        title: "Alias",
+                        title: "Channel",
                         field: "alias",
                         hozAlign: "center",
                         headerTooltip: "Channel alias — click to open this channel's view.",
@@ -1824,7 +1808,7 @@
                         }
                     },
                     {
-                        title: "GPFT",
+                        title: "GPFT%",
                         field: "Gprofit%",
                         hozAlign: "center",
                         sorter: "number",
@@ -3215,41 +3199,18 @@
                         }
                     },
                     {
-                        title: "Seller review",
-                        field: "Seller Rating & Reviews",
-                        hozAlign: "center",
-                        sorter: "number",
-                        width: 150,
-                        visible: false,
-                        formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            const avg = parseNumber(rowData['Seller Avg Rating'] || 0);
-                            const total = parseNumber(rowData['Seller Total Reviews'] || 0);
-                            if ((avg == null || isNaN(avg)) && (total == null || isNaN(total) || total === 0)) return '-';
-                            const r = (!isNaN(avg) && avg > 0) ? avg.toFixed(1) + ' ★' : '';
-                            const rev = (!isNaN(total) && total > 0) ? total.toLocaleString('en-US') : '';
-                            return [r, rev].filter(Boolean).join(' | ') || '-';
-                        }
-                    },
-                    {
                         title: "Action",
                         field: "_action",
                         hozAlign: "center",
                         headerSort: false,
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
-                            const channel = rowData['Channel '] || rowData['Channel'] || '';
                             return `
                                 <div class="d-flex justify-content-center gap-1">
                                     <button class="btn btn-sm btn-outline-primary edit-channel-btn" 
                                             data-channel='${JSON.stringify(rowData)}' 
                                             title="Edit">
                                         <i class="fas fa-edit"></i>
-                                    </button>
-                                    <button class="btn btn-sm btn-outline-danger delete-channel-btn" 
-                                            data-channel="${channel}" 
-                                            title="Archive">
-                                        <i class="fa fa-archive"></i>
                                     </button>
                                 </div>
                             `;
@@ -3314,44 +3275,6 @@
                                     }
                                 } catch (error) {
                                     console.error('Error:', error);
-                                }
-                                return;
-                            }
-
-                            // Handle Delete button
-                            if ($target.hasClass('delete-channel-btn') || $target.closest(
-                                    '.delete-channel-btn').length) {
-                                const $btn = $target.hasClass('delete-channel-btn') ? $target :
-                                    $target.closest('.delete-channel-btn');
-                                const channel = $btn.data('channel');
-
-                                if (confirm(
-                                        `Are you sure you want to archive channel: ${channel}?\n\nThis will set the channel status to "Inactive" and it will no longer appear in the list.`
-                                        )) {
-                                    $.ajax({
-                                        url: '/channel-archive',
-                                        method: 'POST',
-                                        data: {
-                                            channel: channel,
-                                            _token: '{{ csrf_token() }}'
-                                        },
-                                        success: function(response) {
-                                            if (response.success) {
-                                                showToast('success',
-                                                    'Channel archived successfully');
-                                                table.replaceData();
-                                            } else {
-                                                showToast('error', response.message ||
-                                                    'Failed to archive channel');
-                                            }
-                                        },
-                                        error: function(xhr) {
-                                            showToast('error',
-                                                'Error archiving channel: ' + (xhr
-                                                    .responseJSON?.message ||
-                                                    'Unknown error'));
-                                        }
-                                    });
                                 }
                                 return;
                             }
@@ -3580,14 +3503,38 @@
                     : 'NYS');
                 $('#total-l30-orders').text(Math.round(totalL30Orders).toLocaleString('en-US'));
                 $('#total-qty').text(Math.round(totalQty).toLocaleString('en-US'));
-                $('#total-clicks').text(Math.round(totalClicks).toLocaleString('en-US'));
-                $('#avg-gprofit').text(avgGprofit.toFixed(1) + '%');
+                $('#avg-gprofit').text(Math.round(avgGprofit) + '%');
                 $('#total-gross-pft').text('$' + Math.round(totalPft).toLocaleString('en-US'));
                 $('#avg-groi').text(Math.round(avgGroi) + '%');
-                $('#total-ad-spend').text('$' + Math.round(totalAdSpend).toLocaleString('en-US'));
-                $('#avg-ads-percent').text(avgAdsPercent.toFixed(1) + '%');
+                (function() {
+                    const val = Math.round(totalAdSpend);
+                    let compact;
+                    if (Math.abs(val) >= 1000000) {
+                        compact = (val / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+                    } else if (Math.abs(val) >= 1000) {
+                        compact = Math.round(val / 1000) + 'K';
+                    } else {
+                        compact = String(val);
+                    }
+                    $('#total-ad-spend').text(compact);
+                    $('#total-ad-spend').closest('.badge').attr('title',
+                        'View trend - Total Ad Spend: $' + val.toLocaleString('en-US'));
+                })();
                 $('#ads-percent-badge').text(avgAdsPercent.toFixed(1) + '%');
-                $('#total-views-badge').text(Math.round(totalViews).toLocaleString('en-US'));
+                (function() {
+                    const val = Math.round(totalViews);
+                    let compact;
+                    if (Math.abs(val) >= 1000000) {
+                        compact = (val / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+                    } else if (Math.abs(val) >= 1000) {
+                        compact = Math.round(val / 1000) + 'K';
+                    } else {
+                        compact = String(val);
+                    }
+                    $('#total-views-badge').text(compact);
+                    $('#total-views-badge').closest('.badge').attr('title',
+                        'View trend - Total Views (listing/Map traffic): ' + val.toLocaleString('en-US'));
+                })();
                 // Listing CVR (overall): Σ Qty / Σ Total Views — units-based to match the per-channel
                 // /temu-decrease badge (qty / views), not ad conversion; see badge title.
                 // 2 decimals so the badge value shifts day-over-day instead of holding the same
@@ -3595,29 +3542,35 @@
                 const cvrPct = totalViews > 0 ? (totalQty / totalViews) * 100 : null;
                 $('#cvr-pct-badge').text(cvrPct !== null ? Math.round(cvrPct) + '%' : '-');
                 // NPFT $ = gross profit $ − total ad spend (= L30 × (G% − Ad Spend/Sales) in aggregate)
-                $('#total-pft').text('$' + Math.round(netProfit).toLocaleString('en-US'));
+                (function() {
+                    const val = Math.round(netProfit);
+                    let compact;
+                    if (Math.abs(val) >= 1000000) {
+                        compact = (val / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+                    } else if (Math.abs(val) >= 1000) {
+                        compact = Math.round(val / 1000) + 'K';
+                    } else {
+                        compact = String(val);
+                    }
+                    $('#total-pft').text(compact);
+                    $('#total-pft').closest('.badge').attr('title',
+                        'Net profit $ = sum(rolling Sales×Gprofit% − Ad spend): $' + val.toLocaleString('en-US'));
+                })();
                 $('#avg-npft').text(Math.round(avgNpft) + '%');
                 $('#avg-nroi').text(Math.round(avgNroi) + '%');
-                $('#total-map').text(Math.round(totalMap).toLocaleString('en-US'));
                 $('#total-nmap').text(Math.round(totalNMap).toLocaleString('en-US'));
                 $('#total-miss').text(Math.round(totalMiss).toLocaleString('en-US'));
 
                 // Reviews badge: weighted avg rating (sum(rating*reviews)/sum(reviews)), total reviews (sum)
-                let ratingSum = 0, reviewsSum = 0, sellerRatingSum = 0, sellerReviewsSum = 0;
+                let ratingSum = 0, reviewsSum = 0;
                 data.forEach(row => {
                     const r = parseNumber(row['Avg Rating'] || 0);
                     const rev = parseNumber(row['Total Reviews'] || 0);
-                    const sr = parseNumber(row['Seller Avg Rating'] || 0);
-                    const srev = parseNumber(row['Seller Total Reviews'] || 0);
                     if (!isNaN(r) && !isNaN(rev) && rev > 0) { ratingSum += r * rev; reviewsSum += rev; }
-                    if (!isNaN(sr) && !isNaN(srev) && srev > 0) { sellerRatingSum += sr * srev; sellerReviewsSum += srev; }
                 });
                 const weightedAvgRating = reviewsSum > 0 ? (ratingSum / reviewsSum).toFixed(1) : '0';
                 const totalReviews = Math.round(reviewsSum).toLocaleString('en-US');
-                const sellerWeightedAvg = sellerReviewsSum > 0 ? (sellerRatingSum / sellerReviewsSum).toFixed(1) : '0';
-                const sellerTotalRev = Math.round(sellerReviewsSum).toLocaleString('en-US');
                 $('#ratings-reviews-badge').text(weightedAvgRating + ' ★ | ' + totalReviews);
-                $('#seller-ratings-reviews-badge').text(sellerWeightedAvg + ' ★ | ' + sellerTotalRev);
             }
 
             // Combine channel search and type (B2C/B2B/Dropship) filters
@@ -3674,7 +3627,42 @@
 
             // Fields that are permanently hidden in the UI but still drive calculations
             // (e.g. Growth uses L-60 Sales; NP$ is derived from L30 Sales × N PFT).
-            const PERMANENTLY_HIDDEN_FIELDS = ['L-60 Sales', 'L60 Orders', 'NP$'];
+            // PT / PMT / SERP / KW / HL breakdowns removed from page + Columns menu.
+            const PERMANENTLY_HIDDEN_FIELDS = [
+                'L-60 Sales', 'L60 Orders', 'NP$',
+                'PT Spent', 'PMT Spent', 'SERP Spent',
+                'PT Clicks', 'PMT Clicks', 'SERP Clicks',
+                'PT Sales', 'PMT Sales', 'SERP Sales',
+                'PT Sold', 'PMT Sold', 'SERP Sold',
+                'PT ACOS', 'PMT ACOS', 'SERP ACOS',
+                'PT CVR', 'PMT CVR', 'SERP CVR',
+                'KW Spent', 'HL Spent',
+                'KW Clicks', 'HL Clicks',
+                'KW Sales', 'HL Sales',
+                'HL Sold',
+                'KW ACOS', 'HL ACOS',
+                'KW CVR', 'HL CVR',
+                'A2Z Claims',
+                'Missing Ads',
+                'Map',
+                '_gross_pft',
+                'Shopping Sales', 'Shopping ACOS', 'Shopping Sold', 'Shopping CVR',
+                'ad_sold', 'Ads CVR', 'clicks', 'Ad Sales',
+                'Shipping Health',
+                'ACOS',
+                'Total PFT',
+                'Returns %',
+                'Shopping Spent', 'Shopping Clicks',
+                'compliance_count',
+                'KW Sold',
+                'CC Health',
+                'cogs',
+                'Seller Rating & Reviews',
+                'alias',
+            ];
+
+            // Hidden from Columns menu only — still shown on the table.
+            const COLUMNS_MENU_EXCLUDED_FIELDS = ['_action'];
 
             function applyColumnVisibility() {
                 if (!table) return;
@@ -3730,49 +3718,37 @@
                     const field = def.field;
                     if (!field) return;
                     if (PERMANENTLY_HIDDEN_FIELDS.indexOf(field) !== -1) return;
+                    if (COLUMNS_MENU_EXCLUDED_FIELDS.indexOf(field) !== -1) return;
 
                     const isVisible = col.isVisible();
                     const li = document.createElement("li");
+                    li.style.minWidth = '0';
                     li.innerHTML =
-                        `<label class="dropdown-item"><input type="checkbox" ${isVisible ? 'checked' : ''} data-field="${field}"> ${def.title}</label>`;
+                        `<label class="dropdown-item py-1 px-2 text-truncate" style="white-space:nowrap;" title="${def.title}"><input type="checkbox" ${isVisible ? 'checked' : ''} data-field="${field}"> ${def.title}</label>`;
                     menu.appendChild(li);
                 });
             }
 
-            // Persist current selection (Save keeps the latest changes for everyone).
-            document.getElementById("save-columns-btn")?.addEventListener("click", function() {
-                const btn = this;
-                const original = btn.innerHTML;
-                btn.disabled = true;
-                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving…';
-                saveColumnVisibility()
-                    .then(() => {
-                        btn.innerHTML = '<i class="fas fa-check"></i> Saved';
-                        if (typeof showToast === 'function') showToast('success', 'Column settings saved.');
-                    })
-                    .catch(() => {
-                        btn.innerHTML = '<i class="fas fa-times"></i> Failed';
-                        if (typeof showToast === 'function') showToast('error', 'Failed to save column settings.');
-                    })
-                    .finally(() => {
-                        setTimeout(() => {
-                            btn.disabled = false;
-                            btn.innerHTML = original;
-                        }, 1200);
-                    });
-            });
-
-            // Column visibility toggle
+            // Autosave column visibility whenever a checkbox is toggled.
+            let columnVisibilitySaveTimer = null;
             document.getElementById("column-dropdown-menu").addEventListener("change", function(e) {
-                if (e.target.type === 'checkbox') {
-                    const field = e.target.getAttribute('data-field');
-                    const col = table.getColumn(field);
-                    if (e.target.checked) {
-                        col.show();
-                    } else {
-                        col.hide();
-                    }
+                if (e.target.type !== 'checkbox') return;
+                const field = e.target.getAttribute('data-field');
+                const col = table.getColumn(field);
+                if (!col) return;
+                if (e.target.checked) {
+                    col.show();
+                } else {
+                    col.hide();
                 }
+                clearTimeout(columnVisibilitySaveTimer);
+                columnVisibilitySaveTimer = setTimeout(function() {
+                    saveColumnVisibility().catch(function() {
+                        if (typeof showToast === 'function') {
+                            showToast('error', 'Failed to save column settings.');
+                        }
+                    });
+                }, 300);
             });
 
             // Table built event — load saved column visibility, apply it, then build the menu.
@@ -4786,6 +4762,49 @@
                             ? xhr.responseJSON.message
                             : 'Error submitting form';
                         showToast('error', msg);
+                    }
+                });
+            });
+
+            // Archive channel from Edit modal
+            $(document).on('click', '#archiveChannelBtn', function() {
+                const channel = ($('#originalChannel').val() || $('#editChannelName').val() || '').trim();
+                if (!channel) {
+                    showToast('error', 'Channel name is missing');
+                    return;
+                }
+                if (!confirm(
+                        `Are you sure you want to archive channel: ${channel}?\n\nThis will set the channel status to "Inactive" and it will no longer appear in the list.`
+                    )) {
+                    return;
+                }
+                const $btn = $(this);
+                $btn.prop('disabled', true);
+                $.ajax({
+                    url: '/channel-archive',
+                    method: 'POST',
+                    data: {
+                        channel: channel,
+                        _token: '{{ csrf_token() }}'
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            const modal = bootstrap.Modal.getInstance(document.getElementById(
+                                'editChannelModal'));
+                            if (modal) modal.hide();
+                            showToast('success', 'Channel archived successfully');
+                            table.replaceData();
+                        } else {
+                            showToast('error', response.message || 'Failed to archive channel');
+                        }
+                    },
+                    error: function(xhr) {
+                        showToast('error',
+                            'Error archiving channel: ' + (xhr.responseJSON?.message ||
+                                'Unknown error'));
+                    },
+                    complete: function() {
+                        $btn.prop('disabled', false);
                     }
                 });
             });
