@@ -256,6 +256,7 @@ final class ShopifyLiveVerifiedCatalogService
             'mismatch' => $mismatch,
             'zero' => $zero,
             'counts' => [
+                'all' => $this->countDistinctActiveSkus($store),
                 'matched' => count($matched),
                 'mismatch' => count($mismatch),
                 'zero' => count($zero),
@@ -266,6 +267,40 @@ final class ShopifyLiveVerifiedCatalogService
                 'linked_zero_inv' => count($zero),
             ],
         ];
+    }
+
+    /**
+     * Keep SKUs whose normalized form appears in $allowSkus (marketplace-active set, etc.).
+     *
+     * @param  array<int, string>  $skus
+     * @param  array<int, string>  $allowSkus
+     * @return list<string>
+     */
+    public function filterSkusByNormalizedAllowList(array $skus, array $allowSkus): array
+    {
+        $allow = [];
+        foreach ($allowSkus as $sku) {
+            $n = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
+            if ($n !== '') {
+                $allow[$n] = true;
+            }
+        }
+        if ($allow === []) {
+            return [];
+        }
+
+        $out = [];
+        $seen = [];
+        foreach ($skus as $sku) {
+            $n = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
+            if ($n === '' || isset($seen[$n]) || ! isset($allow[$n])) {
+                continue;
+            }
+            $seen[$n] = true;
+            $out[] = (string) $sku;
+        }
+
+        return $out;
     }
 
     /**

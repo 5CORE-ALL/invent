@@ -6,7 +6,8 @@
         <a href="{{ route('marketplace.manager.show', 'alibaba') }}" class="text-muted small"><i class="ri-arrow-left-line"></i> Alibaba Manager</a>
         @include('marketplace._page-heading', ['slug' => 'alibaba', 'heading' => 'Alibaba Listings'])
         <p class="text-muted mb-3">
-            Linked tabs: Matched (Shopify qty = marketplace qty), Mismatch, Zero on Shopify, Not on marketplace.
+            Linked tabs: <strong>All</strong> = every Shopify live SKU.
+            <strong>Active &amp; Matched</strong> = linked with Shopify qty = Alibaba qty.
             Refresh Shopify from <a href="{{ route('marketplace.manager.index') }}">Marketplace Manager</a>.
         </p>
 
@@ -25,7 +26,9 @@
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <span class="badge bg-primary">
-                    @if(($linkTab ?? '') === 'unlinked')
+                    @if(($linkTab ?? '') === 'all')
+                        {{ $products->total() }} Shopify live SKU(s)
+                    @elseif(($linkTab ?? '') === 'unlinked')
                         {{ $products->total() }} not on Alibaba (in-stock Shopify)
                     @elseif(($linkTab ?? '') === 'matched')
                         {{ $products->total() }} linked — qty matched
@@ -72,10 +75,13 @@
                     </div>
                 </form>
 
-                @php $counts = $counts ?? ['matched' => 0, 'mismatch' => 0, 'zero' => 0, 'unlinked' => 0, 'linked' => 0]; @endphp
+                @php $counts = $counts ?? ['all' => 0, 'matched' => 0, 'mismatch' => 0, 'zero' => 0, 'unlinked' => 0, 'linked' => 0]; @endphp
                 <ul class="nav nav-tabs nav-bordered mb-3" role="tablist">
                     <li class="nav-item">
-                        <a href="{{ request()->url() }}?link=matched&search_name={{ urlencode($searchName) }}&search_sku={{ urlencode($searchSku) }}" class="nav-link {{ ($linkTab ?? '') === 'matched' ? 'active' : '' }}">Linked — Matched {{ $counts['matched'] ?? 0 }}</a>
+                        <a href="{{ request()->url() }}?link=all&search_name={{ urlencode($searchName) }}&search_sku={{ urlencode($searchSku) }}" class="nav-link {{ ($linkTab ?? '') === 'all' ? 'active' : '' }}">All {{ $counts['all'] ?? 0 }}</a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="{{ request()->url() }}?link=matched&search_name={{ urlencode($searchName) }}&search_sku={{ urlencode($searchSku) }}" class="nav-link {{ ($linkTab ?? '') === 'matched' ? 'active' : '' }}">Active &amp; Matched {{ $counts['matched'] ?? 0 }}</a>
                     </li>
                     <li class="nav-item">
                         <a href="{{ request()->url() }}?link=mismatch&search_name={{ urlencode($searchName) }}&search_sku={{ urlencode($searchSku) }}" class="nav-link {{ ($linkTab ?? '') === 'mismatch' ? 'active' : '' }}">Linked — Mismatch {{ $counts['mismatch'] ?? 0 }}</a>

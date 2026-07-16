@@ -140,20 +140,20 @@ class AlibabaSyncController extends Controller
     {
         $searchSku = trim((string) $request->input('search_sku', ''));
         $searchName = trim((string) $request->input('search_name', ''));
-        $linkTab = strtolower((string) $request->input('link', 'matched'));
-        if (in_array($linkTab, ['all', 'not_in_shopify', 'linked', 'linked_with_inv'], true)) {
+        $linkTab = strtolower((string) $request->input('link', 'all'));
+        if (in_array($linkTab, ['not_in_shopify', 'linked', 'linked_with_inv'], true)) {
             $linkTab = 'matched';
         }
         if ($linkTab === 'linked_zero') {
             $linkTab = 'zero';
         }
-        if (! in_array($linkTab, ['matched', 'mismatch', 'zero', 'unlinked'], true)) {
-            $linkTab = 'matched';
+        if (! in_array($linkTab, ['all', 'matched', 'mismatch', 'zero', 'unlinked'], true)) {
+            $linkTab = 'all';
         }
         $page = max(1, (int) $request->input('page', 1));
         $perPage = 50;
         $apiError = null;
-        $emptyCounts = ['matched' => 0, 'mismatch' => 0, 'zero' => 0, 'unlinked' => 0, 'linked' => 0];
+        $emptyCounts = ['all' => 0, 'matched' => 0, 'mismatch' => 0, 'zero' => 0, 'unlinked' => 0, 'linked' => 0];
 
         if (! Schema::hasTable('shopify_skus')) {
             $apiError = 'shopify_skus table missing. Run Shopify inventory sync first.';
@@ -177,6 +177,7 @@ class AlibabaSyncController extends Controller
         $mpStock = $this->alibabaStockMapForSkus($allLinkedVerified);
         $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock);
         $counts = $classified['counts'] ?? $emptyCounts;
+        $counts['all'] = $catalog->countDistinctActiveSkus();
 
         if (! $catalog->hasAnyActive()) {
             $apiError = trim(($apiError ? $apiError.' ' : '').'Shared Shopify live catalog is empty — refresh Shopify from Marketplace Manager.');
@@ -206,6 +207,8 @@ class AlibabaSyncController extends Controller
 
         if (in_array($linkTab, ['matched', 'mismatch', 'zero'], true)) {
             $catalog->restrictShopifySkuQuery($query, $linkedVerified);
+        } elseif ($linkTab === 'all') {
+            $catalog->restrictShopifySkuQuery($query, null, false);
         } else {
             $catalog->restrictShopifySkuQuery($query, null, true);
             if ($allLinkedVerified !== []) {

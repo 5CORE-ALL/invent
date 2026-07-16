@@ -6,8 +6,9 @@
         <a href="{{ route('marketplace.manager.show', 'newegg') }}" class="text-muted small"><i class="ri-arrow-left-line"></i> Newegg Manager</a>
         @include('marketplace._page-heading', ['slug' => 'newegg', 'heading' => 'Newegg Listings'])
         <p class="text-muted mb-3">
-            Linked tabs: Matched (Shopify qty = Newegg qty), Mismatch, Zero on Shopify. <em>Refresh live</em> warms Newegg status only.
-            Refresh Shopify from <a href="{{ route('marketplace.manager.index') }}">Marketplace Manager</a>.
+            Linked tabs: <strong>All</strong> = every Shopify live SKU.
+            <strong>Active &amp; Matched</strong> = linked, Newegg-active, and Shopify qty = Newegg qty.
+            <em>Refresh live</em> warms Newegg status. Refresh Shopify from <a href="{{ route('marketplace.manager.index') }}">Marketplace Manager</a>.
         </p>
 
         @if(!empty($shopifyCatalogSyncedAt))
@@ -25,10 +26,12 @@
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <span class="badge bg-primary">
-                    @if(($linkTab ?? '') === 'unlinked')
+                    @if(($linkTab ?? '') === 'all')
+                        {{ $products->total() }} Shopify live SKU(s)
+                    @elseif(($linkTab ?? '') === 'unlinked')
                         {{ $products->total() }} not on Newegg (in-stock Shopify)
                     @elseif(($linkTab ?? '') === 'matched')
-                        {{ $products->total() }} linked — qty matched
+                        {{ $products->total() }} active &amp; qty matched
                     @elseif(($linkTab ?? '') === 'mismatch')
                         {{ $products->total() }} linked — qty mismatch
                     @elseif(($linkTab ?? '') === 'zero')
@@ -38,7 +41,7 @@
                     @endif
                 </span>
                 <div class="d-flex gap-2 flex-wrap">
-                    @if(in_array(($linkTab ?? ''), ['matched', 'mismatch', 'zero'], true))
+                    @if(in_array(($linkTab ?? ''), ['all', 'matched', 'mismatch', 'zero'], true))
                         <a href="{{ request()->fullUrlWithQuery(['refresh_live' => 1]) }}" class="btn btn-sm btn-outline-success">
                             <i class="ri-flashlight-line"></i> Refresh live
                         </a>
@@ -60,7 +63,7 @@
             </div>
             <div class="card-body">
                 @php
-                    $counts = $counts ?? ['matched' => 0, 'mismatch' => 0, 'zero' => 0, 'unlinked' => 0, 'linked' => 0];
+                    $counts = $counts ?? ['all' => 0, 'matched' => 0, 'mismatch' => 0, 'zero' => 0, 'unlinked' => 0, 'linked' => 0];
                     $stateCounts = $stateCounts ?? ['all' => 0, 'active' => 0, 'inactive' => 0, 'other' => 0];
                     $stateTab = $stateTab ?? 'all';
                     $qName = urlencode($searchName ?? '');
@@ -93,7 +96,7 @@
                         @endif
                         <div class="col-auto">
                             <button type="submit" class="btn btn-primary btn-sm">Search</button>
-                            <a href="{{ request()->url() }}?link={{ urlencode($linkTab ?? 'matched') }}" class="btn btn-outline-secondary btn-sm">Clear</a>
+                            <a href="{{ request()->url() }}?link={{ urlencode($linkTab ?? 'all') }}" class="btn btn-outline-secondary btn-sm">Clear</a>
                         </div>
                     </div>
                     @if($isLinkedTab && empty($stateCacheReady))
@@ -103,7 +106,10 @@
 
                 <ul class="nav nav-tabs nav-bordered mb-3" role="tablist">
                     <li class="nav-item">
-                        <a href="{{ request()->url() }}?link=matched&state={{ urlencode($stateTab) }}&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'matched' ? 'active' : '' }}">Linked — Matched {{ $counts['matched'] ?? 0 }}</a>
+                        <a href="{{ request()->url() }}?link=all&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'all' ? 'active' : '' }}">All {{ $counts['all'] ?? 0 }}</a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="{{ request()->url() }}?link=matched&state={{ urlencode($stateTab) }}&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'matched' ? 'active' : '' }}">Active &amp; Matched {{ $counts['matched'] ?? 0 }}</a>
                     </li>
                     <li class="nav-item">
                         <a href="{{ request()->url() }}?link=mismatch&state={{ urlencode($stateTab) }}&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'mismatch' ? 'active' : '' }}">Linked — Mismatch {{ $counts['mismatch'] ?? 0 }}</a>
