@@ -28,8 +28,49 @@
             height: 80px !important;
         }
 
+        #summary-stats {
+            overflow-x: auto;
+            overflow-y: hidden;
+        }
+
+        #summary-stats .summary-badges-row {
+            flex-wrap: nowrap !important;
+            white-space: nowrap;
+            gap: 0.35rem !important;
+            min-width: max-content;
+        }
+
+        #summary-stats .badge {
+            font-size: 0.8rem !important;
+            padding: 0.28rem 0.45rem !important;
+            line-height: 1.2;
+        }
+
         #summary-stats .badge.active-filter {
             box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.85), 0 0 0 5px currentColor;
+        }
+
+        /* Column visibility dropdown — 4 columns */
+        .column-dropdown-multicol {
+            min-width: 560px;
+            padding: 6px 4px;
+            column-count: 4;
+            column-gap: 8px;
+            max-height: 420px;
+            overflow-y: auto;
+        }
+        .column-dropdown-multicol > li {
+            break-inside: avoid;
+            -webkit-column-break-inside: avoid;
+            page-break-inside: avoid;
+        }
+        .column-dropdown-multicol > li.column-dropdown-span-all {
+            column-span: all;
+            -webkit-column-span: all;
+        }
+        .column-dropdown-multicol .dropdown-item {
+            padding: 3px 10px;
+            white-space: nowrap;
         }
 
         .tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
@@ -138,23 +179,23 @@
             <div class="card-body py-2">
                 <!-- Summary Stats -->
                 <div id="summary-stats" class="mb-2 p-2 bg-light rounded">
-                    <div class="d-flex flex-wrap align-items-center gap-2">
-                        <span class="badge fs-6 p-2 flex-shrink-0" id="rd-sum-qty-amount-badge" style="background-color: #5dade2; color: #111; font-weight: bold;" title="Total Sales from full reverb_daily_data table: SUM(quantity × amount), rounded to whole dollars">Total Sales: $0</span>
-                        <span class="badge fs-6 p-2 flex-shrink-0" id="rd-ads-percent-badge" style="background-color: #e83e8c; color: white; font-weight: bold;" title="Ads%/TACOS on master = Bump fees ÷ Sales (L30) × 100. Bump is shown in Ads% but is not cut from NPFT/NROI (same as /all-marketplace-master).">Ads%: 0%</span>
-                        <span class="badge bg-dark fs-6 p-2 flex-shrink-0" id="rd-daily-overview-badge" style="font-weight: bold;" title="Total units: SUM(quantity) across all reverb_daily_data order rows">Orders: —</span>
-                        <span class="badge bg-info fs-6 p-2 flex-shrink-0" id="gpft-list-badge" style="color: black; font-weight: bold;" title="Weighted GPFT% = Σ[sold_qty×(RV Price×take%−LP−Ship)] ÷ Σ(sold_qty×RV Price) — same method as /temu-decrease, using normal ship">GPFT: 0%</span>
-                        <span class="badge fs-6 p-2 flex-shrink-0" id="groi-badge" style="background-color: #6f42c1; color: white; font-weight: bold;" title="Weighted GROI% = Σ[sold_qty×(RV Price×take%−LP−Ship)] ÷ Σ(sold_qty×LP) — same method as /temu-decrease, using normal ship">GROI: 0%</span>
-                        <span class="badge fs-6 p-2 flex-shrink-0" id="npft-badge" style="background-color: #0d6efd; color: white; font-weight: bold;" title="NPFT% = GPFT% (Reverb Ads% is Bump — not cut from net; same as /all-marketplace-master N PFT).">NPFT: 0%</span>
-                        <span class="badge fs-6 p-2 flex-shrink-0" id="nroi-badge" style="background-color: #6610f2; color: white; font-weight: bold;" title="NROI% = GROI% (Reverb Ads% is Bump — not cut from net; same as /all-marketplace-master N ROI).">NROI: 0%</span>
-                        <span class="badge fs-6 p-2 flex-shrink-0" id="total-views-badge" style="background-color: #0d6efd; color: white; font-weight: bold;" title="Sum of Views for currently filtered rows (same as Amazon Sess30 — raw, not ÷10)">Views: 0</span>
-                        <span class="badge fs-6 p-2 flex-shrink-0" id="avg-cvr-badge" style="background-color: #20c997; color: #000; font-weight: bold;" title="Overall CVR = Σ(RV L30) ÷ Σ(Views) × 100 — same Amazon formula as A_L30 ÷ Sess30">CVR: 0%</span>
-                        <span class="badge fs-6 p-2 flex-shrink-0" id="rd-qty-sum-badge" style="background-color: #17a2b8; color: white; font-weight: bold;" title="Sum of RD Qty column (reverb_daily_qty) for currently filtered rows">RD Qty: 0</span>
-                        <span class="badge bg-danger fs-6 p-2 flex-shrink-0" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="SKUs with reverb_daily_qty = 0">0 Sold: 0</span>
-                        <span class="badge fs-6 p-2 flex-shrink-0" id="more-sold-count-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="SKUs with reverb_daily_qty &gt; 0">&gt; 0 Sold: 0</span>
-                        <span class="badge bg-danger fs-6 p-2 flex-shrink-0" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amazon">&lt; Amz: 0</span>
-                        <span class="badge fs-6 p-2 flex-shrink-0" id="more-amz-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices greater than Amazon">&gt; Amz: 0</span>
-                        <span class="badge bg-danger fs-6 p-2 flex-shrink-0" id="missing-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter missing listings (REQ + INV&gt;0 + RV Price = 0)">Missing L: 0</span>
-                        <span class="badge bg-danger fs-6 p-2 flex-shrink-0" id="inv-r-stock-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter stock mismatch (REQ + INV&gt;0 + |INV − R Stock| &gt; 3)">N Map: 0</span>
+                    <div class="d-flex flex-nowrap align-items-center gap-1 summary-badges-row">
+                        <span class="badge flex-shrink-0" id="rd-sum-qty-amount-badge" style="background-color: #5dade2; color: #111; font-weight: bold;" title="Sales from full reverb_daily_data table: SUM(quantity × amount), rounded to whole dollars">Sales: $0</span>
+                        <span class="badge bg-dark flex-shrink-0" id="rd-daily-overview-badge" style="font-weight: bold;" title="Total units: SUM(quantity) across all reverb_daily_data order rows">Orders: —</span>
+                        <span class="badge bg-info flex-shrink-0" id="gpft-list-badge" style="color: black; font-weight: bold;" title="Weighted GPFT% = Σ[sold_qty×(RV Price×take%−LP−Ship)] ÷ Σ(sold_qty×RV Price) — same method as /temu-decrease, using normal ship">GPFT: 0%</span>
+                        <span class="badge flex-shrink-0" id="rd-ads-percent-badge" style="background-color: #e83e8c; color: white; font-weight: bold;" title="Ads% = Bump fees ÷ Sales (L30) × 100 — same as /all-marketplace-master. Cut from NPFT/NROI like Amazon.">Ads%: 0%</span>
+                        <span class="badge flex-shrink-0" id="npft-badge" style="background-color: #0d6efd; color: white; font-weight: bold;" title="NPFT% = GPFT% − Ads% (same as Amazon PFT / NPFT)">NPFT: 0%</span>
+                        <span class="badge flex-shrink-0" id="groi-badge" style="background-color: #6f42c1; color: white; font-weight: bold;" title="Weighted GROI% = Σ[sold_qty×(RV Price×take%−LP−Ship)] ÷ Σ(sold_qty×LP) — same method as /temu-decrease, using normal ship">GROI: 0%</span>
+                        <span class="badge flex-shrink-0" id="nroi-badge" style="background-color: #6610f2; color: white; font-weight: bold;" title="NROI% = (Total PFT − Ad Spend) ÷ COGS × 100; Ad Spend = Ads% × Sales (same as Amazon)">NROI: 0%</span>
+                        <span class="badge flex-shrink-0" id="total-views-badge" style="background-color: #0d6efd; color: white; font-weight: bold;" title="Sum of Views for currently filtered rows (same as Amazon Sess30 — raw, not ÷10)">Views: 0</span>
+                        <span class="badge flex-shrink-0" id="avg-cvr-badge" style="background-color: #20c997; color: #000; font-weight: bold;" title="Overall CVR = Σ(RV L30) ÷ Σ(Views) × 100 — same Amazon formula as A_L30 ÷ Sess30">CVR: 0%</span>
+                        <span class="badge flex-shrink-0" id="rd-qty-sum-badge" style="background-color: #17a2b8; color: white; font-weight: bold;" title="Sum of RD Qty column (reverb_daily_qty) for currently filtered rows">RD Qty: 0</span>
+                        <span class="badge bg-danger flex-shrink-0" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="SKUs with reverb_daily_qty = 0">0 Sold: 0</span>
+                        <span class="badge flex-shrink-0" id="more-sold-count-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="SKUs with reverb_daily_qty &gt; 0">&gt; 0 Sold: 0</span>
+                        <span class="badge bg-danger flex-shrink-0" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amazon">&lt; Amz: 0</span>
+                        <span class="badge flex-shrink-0" id="more-amz-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices greater than Amazon">&gt; Amz: 0</span>
+                        <span class="badge bg-danger flex-shrink-0" id="missing-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter missing listings (REQ + INV&gt;0 + RV Price = 0)">M L: 0</span>
+                        <span class="badge bg-danger flex-shrink-0" id="inv-r-stock-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter stock mismatch (REQ + INV&gt;0 + |INV − R Stock| &gt; 3)">N Map: 0</span>
                     </div>
                 </div>
                 <div class="d-flex align-items-center flex-wrap gap-1">
@@ -246,11 +287,12 @@
                             id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false" title="Columns">
                             <i class="fa fa-eye"></i>
                         </button>
-                        <ul class="dropdown-menu" aria-labelledby="columnVisibilityDropdown" id="column-dropdown-menu"
-                            style="max-height: 400px; overflow-y: auto;">
-                            <li><a class="dropdown-item fw-bold" href="#" id="show-all-columns-btn">
-                                    <i class="fa fa-eye"></i> Show All Columns</a></li>
-                            <li><hr class="dropdown-divider"></li>
+                        <ul class="dropdown-menu column-dropdown-multicol" aria-labelledby="columnVisibilityDropdown" id="column-dropdown-menu">
+                            <li class="dropdown-item column-dropdown-span-all">
+                                <a class="fw-bold" href="#" id="show-all-columns-btn" style="text-decoration: none; color: inherit;">
+                                    <i class="fa fa-eye"></i> Show All Columns</a>
+                            </li>
+                            <li class="column-dropdown-span-all"><hr class="dropdown-divider"></li>
                             <!-- Column toggles populated by JavaScript below this divider -->
                         </ul>
                     </div>
@@ -369,14 +411,15 @@
 
 @section('script-bottom')
 <script>
-    const COLUMN_VIS_KEY = "reverb_tabulator_column_visibility";
-    /** Stored in DB table channel_tabulator_column_settings (shared across all users — same pattern as amazon/ebay/temu tabulators). */
+    /** Shared column visibility — same /tabulator-column-visibility endpoint as Amazon (channel_tabulator_column_settings). */
     const TABULATOR_COLUMN_CHANNEL = 'reverb_tabulator';
     const TABULATOR_COLUMN_VISIBILITY_URL = '/tabulator-column-visibility';
     const REVERB_DAILY_TOTALS_URL = @json(url('reverb-daily-data-totals-json'));
+    // Columns that stay hidden even when "Show All Columns" is used.
+    const adsOnlyColumnFields = ['Parent', 'Missing_Ad', 'bump_req', 'Bump', 'RE_BID'];
     let table = null;
     // Reverb Ads% (Bump fees ÷ Sales) — loaded from the daily totals endpoint.
-    // Shown on the Ads% badge to match /all-marketplace-master; NPFT/NROI do not subtract it.
+    // Same role as Amazon channel Ads%: NPFT = GPFT − Ads%, NROI cuts Ads% from profit.
     let reverbAdsPct = 0;
     let decreaseModeActive = false;
     let increaseModeActive = false;
@@ -1651,10 +1694,10 @@
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
-                        // Reverb Ads% is Bump — NPFT% = GPFT% (same as /all-marketplace-master N PFT).
+                        // Amazon-style: NPFT% = GPFT% − Ads%
                         const value = cell.getRow().getData()['GPFT%'];
                         if (value === null || value === undefined) return '';
-                        const percent = parseFloat(value);
+                        const percent = parseFloat(value) - (parseFloat(reverbAdsPct) || 0);
                         let color = '';
                         if (percent < 10) color = '#a00211';
                         else if (percent >= 10 && percent < 15) color = '#ffc107';
@@ -1671,10 +1714,18 @@
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
-                        // Reverb Ads% is Bump — NROI% = GROI%/ROI% (same as /all-marketplace-master N ROI).
-                        const value = cell.getRow().getData()['ROI%'];
-                        if (value === null || value === undefined) return '';
-                        const percent = parseFloat(value);
+                        // Amazon-style: (gross PFT$ − Ads%×Price) / LP × 100
+                        const row = cell.getRow().getData();
+                        const rvPrice = parseFloat(row['RV Price']) || 0;
+                        const lp = parseFloat(row['LP_productmaster']) || 0;
+                        const ship = parseFloat(row['Ship_productmaster']) || 0;
+                        const pct = parseFloat(row.percentage);
+                        const takeRate = !isNaN(pct) && pct > 0 && pct <= 1 ? pct : 0.85;
+                        if (lp <= 0 || rvPrice <= 0) return '';
+                        const adsFrac = (parseFloat(reverbAdsPct) || 0) / 100;
+                        const grossPft = (rvPrice * takeRate) - lp - ship;
+                        const adSpend = rvPrice * adsFrac;
+                        const percent = ((grossPft - adSpend) / lp) * 100;
                         let color = '';
                         if (percent < 40) color = '#a00211';
                         else if (percent < 75) color = '#ffc107';
@@ -1841,10 +1892,10 @@
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
-                        // Reverb has no Ads cut on net — SNPFT = SGPFT.
+                        // Amazon-style: SNPFT = SGPFT − Ads%
                         const value = cell.getRow().getData().SGPFT;
                         if (value === null || value === undefined) return '';
-                        const percent = parseFloat(value);
+                        const percent = parseFloat(value) - (parseFloat(reverbAdsPct) || 0);
                         let color = '';
                         if (percent < 10) color = '#a00211';
                         else if (percent >= 10 && percent < 15) color = '#ffc107';
@@ -1861,10 +1912,18 @@
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
-                        // Reverb has no Ads cut on net — SNROI = SROI.
-                        const value = cell.getRow().getData().SROI;
-                        if (value === null || value === undefined) return '';
-                        const percent = parseFloat(value);
+                        // Amazon-style: (S PFT$ − Ads%×SPRICE) / LP × 100
+                        const row = cell.getRow().getData();
+                        const sprice = parseFloat(row.SPRICE) || 0;
+                        const lp = parseFloat(row['LP_productmaster']) || 0;
+                        const ship = parseFloat(row['Ship_productmaster']) || 0;
+                        const pct = parseFloat(row.percentage);
+                        const takeRate = !isNaN(pct) && pct > 0 && pct <= 1 ? pct : 0.85;
+                        if (lp <= 0 || sprice <= 0) return '';
+                        const adsFrac = (parseFloat(reverbAdsPct) || 0) / 100;
+                        const grossPft = (sprice * takeRate) - lp - ship;
+                        const adSpend = sprice * adsFrac;
+                        const percent = ((grossPft - adSpend) / lp) * 100;
                         let color = '';
                         if (percent < 40) color = '#a00211';
                         else if (percent < 75) color = '#ffc107';
@@ -2296,11 +2355,11 @@
                     }
                     const totalSales = parseFloat(d.sum_quantity_x_amount) || 0;
                     $('#rd-sum-qty-amount-badge').text(
-                        'Total Sales: $' + Math.round(totalSales).toLocaleString()
+                        'Sales: $' + Math.round(totalSales).toLocaleString()
                     );
                     $('#rd-daily-overview-badge').text('Orders: ' + (d.sum_quantity || 0));
                     // Ads% (Reverb) = Bump fees ÷ Sales — same as /all-marketplace-master Ads%/TACOS.
-                    // NPFT/NROI stay equal to GPFT/GROI (Bump is not cut from net).
+                    // NPFT/NROI subtract this like Amazon (GPFT − Ads%, (PFT − Ad Spend) / COGS).
                     const bumpFees = parseFloat(d.sum_bump_fee) || 0;
                     const adsPct = totalSales > 0 ? (bumpFees / totalSales) * 100 : 0;
                     reverbAdsPct = adsPct;
@@ -2335,7 +2394,7 @@
         // Server counts for Missing L / Map / N Map (matches all-marketplace-master)
         function applyMapMissSummary(summary) {
             if (!summary) return;
-            $('#missing-count-badge').text('Missing L: ' + (parseInt(summary.miss, 10) || 0).toLocaleString());
+            $('#missing-count-badge').text('M L: ' + (parseInt(summary.miss, 10) || 0).toLocaleString());
             $('#map-count-badge').text('Map: ' + (parseInt(summary.map, 10) || 0).toLocaleString());
             $('#inv-r-stock-badge').text('N Map: ' + (parseInt(summary.nmap, 10) || 0).toLocaleString());
         }
@@ -2411,9 +2470,15 @@
 
             $('#gpft-list-badge').text(`GPFT: ${Math.round(gpftPct)}%`);
             $('#groi-badge').text(`GROI: ${Math.round(groiPct)}%`);
-            // NPFT = GPFT, NROI = GROI — Ads% is Bump on master and is not cut from net metrics.
-            $('#npft-badge').text(`NPFT: ${Math.round(gpftPct)}%`);
-            $('#nroi-badge').text(`NROI: ${Math.round(groiPct)}%`);
+            // Amazon-style: NPFT = GPFT − Ads%; NROI = (PFT$ − Ads%×Sales) / COGS × 100
+            const adsPct = parseFloat(reverbAdsPct) || 0;
+            const npftPct = gpftPct - adsPct;
+            const adSpendEst = (adsPct / 100) * totalRevenueQtyPrice;
+            const nroiPct = totalLpSold > 0
+                ? ((totalProfitLive - adSpendEst) / totalLpSold) * 100
+                : (groiPct - adsPct);
+            $('#npft-badge').text(`NPFT: ${Math.round(npftPct)}%`);
+            $('#nroi-badge').text(`NROI: ${Math.round(nroiPct)}%`);
             // Amazon formula: Σ units ÷ Σ views × 100 (no Views÷10)
             const overallCvr = totalViewsRaw > 0 ? (totalRvL30 / totalViewsRaw) * 100 : 0;
             $('#total-views-badge').text(`Views: ${Math.round(totalViewsRaw).toLocaleString()}`);
@@ -2425,35 +2490,52 @@
             $('#more-amz-badge').text(`> Amz: ${moreAmzCount}`);
         }
 
-        // Build Column Visibility Dropdown
-        function buildColumnDropdown() {
-            const columns = table.getColumns();
-            // Keep the merged "Show All Columns" action pinned at the top.
-            let html = `<li><a class="dropdown-item fw-bold" href="#" id="show-all-columns-btn">
-                            <i class="fa fa-eye"></i> Show All Columns</a></li>
-                        <li><hr class="dropdown-divider"></li>`;
-            
-            columns.forEach(col => {
-                const field = col.getField();
-                const title = col.getDefinition().title;
-                if (field && field !== '_select' && title) {
-                    const isVisible = col.isVisible();
-                    html += `<li class="dropdown-item">
-                        <label style="cursor: pointer; display: flex; align-items: center; gap: 8px;">
-                            <input type="checkbox" class="column-toggle" data-field="${field}" ${isVisible ? 'checked' : ''}>
-                            ${title.replace(/<[^>]*>/g, '')}
-                        </label>
-                    </li>`;
-                }
-            });
-            
-            $('#column-dropdown-menu').html(html);
+        function csrfToken() {
+            return ($('meta[name="csrf-token"]').attr('content'))
+                || (document.querySelector('meta[name="csrf-token"]') || {}).content
+                || '';
         }
 
+        /**
+         * Build Columns dropdown (4-col). Same as Amazon/Shopify B2C:
+         * checkbox state prefers saved server map, else current column visibility.
+         */
+        function buildColumnDropdown(savedVisibility) {
+            const menu = document.getElementById('column-dropdown-menu');
+            if (!menu || !table) return;
+
+            const map = (savedVisibility && typeof savedVisibility === 'object') ? savedVisibility : {};
+            let html = `<li class="dropdown-item column-dropdown-span-all">
+                            <a class="fw-bold" href="#" id="show-all-columns-btn" style="text-decoration: none; color: inherit;">
+                                <i class="fa fa-eye"></i> Show All Columns</a>
+                        </li>
+                        <li class="column-dropdown-span-all"><hr class="dropdown-divider"></li>`;
+
+            table.getColumns().forEach(col => {
+                const def = col.getDefinition();
+                const field = def.field;
+                const title = def.title;
+                if (!field || field === '_select' || !title) return;
+
+                const isVisible = map.hasOwnProperty(field) ? (map[field] !== false) : col.isVisible();
+                const label = String(title).replace(/<[^>]*>/g, '');
+                html += `<li class="dropdown-item">
+                    <label style="cursor: pointer; display: flex; align-items: center; gap: 8px;">
+                        <input type="checkbox" class="column-toggle" data-field="${field}" ${isVisible ? 'checked' : ''}>
+                        ${label}
+                    </label>
+                </li>`;
+            });
+
+            menu.innerHTML = html;
+        }
+
+        /** Persist visibility to channel_tabulator_column_settings (shared — same as Amazon). */
         function saveColumnVisibilityToServer() {
+            if (!table) return;
             const visibility = {};
             table.getColumns().forEach(col => {
-                const field = col.getField();
+                const field = col.getDefinition().field;
                 if (field && field !== '_select') {
                     visibility[field] = col.isVisible();
                 }
@@ -2463,7 +2545,7 @@
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    'X-CSRF-TOKEN': csrfToken()
                 },
                 body: JSON.stringify({
                     channel: TABULATOR_COLUMN_CHANNEL,
@@ -2472,41 +2554,45 @@
             }).catch(err => console.error('Error saving column visibility:', err));
         }
 
+        /** Load + apply saved visibility, then rebuild dropdown (Amazon tableBuilt flow). */
         function applyColumnVisibilityFromServer() {
-            fetch(TABULATOR_COLUMN_VISIBILITY_URL + '?channel=' + encodeURIComponent(TABULATOR_COLUMN_CHANNEL), {
+            return fetch(TABULATOR_COLUMN_VISIBILITY_URL + '?channel=' + encodeURIComponent(TABULATOR_COLUMN_CHANNEL), {
                 method: 'GET',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    'X-CSRF-TOKEN': csrfToken()
                 }
             })
-            .then(response => response.json())
-            .then(function(visibility) {
-                if (visibility && Object.keys(visibility).length > 0) {
-                    Object.keys(visibility).forEach(field => {
-                        const col = table.getColumn(field);
-                        if (col) {
-                            if (visibility[field]) {
-                                col.show();
-                            } else {
-                                col.hide();
+                .then(res => res.json())
+                .then(savedVisibility => {
+                    const map = (savedVisibility && typeof savedVisibility === 'object') ? savedVisibility : {};
+                    if (Object.keys(map).length > 0) {
+                        table.getColumns().forEach(col => {
+                            const field = col.getDefinition().field;
+                            if (field && map.hasOwnProperty(field)) {
+                                if (map[field]) {
+                                    col.show();
+                                } else {
+                                    col.hide();
+                                }
                             }
-                        }
+                        });
+                    }
+                    // Parent + ads-only columns stay hidden (not part of normal pricing view).
+                    adsOnlyColumnFields.forEach(function(field) {
+                        const col = table.getColumn(field);
+                        if (col) col.hide();
                     });
-                }
-                // Parent + ads-only columns: always hidden by default (never show from server)
-                ['Parent', 'Missing_Ad', 'bump_req', 'Bump', 'RE_BID'].forEach(function(field) {
-                    const col = table.getColumn(field);
-                    if (col) col.hide();
+                    buildColumnDropdown(map);
+                })
+                .catch(err => {
+                    console.error('Error applying column visibility:', err);
+                    buildColumnDropdown();
                 });
-                buildColumnDropdown();
-            })
-            .catch(err => console.error('Error applying column visibility:', err));
         }
 
-        // Wait for table to be built
+        // Wait for table to be built — apply saved columns first (same as Amazon).
         table.on('tableBuilt', function() {
-            buildColumnDropdown();
             applyColumnVisibilityFromServer();
             loadReverbDailyTotalsBadges();
         });
@@ -2526,29 +2612,28 @@
             }, 100);
         });
 
-        // Toggle column from dropdown
-        document.getElementById("column-dropdown-menu").addEventListener("change", function(e) {
-            if (e.target.classList.contains('column-toggle')) {
-                const field = e.target.dataset.field;
-                const col = table.getColumn(field);
-                if (col) {
-                    if (e.target.checked) {
-                        col.show();
-                    } else {
-                        col.hide();
-                    }
-                    saveColumnVisibilityToServer();
-                }
+        // Toggle column from dropdown — save immediately (Amazon pattern).
+        document.getElementById('column-dropdown-menu').addEventListener('change', function(e) {
+            if (e.target.type !== 'checkbox') return;
+            const field = e.target.getAttribute('data-field') || e.target.dataset.field;
+            if (!field) return;
+            const col = table.getColumn(field);
+            if (!col) return;
+            if (e.target.checked) {
+                col.show();
+            } else {
+                col.hide();
             }
+            saveColumnVisibilityToServer();
         });
 
-        // Show All Columns (merged into the Columns dropdown; delegated because the
-        // menu is rebuilt by buildColumnDropdown). Parent + ads-only columns never shown.
+        // Show All Columns (ads-only columns stay hidden).
         $('#column-dropdown-menu').on('click', '#show-all-columns-btn', function(e) {
             e.preventDefault();
+            e.stopPropagation();
             table.getColumns().forEach(col => {
-                const field = col.getField();
-                if (field === '_select') return;
+                const field = col.getDefinition().field;
+                if (!field || field === '_select') return;
                 if (adsOnlyColumnFields.indexOf(field) !== -1) {
                     col.hide();
                 } else {
@@ -2558,9 +2643,6 @@
             buildColumnDropdown();
             saveColumnVisibilityToServer();
         });
-
-        // Columns that stay hidden even when "Show All Columns" is used.
-        const adsOnlyColumnFields = ['Parent', 'Missing_Ad', 'bump_req', 'Bump', 'RE_BID'];
 
         // Export CSV button
         $('#export-btn').on('click', function() {
