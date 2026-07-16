@@ -14412,7 +14412,9 @@ class ChannelMasterController extends Controller
                 if ($cmsRows->count() >= 2) {
                     $newerSd = $cmsRows->get(0)->summary_data ?? [];
                     foreach ($metrics as $metric) {
-                        $v2 = $this->getMetricValueFromSummaryData($channel, $metric, $newerSd, $metricMap);
+                        // Dot trends: allow legacy qty÷views fallback for CVR so Shopify/Temu/Reverb
+                        // don't stay permanently gray while only today has listing_cvr persisted.
+                        $v2 = $this->getMetricValueFromSummaryData($channel, $metric, $newerSd, $metricMap, true);
                         if ($v2 === null) continue;
 
                         // Walk back until we find a snapshot whose metric value differs
@@ -14424,14 +14426,16 @@ class ChannelMasterController extends Controller
                             $channel,
                             $metric,
                             $cmsRows->get(1)->summary_data ?? [],
-                            $metricMap
+                            $metricMap,
+                            true
                         );
                         for ($i = 1; $i < $cmsRows->count(); $i++) {
                             $candidate = $this->getMetricValueFromSummaryData(
                                 $channel,
                                 $metric,
                                 $cmsRows->get($i)->summary_data ?? [],
-                                $metricMap
+                                $metricMap,
+                                true
                             );
                             if ($candidate === null) continue;
                             // Use the same equality check the frontend uses (===) but with
@@ -14448,7 +14452,7 @@ class ChannelMasterController extends Controller
                 } elseif ($cmsRows->count() === 1) {
                     $sd = $cmsRows->get(0)->summary_data ?? [];
                     foreach ($metrics as $metric) {
-                        $v = $this->getMetricValueFromSummaryData($channel, $metric, $sd, $metricMap);
+                        $v = $this->getMetricValueFromSummaryData($channel, $metric, $sd, $metricMap, true);
                         $out[$channel][$metric] = $v !== null ? [$v, $v] : [null, null];
                     }
                 }
@@ -14492,19 +14496,22 @@ class ChannelMasterController extends Controller
      * Prefer persisted listing_cvr:
      *   Shopify — INV>0 OV L30 ÷ Views (/shopify-b2c-pricing)
      *   Temu / Temu 2 — sum(temu_l30) ÷ sum(product_clicks) (/temu-decrease)
-     * Otherwise order-units ÷ views. Returns null for Shopify/Temu snapshots that lack
-     * listing_cvr so charts/dots never use order-qty ÷ views (disagrees with page badges).
+     *   Reverb — Σ(RV L30) ÷ Σ(Views) (/reverb-pricing, Amazon-style)
+     * Otherwise order-units ÷ views.
+     *
+     * @param  bool  $strictListingCvr  When true (charts), Shopify/Temu/Reverb without
+     *                                  listing_cvr return null so history isn't plotted
+     *                                  from order-qty ÷ views. When false (dot trends),
+     *                                  fall back to qty÷views so dots can compare against
+     *                                  the prior day's baseline instead of staying gray.
      */
-    private function resolveListingCvrPercentFromSummary(array $sd, ?string $channel = null): ?float
+    private function resolveListingCvrPercentFromSummary(array $sd, ?string $channel = null, bool $strictListingCvr = true): ?float
     {
         if (array_key_exists('listing_cvr', $sd) && $sd['listing_cvr'] !== null && $sd['listing_cvr'] !== '') {
             return round(floatval($sd['listing_cvr']), 2);
         }
 
-        $normalized = $channel
-            ? strtolower(str_replace([' ', '-', '&', '/'], '', trim($channel)))
-            : '';
-        if (in_array($normalized, ['shopify', 'shopifyb2c', 'temu', 'temu2', 'reverb'], true)) {
+        if ($strictListingCvr && $this->channelRequiresPersistedListingCvr($channel)) {
             return null;
         }
 
@@ -14529,8 +14536,11 @@ class ChannelMasterController extends Controller
 
     /**
      * Extract a single metric value from ChannelMasterSummary summary_data (same logic as chart).
+     *
+     * @param  bool  $allowLegacyListingCvrFallback  Dot trends pass true so CVR can use
+     *                                               qty÷views when listing_cvr is missing.
      */
-    private function getMetricValueFromSummaryData(string $channel, string $metric, array $summaryData, array $metricMap): ?float
+    private function getMetricValueFromSummaryData(string $channel, string $metric, array $summaryData, array $metricMap, bool $allowLegacyListingCvrFallback = false): ?float
     {
         $metricKey = $metricMap[$metric] ?? $metric;
 
@@ -14571,7 +14581,12 @@ class ChannelMasterController extends Controller
             return $clicks > 0 ? round(($adSold / $clicks) * 100, 2) : null;
         }
         if ($metric === 'cvr') {
-            return $this->resolveListingCvrPercentFromSummary($summaryData, $channel);
+            // strictListingCvr = !allowLegacyFallback
+            return $this->resolveListingCvrPercentFromSummary(
+                $summaryData,
+                $channel,
+                ! $allowLegacyListingCvrFallback
+            );
         }
         if ($metric === 'nroi') {
             $groi = floatval($summaryData['groi_percent'] ?? 0);
