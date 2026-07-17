@@ -19,6 +19,7 @@ use App\Services\MarketplaceManager\AliexpressOrderDetailService;
 use App\Services\MarketplaceManager\AliexpressOrderPushService;
 use App\Services\MarketplaceManager\AliexpressOrderSyncService;
 use App\Services\MarketplaceManager\MarketplaceListingStockResolver;
+use App\Services\MarketplaceManager\ReverbLiveListingsService;
 use App\Services\MarketplaceManager\ShopifyLiveVerifiedCatalogService;
 use App\Services\ShopifyApiService;
 use App\Services\Support\MarketplaceApiConfigService;
@@ -209,6 +210,59 @@ class AliexpressSyncController extends Controller
         }
 
         $matchedQty = $classified['matched'] ?? [];
+        $mismatchQty = $classified['mismatch'] ?? [];
+        $zeroQty = $classified['zero'] ?? [];
+
+        if ($mismatchQty !== []) {
+            $liveShopify = app(ReverbLiveListingsService::class)->liveShopifyQtyBySkus($mismatchQty);
+            $metricMap = $this->aliexpressMetricMapForSkus($mismatchQty);
+            $productIds = [];
+            $idToSku = [];
+            foreach ($mismatchQty as $sku) {
+                $metric = $metricMap[$sku] ?? null;
+                if (! $this->isShopifySkuLinkedOnAliexpress($metric, (string) $sku)) {
+                    continue;
+                }
+                $pid = (string) ($metric->product_id ?? '');
+                if ($pid === '') {
+                    continue;
+                }
+                $productIds[] = $pid;
+                $idToSku[$pid] = (string) $sku;
+            }
+            $liveMpByUpper = [];
+            if ($productIds !== []) {
+                foreach ($liveService->liveDetailsByProductIds(array_slice(array_values(array_unique($productIds)), 0, 80)) as $pid => $row) {
+                    $sku = $idToSku[(string) $pid] ?? trim((string) ($row['sku'] ?? ''));
+                    if ($sku === '' || ! array_key_exists('inventory', $row) || $row['inventory'] === null) {
+                        continue;
+                    }
+                    $qty = (int) $row['inventory'];
+                    $liveMpByUpper[strtoupper($sku)] = $qty;
+                    $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+                    if ($norm !== '') {
+                        $liveMpByUpper[$norm] = $qty;
+                    }
+                }
+            }
+            $reconciled = MarketplaceListingStockResolver::reconcileLinkedTabsWithLiveQty(
+                $matchedQty,
+                $mismatchQty,
+                $zeroQty,
+                $liveShopify,
+                $liveMpByUpper
+            );
+            $matchedQty = $reconciled['matched'];
+            $mismatchQty = $reconciled['mismatch'];
+            $zeroQty = $reconciled['zero'];
+            $counts['matched'] = count($matchedQty);
+            $counts['mismatch'] = count($mismatchQty);
+            $counts['zero'] = count($zeroQty);
+            $counts['linked'] = $counts['matched'] + $counts['mismatch'] + $counts['zero'];
+            $counts['linked_with_inv'] = $counts['matched'];
+            $counts['linked_zero_inv'] = $counts['zero'];
+        }
+
         $matchedActive = $matchedQty;
         $matchedInactive = [];
         $matchedNormToSku = [];
@@ -235,7 +289,6 @@ class AliexpressSyncController extends Controller
             $counts['linked_with_inv'] = $counts['matched'];
         }
 
-        $mismatchQty = $classified['mismatch'] ?? [];
         $mismatchActive = $mismatchQty;
         $mismatchInactive = [];
         $mismatchNormToSku = [];
@@ -264,7 +317,7 @@ class AliexpressSyncController extends Controller
         $linkedVerified = match ($linkTab) {
             'mismatch' => $mismatchActive,
             'mismatch_inactive' => $mismatchInactive,
-            'zero' => $classified['zero'] ?? [],
+            'zero' => $zeroQty,
             'matched_inactive' => $matchedInactive,
             'matched' => $matchedActive,
             default => [],

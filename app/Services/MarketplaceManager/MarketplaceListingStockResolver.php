@@ -431,6 +431,93 @@ final class MarketplaceListingStockResolver
     }
 
     /**
+     * Re-check mismatch SKUs with the same live qty sources the listings table shows.
+     * Moves live qty-matched SKUs into matched; live Shopify <= 0 into zero.
+     * SKUs with missing live data stay in mismatch.
+     *
+     * @param  list<string>  $matched
+     * @param  list<string>  $mismatch
+     * @param  list<string>  $zero
+     * @param  array<string, int>  $liveShopifyByUpper  UPPER(sku) => qty
+     * @param  array<string, int>  $liveMpByUpper  UPPER/norm sku => marketplace qty
+     * @return array{matched: list<string>, mismatch: list<string>, zero: list<string>}
+     */
+    public static function reconcileLinkedTabsWithLiveQty(
+        array $matched,
+        array $mismatch,
+        array $zero,
+        array $liveShopifyByUpper,
+        array $liveMpByUpper
+    ): array {
+        if ($mismatch === [] || ($liveShopifyByUpper === [] && $liveMpByUpper === [])) {
+            return [
+                'matched' => array_values($matched),
+                'mismatch' => array_values($mismatch),
+                'zero' => array_values($zero),
+            ];
+        }
+
+        $stillMismatch = [];
+        $addMatched = [];
+        $addZero = [];
+
+        foreach ($mismatch as $sku) {
+            $sku = (string) $sku;
+            $upper = strtoupper(trim($sku));
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+
+            $shopifyQty = null;
+            if ($upper !== '' && array_key_exists($upper, $liveShopifyByUpper)) {
+                $shopifyQty = (int) $liveShopifyByUpper[$upper];
+            } elseif ($norm !== '' && array_key_exists($norm, $liveShopifyByUpper)) {
+                $shopifyQty = (int) $liveShopifyByUpper[$norm];
+            }
+
+            $mpQty = null;
+            if ($upper !== '' && array_key_exists($upper, $liveMpByUpper)) {
+                $mpQty = (int) $liveMpByUpper[$upper];
+            } elseif ($norm !== '' && array_key_exists($norm, $liveMpByUpper)) {
+                $mpQty = (int) $liveMpByUpper[$norm];
+            }
+
+            if ($shopifyQty === null || $mpQty === null) {
+                $stillMismatch[] = $sku;
+                continue;
+            }
+
+            if ($shopifyQty <= 0) {
+                $addZero[] = $sku;
+            } elseif ($shopifyQty === $mpQty) {
+                $addMatched[] = $sku;
+            } else {
+                $stillMismatch[] = $sku;
+            }
+        }
+
+        $dedupe = static function (array $skus): array {
+            $out = [];
+            $seen = [];
+            foreach ($skus as $sku) {
+                $n = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
+                $key = $n !== '' ? $n : strtoupper(trim((string) $sku));
+                if ($key === '' || isset($seen[$key])) {
+                    continue;
+                }
+                $seen[$key] = true;
+                $out[] = (string) $sku;
+            }
+
+            return $out;
+        };
+
+        return [
+            'matched' => $dedupe(array_merge($matched, $addMatched)),
+            'mismatch' => $dedupe($stillMismatch),
+            'zero' => $dedupe(array_merge($zero, $addZero)),
+        ];
+    }
+
+    /**
      * Resolve marketplace stock for one Shopify/listing SKU (tries shopify + metric SKU).
      */
     public static function resolveMarketplaceQty(string $channel, string $shopifySku, ?string $metricSku = null): ?int
