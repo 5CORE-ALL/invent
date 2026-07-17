@@ -1838,9 +1838,6 @@
                             <div class="quick-filter-chip" data-filter="Todo">
                                 <i class="mdi mdi-clock-outline"></i> Todo
                             </div>
-                            <div class="quick-filter-chip" data-filter="Working">
-                                <i class="mdi mdi-progress-clock"></i> Working
-                            </div>
                             <div class="quick-filter-chip" data-filter="Done">
                                 <i class="mdi mdi-check-circle"></i> Done
                             </div>
@@ -1983,9 +1980,7 @@
                                 <select id="filter-status" class="form-select form-select-sm">
                                     <option value="">Status</option>
                                     <option value="Todo">Todo</option>
-                                    <option value="Working">Working</option>
                                     <option value="Done">Done</option>
-                                    <option value="Archived">Archived</option>
                                     <option value="Need Help">Need Help</option>
                                     <option value="Need Approval">Need Approval</option>
                                     <option value="Dependent">Dependent</option>
@@ -2125,7 +2120,7 @@
 
 <!-- Mark as Done Modal -->
 <div class="modal fade" id="doneModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable" id="done-modal-dialog">
         <div class="modal-content">
             <div class="modal-header" style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: white;">
                 <h5 class="modal-title">
@@ -2135,11 +2130,28 @@
             </div>
             <div class="modal-body">
                 <div id="done-modal-errors" class="alert alert-danger d-none mb-3" role="alert"></div>
-                <div class="mb-3">
-                    <label for="task-done-report" class="form-label">Report <span class="text-danger">*</span></label>
-                    <textarea class="form-control" id="task-done-report" rows="5" placeholder="Describe what was completed, outcomes, or notes for the assignor." required></textarea>
-                    <div class="invalid-feedback d-none" id="task-done-report-feedback">Please enter a report.</div>
+                <div id="done-modal-loading" class="text-muted small mb-3 d-none"><i class="mdi mdi-loading mdi-spin me-1"></i>Loading…</div>
+
+                {{-- Checklist first when linked to automated task form --}}
+                <div id="done-checklist-pane" class="d-none mb-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <div>
+                            <div class="fw-semibold"><i class="mdi mdi-checkbox-marked-outline me-1"></i>Checklist</div>
+                            <div class="small text-muted" id="done-checklist-form-meta">—</div>
+                        </div>
+                    </div>
+                    <div id="done-checklist-questions" class="vstack gap-3"></div>
                 </div>
+
+                {{-- Normal report when no checklist --}}
+                <div id="done-report-pane">
+                    <div class="mb-3">
+                        <label for="task-done-report" class="form-label">Report <span class="text-danger">*</span></label>
+                        <textarea class="form-control" id="task-done-report" rows="5" placeholder="Describe what was completed, outcomes, or notes for the assignor."></textarea>
+                        <div class="invalid-feedback d-none" id="task-done-report-feedback">Please enter a report.</div>
+                    </div>
+                </div>
+
                 <div class="mb-3">
                     <label for="task-done-reference-link" class="form-label">Reference link <span class="text-muted fw-normal">(optional)</span></label>
                     <input type="text" class="form-control" id="task-done-reference-link" placeholder="https://…" autocomplete="off">
@@ -2508,8 +2520,8 @@
                 <div class="modal-body">
                     <div class="alert alert-info">
                         <h6 class="alert-heading"><i class="mdi mdi-information me-2"></i>CSV Format Required:</h6>
-                        <p class="mb-1"><strong>Columns:</strong> Group, Task, Assignor, Assignee, Status, Priority, Image, L1, L2, SOP (hover: Training), Video, Form, Report (hover: Form report), CL (hover: Checklist), PL</p>
-                        <p class="mb-1"><strong>Status Options:</strong> Todo, Working, Archived, Done, Need Help, Need Approval, Dependent, Approved, Hold, Cancelled</p>
+                        <p class="mb-1"><strong>Columns:</strong> Group, Task, Assignor, Assignee, Status, Priority, Image, L1, L2, SOP (hover: Training), Video, CL (hover: Checklist), Report (hover: Form report)</p>
+                        <p class="mb-1"><strong>Status Options:</strong> Todo, Done, Need Help, Need Approval, Dependent, Approved, Hold, Cancelled</p>
                         <p class="mb-0"><strong>Priority Options:</strong> Low, Normal, Urgent</p>
                         <p class="mb-0"><small class="text-muted">Note: Assignor and Assignee should match exact user names in the system</small></p>
                     </div>
@@ -2823,20 +2835,12 @@
                     <input type="text" class="form-control form-control-sm" id="tf_video_link" name="video_link" placeholder="Video Link">
                 </div>
                 <div class="mb-2">
-                    <label for="tf_form_link" class="form-label fw-bold" style="font-size: 12px;">Form</label>
-                    <input type="text" class="form-control form-control-sm" id="tf_form_link" name="form_link" placeholder="Form Link">
-                </div>
-                <div class="mb-2">
                     <label for="tf_form_report_link" class="form-label fw-bold" style="font-size: 12px;">Report</label>
                     <input type="text" class="form-control form-control-sm" id="tf_form_report_link" name="form_report_link" placeholder="Report Link">
                 </div>
                 <div class="mb-2">
                     <label for="tf_checklist_link" class="form-label fw-bold" style="font-size: 12px;">Checklist</label>
                     <input type="text" class="form-control form-control-sm" id="tf_checklist_link" name="checklist_link" placeholder="Checklist">
-                </div>
-                <div class="mb-2">
-                    <label for="tf_pl" class="form-label fw-bold" style="font-size: 12px;">PL</label>
-                    <input type="text" class="form-control form-control-sm" id="tf_pl" name="pl" placeholder="PL">
                 </div>
                 <div class="mb-2 tf-image-wrap">
                     <label class="form-label fw-bold" style="font-size: 12px;">Image</label>
@@ -3433,8 +3437,7 @@
             };
             
             window.markAsDone = function(id) {
-                currentTaskId = id;
-                $('#doneModal').modal('show');
+                openDoneModalForTask(id);
             };
             
             window.editTask = function(id) {
@@ -3951,15 +3954,13 @@
                         }
                     });
                     
-                    linkCol("Form", "link5", function(d) { return d.link5 || d.form_link; }, 44);
-                    linkCol("Report", "link6", function(d) { return d.link6 || d.form_report_link; }, 50, { minWidth: 44, headerTooltip: "Form report" });
                     linkCol("CL", "link7", function(d) { return d.link7 || d.checklist_link; }, 38, {
                         titleFormatter: function() {
                             return '<span title="Checklist" style="font-weight:700;font-size:10.8px;color:#495057;">CL</span>';
                         },
                         headerTooltip: "Checklist"
                     });
-                    linkCol("PL", "link8", function(d) { return d.link8 || d.pl; }, 36);
+                    linkCol("Report", "link6", function(d) { return d.link6 || d.form_report_link; }, 50, { minWidth: 44, headerTooltip: "Form report" });
                     
                     // STATUS
                     cols.push({
@@ -4003,8 +4004,8 @@
                                         data-current-status="${value}"
                                         style="background: ${currentStatus.bg}; color: ${currentStatus.text}; border: none; font-weight: 700; font-size: 8.8px; border-radius: 16px; padding: 4.8px 9.6px;">
                                     <option value="Todo" ${value === 'Todo' ? 'selected' : ''}>Todo</option>
-                                    <option value="Working" ${value === 'Working' ? 'selected' : ''}>Working</option>
-                                    <option value="Archived" ${value === 'Archived' ? 'selected' : ''}>Archived</option>
+                                    ${value === 'Working' ? '<option value="Working" selected>Working</option>' : ''}
+                                    ${value === 'Archived' ? '<option value="Archived" selected>Archived</option>' : ''}
                                     <option value="Done" ${value === 'Done' ? 'selected' : ''}>Done</option>
                                     <option value="Need Help" ${value === 'Need Help' ? 'selected' : ''}>Need Help</option>
                                     <option value="Need Approval" ${value === 'Need Approval' ? 'selected' : ''}>Need Approval</option>
@@ -5167,13 +5168,6 @@
                         $('#filter-assignee').val('');
                         console.log('✓ Filtering: Todo');
                         break;
-                    case 'Working':
-                        $('#filter-status').val('Working');
-                        $('#filter-priority').val('');
-                        $('#filter-assignor').val('');
-                        $('#filter-assignee').val('');
-                        console.log('✓ Filtering: Working');
-                        break;
                     case 'Done':
                         $('#filter-status').val('Done');
                         $('#filter-priority').val('');
@@ -5806,13 +5800,11 @@
                 var row = table.getRow(taskId);
                 var data = row ? row.getData() : null;
                 if (data) {
-                    // Build modal from table row: L1/L2=link1/link2, PL=link8, process=link9; link3-7=training,video,form,form_report,checklist
+                    // Build modal from table row: L1/L2=link1/link2; link3-7=training,video,form_report,checklist
                     var l1Val = data.l1 || data.link1 || '';
                     var l2Val = data.l2 || data.link2 || '';
-                    var plVal = data.pl || data.link8 || '';
                     var training = data.training_link || data.link3 || '';
                     var video = data.video_link || data.link4 || '';
-                    var form = data.form_link || data.link5 || '';
                     var formReport = data.form_report_link || data.link6 || '';
                     var checklist = data.checklist_link || data.link7 || '';
                     var escapeHtml = function(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); };
@@ -5846,10 +5838,8 @@
                         '<tr><th style="color: #6c757d; font-weight: 600;">L2:</th><td>' + (l2Val ? linkCell(l2Val) : '<span style="color: #adb5bd;">-</span>') + '</td></tr>' +
                         '<tr><th style="color: #6c757d; font-weight: 600;">Training Link:</th><td>' + linkCell(training) + '</td></tr>' +
                         '<tr><th style="color: #6c757d; font-weight: 600;">Video Link:</th><td>' + linkCell(video) + '</td></tr>' +
-                        '<tr><th style="color: #6c757d; font-weight: 600;">Form Link:</th><td>' + linkCell(form) + '</td></tr>' +
                         '<tr><th style="color: #6c757d; font-weight: 600;">Form Report Link:</th><td>' + linkCell(formReport) + '</td></tr>' +
                         '<tr><th style="color: #6c757d; font-weight: 600;">Checklist Link:</th><td>' + linkCell(checklist) + '</td></tr>' +
-                        '<tr><th style="color: #6c757d; font-weight: 600;">PL:</th><td>' + (plVal ? linkCell(plVal) : '<span style="color: #adb5bd;">-</span>') + '</td></tr>' +
                         (data.image
                             ? '<tr><th style="color: #6c757d; font-weight: 600; vertical-align: top;">Image:</th><td>' +
                               '<a href="/uploads/tasks/' + escapeHtml(data.image) + '" target="_blank" rel="noopener" title="Open full-size image in a new tab">' +
@@ -5871,10 +5861,8 @@
                         success: function(response) {
                             var l1Val = response.l1 || response.link1 || '';
                             var l2Val = response.l2 || response.link2 || '';
-                            var plVal = response.pl || response.link8 || '';
                             var training = response.training_link || response.link3 || '';
                             var video = response.video_link || response.link4 || '';
-                            var form = response.form_link || response.link5 || '';
                             var formReport = response.form_report_link || response.link6 || '';
                             var checklist = response.checklist_link || response.link7 || '';
                             var escapeHtml = function(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); };
@@ -5907,10 +5895,8 @@
                                 '<tr><th style="color: #6c757d; font-weight: 600;">L2:</th><td>' + (l2Val ? linkCell(l2Val) : '<span style="color: #adb5bd;">-</span>') + '</td></tr>' +
                                 '<tr><th style="color: #6c757d; font-weight: 600;">Training Link:</th><td>' + linkCell(training) + '</td></tr>' +
                                 '<tr><th style="color: #6c757d; font-weight: 600;">Video Link:</th><td>' + linkCell(video) + '</td></tr>' +
-                                '<tr><th style="color: #6c757d; font-weight: 600;">Form Link:</th><td>' + linkCell(form) + '</td></tr>' +
                                 '<tr><th style="color: #6c757d; font-weight: 600;">Form Report Link:</th><td>' + linkCell(formReport) + '</td></tr>' +
                                 '<tr><th style="color: #6c757d; font-weight: 600;">Checklist Link:</th><td>' + linkCell(checklist) + '</td></tr>' +
-                                '<tr><th style="color: #6c757d; font-weight: 600;">PL:</th><td>' + (plVal ? linkCell(plVal) : '<span style="color: #adb5bd;">-</span>') + '</td></tr>' +
                                 (response.image
                                     ? '<tr><th style="color: #6c757d; font-weight: 600; vertical-align: top;">Image:</th><td>' +
                                       '<a href="/uploads/tasks/' + escapeHtml(response.image) + '" target="_blank" rel="noopener" title="Open full-size image in a new tab">' +
@@ -6151,7 +6137,7 @@
                         $('#tf_assignor_id').val(String(currentUserId));
                     }
                     tfSetVal('tf_tid', tfNowLocal());
-                    ['tf_l1','tf_l2','tf_training_link','tf_video_link','tf_form_link','tf_form_report_link','tf_checklist_link','tf_pl'].forEach(function(id){ tfSetVal(id, ''); });
+                    ['tf_l1','tf_l2','tf_training_link','tf_video_link','tf_form_report_link','tf_checklist_link'].forEach(function(id){ tfSetVal(id, ''); });
                     $('#tf_image_current').empty();
                     tfSetMoreFields(false);
                 } else {
@@ -6178,10 +6164,8 @@
                     tfSetVal('tf_l2', rowData.link2);
                     tfSetVal('tf_training_link', rowData.link3);
                     tfSetVal('tf_video_link', rowData.link4);
-                    tfSetVal('tf_form_link', rowData.link5);
                     tfSetVal('tf_form_report_link', rowData.link6);
                     tfSetVal('tf_checklist_link', rowData.link7);
-                    tfSetVal('tf_pl', rowData.link8);
 
                     if (rowData.image) {
                         var url = '{{ asset('uploads/tasks') }}/' + rowData.image;
@@ -6335,6 +6319,147 @@
             var currentTaskId = null;
             var previousStatus = null;
             var newStatusValue = null;
+            var doneChecklistMode = false;
+            var doneChecklistQuestions = [];
+
+            function doneEsc(t) {
+                return String(t == null ? '' : t)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#039;');
+            }
+
+            function resetDoneModalUi() {
+                doneChecklistMode = false;
+                doneChecklistQuestions = [];
+                $('#done-checklist-pane').addClass('d-none');
+                $('#done-report-pane').removeClass('d-none');
+                $('#done-checklist-questions').empty();
+                $('#done-checklist-form-meta').text('—');
+                $('#done-modal-loading').addClass('d-none');
+                $('#task-done-report').val('');
+                $('#task-done-reference-link').val('');
+                $('#task-done-atc').val('');
+                $('#done-modal-errors').addClass('d-none').text('');
+                $('#task-done-report').removeClass('is-invalid');
+                $('#task-done-report-feedback').addClass('d-none');
+                $('#task-done-atc').removeClass('is-invalid');
+                $('#task-done-atc-feedback').addClass('d-none');
+            }
+
+            function renderDoneChecklistQuestions(questions) {
+                var $box = $('#done-checklist-questions');
+                $box.empty();
+                (questions || []).forEach(function(q, idx) {
+                    var req = q.required ? ' <span class="text-danger">*</span>' : '';
+                    var qid = doneEsc(q.id);
+                    var html = '<div class="border rounded p-2 bg-light done-cl-item" data-qid="' + qid + '" data-type="' + doneEsc(q.type) + '">';
+                    html += '<div class="fw-semibold mb-2">' + (idx + 1) + '. ' + doneEsc(q.label) + req + '</div>';
+                    if (q.type === 'checkbox') {
+                        html += '<div class="d-flex gap-3 mb-2">' +
+                            '<div class="form-check"><input class="form-check-input done-cl-yn" type="radio" name="done_cl_yn_' + qid + '" id="done_cl_yes_' + qid + '" value="yes" data-qid="' + qid + '">' +
+                            '<label class="form-check-label" for="done_cl_yes_' + qid + '">Yes</label></div>' +
+                            '<div class="form-check"><input class="form-check-input done-cl-yn" type="radio" name="done_cl_yn_' + qid + '" id="done_cl_no_' + qid + '" value="no" data-qid="' + qid + '">' +
+                            '<label class="form-check-label" for="done_cl_no_' + qid + '">No</label></div>' +
+                            '</div>';
+                        html += '<div class="done-cl-no-fields d-none border-top pt-2 mt-1" data-qid="' + qid + '">' +
+                            '<div class="small text-muted mb-2">If No — fill at least one field <span class="text-danger">*</span></div>' +
+                            '<div class="mb-2">' +
+                            '<div class="d-flex justify-content-between align-items-center mb-1">' +
+                            '<label class="form-label small fw-semibold mb-0">Action</label>' +
+                            '<button type="button" class="btn btn-sm btn-outline-primary py-0 px-2 done-cl-add-action" data-qid="' + qid + '" title="Add another action">+</button>' +
+                            '</div>' +
+                            '<div class="done-cl-actions-list vstack gap-2" data-qid="' + qid + '">' +
+                            '<div class="input-group input-group-sm done-cl-action-row">' +
+                            '<input type="text" class="form-control done-cl-action" data-qid="' + qid + '" placeholder="Action">' +
+                            '</div></div></div>' +
+                            '<div class="mb-0"><label class="form-label small fw-semibold mb-1">Corrective action</label>' +
+                            '<input type="text" class="form-control form-control-sm done-cl-corrective" data-qid="' + qid + '" placeholder="Corrective action"></div>' +
+                            '</div>';
+                    } else {
+                        html += '<input type="text" class="form-control form-control-sm done-cl-text" data-qid="' + qid + '" placeholder="Enter answer">';
+                    }
+                    html += '</div>';
+                    $box.append(html);
+                });
+            }
+
+            function collectDoneChecklistAnswers() {
+                var answers = {};
+                var missing = null;
+                doneChecklistQuestions.forEach(function(q) {
+                    if (q.type === 'checkbox') {
+                        var yn = $('input.done-cl-yn[name="done_cl_yn_' + q.id + '"]:checked').val();
+                        if (!yn) {
+                            if (!missing) missing = 'Select Yes or No for: ' + q.label;
+                            return;
+                        }
+                        var isYes = yn === 'yes';
+                        var actions = [];
+                        $('.done-cl-action[data-qid="' + q.id + '"]').each(function() {
+                            var v = ($(this).val() || '').trim();
+                            if (v) actions.push(v);
+                        });
+                        var corrective = ($('.done-cl-corrective[data-qid="' + q.id + '"]').val() || '').trim();
+                        if (!isYes && !actions.length && !corrective) {
+                            if (!missing) missing = 'For "' + q.label + '", enter Action or Corrective action (minimum one)';
+                            return;
+                        }
+                        answers[q.id] = {
+                            answer: isYes,
+                            actions: isYes ? [] : actions,
+                            action: isYes ? '' : (actions[0] || ''),
+                            corrective_action: isYes ? '' : corrective
+                        };
+                    } else {
+                        var val = ($('.done-cl-text[data-qid="' + q.id + '"]').val() || '').trim();
+                        if (q.required && !val && !missing) missing = 'Please complete required field: ' + q.label;
+                        answers[q.id] = val;
+                    }
+                });
+                return { answers: answers, missing: missing };
+            }
+
+            async function openDoneModalForTask(taskId) {
+                currentTaskId = taskId;
+                resetDoneModalUi();
+                $('#done-modal-loading').removeClass('d-none');
+                $('#doneModal').modal('show');
+                try {
+                    var res = await fetch('/tasks/' + taskId + '/done-checklist', {
+                        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                        credentials: 'same-origin'
+                    });
+                    var data = await res.json().catch(function() { return {}; });
+                    $('#done-modal-loading').addClass('d-none');
+                    if (!res.ok) {
+                        $('#done-report-pane').removeClass('d-none');
+                        return;
+                    }
+                    if (data.has_checklist && data.form && data.form.questions && data.form.questions.length) {
+                        doneChecklistMode = true;
+                        doneChecklistQuestions = data.form.questions.slice();
+                        $('#done-checklist-pane').removeClass('d-none');
+                        $('#done-report-pane').addClass('d-none');
+                        $('#done-checklist-form-meta').text(
+                            'Form ID: ' + (data.form.id || '—') +
+                            (data.form.title ? ' · ' + data.form.title : '') +
+                            (data.automate_task_id ? ' · Automated task #' + data.automate_task_id : '')
+                        );
+                        renderDoneChecklistQuestions(doneChecklistQuestions);
+                    } else {
+                        doneChecklistMode = false;
+                        $('#done-checklist-pane').addClass('d-none');
+                        $('#done-report-pane').removeClass('d-none');
+                    }
+                } catch (e) {
+                    $('#done-modal-loading').addClass('d-none');
+                    doneChecklistMode = false;
+                    $('#done-report-pane').removeClass('d-none');
+                }
+            }
 
             function openReworkModalForTask(taskId) {
                 var row = table.getRow(taskId);
@@ -6354,6 +6479,40 @@
                 var tid = $(this).data('id');
                 if (tid) {
                     openReworkModalForTask(tid);
+                }
+            });
+
+            $(document).on('change', '.done-cl-yn', function() {
+                var qid = $(this).data('qid');
+                var isNo = $(this).val() === 'no' && $(this).is(':checked');
+                var $fields = $('.done-cl-no-fields[data-qid="' + qid + '"]');
+                if (isNo) $fields.removeClass('d-none');
+                else $fields.addClass('d-none');
+            });
+
+            $(document).on('click', '.done-cl-add-action', function(e) {
+                e.preventDefault();
+                var qid = $(this).data('qid');
+                var $list = $('.done-cl-actions-list[data-qid="' + qid + '"]');
+                $list.append(
+                    '<div class="input-group input-group-sm done-cl-action-row">' +
+                    '<input type="text" class="form-control done-cl-action" data-qid="' + doneEsc(qid) + '" placeholder="Action">' +
+                    '<button type="button" class="btn btn-outline-danger done-cl-remove-action" title="Remove">&times;</button>' +
+                    '</div>'
+                );
+                $list.find('.done-cl-action').last().focus();
+            });
+
+            $(document).on('click', '.done-cl-remove-action', function(e) {
+                e.preventDefault();
+                var $list = $(this).closest('.done-cl-actions-list');
+                $(this).closest('.done-cl-action-row').remove();
+                if (!$list.find('.done-cl-action-row').length) {
+                    $list.append(
+                        '<div class="input-group input-group-sm done-cl-action-row">' +
+                        '<input type="text" class="form-control done-cl-action" data-qid="' + doneEsc($list.data('qid')) + '" placeholder="Action">' +
+                        '</div>'
+                    );
                 }
             });
             
@@ -6377,8 +6536,7 @@
                 previousStatus = select.data('current-status');
                 
                 if (newStatusValue === 'Done') {
-                    // Show Done Modal (ask for ATC)
-                    $('#doneModal').modal('show');
+                    openDoneModalForTask(currentTaskId);
                     select.val(previousStatus);
                 } else {
                     // Show Status Change Modal (ask for reason)
@@ -6389,7 +6547,7 @@
                 }
             });
 
-            // Confirm Done — POST /tasks/{id}/complete (report + ATC required, reference link optional)
+            // Confirm Done — checklist (if linked) or normal report + ATC
             $('#confirm-done-btn').on('click', function() {
                 $('#done-modal-errors').addClass('d-none').text('');
                 $('#task-done-report').removeClass('is-invalid');
@@ -6397,11 +6555,27 @@
                 $('#task-done-atc').removeClass('is-invalid');
                 $('#task-done-atc-feedback').addClass('d-none');
 
-                var report = $('#task-done-report').val().trim();
-                if (!report) {
-                    $('#task-done-report').addClass('is-invalid');
-                    $('#task-done-report-feedback').removeClass('d-none');
-                    return;
+                var payload = {
+                    _token: '{{ csrf_token() }}',
+                    reference_link: $('#task-done-reference-link').val().trim() || '',
+                    atc: null
+                };
+
+                if (doneChecklistMode) {
+                    var collected = collectDoneChecklistAnswers();
+                    if (collected.missing) {
+                        $('#done-modal-errors').removeClass('d-none').text(collected.missing);
+                        return;
+                    }
+                    payload.checklist_answers = collected.answers;
+                } else {
+                    var report = $('#task-done-report').val().trim();
+                    if (!report) {
+                        $('#task-done-report').addClass('is-invalid');
+                        $('#task-done-report-feedback').removeClass('d-none');
+                        return;
+                    }
+                    payload.report = report;
                 }
 
                 var atcRaw = $('#task-done-atc').val();
@@ -6416,25 +6590,18 @@
                     $('#task-done-atc-feedback').removeClass('d-none');
                     return;
                 }
+                payload.atc = atcNum;
 
-                var refLink = $('#task-done-reference-link').val().trim();
                 var $btn = $(this);
                 $btn.prop('disabled', true);
 
                 $.ajax({
                     url: '/tasks/' + currentTaskId + '/complete',
                     type: 'POST',
-                    data: {
-                        _token: '{{ csrf_token() }}',
-                        report: report,
-                        reference_link: refLink || '',
-                        atc: atcNum
-                    },
+                    data: payload,
                     success: function(response) {
                         $('#doneModal').modal('hide');
-                        $('#task-done-report').val('');
-                        $('#task-done-reference-link').val('');
-                        $('#task-done-atc').val('');
+                        resetDoneModalUi();
                         table.replaceData();
 
                         var alertHtml = `
@@ -6455,6 +6622,9 @@
                             var parts = [];
                             if (e.report) {
                                 parts = parts.concat(e.report);
+                            }
+                            if (e.checklist_answers) {
+                                parts = parts.concat(e.checklist_answers);
                             }
                             if (e.reference_link) {
                                 parts = parts.concat(e.reference_link);
@@ -6484,14 +6654,7 @@
             });
 
             $('#doneModal').on('hidden.bs.modal', function () {
-                $('#task-done-report').val('');
-                $('#task-done-reference-link').val('');
-                $('#task-done-atc').val('');
-                $('#done-modal-errors').addClass('d-none').text('');
-                $('#task-done-report').removeClass('is-invalid');
-                $('#task-done-report-feedback').addClass('d-none');
-                $('#task-done-atc').removeClass('is-invalid');
-                $('#task-done-atc-feedback').addClass('d-none');
+                resetDoneModalUi();
             });
 
             // Confirm Status Change

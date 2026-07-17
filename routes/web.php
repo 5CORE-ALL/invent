@@ -5953,6 +5953,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::put('/tasks/automated/{id}', [\App\Http\Controllers\TaskController::class, 'automatedUpdate'])->name('tasks.automatedUpdate');
     Route::delete('/tasks/automated/{id}', [\App\Http\Controllers\TaskController::class, 'automatedDestroy'])->name('tasks.automatedDestroy');
     Route::post('/tasks/automated/expire-daily', [\App\Http\Controllers\TaskController::class, 'expireDailyAutomatedTasks'])->name('tasks.expireDailyAutomated');
+
+    Route::get('/tasks/automated/{automateTaskId}/checklist', [\App\Http\Controllers\AutomatedTaskChecklistController::class, 'show'])->name('tasks.automatedChecklist.show');
+    Route::post('/tasks/automated/{automateTaskId}/checklist', [\App\Http\Controllers\AutomatedTaskChecklistController::class, 'save'])->name('tasks.automatedChecklist.save');
+    Route::post('/tasks/automated/{automateTaskId}/checklist/submit', [\App\Http\Controllers\AutomatedTaskChecklistController::class, 'submit'])->name('tasks.automatedChecklist.submit');
+    Route::get('/tasks/automated/{automateTaskId}/checklist/history', [\App\Http\Controllers\AutomatedTaskChecklistController::class, 'history'])->name('tasks.automatedChecklist.history');
     Route::get('/tasks/today-deleted/data', [\App\Http\Controllers\TaskController::class, 'todayDeletedData'])->name('tasks.todayDeleted.data');
     Route::post('/tasks/today-deleted/{id}/revert', [\App\Http\Controllers\TaskController::class, 'revertTodayDeletedTask'])->name('tasks.todayDeleted.revert');
     Route::post('/tasks/today-deleted/bulk-revert', [\App\Http\Controllers\TaskController::class, 'bulkRevertTodayDeleted'])->name('tasks.todayDeleted.bulkRevert');
@@ -6028,6 +6033,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/tasks/{id}/edit', [\App\Http\Controllers\TaskController::class, 'edit'])->name('tasks.edit');
     Route::put('/tasks/{id}', [\App\Http\Controllers\TaskController::class, 'update'])->name('tasks.update');
     Route::delete('/tasks/{id}', [\App\Http\Controllers\TaskController::class, 'destroy'])->name('tasks.destroy');
+    Route::get('/tasks/{id}/done-checklist', [\App\Http\Controllers\TaskController::class, 'doneChecklist'])->name('tasks.doneChecklist');
     Route::post('/tasks/{id}/complete', [\App\Http\Controllers\TaskController::class, 'complete'])->name('tasks.complete');
     Route::post('/tasks/{id}/update-status', [\App\Http\Controllers\TaskController::class, 'updateStatus'])->name('tasks.updateStatus');
 
