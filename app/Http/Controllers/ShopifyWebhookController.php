@@ -36,11 +36,16 @@ class ShopifyWebhookController extends Controller
             Log::warning('ShopifyWebhookController: unexpected topic', ['topic' => $topic]);
         }
 
-        $secret = config('services.shopify.webhook_secret') ?? env('SHOPIFY_WEBHOOK_SECRET');
+        $secret = config('services.shopify.webhook_secret')
+            ?: env('SHOPIFY_WEBHOOK_SECRET')
+            ?: env('SHOPIFY_API_SECRET')
+            ?: env('SHOPIFY_SHARED_SECRET');
         if (! $secret) {
-            Log::error('ShopifyWebhookController: SHOPIFY_WEBHOOK_SECRET missing — rejecting');
+            Log::error('ShopifyWebhookController: SHOPIFY_WEBHOOK_SECRET missing — rejecting', [
+                'hint' => 'Set SHOPIFY_WEBHOOK_SECRET (or SHOPIFY_API_SECRET) to the Shopify app API secret key used to sign webhooks.',
+            ]);
 
-            return response()->json(['error' => 'Webhook secret not configured'], 503);
+            return response()->json(['error' => 'Webhook secret not configured'], 401);
         }
 
         $hmac = $request->header('X-Shopify-Hmac-Sha256') ?? '';
