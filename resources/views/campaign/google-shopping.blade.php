@@ -382,7 +382,7 @@
                         <button type="button" class="btn btn-sm btn-warning text-dark" id="gac-raw-push-sbgt" title="Runs budget:update-shopping — sets Google Shopping daily budgets from the saved SBGT rule. Waits until complete; shows success or error.">
                             <i class="fa fa-cloud-upload-alt"></i> Push SBGT
                         </button>
-                        <button type="button" class="btn btn-sm btn-warning text-dark" id="gac-raw-push-sbid" title="Runs sbid:update — pushes SBIDs for PARENT Shopping campaigns from the saved SBID rule. Waits until complete; shows success or error.">
+                        <button type="button" class="btn btn-sm btn-warning text-dark" id="gac-raw-push-sbid" title="Pushes SBIDs in chunks of 10 using grid values (by campaign_id). Waits until complete; shows success or error.">
                             <i class="fa fa-cloud-upload-alt"></i> Push SBID
                         </button>
                     </div>
@@ -1876,47 +1876,111 @@
                 var origHtml = opts.btn.innerHTML;
                 opts.btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Pushing…';
 
-                gacShowPushLoading(opts.loadingTitle, opts.loadingDetail);
+                var chunkSize = Number(opts.chunkSize) > 0 ? Number(opts.chunkSize) : 0;
+                var chunks = [];
+                if (chunkSize > 0) {
+                    for (var i = 0; i < campaignIds.length; i += chunkSize) {
+                        chunks.push(campaignIds.slice(i, i + chunkSize));
+                    }
+                } else {
+                    chunks = [campaignIds];
+                }
+
+                var total = campaignIds.length;
+                var chunkCount = chunks.length;
+                gacShowPushLoading(
+                    opts.loadingTitle,
+                    (opts.loadingDetail || '')
+                        + (chunkCount > 1
+                            ? (' Sending in ' + chunkCount + ' chunk(s) of up to ' + chunkSize + '.')
+                            : '')
+                );
 
                 var token = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
-                fetch(opts.url, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        Accept: 'application/json',
-                        'X-CSRF-TOKEN': token,
-                        'X-Requested-With': 'XMLHttpRequest',
-                    },
-                    credentials: 'same-origin',
-                    body: JSON.stringify({ campaign_ids: campaignIds }),
-                })
-                    .then(function(res) {
+                var outputs = [];
+                var messages = [];
+                var lastCmd = 'command';
+                var anyError = false;
+                var doneCount = 0;
+
+                function postChunk(ids) {
+                    return fetch(opts.url, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            Accept: 'application/json',
+                            'X-CSRF-TOKEN': token,
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({ campaign_ids: ids }),
+                    }).then(function(res) {
                         return res.json().then(function(body) {
                             return { ok: res.ok, status: res.status, body: body };
+                        }).catch(function() {
+                            throw new Error('Server returned a non-JSON response (HTTP '
+                                + res.status + '). The request may have timed out — try fewer rows.');
                         });
-                    })
-                    .then(function(out) {
-                        var b = out.body || {};
-                        var cmd = b.command || 'command';
-                        var success = out.ok && b.ok !== false;
-                        var title = cmd + ' — ' + (success ? 'finished' : 'failed');
-                        if (b.exit_code != null) {
-                            title += ' (exit ' + b.exit_code + ')';
-                        }
-                        var text = (b.message ? b.message + '\n\n' : '') + (b.output || '');
-                        gacShowPushResult(title, text, success ? 'success' : 'error');
+                    });
+                }
+
+                function runNext(index) {
+                    if (index >= chunks.length) {
+                        var success = !anyError;
+                        var title = lastCmd + ' — ' + (success ? 'finished' : 'failed');
+                        title += ' (' + total + ' id(s) in ' + chunkCount + ' chunk(s))';
+                        var text = (messages.length ? messages.join('\n') + '\n\n' : '')
+                            + outputs.join('\n\n--- next chunk ---\n\n');
+                        gacShowPushResult(title, text || '(no console output)', success ? 'success' : 'error');
                         if (success && table) {
                             Promise.resolve(table.setData(dataUrl)).finally(gacRawRefreshTableUiSoon);
                         }
-                    })
-                    .catch(function(err) {
-                        gacShowPushResult('Request failed', String(err && err.message ? err.message : err), 'error');
-                    })
-                    .finally(function() {
                         opts.btn.innerHTML = origHtml;
                         if (sbgtB) sbgtB.disabled = false;
                         if (sbidB) sbidB.disabled = false;
-                    });
+                        return;
+                    }
+
+                    var chunk = chunks[index];
+                    doneCount += chunk.length;
+                    opts.btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Pushing '
+                        + doneCount + '/' + total + '…';
+                    gacShowPushLoading(
+                        opts.loadingTitle,
+                        'Chunk ' + (index + 1) + '/' + chunkCount
+                            + ' (' + doneCount + '/' + total + ' campaign id(s)). Waiting for Google Ads API — do not close this tab.'
+                    );
+
+                    postChunk(chunk)
+                        .then(function(out) {
+                            var b = out.body || {};
+                            lastCmd = b.command || lastCmd;
+                            var success = out.ok && b.ok !== false;
+                            if (!success) anyError = true;
+                            if (b.message) {
+                                messages.push('[chunk ' + (index + 1) + '/' + chunkCount + '] ' + b.message);
+                            }
+                            if (b.output) {
+                                outputs.push(b.output);
+                            }
+                            runNext(index + 1);
+                        })
+                        .catch(function(err) {
+                            anyError = true;
+                            messages.push('[chunk ' + (index + 1) + '/' + chunkCount + '] '
+                                + String(err && err.message ? err.message : err));
+                            // Stop further chunks on transport failure so we don't keep hammering.
+                            var title = lastCmd + ' — failed (' + doneCount + '/' + total + ' sent)';
+                            var text = (messages.length ? messages.join('\n') + '\n\n' : '')
+                                + outputs.join('\n\n--- next chunk ---\n\n');
+                            gacShowPushResult(title, text || String(err && err.message ? err.message : err), 'error');
+                            opts.btn.innerHTML = origHtml;
+                            if (sbgtB) sbgtB.disabled = false;
+                            if (sbidB) sbidB.disabled = false;
+                        });
+                }
+
+                runNext(0);
             }
 
             var pullDataBtn = document.getElementById('gac-raw-pull-data');
@@ -2008,13 +2072,15 @@
                     var scope = nSel > 0
                         ? ('the ' + ids.length + ' checked row(s)')
                         : ('all ' + ids.length + ' row(s) on this page');
+                    var sbidChunks = Math.ceil(ids.length / 10) || 1;
                     gacRunArtisanPush({
                         url: gacRawPushSbidUrl,
                         btn: pushSbidBtn,
                         campaign_ids: ids,
-                        confirmMsg: 'Push SBID to ' + scope + '? Each row is sent to Google Ads using the SBID value shown in the grid (direct by campaign_id). Rows with SBID — are skipped.',
+                        chunkSize: 10,
+                        confirmMsg: 'Push SBID to ' + scope + '? Sends in chunks of 10 (' + sbidChunks + ' request(s)). Each row uses the SBID shown in the grid. Rows with SBID — are skipped.',
                         loadingTitle: 'Pushing SBID (sbid:update)…',
-                        loadingDetail: 'Updating SBIDs for ' + ids.length + ' campaign id(s). Waiting for Google Ads API — do not close this tab.',
+                        loadingDetail: 'Updating SBIDs for ' + ids.length + ' campaign id(s) in chunks of 10.',
                     });
                 });
             }

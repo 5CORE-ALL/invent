@@ -40,17 +40,41 @@ class TeamSalaryCalculator
 
         foreach (TeamLoggerHours::where('month', $monthLabel)->get() as $record) {
             $email = strtolower($record->employee_email);
+            // Always exclude idle: prefer total - idle when both are present.
+            $productive = $this->productiveHoursFromRecord($record);
+
             if (isset($data[$email])) {
                 // On a forced refresh, live API hours win over stale DB snapshots.
                 if (! $preferApi) {
-                    $data[$email]['hours'] = $record->productive_hours;
+                    $data[$email]['hours'] = $productive;
                 }
             } else {
-                $data[$email] = ['hours' => $record->productive_hours];
+                $data[$email] = [
+                    'hours' => $productive,
+                    'total_hours' => (float) ($record->total_hours ?? 0),
+                    'idle_hours' => (float) ($record->idle_hours ?? 0),
+                    'active_hours' => $productive,
+                ];
             }
         }
 
         return $data;
+    }
+
+    /**
+     * Productive hours for salary/payroll (idle excluded).
+     * When total + idle are stored, recompute so we never pay on idle time.
+     */
+    public function productiveHoursFromRecord(TeamLoggerHours $record): int
+    {
+        $total = (float) ($record->total_hours ?? 0);
+        $idle = (float) ($record->idle_hours ?? 0);
+
+        if ($total > 0) {
+            return (int) round(max(0, $total - max(0, $idle)));
+        }
+
+        return (int) round((float) ($record->productive_hours ?? $record->active_hours ?? 0));
     }
 
     public function calculateForUser(User $user, array $teamLoggerData, ?array $mapping = null): array
