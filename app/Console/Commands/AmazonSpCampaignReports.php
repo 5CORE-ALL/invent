@@ -52,6 +52,12 @@ class AmazonSpCampaignReports extends Command
                 DB::connection()->disconnect();
             }
 
+            // Amazon daily reports omit campaigns with no activity that day. Keep ENABLED
+            // L30 campaigns visible on /amazon-ads/all (calendar = latest day) by writing
+            // zero-metric daily + L1 rows when yesterday's download skipped them.
+            $this->backfillMissingDailyFromL30($profileId, $adType, $yesterday);
+            DB::connection()->disconnect();
+
             $this->info("✅ All Sponsored Products reports processed successfully.");
         } catch (\Exception $e) {
             $this->error("Error in handle: " . $e->getMessage());
@@ -78,6 +84,99 @@ class AmazonSpCampaignReports extends Command
             'L7'  => [$today->copy()->subDays(7)->toDateString(), $today->copy()->subDay()->toDateString()],
             // L1 is populated from yesterday's daily fetch above (same source = no daily data mismatch)
         ];
+    }
+
+    /**
+     * Ensure ENABLED campaigns present on L30 also have a daily + L1 row for $dayYmd
+     * even when Amazon's daily report omitted them (zero impressions/spend).
+     */
+    private function backfillMissingDailyFromL30($profileId, string $adType, string $dayYmd): void
+    {
+        try {
+            $existingDailyIds = AmazonSpCampaignReport::query()
+                ->where('profile_id', $profileId)
+                ->where('ad_type', $adType)
+                ->where('report_date_range', $dayYmd)
+                ->whereNotNull('campaign_id')
+                ->pluck('campaign_id')
+                ->map(static fn ($id) => (string) $id)
+                ->flip()
+                ->all();
+
+            $l30Rows = AmazonSpCampaignReport::query()
+                ->where('profile_id', $profileId)
+                ->where('ad_type', $adType)
+                ->where('report_date_range', 'L30')
+                ->whereNotNull('campaign_id')
+                ->whereRaw("UPPER(TRIM(COALESCE(campaignStatus, ''))) = 'ENABLED'")
+                ->get();
+
+            $stored = 0;
+            foreach ($l30Rows as $row) {
+                $cid = trim((string) $row->campaign_id);
+                if ($cid === '' || isset($existingDailyIds[$cid])) {
+                    continue;
+                }
+
+                $payload = [
+                    'profile_id' => $profileId,
+                    'campaign_id' => $cid,
+                    'campaignName' => $row->campaignName,
+                    'ad_type' => $adType,
+                    'campaignStatus' => $row->campaignStatus,
+                    'campaignBudgetAmount' => $row->campaignBudgetAmount,
+                    'campaignBudgetCurrencyCode' => $row->campaignBudgetCurrencyCode,
+                    'campaignBiddingStrategy' => $row->campaignBiddingStrategy,
+                    'impressions' => 0,
+                    'clicks' => 0,
+                    'cost' => 0,
+                    'spend' => 0,
+                    'clickThroughRate' => 0,
+                    'costPerClick' => 0,
+                    'purchases1d' => 0,
+                    'purchases7d' => 0,
+                    'purchases14d' => 0,
+                    'purchases30d' => 0,
+                    'sales1d' => 0,
+                    'sales7d' => 0,
+                    'sales14d' => 0,
+                    'sales30d' => 0,
+                    'last_sbid' => $row->last_sbid,
+                    'sbid' => $row->sbid,
+                    'sbid_m' => $row->sbid_m,
+                    'yes_sbid' => $row->yes_sbid,
+                ];
+
+                AmazonSpCampaignReport::updateOrCreate(
+                    [
+                        'campaign_id' => $cid,
+                        'profile_id' => $profileId,
+                        'report_date_range' => $dayYmd,
+                    ],
+                    array_merge($payload, [
+                        'report_date_range' => $dayYmd,
+                    ])
+                );
+
+                AmazonSpCampaignReport::updateOrCreate(
+                    [
+                        'campaign_id' => $cid,
+                        'profile_id' => $profileId,
+                        'report_date_range' => 'L1',
+                    ],
+                    array_merge($payload, [
+                        'report_date_range' => 'L1',
+                    ])
+                );
+
+                $existingDailyIds[$cid] = true;
+                $stored++;
+            }
+
+            $this->info("[SPONSORED_PRODUCTS] Backfilled {$stored} zero-activity daily/L1 row(s) from L30 for {$dayYmd}.");
+        } catch (\Exception $e) {
+            $this->warn('[SPONSORED_PRODUCTS] Daily backfill from L30 failed: '.$e->getMessage());
+        }
     }
 
     private function fetchReport($profileId, $adType, $reportTypeId, $startDate, $endDate, $rangeKey, $isDailyChart = false, $syncL1 = false)

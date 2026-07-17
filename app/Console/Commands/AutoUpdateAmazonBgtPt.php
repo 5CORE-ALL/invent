@@ -14,9 +14,12 @@ use GuzzleHttp\Client;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 use App\Support\AmazonAcosSbgtRule;
+use App\Console\Concerns\AppliesAmazonBudgetCronUpdates;
 
 class AutoUpdateAmazonBgtPt extends Command
 {
+    use AppliesAmazonBudgetCronUpdates;
+
     protected $signature = 'amazon:auto-update-amz-bgt-pt {--dry-run : Run without updating Amazon (test only)}';
     protected $description = 'Automatically update Amazon campaign bgt price';
 
@@ -181,27 +184,27 @@ class AutoUpdateAmazonBgtPt extends Command
                 
                 $this->info("\nTotal Campaigns: " . count($campaignIds));
                 $this->info("========================================\n");
-                
-                if ($dryRun) {
-                    $this->warn("DRY RUN - No updates were made to Amazon.");
-                    $this->info("Run without --dry-run to apply budget updates.");
-                } else {
-                    $result = $updateKwBgts->updateAutoAmazonCampaignBgt($campaignIds, $newBgts);
-                    if (isset($result['status']) && $result['status'] !== 200) {
-                        $this->error("Budget update failed: " . ($result['message'] ?? 'Unknown error'));
-                        return 1;
-                    }
-                    $this->info("Successfully updated " . count($campaignIds) . " campaign budgets.");
-                }
-                
+
+                $outcome = $this->applyAmazonBudgetCronUpdates(
+                    $validCampaigns,
+                    static fn (array $ids, array $bgts) => $updateKwBgts->updateAutoAmazonCampaignBgt($ids, $bgts),
+                    'amazon_sp_campaign_reports',
+                    'sp_sbgt',
+                    'cron-bgt-pt',
+                    $dryRun
+                );
+
                 // Display final summary with skip report
                 $this->newLine();
                 $this->info("========================================");
                 $this->info("FINAL UPDATE SUMMARY (PT)");
                 $this->info("========================================");
                 $this->info("Total Submitted: " . count($campaigns));
-                $this->info("Total Processed: " . count($campaignIds));
-                $this->warn("Total Skipped: " . count($skippedCampaigns));
+                $this->info("Total Processed: " . ($outcome['pushed'] + $outcome['unchanged']));
+                $this->info("Pushed: " . $outcome['pushed']);
+                $this->info("Already at SBGT: " . $outcome['unchanged']);
+                $this->warn("Failed: " . $outcome['failed']);
+                $this->warn("Total Skipped (pre-filter): " . count($skippedCampaigns));
                 
                 if (!empty($skippedCampaigns)) {
                     $this->newLine();
@@ -214,6 +217,10 @@ class AutoUpdateAmazonBgtPt extends Command
                     }
                 }
                 $this->info("========================================");
+
+                if ($outcome['exit_code'] !== 0) {
+                    return 1;
+                }
                 
             } catch (\Exception $e) {
                 $this->error("Error updating campaign budgets: " . $e->getMessage());
@@ -340,15 +347,11 @@ class AutoUpdateAmazonBgtPt extends Command
                     continue;
                 }
 
-                // INV: for PARENT rows use sum of children's INV; for child rows use shopify inv
+                // INV: for PARENT rows use sum of children's INV; for child rows use shopify inv.
+                // Do not skip INV=0 — budget must still follow SBGT (e.g. lower BGT when OOS / zero L30 spend).
                 $inv = (stripos($sku, 'PARENT') !== false)
                     ? (int) ($childInvSumByParent[$pm->parent ?? $pm->sku ?? ''] ?? 0)
                     : (($shopify && isset($shopify->inv)) ? (int) $shopify->inv : 0);
-
-                // Skip if INV = 0
-                if ($inv == 0) {
-                    continue;
-                }
 
                 // Skip if campaign_id is empty
                 if (empty($matchedCampaignL30->campaign_id)) {
@@ -367,6 +370,7 @@ class AutoUpdateAmazonBgtPt extends Command
                 $row['price'] = $price;
                 $row['campaign_id'] = $matchedCampaignL30->campaign_id ?? '';
                 $row['campaignName'] = $matchedCampaignL30->campaignName ?? '';
+                $row['current_bgt'] = (float) ($matchedCampaignL30->campaignBudgetAmount ?? 0);
 
                 $row['units_ordered_l30'] = $amazonSheet->units_ordered_l30 ?? 0;
 

@@ -62,6 +62,22 @@ class AmazonACOSController extends Controller
         return round($amount, 2);
     }
 
+    /**
+     * Update SP daily budgets. Parses Amazon success/error lists and retries failures once.
+     *
+     * @param  list<string|int>  $campaignIds
+     * @param  list<float|int|string>  $newBgts
+     * @return array{
+     *     message: string,
+     *     status: int,
+     *     data?: list<mixed>,
+     *     error?: string,
+     *     success_ids: list<string>,
+     *     failed: list<array{campaign_id: string, reason: string}>,
+     *     success_count: int,
+     *     failed_count: int
+     * }
+     */
     public function updateAutoAmazonCampaignBgt(array $campaignIds, array $newBgts)
     {
         ini_set('max_execution_time', 300);
@@ -72,79 +88,236 @@ class AmazonACOSController extends Controller
                 'campaign_ids_count' => count($campaignIds),
                 'new_bgts_count' => count($newBgts),
             ]);
-            return response()->json([
+
+            return [
                 'message' => 'Campaign IDs and new budgets are required',
-                'status' => 400
-            ]);
-        }
-
-        $allCampaigns = [];
-
-        foreach ($campaignIds as $index => $campaignId) {
-            $newBgt = floatval($newBgts[$index] ?? 0);
-
-            $allCampaigns[] = [
-                'campaignId' => (string) $campaignId,
-                'budget' => [
-                    'budget' => self::spCampaignDailyBudgetAmount($newBgt),
-                    'budgetType' => 'DAILY',
-                ],
+                'status' => 400,
+                'success_ids' => [],
+                'failed' => [],
+                'success_count' => 0,
+                'failed_count' => 0,
             ];
         }
 
-        if (empty($allCampaigns)) {
-            return response()->json([
+        $budgetByCid = [];
+        foreach ($campaignIds as $index => $campaignId) {
+            $cid = trim((string) $campaignId);
+            if ($cid === '') {
+                continue;
+            }
+            $budgetByCid[$cid] = self::spCampaignDailyBudgetAmount((float) ($newBgts[$index] ?? 0));
+        }
+
+        if ($budgetByCid === []) {
+            return [
                 'message' => 'No campaigns found to update',
                 'status' => 404,
-            ]);
+                'success_ids' => [],
+                'failed' => [],
+                'success_count' => 0,
+                'failed_count' => 0,
+            ];
         }
 
-        $accessToken = $this->getAccessToken();
-        $client = new Client();
-        $url = 'https://advertising-api.amazon.com/sp/campaigns';
         Log::info('updateAutoAmazonCampaignBgt: starting SP campaign budget update', [
-            'campaign_ids_count' => count($campaignIds),
-            'payload_campaigns_count' => count($allCampaigns),
+            'campaign_ids_count' => count($budgetByCid),
         ]);
-        $results = [];
 
         try {
-            $chunks = array_chunk($allCampaigns, 100);
-            foreach ($chunks as $chunk) {
-                $response = $client->put($url, [
-                    'headers' => [
-                        'Amazon-Advertising-API-ClientId' => config('services.amazon_ads.client_id'),
-                        'Authorization' => 'Bearer ' . $accessToken,
-                        'Amazon-Advertising-API-Scope' => $this->profileId,
-                        'Content-Type' => 'application/vnd.spCampaign.v3+json',
-                        'Accept' => 'application/vnd.spCampaign.v3+json',
-                    ],
-                    'json' => [
-                        'campaigns' => $chunk
-                    ],
-                    'timeout' => 60,
-                    'connect_timeout' => 30,
-                ]);
+            $outcome = $this->putSpCampaignBudgetsWithRetry($budgetByCid);
 
-                $results[] = json_decode($response->getBody(), true);
-            }
             return [
-                'message' => 'BGT updated successfully',
-                'data' => $results,
-                'status' => 200,
+                'message' => $outcome['failed'] === []
+                    ? 'BGT updated successfully'
+                    : 'BGT update completed with failures',
+                'data' => $outcome['raw'],
+                'status' => $outcome['failed'] === [] ? 200 : 207,
+                'success_ids' => $outcome['success_ids'],
+                'failed' => $outcome['failed'],
+                'success_count' => count($outcome['success_ids']),
+                'failed_count' => count($outcome['failed']),
             ];
-
         } catch (\Exception $e) {
             Log::error('Error updating SP campaign budgets', [
-                'campaign_ids' => $campaignIds,
+                'campaign_ids' => array_keys($budgetByCid),
                 'error' => $e->getMessage(),
             ]);
+            $failed = [];
+            foreach ($budgetByCid as $cid => $_bgt) {
+                $failed[] = ['campaign_id' => (string) $cid, 'reason' => $e->getMessage()];
+            }
+
             return [
                 'message' => 'Error updating BGT',
                 'error' => $e->getMessage(),
                 'status' => 500,
+                'success_ids' => [],
+                'failed' => $failed,
+                'success_count' => 0,
+                'failed_count' => count($failed),
             ];
         }
+    }
+
+    /**
+     * @param  array<string, float>  $budgetByCid
+     * @return array{success_ids: list<string>, failed: list<array{campaign_id: string, reason: string}>, raw: list<mixed>}
+     */
+    private function putSpCampaignBudgetsWithRetry(array $budgetByCid): array
+    {
+        $raw = [];
+        $pending = $budgetByCid;
+        $successIds = [];
+        $failed = [];
+
+        for ($attempt = 1; $attempt <= 2 && $pending !== []; $attempt++) {
+            $payload = [];
+            foreach ($pending as $cid => $bgt) {
+                $payload[] = [
+                    'campaignId' => (string) $cid,
+                    'budget' => [
+                        'budget' => $bgt,
+                        'budgetType' => 'DAILY',
+                    ],
+                ];
+            }
+
+            $chunkRaw = [];
+            $accessToken = $this->getAccessToken();
+            $client = new Client();
+            foreach (array_chunk($payload, 100) as $chunk) {
+                $response = $client->put('https://advertising-api.amazon.com/sp/campaigns', [
+                    'headers' => [
+                        'Amazon-Advertising-API-ClientId' => config('services.amazon_ads.client_id'),
+                        'Authorization' => 'Bearer '.$accessToken,
+                        'Amazon-Advertising-API-Scope' => $this->profileId,
+                        'Content-Type' => 'application/vnd.spCampaign.v3+json',
+                        'Accept' => 'application/vnd.spCampaign.v3+json',
+                    ],
+                    'json' => ['campaigns' => $chunk],
+                    'timeout' => 60,
+                    'connect_timeout' => 30,
+                ]);
+                $decoded = json_decode((string) $response->getBody(), true);
+                $chunkRaw[] = $decoded;
+                $raw[] = $decoded;
+            }
+
+            $parsed = self::parseAmazonCampaignUpdateOutcome($chunkRaw, array_keys($pending));
+            foreach ($parsed['success_ids'] as $cid) {
+                $successIds[] = $cid;
+                unset($pending[$cid]);
+            }
+            $failed = $parsed['failed'];
+            // Keep only still-pending failures for retry
+            $retryPending = [];
+            foreach ($failed as $f) {
+                $cid = (string) ($f['campaign_id'] ?? '');
+                if ($cid !== '' && isset($pending[$cid])) {
+                    $retryPending[$cid] = $pending[$cid];
+                }
+            }
+            $pending = $retryPending;
+
+            if ($attempt === 1 && $pending !== []) {
+                Log::warning('updateAutoAmazonCampaignBgt: retrying failed SP budget updates', [
+                    'attempt' => 2,
+                    'count' => count($pending),
+                    'campaign_ids' => array_keys($pending),
+                ]);
+                usleep(400000);
+            }
+        }
+
+        return [
+            'success_ids' => array_values(array_unique($successIds)),
+            'failed' => array_values($failed),
+            'raw' => $raw,
+        ];
+    }
+
+    /**
+     * @param  list<mixed>  $responseChunks
+     * @param  list<string>  $requestedIds
+     * @return array{success_ids: list<string>, failed: list<array{campaign_id: string, reason: string}>}
+     */
+    private static function parseAmazonCampaignUpdateOutcome(array $responseChunks, array $requestedIds): array
+    {
+        $success = [];
+        $failedByCid = [];
+
+        foreach ($responseChunks as $decoded) {
+            if (! is_array($decoded)) {
+                continue;
+            }
+            $bucket = $decoded['campaigns'] ?? $decoded;
+            if (! is_array($bucket)) {
+                continue;
+            }
+            foreach (($bucket['success'] ?? []) as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $cid = trim((string) ($row['campaignId'] ?? $row['campaign_id'] ?? ''));
+                if ($cid !== '') {
+                    $success[$cid] = true;
+                    unset($failedByCid[$cid]);
+                }
+            }
+            foreach (($bucket['error'] ?? []) as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $cid = trim((string) ($row['campaignId'] ?? $row['campaign_id'] ?? ''));
+                if ($cid === '') {
+                    continue;
+                }
+                $errs = $row['errors'] ?? $row['error'] ?? null;
+                $reason = 'Amazon rejected budget update';
+                if (is_array($errs)) {
+                    $parts = [];
+                    foreach ($errs as $e) {
+                        if (is_array($e)) {
+                            $parts[] = trim((string) ($e['errorType'] ?? $e['errorValue'] ?? $e['message'] ?? json_encode($e)));
+                        } elseif (is_string($e)) {
+                            $parts[] = $e;
+                        }
+                    }
+                    if ($parts !== []) {
+                        $reason = implode('; ', $parts);
+                    }
+                } elseif (is_string($errs) && $errs !== '') {
+                    $reason = $errs;
+                }
+                if (! isset($success[$cid])) {
+                    $failedByCid[$cid] = $reason;
+                }
+            }
+        }
+
+        // If Amazon returned neither success nor error for a requested id, treat as failed.
+        if ($success === [] && $failedByCid === [] && $requestedIds !== []) {
+            foreach ($requestedIds as $cid) {
+                $failedByCid[(string) $cid] = 'No success/error entry in Amazon response';
+            }
+        } else {
+            foreach ($requestedIds as $cid) {
+                $cid = (string) $cid;
+                if (! isset($success[$cid]) && ! isset($failedByCid[$cid])) {
+                    $failedByCid[$cid] = 'Missing from Amazon response';
+                }
+            }
+        }
+
+        $failed = [];
+        foreach ($failedByCid as $cid => $reason) {
+            $failed[] = ['campaign_id' => (string) $cid, 'reason' => (string) $reason];
+        }
+
+        return [
+            'success_ids' => array_keys($success),
+            'failed' => $failed,
+        ];
     }
 
     public function updateAmazonCampaignBgt(Request $request)
@@ -223,72 +396,138 @@ class AmazonACOSController extends Controller
         }
     }
 
+    /**
+     * Update SB daily budgets. Parses Amazon success/error lists and retries failures once.
+     *
+     * @param  list<string|int>  $campaignIds
+     * @param  list<float|int|string>  $newBgts
+     * @return array{
+     *     message: string,
+     *     status: int,
+     *     data?: list<mixed>,
+     *     error?: string,
+     *     success_ids: list<string>,
+     *     failed: list<array{campaign_id: string, reason: string}>,
+     *     success_count: int,
+     *     failed_count: int
+     * }
+     */
     public function updateAutoAmazonSbCampaignBgt(array $campaignIds, array $newBgts)
     {
         ini_set('max_execution_time', 300);
         ini_set('memory_limit', '512M');
 
         if (empty($campaignIds) || empty($newBgts)) {
-            return response()->json([
+            return [
                 'message' => 'Campaign IDs and new budgets are required',
-                'status' => 400
-            ]);
-        }
-
-        $allCampaigns = [];
-
-        foreach ($campaignIds as $index => $campaignId) {
-            $newBgt = floatval($newBgts[$index] ?? 0);
-
-            $allCampaigns[] = [
-                'campaignId' => $campaignId,
-                'budget' => $newBgt,
+                'status' => 400,
+                'success_ids' => [],
+                'failed' => [],
+                'success_count' => 0,
+                'failed_count' => 0,
             ];
         }
 
-        if (empty($allCampaigns)) {
-            return response()->json([
+        $budgetByCid = [];
+        foreach ($campaignIds as $index => $campaignId) {
+            $cid = trim((string) $campaignId);
+            if ($cid === '') {
+                continue;
+            }
+            $budgetByCid[$cid] = self::spCampaignDailyBudgetAmount((float) ($newBgts[$index] ?? 0));
+        }
+
+        if ($budgetByCid === []) {
+            return [
                 'message' => 'No campaigns found to update',
                 'status' => 404,
-            ]);
+                'success_ids' => [],
+                'failed' => [],
+                'success_count' => 0,
+                'failed_count' => 0,
+            ];
         }
 
-        $accessToken = $this->getAccessToken();
-        $client = new Client();
-        $url = 'https://advertising-api.amazon.com/sb/v4/campaigns';
-        $results = [];
-
         try {
-            $chunks = array_chunk($allCampaigns, 10);
-            foreach ($chunks as $chunk) {
-                $response = $client->put($url, [
-                    'headers' => [
-                        'Amazon-Advertising-API-ClientId' => config('services.amazon_ads.client_id'),
-                        'Authorization' => 'Bearer ' . $accessToken,
-                        'Amazon-Advertising-API-Scope' => $this->profileId,
-                        'Content-Type' => 'application/vnd.sbcampaignresource.v4+json',
-                        'Accept' => 'application/vnd.sbcampaignresource.v4+json',
-                    ],
-                    'json' => [
-                        'campaigns' => $chunk
-                    ],
-                    'timeout' => 60,
-                    'connect_timeout' => 30,
-                ]);
+            $raw = [];
+            $pending = $budgetByCid;
+            $successIds = [];
+            $failed = [];
 
-                $results[] = json_decode($response->getBody(), true);
+            for ($attempt = 1; $attempt <= 2 && $pending !== []; $attempt++) {
+                $payload = [];
+                foreach ($pending as $cid => $bgt) {
+                    $payload[] = [
+                        'campaignId' => (string) $cid,
+                        'budget' => $bgt,
+                    ];
+                }
+
+                $chunkRaw = [];
+                $accessToken = $this->getAccessToken();
+                $client = new Client();
+                foreach (array_chunk($payload, 10) as $chunk) {
+                    $response = $client->put('https://advertising-api.amazon.com/sb/v4/campaigns', [
+                        'headers' => [
+                            'Amazon-Advertising-API-ClientId' => config('services.amazon_ads.client_id'),
+                            'Authorization' => 'Bearer '.$accessToken,
+                            'Amazon-Advertising-API-Scope' => $this->profileId,
+                            'Content-Type' => 'application/vnd.sbcampaignresource.v4+json',
+                            'Accept' => 'application/vnd.sbcampaignresource.v4+json',
+                        ],
+                        'json' => ['campaigns' => $chunk],
+                        'timeout' => 60,
+                        'connect_timeout' => 30,
+                    ]);
+                    $decoded = json_decode((string) $response->getBody(), true);
+                    $chunkRaw[] = $decoded;
+                    $raw[] = $decoded;
+                }
+
+                $parsed = self::parseAmazonCampaignUpdateOutcome($chunkRaw, array_keys($pending));
+                foreach ($parsed['success_ids'] as $cid) {
+                    $successIds[] = $cid;
+                    unset($pending[$cid]);
+                }
+                $failed = $parsed['failed'];
+                $retryPending = [];
+                foreach ($failed as $f) {
+                    $cid = (string) ($f['campaign_id'] ?? '');
+                    if ($cid !== '' && isset($pending[$cid])) {
+                        $retryPending[$cid] = $pending[$cid];
+                    }
+                }
+                $pending = $retryPending;
+                if ($attempt === 1 && $pending !== []) {
+                    usleep(400000);
+                }
             }
-            return [
-                'message' => 'Campaign bgt updated successfully',
-                'data' => $results,
-                'status' => 200,
-            ];
 
+            return [
+                'message' => $failed === []
+                    ? 'Campaign bgt updated successfully'
+                    : 'Campaign bgt update completed with failures',
+                'data' => $raw,
+                'status' => $failed === [] ? 200 : 207,
+                'success_ids' => array_values(array_unique($successIds)),
+                'failed' => array_values($failed),
+                'success_count' => count(array_unique($successIds)),
+                'failed_count' => count($failed),
+            ];
         } catch (\Exception $e) {
+            $failed = [];
+            foreach ($budgetByCid as $cid => $_bgt) {
+                $failed[] = ['campaign_id' => (string) $cid, 'reason' => $e->getMessage()];
+            }
+
             return [
                 'message' => 'Error updating campaign bgt',
                 'error' => $e->getMessage(),
                 'status' => 500,
+                'success_ids' => [],
+                'failed' => $failed,
+                'success_count' => 0,
+                'failed_count' => count($failed),
             ];
         }
     }

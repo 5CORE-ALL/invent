@@ -2156,6 +2156,70 @@ class AmazonAdsController extends Controller
     }
 
     /**
+     * Calendar mode + campaign search: include matching L30 rows for campaigns Amazon omitted
+     * from the selected daily window (zero-activity days). Returns true when applied.
+     *
+     * @param  array<int, string>  $dbColumns
+     */
+    private static function applyCalendarSearchWithL30Fallback(
+        Builder $query,
+        string $table,
+        array $dbColumns,
+        Request $request,
+        string $search
+    ): bool {
+        if ($search === ''
+            || ! in_array('campaignName', $dbColumns, true)
+            || ! in_array('report_date_range', $dbColumns, true)
+            || ! in_array('campaign_id', $dbColumns, true)
+            || ! in_array($table, ['amazon_sp_campaign_reports', 'amazon_sb_campaign_reports', 'amazon_sd_campaign_reports'], true)
+        ) {
+            return false;
+        }
+
+        if (self::normalizeSummaryReportRange($request->input('summary_report_range')) !== null) {
+            return false;
+        }
+
+        $from = self::normalizeDateInput((string) $request->input('date_from'));
+        $to = self::normalizeDateInput((string) $request->input('date_to'));
+        if ($from === null && $to === null) {
+            return false;
+        }
+
+        $like = '%'.addcslashes($search, '%_\\').'%';
+        $hasAdType = in_array('ad_type', $dbColumns, true);
+
+        $query->where(function (Builder $outer) use ($from, $to, $like, $table, $hasAdType) {
+            $outer->where(function (Builder $daily) use ($from, $to, $like) {
+                self::whereReportDateRangeDailyYmdInRange($daily, $from, $to);
+                $daily->where('campaignName', 'LIKE', $like);
+            })->orWhere(function (Builder $l30) use ($from, $to, $like, $table, $hasAdType) {
+                $l30->whereRaw("UPPER(TRIM(report_date_range)) = 'L30'")
+                    ->where('campaignName', 'LIKE', $like)
+                    ->whereNotExists(function ($sub) use ($from, $to, $table, $hasAdType) {
+                        $sub->select(DB::raw('1'))
+                            ->from($table.' as amz_cal_d')
+                            ->whereColumn('amz_cal_d.campaign_id', $table.'.campaign_id');
+                        if ($hasAdType) {
+                            $sub->whereColumn('amz_cal_d.ad_type', $table.'.ad_type');
+                        }
+                        $sub->whereRaw('CHAR_LENGTH(TRIM(amz_cal_d.report_date_range)) >= 10')
+                            ->whereRaw("LEFT(TRIM(amz_cal_d.report_date_range), 10) REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'");
+                        if ($from !== null) {
+                            $sub->whereRaw('LEFT(TRIM(amz_cal_d.report_date_range), 10) >= ?', [$from]);
+                        }
+                        if ($to !== null) {
+                            $sub->whereRaw('LEFT(TRIM(amz_cal_d.report_date_range), 10) <= ?', [$to]);
+                        }
+                    });
+            });
+        });
+
+        return true;
+    }
+
+    /**
      * Calendar overlap on campaign report tables: daily `report_date_range` prefix, optional `date` column,
      * or summary `startDate`/`endDate` vs inclusive bounds.
      *
@@ -2852,14 +2916,16 @@ class AmazonAdsController extends Controller
         $recordsTotal = (int) DB::table($table)->count();
 
         $query = DB::table($table);
-        self::applyDateFilters($query, $table, $request);
+        $usedCalendarSearchFallback = self::applyCalendarSearchWithL30Fallback($query, $table, $dbColumns, $request, $search);
+        if (! $usedCalendarSearchFallback) {
+            self::applyDateFilters($query, $table, $request);
+            if ($search !== '' && in_array('campaignName', $dbColumns, true)) {
+                $escaped = addcslashes($search, '%_\\');
+                $query->where('campaignName', 'LIKE', '%'.$escaped.'%');
+            }
+        }
         self::applyUtilizationPercentRangeFilters($query, $table, $request, true);
         self::applyCampaignStatusFilter($query, $table, $request);
-
-        if ($search !== '' && in_array('campaignName', $dbColumns, true)) {
-            $escaped = addcslashes($search, '%_\\');
-            $query->where('campaignName', 'LIKE', '%'.$escaped.'%');
-        }
 
         $recordsFiltered = (int) $query->clone()->count();
 

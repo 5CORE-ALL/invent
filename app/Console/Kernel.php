@@ -390,6 +390,31 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
+        // Catch-up: re-apply only remaining BGT≠SBGT deltas (skips already-applied; retries Amazon errors).
+        $ist($schedule->command('amazon:auto-update-amz-bgt-kw')
+            ->dailyAt('21:30')
+            ->timezone('Asia/Kolkata')
+            ->name('amazon-bgt-kw-catchup')
+            ->withoutOverlapping(60)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        $ist($schedule->command('amazon:auto-update-amz-bgt-pt')
+            ->dailyAt('21:35')
+            ->timezone('Asia/Kolkata')
+            ->name('amazon-bgt-pt-catchup')
+            ->withoutOverlapping(60)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        $ist($schedule->command('amazon:auto-update-amz-bgt-hl')
+            ->dailyAt('21:40')
+            ->timezone('Asia/Kolkata')
+            ->name('amazon-bgt-hl-catchup')
+            ->withoutOverlapping(60)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
         $ist($schedule->command('amazon-fba:auto-update-under-pt-bids')
             ->dailyAt('19:00')
             ->timezone('Asia/Kolkata')

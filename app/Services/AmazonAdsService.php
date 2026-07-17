@@ -171,6 +171,104 @@ class AmazonAdsService
     }
 
     /**
+     * List Sponsored Products product ads (paginated).
+     * POST /sp/productAds/list
+     *
+     * @param  array<int, string>|null  $campaignIds  Optional campaignIdFilter
+     * @param  array<int, string>  $states
+     * @return array{productAds: array<int, array>, nextToken: ?string}
+     */
+    public function listProductAdsPage(?array $campaignIds = null, array $states = ['ENABLED', 'PAUSED'], ?string $nextToken = null): array
+    {
+        $body = [
+            'stateFilter' => [
+                'include' => array_values($states),
+            ],
+            'maxResults' => 100,
+        ];
+
+        if ($campaignIds !== null && $campaignIds !== []) {
+            $body['campaignIdFilter'] = [
+                'include' => array_values(array_map('strval', $campaignIds)),
+            ];
+        }
+
+        if ($nextToken !== null && $nextToken !== '') {
+            $body['nextToken'] = $nextToken;
+        }
+
+        return $this->post('/sp/productAds/list', $body, [
+            'Content-Type' => 'application/vnd.spProductAd.v3+json',
+            'Accept' => 'application/vnd.spProductAd.v3+json',
+        ]);
+    }
+
+    /**
+     * Pull all SP product ads (ENABLED + PAUSED) across pages.
+     *
+     * @return array{success: bool, message?: string, count?: int, ads?: array<int, array>}
+     */
+    public function fetchAllProductAds(array $states = ['ENABLED', 'PAUSED']): array
+    {
+        try {
+            $this->assertOAuthConfig();
+            $this->assertProfileScope();
+
+            $all = [];
+            $nextToken = null;
+            $pages = 0;
+            $maxPages = 500;
+
+            do {
+                $pages++;
+                $response = $this->listProductAdsPage(null, $states, $nextToken);
+                $batch = $response['productAds'] ?? $response['productAdList'] ?? [];
+                if (! is_array($batch)) {
+                    $batch = [];
+                }
+
+                foreach ($batch as $ad) {
+                    if (is_array($ad)) {
+                        $all[] = $ad;
+                    }
+                }
+
+                $nextToken = $response['nextToken'] ?? null;
+                if ($pages >= $maxPages) {
+                    break;
+                }
+            } while (is_string($nextToken) && $nextToken !== '');
+
+            return [
+                'success' => true,
+                'count' => count($all),
+                'ads' => $all,
+                'profile_id' => $this->resolvedProfileId(),
+            ];
+        } catch (\Throwable $e) {
+            return [
+                'success' => false,
+                'message' => $e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * First profile id when AMAZON_ADS_PROFILE_IDS is comma-separated.
+     */
+    public function resolvedProfileId(): string
+    {
+        $raw = trim((string) $this->profileId);
+        if ($raw === '') {
+            return '';
+        }
+
+        $parts = preg_split('/\s*,\s*/', $raw) ?: [];
+
+        return trim((string) ($parts[0] ?? $raw));
+    }
+
+    /**
      * Request a Sponsored Products search term report (Reporting API v3, async).
      * Returns the create-report payload (e.g. reportId); download after status is COMPLETED.
      * No caching — each call hits Amazon with a new request.
@@ -225,7 +323,7 @@ class AmazonAdsService
 
         if ($withProfileScope) {
             $this->assertProfileScope();
-            $headers['Amazon-Advertising-API-Scope'] = $this->profileId;
+            $headers['Amazon-Advertising-API-Scope'] = $this->resolvedProfileId();
         }
 
         $guzzle = ['headers' => $headers];
@@ -273,7 +371,7 @@ class AmazonAdsService
 
     protected function assertProfileScope(): void
     {
-        if ($this->profileId === '') {
+        if ($this->resolvedProfileId() === '') {
             throw new InvalidArgumentException(
                 'Amazon Ads profile scope is not configured. Set AMAZON_ADS_PROFILE_IDS (used as Amazon-Advertising-API-Scope).'
             );

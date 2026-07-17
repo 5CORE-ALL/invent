@@ -1280,6 +1280,12 @@
                                         </a>
                                     </li>
                                     <li>
+                                        <a href="{{ route('amz.variation.verify') }}">Amz Variation Verify</a>
+                                    </li>
+                                    <li>
+                                        <a href="{{ route('amz.listing.variation.verify') }}">Amz Listing Variation Verify</a>
+                                    </li>
+                                    <li>
 
                                         <a href="{{ url('/amazonpricing-cvr-tabular') }}">FBM SEO Amz
                                         </a>

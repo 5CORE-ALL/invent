@@ -90,7 +90,11 @@ return [
 
     // Marketplace
     ['value' => 'amazon_analytics', 'text' => 'Amazon Analytics', 'group' => 'Marketplace'],
+    ['value' => 'amz_variation_verify', 'text' => 'Amz Variation Verify', 'group' => 'Marketplace'],
+    ['value' => 'amz_listing_variation_verify', 'text' => 'Amz Listing Variation Verify', 'group' => 'Marketplace'],
+
     ['value' => 'amz_zero_view', 'text' => 'Amazon 0 View', 'group' => 'Marketplace'],
+
     ['value' => 'amazon_low_visibility', 'text' => 'Amazon Low Visibility', 'group' => 'Marketplace'],
     ['value' => 'amazon_fba_analysis', 'text' => 'Amazon FBA Analysis', 'group' => 'Marketplace'],
     ['value' => 'fba_inv_age', 'text' => 'FBA INV AGE', 'group' => 'Marketplace'],

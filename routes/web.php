@@ -174,6 +174,8 @@ use App\Http\Controllers\MarketPlace\FbMarketplaceAnalyticsController;
 use App\Http\Controllers\MarketPlace\Neweggb2cController;
 use App\Http\Controllers\MarketPlace\Neweggb2cLowVisibilityController;
 use App\Http\Controllers\MarketPlace\Neweggb2cZeroController;
+use App\Http\Controllers\MarketPlace\AmzListingVariationVerifyController;
+use App\Http\Controllers\MarketPlace\AmzVariationVerifyController;
 use App\Http\Controllers\MarketPlace\OverallAmazonController;
 use App\Http\Controllers\MarketPlace\OverallAmazonFbaController;
 use App\Http\Controllers\MarketPlace\PlsController;
@@ -3650,6 +3652,17 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/overallAmazon/saveLowProfit', action: [OverallAmazonController::class, 'saveLowProfit']);
     Route::get('/amazon-pricing-cvr', action: [OverallAmazonController::class, 'amazonPricingCVR'])->name('amazon.pricing.cvr');
     Route::get('/amazon-tabulator-view', action: [OverallAmazonController::class, 'amazonTabulatorView'])->name('amazon.tabulator.view');
+
+    // Amz Variation Verify
+    Route::get('/amz-variation-verify', [AmzVariationVerifyController::class, 'index'])->name('amz.variation.verify');
+    Route::get('/amz-variation-verify/data', [AmzVariationVerifyController::class, 'data'])->name('amz.variation.verify.data');
+    Route::post('/amz-variation-verify/pull-listings', [AmzVariationVerifyController::class, 'pullListings'])->name('amz.variation.verify.pull');
+
+    // Amz Listing Variation Verify (Parent / Required / Parent Vs Listed SKU)
+    Route::get('/amz-listing-variation-verify', [AmzListingVariationVerifyController::class, 'index'])->name('amz.listing.variation.verify');
+    Route::get('/amz-listing-variation-verify/data', [AmzListingVariationVerifyController::class, 'data'])->name('amz.listing.variation.verify.data');
+    Route::post('/amz-listing-variation-verify/pull-listings', [AmzListingVariationVerifyController::class, 'pullListings'])->name('amz.listing.variation.verify.pull');
+
     Route::get('/mercari-with-ship-tabulator-view', [MercariWShipController::class, 'mercariWshipTabulatorView'])->name('mercari.wship.tabulator.view');
     Route::get('/mercari-with-ship-tabulator-data', [MercariWShipController::class, 'getMercariWshipTabulatorData'])->name('mercari.wship.tabulator.data');
     Route::post('/mercari-with-ship-price-sold/import', [MercariWShipController::class, 'importMercariWshipPriceSold'])->name('mercari.wship.price-sold.import');
