@@ -1537,9 +1537,15 @@ class GoogleShoppingCampaignsController extends Controller
     private function applyRawGridSort($query, Request $request): void
     {
         $spend = '(cSpend.sum_micros / 1000000.0)';
+        $spendL7 = '(COALESCE(cSpendL7.sum_micros_l7, 0) / 1000000.0)';
+        $spendL2 = '(COALESCE(cSpendL2.sum_micros_l2, 0) / 1000000.0)';
+        $spendL1 = '(COALESCE(cSpendL1.sum_micros_l1, 0) / 1000000.0)';
         $sales = static::salesL30SqlExpression();
         $sold = 'COALESCE(cGa30.sum_ga4_actual_sold, 0)';
         $clicks = 'COALESCE(cClicks30.sum_clicks_30, 0)';
+        $clicksL7 = 'COALESCE(cClicksL7.sum_clicks_l7, 0)';
+        $clicksL2 = 'COALESCE(cClicksL2.sum_clicks_l2, 0)';
+        $clicksL1 = 'COALESCE(cClicksL1.sum_clicks_l1, 0)';
         $impr = 'COALESCE(cClicks30.sum_impr_30, 0)';
         $acosExpr = "(CASE "
             ."WHEN ROUND({$sales}) >= 1 THEN (ROUND({$spend}) / ROUND({$sales})) * 100.0 "
@@ -1550,23 +1556,40 @@ class GoogleShoppingCampaignsController extends Controller
         $cvrExpr = "(CASE WHEN {$clicks} > 0 THEN ({$sold} / {$clicks}) * 100.0 ELSE 0 END)";
         // CTR sort SQL — mirrors ctr_l30 = (clicks / impressions) * 100.
         $ctrExpr = "(CASE WHEN {$impr} > 0 THEN ({$clicks} / {$impr}) * 100.0 ELSE 0 END)";
+        $cpcL30 = "(CASE WHEN {$clicks} > 0 THEN {$spend} / {$clicks} ELSE 0 END)";
+        $cpcL7 = "(CASE WHEN {$clicksL7} > 0 THEN {$spendL7} / {$clicksL7} ELSE 0 END)";
+        $cpcL2 = "(CASE WHEN {$clicksL2} > 0 THEN {$spendL2} / {$clicksL2} ELSE 0 END)";
+        $cpcL1 = "(CASE WHEN {$clicksL1} > 0 THEN {$spendL1} / {$clicksL1} ELSE 0 END)";
+        $ub7 = '(CASE WHEN COALESCE(g.budget_amount_micros, 0) > 0 THEN (COALESCE(cSpendL7.sum_micros_l7, 0) / 1000000.0) / ((g.budget_amount_micros / 1000000.0) * 7.0) * 100.0 ELSE 0 END)';
+        $ub2 = '(CASE WHEN COALESCE(g.budget_amount_micros, 0) > 0 THEN (COALESCE(cSpendL2.sum_micros_l2, 0) / 1000000.0) / ((g.budget_amount_micros / 1000000.0) * 2.0) * 100.0 ELSE 0 END)';
+        $ub1 = '(CASE WHEN COALESCE(g.budget_amount_micros, 0) > 0 THEN (COALESCE(cSpendL1.sum_micros_l1, 0) / 1000000.0) / (g.budget_amount_micros / 1000000.0) * 100.0 ELSE 0 END)';
+        $sbgtExpr = $this->sbgtSortSqlExpression($acosExpr);
+        $sbidExpr = $this->sbidSortSqlExpression($ub7, $ub1, $cpcL1, $cpcL7);
 
         $sortMap = [
+            'campaign_status' => 'g.campaign_status',
             'campaign_name' => 'g.campaign_name',
             'spend' => 'cSpend.sum_micros',
             'l7_spend' => 'COALESCE(cSpendL7.sum_micros_l7, 0)',
             'l2_spend' => 'COALESCE(cSpendL2.sum_micros_l2, 0)',
             'l1_spend' => 'COALESCE(cSpendL1.sum_micros_l1, 0)',
             'metrics_clicks' => 'COALESCE(cClicks30.sum_clicks_30, 0)',
+            'ctr_l30' => $ctrExpr,
+            'cpc_L30' => $cpcL30,
+            'cpc_L7' => $cpcL7,
+            'cpc_L2' => $cpcL2,
+            'cpc_L1' => $cpcL1,
             'ad_sold_L30' => $sold,
             'ad_sales_L30' => $sales,
             'acos_l30' => $acosExpr,
             'cvr_l30' => $cvrExpr,
-            'ctr_l30' => $ctrExpr,
             'bgt' => 'COALESCE(g.budget_amount_micros, 0)',
-            'ub7' => '(CASE WHEN COALESCE(g.budget_amount_micros, 0) > 0 THEN (COALESCE(cSpendL7.sum_micros_l7, 0) / 1000000.0) / ((g.budget_amount_micros / 1000000.0) * 7.0) * 100.0 ELSE 0 END)',
-            'ub2' => '(CASE WHEN COALESCE(g.budget_amount_micros, 0) > 0 THEN (COALESCE(cSpendL2.sum_micros_l2, 0) / 1000000.0) / ((g.budget_amount_micros / 1000000.0) * 2.0) * 100.0 ELSE 0 END)',
-            'ub1' => '(CASE WHEN COALESCE(g.budget_amount_micros, 0) > 0 THEN (COALESCE(cSpendL1.sum_micros_l1, 0) / 1000000.0) / (g.budget_amount_micros / 1000000.0) * 100.0 ELSE 0 END)',
+            'ub7' => $ub7,
+            'ub2' => $ub2,
+            'ub1' => $ub1,
+            'sbgt' => $sbgtExpr,
+            // COALESCE so NULL (no SBID suggestion) sorts as lowest, matching the "—" cells.
+            'sbid' => "COALESCE({$sbidExpr}, -1)",
         ];
 
         $applied = false;
@@ -1593,6 +1616,74 @@ class GoogleShoppingCampaignsController extends Controller
         } else {
             $query->orderBy('g.id', 'desc');
         }
+    }
+
+    /**
+     * SQL CASE matching {@see GoogleShoppingCampaignsRawRule::sbgtFromAcos()} for ORDER BY.
+     */
+    private function sbgtSortSqlExpression(string $acosExpr): string
+    {
+        $rule = GoogleShoppingCampaignsRawRule::resolvedRule();
+        $bands = GoogleShoppingCampaignsRawRule::normalizeSbgtBands($rule['sbgt']['bands'] ?? []);
+        $fallback = (int) GoogleShoppingCampaignsRawRule::sbgtFromAcos(-1.0, $rule);
+
+        $whens = [];
+        foreach ($bands as $band) {
+            $from = (float) ($band['acos_from'] ?? 0);
+            $to = (float) ($band['acos_to'] ?? 9999);
+            $sbgt = (int) ($band['sbgt'] ?? 0);
+            $whens[] = sprintf(
+                'WHEN %s >= %s AND %s <= %s THEN %d',
+                $acosExpr,
+                $this->sqlFloatLiteral($from),
+                $acosExpr,
+                $this->sqlFloatLiteral($to),
+                $sbgt
+            );
+        }
+
+        if ($whens === []) {
+            return (string) $fallback;
+        }
+
+        return '(CASE WHEN '.$acosExpr.' < 0 THEN '.$fallback.' '
+            .implode(' ', $whens)
+            .' ELSE '.$fallback.' END)';
+    }
+
+    /**
+     * SQL CASE matching {@see GoogleShoppingCampaignsRawRule::sbidFromUb7Ub1Cpc()} for ORDER BY.
+     */
+    private function sbidSortSqlExpression(string $ub7Expr, string $ub1Expr, string $cpcL1Expr, string $cpcL7Expr): string
+    {
+        $s = GoogleShoppingCampaignsRawRule::resolvedRule()['sbid'];
+        $low = $this->sqlFloatLiteral((float) $s['util_low']);
+        $high = $this->sqlFloatLiteral((float) $s['util_high']);
+        $overM = $this->sqlFloatLiteral((float) $s['over_mult_l1']);
+        $underM1 = $this->sqlFloatLiteral((float) $s['under_mult_l1']);
+        $underM7 = $this->sqlFloatLiteral((float) $s['under_mult_l7']);
+        $fb = $this->sqlFloatLiteral((float) $s['under_fallback']);
+
+        $overBid = "FLOOR(({$cpcL1Expr}) * {$overM} * 100.0) / 100.0";
+        $underBid = '(CASE '
+            ."WHEN ({$cpcL1Expr}) <= 0 AND ({$cpcL7Expr}) <= 0 THEN {$fb} "
+            ."WHEN ({$cpcL1Expr}) > 0 THEN FLOOR(({$cpcL1Expr}) * {$underM1} * 100.0) / 100.0 "
+            ."ELSE FLOOR(({$cpcL7Expr}) * {$underM7} * 100.0) / 100.0 "
+            .'END)';
+
+        return '(CASE '
+            ."WHEN ({$ub7Expr}) > {$high} AND ({$ub1Expr}) > {$high} THEN {$overBid} "
+            ."WHEN ({$ub7Expr}) < {$low} AND ({$ub1Expr}) < {$low} THEN {$underBid} "
+            .'ELSE NULL END)';
+    }
+
+    private function sqlFloatLiteral(float $value): string
+    {
+        if (! is_finite($value)) {
+            return '0';
+        }
+
+        return rtrim(rtrim(sprintf('%.10F', $value), '0'), '.') ?: '0';
     }
 
     /**

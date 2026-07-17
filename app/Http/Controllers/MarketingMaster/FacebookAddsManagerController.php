@@ -1171,24 +1171,38 @@ class FacebookAddsManagerController extends Controller
      */
     public function showSavedRawAds()
     {
+        $latestSyncDateRaw = MetaAdRawData::max('sync_date');
+        $latestSyncDate = $latestSyncDateRaw
+            ? \Carbon\Carbon::parse($latestSyncDateRaw)->format('Y-m-d')
+            : null;
+        // Page is limited to the rolling last 30 days of sync snapshots.
+        $monthFrom = $latestSyncDate
+            ? \Carbon\Carbon::parse($latestSyncDate)->subDays(29)->format('Y-m-d')
+            : null;
+
         $syncDates = MetaAdRawData::query()
             ->select('sync_date')
             ->distinct()
+            ->when($monthFrom, fn ($q) => $q->whereDate('sync_date', '>=', $monthFrom))
+            ->when($latestSyncDate, fn ($q) => $q->whereDate('sync_date', '<=', $latestSyncDate))
             ->orderByDesc('sync_date')
             ->pluck('sync_date')
             ->map(fn ($date) => $date instanceof \Carbon\Carbon ? $date->format('Y-m-d') : (string) $date);
 
-        $latestSyncDate = $syncDates->first();
         $totalRecords = MetaAdRawData::count();
-        $latestCount = $latestSyncDate
-            ? MetaAdRawData::whereDate('sync_date', $latestSyncDate)->count()
+        $monthCount = ($monthFrom && $latestSyncDate)
+            ? MetaAdRawData::whereDate('sync_date', '>=', $monthFrom)
+                ->whereDate('sync_date', '<=', $latestSyncDate)
+                ->count()
             : 0;
 
         return view('marketing-masters.meta_ads_manager.saved_raw_ads', [
             'syncDates' => $syncDates,
             'latestSyncDate' => $latestSyncDate,
+            'monthFrom' => $monthFrom,
+            'monthTo' => $latestSyncDate,
             'totalRecords' => $totalRecords,
-            'latestCount' => $latestCount,
+            'latestCount' => $monthCount,
         ]);
     }
 
@@ -1255,12 +1269,121 @@ class FacebookAddsManagerController extends Controller
     }
 
     /**
+     * CSV export of all filtered saved raw Meta ads (all pages).
+     * Built into a temp file (not streamDownload) so php artisan serve /
+     * browsers don't hit ERR_INVALID_RESPONSE on streamed responses.
+     */
+    public function exportSavedRawAds(Request $request)
+    {
+        try {
+            $shopifyMetrics = $this->getShopifyCampaignSalesMaps();
+            $filename = 'meta-raw-ads-' . now()->format('Y-m-d_His') . '.csv';
+            $tmpPath = tempnam(sys_get_temp_dir(), 'meta_raw_export_');
+            if ($tmpPath === false) {
+                throw new \RuntimeException('Unable to create temporary export file.');
+            }
+
+            $out = fopen($tmpPath, 'w');
+            if ($out === false) {
+                throw new \RuntimeException('Unable to open temporary export file.');
+            }
+
+            // UTF-8 BOM so Excel opens the CSV correctly.
+            fwrite($out, "\xEF\xBB\xBF");
+            fputcsv($out, [
+                'Ad ID',
+                'Ad Name',
+                'Sales L7',
+                'Sales L30',
+                'Orders L7',
+                'Orders L30',
+                'Sessions L30',
+                'Campaign ID',
+                'Campaign Name',
+                'Ad Set ID',
+                'Status',
+                'Sync Date',
+                'Updated',
+                'Created',
+                'Source Ad ID',
+                'Preview',
+            ]);
+
+            // Select only export columns — skip heavy JSON fields.
+            // Do not combine orderBy() with chunkById() (Laravel limitation).
+            $table = (new MetaAdRawData)->getTable();
+            $this->buildSavedRawAdsQuery($request)
+                ->select([
+                    "{$table}.id",
+                    "{$table}.ad_id",
+                    "{$table}.ad_name",
+                    "{$table}.campaign_id",
+                    "{$table}.campaign_name",
+                    "{$table}.adset_id",
+                    "{$table}.status",
+                    "{$table}.sync_date",
+                    "{$table}.ad_updated_time",
+                    "{$table}.ad_created_time",
+                    "{$table}.source_ad_id",
+                    "{$table}.preview_shareable_link",
+                ])
+                ->chunkById(500, function ($rows) use ($out, $shopifyMetrics) {
+                    foreach ($rows as $row) {
+                        $campaignId = (string) ($row->campaign_id ?? '');
+                        $l7 = $shopifyMetrics[$campaignId]['7_days'] ?? ShopifyMetaCampaign::emptyMetrics();
+                        $l30 = $shopifyMetrics[$campaignId]['30_days'] ?? ShopifyMetaCampaign::emptyMetrics();
+
+                        fputcsv($out, [
+                            $row->ad_id,
+                            $row->ad_name,
+                            round($l7['sales'], 2),
+                            round($l30['sales'], 2),
+                            $l7['orders'],
+                            $l30['orders'],
+                            $l30['sessions'],
+                            $row->campaign_id,
+                            $row->campaign_name,
+                            $row->adset_id,
+                            $row->status,
+                            $row->sync_date?->format('Y-m-d'),
+                            $row->ad_updated_time?->format('Y-m-d H:i:s'),
+                            $row->ad_created_time?->format('Y-m-d H:i:s'),
+                            $row->source_ad_id,
+                            $row->preview_shareable_link,
+                        ]);
+                    }
+                }, "{$table}.id", 'id');
+
+            fclose($out);
+
+            return response()->download($tmpPath, $filename, [
+                'Content-Type' => 'text/csv; charset=UTF-8',
+            ])->deleteFileAfterSend(true);
+        } catch (\Throwable $e) {
+            Log::error('Saved Raw Ads Export Error', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
      * Sales summary stats for saved raw Meta ads (top cards).
      */
     public function getSavedRawAdsSalesStats(Request $request)
     {
         try {
-            $campaignIds = $this->buildSavedRawAdsQuery($request)
+            $baseQuery = $this->buildSavedRawAdsQuery($request);
+            $filteredTotal = (clone $baseQuery)->count();
+            $syncDateMin = (clone $baseQuery)->min('sync_date');
+            $syncDateMax = (clone $baseQuery)->max('sync_date');
+
+            $campaignIds = (clone $baseQuery)
                 ->whereNotNull('campaign_id')
                 ->distinct()
                 ->pluck('campaign_id')
@@ -1271,6 +1394,13 @@ class FacebookAddsManagerController extends Controller
             $shopifyMetrics = $this->getShopifyCampaignSalesMaps();
             $stats = $this->summarizeShopifyCampaignSales($campaignIds, $shopifyMetrics);
             $stats['shopify_synced_at'] = ShopifyMetaCampaign::max('updated_at');
+            $stats['filtered_total'] = $filteredTotal;
+            $stats['sync_date_min'] = $syncDateMin
+                ? (\Carbon\Carbon::parse($syncDateMin)->format('Y-m-d'))
+                : null;
+            $stats['sync_date_max'] = $syncDateMax
+                ? (\Carbon\Carbon::parse($syncDateMax)->format('Y-m-d'))
+                : null;
 
             return response()->json([
                 'success' => true,
@@ -1282,7 +1412,11 @@ class FacebookAddsManagerController extends Controller
             return response()->json([
                 'success' => false,
                 'error' => $e->getMessage(),
-                'stats' => $this->emptyShopifySalesStats(),
+                'stats' => array_merge($this->emptyShopifySalesStats(), [
+                    'filtered_total' => 0,
+                    'sync_date_min' => null,
+                    'sync_date_max' => null,
+                ]),
             ], 500);
         }
     }
@@ -1291,12 +1425,57 @@ class FacebookAddsManagerController extends Controller
     {
         $query = MetaAdRawData::query();
 
-        if ($request->filled('sync_date')) {
-            $query->whereDate('sync_date', $request->sync_date);
-        } elseif ($request->boolean('latest_only', true)) {
-            $latestSyncDate = MetaAdRawData::max('sync_date');
-            if ($latestSyncDate) {
-                $query->whereDate('sync_date', $latestSyncDate);
+        [$windowFrom, $windowTo] = $this->savedRawAdsMonthWindow();
+
+        $dateFrom = $request->input('date_from');
+        $dateTo = $request->input('date_to');
+        $hasRange = filled($dateFrom) || filled($dateTo);
+        // Single-day filters already have one row per ad; multi-day ranges
+        // contain daily snapshots and must be deduped.
+        $singleDay = false;
+
+        if ($hasRange) {
+            // Clamp custom range inside the rolling 1-month window.
+            if (filled($dateFrom)) {
+                $from = $dateFrom;
+                if ($windowFrom && $from < $windowFrom) {
+                    $from = $windowFrom;
+                }
+                $query->whereDate('sync_date', '>=', $from);
+            } elseif ($windowFrom) {
+                $query->whereDate('sync_date', '>=', $windowFrom);
+            }
+            if (filled($dateTo)) {
+                $to = $dateTo;
+                if ($windowTo && $to > $windowTo) {
+                    $to = $windowTo;
+                }
+                $query->whereDate('sync_date', '<=', $to);
+            } elseif ($windowTo) {
+                $query->whereDate('sync_date', '<=', $windowTo);
+            }
+        } elseif ($request->filled('sync_date')) {
+            $syncDate = (string) $request->sync_date;
+            if ($windowFrom && $syncDate < $windowFrom) {
+                $syncDate = $windowFrom;
+            }
+            if ($windowTo && $syncDate > $windowTo) {
+                $syncDate = $windowTo;
+            }
+            $query->whereDate('sync_date', $syncDate);
+            $singleDay = true;
+        } elseif ($request->boolean('latest_only', false)) {
+            if ($windowTo) {
+                $query->whereDate('sync_date', $windowTo);
+            }
+            $singleDay = true;
+        } else {
+            // Default: last 1 month of sync snapshots.
+            if ($windowFrom) {
+                $query->whereDate('sync_date', '>=', $windowFrom);
+            }
+            if ($windowTo) {
+                $query->whereDate('sync_date', '<=', $windowTo);
             }
         }
 
@@ -1312,7 +1491,62 @@ class FacebookAddsManagerController extends Controller
             });
         }
 
+        // Default status = active (hide paused/archived unless user chooses All).
+        $status = strtolower(trim((string) $request->input('status', 'active')));
+        $applyStatus = $status !== '' && $status !== 'all';
+
+        if ($applyStatus && $singleDay) {
+            $query->where('status', $status);
+        }
+
+        if (! $singleDay) {
+            $query = $this->dedupeLatestSnapshotPerAd($query);
+            if ($applyStatus) {
+                $table = (new MetaAdRawData)->getTable();
+                $query->where("{$table}.status", $status);
+            }
+        }
+
         return $query;
+    }
+
+    /**
+     * Keep one row per ad_id — the latest sync_date inside the already
+     * filtered query (stops daily snapshots looking like duplicates).
+     */
+    private function dedupeLatestSnapshotPerAd($query)
+    {
+        $table = (new MetaAdRawData)->getTable();
+
+        $latestPerAd = $query->clone()
+            ->selectRaw('ad_id, MAX(sync_date) as max_sync_date')
+            ->groupBy('ad_id');
+
+        return MetaAdRawData::query()
+            ->from($table)
+            ->joinSub($latestPerAd, 'latest_ad', function ($join) use ($table) {
+                $join->on("{$table}.ad_id", '=', 'latest_ad.ad_id')
+                    ->on("{$table}.sync_date", '=', 'latest_ad.max_sync_date');
+            })
+            ->select("{$table}.*");
+    }
+
+    /**
+     * Rolling 30-day sync window ending on the latest available sync_date.
+     *
+     * @return array{0:?string,1:?string} [from, to] as Y-m-d
+     */
+    private function savedRawAdsMonthWindow(): array
+    {
+        $latest = MetaAdRawData::max('sync_date');
+        if (! $latest) {
+            return [null, null];
+        }
+
+        $to = \Carbon\Carbon::parse($latest)->format('Y-m-d');
+        $from = \Carbon\Carbon::parse($latest)->subDays(29)->format('Y-m-d');
+
+        return [$from, $to];
     }
 
     /**

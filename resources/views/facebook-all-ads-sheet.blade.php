@@ -49,20 +49,31 @@
            awkwardly off-centre. */
         #facebook-all-ads-table .tabulator-col-content { padding-right: 8px; }
 
-        /* ACOS cell backgrounds — /facebook-ads: <60% pink, 60–90% green, >90% red */
-        #facebook-all-ads-table .tabulator-cell.acos-bg-pink {
-            background: #fce7f3 !important;
-            color: #9d174d !important;
+        /* ACOS cell backgrounds — 0–10 magenta, 10–20 green, 20–30 light blue,
+           30–40 yellow, >40 red */
+        #facebook-all-ads-table .tabulator-cell.acos-bg-0-10 {
+            background: #ec4899 !important;
+            color: #000 !important;
             font-weight: 700;
         }
-        #facebook-all-ads-table .tabulator-cell.acos-bg-green {
-            background: #dcfce7 !important;
-            color: #166534 !important;
+        #facebook-all-ads-table .tabulator-cell.acos-bg-10-20 {
+            background: #22c55e !important;
+            color: #000 !important;
             font-weight: 700;
         }
-        #facebook-all-ads-table .tabulator-cell.acos-bg-red {
-            background: #fee2e2 !important;
-            color: #991b1b !important;
+        #facebook-all-ads-table .tabulator-cell.acos-bg-20-30 {
+            background: #93c5fd !important;
+            color: #000 !important;
+            font-weight: 700;
+        }
+        #facebook-all-ads-table .tabulator-cell.acos-bg-30-40 {
+            background: #facc15 !important;
+            color: #000 !important;
+            font-weight: 700;
+        }
+        #facebook-all-ads-table .tabulator-cell.acos-bg-over-40 {
+            background: #dc2626 !important;
+            color: #fff !important;
             font-weight: 700;
         }
 
@@ -487,27 +498,27 @@
         <div class="modal-content">
             <div class="modal-header" style="background:linear-gradient(135deg,#1877f2,#0d5cb6);color:#fff;">
                 <h5 class="modal-title" id="sbgtRuleModalLabel">
-                    <i class="fas fa-sliders-h me-2"></i>Sbgt Rule — ACOS % → Suggested Budget
+                    <i class="fas fa-sliders-h me-2"></i>Sbgt Rule — ACOS % + Spend → Suggested Budget
                 </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
                 <p class="small text-muted mb-3">
-                    Each row is an inclusive <strong>ACOS % range</strong> (From → To).
-                    Rows are checked <strong>top to bottom</strong>; the first range that
-                    contains the campaign's ACOS gets its Sbgt. Use <code>9999</code> on
-                    <em>To</em> for the catch-all highest band.
+                    Each row is an inclusive <strong>ACOS %</strong> range plus a
+                    <strong>&gt;Spend</strong> minimum. Rows are checked <strong>top to bottom</strong>;
+                    the first band that matches both the campaign's ACOS and Spend
+                    gets its Sbgt. Use <code>9999</code> on ACOS <em>To</em> for a catch-all.
                 </p>
 
                 <table class="table table-sm table-bordered align-middle mb-0" id="sbgt-rule-table">
                     <thead class="table-light">
                         <tr>
                             <th style="width:40px;">#</th>
-                            <th>Label</th>
-                            <th style="width:140px;">Color</th>
-                            <th style="width:110px;">From (%)</th>
-                            <th style="width:110px;">To (%)</th>
-                            <th style="width:120px;">Sbgt</th>
+                            <th style="width:70px;">ACOS%</th>
+                            <th style="width:110px;">ACOS From (%)</th>
+                            <th style="width:110px;">ACOS To (%)</th>
+                            <th style="width:110px;">&gt;Spend</th>
+                            <th style="width:100px;">Sbgt</th>
                             <th style="width:50px;"></th>
                         </tr>
                     </thead>
@@ -986,21 +997,42 @@
             return Number.isFinite(n) ? n : null;
         }
 
-        // ACOS column — fixed background bands (independent of Sbgt rule colours).
+        // ACOS column — fixed background bands (independent of Sbgt rule colours):
+        // 0–10 magenta, 10–20 green, 20–30 light blue, 30–40 yellow, >40 red.
+        const ACOS_BG_CLASSES = [
+            'acos-bg-0-10', 'acos-bg-10-20', 'acos-bg-20-30',
+            'acos-bg-30-40', 'acos-bg-over-40',
+        ];
+        /** Same palette as the Acos column — used by rule ACOS% labels + filter dots. */
+        function acosSchemaStyle(pct) {
+            const n = Number(pct);
+            if (!isFinite(n)) return { bg: '#6c757d', fg: '#fff' };
+            if (n <= 10) return { bg: '#ec4899', fg: '#000' };
+            if (n <= 20) return { bg: '#22c55e', fg: '#000' };
+            if (n <= 30) return { bg: '#93c5fd', fg: '#000' };
+            if (n <= 40) return { bg: '#facc15', fg: '#000' };
+            return { bg: '#dc2626', fg: '#fff' };
+        }
+        /** Representative ACOS % for a rule band (midpoint of From–To). */
+        function acosSchemaStyleForBand(from, to) {
+            const a = Number(from);
+            const b = Number(to);
+            const lo = isFinite(a) ? a : 0;
+            const hi = (isFinite(b) && b < 9000) ? b : (lo + 10);
+            return acosSchemaStyle((lo + hi) / 2);
+        }
         function formatAcosCell(cell) {
             const value = cell.getValue();
             const el    = cell.getElement();
-            el.classList.remove('acos-bg-pink', 'acos-bg-green', 'acos-bg-red');
+            el.classList.remove(...ACOS_BG_CLASSES);
 
             const pct = parseAcosPct(value);
             if (pct !== null) {
-                if (pct < 60) {
-                    el.classList.add('acos-bg-pink');
-                } else if (pct <= 90) {
-                    el.classList.add('acos-bg-green');
-                } else {
-                    el.classList.add('acos-bg-red');
-                }
+                if (pct <= 10)      el.classList.add('acos-bg-0-10');
+                else if (pct <= 20) el.classList.add('acos-bg-10-20');
+                else if (pct <= 30) el.classList.add('acos-bg-20-30');
+                else if (pct <= 40) el.classList.add('acos-bg-30-40');
+                else                el.classList.add('acos-bg-over-40');
             }
 
             return (value === null || value === undefined || value === '') ? '' : String(value);
@@ -1144,6 +1176,16 @@
                     // matched ACOS-band colour (Sbgt only — Acos uses
                     // fixed background bands via formatAcosCell).
                     const COLOR_BY_BAND = new Set(['Sbgt']);
+                    // SPEND above $29 → red text so high-spend rows stand out.
+                    function formatSpendCell(cell) {
+                        const v = cell.getValue();
+                        if (v === null || v === undefined || String(v).trim() === '') return '';
+                        const text = String(v);
+                        if (toNumber(v) > 29) {
+                            return `<span style="color:#dc2626;font-weight:700;">${text.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</span>`;
+                        }
+                        return text;
+                    }
                     // Empty SALES → "$0" in red so missing-revenue rows
                     // jump out instead of looking like a blank cell.
                     function formatSalesCell(cell) {
@@ -1248,6 +1290,20 @@
                              + `<i class="fas fa-external-link-alt"></i>`
                              + `</a>`;
                     }
+                    // CPG (CAMPAIGN ID) — magnifying-glass icon; full
+                    // id is shown on hover via the title tooltip.
+                    function formatCampaignIdCell(cell) {
+                        const v = (cell.getValue() ?? '').toString().trim();
+                        if (!v) return '';
+                        const safe = v.replace(/&/g, '&amp;')
+                                      .replace(/</g, '&lt;')
+                                      .replace(/"/g, '&quot;');
+                        return `<span title="${safe}"`
+                             + ` style="cursor:help;color:#475569;font-size:14px;"`
+                             + ` aria-label="${safe}">`
+                             + `<i class="fas fa-search"></i>`
+                             + `</span>`;
+                    }
                     // Distinct Status values present in this dataset →
                     // also populates the toolbar Status filter.
                     statusValues = Array.from(new Set(
@@ -1283,9 +1339,27 @@
                                 formatter:    formatStatusCell,
                             };
                         }
+                        if (c.field === 'CAMPAIGN ID') {
+                            return {
+                                // Header is "CPG" — frontend rename only;
+                                // field stays "CAMPAIGN ID" so audit /
+                                // bulk / export lookups stay unchanged.
+                                title:          'CPG',
+                                field:          c.field,
+                                headerSort:     true,
+                                widthGrow:      0,
+                                width:          60,
+                                minWidth:       50,
+                                hozAlign:       'center',
+                                headerHozAlign: 'center',
+                                headerFilter:   false,
+                                formatter:      formatCampaignIdCell,
+                            };
+                        }
                         let formatter = 'plaintext';
                         if (c.field === 'Acos')                formatter = formatAcosCell;
                         else if (COLOR_BY_BAND.has(c.field))   formatter = formatBandColoredCell;
+                        else if (c.field === 'SPEND')        formatter = formatSpendCell;
                         else if (c.field === 'SALES')        formatter = formatSalesCell;
                         else if (c.field === 'SOLD')         formatter = formatSoldCell;
                         else if (c.field === 'CTR')          formatter = formatCtrCell;
@@ -1431,6 +1505,13 @@
                         headerHozAlign: 'center',
                         formatter:    formatActionCell,
                     });
+
+                    // CAMPAIGN ID stays rightmost (after Action).
+                    const cidIdx = cols.findIndex(c => c.field === 'CAMPAIGN ID');
+                    if (cidIdx >= 0) {
+                        const [cidCol] = cols.splice(cidIdx, 1);
+                        cols.push(cidCol);
+                    }
 
                     if (tabulator) {
                         tabulator.destroy();
@@ -1768,10 +1849,11 @@
         });
 
         // ── SBGT Rule editor ──────────────────────────────────────────
-        // Bands: { acos_from, acos_to, sbgt, label, color } persisted server-side.
+        // Bands: { acos_from, acos_to, spend_from, spend_to, sbgt, label, color }
         const SBGT_RULE_GET_URL  = '/facebook-all-ads-sheet/rule';
         const SBGT_RULE_SAVE_URL = '/facebook-all-ads-sheet/rule';
         let currentSbgtRule = { bands: [] };
+        const DEFAULT_BAND_LABELS = ['Excellent', 'Good', 'Fair', 'Poor', 'Bad', 'Critical'];
 
         /** Upgrade legacy acos_max-only bands to From–To for the editor. */
         function normalizeSbgtBandsForUi(bands) {
@@ -1780,28 +1862,32 @@
                 b && (b.acos_from !== undefined && b.acos_from !== null
                     || b.acos_to !== undefined && b.acos_to !== null)
             );
+            const withDefaults = (b, i) => {
+                const label = (b.label ?? '').toString().trim();
+                return {
+                    acos_from:   Number(b.acos_from ?? 0),
+                    acos_to:     Number(b.acos_to ?? 9999),
+                    spend_from:  Number(b.spend_from ?? 0),
+                    spend_to:    Number(b.spend_to ?? 9999),
+                    sbgt:        b.sbgt,
+                    label:       label || (DEFAULT_BAND_LABELS[i] || 'Band'),
+                    color:       b.color ?? '#6c757d',
+                };
+            };
             if (hasFromTo) {
-                return bands.map(b => ({
-                    acos_from: Number(b.acos_from ?? 0),
-                    acos_to:   Number(b.acos_to ?? 9999),
-                    sbgt:      b.sbgt,
-                    label:     b.label ?? '',
-                    color:     b.color ?? '#6c757d',
-                }));
+                return bands.map((b, i) => withDefaults(b, i));
             }
             const sorted = [...bands].sort(
                 (a, b) => (Number(a.acos_max) || 0) - (Number(b.acos_max) || 0)
             );
             let prevTo = 0;
-            return sorted.map(b => {
+            return sorted.map((b, i) => {
                 const to = Number(b.acos_max ?? 9999);
-                const row = {
+                const row = withDefaults({
+                    ...b,
                     acos_from: prevTo,
                     acos_to:   to,
-                    sbgt:      b.sbgt,
-                    label:     b.label ?? '',
-                    color:     b.color ?? '#6c757d',
-                };
+                }, i);
                 prevTo = to;
                 return row;
             });
@@ -1944,9 +2030,10 @@
                     applySbgtFilter();
                 });
 
+                const schema = acosSchemaStyleForBand(b.acos_from, b.acos_to);
                 const dot = document.createElement('span');
                 dot.style.cssText = `display:inline-block;width:10px;height:10px;`
-                                  + `border-radius:50%;background:${b.color || '#9ca3af'};`
+                                  + `border-radius:50%;background:${schema.bg};`
                                   + `box-shadow:0 0 0 1px rgba(0,0,0,0.05);`;
 
                 const text = document.createElement('span');
@@ -2125,19 +2212,19 @@
             if (!tbody) return;
             tbody.innerHTML = '';
             bands.forEach((band, i) => {
+                // Keep stored colour in sync with the Acos column schema.
+                const schema = acosSchemaStyleForBand(band.acos_from, band.acos_to);
+                band.color = schema.bg;
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
                     <td class="text-muted small">${i + 1}</td>
-                    <td><input type="text" class="form-control form-control-sm"
-                               value="${(band.label ?? '').toString().replace(/"/g, '&quot;')}"
-                               data-idx="${i}" data-field="label"></td>
                     <td>
-                        <div class="d-flex align-items-center gap-2">
-                            <input type="color" class="form-control form-control-color form-control-sm"
-                                   value="${band.color || '#6c757d'}" data-idx="${i}" data-field="color">
-                            <span class="badge"
-                                  style="background:${band.color || '#6c757d'};color:#fff;">${band.label || '—'}</span>
-                        </div>
+                        <input type="text"
+                               class="form-control form-control-sm text-center fw-semibold"
+                               value="${(band.label ?? '').toString().replace(/"/g, '&quot;')}"
+                               data-idx="${i}" data-field="label"
+                               placeholder="e.g. Good"
+                               style="background:${schema.bg};color:${schema.fg};border:none;min-width:6.5rem;">
                     </td>
                     <td><input type="number" step="0.1" min="0"
                                class="form-control form-control-sm"
@@ -2149,6 +2236,11 @@
                                value="${band.acos_to ?? ''}"
                                data-idx="${i}" data-field="acos_to"
                                placeholder="9999"></td>
+                    <td><input type="number" step="0.01" min="0"
+                               class="form-control form-control-sm"
+                               value="${band.spend_from ?? ''}"
+                               data-idx="${i}" data-field="spend_from"
+                               placeholder="0"></td>
                     <td><input type="number" step="1" min="0"
                                class="form-control form-control-sm"
                                value="${band.sbgt ?? ''}"
@@ -2163,6 +2255,7 @@
             });
 
             // Wire field inputs → write back into currentSbgtRule.bands.
+            const floatFields = new Set(['acos_from', 'acos_to', 'spend_from']);
             tbody.querySelectorAll('input[data-idx]').forEach(inp => {
                 inp.addEventListener('input', function () {
                     const idx = +this.dataset.idx;
@@ -2170,17 +2263,18 @@
                     if (!currentSbgtRule.bands[idx]) return;
                     currentSbgtRule.bands[idx][fld] = (fld === 'sbgt')
                         ? (this.value === '' ? '' : parseInt(this.value, 10))
-                        : (fld === 'acos_from' || fld === 'acos_to')
+                        : (floatFields.has(fld)
                             ? (this.value === '' ? '' : parseFloat(this.value))
-                            : this.value;
-                    // Refresh the colour preview chip when label/color change.
-                    if (fld === 'label' || fld === 'color') {
-                        const row = this.closest('tr');
-                        const chip = row?.querySelector('.badge');
+                            : this.value);
+                    // Re-colour the ACOS% label when the ACOS range changes.
+                    if (fld === 'acos_from' || fld === 'acos_to') {
                         const band = currentSbgtRule.bands[idx];
-                        if (chip) {
-                            chip.style.background = band.color || '#6c757d';
-                            chip.textContent      = band.label || '—';
+                        const schema = acosSchemaStyleForBand(band.acos_from, band.acos_to);
+                        band.color = schema.bg;
+                        const labelInp = this.closest('tr')?.querySelector('input[data-field="label"]');
+                        if (labelInp) {
+                            labelInp.style.background = schema.bg;
+                            labelInp.style.color = schema.fg;
                         }
                     }
                 });
@@ -2219,11 +2313,13 @@
                 ? Number(bands[bands.length - 1].acos_to ?? 0)
                 : 0;
             currentSbgtRule.bands.push({
-                acos_from: lastTo,
-                acos_to:   9999,
-                sbgt:      1,
-                label:     'New band',
-                color:     '#6c757d',
+                acos_from:   lastTo,
+                acos_to:     9999,
+                spend_from:  0,
+                spend_to:    9999,
+                sbgt:        1,
+                label:       DEFAULT_BAND_LABELS[bands.length] || 'Band',
+                color:       acosSchemaStyleForBand(lastTo, 9999).bg,
             });
             renderSbgtBands(currentSbgtRule.bands);
         });
@@ -2233,29 +2329,38 @@
             const errEl = document.getElementById('sbgt-rule-err');
             errEl?.classList.add('d-none');
 
-            const cleaned = (currentSbgtRule.bands || []).map(b => ({
-                acos_from: (b.acos_from === '' || b.acos_from === null || b.acos_from === undefined)
-                    ? NaN : parseFloat(b.acos_from),
-                acos_to: (b.acos_to === '' || b.acos_to === null || b.acos_to === undefined)
-                    ? NaN : parseFloat(b.acos_to),
-                sbgt:     (b.sbgt === '' || b.sbgt === null || b.sbgt === undefined)
-                    ? NaN : parseInt(b.sbgt, 10),
-                label:    (b.label || '').toString(),
-                color:    (b.color || '#6c757d').toString(),
-            }));
+            const cleaned = (currentSbgtRule.bands || []).map(b => {
+                const acosFrom = (b.acos_from === '' || b.acos_from === null || b.acos_from === undefined)
+                    ? NaN : parseFloat(b.acos_from);
+                const acosTo = (b.acos_to === '' || b.acos_to === null || b.acos_to === undefined)
+                    ? NaN : parseFloat(b.acos_to);
+                return {
+                    acos_from: acosFrom,
+                    acos_to: acosTo,
+                    spend_from: (b.spend_from === '' || b.spend_from === null || b.spend_from === undefined)
+                        ? NaN : parseFloat(b.spend_from),
+                    spend_to: 9999,
+                    sbgt:     (b.sbgt === '' || b.sbgt === null || b.sbgt === undefined)
+                        ? NaN : parseInt(b.sbgt, 10),
+                    label:    (b.label || '').toString(),
+                    color:    acosSchemaStyleForBand(acosFrom, acosTo).bg,
+                };
+            });
             if (!cleaned.length) {
                 errEl.textContent = 'Add at least one band before saving.';
                 errEl.classList.remove('d-none');
                 return;
             }
             for (const b of cleaned) {
-                if (!isFinite(b.acos_from) || !isFinite(b.acos_to) || !isFinite(b.sbgt)) {
-                    errEl.textContent = 'Every band needs numeric From, To, and Sbgt values.';
+                if (!isFinite(b.acos_from) || !isFinite(b.acos_to)
+                    || !isFinite(b.spend_from)
+                    || !isFinite(b.sbgt)) {
+                    errEl.textContent = 'Every band needs numeric ACOS From/To, >Spend, and Sbgt.';
                     errEl.classList.remove('d-none');
                     return;
                 }
                 if (b.acos_from > b.acos_to) {
-                    errEl.textContent = 'Each band needs From ≤ To.';
+                    errEl.textContent = 'Each band needs ACOS From ≤ ACOS To.';
                     errEl.classList.remove('d-none');
                     return;
                 }

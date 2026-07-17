@@ -908,30 +908,64 @@ class FacebookAllAdsSheetController extends Controller
         $acos = ($r === null || $r == 0.0)
             ? 99999.0
             : ($s / $r) * 100;
+        $spendAmt = $s === null ? 0.0 : (float) $s;
 
         $bands = $this->loadSbgtBands();
         foreach ($bands as $band) {
-            $from = (float) ($band['acos_from'] ?? 0);
-            $to   = (float) ($band['acos_to'] ?? 9999);
-            if ($acos >= $from && $acos <= $to) {
+            $from      = (float) ($band['acos_from'] ?? 0);
+            $to        = (float) ($band['acos_to'] ?? 9999);
+            $spendFrom = (float) ($band['spend_from'] ?? 0);
+            $spendTo   = (float) ($band['spend_to'] ?? 9999);
+            if ($acos >= $from && $acos <= $to
+                && $spendAmt >= $spendFrom && $spendAmt <= $spendTo) {
                 return [
                     'sbgt'  => (int) ($band['sbgt'] ?? 0),
-                    'color' => $band['color'] ?? null,
+                    'color' => $this->acosSchemaColor($acos),
                 ];
             }
         }
         $last = end($bands) ?: [];
         return [
             'sbgt'  => (int) ($last['sbgt'] ?? 1),
-            'color' => $last['color'] ?? null,
+            'color' => $this->acosSchemaColor($acos),
         ];
     }
 
     /**
+     * Same palette as the Acos column UI:
+     * 0–10 magenta, 10–20 green, 20–30 light blue, 30–40 yellow, >40 red.
+     */
+    private function acosSchemaColor(float $pct): string
+    {
+        if ($pct <= 10) {
+            return '#ec4899';
+        }
+        if ($pct <= 20) {
+            return '#22c55e';
+        }
+        if ($pct <= 30) {
+            return '#93c5fd';
+        }
+        if ($pct <= 40) {
+            return '#facc15';
+        }
+
+        return '#dc2626';
+    }
+
+    /** Band colour from the midpoint of its ACOS From–To range. */
+    private function acosSchemaColorForBand(float $from, float $to): string
+    {
+        $hi = ($to < 9000) ? $to : ($from + 10);
+
+        return $this->acosSchemaColor(($from + $hi) / 2);
+    }
+
+    /**
      * Load the stored Sbgt bands, normalised to From–To ranges and
-     * sorted ascending by `acos_from`.
+     * sorted ascending by `acos_from`, then `spend_from`.
      *
-     * @return array<int, array{acos_from:float, acos_to:float, sbgt:int, label?:string, color?:string}>
+     * @return array<int, array{acos_from:float, acos_to:float, spend_from:float, spend_to:float, sbgt:int, label?:string, color?:string}>
      */
     private function loadSbgtBands(): array
     {
@@ -947,9 +981,10 @@ class FacebookAllAdsSheetController extends Controller
     /**
      * Convert stored bands to inclusive From–To ranges. Legacy rows that
      * only have `acos_max` (cumulative upper bound) are upgraded on read.
+     * Missing spend ranges default to 0–9999 (match any spend).
      *
      * @param  array<int, array<string, mixed>>  $bands
-     * @return array<int, array{acos_from:float, acos_to:float, sbgt:int, label:string, color:string}>
+     * @return array<int, array{acos_from:float, acos_to:float, spend_from:float, spend_to:float, sbgt:int, label:string, color:string}>
      */
     private function normalizeSbgtBands(array $bands): array
     {
@@ -972,11 +1007,13 @@ class FacebookAllAdsSheetController extends Controller
             foreach ($bands as $band) {
                 $to = (float) ($band['acos_max'] ?? 9999);
                 $converted[] = [
-                    'acos_from' => $prevTo,
-                    'acos_to'   => $to,
-                    'sbgt'      => (int) ($band['sbgt'] ?? 0),
-                    'label'     => (string) ($band['label'] ?? ''),
-                    'color'     => (string) ($band['color'] ?? '#6c757d'),
+                    'acos_from'   => $prevTo,
+                    'acos_to'     => $to,
+                    'spend_from'  => (float) ($band['spend_from'] ?? 0),
+                    'spend_to'    => (float) ($band['spend_to'] ?? 9999),
+                    'sbgt'        => (int) ($band['sbgt'] ?? 0),
+                    'label'       => (string) ($band['label'] ?? ''),
+                    'color'       => (string) ($band['color'] ?? '#6c757d'),
                 ];
                 $prevTo = $to;
             }
@@ -986,15 +1023,20 @@ class FacebookAllAdsSheetController extends Controller
         $out = [];
         foreach ($bands as $band) {
             $out[] = [
-                'acos_from' => (float) ($band['acos_from'] ?? 0),
-                'acos_to'   => (float) ($band['acos_to'] ?? 9999),
-                'sbgt'      => (int) ($band['sbgt'] ?? 0),
-                'label'     => (string) ($band['label'] ?? ''),
-                'color'     => (string) ($band['color'] ?? '#6c757d'),
+                'acos_from'   => (float) ($band['acos_from'] ?? 0),
+                'acos_to'     => (float) ($band['acos_to'] ?? 9999),
+                'spend_from'  => (float) ($band['spend_from'] ?? 0),
+                'spend_to'    => (float) ($band['spend_to'] ?? 9999),
+                'sbgt'        => (int) ($band['sbgt'] ?? 0),
+                'label'       => (string) ($band['label'] ?? ''),
+                'color'       => (string) ($band['color'] ?? '#6c757d'),
             ];
         }
 
-        usort($out, fn ($a, $b) => $a['acos_from'] <=> $b['acos_from']);
+        usort($out, function ($a, $b) {
+            $cmp = $a['acos_from'] <=> $b['acos_from'];
+            return $cmp !== 0 ? $cmp : ($a['spend_from'] <=> $b['spend_from']);
+        });
 
         return $out;
     }
@@ -1002,17 +1044,18 @@ class FacebookAllAdsSheetController extends Controller
     /**
      * Hard-coded fallback rule = the brackets the user originally
      * requested. Also used by the migration to seed the default row.
+     * Spend ranges default to 0–9999 (any spend).
      */
     private function defaultSbgtRule(): array
     {
         return [
             'bands' => [
-                ['acos_from' => 0,  'acos_to' => 10,   'sbgt' => 20, 'label' => 'Excellent', 'color' => '#ec4899'],
-                ['acos_from' => 10, 'acos_to' => 20,   'sbgt' => 15, 'label' => 'Good',      'color' => '#22c55e'],
-                ['acos_from' => 20, 'acos_to' => 30,   'sbgt' => 10, 'label' => 'Fair',      'color' => '#3b82f6'],
-                ['acos_from' => 30, 'acos_to' => 40,   'sbgt' => 5,  'label' => 'Poor',      'color' => '#ca8a04'],
-                ['acos_from' => 40, 'acos_to' => 50,   'sbgt' => 2,  'label' => 'Bad',       'color' => '#f97316'],
-                ['acos_from' => 50, 'acos_to' => 9999, 'sbgt' => 1,  'label' => 'Critical',  'color' => '#dc2626'],
+                ['acos_from' => 0,  'acos_to' => 10,   'spend_from' => 0, 'spend_to' => 9999, 'sbgt' => 20, 'label' => 'Excellent', 'color' => '#ec4899'],
+                ['acos_from' => 10, 'acos_to' => 20,   'spend_from' => 0, 'spend_to' => 9999, 'sbgt' => 15, 'label' => 'Good',      'color' => '#22c55e'],
+                ['acos_from' => 20, 'acos_to' => 30,   'spend_from' => 0, 'spend_to' => 9999, 'sbgt' => 10, 'label' => 'Fair',      'color' => '#93c5fd'],
+                ['acos_from' => 30, 'acos_to' => 40,   'spend_from' => 0, 'spend_to' => 9999, 'sbgt' => 5,  'label' => 'Poor',      'color' => '#facc15'],
+                ['acos_from' => 40, 'acos_to' => 50,   'spend_from' => 0, 'spend_to' => 9999, 'sbgt' => 2,  'label' => 'Bad',       'color' => '#dc2626'],
+                ['acos_from' => 50, 'acos_to' => 9999, 'spend_from' => 0, 'spend_to' => 9999, 'sbgt' => 1,  'label' => 'Critical',  'color' => '#dc2626'],
             ],
         ];
     }
@@ -1264,23 +1307,30 @@ class FacebookAllAdsSheetController extends Controller
 
         $clean = [];
         foreach ($bands as $b) {
-            $from = (float) ($b['acos_from'] ?? 0);
-            $to   = (float) ($b['acos_to'] ?? 9999);
+            $from      = (float) ($b['acos_from'] ?? 0);
+            $to        = (float) ($b['acos_to'] ?? 9999);
+            $spendFrom = (float) ($b['spend_from'] ?? 0);
             if ($from > $to) {
                 return response()->json([
                     'success' => false,
-                    'error'   => 'Each band needs ACOS From ≤ To.',
+                    'error'   => 'Each band needs ACOS From ≤ ACOS To.',
                 ], 422);
             }
             $clean[] = [
-                'acos_from' => $from,
-                'acos_to'   => $to,
-                'sbgt'      => (int) ($b['sbgt'] ?? 0),
-                'label'     => (string) ($b['label'] ?? ''),
-                'color'     => (string) ($b['color'] ?? '#6c757d'),
+                'acos_from'   => $from,
+                'acos_to'     => $to,
+                'spend_from'  => $spendFrom,
+                // UI no longer edits Spend To — open-ended upper bound.
+                'spend_to'    => 9999.0,
+                'sbgt'        => (int) ($b['sbgt'] ?? 0),
+                'label'       => (string) ($b['label'] ?? ''),
+                'color'       => $this->acosSchemaColorForBand($from, $to),
             ];
         }
-        usort($clean, fn ($a, $b) => $a['acos_from'] <=> $b['acos_from']);
+        usort($clean, function ($a, $b) {
+            $cmp = $a['acos_from'] <=> $b['acos_from'];
+            return $cmp !== 0 ? $cmp : ($a['spend_from'] <=> $b['spend_from']);
+        });
 
         DB::table('facebook_sbgt_rules')->updateOrInsert(
             ['key' => 'facebook_all'],
@@ -1974,7 +2024,6 @@ class FacebookAllAdsSheetController extends Controller
      */
     private const MERGED_COLUMNS = [
         ['title' => 'Campaign name', 'sources' => ['Campaign name']],
-        ['title' => 'CAMPAIGN ID',   'sources' => ['_campaign_id', 'Campaign ID', 'CAMPAIGN ID', 'Campaign activities']],
         // External link to the campaign (from the Campaign sheet's
         // "Link" column). Rendered as a clickable URL by the JS
         // formatter when the value looks like an http(s) URL.
@@ -2013,6 +2062,8 @@ class FacebookAllAdsSheetController extends Controller
         // export (column header: "Campaign delivery"). Values include
         // "Active", "In draft", "Paused", "Inactive", etc.
         ['title' => 'Status',        'sources' => ['Campaign delivery']],
+        // Kept last — ID is rarely needed for scanning metrics.
+        ['title' => 'CAMPAIGN ID',   'sources' => ['_campaign_id', 'Campaign ID', 'CAMPAIGN ID', 'Campaign activities']],
     ];
 
     /**

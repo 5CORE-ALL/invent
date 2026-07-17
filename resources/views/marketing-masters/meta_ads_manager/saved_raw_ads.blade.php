@@ -98,16 +98,20 @@
         <div class="col-12">
             <div class="d-flex flex-wrap gap-3">
                 <div class="stat-card bg-primary text-white">
-                    <div class="stat-label">Total Saved</div>
-                    <div class="stat-value">{{ number_format($totalRecords) }}</div>
+                    <div class="stat-label">Filtered Ads</div>
+                    <div class="stat-value" id="stat-filtered-total">{{ number_format($latestCount) }}</div>
                 </div>
                 <div class="stat-card bg-success text-white">
-                    <div class="stat-label">Latest Sync</div>
-                    <div class="stat-value">{{ $latestSyncDate ?? '—' }}</div>
+                    <div class="stat-label">Range From</div>
+                    <div class="stat-value" id="stat-range-from">{{ $monthFrom ?? '—' }}</div>
                 </div>
                 <div class="stat-card bg-info text-white">
-                    <div class="stat-label">Latest Sync Ads</div>
-                    <div class="stat-value">{{ number_format($latestCount) }}</div>
+                    <div class="stat-label">Range To</div>
+                    <div class="stat-value" id="stat-range-to">{{ $monthTo ?? '—' }}</div>
+                </div>
+                <div class="stat-card bg-secondary text-white">
+                    <div class="stat-label">All Saved</div>
+                    <div class="stat-value">{{ number_format($totalRecords) }}</div>
                 </div>
             </div>
         </div>
@@ -129,14 +133,37 @@
                 </div>
 
                 <div class="d-flex align-items-center filter-bar mb-3">
-                    <div class="d-flex align-items-center gap-2">
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
                         <label class="fw-semibold text-muted mb-0" style="font-size:0.82rem;">Sync Date:</label>
-                        <select id="sync-date-filter" class="form-select form-select-sm" style="width: 180px;">
-                            <option value="latest" selected>Latest ({{ $latestSyncDate ?? 'none' }})</option>
-                            <option value="all">All Dates</option>
+                        <select id="sync-date-filter" class="form-select form-select-sm" style="width: 200px;">
+                            <option value="month" selected>Last 30 days</option>
+                            <option value="latest">Latest ({{ $latestSyncDate ?? 'none' }})</option>
+                            <option value="range">Custom Range</option>
                             @foreach ($syncDates as $date)
                                 <option value="{{ $date }}">{{ $date }}</option>
                             @endforeach
+                        </select>
+                        <div id="date-range-wrap" class="d-none d-flex align-items-center gap-2">
+                            <label class="fw-semibold text-muted mb-0" style="font-size:0.82rem;">From</label>
+                            <input type="date" id="date-from" class="form-control form-control-sm" style="width: 150px;"
+                                   value="{{ $monthFrom ?? '' }}"
+                                   min="{{ $monthFrom }}"
+                                   max="{{ $monthTo }}">
+                            <label class="fw-semibold text-muted mb-0" style="font-size:0.82rem;">To</label>
+                            <input type="date" id="date-to" class="form-control form-control-sm" style="width: 150px;"
+                                   value="{{ $monthTo ?? '' }}"
+                                   min="{{ $monthFrom }}"
+                                   max="{{ $monthTo }}">
+                        </div>
+                    </div>
+                    <div class="vr mx-1"></div>
+                    <div class="d-flex align-items-center gap-2">
+                        <label class="fw-semibold text-muted mb-0" style="font-size:0.82rem;">Status:</label>
+                        <select id="status-filter" class="form-select form-select-sm" style="width: 130px;">
+                            <option value="active" selected>Active</option>
+                            <option value="paused">Paused</option>
+                            <option value="archived">Archived</option>
+                            <option value="all">All</option>
                         </select>
                     </div>
                     <div class="vr mx-1"></div>
@@ -213,39 +240,73 @@
             return '$' + value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         }
 
-        function loadSalesStats() {
-            const syncDate = $('#sync-date-filter').val();
-            $.get("{{ route('meta.ads.saved.raw.sales.stats') }}", {
-                sync_date: syncDate === 'latest' || syncDate === 'all' ? '' : syncDate,
-                latest_only: syncDate === 'latest' ? 1 : 0,
+        function syncDateMode() {
+            return $('#sync-date-filter').val();
+        }
+
+        function toggleDateRangeInputs() {
+            const isRange = syncDateMode() === 'range';
+            $('#date-range-wrap').toggleClass('d-none', !isRange);
+        }
+
+        const MONTH_FROM = @json($monthFrom);
+        const MONTH_TO = @json($monthTo);
+
+        /** Shared filter params for table + badge cards (always within last 30 days). */
+        function currentFilterParams() {
+            const mode = syncDateMode();
+            const params = {
                 search: $('#search-input').val().trim(),
-            }).done(function(response) {
-                if (!response.success || !response.stats) return;
-                const s = response.stats;
-                $('#stat-sales-l7').text('$' + Number(s.sales_l7 || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
-                $('#stat-sales-l30').text('$' + Number(s.sales_l30 || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
-                $('#stat-orders-l7').text(Number(s.orders_l7 || 0).toLocaleString());
-                $('#stat-orders-l30').text(Number(s.orders_l30 || 0).toLocaleString());
-                $('#stat-sessions-l30').text(Number(s.sessions_l30 || 0).toLocaleString());
-                $('#stat-campaigns-with-sales').text(Number(s.campaigns_with_sales_l30 || 0).toLocaleString());
-                if (s.shopify_synced_at) {
-                    $('#shopify-sync-note').text('Shopify data last synced: ' + s.shopify_synced_at);
-                }
-            });
+                status: $('#status-filter').val() || 'active',
+                sync_date: '',
+                latest_only: 0,
+                date_from: '',
+                date_to: '',
+            };
+
+            if (mode === 'latest') {
+                params.latest_only = 1;
+            } else if (mode === 'month') {
+                params.date_from = MONTH_FROM || '';
+                params.date_to = MONTH_TO || '';
+            } else if (mode === 'range') {
+                params.date_from = $('#date-from').val() || MONTH_FROM || '';
+                params.date_to = $('#date-to').val() || MONTH_TO || '';
+            } else {
+                params.sync_date = mode;
+            }
+
+            return params;
+        }
+
+        function loadSalesStats() {
+            $.get("{{ route('meta.ads.saved.raw.sales.stats') }}", currentFilterParams())
+                .done(function(response) {
+                    if (!response.success || !response.stats) return;
+                    const s = response.stats;
+                    $('#stat-sales-l7').text('$' + Number(s.sales_l7 || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+                    $('#stat-sales-l30').text('$' + Number(s.sales_l30 || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+                    $('#stat-orders-l7').text(Number(s.orders_l7 || 0).toLocaleString());
+                    $('#stat-orders-l30').text(Number(s.orders_l30 || 0).toLocaleString());
+                    $('#stat-sessions-l30').text(Number(s.sessions_l30 || 0).toLocaleString());
+                    $('#stat-campaigns-with-sales').text(Number(s.campaigns_with_sales_l30 || 0).toLocaleString());
+                    $('#stat-filtered-total').text(Number(s.filtered_total || 0).toLocaleString());
+                    $('#stat-range-from').text(s.sync_date_min || '—');
+                    $('#stat-range-to').text(s.sync_date_max || '—');
+                    if (s.shopify_synced_at) {
+                        $('#shopify-sync-note').text('Shopify data last synced: ' + s.shopify_synced_at);
+                    }
+                });
         }
 
         $(document).ready(function() {
+            toggleDateRangeInputs();
             loadSalesStats();
 
             table = new Tabulator("#meta-raw-table", {
                 ajaxURL: "{{ route('meta.ads.saved.raw.data') }}",
                 ajaxParams: function() {
-                    const syncDate = $('#sync-date-filter').val();
-                    return {
-                        sync_date: syncDate === 'latest' || syncDate === 'all' ? '' : syncDate,
-                        latest_only: syncDate === 'latest' ? 1 : 0,
-                        search: $('#search-input').val().trim(),
-                    };
+                    return currentFilterParams();
                 },
                 ajaxResponse: function(url, params, response) {
                     return {
@@ -299,8 +360,17 @@
                 ],
             });
 
-            $('#reload-btn, #sync-date-filter').on('click change', function(e) {
-                if (e.type === 'click' || e.target.id === 'sync-date-filter') {
+            $('#reload-btn').on('click', reloadTable);
+
+            $('#sync-date-filter').on('change', function() {
+                toggleDateRangeInputs();
+                reloadTable();
+            });
+
+            $('#status-filter').on('change', reloadTable);
+
+            $('#date-from, #date-to').on('change', function() {
+                if (syncDateMode() === 'range') {
                     reloadTable();
                 }
             });
@@ -312,7 +382,43 @@
             });
 
             $('#export-btn').on('click', function() {
-                table.download("csv", "meta-raw-ads.csv");
+                const btn = $(this);
+                const original = btn.html();
+                btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin me-1"></i> Exporting…');
+
+                const params = new URLSearchParams(currentFilterParams());
+                const url = "{{ route('meta.ads.saved.raw.export') }}?" + params.toString();
+
+                // Fetch as blob so all pages download cleanly (avoids
+                // ERR_INVALID_RESPONSE from streamed window.location downloads).
+                fetch(url, { credentials: 'same-origin' })
+                    .then(async function(res) {
+                        const ct = (res.headers.get('content-type') || '').toLowerCase();
+                        if (!res.ok || ct.includes('application/json')) {
+                            const body = await res.json().catch(function() { return {}; });
+                            throw new Error(body.error || ('Export failed (' + res.status + ')'));
+                        }
+                        const disposition = res.headers.get('content-disposition') || '';
+                        const match = disposition.match(/filename=\"?([^\";]+)\"?/i);
+                        const filename = match ? match[1] : 'meta-raw-ads.csv';
+                        const blob = await res.blob();
+                        return { blob: blob, filename: filename };
+                    })
+                    .then(function(file) {
+                        const a = document.createElement('a');
+                        a.href = URL.createObjectURL(file.blob);
+                        a.download = file.filename;
+                        document.body.appendChild(a);
+                        a.click();
+                        a.remove();
+                        URL.revokeObjectURL(a.href);
+                    })
+                    .catch(function(err) {
+                        alert(err.message || 'Export failed');
+                    })
+                    .finally(function() {
+                        btn.prop('disabled', false).html(original);
+                    });
             });
 
             $('#copy-json-btn').on('click', function() {

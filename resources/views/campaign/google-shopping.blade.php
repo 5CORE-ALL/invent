@@ -17,8 +17,20 @@
         #google-ads-campaigns-raw-wrap .tabulator .tabulator-header {
             background: #f8f9fa; border-bottom: 1px solid #dee2e6;
         }
+        /* Compact sort arrows — clickable on every data column header */
+        #google-ads-campaigns-raw-wrap .tabulator-col.tabulator-sortable .tabulator-col-title {
+            cursor: pointer;
+        }
         #google-ads-campaigns-raw-wrap .tabulator-col .tabulator-col-sorter {
-            display: none !important;
+            display: inline-flex !important;
+            align-items: center;
+            opacity: 0.35;
+            margin-left: 2px;
+        }
+        #google-ads-campaigns-raw-wrap .tabulator-col.tabulator-sortable:hover .tabulator-col-sorter,
+        #google-ads-campaigns-raw-wrap .tabulator-col[aria-sort="asc"] .tabulator-col-sorter,
+        #google-ads-campaigns-raw-wrap .tabulator-col[aria-sort="desc"] .tabulator-col-sorter {
+            opacity: 1;
         }
         /* Normal horizontal headers (not vertical / aliexpress-style) */
         #google-ads-campaigns-raw-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-content-holder,
@@ -1533,21 +1545,28 @@
                     };
                     /** Server-side sort whitelist — keep in sync with applyRawGridSort() in the controller. */
                     var sortableFields = {
+                        campaign_status: true,
                         campaign_name: true,
                         spend: true,
                         l7_spend: true,
                         l2_spend: true,
                         l1_spend: true,
                         metrics_clicks: true,
+                        ctr_l30: true,
+                        cpc_L30: true,
+                        cpc_L7: true,
+                        cpc_L2: true,
+                        cpc_L1: true,
                         ad_sold_L30: true,
                         ad_sales_L30: true,
                         acos_l30: true,
                         cvr_l30: true,
-                        ctr_l30: true,
                         ub7: true,
                         ub2: true,
                         ub1: true,
                         bgt: true,
+                        sbgt: true,
+                        sbid: true,
                     };
                     defs.forEach(function(col) {
                         if (col.field === '__gac_select') {
