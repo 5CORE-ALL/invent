@@ -83,6 +83,25 @@ class MarketplaceController extends Controller
         return response()->json(['success' => false, 'message' => 'Not supported for this marketplace.'], 404);
     }
 
+    public function syncProductInventory(Request $request, string $marketplace, int $shopifySku): JsonResponse
+    {
+        $marketplace = strtolower($marketplace);
+        if ($marketplace === 'aliexpress') {
+            return app(AliexpressSyncController::class)->pushProductInventory($shopifySku);
+        }
+        if ($marketplace === 'alibaba') {
+            return app(AlibabaSyncController::class)->pushProductInventory($shopifySku);
+        }
+        if ($marketplace === 'reverb') {
+            return app(ReverbSyncController::class)->pushProductInventory($shopifySku);
+        }
+        if ($marketplace === 'newegg') {
+            return app(NeweggSyncController::class)->pushProductInventory($shopifySku);
+        }
+
+        return response()->json(['success' => false, 'message' => 'Not supported for this marketplace.'], 404);
+    }
+
     public function pullOrder(Request $request, string $marketplace, int $order): JsonResponse
     {
         $marketplace = strtolower($marketplace);

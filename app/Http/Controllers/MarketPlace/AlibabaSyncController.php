@@ -147,13 +147,13 @@ class AlibabaSyncController extends Controller
         if ($linkTab === 'linked_zero') {
             $linkTab = 'zero';
         }
-        if (! in_array($linkTab, ['all', 'matched', 'matched_inactive', 'mismatch', 'zero', 'unlinked'], true)) {
+        if (! in_array($linkTab, ['all', 'matched', 'matched_inactive', 'mismatch', 'mismatch_inactive', 'zero', 'unlinked'], true)) {
             $linkTab = 'all';
         }
         $page = max(1, (int) $request->input('page', 1));
         $perPage = 50;
         $apiError = null;
-        $emptyCounts = ['all' => 0, 'matched' => 0, 'matched_inactive' => 0, 'mismatch' => 0, 'zero' => 0, 'unlinked' => 0, 'linked' => 0];
+        $emptyCounts = ['all' => 0, 'matched' => 0, 'matched_inactive' => 0, 'mismatch' => 0, 'mismatch_inactive' => 0, 'zero' => 0, 'unlinked' => 0, 'linked' => 0];
 
         if (! Schema::hasTable('shopify_skus')) {
             $apiError = 'shopify_skus table missing. Run Shopify inventory sync first.';
@@ -178,8 +178,9 @@ class AlibabaSyncController extends Controller
         $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock);
         $counts = $classified['counts'] ?? $emptyCounts;
         $counts['all'] = $catalog->countDistinctActiveSkus();
-        // No live state cache for Alibaba — all qty-matched stay under Active & Matched.
+        // No live state cache for Alibaba — all qty rows stay under Active tabs.
         $counts['matched_inactive'] = 0;
+        $counts['mismatch_inactive'] = 0;
 
         if (! $catalog->hasAnyActive()) {
             $apiError = trim(($apiError ? $apiError.' ' : '').'Shared Shopify live catalog is empty — refresh Shopify from Marketplace Manager.');
@@ -187,6 +188,7 @@ class AlibabaSyncController extends Controller
 
         $linkedVerified = match ($linkTab) {
             'mismatch' => $classified['mismatch'] ?? [],
+            'mismatch_inactive' => [],
             'zero' => $classified['zero'] ?? [],
             'matched_inactive' => [],
             'matched' => $classified['matched'] ?? [],
@@ -208,7 +210,7 @@ class AlibabaSyncController extends Controller
             });
         }
 
-        if (in_array($linkTab, ['matched', 'matched_inactive', 'mismatch', 'zero'], true)) {
+        if (in_array($linkTab, ['matched', 'matched_inactive', 'mismatch', 'mismatch_inactive', 'zero'], true)) {
             $catalog->restrictShopifySkuQuery($query, $linkedVerified);
         } elseif ($linkTab === 'all') {
             $catalog->restrictShopifySkuQuery($query, null, false);
@@ -318,6 +320,47 @@ class AlibabaSyncController extends Controller
             'aeLiveError' => $aeLiveError,
             'aeDataSource' => $aeDataSource,
             'connected' => $this->apiConfig->isConfigured('alibaba'),
+        ]);
+    }
+
+    /**
+     * Push live Shopify qty → Alibaba for this one SKU immediately (no queue).
+     */
+    public function pushProductInventory(int $shopifySkuId): JsonResponse
+    {
+        @set_time_limit(120);
+
+        $settings = MarketplaceSyncSettings::getFor('alibaba');
+        if (! ($settings['inventory']['inventory_sync'] ?? false) && ! ($settings['pricing']['price_sync'] ?? false)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Turn on Inventory sync (or Price sync) in Alibaba settings first.',
+            ], 422);
+        }
+
+        $shopifyRow = ShopifySku::query()->findOrFail($shopifySkuId);
+        $sku = trim((string) $shopifyRow->sku);
+        if ($sku === '') {
+            return response()->json(['success' => false, 'message' => 'SKU missing on this Shopify row.'], 422);
+        }
+
+        $metric = $this->alibabaMetricMapForSkus([$sku])[$sku] ?? null;
+        if (! $this->isShopifySkuLinkedOnAlibaba($metric, $sku)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This SKU is not linked on Alibaba. Run Sync Alibaba link map first.',
+            ], 422);
+        }
+
+        $result = app(AlibabaInventorySyncService::class)->syncSkusFromShopify([$sku]);
+
+        return response()->json([
+            'success' => ((int) ($result['updated'] ?? 0)) > 0 || ((int) ($result['failed'] ?? 0)) === 0,
+            'queued' => false,
+            'updated' => (int) ($result['updated'] ?? 0),
+            'failed' => (int) ($result['failed'] ?? 0),
+            'skipped' => (int) ($result['skipped'] ?? 0),
+            'message' => $result['message'] ?? 'Inventory sync finished.',
         ]);
     }
 

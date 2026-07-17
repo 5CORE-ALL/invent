@@ -549,6 +549,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/products', [\App\Http\Controllers\MarketplaceController::class, 'products'])->name('marketplace.products');
         Route::get('/products/{shopifySku}', [\App\Http\Controllers\MarketplaceController::class, 'showProduct'])->name('marketplace.products.show')->whereNumber('shopifySku');
         Route::post('/products/{shopifySku}/pull', [\App\Http\Controllers\MarketplaceController::class, 'pullProduct'])->name('marketplace.products.pull')->whereNumber('shopifySku');
+        Route::post('/products/{shopifySku}/sync-inventory', [\App\Http\Controllers\MarketplaceController::class, 'syncProductInventory'])->name('marketplace.products.sync.inventory')->whereNumber('shopifySku');
         Route::get('/orders', [\App\Http\Controllers\MarketplaceController::class, 'orders'])->name('marketplace.orders');
         Route::get('/orders/{order}', [\App\Http\Controllers\MarketplaceController::class, 'showOrder'])->name('marketplace.orders.show')->whereNumber('order');
         Route::post('/orders/{order}/pull', [\App\Http\Controllers\MarketplaceController::class, 'pullOrder'])->name('marketplace.orders.pull')->whereNumber('order');

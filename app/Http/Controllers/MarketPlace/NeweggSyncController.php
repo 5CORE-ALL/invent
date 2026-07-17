@@ -131,7 +131,7 @@ class NeweggSyncController extends Controller
         if ($linkTab === 'linked_zero') {
             $linkTab = 'zero';
         }
-        if (! in_array($linkTab, ['all', 'matched', 'matched_inactive', 'mismatch', 'zero', 'unlinked'], true)) {
+        if (! in_array($linkTab, ['all', 'matched', 'matched_inactive', 'mismatch', 'mismatch_inactive', 'zero', 'unlinked'], true)) {
             $linkTab = 'all';
         }
         $stateTab = $this->parseAeStateTab($request);
@@ -141,7 +141,8 @@ class NeweggSyncController extends Controller
         $forceLive = $request->boolean('refresh_live');
         $clearCache = $request->boolean('clear_cache');
         $emptyStateCounts = $this->emptyAeStateCounts();
-        $emptyCounts = ['all' => 0, 'matched' => 0, 'matched_inactive' => 0, 'mismatch' => 0, 'zero' => 0, 'unlinked' => 0, 'linked' => 0];
+        $emptyCounts = ['all' => 0, 'matched' => 0, 'matched_inactive' => 0, 'mismatch' => 0, 'mismatch_inactive' => 0, 'zero' => 0, 'unlinked' => 0, 'linked' => 0];
+        $liveLinkTabs = ['matched', 'matched_inactive', 'mismatch', 'mismatch_inactive', 'zero'];
         $liveService = app(NeweggLiveListingsService::class);
         if ($clearCache) {
             $liveService->clearCache();
@@ -173,14 +174,17 @@ class NeweggSyncController extends Controller
         $catalog = app(ShopifyLiveVerifiedCatalogService::class);
         $linkedSkus = $this->linkedNeweggSkus();
         $allLinkedVerified = $catalog->filterLinkedToVerified($linkedSkus);
-        $mpStock = MarketplaceListingStockResolver::stockMapFromLiveListingRows($liveService->peekCached());
-        if ($mpStock === []) {
-            $mpStock = $this->neweggStockMapForSkus($allLinkedVerified);
-        }
+        // Live cache often omits inventory for inactive rows — fill gaps from local map
+        // so qty-matched inactive SKUs land in Inactive & Matched (not Mismatch).
+        $mpStock = MarketplaceListingStockResolver::classifyStockMapFromLiveOrLocal(
+            $liveService->peekCached(),
+            $this->neweggStockMapForSkus($allLinkedVerified)
+        );
         $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock);
         $counts = $classified['counts'] ?? $emptyCounts;
         $counts['all'] = $catalog->countDistinctActiveSkus();
         $counts['matched_inactive'] = 0;
+        $counts['mismatch_inactive'] = 0;
 
         if (! $catalog->hasAnyActive()) {
             $apiError = trim(($apiError ? $apiError.' ' : '').'Shared Shopify live catalog is empty — refresh Shopify from Marketplace Manager.');
@@ -213,8 +217,35 @@ class NeweggSyncController extends Controller
             $counts['linked_with_inv'] = $counts['matched'];
         }
 
+        $mismatchQty = $classified['mismatch'] ?? [];
+        $mismatchActive = $mismatchQty;
+        $mismatchInactive = [];
+        $mismatchNormToSku = [];
+        foreach ($mismatchQty as $sku) {
+            $n = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
+            if ($n !== '') {
+                $mismatchNormToSku[$n] = (string) $sku;
+            }
+        }
+        $mismatchStateIndex = $this->aeStateIndexFromCache(
+            $liveService,
+            static fn (string $norm): bool => isset($mismatchNormToSku[$norm]),
+            count($mismatchNormToSku),
+            $mismatchNormToSku
+        );
+        if ($mismatchStateIndex['ready']) {
+            $mismatchActive = $catalog->filterSkusByNormalizedAllowList(
+                $mismatchQty,
+                $mismatchStateIndex['skusByState']['active'] ?? []
+            );
+            $mismatchInactive = $catalog->excludeSkusByNormalizedList($mismatchQty, $mismatchActive);
+            $counts['mismatch'] = count($mismatchActive);
+            $counts['mismatch_inactive'] = count($mismatchInactive);
+        }
+
         $linkedVerified = match ($linkTab) {
-            'mismatch' => $classified['mismatch'] ?? [],
+            'mismatch' => $mismatchActive,
+            'mismatch_inactive' => $mismatchInactive,
             'zero' => $classified['zero'] ?? [],
             'matched_inactive' => $matchedInactive,
             'matched' => $matchedActive,
@@ -234,7 +265,7 @@ class NeweggSyncController extends Controller
             $linkedNormToSku
         );
 
-        if (in_array($linkTab, ['matched', 'matched_inactive', 'mismatch', 'zero'], true) && ! $stateIndex['ready'] && ! $forceLive) {
+        if (in_array($linkTab, $liveLinkTabs, true) && ! $stateIndex['ready'] && ! $forceLive) {
             WarmNeweggLiveListingsCache::dispatch();
         }
 
@@ -253,7 +284,7 @@ class NeweggSyncController extends Controller
             });
         }
 
-        if (in_array($linkTab, ['matched', 'matched_inactive', 'mismatch', 'zero'], true)) {
+        if (in_array($linkTab, $liveLinkTabs, true)) {
             if ($linkedVerified === []) {
                 $query->whereRaw('1 = 0');
             } elseif ($stateTab !== 'all') {
@@ -280,7 +311,7 @@ class NeweggSyncController extends Controller
 
         // Page hydrate: when cache has no state for this page, fetch live product info for IDs on page.
         $pageLiveByProduct = [];
-        if (in_array($linkTab, ['matched', 'matched_inactive', 'mismatch', 'zero'], true)) {
+        if (in_array($linkTab, $liveLinkTabs, true)) {
             $needIds = [];
             foreach ($skus as $sku) {
                 $metric = $aeMap[$sku] ?? null;
@@ -342,10 +373,10 @@ class NeweggSyncController extends Controller
             'searchSku' => $searchSku,
             'searchName' => $searchName,
             'linkTab' => $linkTab,
-            'stateTab' => in_array($linkTab, ['matched', 'matched_inactive', 'mismatch', 'zero'], true) ? $stateTab : 'all',
+            'stateTab' => in_array($linkTab, $liveLinkTabs, true) ? $stateTab : 'all',
             'counts' => $counts,
-            'stateCounts' => in_array($linkTab, ['matched', 'matched_inactive', 'mismatch', 'zero'], true) ? $stateIndex['counts'] : $emptyStateCounts,
-            'stateCacheReady' => in_array($linkTab, ['matched', 'matched_inactive', 'mismatch', 'zero'], true) ? $stateIndex['ready'] : false,
+            'stateCounts' => in_array($linkTab, $liveLinkTabs, true) ? $stateIndex['counts'] : $emptyStateCounts,
+            'stateCacheReady' => in_array($linkTab, $liveLinkTabs, true) ? $stateIndex['ready'] : false,
             'apiError' => $apiError,
             'connected' => $this->apiConfig->isConfigured('newegg'),
             'shopifyCatalogSyncedAt' => $catalog->latestSyncedAt(),
@@ -407,6 +438,47 @@ class NeweggSyncController extends Controller
             'aeLiveError' => $aeLiveError,
             'aeDataSource' => $aeDataSource,
             'connected' => $this->apiConfig->isConfigured('newegg'),
+        ]);
+    }
+
+    /**
+     * Push live Shopify qty → Newegg for this one SKU immediately (no queue).
+     */
+    public function pushProductInventory(int $shopifySkuId): JsonResponse
+    {
+        @set_time_limit(120);
+
+        $settings = MarketplaceSyncSettings::getFor('newegg');
+        if (! ($settings['inventory']['inventory_sync'] ?? false) && ! ($settings['pricing']['price_sync'] ?? false)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Turn on Inventory sync (or Price sync) in Newegg settings first.',
+            ], 422);
+        }
+
+        $shopifyRow = ShopifySku::query()->findOrFail($shopifySkuId);
+        $sku = trim((string) $shopifyRow->sku);
+        if ($sku === '') {
+            return response()->json(['success' => false, 'message' => 'SKU missing on this Shopify row.'], 422);
+        }
+
+        $metric = $this->neweggMetricMapForSkus([$sku])[$sku] ?? null;
+        if (! $this->isShopifySkuLinkedOnNewegg($metric, $sku)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This SKU is not linked on Newegg. Run Sync Newegg link map first.',
+            ], 422);
+        }
+
+        $result = app(NeweggInventorySyncService::class)->syncSkusFromShopify([$sku]);
+
+        return response()->json([
+            'success' => ((int) ($result['updated'] ?? 0)) > 0 || ((int) ($result['failed'] ?? 0)) === 0,
+            'queued' => false,
+            'updated' => (int) ($result['updated'] ?? 0),
+            'failed' => (int) ($result['failed'] ?? 0),
+            'skipped' => (int) ($result['skipped'] ?? 0),
+            'message' => $result['message'] ?? 'Inventory sync finished.',
         ]);
     }
 
@@ -635,12 +707,62 @@ class NeweggSyncController extends Controller
         $catalog = app(ShopifyLiveVerifiedCatalogService::class);
         $liveService = app(NeweggLiveListingsService::class);
         $linkedSkus = $this->linkedNeweggSkus();
-        $mpStock = MarketplaceListingStockResolver::stockMapFromLiveListingRows($liveService->peekCached());
-        if ($mpStock === []) {
-            $mpStock = $this->neweggStockMapForSkus($catalog->filterLinkedToVerified($linkedSkus));
-        }
+        $verified = $catalog->filterLinkedToVerified($linkedSkus);
+        $mpStock = MarketplaceListingStockResolver::classifyStockMapFromLiveOrLocal(
+            $liveService->peekCached(),
+            $this->neweggStockMapForSkus($verified)
+        );
         $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock);
-        $mismatch = $classified['mismatch'] ?? [];
+        $mismatchQty = $classified['mismatch'] ?? [];
+        $scope = strtolower((string) $request->input('scope', $request->input('link', 'all')));
+        if (in_array($scope, ['mismatch', 'active', 'mismatch_active'], true)) {
+            $mismatchNormToSku = [];
+            foreach ($mismatchQty as $sku) {
+                $n = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
+                if ($n !== '') {
+                    $mismatchNormToSku[$n] = (string) $sku;
+                }
+            }
+            $idx = $this->aeStateIndexFromCache(
+                $liveService,
+                static fn (string $norm): bool => isset($mismatchNormToSku[$norm]),
+                count($mismatchNormToSku),
+                $mismatchNormToSku
+            );
+            if ($idx['ready']) {
+                $mismatch = $catalog->filterSkusByNormalizedAllowList(
+                    $mismatchQty,
+                    $idx['skusByState']['active'] ?? []
+                );
+            } else {
+                $mismatch = $mismatchQty;
+            }
+        } elseif (in_array($scope, ['mismatch_inactive', 'inactive'], true)) {
+            $mismatchNormToSku = [];
+            foreach ($mismatchQty as $sku) {
+                $n = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
+                if ($n !== '') {
+                    $mismatchNormToSku[$n] = (string) $sku;
+                }
+            }
+            $idx = $this->aeStateIndexFromCache(
+                $liveService,
+                static fn (string $norm): bool => isset($mismatchNormToSku[$norm]),
+                count($mismatchNormToSku),
+                $mismatchNormToSku
+            );
+            if ($idx['ready']) {
+                $active = $catalog->filterSkusByNormalizedAllowList(
+                    $mismatchQty,
+                    $idx['skusByState']['active'] ?? []
+                );
+                $mismatch = $catalog->excludeSkusByNormalizedList($mismatchQty, $active);
+            } else {
+                $mismatch = [];
+            }
+        } else {
+            $mismatch = $mismatchQty;
+        }
 
         $offset = max(0, (int) $request->input('offset', 0));
         $limit = max(1, min(40, (int) $request->input('limit', 25)));

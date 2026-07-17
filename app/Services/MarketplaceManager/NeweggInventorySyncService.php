@@ -290,8 +290,20 @@ class NeweggInventorySyncService
             'failed' => $failed,
             'skipped' => $skipped,
             'price_updated' => $priceUpdated,
-            'message' => "Updated {$updated} inventory, {$priceUpdated} price(s); failed {$failed}; skipped {$skipped}.",
+            'message' => "Updated {$updated} inventory, {$priceUpdated} price(s); failed {$failed}; skipped {$skipped}."
+                .$this->appendMismatchPass(!$dryRun && ($settings['inventory']['inventory_sync'] ?? false)),
         ];
+    }
+
+    protected function appendMismatchPass(bool $run): string
+    {
+        if (! $run) {
+            return '';
+        }
+
+        $pass = app(MarketplaceMismatchInventoryPass::class)->run('newegg');
+
+        return ' '.$pass['message'];
     }
 
     /**

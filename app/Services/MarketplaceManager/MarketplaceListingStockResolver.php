@@ -493,6 +493,47 @@ final class MarketplaceListingStockResolver
     }
 
     /**
+     * Overlay live-cache stock onto local pricing/mapping stock.
+     * Live values win when present; local fills gaps (common for inactive
+     * listings where live inventory is null).
+     *
+     * @param  array<string, int>  $localMap
+     * @param  array<string, int>  $liveMap
+     * @return array<string, int>
+     */
+    public static function mergeLocalAndLiveStockMaps(array $localMap, array $liveMap): array
+    {
+        if ($localMap === []) {
+            return $liveMap;
+        }
+        if ($liveMap === []) {
+            return $localMap;
+        }
+
+        foreach ($liveMap as $key => $qty) {
+            $localMap[$key] = (int) $qty;
+        }
+
+        return $localMap;
+    }
+
+    /**
+     * Prefer warm live-listings inventory; fall back to local stock for SKUs
+     * the live payload omitted or left null.
+     *
+     * @param  array<int, array{sku?: string, inventory?: int|null}>|null  $liveRows
+     * @param  array<string, int>  $localMap
+     * @return array<string, int>
+     */
+    public static function classifyStockMapFromLiveOrLocal(?array $liveRows, array $localMap): array
+    {
+        return self::mergeLocalAndLiveStockMaps(
+            $localMap,
+            self::stockMapFromLiveListingRows($liveRows)
+        );
+    }
+
+    /**
      * Batch stock map for listings index.
      * Keys include UPPER(trim(sku)) and normalizeSkuForShopifyLookup(sku) for each found row.
      *
