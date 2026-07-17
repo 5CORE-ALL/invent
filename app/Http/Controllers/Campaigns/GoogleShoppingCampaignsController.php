@@ -1663,12 +1663,22 @@ class GoogleShoppingCampaignsController extends Controller
         $underM1 = $this->sqlFloatLiteral((float) $s['under_mult_l1']);
         $underM7 = $this->sqlFloatLiteral((float) $s['under_mult_l7']);
         $fb = $this->sqlFloatLiteral((float) $s['under_fallback']);
+        $flatMax = $this->sqlFloatLiteral((float) ($s['under_flat_max'] ?? 0.25));
+        $flatIncr = $this->sqlFloatLiteral((float) ($s['under_flat_incr'] ?? 0.05));
 
         $overBid = "FLOOR(({$cpcL1Expr}) * {$overM} * 100.0) / 100.0";
+        $underL1 = '(CASE '
+            ."WHEN ({$cpcL1Expr}) < {$flatMax} THEN FLOOR((({$cpcL1Expr}) + {$flatIncr}) * 100.0) / 100.0 "
+            ."ELSE FLOOR(({$cpcL1Expr}) * {$underM1} * 100.0) / 100.0 "
+            .'END)';
+        $underL7 = '(CASE '
+            ."WHEN ({$cpcL7Expr}) < {$flatMax} THEN FLOOR((({$cpcL7Expr}) + {$flatIncr}) * 100.0) / 100.0 "
+            ."ELSE FLOOR(({$cpcL7Expr}) * {$underM7} * 100.0) / 100.0 "
+            .'END)';
         $underBid = '(CASE '
             ."WHEN ({$cpcL1Expr}) <= 0 AND ({$cpcL7Expr}) <= 0 THEN {$fb} "
-            ."WHEN ({$cpcL1Expr}) > 0 THEN FLOOR(({$cpcL1Expr}) * {$underM1} * 100.0) / 100.0 "
-            ."ELSE FLOOR(({$cpcL7Expr}) * {$underM7} * 100.0) / 100.0 "
+            ."WHEN ({$cpcL1Expr}) > 0 THEN {$underL1} "
+            ."ELSE {$underL7} "
             .'END)';
 
         return '(CASE '

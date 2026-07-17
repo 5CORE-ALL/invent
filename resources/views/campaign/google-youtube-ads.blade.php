@@ -513,25 +513,27 @@
                 </div>
                 <div class="modal-body">
                     <p class="small text-muted mb-3">
-                        Each row is an inclusive <strong>ACOS % range</strong> (From → To).
-                        Rows are checked <strong>top to bottom</strong>; the first range that
-                        contains the campaign's ACOS gets its SBGT. Use <code>9999</code> on
+                        Same ACOS → SBGT brackets as <strong>/facebook-ads</strong>, matched on
+                        <strong>ACOS % only</strong> (no spend gate). Rows are checked
+                        <strong>top to bottom</strong>; the first range that contains the
+                        campaign's ACOS gets its SBGT. Use <code>9999</code> on
                         <em>To</em> for the catch-all highest band.
                     </p>
+                    <div class="table-responsive">
                     <table class="table table-sm table-bordered align-middle mb-0" id="gac-sbgt-rule-table">
                         <thead class="table-light">
                             <tr>
                                 <th style="width:40px;">#</th>
-                                <th>Label</th>
-                                <th style="width:140px;">Color</th>
-                                <th style="width:110px;">From (%)</th>
-                                <th style="width:110px;">To (%)</th>
-                                <th style="width:120px;">SBGT</th>
-                                <th style="width:50px;"></th>
+                                <th style="width:110px;">ACOS%</th>
+                                <th style="width:120px;">ACOS From (%)</th>
+                                <th style="width:120px;">ACOS To (%)</th>
+                                <th style="width:100px;">SBGT</th>
+                                <th style="width:56px;" class="text-center">Del</th>
                             </tr>
                         </thead>
                         <tbody id="gac-sbgt-bands-body"></tbody>
                     </table>
+                    </div>
                     <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="gac-sbgt-add-band-btn">
                         <i class="fas fa-plus me-1"></i>Add band
                     </button>
@@ -553,7 +555,7 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <p class="small text-muted mb-2">When <strong>both</strong> 7UB% and 1UB% are <strong>above</strong> the high threshold, SBID = L1 CPC × over multiplier. When <strong>both</strong> are <strong>below</strong> the low threshold, SBID uses L1 / L7 CPC × under multipliers or fallback. Otherwise SBID shows —.</p>
+                    <p class="small text-muted mb-2">When <strong>both</strong> 7UB% and 1UB% are <strong>above</strong> the high threshold, SBID = L1 CPC × over multiplier. When <strong>both</strong> are <strong>below</strong> the low threshold: if CPC &lt; low-bid ceiling, SBID = CPC + flat incr; otherwise CPC × under multipliers (or fallback when no CPC). Otherwise SBID shows —.</p>
                     <div class="row g-2 mb-2">
                         <div class="col-4">
                             <label class="form-label small mb-0" for="gacSbidUtilLow">Low threshold (%)</label>
@@ -569,7 +571,7 @@
                         </div>
                     </div>
                     <p class="small fw-semibold mb-1">Both below low — CPC multipliers</p>
-                    <div class="row g-2 mb-3">
+                    <div class="row g-2 mb-2">
                         <div class="col-4">
                             <label class="form-label small mb-0" for="gacSbidUnderMultL1">× L1 CPC</label>
                             <input type="number" step="0.01" class="form-control form-control-sm" id="gacSbidUnderMultL1">
@@ -577,6 +579,17 @@
                         <div class="col-4">
                             <label class="form-label small mb-0" for="gacSbidUnderMultL7">× L7 CPC</label>
                             <input type="number" step="0.01" class="form-control form-control-sm" id="gacSbidUnderMultL7">
+                        </div>
+                    </div>
+                    <p class="small fw-semibold mb-1">Both below low — flat incr when CPC is low</p>
+                    <div class="row g-2 mb-3">
+                        <div class="col-4">
+                            <label class="form-label small mb-0" for="gacSbidUnderFlatMax">If CPC &lt;</label>
+                            <input type="number" step="0.01" class="form-control form-control-sm" id="gacSbidUnderFlatMax" title="When base CPC is below this, use CPC + incr instead of the multiplier">
+                        </div>
+                        <div class="col-4">
+                            <label class="form-label small mb-0" for="gacSbidUnderFlatIncr">Bid incr (+)</label>
+                            <input type="number" step="0.01" class="form-control form-control-sm" id="gacSbidUnderFlatIncr" title="Flat amount added to CPC when below the ceiling">
                         </div>
                     </div>
                     <p class="small fw-semibold mb-1">Both above high</p>
@@ -1903,6 +1916,25 @@
                 if (el && v != null && v !== '') el.value = String(v);
             }
             var gacCurrentSbgtBands = [];
+            var GAC_DEFAULT_BAND_LABELS = ['Excellent', 'Good', 'Fair', 'Poor', 'Critical'];
+
+            /** Same ACOS colour schema as /facebook-ads (no spend). */
+            function gacAcosSchemaStyle(pct) {
+                var n = Number(pct);
+                if (!isFinite(n)) return { bg: '#6c757d', fg: '#fff' };
+                if (n <= 10) return { bg: '#ec4899', fg: '#000' };
+                if (n <= 20) return { bg: '#22c55e', fg: '#000' };
+                if (n <= 30) return { bg: '#93c5fd', fg: '#000' };
+                if (n <= 40) return { bg: '#facc15', fg: '#000' };
+                return { bg: '#dc2626', fg: '#fff' };
+            }
+            function gacAcosSchemaStyleForBand(from, to) {
+                var a = Number(from);
+                var b = Number(to);
+                var lo = isFinite(a) ? a : 0;
+                var hi = (isFinite(b) && b < 9000) ? b : (lo + 10);
+                return gacAcosSchemaStyle((lo + hi) / 2);
+            }
 
             function gacNormalizeSbgtBandsForUi(bands) {
                 if (!Array.isArray(bands) || !bands.length) return [];
@@ -1910,30 +1942,34 @@
                     return b && (b.acos_from !== undefined && b.acos_from !== null
                         || b.acos_to !== undefined && b.acos_to !== null);
                 });
+                var withDefaults = function(b, i) {
+                    var label = String(b.label ?? '').trim();
+                    var from = Number(b.acos_from ?? 0);
+                    var to = Number(b.acos_to ?? 9999);
+                    var schema = gacAcosSchemaStyleForBand(from, to);
+                    return {
+                        acos_from: from,
+                        acos_to: to,
+                        sbgt: b.sbgt,
+                        label: label || (GAC_DEFAULT_BAND_LABELS[i] || 'Band'),
+                        color: schema.bg,
+                    };
+                };
                 if (hasFromTo) {
-                    return bands.map(function(b) {
-                        return {
-                            acos_from: Number(b.acos_from ?? 0),
-                            acos_to: Number(b.acos_to ?? 9999),
-                            sbgt: b.sbgt,
-                            label: b.label ?? '',
-                            color: b.color ?? '#6c757d',
-                        };
-                    });
+                    return bands.map(withDefaults);
                 }
                 var sorted = bands.slice().sort(function(a, b) {
                     return (Number(a.acos_max) || 0) - (Number(b.acos_max) || 0);
                 });
                 var prevTo = 0;
-                return sorted.map(function(b) {
+                return sorted.map(function(b, i) {
                     var to = Number(b.acos_max ?? 9999);
-                    var row = {
+                    var row = withDefaults({
                         acos_from: prevTo,
                         acos_to: to,
                         sbgt: b.sbgt,
                         label: b.label ?? '',
-                        color: b.color ?? '#6c757d',
-                    };
+                    }, i);
                     prevTo = to;
                     return row;
                 });
@@ -1944,28 +1980,26 @@
                 if (!tbody) return;
                 tbody.innerHTML = '';
                 bands.forEach(function(band, i) {
+                    var schema = gacAcosSchemaStyleForBand(band.acos_from, band.acos_to);
+                    band.color = schema.bg;
                     var tr = document.createElement('tr');
                     tr.innerHTML = ''
                         + '<td class="text-muted small">' + (i + 1) + '</td>'
-                        + '<td><input type="text" class="form-control form-control-sm"'
+                        + '<td><input type="text" class="form-control form-control-sm text-center fw-semibold"'
                         + ' value="' + String(band.label ?? '').replace(/"/g, '&quot;') + '"'
-                        + ' data-idx="' + i + '" data-field="label"></td>'
-                        + '<td><div class="d-flex align-items-center gap-2">'
-                        + '<input type="color" class="form-control form-control-color form-control-sm"'
-                        + ' value="' + (band.color || '#6c757d') + '" data-idx="' + i + '" data-field="color">'
-                        + '<span class="badge" style="background:' + (band.color || '#6c757d') + ';color:#fff;">'
-                        + (band.label || '—') + '</span></div></td>'
+                        + ' data-idx="' + i + '" data-field="label" placeholder="e.g. Good"'
+                        + ' style="background:' + schema.bg + ';color:' + schema.fg + ';border:none;min-width:6.5rem;"></td>'
                         + '<td><input type="number" step="0.1" min="0" class="form-control form-control-sm"'
                         + ' value="' + (band.acos_from ?? '') + '" data-idx="' + i + '" data-field="acos_from"'
                         + ' placeholder="0"></td>'
                         + '<td><input type="number" step="0.1" min="0" class="form-control form-control-sm"'
                         + ' value="' + (band.acos_to ?? '') + '" data-idx="' + i + '" data-field="acos_to"'
                         + ' placeholder="9999"></td>'
-                        + '<td><input type="number" step="1" min="1" class="form-control form-control-sm"'
+                        + '<td><input type="number" step="1" min="0" class="form-control form-control-sm"'
                         + ' value="' + (band.sbgt ?? '') + '" data-idx="' + i + '" data-field="sbgt"></td>'
                         + '<td class="text-center">'
-                        + '<button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Remove band">'
-                        + '<i class="fas fa-trash"></i></button></td>';
+                        + '<button type="button" class="btn btn-sm btn-outline-danger px-2" data-remove-idx="' + i + '"'
+                        + ' title="Delete this band" aria-label="Delete band">×</button></td>';
                     tbody.appendChild(tr);
                 });
 
@@ -1979,21 +2013,28 @@
                             : (fld === 'acos_from' || fld === 'acos_to')
                                 ? (this.value === '' ? '' : parseFloat(this.value))
                                 : this.value;
-                        if (fld === 'label' || fld === 'color') {
-                            var row = this.closest('tr');
-                            var chip = row ? row.querySelector('.badge') : null;
+                        if (fld === 'acos_from' || fld === 'acos_to') {
                             var band = gacCurrentSbgtBands[idx];
-                            if (chip) {
-                                chip.style.background = band.color || '#6c757d';
-                                chip.textContent = band.label || '—';
+                            var schema = gacAcosSchemaStyleForBand(band.acos_from, band.acos_to);
+                            band.color = schema.bg;
+                            var labelInp = this.closest('tr')
+                                ? this.closest('tr').querySelector('input[data-field="label"]')
+                                : null;
+                            if (labelInp) {
+                                labelInp.style.background = schema.bg;
+                                labelInp.style.color = schema.fg;
                             }
                         }
                     });
                 });
 
                 tbody.querySelectorAll('[data-remove-idx]').forEach(function(btn) {
-                    btn.addEventListener('click', function() {
-                        gacCurrentSbgtBands.splice(+this.dataset.removeIdx, 1);
+                    btn.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        var idx = parseInt(this.getAttribute('data-remove-idx'), 10);
+                        if (!isFinite(idx) || idx < 0) return;
+                        gacCurrentSbgtBands.splice(idx, 1);
                         gacRenderSbgtBands(gacCurrentSbgtBands);
                     });
                 });
@@ -2009,15 +2050,17 @@
 
             function gacCollectSbgtBandsPayload() {
                 return (gacCurrentSbgtBands || []).map(function(b) {
+                    var acosFrom = (b.acos_from === '' || b.acos_from === null || b.acos_from === undefined)
+                        ? NaN : parseFloat(b.acos_from);
+                    var acosTo = (b.acos_to === '' || b.acos_to === null || b.acos_to === undefined)
+                        ? NaN : parseFloat(b.acos_to);
                     return {
-                        acos_from: (b.acos_from === '' || b.acos_from === null || b.acos_from === undefined)
-                            ? NaN : parseFloat(b.acos_from),
-                        acos_to: (b.acos_to === '' || b.acos_to === null || b.acos_to === undefined)
-                            ? NaN : parseFloat(b.acos_to),
+                        acos_from: acosFrom,
+                        acos_to: acosTo,
                         sbgt: (b.sbgt === '' || b.sbgt === null || b.sbgt === undefined)
                             ? NaN : parseInt(b.sbgt, 10),
                         label: (b.label || '').toString(),
-                        color: (b.color || '#6c757d').toString(),
+                        color: gacAcosSchemaStyleForBand(acosFrom, acosTo).bg,
                     };
                 });
             }
@@ -2029,6 +2072,8 @@
                 gacSetVal('gacSbidUnderMultL1', sbid.under_mult_l1);
                 gacSetVal('gacSbidUnderMultL7', sbid.under_mult_l7);
                 gacSetVal('gacSbidUnderFallback', sbid.under_fallback);
+                gacSetVal('gacSbidUnderFlatMax', sbid.under_flat_max);
+                gacSetVal('gacSbidUnderFlatIncr', sbid.under_flat_incr);
             }
             function gacCollectSbid() {
                 return {
@@ -2038,6 +2083,8 @@
                     under_mult_l1: gacNum('gacSbidUnderMultL1'),
                     under_mult_l7: gacNum('gacSbidUnderMultL7'),
                     under_fallback: gacNum('gacSbidUnderFallback'),
+                    under_flat_max: gacNum('gacSbidUnderFlatMax'),
+                    under_flat_incr: gacNum('gacSbidUnderFlatIncr'),
                 };
             }
             function gacRawNumber(value) {
@@ -2359,9 +2406,9 @@
                     gacCurrentSbgtBands.push({
                         acos_from: lastTo,
                         acos_to: 9999,
-                        sbgt: 1,
-                        label: 'New band',
-                        color: '#6c757d',
+                        sbgt: 0,
+                        label: GAC_DEFAULT_BAND_LABELS[bands.length] || 'Band',
+                        color: gacAcosSchemaStyleForBand(lastTo, 9999).bg,
                     });
                     gacRenderSbgtBands(gacCurrentSbgtBands);
                 });

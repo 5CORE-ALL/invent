@@ -11,21 +11,22 @@ use Illuminate\Support\Facades\Schema;
  */
 final class GoogleShoppingCampaignsRawRule
 {
-    public const CACHE_KEY = 'google_shopping_campaigns_raw_rule_resolved_v3';
+    public const CACHE_KEY = 'google_shopping_campaigns_raw_rule_resolved_v5';
 
     /**
+     * Same ACOS → SBGT brackets as /facebook-ads (live facebook_sbgt_rules),
+     * but without spend gates — Shopping matches on ACOS % only.
+     *
      * @return array<int, array{acos_from: float, acos_to: float, sbgt: int, label: string, color: string}>
      */
     public static function defaultSbgtBands(): array
     {
         return [
-            ['acos_from' => 99.01, 'acos_to' => 9999, 'sbgt' => 1, 'label' => 'Critical', 'color' => '#dc2626'],
-            ['acos_from' => 50, 'acos_to' => 99, 'sbgt' => 2, 'label' => 'Bad', 'color' => '#ef4444'],
-            ['acos_from' => 40, 'acos_to' => 50, 'sbgt' => 3, 'label' => 'Poor', 'color' => '#f97316'],
-            ['acos_from' => 30, 'acos_to' => 40, 'sbgt' => 5, 'label' => 'Fair', 'color' => '#ca8a04'],
-            ['acos_from' => 20, 'acos_to' => 30, 'sbgt' => 10, 'label' => 'Good', 'color' => '#22c55e'],
-            ['acos_from' => 0.01, 'acos_to' => 20, 'sbgt' => 20, 'label' => 'Excellent', 'color' => '#16a34a'],
-            ['acos_from' => 0, 'acos_to' => 0, 'sbgt' => 3, 'label' => 'Zero ACOS', 'color' => '#6c757d'],
+            ['acos_from' => 0,  'acos_to' => 10,   'sbgt' => 30, 'label' => 'Excellent', 'color' => '#ec4899'],
+            ['acos_from' => 10, 'acos_to' => 20,   'sbgt' => 20, 'label' => 'Good',      'color' => '#22c55e'],
+            ['acos_from' => 20, 'acos_to' => 30,   'sbgt' => 10, 'label' => 'Fair',      'color' => '#93c5fd'],
+            ['acos_from' => 30, 'acos_to' => 40,   'sbgt' => 1,  'label' => 'Poor',      'color' => '#facc15'],
+            ['acos_from' => 40, 'acos_to' => 9999, 'sbgt' => 0,  'label' => 'Critical',  'color' => '#dc2626'],
         ];
     }
 
@@ -45,6 +46,10 @@ final class GoogleShoppingCampaignsRawRule
                 'under_mult_l1' => 1.1,
                 'under_mult_l7' => 1.1,
                 'under_fallback' => 0.75,
+                // When both UB% are below util_low and the base CPC is under this
+                // ceiling, apply a flat +under_flat_incr instead of under_mult_*.
+                'under_flat_max' => 0.25,
+                'under_flat_incr' => 0.05,
             ],
         ];
     }
@@ -144,6 +149,14 @@ final class GoogleShoppingCampaignsRawRule
         if (! is_finite($fb) || $fb < 0.01 || $fb > 25.0) {
             throw new \InvalidArgumentException('SBID fallback must be between 0.01 and 25.');
         }
+        $flatMax = $sbid['under_flat_max'];
+        $flatIncr = $sbid['under_flat_incr'];
+        if (! is_finite($flatMax) || $flatMax < 0.01 || $flatMax > 25.0) {
+            throw new \InvalidArgumentException('SBID low-bid ceiling must be between 0.01 and 25.');
+        }
+        if (! is_finite($flatIncr) || $flatIncr < 0.01 || $flatIncr > 5.0) {
+            throw new \InvalidArgumentException('SBID low-bid increment must be between 0.01 and 5.');
+        }
 
         return ['sbgt' => ['bands' => $bands], 'sbid' => $sbid];
     }
@@ -209,11 +222,20 @@ final class GoogleShoppingCampaignsRawRule
             $fb = (float) $s['under_fallback'];
             $m1 = (float) $s['under_mult_l1'];
             $m7 = (float) $s['under_mult_l7'];
+            $flatMax = (float) ($s['under_flat_max'] ?? 0.25);
+            $flatIncr = (float) ($s['under_flat_incr'] ?? 0.05);
             if ($cpcL1 <= 0.0 && $cpcL7 <= 0.0) {
                 return $fb;
             }
             if ($cpcL1 > 0.0) {
+                if ($cpcL1 < $flatMax) {
+                    return floor(($cpcL1 + $flatIncr) * 100.0) / 100.0;
+                }
+
                 return floor($cpcL1 * $m1 * 100.0) / 100.0;
+            }
+            if ($cpcL7 < $flatMax) {
+                return floor(($cpcL7 + $flatIncr) * 100.0) / 100.0;
             }
 
             return floor($cpcL7 * $m7 * 100.0) / 100.0;
@@ -269,7 +291,8 @@ final class GoogleShoppingCampaignsRawRule
             ];
         }
 
-        usort($out, fn ($a, $b) => $b['acos_from'] <=> $a['acos_from']);
+        // Ascending ACOS From — same display/eval order as /facebook-ads.
+        usort($out, fn ($a, $b) => $a['acos_from'] <=> $b['acos_from']);
 
         return array_values(array_filter($out, static function (array $band): bool {
             return stripos((string) ($band['label'] ?? ''), 'below min') === false;
@@ -435,8 +458,9 @@ final class GoogleShoppingCampaignsRawRule
             if ($from > $to) {
                 throw new \InvalidArgumentException('SBGT band '.($i + 1).': From must be ≤ To.');
             }
-            if ($sbgt < 1 || $sbgt > 100_000) {
-                throw new \InvalidArgumentException('SBGT band '.($i + 1).': SBGT must be between 1 and 100000.');
+            // 0 is allowed (matches /facebook-ads Critical band).
+            if ($sbgt < 0 || $sbgt > 100_000) {
+                throw new \InvalidArgumentException('SBGT band '.($i + 1).': SBGT must be between 0 and 100000.');
             }
         }
     }
