@@ -39,19 +39,23 @@ class ReverbDetailFormatter
             ?? $this->money(is_array($ae['buyer_price'] ?? null) ? ($ae['buyer_price']['amount'] ?? null) : null)
             ?? $cachedPrice;
         // Only show marketplace qty when this Shopify SKU is actually linked.
+        // Prefer live Reverb inventory (same source as listings table) over stale
+        // local pricing/reverb_products stock — local is fallback only.
         $isLinked = $this->isMetricLinked($metric, (string) ($shopify->sku ?? ''));
         $aeStock = null;
         if ($isLinked) {
-            $aeStock = MarketplaceListingStockResolver::resolveMarketplaceQty(
-                MarketplaceListingStockResolver::CHANNEL_REVERB,
-                (string) ($shopify->sku ?? ''),
-                $metric?->sku !== null ? (string) $metric->sku : null
-            );
+            if (isset($ae['inventory']) && is_numeric($ae['inventory'])) {
+                $aeStock = (int) $ae['inventory'];
+            }
             if ($aeStock === null) {
                 $aeStock = $this->resolveProductAeStock($variants, $metric, (string) ($shopify->sku ?? ''));
             }
-            if ($aeStock === null && isset($ae['inventory']) && is_numeric($ae['inventory'])) {
-                $aeStock = (int) $ae['inventory'];
+            if ($aeStock === null) {
+                $aeStock = MarketplaceListingStockResolver::resolveMarketplaceQty(
+                    MarketplaceListingStockResolver::CHANNEL_REVERB,
+                    (string) ($shopify->sku ?? ''),
+                    $metric?->sku !== null ? (string) $metric->sku : null
+                );
             }
         }
 

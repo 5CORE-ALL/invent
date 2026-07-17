@@ -44,7 +44,10 @@ class NeweggInventorySyncService
         $qtyPercent = max(0, min(100, (int) ($settings['inventory']['quantity_calc_percent'] ?? 100)));
         $maxQty = $settings['inventory']['max_quantity'] ?? null;
 
-        $shopifyQty = $this->fetchLiveShopifyQuantities($skus, $shopifyConfig);
+        $shopifyQty = app(ShopifyQtySource::class)->fetchQuantitiesForPush(
+            $skus,
+            fn (array $need) => $this->fetchLiveShopifyQuantities($need, $shopifyConfig)
+        );
         $metrics = NeweggMetric::query()
             ->whereIn('sku', $skus)
             ->whereNotNull('product_id')

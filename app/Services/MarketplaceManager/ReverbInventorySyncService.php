@@ -85,8 +85,11 @@ class ReverbInventorySyncService
         $liveDetails = app(ReverbLiveListingsService::class)
             ->liveDetailsByListingIds(array_values($listingIdsBySku));
 
-        // Always LIVE Shopify API qty.
-        $shopifyQty = $this->fetchLiveShopifyQuantities($skus, $shopifyConfig);
+        // Ledger-first when MM_USE_INVENTORY_LEDGER; else live Shopify API.
+        $shopifyQty = app(ShopifyQtySource::class)->fetchQuantitiesForPush(
+            $skus,
+            fn (array $need) => $this->fetchLiveShopifyQuantities($need, $shopifyConfig)
+        );
 
         $inventoryRows = [];
         $skipped = 0;

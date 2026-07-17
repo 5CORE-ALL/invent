@@ -16,6 +16,7 @@ use App\Services\MarketplaceManager\ShopifyLiveVerifiedCatalogService;
 use App\Services\Support\MarketplaceApiConfigService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
@@ -48,6 +49,7 @@ class MarketplaceManagerController extends Controller
         return view('marketplace-manager.index', [
             'title' => 'Marketplace Manager',
             'channels' => $channels,
+            'shopifySkuCount' => $catalog->countDistinctAllSkus(),
             'shopifyActiveSkuCount' => $catalog->countDistinctActiveSkus(),
             'shopifyCatalogSyncedAt' => $catalog->latestSyncedAt(),
             'shopifyRefreshStatus' => Cache::get(WarmShopifyLiveCatalogCache::STATUS_CACHE_KEY),
@@ -67,7 +69,7 @@ class MarketplaceManagerController extends Controller
 
         return redirect()
             ->route('marketplace.manager.index')
-            ->with('success', 'Shopify live catalog refresh queued. Active SKUs + qty will update for all marketplaces shortly.');
+            ->with('success', 'Shopify live catalog refresh queued. SKUs + qty will update for all marketplaces shortly.');
     }
 
     public function refreshShopifyStatus(): JsonResponse
@@ -76,8 +78,35 @@ class MarketplaceManagerController extends Controller
 
         return response()->json([
             'status' => Cache::get(WarmShopifyLiveCatalogCache::STATUS_CACHE_KEY),
+            'sku_count' => $catalog->countDistinctAllSkus(),
             'active_sku_count' => $catalog->countDistinctActiveSkus(),
             'synced_at' => $catalog->latestSyncedAt(),
+        ]);
+    }
+
+    public function activeShopifySkus(Request $request): View
+    {
+        $catalog = app(ShopifyLiveVerifiedCatalogService::class);
+        $search = trim((string) $request->query('q', ''));
+        $status = strtolower(trim((string) $request->query('status', 'all')));
+        if (! in_array($status, ['all', 'active', 'active_in_stock', 'active_oos', 'draft', 'archived', 'unlisted'], true)) {
+            $status = 'all';
+        }
+
+        $statusCounts = $catalog->distinctSkuCountsByStatus();
+        $rows = $catalog->tablesReady()
+            ? $catalog->paginateSkuRows($search, $status, 50)
+            : new \Illuminate\Pagination\LengthAwarePaginator([], 0, 50);
+
+        return view('marketplace-manager.active-shopify-skus', [
+            'title' => 'Shopify Live SKUs',
+            'rows' => $rows,
+            'search' => $search,
+            'status' => $status,
+            'statusCounts' => $statusCounts,
+            'activeCount' => $statusCounts['active'] ?? 0,
+            'allCount' => $statusCounts['all'] ?? 0,
+            'syncedAt' => $catalog->latestSyncedAt(),
         ]);
     }
 

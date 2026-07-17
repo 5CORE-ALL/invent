@@ -201,7 +201,7 @@ class AliexpressSyncController extends Controller
         );
         $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock);
         $counts = $classified['counts'] ?? $emptyCounts;
-        $counts['all'] = $catalog->countDistinctActiveSkus();
+        $counts['all'] = $catalog->countDistinctAllSkus();
         $counts['matched_inactive'] = 0;
         $counts['mismatch_inactive'] = 0;
 
@@ -214,7 +214,7 @@ class AliexpressSyncController extends Controller
         $zeroQty = $classified['zero'] ?? [];
 
         if ($mismatchQty !== []) {
-            $liveShopify = app(ReverbLiveListingsService::class)->liveShopifyQtyBySkus($mismatchQty);
+            $liveShopify = MarketplaceListingStockResolver::catalogShopifyQtyMapForSkus($mismatchQty);
             $metricMap = $this->aliexpressMetricMapForSkus($mismatchQty);
             $productIds = [];
             $idToSku = [];

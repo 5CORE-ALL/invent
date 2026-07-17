@@ -213,7 +213,7 @@ class ReverbSyncController extends Controller
         }
         $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock);
         $counts = $classified['counts'] ?? $emptyCounts;
-        $counts['all'] = $catalog->countDistinctActiveSkus();
+        $counts['all'] = $catalog->countDistinctAllSkus();
         $counts['matched_inactive'] = 0;
         $counts['mismatch_inactive'] = 0;
 
@@ -221,10 +221,9 @@ class ReverbSyncController extends Controller
         $mismatchQty = $classified['mismatch'] ?? [];
         $zeroQty = $classified['zero'] ?? [];
 
-        // Table shows live Shopify + live Reverb; cache/catalog can lag and false-flag mismatch.
-        // Re-verify mismatch SKUs with the same live sources before building tabs.
+        // Table shows catalog Shopify qty + live Reverb; re-verify mismatch against catalog (no Admin API).
         if ($mismatchQty !== []) {
-            $liveShopify = $liveService->liveShopifyQtyBySkus($mismatchQty);
+            $liveShopify = MarketplaceListingStockResolver::catalogShopifyQtyMapForSkus($mismatchQty);
             $metricMap = $this->reverbMetricMapForSkus($mismatchQty);
             $listingIds = [];
             $idToSku = [];
@@ -501,8 +500,8 @@ class ReverbSyncController extends Controller
         $pageRows = $this->shopifySkuRowsForVerifiedPage($pageSkus, $catalog);
         $aeMap = $this->reverbMetricMapForSkus($pageSkus);
 
-        // 1) Live Shopify Admin qty for this page (not stale shopify_skus / local maps)
-        $liveShopifyQty = $liveService->liveShopifyQtyBySkus($pageSkus);
+        // Shopify qty from local catalog (webhook / Refresh Shopify) — no Admin API on page load.
+        $liveShopifyQty = MarketplaceListingStockResolver::catalogShopifyQtyMapForSkus($pageSkus);
         if ($liveShopifyQty === []) {
             $liveShopifyQty = MarketplaceListingStockResolver::dbShopifyQtyMapForRows($pageRows);
         }
@@ -1399,7 +1398,7 @@ class ReverbSyncController extends Controller
     ): array {
         $skus = $catalog->tablesReady()
             ? (($linkTab === 'all')
-                ? $catalog->activeSkuList()
+                ? $catalog->allSkuList()
                 : (($linkTab === 'unlinked')
                     ? $catalog->inStockActiveSkuList()
                     : $catalog->activeSkuList()))

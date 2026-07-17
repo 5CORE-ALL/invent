@@ -2,92 +2,150 @@
 
 namespace App\Http\Controllers;
 
-use App\Jobs\PushLinkedSkuInventoryFromShopify;
+use App\Jobs\ProcessShopifyCatalogWebhook;
+use App\Jobs\ProcessShopifyInventoryWebhook;
+use App\Models\MmWebhookEvent;
 use App\Services\MarketplaceManager\ShopifyInventoryWebhookResolver;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
 class ShopifyWebhookController extends Controller
 {
+    private const INVENTORY_TOPICS = [
+        'inventory_levels/update',
+        'inventory_levels/connect',
+    ];
+
+    private const PRODUCT_TOPICS = [
+        'products/create',
+        'products/update',
+        'products/delete',
+    ];
+
     /**
-     * Shopify inventory_levels/update (and connect).
-     * Fast path: resolve SKU(s) → push live Shopify qty to all linked marketplaces
-     * (Reverb + AliExpress + Alibaba) where inventory_sync is enabled.
+     * Shopify webhook ingress (inventory + product topics share this URL).
+     * Verify HMAC → store event → enqueue → 200.
      */
     public function inventoryUpdate(Request $request): JsonResponse
     {
         $topic = (string) $request->header('X-Shopify-Topic', '');
-        if ($topic !== '' && ! in_array($topic, ['inventory_levels/update', 'inventory_levels/connect'], true)) {
+        $allowed = array_merge(self::INVENTORY_TOPICS, self::PRODUCT_TOPICS);
+        if ($topic !== '' && ! in_array($topic, $allowed, true)) {
             Log::warning('ShopifyWebhookController: unexpected topic', ['topic' => $topic]);
         }
 
         $secret = config('services.shopify.webhook_secret') ?? env('SHOPIFY_WEBHOOK_SECRET');
-        if ($secret) {
-            $hmac = $request->header('X-Shopify-Hmac-Sha256') ?? '';
-            $payloadRaw = $request->getContent();
-            if (! $this->verifyShopifyHmac($payloadRaw, $hmac, $secret)) {
-                Log::warning('ShopifyWebhookController: invalid HMAC');
+        if (! $secret) {
+            Log::error('ShopifyWebhookController: SHOPIFY_WEBHOOK_SECRET missing — rejecting');
 
-                return response()->json(['error' => 'Invalid signature'], 401);
-            }
+            return response()->json(['error' => 'Webhook secret not configured'], 503);
+        }
+
+        $hmac = $request->header('X-Shopify-Hmac-Sha256') ?? '';
+        $payloadRaw = $request->getContent();
+        if (! $this->verifyShopifyHmac($payloadRaw, $hmac, (string) $secret)) {
+            Log::warning('ShopifyWebhookController: invalid HMAC');
+
+            return response()->json(['error' => 'Invalid signature'], 401);
         }
 
         $payload = $request->all();
-        $resolved = ShopifyInventoryWebhookResolver::resolve($payload);
-        $skus = $resolved['skus'];
-        $available = $resolved['available'];
-        $inventoryItemId = $resolved['inventory_item_id'];
+        $webhookId = trim((string) $request->header('X-Shopify-Webhook-Id', ''));
+        $inventoryItemId = in_array($topic, self::INVENTORY_TOPICS, true)
+            ? ShopifyInventoryWebhookResolver::extractInventoryItemId($payload)
+            : null;
 
-        if ($skus === []) {
-            Log::warning('ShopifyWebhookController: inventory webhook missing resolvable SKU', [
-                'inventory_item_id' => $inventoryItemId,
-                'available' => $available,
-                'topic' => $topic,
-            ]);
+        if ($webhookId !== '') {
+            $existing = MmWebhookEvent::query()
+                ->where('source', 'shopify')
+                ->where('webhook_id', $webhookId)
+                ->first();
 
-            // Acknowledge so Shopify does not retry forever; worker/cron still covers full sync.
-            return response()->json([
-                'ok' => true,
-                'queued' => false,
-                'reason' => 'sku_unresolved',
-                'inventory_item_id' => $inventoryItemId,
-            ]);
-        }
-
-        // Optional write-through of available hint onto shopify_skus so listings UI is instant.
-        if ($available !== null) {
-            foreach ($skus as $sku) {
-                try {
-                    $row = \App\Models\ShopifySku::firstForProductSku($sku);
-                    if ($row) {
-                        $qty = max(0, (int) $available);
-                        $row->available_to_sell = $qty;
-                        $row->inv = $qty;
-                        $row->save();
-                    }
-                } catch (\Throwable $e) {
-                    // non-fatal
+            if ($existing) {
+                if ($existing->status === MmWebhookEvent::STATUS_PROCESSED) {
+                    return response()->json([
+                        'ok' => true,
+                        'queued' => false,
+                        'duplicate' => true,
+                        'event_id' => $existing->id,
+                    ]);
                 }
+
+                if (in_array($existing->status, [
+                    MmWebhookEvent::STATUS_RECEIVED,
+                    MmWebhookEvent::STATUS_FAILED,
+                    MmWebhookEvent::STATUS_PROCESSING,
+                ], true)) {
+                    $this->dispatchForTopic((string) ($existing->topic ?: $topic), $existing->id);
+                }
+
+                return response()->json([
+                    'ok' => true,
+                    'queued' => true,
+                    'duplicate' => true,
+                    'event_id' => $existing->id,
+                ]);
             }
         }
 
-        $dispatched = PushLinkedSkuInventoryFromShopify::dispatchToEnabled($skus, $available, $inventoryItemId);
+        try {
+            $event = MmWebhookEvent::query()->create([
+                'source' => 'shopify',
+                'webhook_id' => $webhookId !== '' ? $webhookId : null,
+                'topic' => $topic !== '' ? $topic : null,
+                'inventory_item_id' => $inventoryItemId,
+                'payload' => $payload,
+                'status' => MmWebhookEvent::STATUS_RECEIVED,
+            ]);
+        } catch (QueryException $e) {
+            if ($webhookId !== '') {
+                $existing = MmWebhookEvent::query()
+                    ->where('source', 'shopify')
+                    ->where('webhook_id', $webhookId)
+                    ->first();
+                if ($existing) {
+                    $this->dispatchForTopic((string) ($existing->topic ?: $topic), $existing->id);
 
-        Log::info('ShopifyWebhookController: queued linked marketplace inventory push', [
-            'skus' => $skus,
-            'available' => $available,
-            'inventory_item_id' => $inventoryItemId,
+                    return response()->json([
+                        'ok' => true,
+                        'queued' => true,
+                        'duplicate' => true,
+                        'event_id' => $existing->id,
+                    ]);
+                }
+            }
+            throw $e;
+        }
+
+        $this->dispatchForTopic($topic, $event->id);
+
+        Log::info('ShopifyWebhookController: webhook enqueued', [
+            'event_id' => $event->id,
+            'webhook_id' => $webhookId,
             'topic' => $topic,
-            'jobs_dispatched' => $dispatched,
+            'inventory_item_id' => $inventoryItemId,
         ]);
 
         return response()->json([
             'ok' => true,
             'queued' => true,
-            'skus' => $skus,
-            'available' => $available,
+            'event_id' => $event->id,
+            'topic' => $topic,
         ]);
+    }
+
+    protected function dispatchForTopic(string $topic, int $eventId): void
+    {
+        if (in_array($topic, self::PRODUCT_TOPICS, true)) {
+            ProcessShopifyCatalogWebhook::dispatch($eventId);
+
+            return;
+        }
+
+        // Default / inventory topics
+        ProcessShopifyInventoryWebhook::dispatch($eventId);
     }
 
     protected function verifyShopifyHmac(string $payload, string $hmac, string $secret): bool

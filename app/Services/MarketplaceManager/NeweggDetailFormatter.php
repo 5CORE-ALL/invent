@@ -39,18 +39,11 @@ class NeweggDetailFormatter
         $maxPrice = $this->money($ae['product_max_price'] ?? null) ?? $cachedPrice;
 
         // Only show marketplace qty when this Shopify SKU is actually linked.
-        // Unlinked pages were leaking stale pricing/mapping ne_stock (e.g. 116 vs Shopify 113).
+        // Prefer live/API variant stock (same idea as listings) over stale local pricing.
         $isLinked = $this->isMetricLinked($metric, (string) ($shopify->sku ?? ''));
         $aeStock = null;
         if ($isLinked) {
-            $aeStock = MarketplaceListingStockResolver::resolveMarketplaceQty(
-                MarketplaceListingStockResolver::CHANNEL_NEWEGG,
-                (string) ($shopify->sku ?? ''),
-                $metric?->sku !== null ? (string) $metric->sku : null
-            );
-            if ($aeStock === null) {
-                $aeStock = $this->resolveProductAeStock($variants, $metric, (string) ($shopify->sku ?? ''));
-            }
+            $aeStock = $this->resolveProductAeStock($variants, $metric, (string) ($shopify->sku ?? ''));
         }
 
         return [

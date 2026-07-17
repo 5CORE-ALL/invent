@@ -71,11 +71,23 @@ final class ShopifyInventoryWebhookResolver
     /**
      * @return array<int, string>
      */
-    public static function skusForInventoryItemId(string $inventoryItemId): array
+    public static function skusForInventoryItemId(string $inventoryItemId, bool $forceLive = false): array
     {
         $skus = [];
 
-        // 1) Local WMS inventories table (fast)
+        // 0) MM inventory ledger map (fast, preferred)
+        if (! $forceLive) {
+            try {
+                $skus = app(InventoryLedgerService::class)->skusForInventoryItemId($inventoryItemId);
+            } catch (\Throwable $e) {
+                // non-fatal — table may not exist yet mid-deploy
+            }
+            if ($skus !== []) {
+                return array_values(array_unique($skus));
+            }
+        }
+
+        // 1) Local WMS inventories table
         if (Schema::hasTable('inventories') && Schema::hasColumn('inventories', 'shopify_inventory_item_id')) {
             $rows = Inventory::query()
                 ->where('shopify_inventory_item_id', $inventoryItemId)
@@ -91,7 +103,7 @@ final class ShopifyInventoryWebhookResolver
             }
         }
 
-        if ($skus !== []) {
+        if ($skus !== [] && ! $forceLive) {
             return array_values(array_unique($skus));
         }
 
@@ -101,14 +113,19 @@ final class ShopifyInventoryWebhookResolver
             return [$fromApi];
         }
 
-        // 3) Live Shopify REST: walk variant by inventory_item_id via product variants search fallback
+        // 3) Live Shopify REST inventory_item
         $fromRest = self::skuFromShopifyRestVariantLookup($inventoryItemId);
         if ($fromRest !== null && $fromRest !== '') {
             return [$fromRest];
         }
 
+        if ($skus !== []) {
+            return array_values(array_unique($skus));
+        }
+
         Log::warning('ShopifyInventoryWebhookResolver: could not resolve SKU', [
             'inventory_item_id' => $inventoryItemId,
+            'force_live' => $forceLive,
         ]);
 
         return [];
@@ -173,8 +190,6 @@ GQL;
             return null;
         }
 
-        // Prefer matching local variant → fetch each variant_id is too slow.
-        // Use inventory_item REST + related — Shopify exposes SKU on inventory_item in newer APIs? Try:
         try {
             $response = Http::withHeaders([
                 'X-Shopify-Access-Token' => $token,

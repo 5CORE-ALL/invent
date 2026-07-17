@@ -99,7 +99,47 @@ final class MarketplaceListingStockResolver
         $row->on_hand = $qty;
         $row->save();
 
+        // Keep listings-table catalog in sync with live Admin qty (avoids 165 vs 158 drift).
+        self::writeThroughCatalogInventoryQuantity($sku, $variantId, $qty);
+
         return $row->fresh() ?? $row;
+    }
+
+    /**
+     * Update shopify_catalog_variants.inventory_quantity for this SKU/variant.
+     */
+    protected static function writeThroughCatalogInventoryQuantity(string $sku, string $variantId, int $qty): void
+    {
+        if (! Schema::hasTable('shopify_catalog_variants')) {
+            return;
+        }
+
+        $qty = max(0, $qty);
+        $now = now();
+        $updated = 0;
+
+        if ($variantId !== '') {
+            $updated = DB::table('shopify_catalog_variants')
+                ->where('store', 'main')
+                ->where('shopify_variant_id', $variantId)
+                ->update([
+                    'inventory_quantity' => $qty,
+                    'updated_at' => $now,
+                ]);
+        }
+
+        if ($updated === 0 && $sku !== '') {
+            DB::table('shopify_catalog_variants')
+                ->where('store', 'main')
+                ->where(function ($q) use ($sku) {
+                    $q->where('sku', $sku)
+                        ->orWhereRaw('UPPER(sku) = ?', [strtoupper($sku)]);
+                })
+                ->update([
+                    'inventory_quantity' => $qty,
+                    'updated_at' => $now,
+                ]);
+        }
     }
 
     protected static function liveShopifyQtyBySkuGraphql(string $store, string $token, string $sku): ?int
@@ -392,14 +432,26 @@ final class MarketplaceListingStockResolver
 
     /**
      * Qty map from shared shopify_skus store only (no Shopify API).
-     * Use on marketplace listing indexes — live Admin pulls belong in catalog/inventory sync jobs.
+     * Prefer catalogShopifyQtyMapForSkus() on listing indexes (webhook-updated catalog).
      *
      * @param  array<int, ShopifySku>  $rows
      * @return array<string, int> keyed by UPPER(trim(sku))
      */
     public static function dbShopifyQtyMapForRows(array $rows): array
     {
-        $out = [];
+        $skus = [];
+        foreach ($rows as $row) {
+            if ($row instanceof ShopifySku) {
+                $sku = trim((string) ($row->sku ?? ''));
+                if ($sku !== '') {
+                    $skus[] = $sku;
+                }
+            }
+        }
+
+        $fromCatalog = self::catalogShopifyQtyMapForSkus($skus);
+        $out = $fromCatalog;
+
         foreach ($rows as $row) {
             if (! $row instanceof ShopifySku) {
                 continue;
@@ -408,9 +460,57 @@ final class MarketplaceListingStockResolver
             if ($sku === '') {
                 continue;
             }
+            $upper = strtoupper($sku);
+            if (array_key_exists($upper, $out)) {
+                continue;
+            }
             $qty = self::shopifyQtyFromRow($row);
             if ($qty !== null) {
-                $out[strtoupper($sku)] = $qty;
+                $out[$upper] = $qty;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Qty from shopify_catalog_variants (Refresh Shopify + inventory/product webhooks).
+     * No Admin API. Keys are UPPER(trim(sku)).
+     *
+     * @param  array<int, string>  $skus
+     * @return array<string, int>
+     */
+    public static function catalogShopifyQtyMapForSkus(array $skus): array
+    {
+        $skus = array_values(array_unique(array_filter(array_map(
+            static fn ($s) => trim((string) $s),
+            $skus
+        ))));
+        if ($skus === [] || ! Schema::hasTable('shopify_catalog_variants')) {
+            return [];
+        }
+
+        $out = [];
+        $rows = DB::table('shopify_catalog_variants')
+            ->where('store', 'main')
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->where(function ($q) use ($skus) {
+                $q->whereIn('sku', $skus);
+                foreach ($skus as $sku) {
+                    $q->orWhereRaw('UPPER(sku) = ?', [strtoupper($sku)]);
+                }
+            })
+            ->get(['sku', 'inventory_quantity']);
+
+        foreach ($rows as $row) {
+            $upper = strtoupper(trim((string) ($row->sku ?? '')));
+            if ($upper === '' || $row->inventory_quantity === null || $row->inventory_quantity === '') {
+                continue;
+            }
+            $qty = (int) $row->inventory_quantity;
+            if (! isset($out[$upper]) || $qty > $out[$upper]) {
+                $out[$upper] = $qty;
             }
         }
 

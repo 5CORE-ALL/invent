@@ -22,7 +22,7 @@ class AlibabaDetailFormatter
     public function formatProduct(?array $aeLive, ?AlibabaMetric $metric, ShopifySku $shopify, array $aeSkuRows = []): array
     {
         $ae = $this->arr($aeLive);
-        $shopifyQty = $shopify->available_to_sell ?? $shopify->inv ?? $shopify->on_hand ?? null;
+        $shopifyQty = MarketplaceListingStockResolver::shopifyQtyFromRow($shopify);
         $shopifyPrice = $shopify->b2c_price ?? $shopify->price ?? null;
 
         $shopifyCatalog = $this->loadShopifyCatalogRow($shopify);

@@ -16,6 +16,7 @@ use App\Services\MarketplaceManager\AlibabaLinkMapSyncService;
 use App\Services\MarketplaceManager\AlibabaOrderDetailService;
 use App\Services\MarketplaceManager\AlibabaOrderPushService;
 use App\Services\MarketplaceManager\AlibabaOrderSyncService;
+use App\Services\MarketplaceManager\MarketplaceListingStockResolver;
 use App\Services\MarketplaceManager\ShopifyLiveVerifiedCatalogService;
 use App\Services\ShopifyApiService;
 use App\Services\Support\MarketplaceApiConfigService;
@@ -177,7 +178,7 @@ class AlibabaSyncController extends Controller
         $mpStock = $this->alibabaStockMapForSkus($allLinkedVerified);
         $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock);
         $counts = $classified['counts'] ?? $emptyCounts;
-        $counts['all'] = $catalog->countDistinctActiveSkus();
+        $counts['all'] = $catalog->countDistinctAllSkus();
         // No live state cache for Alibaba — all qty rows stay under Active tabs.
         $counts['matched_inactive'] = 0;
         $counts['mismatch_inactive'] = 0;
@@ -269,6 +270,7 @@ class AlibabaSyncController extends Controller
     public function showProduct(int $shopifySkuId): View
     {
         $shopifyRow = ShopifySku::query()->findOrFail($shopifySkuId);
+        $shopifyRow = MarketplaceListingStockResolver::refreshShopifyRowFromLiveVariantApi($shopifyRow);
         $sku = (string) $shopifyRow->sku;
         $aeMap = $this->alibabaMetricMapForSkus([$sku]);
         $metric = $aeMap[$sku] ?? null;
