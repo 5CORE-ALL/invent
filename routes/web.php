@@ -6324,6 +6324,16 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     });
 
     // =========================================================================
+    // CRON MONITORING & HEALTH CHECK
+    // =========================================================================
+    Route::prefix('cron-monitor')->name('cron-monitor.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\CronMonitor\CronMonitorDashboardController::class, 'index'])->name('index');
+        Route::get('/trend', [\App\Http\Controllers\CronMonitor\CronMonitorDashboardController::class, 'trend'])->name('trend');
+        Route::get('/{id}', [\App\Http\Controllers\CronMonitor\CronMonitorDashboardController::class, 'show'])->name('show')->whereNumber('id');
+        Route::post('/failures/{id}/resolve', [\App\Http\Controllers\CronMonitor\CronMonitorDashboardController::class, 'resolveFailure'])->name('failures.resolve')->whereNumber('id');
+    });
+
+    // =========================================================================
     // REVIEW INTELLIGENCE MASTER SYSTEM
     // =========================================================================
     Route::prefix('reviews')->name('reviews.')->group(function () {

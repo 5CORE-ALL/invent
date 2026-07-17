@@ -5,6 +5,7 @@ namespace App\Providers;
 use App\Events\Crm\ShopifyOrderImported;
 use App\Listeners\Crm\CrmActivitySubscriber;
 use App\Listeners\Crm\CreateFollowUpForNewShopifyOrder;
+use App\Services\CronMonitor\TaskManagerStatusReporter;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Auth\Listeners\SendEmailVerificationNotification;
 use Illuminate\Foundation\Support\Providers\EventServiceProvider as ServiceProvider;
@@ -12,9 +13,6 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Console\Events\ScheduledTaskStarting;
 use Illuminate\Console\Events\ScheduledTaskFinished;
 use Illuminate\Console\Events\ScheduledTaskFailed;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
 
 class EventServiceProvider extends ServiceProvider
 {
@@ -38,7 +36,7 @@ class EventServiceProvider extends ServiceProvider
     {
         // Listen when cron job starts
         Event::listen(ScheduledTaskStarting::class, function ($event) {
-            $this->postStatus([
+            app(TaskManagerStatusReporter::class)->post([
                 'command' => $event->task->command ?? $event->task->description,
                 'status' => 'running',
                 'started_at' => now()->toDateTimeString(),
@@ -49,9 +47,11 @@ class EventServiceProvider extends ServiceProvider
             ]);
         });
 
-        // Listen when cron job finishes
+        // Listen when cron job finishes (process exited without exception).
+        // Rich health metrics are posted separately by Cron Monitor when a
+        // command uses MonitoredCommand / MonitorsCronExecution.
         Event::listen(ScheduledTaskFinished::class, function ($event) {
-            $this->postStatus([
+            app(TaskManagerStatusReporter::class)->post([
                 'command' => $event->task->command ?? $event->task->description,
                 'status' => 'success',
                 'finished_at' => now()->toDateTimeString(),
@@ -64,40 +64,13 @@ class EventServiceProvider extends ServiceProvider
             $taskName = $event->task->command ?? $event->task->description;
             $errorMessage = $event->exception->getMessage();
 
-            // Post to Task Manager API
-            $this->postStatus([
+            app(TaskManagerStatusReporter::class)->post([
                 'command' => $taskName,
                 'status' => 'failed',
                 'finished_at' => now()->toDateTimeString(),
                 'error' => $errorMessage,
             ]);
         });
-    }
-
-    private function postStatus(array $payload)
-    {
-        try {
-            $url = config('services.taskmanager.url');
-            $key = config('services.taskmanager.api_key');
-
-            if (!$url || !$key) {
-                Log::warning('TaskManager URL or API key missing from .env');
-                return;
-            }
-
-            $response = Http::withHeaders([
-                'X-TASKMANAGER-KEY' => $key,
-                'Accept' => 'application/json',
-            ])->timeout(10)
-              ->retry(2, 1000)
-              ->post($url, $payload);
-
-            if (!$response->successful()) {
-                Log::warning("TaskManager response ({$response->status()}): " . $response->body());
-            }
-        } catch (\Throwable $e) {
-            Log::error("Failed to post scheduler status: {$e->getMessage()}");
-        }
     }
 
     public function shouldDiscoverEvents(): bool
