@@ -710,14 +710,9 @@ class ReverbInventorySyncService
             $aeQty = (int) $row['inventory'];
             $shopifyQty = array_key_exists('shopify_qty', $row) ? (int) $row['shopify_qty'] : $aeQty;
 
-            $shopifyRow = ShopifySku::firstForProductSku($sku);
-            if ($shopifyRow) {
-                $shopifyRow->fill([
-                    'available_to_sell' => $shopifyQty,
-                    'inv' => $shopifyQty,
-                    'on_hand' => $shopifyQty,
-                ])->save();
-            }
+            // Never overwrite shopify_skus.available_to_sell / inv / on_hand here —
+            // those are owned by SyncShopifyLiveInventory. Marketplace sync only
+            // updates marketplace stock caches / mappings.
 
             if (Schema::hasTable('product_stock_mappings')) {
                 $payload = ['inventory_shopify' => $shopifyQty];

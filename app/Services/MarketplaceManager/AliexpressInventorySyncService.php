@@ -524,14 +524,7 @@ class AliexpressInventorySyncService
             $aeQty = (int) $row['inventory'];
             $shopifyQty = array_key_exists('shopify_qty', $row) ? (int) $row['shopify_qty'] : $aeQty;
 
-            $shopifyRow = ShopifySku::firstForProductSku($sku);
-            if ($shopifyRow) {
-                $shopifyRow->fill([
-                    'available_to_sell' => $shopifyQty,
-                    'inv' => $shopifyQty,
-                    'on_hand' => $shopifyQty,
-                ])->save();
-            }
+            // Never overwrite shopify_skus.available_to_sell — owned by SyncShopifyLiveInventory.
 
             if (Schema::hasTable('product_stock_mappings')) {
                 $payload = ['inventory_shopify' => $shopifyQty];
