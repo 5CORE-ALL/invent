@@ -59,6 +59,11 @@ return [
             'timeout' => 1800,
             'max_time' => 7200,
         ],
+        // Shopify webhook ingress (ProcessShopifyInventoryWebhook / ResolveInventoryItemSkuJob)
+        'mm-ingress' => [
+            'timeout' => 180,
+            'max_time' => 7200,
+        ],
         // Per-marketplace mm-{slug} queues are injected by QueueWorkerWatchdog
         // from MarketplaceManagerRegistry (auto when you add a new channel).
         'aliexpress' => [

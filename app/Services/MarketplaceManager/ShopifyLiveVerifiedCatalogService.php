@@ -22,17 +22,27 @@ final class ShopifyLiveVerifiedCatalogService
     }
 
     /**
-     * Active main-store variants with a non-empty SKU (joined to product for title/status).
+     * All main-store variants with a non-empty SKU (any product status: active/draft/archived/unlisted).
+     * Matches wide Shopify Admin inventory map (excludes PARENT SKUs).
      */
-    public function activeVariantQuery(string $store = self::STORE_MAIN): Builder
+    public function allVariantQuery(string $store = self::STORE_MAIN): Builder
     {
         return DB::table('shopify_catalog_variants as v')
             ->join('shopify_catalog_products as p', 'p.id', '=', 'v.shopify_catalog_product_id')
             ->where('p.store', $store)
             ->where('v.store', $store)
-            ->whereRaw("LOWER(TRIM(COALESCE(p.status, ''))) = ?", ['active'])
             ->whereNotNull('v.sku')
-            ->where('v.sku', '!=', '');
+            ->where('v.sku', '!=', '')
+            ->whereRaw("UPPER(v.sku) NOT LIKE ?", ['%PARENT%']);
+    }
+
+    /**
+     * Active main-store variants with a non-empty SKU (joined to product for title/status).
+     */
+    public function activeVariantQuery(string $store = self::STORE_MAIN): Builder
+    {
+        return $this->allVariantQuery($store)
+            ->whereRaw("LOWER(TRIM(COALESCE(p.status, ''))) = ?", ['active']);
     }
 
     /**
@@ -44,6 +54,17 @@ final class ShopifyLiveVerifiedCatalogService
             ->where('v.inventory_quantity', '>', 0);
     }
 
+    public function countDistinctAllSkus(string $store = self::STORE_MAIN): int
+    {
+        if (! $this->tablesReady()) {
+            return 0;
+        }
+
+        return (int) $this->allVariantQuery($store)
+            ->distinct()
+            ->count('v.sku');
+    }
+
     public function countDistinctActiveSkus(string $store = self::STORE_MAIN): int
     {
         if (! $this->tablesReady()) {
@@ -53,6 +74,14 @@ final class ShopifyLiveVerifiedCatalogService
         return (int) $this->activeVariantQuery($store)
             ->distinct()
             ->count('v.sku');
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function allSkuList(string $store = self::STORE_MAIN): array
+    {
+        return $this->skuListFromQuery($this->tablesReady() ? $this->allVariantQuery($store) : null);
     }
 
     public function countDistinctInStockActiveSkus(string $store = self::STORE_MAIN): int
@@ -190,7 +219,8 @@ final class ShopifyLiveVerifiedCatalogService
     }
 
     /**
-     * Classify linked SKUs vs marketplace stock (shared Shopify catalog qty).
+     * Classify linked SKUs vs marketplace stock using shopify_skus live qty
+     * (available_to_sell / inv / on_hand — SyncShopifyLiveInventory SoT).
      * Priority: shopify qty <= 0 → zero; else qty match → matched; else → mismatch.
      *
      * @param  array<int, string>  $linkedSkus
@@ -211,7 +241,20 @@ final class ShopifyLiveVerifiedCatalogService
             return null;
         }
 
-        $shopifyInv = $this->shopifyInventoryByNorm($store);
+        // Prefer shopify_skus live inventory columns over catalog variants (linked SKUs only).
+        $shopifyInv = [];
+        foreach (MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($linkedSkus) as $key => $qty) {
+            $n = ShopifySku::normalizeSkuForShopifyLookup((string) $key);
+            if ($n === '') {
+                continue;
+            }
+            if (! isset($shopifyInv[$n]) || (int) $qty > $shopifyInv[$n]) {
+                $shopifyInv[$n] = (int) $qty;
+            }
+        }
+        if ($shopifyInv === []) {
+            $shopifyInv = $this->shopifyInventoryByNorm($store);
+        }
         $map = $this->normalizedToSkuMap($store);
         $inStockNorm = [];
         foreach ($shopifyInv as $n => $qty) {
@@ -256,7 +299,7 @@ final class ShopifyLiveVerifiedCatalogService
             'mismatch' => $mismatch,
             'zero' => $zero,
             'counts' => [
-                'all' => $this->countDistinctActiveSkus($store),
+                'all' => $this->countDistinctAllSkus($store),
                 'matched' => count($matched),
                 'mismatch' => count($mismatch),
                 'zero' => count($zero),
@@ -267,6 +310,122 @@ final class ShopifyLiveVerifiedCatalogService
                 'linked_zero_inv' => count($zero),
             ],
         ];
+    }
+
+    /**
+     * Paginated catalog SKU rows for the MM Shopify SKUs blade (one row per distinct SKU).
+     *
+     * @param  string  $status  all|active|active_in_stock|active_oos|draft|archived|unlisted
+     * @return \Illuminate\Contracts\Pagination\LengthAwarePaginator
+     */
+    public function paginateSkuRows(
+        string $search = '',
+        string $status = 'all',
+        int $perPage = 50,
+        string $store = self::STORE_MAIN,
+    ) {
+        $status = strtolower(trim($status));
+        $allowed = ['all', 'active', 'active_in_stock', 'active_oos', 'draft', 'archived', 'unlisted'];
+        if (! in_array($status, $allowed, true)) {
+            $status = 'all';
+        }
+
+        $q = match ($status) {
+            'active', 'active_in_stock', 'active_oos' => $this->activeVariantQuery($store),
+            default => $this->allVariantQuery($store),
+        };
+
+        if (in_array($status, ['draft', 'archived', 'unlisted'], true)) {
+            $q->whereRaw("LOWER(TRIM(COALESCE(p.status, ''))) = ?", [$status]);
+        }
+
+        $search = trim($search);
+        if ($search !== '') {
+            $like = '%'.$search.'%';
+            $q->where(function ($inner) use ($like) {
+                $inner->where('v.sku', 'like', $like)
+                    ->orWhere('p.title', 'like', $like)
+                    ->orWhere('v.variant_title', 'like', $like);
+            });
+        }
+
+        // One row per SKU so page totals match filter badge counts.
+        $q->selectRaw('v.sku')
+            ->selectRaw('MAX(p.title) as product_title')
+            ->selectRaw('MAX(v.variant_title) as variant_title')
+            ->selectRaw('MAX(v.inventory_quantity) as inventory_quantity')
+            ->selectRaw('MAX(v.shopify_variant_id) as shopify_variant_id')
+            ->selectRaw("MAX(LOWER(TRIM(COALESCE(p.status, '')))) as product_status")
+            ->selectRaw('MAX(p.handle) as handle')
+            ->selectRaw('MAX(p.shopify_id) as shopify_product_id')
+            ->selectRaw('MAX(v.synced_at) as synced_at')
+            ->groupBy('v.sku')
+            ->orderBy('v.sku');
+
+        if ($status === 'active_in_stock') {
+            $q->havingRaw('MAX(v.inventory_quantity) > 0');
+        } elseif ($status === 'active_oos') {
+            $q->havingRaw('MAX(v.inventory_quantity) IS NULL OR MAX(v.inventory_quantity) <= 0');
+        }
+
+        return $q->paginate($perPage)->withQueryString();
+    }
+
+    /**
+     * Distinct SKU counts by filter key (for filter badges).
+     *
+     * @return array<string, int>
+     */
+    public function distinctSkuCountsByStatus(string $store = self::STORE_MAIN): array
+    {
+        $counts = [
+            'all' => 0,
+            'active' => 0,
+            'active_in_stock' => 0,
+            'active_oos' => 0,
+            'draft' => 0,
+            'archived' => 0,
+            'unlisted' => 0,
+        ];
+
+        if (! $this->tablesReady()) {
+            return $counts;
+        }
+
+        $counts['all'] = $this->countDistinctAllSkus($store);
+        $counts['active'] = $this->countDistinctActiveSkus($store);
+        $counts['active_in_stock'] = $this->countDistinctInStockActiveSkus($store);
+        $counts['active_oos'] = (int) $this->activeVariantQuery($store)
+            ->where(function ($inner) {
+                $inner->whereNull('v.inventory_quantity')
+                    ->orWhere('v.inventory_quantity', '<=', 0);
+            })
+            ->distinct()
+            ->count('v.sku');
+
+        $rows = $this->allVariantQuery($store)
+            ->selectRaw("LOWER(TRIM(COALESCE(p.status, ''))) as st, COUNT(DISTINCT v.sku) as c")
+            ->groupBy('st')
+            ->get();
+
+        foreach ($rows as $row) {
+            $st = trim((string) ($row->st ?? ''));
+            if ($st === '' || $st === 'active') {
+                continue;
+            }
+            if (! array_key_exists($st, $counts)) {
+                $counts[$st] = 0;
+            }
+            $counts[$st] = (int) $row->c;
+        }
+
+        return $counts;
+    }
+
+    /** @deprecated Use paginateSkuRows() */
+    public function paginateActiveSkuRows(string $search = '', int $perPage = 50, string $store = self::STORE_MAIN)
+    {
+        return $this->paginateSkuRows($search, 'active', $perPage, $store);
     }
 
     /**
@@ -369,16 +528,17 @@ final class ShopifyLiveVerifiedCatalogService
     }
 
     /**
-     * Restrict a ShopifySku eloquent query to live-verified active catalog SKUs.
+     * Restrict a ShopifySku eloquent query to live-verified catalog SKUs.
+     * Default (no allow-list, not in-stock-only) uses the wide catalog (any status).
      *
      * @param  \Illuminate\Database\Eloquent\Builder<\App\Models\ShopifySku>  $query
      * @param  list<string>|null  $extraSkuAllowList  when set, intersect with verified (e.g. linked/state)
-     * @param  bool  $inStockOnly  when true and no allow-list, only SKUs with catalog inventory > 0
+     * @param  bool  $inStockOnly  when true and no allow-list, only active SKUs with catalog inventory > 0
      * @return \Illuminate\Database\Eloquent\Builder<\App\Models\ShopifySku>
      */
     public function restrictShopifySkuQuery($query, ?array $extraSkuAllowList = null, bool $inStockOnly = false, string $store = self::STORE_MAIN)
     {
-        if (! $this->tablesReady() || ! $this->hasAnyActive($store)) {
+        if (! $this->tablesReady()) {
             return $query->whereRaw('1 = 0');
         }
 
@@ -391,7 +551,9 @@ final class ShopifyLiveVerifiedCatalogService
             return $query->whereIn('sku', $allow);
         }
 
-        $verified = $inStockOnly ? $this->inStockActiveSkuList($store) : $this->activeSkuList($store);
+        $verified = $inStockOnly
+            ? $this->inStockActiveSkuList($store)
+            : $this->allSkuList($store);
         if ($verified === []) {
             return $query->whereRaw('1 = 0');
         }

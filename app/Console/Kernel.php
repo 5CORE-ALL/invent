@@ -952,13 +952,21 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log));
 
       
-        // Shopify live inventory → marketplace (MUST go through unique queue jobs so full
-        // syncs never pile up / crash the shared marketplace-manager worker).
+        // Shopify live inventory → marketplace.
+        // Full crawl: every 4 hours (webhooks handle real-time qty).
+        // Mismatch-only: every 15 minutes so drift is corrected without queue bulk.
         $schedule->job(new \App\Jobs\SyncInventoryToAliexpress)
-            ->everyFifteenMinutes()
+            ->everyFourHours()
             ->timezone('Asia/Kolkata')
             ->name('aliexpress-sync-inventory')
-            ->withoutOverlapping(20)
+            ->withoutOverlapping(200)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceMismatchInventoryJob('aliexpress'))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('aliexpress-sync-mismatch-inventory')
+            ->withoutOverlapping(12)
             ->appendOutputTo($log);
 
         $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('aliexpress', '2026-07-07', true))
@@ -969,10 +977,17 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log);
 
         $schedule->job(new \App\Jobs\SyncInventoryToAlibaba)
-            ->everyFifteenMinutes()
+            ->everyFourHours()
             ->timezone('Asia/Kolkata')
             ->name('alibaba-sync-inventory')
-            ->withoutOverlapping(20)
+            ->withoutOverlapping(200)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceMismatchInventoryJob('alibaba'))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('alibaba-sync-mismatch-inventory')
+            ->withoutOverlapping(12)
             ->appendOutputTo($log);
 
         $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('alibaba', '2026-07-11', true))
@@ -982,12 +997,19 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(20)
             ->appendOutputTo($log);
 
-        // Reverb Marketplace Manager (same cadence as AE/Alibaba)
+        // Reverb Marketplace Manager
         $schedule->job(new \App\Jobs\SyncInventoryToReverbManager)
-            ->everyFifteenMinutes()
+            ->everyFourHours()
             ->timezone('Asia/Kolkata')
             ->name('reverb-manager-sync-inventory')
-            ->withoutOverlapping(20)
+            ->withoutOverlapping(200)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceMismatchInventoryJob('reverb'))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('reverb-sync-mismatch-inventory')
+            ->withoutOverlapping(12)
             ->appendOutputTo($log);
 
         $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('reverb', '2026-07-07', true))
@@ -1024,10 +1046,17 @@ class Kernel extends ConsoleKernel
 
         // Newegg Marketplace Manager: inventory/price from Shopify, orders to Shopify
         $schedule->job(new \App\Jobs\SyncInventoryToNewegg)
-            ->everyFifteenMinutes()
+            ->everyFourHours()
             ->timezone('Asia/Kolkata')
             ->name('newegg-sync-inventory')
-            ->withoutOverlapping(20)
+            ->withoutOverlapping(200)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceMismatchInventoryJob('newegg'))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('newegg-sync-mismatch-inventory')
+            ->withoutOverlapping(12)
             ->appendOutputTo($log);
 
         $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('newegg', '2026-07-07', true))

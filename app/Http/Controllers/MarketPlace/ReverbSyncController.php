@@ -213,7 +213,7 @@ class ReverbSyncController extends Controller
         }
         $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock);
         $counts = $classified['counts'] ?? $emptyCounts;
-        $counts['all'] = $catalog->countDistinctActiveSkus();
+        $counts['all'] = $catalog->countDistinctAllSkus();
         $counts['matched_inactive'] = 0;
         $counts['mismatch_inactive'] = 0;
 
@@ -221,10 +221,12 @@ class ReverbSyncController extends Controller
         $mismatchQty = $classified['mismatch'] ?? [];
         $zeroQty = $classified['zero'] ?? [];
 
-        // Table shows live Shopify + live Reverb; cache/catalog can lag and false-flag mismatch.
-        // Re-verify mismatch SKUs with the same live sources before building tabs.
+        // Re-verify mismatch using shopify_skus live qty (available_to_sell) + live Reverb.
         if ($mismatchQty !== []) {
-            $liveShopify = $liveService->liveShopifyQtyBySkus($mismatchQty);
+            $liveShopify = MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($mismatchQty);
+            if ($liveShopify === []) {
+                $liveShopify = MarketplaceListingStockResolver::catalogShopifyQtyMapForSkus($mismatchQty);
+            }
             $metricMap = $this->reverbMetricMapForSkus($mismatchQty);
             $listingIds = [];
             $idToSku = [];
@@ -368,7 +370,10 @@ class ReverbSyncController extends Controller
         $pageSkus = collect($paginator->items())->all();
         $pageRows = $this->shopifySkuRowsForVerifiedPage($pageSkus, $catalog);
         $aeMap = $this->reverbMetricMapForSkus($pageSkus);
-        $liveShopifyQty = MarketplaceListingStockResolver::dbShopifyQtyMapForRows($pageRows);
+        $liveShopifyQty = MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($pageSkus);
+        if ($liveShopifyQty === []) {
+            $liveShopifyQty = MarketplaceListingStockResolver::dbShopifyQtyMapForRows($pageRows);
+        }
         $listingIds = [];
         foreach ($aeMap as $metric) {
             if ($metric && ! empty($metric->product_id)) {
@@ -501,8 +506,11 @@ class ReverbSyncController extends Controller
         $pageRows = $this->shopifySkuRowsForVerifiedPage($pageSkus, $catalog);
         $aeMap = $this->reverbMetricMapForSkus($pageSkus);
 
-        // 1) Live Shopify Admin qty for this page (not stale shopify_skus / local maps)
-        $liveShopifyQty = $liveService->liveShopifyQtyBySkus($pageSkus);
+        // Shopify qty from shopify_skus.available_to_sell (SyncShopifyLiveInventory SoT).
+        $liveShopifyQty = MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($pageSkus);
+        if ($liveShopifyQty === []) {
+            $liveShopifyQty = MarketplaceListingStockResolver::catalogShopifyQtyMapForSkus($pageSkus);
+        }
         if ($liveShopifyQty === []) {
             $liveShopifyQty = MarketplaceListingStockResolver::dbShopifyQtyMapForRows($pageRows);
         }
@@ -1399,7 +1407,7 @@ class ReverbSyncController extends Controller
     ): array {
         $skus = $catalog->tablesReady()
             ? (($linkTab === 'all')
-                ? $catalog->activeSkuList()
+                ? $catalog->allSkuList()
                 : (($linkTab === 'unlinked')
                     ? $catalog->inStockActiveSkuList()
                     : $catalog->activeSkuList()))

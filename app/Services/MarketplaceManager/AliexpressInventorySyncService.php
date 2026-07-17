@@ -48,8 +48,11 @@ class AliexpressInventorySyncService
         $maxQty = $settings['inventory']['max_quantity'] ?? null;
         // min_quantity is ignored: Shopify 0 => marketplace 0 (never invent 1).
 
-        // Always LIVE Shopify API qty — never local shopify_skus cache.
-        $shopifyQty = $this->fetchLiveShopifyQuantities($skus, $shopifyConfig);
+        // Ledger-first when MM_USE_INVENTORY_LEDGER; else live Shopify API.
+        $shopifyQty = app(ShopifyQtySource::class)->fetchQuantitiesForPush(
+            $skus,
+            fn (array $need) => $this->fetchLiveShopifyQuantities($need, $shopifyConfig)
+        );
         $metrics = AliexpressMetric::query()
             ->whereIn('sku', $skus)
             ->whereNotNull('product_id')
@@ -521,14 +524,7 @@ class AliexpressInventorySyncService
             $aeQty = (int) $row['inventory'];
             $shopifyQty = array_key_exists('shopify_qty', $row) ? (int) $row['shopify_qty'] : $aeQty;
 
-            $shopifyRow = ShopifySku::firstForProductSku($sku);
-            if ($shopifyRow) {
-                $shopifyRow->fill([
-                    'available_to_sell' => $shopifyQty,
-                    'inv' => $shopifyQty,
-                    'on_hand' => $shopifyQty,
-                ])->save();
-            }
+            // Never overwrite shopify_skus.available_to_sell — owned by SyncShopifyLiveInventory.
 
             if (Schema::hasTable('product_stock_mappings')) {
                 $payload = ['inventory_shopify' => $shopifyQty];

@@ -33,18 +33,24 @@
             <div class="alert alert-success py-2">{{ session('success') }}</div>
         @endif
 
-        <div class="alert alert-light border mb-3 py-2">
-            <strong>Shared Shopify live store</strong>
-            — Active SKUs: <strong>{{ number_format((int) ($shopifyActiveSkuCount ?? 0)) }}</strong>
-            @if(!empty($shopifyCatalogSyncedAt))
-                · last synced {{ $shopifyCatalogSyncedAt }}
-            @else
-                · not synced yet
-            @endif
-            @if(!empty($shopifyRefreshStatus['status']))
-                · refresh: {{ $shopifyRefreshStatus['status'] }}
-            @endif
-            <span class="text-muted">· All marketplace listings read this once (no per-page Shopify API).</span>
+        <div class="alert alert-light border mb-3 py-2 d-flex flex-wrap align-items-center justify-content-between gap-2">
+            <div>
+                <strong>Shared Shopify live store</strong>
+                — All SKUs: <strong>{{ number_format((int) ($shopifySkuCount ?? 0)) }}</strong>
+                <span class="text-muted">(active {{ number_format((int) ($shopifyActiveSkuCount ?? 0)) }})</span>
+                @if(!empty($shopifyCatalogSyncedAt))
+                    · last synced {{ $shopifyCatalogSyncedAt }}
+                @else
+                    · not synced yet
+                @endif
+                @if(!empty($shopifyRefreshStatus['status']))
+                    · refresh: {{ $shopifyRefreshStatus['status'] }}
+                @endif
+                <span class="text-muted">· All marketplace listings read this once (no per-page Shopify API).</span>
+            </div>
+            <a href="{{ route('marketplace.manager.shopify.active') }}" class="btn btn-sm btn-outline-dark">
+                View Shopify SKUs
+            </a>
         </div>
 
         <div class="card">

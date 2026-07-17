@@ -44,7 +44,10 @@ class NeweggInventorySyncService
         $qtyPercent = max(0, min(100, (int) ($settings['inventory']['quantity_calc_percent'] ?? 100)));
         $maxQty = $settings['inventory']['max_quantity'] ?? null;
 
-        $shopifyQty = $this->fetchLiveShopifyQuantities($skus, $shopifyConfig);
+        $shopifyQty = app(ShopifyQtySource::class)->fetchQuantitiesForPush(
+            $skus,
+            fn (array $need) => $this->fetchLiveShopifyQuantities($need, $shopifyConfig)
+        );
         $metrics = NeweggMetric::query()
             ->whereIn('sku', $skus)
             ->whereNotNull('product_id')
@@ -411,14 +414,7 @@ class NeweggInventorySyncService
             $neQty = (int) $row['inventory'];
             $shopifyQty = array_key_exists('shopify_qty', $row) ? (int) $row['shopify_qty'] : $neQty;
 
-            $shopifyRow = ShopifySku::firstForProductSku($sku);
-            if ($shopifyRow) {
-                $shopifyRow->fill([
-                    'available_to_sell' => $shopifyQty,
-                    'inv' => $shopifyQty,
-                    'on_hand' => $shopifyQty,
-                ])->save();
-            }
+            // Never overwrite shopify_skus.available_to_sell — owned by SyncShopifyLiveInventory.
 
             if (Schema::hasTable('product_stock_mappings')) {
                 $payload = ['inventory_shopify' => $shopifyQty];

@@ -85,8 +85,11 @@ class ReverbInventorySyncService
         $liveDetails = app(ReverbLiveListingsService::class)
             ->liveDetailsByListingIds(array_values($listingIdsBySku));
 
-        // Always LIVE Shopify API qty.
-        $shopifyQty = $this->fetchLiveShopifyQuantities($skus, $shopifyConfig);
+        // Ledger-first when MM_USE_INVENTORY_LEDGER; else live Shopify API.
+        $shopifyQty = app(ShopifyQtySource::class)->fetchQuantitiesForPush(
+            $skus,
+            fn (array $need) => $this->fetchLiveShopifyQuantities($need, $shopifyConfig)
+        );
 
         $inventoryRows = [];
         $skipped = 0;
@@ -707,14 +710,9 @@ class ReverbInventorySyncService
             $aeQty = (int) $row['inventory'];
             $shopifyQty = array_key_exists('shopify_qty', $row) ? (int) $row['shopify_qty'] : $aeQty;
 
-            $shopifyRow = ShopifySku::firstForProductSku($sku);
-            if ($shopifyRow) {
-                $shopifyRow->fill([
-                    'available_to_sell' => $shopifyQty,
-                    'inv' => $shopifyQty,
-                    'on_hand' => $shopifyQty,
-                ])->save();
-            }
+            // Never overwrite shopify_skus.available_to_sell / inv / on_hand here —
+            // those are owned by SyncShopifyLiveInventory. Marketplace sync only
+            // updates marketplace stock caches / mappings.
 
             if (Schema::hasTable('product_stock_mappings')) {
                 $payload = ['inventory_shopify' => $shopifyQty];
