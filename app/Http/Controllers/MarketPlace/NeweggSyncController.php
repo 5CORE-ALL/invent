@@ -18,6 +18,7 @@ use App\Services\MarketplaceManager\NeweggOrderDetailService;
 use App\Services\MarketplaceManager\NeweggOrderPushService;
 use App\Services\MarketplaceManager\NeweggOrderSyncService;
 use App\Services\MarketplaceManager\MarketplaceListingStockResolver;
+use App\Services\MarketplaceManager\MarketplaceOrderPaidFilter;
 use App\Services\MarketplaceManager\ReverbLiveListingsService;
 use App\Services\MarketplaceManager\ShopifyLiveVerifiedCatalogService;
 use App\Services\ShopifyApiService;
@@ -642,6 +643,7 @@ class NeweggSyncController extends Controller
             'title' => 'Newegg — Orders',
             'apiError' => $apiError,
             'connected' => $this->apiConfig->isConfigured('newegg'),
+            'importPaidOrdersOnly' => MarketplaceSyncSettings::importPaidOrdersOnly('newegg'),
         ]);
     }
 
@@ -680,6 +682,8 @@ class NeweggSyncController extends Controller
             'aeLiveError' => $aeLiveError,
             'aeDataSource' => $aeDataSource,
             'connected' => $this->apiConfig->isConfigured('newegg'),
+            'importPaidOrdersOnly' => MarketplaceSyncSettings::importPaidOrdersOnly('newegg'),
+            'orderIsPaid' => MarketplaceOrderPaidFilter::isPaid('newegg', $line),
         ]);
     }
 
@@ -883,6 +887,13 @@ class NeweggSyncController extends Controller
                 'message' => 'Already imported.',
                 'shopify_order_id' => $order->shopify_order_id,
             ]);
+        }
+
+        if (MarketplaceOrderPaidFilter::blocksUnpaidPush('newegg', $order)) {
+            return response()->json([
+                'success' => false,
+                'message' => MarketplaceOrderPaidFilter::unpaidPushBlockedMessage(),
+            ], 422);
         }
 
         // Manual push is synchronous — only auto-import uses the queue.

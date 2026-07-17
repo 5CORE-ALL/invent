@@ -81,7 +81,7 @@
                             <input class="form-check-input" type="checkbox" name="order[import_paid_orders_only]" value="1" {{ ($settings['order']['import_paid_orders_only'] ?? false) ? 'checked' : '' }}>
                             <span class="form-check-label">Only auto-import paid orders</span>
                         </label>
-                        <div class="form-text ms-4">When on, unpaid Alibaba orders stay in our DB but are not queued to Shopify. Manual Push still works.</div>
+                        <div class="form-text ms-4">When on, unpaid Alibaba orders stay in our DB and are not queued or manually pushed to Shopify. Turn this off to import unpaid orders.</div>
                     </div>
                     <div class="mt-2">
                         <label class="form-label small">Shopify import store</label>

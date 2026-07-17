@@ -82,8 +82,17 @@
                                         @if($o->shopify_order_id)
                                             —
                                         @else
+                                            @php
+                                                $pushBlocked = ($importPaidOrdersOnly ?? false)
+                                                    && ! \App\Services\MarketplaceManager\MarketplaceOrderPaidFilter::isPaid('aliexpress', $o);
+                                            @endphp
                                             <div class="d-flex gap-1 flex-wrap" onclick="event.stopPropagation();">
-                                                <button type="button" class="btn btn-sm btn-warning btn-push-order" data-id="{{ $o->id }}">Push to Shopify</button>
+                                                @if($pushBlocked)
+                                                    <button type="button" class="btn btn-sm btn-secondary" disabled title="{{ \App\Services\MarketplaceManager\MarketplaceOrderPaidFilter::unpaidPushBlockedMessage() }}">Push to Shopify</button>
+                                                    <small class="text-muted align-self-center">Turn off “Only auto-import paid orders” in Settings to push unpaid orders.</small>
+                                                @else
+                                                    <button type="button" class="btn btn-sm btn-warning btn-push-order" data-id="{{ $o->id }}">Push to Shopify</button>
+                                                @endif
                                                 <button type="button" class="btn btn-sm btn-outline-success btn-mark-imported" data-id="{{ $o->id }}" data-order-id="{{ $o->order_id }}" title="Mark as already imported / entered manually">Already imported</button>
                                                 <button type="button" class="btn btn-sm btn-outline-danger btn-delete-ready-order" data-id="{{ $o->id }}" data-order-id="{{ $o->order_id }}" title="Remove from ready-for-import">Delete</button>
                                             </div>

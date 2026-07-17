@@ -289,13 +289,22 @@
                             @if($shopify['shopify_order_id'] ?? null)
                                 <span class="text-muted">Already imported</span>
                             @else
+                                @php
+                                    $pushBlocked = ($importPaidOrdersOnly ?? false) && ! ($orderIsPaid ?? true);
+                                @endphp
                                 <div class="d-flex flex-wrap gap-2">
                                     <button type="button" class="btn btn-sm btn-outline-primary" id="btn-dry-run-shopify" data-id="{{ $line->id }}">
                                         Dry run (preview)
                                     </button>
-                                    <button type="button" class="btn btn-sm btn-warning" id="btn-push-order" data-id="{{ $line->id }}">
-                                        Push to Shopify
-                                    </button>
+                                    @if($pushBlocked)
+                                        <button type="button" class="btn btn-sm btn-secondary" disabled title="{{ \App\Services\MarketplaceManager\MarketplaceOrderPaidFilter::unpaidPushBlockedMessage() }}">
+                                            Push to Shopify
+                                        </button>
+                                    @else
+                                        <button type="button" class="btn btn-sm btn-warning" id="btn-push-order" data-id="{{ $line->id }}">
+                                            Push to Shopify
+                                        </button>
+                                    @endif
                                     <button type="button" class="btn btn-sm btn-outline-success" id="btn-mark-imported" data-id="{{ $line->id }}" data-order-id="{{ $summary['order_id'] ?? $orderId }}">
                                         Already imported
                                     </button>
@@ -303,6 +312,9 @@
                                         Delete from ready-for-import
                                     </button>
                                 </div>
+                                @if($pushBlocked)
+                                    <div class="form-text mt-2">This order is not paid. Turn off “Only auto-import paid orders” in Settings if you want to push unpaid orders to Shopify.</div>
+                                @endif
                             @endif
                         </td></tr>
                     </tbody>

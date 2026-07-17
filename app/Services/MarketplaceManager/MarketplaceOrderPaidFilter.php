@@ -2,11 +2,27 @@
 
 namespace App\Services\MarketplaceManager;
 
+use App\Models\MarketplaceSyncSettings;
+
 /**
- * Shared paid-order checks for Marketplace Manager auto-import to Shopify.
+ * Shared paid-order checks for Marketplace Manager auto-import / Push to Shopify.
  */
 class MarketplaceOrderPaidFilter
 {
+    public static function unpaidPushBlockedMessage(): string
+    {
+        return 'This order is not paid. Turn off “Only auto-import paid orders” in Settings if you want to push unpaid orders to Shopify.';
+    }
+
+    /**
+     * When paid-only is on, unpaid orders cannot be pushed (auto or manual).
+     */
+    public static function blocksUnpaidPush(string $marketplace, object $order): bool
+    {
+        return MarketplaceSyncSettings::importPaidOrdersOnly($marketplace)
+            && ! self::isPaid($marketplace, $order);
+    }
+
     /**
      * AliExpress / Alibaba statuses that mean the buyer has not paid yet.
      *

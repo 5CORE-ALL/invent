@@ -12,6 +12,7 @@ use App\Services\ReverbManagerApiService;
 use App\Services\ReverbAuthService;
 use App\Services\MarketplaceManager\MarketplaceListingStockResolver;
 use App\Services\MarketplaceManager\MarketplaceLiveInventoryRules;
+use App\Services\MarketplaceManager\MarketplaceOrderPaidFilter;
 use App\Services\MarketplaceManager\ReverbDetailFormatter;
 use App\Services\MarketplaceManager\ReverbInventorySyncService;
 use App\Services\MarketplaceManager\ReverbLinkMapSyncService;
@@ -848,6 +849,7 @@ class ReverbSyncController extends Controller
             'title' => 'Reverb — Orders',
             'apiError' => $apiError,
             'connected' => $this->apiConfig->isConfigured('reverb'),
+            'importPaidOrdersOnly' => MarketplaceSyncSettings::importPaidOrdersOnly('reverb'),
         ]);
     }
 
@@ -899,6 +901,8 @@ class ReverbSyncController extends Controller
             'aeLiveError' => $aeLiveError,
             'aeDataSource' => $aeDataSource,
             'connected' => $this->apiConfig->isConfigured('reverb'),
+            'importPaidOrdersOnly' => MarketplaceSyncSettings::importPaidOrdersOnly('reverb'),
+            'orderIsPaid' => MarketplaceOrderPaidFilter::isPaid('reverb', $line),
         ]);
     }
 
@@ -1109,6 +1113,13 @@ class ReverbSyncController extends Controller
                 'message' => 'Already imported.',
                 'shopify_order_id' => $order->shopify_order_id,
             ]);
+        }
+
+        if (MarketplaceOrderPaidFilter::blocksUnpaidPush('reverb', $order)) {
+            return response()->json([
+                'success' => false,
+                'message' => MarketplaceOrderPaidFilter::unpaidPushBlockedMessage(),
+            ], 422);
         }
 
         // Manual push is synchronous — only auto-import uses the queue.

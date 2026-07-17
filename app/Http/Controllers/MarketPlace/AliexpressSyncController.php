@@ -19,6 +19,7 @@ use App\Services\MarketplaceManager\AliexpressOrderDetailService;
 use App\Services\MarketplaceManager\AliexpressOrderPushService;
 use App\Services\MarketplaceManager\AliexpressOrderSyncService;
 use App\Services\MarketplaceManager\MarketplaceListingStockResolver;
+use App\Services\MarketplaceManager\MarketplaceOrderPaidFilter;
 use App\Services\MarketplaceManager\ReverbLiveListingsService;
 use App\Services\MarketplaceManager\ShopifyLiveVerifiedCatalogService;
 use App\Services\ShopifyApiService;
@@ -657,6 +658,7 @@ class AliexpressSyncController extends Controller
             'title' => 'AliExpress — Orders',
             'apiError' => $apiError,
             'connected' => $this->apiConfig->isConfigured('aliexpress'),
+            'importPaidOrdersOnly' => MarketplaceSyncSettings::importPaidOrdersOnly('aliexpress'),
         ]);
     }
 
@@ -695,6 +697,8 @@ class AliexpressSyncController extends Controller
             'aeLiveError' => $aeLiveError,
             'aeDataSource' => $aeDataSource,
             'connected' => $this->apiConfig->isConfigured('aliexpress'),
+            'importPaidOrdersOnly' => MarketplaceSyncSettings::importPaidOrdersOnly('aliexpress'),
+            'orderIsPaid' => MarketplaceOrderPaidFilter::isPaid('aliexpress', $line),
         ]);
     }
 
@@ -901,6 +905,13 @@ class AliexpressSyncController extends Controller
                 'message' => 'Already imported.',
                 'shopify_order_id' => $order->shopify_order_id,
             ]);
+        }
+
+        if (MarketplaceOrderPaidFilter::blocksUnpaidPush('aliexpress', $order)) {
+            return response()->json([
+                'success' => false,
+                'message' => MarketplaceOrderPaidFilter::unpaidPushBlockedMessage(),
+            ], 422);
         }
 
         // Manual push is synchronous — only auto-import uses the queue.
