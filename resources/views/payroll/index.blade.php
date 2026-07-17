@@ -1,31 +1,60 @@
-@extends('layouts.vertical', ['title' => 'Payroll'])
+@extends('layouts.vertical', ['title' => 'Salary'])
 
 @section('css')
 <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
 <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
 <style>
-    .payroll-card { border: 1px solid rgba(0,0,0,.08); border-radius: 12px; background: #fff; }
+    .payroll-card { border: 1px solid rgba(0,0,0,.08); border-radius: 10px; background: #fff; }
     #employeesTable { font-size: .85rem; }
-    .payroll-month-select { min-width: 220px; }
-    .payroll-stat { border-radius: 10px; padding: .75rem 1rem; background: #f8f9fa; }
-    .payroll-stat .val { font-size: 1.25rem; font-weight: 700; }
-    .payroll-locked { background: rgba(220,53,69,.08); border: 1px solid rgba(220,53,69,.2); }
-    .payroll-status-steps { display: flex; align-items: center; gap: .35rem; flex-wrap: wrap; }
-    .payroll-status-step {
-        display: inline-flex; align-items: center; gap: .35rem;
-        padding: .35rem .65rem; border-radius: 999px; font-size: .75rem; font-weight: 600;
-        background: #f1f3f5; color: #6c757d; border: 1px solid transparent;
+    .payroll-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .5rem; }
+    .payroll-toolbar.flex-nowrap { flex-wrap: nowrap; overflow: visible; }
+    #salaryStatusSection.payroll-card { overflow: visible; }
+    .payroll-toolbar-title { margin: 0; font-size: 1.05rem; font-weight: 600; white-space: nowrap; line-height: 31px; height: 31px; }
+    .payroll-month-select { width: auto; min-width: 160px; max-width: 200px; }
+    .payroll-toolbar .btn,
+    .payroll-toolbar .form-select,
+    .payroll-toolbar .form-control,
+    .payroll-toolbar .input-group,
+    .payroll-toolbar .input-group-text,
+    .payroll-toolbar .payroll-stat-inline {
+        height: 31px !important;
+        min-height: 31px !important;
+        box-sizing: border-box;
     }
-    .payroll-status-step.active { background: rgba(13,110,253,.12); color: #0d6efd; border-color: rgba(13,110,253,.25); }
-    .payroll-status-step.done { background: rgba(25,135,84,.12); color: #198754; border-color: rgba(25,135,84,.2); }
-    .payroll-status-arrow { color: #adb5bd; font-size: .85rem; }
-    .payroll-status-badge { font-size: .7rem; padding: .25rem .55rem; border-radius: 999px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
-    .payroll-status-badge.draft { background: #e9ecef; color: #495057; }
-    .payroll-status-badge.processing { background: rgba(255,193,7,.2); color: #997404; }
-    .payroll-status-badge.processed { background: rgba(13,110,253,.15); color: #0d6efd; }
-    .payroll-status-badge.released { background: rgba(25,135,84,.15); color: #198754; }
+    .payroll-toolbar .btn {
+        display: inline-flex; align-items: center; padding-top: 0; padding-bottom: 0;
+        line-height: 1; font-size: .8rem;
+    }
+    .payroll-toolbar .form-select,
+    .payroll-toolbar .form-control {
+        padding-top: 0; padding-bottom: 0; font-size: .8rem; line-height: 31px;
+    }
+    .payroll-toolbar .input-group-text {
+        display: inline-flex; align-items: center; padding-top: 0; padding-bottom: 0;
+    }
+    .payroll-stat-inline {
+        display: inline-flex; align-items: center; gap: .35rem;
+        padding: 0 .65rem; border-radius: 6px;
+        font-size: .78rem; white-space: nowrap;
+    }
+    .payroll-stat-inline .val { font-size: .88rem; font-weight: 700; }
+    .payroll-stat-employees { background: rgba(13, 110, 253, .12); color: #0a58ca; }
+    .payroll-stat-employees .val { color: #084298; }
+    .payroll-stat-net { background: rgba(25, 135, 84, .14); color: #146c43; }
+    .payroll-stat-net .val { color: #0f5132; }
+    .payroll-history-tip {
+        cursor: help; display: inline-flex; align-items: center; justify-content: center;
+        font-size: 1.1rem; position: relative;
+    }
+    .payroll-history-tip:hover::after {
+        content: attr(data-tip);
+        position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+        background: #212529; color: #fff; font-size: .72rem; font-weight: 500;
+        padding: .35rem .55rem; border-radius: 6px; white-space: nowrap; z-index: 20;
+        box-shadow: 0 2px 8px rgba(0,0,0,.18); pointer-events: none;
+    }
     .payroll-doc-row { display: flex; align-items: center; justify-content: center; gap: .25rem; flex-wrap: wrap; margin: .15rem 0; font-size: .72rem; }
-    .payroll-doc-label { color: #6c757d; min-width: 42px; text-align: right; }
+    .payroll-doc-label { color: #6c757d; min-width: 0; text-align: right; }
     .payroll-doc-actions { display: inline-flex; align-items: center; gap: .15rem; }
     .table-payroll { font-size: .85rem; }
     /* Center-align all payroll table data and headers. */
@@ -33,6 +62,37 @@
     #payrollApp .tabulator .tabulator-header .tabulator-col-title {
         text-align: center !important;
     }
+    #payrollApp .tbl-dot {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+    }
+    #payrollApp .tbl-dot--green { background: #22c55e; }
+    #payrollApp .tbl-dot--yellow { background: #eab308; }
+    #payrollApp .tbl-dot--red { background: #ef4444; }
+    #payrollApp .tbl-dot--gray { background: #9ca3af; }
+    .payroll-status-multi { position: relative; flex-shrink: 0; width: 140px; z-index: 30; }
+    .payroll-status-multi > button {
+        width: 100%; height: 31px; text-align: left; padding: 0 .75rem; padding-right: 1.75rem;
+        border: 1px solid #ced4da; border-radius: .375rem; background: #fff; font-size: .8rem;
+        line-height: 29px; cursor: pointer; color: #212529;
+        background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23343a40' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e");
+        background-repeat: no-repeat; background-position: right .6rem center; background-size: 12px;
+    }
+    .payroll-status-menu {
+        display: none; position: fixed; z-index: 2000;
+        min-width: 160px; padding: .4rem 0; background: #fff; border: 1px solid rgba(0,0,0,.12);
+        border-radius: 8px; box-shadow: 0 6px 18px rgba(0,0,0,.12);
+    }
+    .payroll-status-multi.open .payroll-status-menu { display: block; }
+    .payroll-status-menu label {
+        display: flex; align-items: center; gap: .45rem; margin: 0;
+        padding: .35rem .75rem; font-size: .8rem; cursor: pointer; white-space: nowrap;
+        color: #212529; height: auto !important; min-height: 0 !important;
+    }
+    .payroll-status-menu label:hover { background: #f1f3f5; }
+    .payroll-status-menu input { margin: 0; cursor: pointer; height: auto !important; min-height: 0 !important; }
 </style>
 @endsection
 
@@ -41,94 +101,52 @@
      data-can-manage="{{ $canManage ? '1' : '0' }}"
      data-csrf="{{ csrf_token() }}"
      data-active-month-id="{{ $activeMonth?->id }}"
-     data-base-url="{{ url('/payroll') }}"
-     data-month-statuses='@json($monthStatuses)'>
+     data-base-url="{{ url('/payroll') }}">
 
-    <div class="row mb-3">
-        <div class="col-12">
-            <div class="payroll-card p-3">
-                <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
-                    <div>
-                        <h4 class="mb-1"><i class="ri-wallet-3-line me-2 text-primary"></i>Payroll</h4>
-                        <p class="text-muted mb-0 small">Mini payroll system — months, salaries, payslips &amp; history</p>
-                    </div>
-                    <div class="d-flex flex-wrap align-items-center gap-2">
-                        <div class="input-group input-group-sm" style="max-width: 240px;">
-                            <span class="input-group-text bg-light border-0"><i class="ri-search-line"></i></span>
-                            <input type="text" id="payrollSearch" class="form-control border-0 bg-light" placeholder="Search employee...">
-                        </div>
-                        <select class="form-select form-select-sm payroll-month-select" id="payrollMonthSelect">
-                            @forelse($months as $m)
-                                <option value="{{ $m->id }}" {{ $activeMonth?->id === $m->id ? 'selected' : '' }}
-                                    data-locked="{{ $m->is_locked ? '1' : '0' }}"
-                                    data-status="{{ $m->status }}"
-                                    data-format="{{ $m->payslip_format }}">
-                                    {{ $m->month_label }} ({{ ucfirst($m->status) }})
-                                </option>
-                            @empty
-                                <option value="">No payroll months yet</option>
-                            @endforelse
-                        </select>
-                        @if($canManage)
-                        <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#createMonthModal">
-                            <i class="ri-calendar-line me-1"></i> Create Payroll Month
-                        </button>
-                        <a href="{{ route('users.add') }}" class="btn btn-sm btn-outline-secondary">
-                            <i class="ri-team-line me-1"></i> Team Management
-                        </a>
-                        @endif
-                    </div>
-                </div>
-                <div class="row g-2 mt-3" id="monthStats">
-                    <div class="col-6 col-md-6"><div class="payroll-stat"><div class="text-muted small">Employees</div><div class="val" id="statEmployees">—</div></div></div>
-                    <div class="col-6 col-md-6"><div class="payroll-stat"><div class="text-muted small">Total Net</div><div class="val" id="statNet">—</div></div></div>
+    <div class="payroll-card px-3 py-2 mb-2" id="salaryStatusSection">
+        <div class="payroll-toolbar flex-nowrap">
+            <h4 class="payroll-toolbar-title"><i class="ri-wallet-3-line me-1 text-primary"></i>Salary</h4>
+            <div class="d-flex align-items-center gap-2 flex-shrink-0" id="monthStats">
+                <span class="payroll-stat-inline payroll-stat-employees">Employees <span class="val" id="statEmployees">—</span></span>
+                <span class="payroll-stat-inline payroll-stat-net">Net <span class="val" id="statNet">—</span></span>
+            </div>
+            <div class="input-group input-group-sm" style="width: 150px; flex-shrink: 0;">
+                <span class="input-group-text bg-light border-0 py-0"><i class="ri-search-line"></i></span>
+                <input type="text" id="payrollSearch" class="form-control border-0 bg-light form-control-sm" placeholder="Name">
+            </div>
+            <div class="payroll-status-multi" id="payrollStatusMulti" title="Filter by one or more statuses">
+                <button type="button" id="payrollStatusMultiBtn">Active</button>
+                <div class="payroll-status-menu" id="payrollStatusMenu">
+                    <label><input type="checkbox" name="payroll_status" value="active" checked> Active</label>
+                    <label><input type="checkbox" name="payroll_status" value="inactive"> Inactive</label>
+                    <label><input type="checkbox" name="payroll_status" value="deleted"> Deleted</label>
+                    <label><input type="checkbox" name="payroll_status" value="na"> N/A</label>
                 </div>
             </div>
+            <select class="form-select form-select-sm payroll-month-select" id="payrollMonthSelect" style="flex-shrink: 0;">
+                @forelse($months as $m)
+                    <option value="{{ $m->id }}" {{ $activeMonth?->id === $m->id ? 'selected' : '' }}
+                        data-locked="{{ $m->is_locked ? '1' : '0' }}"
+                        data-status="{{ $m->status }}"
+                        data-format="{{ $m->payslip_format }}">
+                        {{ $m->month_label }}
+                    </option>
+                @empty
+                    <option value="">No payroll months yet</option>
+                @endforelse
+            </select>
+            @if($canManage)
+            <button type="button" class="btn btn-sm btn-primary text-nowrap" data-bs-toggle="modal" data-bs-target="#createMonthModal" title="Create Payroll Month">
+                <i class="ri-calendar-line me-1"></i>Create Month
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-danger text-nowrap" id="btnToggleLock"><i class="ri-lock-line"></i> Lock</button>
+            <a href="#" id="btnDownloadPayoutSheet" class="btn btn-sm btn-success text-nowrap"><i class="ri-file-excel-2-line me-1"></i>Download</a>
+            <button type="button" class="btn btn-sm btn-outline-primary text-nowrap" id="btnSyncEmployees"><i class="ri-refresh-line"></i> Sync Hours</button>
+            @endif
         </div>
     </div>
 
-    @if($canManage)
-    <div class="row mb-3">
-        <div class="col-12">
-            <div class="payroll-card p-3" id="salaryStatusSection">
-                <div class="d-flex flex-wrap align-items-start justify-content-between gap-3">
-                    <div>
-                        <h6 class="mb-1"><i class="ri-flag-line me-1 text-primary"></i>Salary Status</h6>
-                        <p class="text-muted small mb-2" id="statusHelpText">Move payroll from draft to release when ready.</p>
-                        <div class="payroll-status-steps" id="statusSteps"></div>
-                    </div>
-                    <div class="d-flex flex-wrap align-items-center gap-2">
-                        <span class="payroll-status-badge draft" id="statusBadge">Draft</span>
-                        <span class="badge bg-danger d-none" id="lockBadge"><i class="ri-lock-line me-1"></i>Locked</span>
-                        <div class="input-group input-group-sm" style="width: auto;">
-                            <select class="form-select form-select-sm" id="statusSelect" style="min-width: 140px;">
-                                @foreach($monthStatuses as $k => $label)
-                                    <option value="{{ $k }}">{{ $label }}</option>
-                                @endforeach
-                            </select>
-                            <button type="button" class="btn btn-outline-secondary btn-sm" id="btnApplyStatus">Update</button>
-                        </div>
-                        <button type="button" class="btn btn-sm btn-outline-warning" id="btnToggleLock"><i class="ri-lock-line"></i> Lock</button>
-                        <button type="button" class="btn btn-sm btn-outline-primary" id="btnRecalculate"><i class="ri-calculator-line"></i> Process</button>
-                        <button type="button" class="btn btn-sm btn-outline-info" id="btnGeneratePayslips"><i class="ri-file-list-3-line"></i> Generate Payslips</button>
-                        <button type="button" class="btn btn-sm btn-success" id="btnReleasePayslips"><i class="ri-send-plane-line"></i> Release</button>
-                    </div>
-                </div>
-                <div class="small text-muted mt-2 d-none" id="statusMeta"></div>
-            </div>
-        </div>
-    </div>
-    @endif
-
-    <div class="payroll-card p-3">
-        <div class="d-flex justify-content-end align-items-center mb-2">
-            <div class="d-flex align-items-center gap-2">
-                @if($canManage)
-                <a href="#" id="btnDownloadPayoutSheet" class="btn btn-sm btn-success py-0"><i class="ri-file-excel-2-line me-1"></i>Download Month Sheet</a>
-                <button type="button" class="btn btn-sm btn-outline-primary" id="btnSyncEmployees"><i class="ri-refresh-line"></i> Sync Hours from Team</button>
-                @endif
-            </div>
-        </div>
+    <div class="payroll-card p-2">
         <div id="employeesTable"></div>
         <input type="file" id="payrollDocInput" class="d-none" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx">
     </div>
@@ -175,6 +193,16 @@
                 <input type="hidden" name="row_id" id="editRowId">
                 <div class="modal-header"><h5 class="modal-title">Edit Salary</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                 <div class="modal-body row g-2">
+                    <div class="col-12">
+                        <label class="form-label small">Active</label>
+                        <select name="account_status" id="editAccountStatus" class="form-select form-select-sm">
+                            <option value="active">Active</option>
+                            <option value="inactive">Inactive</option>
+                            <option value="deleted">Deleted</option>
+                            <option value="na">N/A</option>
+                        </select>
+                        <small class="text-muted" style="font-size: 11px;">Saved to users table (same as Team Management)</small>
+                    </div>
                     <div class="col-6"><label class="form-label small">Salary PP</label><input type="number" name="salary_pp" class="form-control form-control-sm" step="0.01"></div>
                     <div class="col-6"><label class="form-label small">Increment</label><input type="number" name="increment" class="form-control form-control-sm" step="0.01"></div>
                     <div class="col-6"><label class="form-label small">Other</label><input type="number" name="other" class="form-control form-control-sm" step="0.01"></div>
@@ -204,8 +232,6 @@
     const canManage = app.dataset.canManage === '1';
     const csrf = app.dataset.csrf;
     const base = app.dataset.baseUrl;
-    const monthStatuses = JSON.parse(app.dataset.monthStatuses || '{}');
-    const statusOrder = ['draft', 'processing', 'processed', 'released'];
     let monthId = app.dataset.activeMonthId || document.getElementById('payrollMonthSelect')?.value;
     const employeeRowsById = {};
 
@@ -253,7 +279,7 @@
     }
 
     function formatDocumentsCell(d, locked) {
-        return formatDocSlot(d, 'incentive', 'Inc', locked) + formatDocSlot(d, 'bill', 'Bill', locked);
+        return formatDocSlot(d, 'bill', 'Bill', locked);
     }
 
     async function uploadPayrollDocument(rowId, type, file) {
@@ -325,15 +351,24 @@
     function renderEmployeesTable(emps, locked) {
         const data = (emps || []).map(e => Object.assign({}, e, { _locked: locked }));
         pendingEmployeesData = data;
+        const statusMeta = {
+            active: { cls: 'tbl-dot--green', label: 'Active' },
+            inactive: { cls: 'tbl-dot--yellow', label: 'Inactive' },
+            deleted: { cls: 'tbl-dot--red', label: 'Deleted' },
+            na: { cls: 'tbl-dot--gray', label: 'N/A' },
+        };
+        const rowAccountStatus = (d) => d.account_status || (d.is_deleted ? 'deleted' : (d.is_active === true ? 'active' : (d.is_active === false ? 'inactive' : 'na')));
+
         const columns = [
-            { title: 'Name', field: 'name', minWidth: 180, formatter: (c) => {
-                const d = c.getRow().getData();
-                let html = esc(d.name || '—');
-                if (d.is_active === false) {
-                    html += ' <span class="badge bg-secondary" style="font-size:.65rem">Inactive</span>';
+            {
+                title: 'Active', field: 'account_status', width: 80, hozAlign: 'center', headerSort: false,
+                formatter: (c) => {
+                    const status = rowAccountStatus(c.getRow().getData());
+                    const meta = statusMeta[status] || statusMeta.na;
+                    return '<span class="tbl-dot ' + meta.cls + '" title="' + meta.label + '"></span>';
                 }
-                return html;
-            } },
+            },
+            { title: 'Name', field: 'name', minWidth: 180, formatter: (c) => esc(c.getRow().getData().name || '—') },
             { title: 'Hours LM', field: 'hours_worked', hozAlign: 'center', width: 110,
                 editor: canManage ? 'number' : false,
                 editorParams: { min: 0, step: 1, selectContents: true },
@@ -355,53 +390,65 @@
             { title: 'Incr', field: 'increment', hozAlign: 'right', formatter: (c) => fmt(c.getValue()) },
             { title: 'Other', field: 'other', hozAlign: 'right', formatter: (c) => fmt(c.getValue()) },
             { title: 'Incentive', field: 'incentive', hozAlign: 'right', formatter: (c) => fmt(c.getValue()) },
-            { title: 'Documents', field: 'documents', hozAlign: 'center', headerSort: false, minWidth: 130,
+            { title: 'Docs', field: 'documents', hozAlign: 'center', headerSort: false, width: 70, minWidth: 70,
                 formatter: (c) => formatDocumentsCell(c.getRow().getData(), !!c.getRow().getData()._locked) },
             { title: 'Advance', field: 'adv_inc_other', hozAlign: 'right', formatter: (c) => fmt(c.getValue()) },
             { title: 'Amount', field: 'gross_amount', hozAlign: 'right', formatter: (c) => fmt(c.getRow().getData().gross_amount ?? c.getRow().getData().amount_lm) },
             { title: 'Payable', field: 'net_amount', hozAlign: 'right', formatter: (c) => '<strong>' + fmt(c.getRow().getData().net_amount ?? c.getRow().getData().amount_p) + '</strong>' },
         ];
         columns.push({
-            title: 'History', field: 'edited_at', hozAlign: 'center', headerSort: false, minWidth: 140,
+            title: 'History', field: 'edited_at', hozAlign: 'center', headerSort: false, width: 80,
             formatter: (c) => {
                 const d = c.getRow().getData();
-                let dateTxt = '';
+                if (!d.edited_at && !d.edited_by) return '—';
+                let full = '';
                 if (d.edited_at) {
                     const dt = new Date(d.edited_at);
-                    if (!isNaN(dt)) dateTxt = dt.getDate() + ' ' + dt.toLocaleString('en-US', { month: 'short' });
+                    if (!isNaN(dt)) {
+                        full = dt.toLocaleString('en-GB', {
+                            day: '2-digit', month: 'short', year: 'numeric',
+                            hour: '2-digit', minute: '2-digit',
+                        });
+                    }
                 }
-                const who = d.edited_by ? esc(d.edited_by) : '';
-                return [who, dateTxt].filter(Boolean).join(' · ') || '—';
+                const who = d.edited_by ? String(d.edited_by) : '';
+                const tip = [who, full].filter(Boolean).join(' · ') || 'Edited';
+                return '<span class="payroll-history-tip" data-tip="' + esc(tip) + '"><i class="ri-search-line text-primary"></i></span>';
             }
         });
+        if (canManage) {
+            columns.push({
+                title: 'Edit', field: 'id', hozAlign: 'center', headerSort: false, width: 70,
+                formatter: (c) => {
+                    const d = c.getRow().getData();
+                    if (d._locked) return '—';
+                    return '<button type="button" class="btn btn-sm btn-link btn-edit-salary p-0" data-id="' + d.id + '" title="Edit"><i class="ri-pencil-line"></i></button>';
+                }
+            });
+        }
         columns.push({
-            title: 'Action', field: 'user_id', hozAlign: 'center', headerSort: false, width: 150,
+            title: 'Payslip', field: 'user_id', hozAlign: 'center', headerSort: false, width: 120,
             formatter: (c) => {
                 const d = c.getRow().getData();
                 const url = `${base}/month/${currentMonthId()}/salary-slip/${d.user_id}`;
-                let html = '';
-                if (canManage && !d._locked) {
-                    html += '<button type="button" class="btn btn-sm btn-link btn-edit-salary p-0 me-2" data-id="' + d.id + '" title="Edit"><i class="ri-pencil-line"></i></button>';
-                }
-                html += '<a href="' + url + '?print=0" target="_blank" class="btn btn-sm btn-outline-primary py-0 me-1" title="View"><i class="ri-eye-line"></i></a>'
-                      + '<a href="' + url + '?print=1" target="_blank" class="btn btn-sm btn-success py-0" title="Download"><i class="ri-download-line"></i></a>';
-                return html;
+                return '<a href="' + url + '?print=0" target="_blank" class="btn btn-sm btn-outline-primary py-0 me-1" title="View"><i class="ri-eye-line"></i></a>'
+                     + '<a href="' + url + '?print=1" target="_blank" class="btn btn-sm btn-success py-0" title="Download"><i class="ri-download-line"></i></a>';
             }
         });
 
         if (!employeesTable) {
             employeesTable = new Tabulator('#employeesTable', {
                 layout: 'fitColumns',
-                height: '500px',
                 placeholder: 'No employees — sync from Team Management.',
                 pagination: true,
-                paginationSize: 50,
+                paginationSize: 100,
                 paginationSizeSelector: [25, 50, 100, 200],
                 columns: columns,
             });
             employeesTable.on('tableBuilt', () => {
                 employeesTableBuilt = true;
                 employeesTable.setData(pendingEmployeesData);
+                applyPayrollFilters();
             });
         } else if (employeesTableBuilt) {
             // Columns already handle the locked state per-row (d._locked), so just swap the data.
@@ -421,7 +468,7 @@
                 layout: 'fitColumns',
                 maxHeight: '500px',
                 pagination: true,
-                paginationSize: 50,
+                paginationSize: 100,
                 paginationSizeSelector: [25, 50, 100, 200],
                 placeholder: placeholder || 'None',
                 columns: columns,
@@ -436,99 +483,26 @@
         return document.getElementById('payrollMonthSelect')?.value || monthId;
     }
 
-    function formatDateTime(iso) {
-        if (!iso) return '';
-        const dt = new Date(iso);
-        if (isNaN(dt)) return '';
-        return dt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-            + ' ' + dt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-    }
-
     function updateMonthSelectOption(month) {
         const sel = document.getElementById('payrollMonthSelect');
         if (!sel || !month) return;
         const opt = sel.querySelector('option[value="' + month.id + '"]');
         if (!opt) return;
-        const label = (month.month_label || opt.textContent.split(' (')[0]).trim();
-        opt.textContent = label + ' (' + (monthStatuses[month.status] || month.status || 'Draft') + ')';
+        if (month.month_label) opt.textContent = month.month_label;
         opt.dataset.status = month.status || 'draft';
         opt.dataset.locked = month.is_locked ? '1' : '0';
     }
 
     function renderStatusSection(m) {
-        const section = document.getElementById('salaryStatusSection');
-        if (!section || !m) return;
+        if (!m) return;
 
-        const status = m.status || 'draft';
         const locked = !!m.is_locked;
-        const idx = statusOrder.indexOf(status);
-
-        section.classList.toggle('payroll-locked', locked);
-
-        const stepsEl = document.getElementById('statusSteps');
-        if (stepsEl) {
-            stepsEl.innerHTML = statusOrder.map((key, i) => {
-                const cls = i < idx ? 'done' : (i === idx ? 'active' : '');
-                const arrow = i < statusOrder.length - 1 ? '<span class="payroll-status-arrow">→</span>' : '';
-                return '<span class="payroll-status-step ' + cls + '">' + esc(monthStatuses[key] || key) + '</span>' + arrow;
-            }).join('');
-        }
-
-        const badge = document.getElementById('statusBadge');
-        if (badge) {
-            badge.className = 'payroll-status-badge ' + status;
-            badge.textContent = monthStatuses[status] || status;
-        }
-
-        const lockBadge = document.getElementById('lockBadge');
-        if (lockBadge) lockBadge.classList.toggle('d-none', !locked);
-
-        const statusSelect = document.getElementById('statusSelect');
-        if (statusSelect) {
-            statusSelect.value = status;
-            statusSelect.disabled = locked;
-        }
-
-        const btnApply = document.getElementById('btnApplyStatus');
-        if (btnApply) btnApply.disabled = locked;
-
         const btnLock = document.getElementById('btnToggleLock');
         if (btnLock) {
             btnLock.innerHTML = locked
                 ? '<i class="ri-lock-unlock-line"></i> Unlock'
                 : '<i class="ri-lock-line"></i> Lock';
-            btnLock.className = 'btn btn-sm ' + (locked ? 'btn-warning' : 'btn-outline-warning');
-        }
-
-        const btnRecalc = document.getElementById('btnRecalculate');
-        const btnGen = document.getElementById('btnGeneratePayslips');
-        const btnRelease = document.getElementById('btnReleasePayslips');
-        if (btnRecalc) btnRecalc.disabled = locked || status === 'released';
-        if (btnGen) btnGen.disabled = locked || status === 'released';
-        if (btnRelease) btnRelease.disabled = status === 'released';
-
-        const help = document.getElementById('statusHelpText');
-        if (help) {
-            const hints = {
-                draft: 'Draft — edit salaries and hours. Lock when ready to finalize.',
-                processing: 'Processing — review and recalculate before marking processed.',
-                processed: 'Processed — generate payslips, then release to employees.',
-                released: 'Released — payslips are live for employees.',
-            };
-            help.textContent = hints[status] || hints.draft;
-        }
-
-        const meta = document.getElementById('statusMeta');
-        if (meta) {
-            const parts = [];
-            if (m.payslips_released_at) parts.push('Payslips released: ' + formatDateTime(m.payslips_released_at));
-            if (m.it_statements_released_at) parts.push('IT statements released: ' + formatDateTime(m.it_statements_released_at));
-            if (parts.length) {
-                meta.textContent = parts.join(' · ');
-                meta.classList.remove('d-none');
-            } else {
-                meta.classList.add('d-none');
-            }
+            btnLock.className = 'btn btn-sm text-nowrap ' + (locked ? 'btn-danger' : 'btn-outline-danger');
         }
     }
 
@@ -540,17 +514,21 @@
         const m = data.month;
         const emps = data.employees || [];
 
-        document.getElementById('statEmployees').textContent = emps.length;
-        document.getElementById('statNet').textContent = fmt(emps.reduce((s, e) => s + parseFloat(e.net_amount || 0), 0));
-
         Object.keys(employeeRowsById).forEach(k => delete employeeRowsById[k]);
         emps.forEach(e => { employeeRowsById[e.id] = e; });
 
         renderEmployeesTable(emps, !!m.is_locked);
+        applyPayrollFilters();
         renderStatusSection(m);
         updateMonthSelectOption(m);
 
         document.getElementById('btnDownloadPayoutSheet')?.setAttribute('href', `${base}/month/${id}/payout-sheet`);
+    }
+
+    function updateEmployeeStats(rows) {
+        const list = rows || [];
+        document.getElementById('statEmployees').textContent = list.length;
+        document.getElementById('statNet').textContent = fmt(list.reduce((s, e) => s + parseFloat(e.net_amount || 0), 0));
     }
 
     document.getElementById('payrollMonthSelect')?.addEventListener('change', () => { loadMonth(); });
@@ -574,36 +552,8 @@
         }
     });
 
-    document.getElementById('btnApplyStatus')?.addEventListener('click', async () => {
-        const status = document.getElementById('statusSelect')?.value;
-        if (!status) return;
-        const res = await api(`${base}/month/${currentMonthId()}`, 'PUT', { status });
-        alert('Status updated to ' + (monthStatuses[status] || status) + '.');
-        loadMonth();
-    });
-
     document.getElementById('btnToggleLock')?.addEventListener('click', async () => {
         const res = await api(`${base}/month/${currentMonthId()}/toggle-lock`, 'POST', {});
-        alert(res.message);
-        loadMonth();
-    });
-
-    document.getElementById('btnRecalculate')?.addEventListener('click', async () => {
-        if (!confirm('Recalculate all employee amounts and mark this month as Processed?')) return;
-        const res = await api(`${base}/month/${currentMonthId()}/recalculate`, 'POST', {});
-        alert(res.message);
-        loadMonth();
-    });
-
-    document.getElementById('btnGeneratePayslips')?.addEventListener('click', async () => {
-        const res = await api(`${base}/month/${currentMonthId()}/generate-payslips`, 'POST', {});
-        alert(res.message);
-        loadMonth();
-    });
-
-    document.getElementById('btnReleasePayslips')?.addEventListener('click', async () => {
-        if (!confirm('Release payslips to all employees? This marks the month as Released.')) return;
-        const res = await api(`${base}/month/${currentMonthId()}/release-payslips`, 'POST', {});
         alert(res.message);
         loadMonth();
     });
@@ -654,6 +604,11 @@
             ['salary_pp','increment','other','adv_inc_other','incentive','hours_worked'].forEach(k => {
                 if (f[k]) f[k].value = row[k] ?? '';
             });
+            const statusSelect = document.getElementById('editAccountStatus');
+            if (statusSelect) {
+                statusSelect.disabled = false;
+                statusSelect.value = payrollRowStatus(row);
+            }
             // Hours field is intentionally read-only in this modal so saving
             // other salary fields never carries the current hours value to the
             // server (which would mark the row as a manual override and stop
@@ -673,24 +628,118 @@
         const fd = new FormData(e.target);
         const body = Object.fromEntries(fd.entries());
         delete body.row_id;
-        await api(`${base}/employee-salary/${id}`, 'PUT', body);
-        bootstrap.Modal.getInstance(document.getElementById('editSalaryModal'))?.hide();
-        loadMonth();
+        // Disabled hours_worked is omitted from FormData; keep it out of the save payload.
+        delete body.hours_worked;
+        try {
+            await api(`${base}/employee-salary/${id}`, 'PUT', body);
+            bootstrap.Modal.getInstance(document.getElementById('editSalaryModal'))?.hide();
+            loadMonth();
+        } catch (err) {
+            alert((err && err.message) ? err.message : 'Failed to save.');
+        }
     });
 
-    // Top search: filter every payroll table by employee name.
-    function applyPayrollSearch() {
-        const term = (document.getElementById('payrollSearch')?.value || '').toLowerCase().trim();
-        const empFilter = (d) => !term || ['name', 'email'].some((f) => String(d[f] || '').toLowerCase().includes(term));
-        const userFilter = (d) => !term || String(d.user?.name || '').toLowerCase().includes(term);
-        if (employeesTable && employeesTableBuilt) {
-            try { term ? employeesTable.setFilter(empFilter) : employeesTable.clearFilter(); } catch (e) {}
+    function payrollRowStatus(d) {
+        return d.account_status
+            || (d.is_deleted ? 'deleted' : (d.is_active === true ? 'active' : (d.is_active === false ? 'inactive' : 'na')));
+    }
+
+    const statusLabels = { active: 'Active', inactive: 'Inactive', deleted: 'Deleted', na: 'N/A' };
+
+    function selectedPayrollStatuses() {
+        return Array.from(document.querySelectorAll('#payrollStatusMenu input[name="payroll_status"]:checked'))
+            .map((el) => el.value);
+    }
+
+    function updatePayrollStatusButtonLabel() {
+        const btn = document.getElementById('payrollStatusMultiBtn');
+        if (!btn) return;
+        const selected = selectedPayrollStatuses();
+        if (!selected.length) {
+            btn.textContent = 'All statuses';
+            return;
         }
+        if (selected.length === 1) {
+            btn.textContent = statusLabels[selected[0]] || selected[0];
+            return;
+        }
+        btn.textContent = selected.length + ' selected';
+    }
+
+    // Top filters: one/multiple statuses + search by employee name.
+    function applyPayrollFilters() {
+        const term = (document.getElementById('payrollSearch')?.value || '').toLowerCase().trim();
+        const statuses = selectedPayrollStatuses();
+        const matchesStatus = (d) => !statuses.length || statuses.includes(payrollRowStatus(d));
+        const matchesSearch = (d) => !term || ['name', 'email'].some((f) => String(d[f] || '').toLowerCase().includes(term));
+        const empFilter = (d) => matchesStatus(d) && matchesSearch(d);
+        const userFilter = (d) => {
+            const rowStatus = d.account_status
+                || (d.user?.deleted_at ? 'deleted' : (d.user ? (d.user.is_active ? 'active' : 'inactive') : payrollRowStatus(d)));
+            const statusOk = !statuses.length || statuses.includes(rowStatus);
+            const searchOk = !term || String(d.user?.name || d.name || '').toLowerCase().includes(term);
+            return statusOk && searchOk;
+        };
+
+        updatePayrollStatusButtonLabel();
+
+        if (employeesTable && employeesTableBuilt) {
+            try { employeesTable.setFilter(empFilter); } catch (e) {}
+        }
+        updateEmployeeStats((pendingEmployeesData || []).filter(empFilter));
+
         Object.values(tableInstances).forEach((t) => {
-            try { term ? t.setFilter(userFilter) : t.clearFilter(); } catch (e) {}
+            try { t.setFilter(userFilter); } catch (e) {}
         });
     }
-    document.getElementById('payrollSearch')?.addEventListener('keyup', applyPayrollSearch);
+
+    const statusMulti = document.getElementById('payrollStatusMulti');
+    const statusMultiBtn = document.getElementById('payrollStatusMultiBtn');
+    const statusMenu = document.getElementById('payrollStatusMenu');
+
+    function positionStatusMenu() {
+        if (!statusMultiBtn || !statusMenu) return;
+        const rect = statusMultiBtn.getBoundingClientRect();
+        statusMenu.style.top = (rect.bottom + 4) + 'px';
+        statusMenu.style.left = rect.left + 'px';
+        statusMenu.style.width = Math.max(rect.width, 160) + 'px';
+    }
+
+    function closeStatusMenu() {
+        statusMulti?.classList.remove('open');
+    }
+
+    function openStatusMenu() {
+        positionStatusMenu();
+        statusMulti?.classList.add('open');
+    }
+
+    statusMultiBtn?.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (statusMulti?.classList.contains('open')) {
+            closeStatusMenu();
+        } else {
+            openStatusMenu();
+        }
+    });
+    statusMenu?.addEventListener('click', (e) => e.stopPropagation());
+    document.querySelectorAll('#payrollStatusMenu input[name="payroll_status"]').forEach((cb) => {
+        cb.addEventListener('change', applyPayrollFilters);
+    });
+    document.addEventListener('click', (e) => {
+        if (!statusMulti?.contains(e.target) && !statusMenu?.contains(e.target)) {
+            closeStatusMenu();
+        }
+    });
+    window.addEventListener('resize', () => {
+        if (statusMulti?.classList.contains('open')) positionStatusMenu();
+    });
+    window.addEventListener('scroll', () => {
+        if (statusMulti?.classList.contains('open')) positionStatusMenu();
+    }, true);
+    document.getElementById('payrollSearch')?.addEventListener('keyup', applyPayrollFilters);
+    updatePayrollStatusButtonLabel();
 
     // Tables built inside hidden tabs need a redraw once their tab becomes visible.
     document.querySelectorAll('[data-bs-toggle="tab"]').forEach((btn) => {

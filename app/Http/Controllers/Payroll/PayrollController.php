@@ -14,6 +14,7 @@ use App\Models\PayrollSettlement;
 use App\Models\User;
 use App\Services\PayrollService;
 use App\Support\SuperAdminAccess;
+use App\Support\UserAccountStatus;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -262,7 +263,11 @@ class PayrollController extends Controller
             'bank_2' => 'nullable|string|max:255',
             'upi_id' => 'nullable|string|max:255',
             'is_new_hire' => 'nullable|boolean',
+            'account_status' => 'nullable|string|in:active,inactive,deleted,na',
         ]);
+
+        $accountStatus = $validated['account_status'] ?? null;
+        unset($validated['account_status']);
 
         // Empty numeric inputs come through as null; treat a blank as 0 so the
         // sheet never stores nulls and recalculation has real numbers to work with.
@@ -298,7 +303,18 @@ class PayrollController extends Controller
         $payrollEmployeeSalary->update($validated);
         $this->payroll->recalculateMonth($month);
 
-        return response()->json(['success' => true, 'row' => $payrollEmployeeSalary->fresh()->load('user')]);
+        // Persist Active-column status on users table (same source as /users/add).
+        if ($accountStatus) {
+            $user = User::withTrashed()->find($payrollEmployeeSalary->user_id);
+            if ($user) {
+                UserAccountStatus::apply($user, $accountStatus);
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'row' => $this->employeeRowPayload($payrollEmployeeSalary->fresh()->load('user')),
+        ]);
     }
 
     public function uploadEmployeeDocument(Request $request, PayrollEmployeeSalary $payrollEmployeeSalary): JsonResponse
@@ -395,6 +411,8 @@ class PayrollController extends Controller
             'name' => $r->user?->name,
             'email' => $r->user?->email,
             'is_active' => $r->user ? (bool) $r->user->is_active : null,
+            'account_status' => UserAccountStatus::for($r->user),
+            'is_deleted' => $r->user ? $r->user->trashed() : false,
             'salary_pp' => $r->salary_pp,
             'increment' => $r->increment,
             'other' => $r->other,

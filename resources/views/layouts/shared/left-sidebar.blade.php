@@ -3088,7 +3088,7 @@
                         @can('payroll.manage')
                         <li>
                             <a href="{{ route('payroll.index') }}" class="{{ request()->routeIs('payroll.*') ? 'active' : '' }}">
-                                <i class="ri-wallet-3-line me-2"></i>Payroll
+                                <i class="ri-wallet-3-line me-2"></i>Salary
                             </a>
                         </li>
                         @endcan

@@ -3274,6 +3274,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // LMP modal endpoints for /tiktok-pricing — talks to tiktok_sku_competitors
     Route::get('/tiktok/competitors', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'getTiktokCompetitors'])->name('tiktok.competitors.get');
     Route::post('/tiktok/competitors', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'addTiktokCompetitor'])->name('tiktok.competitors.add');
+    Route::post('/tiktok/competitors/update', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'updateTiktokCompetitor'])->name('tiktok.competitors.update');
     Route::post('/tiktok/competitors/delete', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'deleteTiktokCompetitor'])->name('tiktok.competitors.delete');
     Route::post('/tiktok-2-save-links', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'saveTiktokTwoLinks'])->name('tiktok2.save.links');
     Route::post('/tiktok-2-save-nrp', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'saveTiktokTwoNrp'])->name('tiktok2.save.nrp');
@@ -6076,6 +6077,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::delete('/users/{user}', [UserController::class, 'destroy'])
         ->middleware('auth')
         ->name('users.destroy');
+
+    Route::post('/users/{user}/deactivate', [UserController::class, 'deactivate'])
+        ->middleware('auth')
+        ->name('users.deactivate');
 
     Route::post('/users/{id}/restore', [UserController::class, 'restore'])
         ->middleware('auth')

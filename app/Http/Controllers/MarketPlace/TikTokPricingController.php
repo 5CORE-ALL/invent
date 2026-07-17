@@ -802,9 +802,16 @@ class TikTokPricingController extends Controller
             $mergedLmpEntries = TiktokSkuCompetitor::sortCollectionByNumericPrice($mergedLmpEntries);
             $lowestLmp = TiktokSkuCompetitor::lowestFromCollection($mergedLmpEntries);
 
-            $processedItem['lmp_price'] = ($lowestLmp && isset($lowestLmp->price))
-                ? (is_numeric($lowestLmp->price) ? floatval($lowestLmp->price) : null)
+            // Outer LMP = price + shipping (landed), so Diff / color compare total cost.
+            $lmpBase = ($lowestLmp && is_numeric($lowestLmp->price ?? null))
+                ? floatval($lowestLmp->price)
                 : null;
+            $lmpShip = ($lowestLmp && is_numeric($lowestLmp->shipping_cost ?? null))
+                ? floatval($lowestLmp->shipping_cost)
+                : 0.0;
+            $processedItem['lmp_price'] = $lmpBase !== null ? round($lmpBase + $lmpShip, 2) : null;
+            $processedItem['lmp_base_price'] = $lmpBase;
+            $processedItem['lmp_shipping'] = $lmpShip;
             $processedItem['lmp_link'] = $lowestLmp->product_link ?? null;
             $processedItem['lmp_product_id'] = $lowestLmp->product_id ?? null;
             $processedItem['lmp_title'] = $lowestLmp->product_title ?? null;
@@ -1002,6 +1009,8 @@ class TikTokPricingController extends Controller
             'nrp' => $dash,
             'linked_lmp_skus' => [],
             'lmp_price' => null,
+            'lmp_base_price' => null,
+            'lmp_shipping' => 0,
             'lmp_link' => null,
             'lmp_entries' => [],
             'lmp_entries_total' => 0,
@@ -1876,19 +1885,50 @@ class TikTokPricingController extends Controller
     // ─────────────────────────────────────────────────────────────────────
 
     /**
-     * GET /tiktok/competitors?sku=XXX
-     * Returns every competitor mapped to this SKU, sorted by ascending price.
-     * Consumed by the LMP modal on the /tiktok-pricing page.
+     * GET /tiktok/competitors?sku=XXX&linked_lmp_skus[]=...
+     * Returns competitors for the SKU and its Sku Link LMP group, sorted by
+     * landed price. Resolves the group server-side (same as outer LMP column)
+     * so the modal stays correct even when the client omits linked SKUs.
      */
     public function getTiktokCompetitors(Request $request)
     {
         try {
             $sku = trim((string) $request->input('sku'));
+            $linkedSkus = $request->input('linked_lmp_skus', []);
+
             if ($sku === '') {
                 return response()->json(['error' => 'SKU is required'], 400);
             }
 
-            $competitors = TiktokSkuCompetitor::getCompetitorsForSku($sku, 'tiktok');
+            if (! is_array($linkedSkus)) {
+                $linkedSkus = $linkedSkus !== null && $linkedSkus !== ''
+                    ? [trim((string) $linkedSkus)]
+                    : [];
+            }
+
+            // Resolve Sku Link LMP group (same source as /tiktok-pricing LMP column).
+            $groupSkus = [$sku];
+            try {
+                $lmpGroupService = new LmpSkuGroupService();
+                $seed = array_values(array_filter(array_map(
+                    fn ($value) => trim((string) $value),
+                    array_merge([$sku], $linkedSkus)
+                )));
+                $lmpGroupService->prepareForSkus($seed);
+                $resolved = $lmpGroupService->groupContaining($sku);
+                if (! empty($resolved)) {
+                    $groupSkus = $resolved;
+                }
+            } catch (\Throwable $e) {
+                Log::warning('LmpSkuGroupService in getTiktokCompetitors failed: ' . $e->getMessage());
+            }
+
+            $groupSkus = array_values(array_unique(array_filter(array_map(
+                fn ($value) => trim((string) $value),
+                array_merge($groupSkus, $linkedSkus, [$sku])
+            ))));
+
+            $competitors = TiktokSkuCompetitor::getCompetitorsForSkus($groupSkus, 'tiktok');
             $lowest = $competitors->first();
 
             return response()->json([
@@ -1918,7 +1958,7 @@ class TikTokPricingController extends Controller
                         'updated_at' => $comp->updated_at ? $comp->updated_at->format('Y-m-d H:i:s') : null,
                     ];
                 }),
-                'lowest_price' => $lowest ? floatval($lowest->price) : null,
+                'lowest_price' => $lowest ? TiktokSkuCompetitor::landedPrice($lowest) : null,
                 'total_count' => $competitors->count(),
             ]);
         } catch (\Throwable $e) {
@@ -2011,6 +2051,88 @@ class TikTokPricingController extends Controller
             ]);
             return response()->json([
                 'error' => 'Failed to add competitor: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * POST /tiktok/competitors/update
+     * Update an existing competitor mapping from the LMP modal edit form.
+     */
+    public function updateTiktokCompetitor(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'id'            => 'required|integer',
+                'product_id'    => 'required|string',
+                'price'         => 'required|numeric|min:0.01',
+                'shipping_cost' => 'nullable|numeric|min:0',
+                'product_link'  => 'nullable|string',
+                'product_title' => 'nullable|string',
+                'image'         => 'nullable|string',
+                'seller_name'   => 'nullable|string',
+                'brand_name'    => 'nullable|string',
+                'region'        => 'nullable|string|max:8',
+            ]);
+
+            $lmp = TiktokSkuCompetitor::find($validated['id']);
+            if (!$lmp) {
+                return response()->json(['error' => 'Competitor not found'], 404);
+            }
+
+            $productId = trim($validated['product_id']);
+            $region = strtoupper($validated['region'] ?? ($lmp->region ?: 'US'));
+            $marketplace = $lmp->marketplace ?: 'tiktok';
+
+            $duplicate = TiktokSkuCompetitor::where('sku', $lmp->sku)
+                ->where('product_id', $productId)
+                ->where('marketplace', $marketplace)
+                ->where('region', $region)
+                ->where('id', '!=', $lmp->id)
+                ->first();
+
+            if ($duplicate) {
+                return response()->json([
+                    'error' => 'Another competitor with this Product ID already exists for this SKU/region',
+                ], 409);
+            }
+
+            $lmp->update([
+                'product_id'    => $productId,
+                'region'        => $region,
+                'price'         => $validated['price'],
+                'shipping_cost' => $validated['shipping_cost'] ?? 0,
+                'product_link'  => $validated['product_link'] ?? null,
+                'product_title' => $validated['product_title'] ?? null,
+                'image'         => array_key_exists('image', $validated) ? ($validated['image'] ?? null) : $lmp->image,
+                'seller_name'   => array_key_exists('seller_name', $validated) ? ($validated['seller_name'] ?? null) : $lmp->seller_name,
+                'brand_name'    => array_key_exists('brand_name', $validated) ? ($validated['brand_name'] ?? null) : $lmp->brand_name,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'TikTok competitor updated',
+                'data'    => [
+                    'id'            => $lmp->id,
+                    'sku'           => $lmp->sku,
+                    'product_id'    => $lmp->product_id,
+                    'price'         => floatval($lmp->price),
+                    'shipping_cost' => floatval($lmp->shipping_cost ?? 0),
+                    'product_link'  => $lmp->product_link,
+                    'region'        => $lmp->region,
+                ],
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'error' => 'Validation failed',
+                'messages' => $e->errors(),
+            ], 422);
+        } catch (\Throwable $e) {
+            Log::error('Error updating TikTok competitor', [
+                'error' => $e->getMessage(),
+            ]);
+            return response()->json([
+                'error' => 'Failed to update competitor: ' . $e->getMessage(),
             ], 500);
         }
     }

@@ -708,12 +708,13 @@
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <div class="card mb-3 border-success">
-                        <div class="card-header bg-success text-white">
-                            <strong><i class="fa fa-plus-circle"></i> Add New Competitor</strong>
+                    <div class="card mb-3 border-success" id="ttCompFormCard">
+                        <div class="card-header bg-success text-white" id="ttCompFormHeader">
+                            <strong><i class="fa fa-plus-circle" id="ttCompFormHeaderIcon"></i> <span id="ttCompFormHeaderText">Add New Competitor</span></strong>
                         </div>
                         <div class="card-body">
                             <form id="ttAddCompetitorForm" class="row g-3">
+                                <input type="hidden" id="ttEditCompId" value="">
                                 <div class="col-md-2">
                                     <label class="form-label"><strong>SKU</strong></label>
                                     <input type="text" class="form-control" id="ttAddCompSku" readonly>
@@ -752,10 +753,10 @@
                                     </select>
                                 </div>
                                 <div class="col-md-1 d-flex align-items-end flex-wrap gap-1">
-                                    <button type="submit" class="btn btn-success" style="background:#ff0050;border-color:#ff0050;">
-                                        <i class="fa fa-plus"></i> Add
+                                    <button type="submit" class="btn btn-success" id="ttCompSubmitBtn" style="background:#ff0050;border-color:#ff0050;">
+                                        <i class="fa fa-plus"></i> <span id="ttCompSubmitBtnText">Add</span>
                                     </button>
-                                    <button type="reset" class="btn btn-secondary">
+                                    <button type="button" class="btn btn-secondary" id="ttCompClearBtn">
                                         <i class="fa fa-undo"></i> Clear
                                     </button>
                                 </div>
@@ -2821,10 +2822,12 @@
                             const totalCompetitors = parseInt(rowData.lmp_entries_total, 10) || 0;
                             const sku = rowData['(Child) sku'] || '';
                             const skuAttr = String(sku).replace(/"/g, '&quot;');
+                            const linkedSkus = Array.isArray(rowData.linked_lmp_skus) ? rowData.linked_lmp_skus : [];
+                            const linkedSkusAttr = escapeHtmlAttr(JSON.stringify(linkedSkus));
 
                             // No competitors mapped yet — show a "+ Add" entry to seed the modal.
                             if (!lmpPrice && totalCompetitors === 0) {
-                                return `<a href="#" class="view-tt-lmp-competitors" data-sku="${skuAttr}"
+                                return `<a href="#" class="view-tt-lmp-competitors" data-sku="${skuAttr}" data-linked-skus="${linkedSkusAttr}"
                                     style="color:#6c757d;text-decoration:none;font-size:11px;cursor:pointer;"
                                     title="No competitors — click to add one">
                                     <i class="fa fa-plus-circle"></i> Add
@@ -2833,13 +2836,18 @@
 
                             const currentPrice = parseFloat(rowData['TT Price'] || 0);
                             const priceColor = (lmpPrice > 0 && lmpPrice < currentPrice) ? '#dc3545' : '#28a745';
+                            const lmpBase = parseFloat(rowData.lmp_base_price || 0) || lmpPrice;
+                            const lmpShip = parseFloat(rowData.lmp_shipping || 0) || 0;
+                            const shipTip = lmpShip > 0
+                                ? ` title="$${lmpBase.toFixed(2)} + $${lmpShip.toFixed(2)} ship"`
+                                : '';
 
                             let html = '<div style="display:flex;flex-direction:column;align-items:center;gap:2px;line-height:1.1;">';
                             if (lmpPrice) {
-                                html += `<span style="color:${priceColor};font-weight:700;font-size:14px;">$${lmpPrice.toFixed(2)}</span>`;
+                                html += `<span style="color:${priceColor};font-weight:700;font-size:14px;"${shipTip}>$${lmpPrice.toFixed(2)}</span>`;
                             }
                             if (totalCompetitors > 0) {
-                                html += `<a href="#" class="view-tt-lmp-competitors" data-sku="${skuAttr}"
+                                html += `<a href="#" class="view-tt-lmp-competitors" data-sku="${skuAttr}" data-linked-skus="${linkedSkusAttr}"
                                     style="color:#ff0050;text-decoration:none;font-size:11px;cursor:pointer;">
                                     <i class="fa fa-eye"></i> View ${totalCompetitors}
                                 </a>`;
@@ -4388,6 +4396,8 @@
             //  LMP Modal: open / fetch / render / add / delete
             // ─────────────────────────────────────────────────────────────
             let ttCurrentLmpSku = null;
+            let ttCurrentLinkedLmpSkus = [];
+            let ttEditCompetitorId = null;
 
             function ttEscAttr(value) {
                 if (value == null) return '';
@@ -4399,15 +4409,56 @@
                     .replace(/>/g, '&gt;');
             }
 
-            function ttLoadCompetitorsModal(sku) {
-                ttCurrentLmpSku = sku;
-                $('#ttLmpSku').text(sku);
-                $('#ttAddCompSku').val(sku);
+            function ttResetCompetitorForm(keepSku) {
+                ttEditCompetitorId = null;
+                $('#ttEditCompId').val('');
+                if (!keepSku) {
+                    $('#ttAddCompSku').val(ttCurrentLmpSku || '');
+                } else {
+                    $('#ttAddCompSku').val(keepSku);
+                }
                 $('#ttAddCompProductId').val('');
                 $('#ttAddCompPrice').val('');
+                $('#ttAddCompShip').val('');
                 $('#ttAddCompTitle').val('');
                 $('#ttAddCompLink').val('');
                 $('#ttAddCompRegion').val('US');
+                $('#ttCompFormHeaderText').text('Add New Competitor');
+                $('#ttCompFormHeaderIcon').attr('class', 'fa fa-plus-circle');
+                $('#ttCompFormHeader').removeClass('bg-warning text-dark').addClass('bg-success text-white');
+                $('#ttCompFormCard').removeClass('border-warning').addClass('border-success');
+                $('#ttCompSubmitBtnText').text('Add');
+                $('#ttCompSubmitBtn').find('i').attr('class', 'fa fa-plus');
+                $('#ttCompSubmitBtn').css({ background: '#ff0050', borderColor: '#ff0050' });
+            }
+
+            function ttEnterEditCompetitorMode(item) {
+                if (!item || !item.id) return;
+                ttEditCompetitorId = item.id;
+                $('#ttEditCompId').val(item.id);
+                $('#ttAddCompSku').val(item.sku || ttCurrentLmpSku || '');
+                $('#ttAddCompProductId').val(item.product_id || '');
+                $('#ttAddCompPrice').val(item.price != null ? parseFloat(item.price) : '');
+                $('#ttAddCompShip').val(item.shipping_cost != null ? parseFloat(item.shipping_cost) : 0);
+                $('#ttAddCompTitle').val(item.product_title || item.title || '');
+                $('#ttAddCompLink').val(item.product_link || item.link || '');
+                $('#ttAddCompRegion').val(item.region || 'US');
+                $('#ttCompFormHeaderText').text('Edit Competitor');
+                $('#ttCompFormHeaderIcon').attr('class', 'fa fa-edit');
+                $('#ttCompFormHeader').removeClass('bg-success text-white').addClass('bg-warning text-dark');
+                $('#ttCompFormCard').removeClass('border-success').addClass('border-warning');
+                $('#ttCompSubmitBtnText').text('Update');
+                $('#ttCompSubmitBtn').find('i').attr('class', 'fa fa-save');
+                $('#ttCompSubmitBtn').css({ background: '#ffc107', borderColor: '#ffc107', color: '#212529' });
+                const formCard = document.getElementById('ttCompFormCard');
+                if (formCard) formCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+
+            function ttLoadCompetitorsModal(sku, linkedLmpSkus) {
+                ttCurrentLmpSku = sku;
+                ttCurrentLinkedLmpSkus = Array.isArray(linkedLmpSkus) ? linkedLmpSkus : [];
+                $('#ttLmpSku').text(sku);
+                ttResetCompetitorForm(sku);
 
                 const modalEl = document.getElementById('ttLmpModal');
                 bootstrap.Modal.getOrCreateInstance(modalEl).show();
@@ -4421,10 +4472,16 @@
                     </div>
                 `);
 
+                // Fetch competitors merged across Sku Link LMP group (same as outer LMP column).
+                // Use linked_lmp_skus[] so PHP receives a real array (traditional:true collapses it).
+                const query = { sku: sku };
+                (ttCurrentLinkedLmpSkus || []).forEach(function (linkedSku, idx) {
+                    query['linked_lmp_skus[' + idx + ']'] = linkedSku;
+                });
                 $.ajax({
                     url: '/tiktok/competitors',
                     method: 'GET',
-                    data: { sku: sku },
+                    data: query,
                     success: function(response) {
                         if (response.success) {
                             ttRenderCompetitorsList(response.competitors, response.lowest_price);
@@ -4466,7 +4523,7 @@
                             <th style="width:80px;">Sold</th>
                             <th style="width:60px;">Region</th>
                             <th style="width:60px;">Link</th>
-                            <th style="width:60px;">Actions</th>
+                            <th style="width:90px;">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -4475,7 +4532,8 @@
                 competitors.forEach(function(item, index) {
                     const basePrice = parseFloat(item.price) || 0;
                     const shipCost = parseFloat(item.shipping_cost) || 0;
-                    const isLowest = lowestPrice && Math.abs(basePrice - parseFloat(lowestPrice)) < 0.01;
+                    const landedPrice = basePrice + shipCost;
+                    const isLowest = lowestPrice && Math.abs(landedPrice - parseFloat(lowestPrice)) < 0.01;
                     const rowClass = isLowest ? 'table-success' : '';
                     const priceFormatted = '$' + basePrice.toFixed(2);
                     const priceBadge = isLowest
@@ -4526,8 +4584,20 @@
                                     <i class="fa fa-external-link-alt"></i>
                                 </a>
                             </td>
-                            <td class="text-center">
-                                <button class="btn btn-sm btn-danger tt-delete-lmp-btn"
+                            <td class="text-center text-nowrap">
+                                <button type="button" class="btn btn-sm btn-warning tt-edit-lmp-btn"
+                                    data-id="${item.id}"
+                                    data-sku="${ttEscAttr(item.sku || '')}"
+                                    data-product-id="${ttEscAttr(item.product_id || '')}"
+                                    data-price="${ttEscAttr(basePrice)}"
+                                    data-shipping="${ttEscAttr(shipCost)}"
+                                    data-title="${ttEscAttr(title === 'N/A' ? '' : title)}"
+                                    data-link="${ttEscAttr(productLink === '#' ? '' : productLink)}"
+                                    data-region="${ttEscAttr(item.region || 'US')}"
+                                    title="Edit this competitor">
+                                    <i class="fa fa-edit"></i>
+                                </button>
+                                <button type="button" class="btn btn-sm btn-danger tt-delete-lmp-btn"
                                     data-id="${item.id}"
                                     data-product-id="${ttEscAttr(item.product_id)}"
                                     title="Delete this competitor">
@@ -4545,16 +4615,30 @@
             // "View N" / "+ Add" trigger inside the LMP column
             $(document).on('click', '.view-tt-lmp-competitors', function(e) {
                 e.preventDefault();
-                const sku = $(this).data('sku');
+                const sku = $(this).attr('data-sku') || $(this).data('sku');
                 if (!sku) return;
-                ttLoadCompetitorsModal(sku);
+                let linkedSkus = [];
+                const rawLinked = $(this).attr('data-linked-skus');
+                if (rawLinked) {
+                    try { linkedSkus = JSON.parse(rawLinked) || []; } catch (err) { linkedSkus = []; }
+                } else {
+                    linkedSkus = $(this).data('linked-skus') || [];
+                    if (typeof linkedSkus === 'string') {
+                        try { linkedSkus = JSON.parse(linkedSkus) || []; } catch (err) { linkedSkus = []; }
+                    }
+                }
+                if (!Array.isArray(linkedSkus)) {
+                    linkedSkus = [];
+                }
+                ttLoadCompetitorsModal(sku, linkedSkus);
             });
 
-            // Add Competitor form
+            // Add / Update Competitor form
             $('#ttAddCompetitorForm').on('submit', function(e) {
                 e.preventDefault();
+                const editId = ttEditCompetitorId || $('#ttEditCompId').val();
+                const isEdit = !!editId;
                 const payload = {
-                    sku: $('#ttAddCompSku').val(),
                     product_id: $('#ttAddCompProductId').val().trim(),
                     price: parseFloat($('#ttAddCompPrice').val()) || 0,
                     shipping_cost: parseFloat($('#ttAddCompShip').val()) || 0,
@@ -4564,32 +4648,52 @@
                     marketplace: 'tiktok',
                     _token: '{{ csrf_token() }}',
                 };
+                if (!isEdit) {
+                    payload.sku = $('#ttAddCompSku').val();
+                } else {
+                    payload.id = editId;
+                }
                 if (!payload.product_id || !payload.price) {
                     alert('Product ID and Price are required.');
                     return;
                 }
                 $.ajax({
-                    url: '/tiktok/competitors',
+                    url: isEdit ? '/tiktok/competitors/update' : '/tiktok/competitors',
                     method: 'POST',
                     data: payload,
                     success: function(resp) {
                         if (resp.success) {
-                            $('#ttAddCompProductId').val('');
-                            $('#ttAddCompPrice').val('');
-                            $('#ttAddCompShip').val('');
-                            $('#ttAddCompTitle').val('');
-                            $('#ttAddCompLink').val('');
-                            ttLoadCompetitorsModal(ttCurrentLmpSku);
-                            // Refresh underlying table to update lmp_price/Diff cells
+                            ttResetCompetitorForm(ttCurrentLmpSku);
+                            ttLoadCompetitorsModal(ttCurrentLmpSku, ttCurrentLinkedLmpSkus);
                             if (typeof table !== 'undefined' && table) table.replaceData();
                         } else {
-                            alert(resp.error || 'Failed to add competitor');
+                            alert(resp.error || (isEdit ? 'Failed to update competitor' : 'Failed to add competitor'));
                         }
                     },
                     error: function(xhr) {
-                        const msg = (xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message)) || 'Failed to add competitor';
+                        const msg = (xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message))
+                            || (isEdit ? 'Failed to update competitor' : 'Failed to add competitor');
                         alert(msg);
                     }
+                });
+            });
+
+            $('#ttCompClearBtn').on('click', function() {
+                ttResetCompetitorForm(ttCurrentLmpSku);
+            });
+
+            // Edit competitor — load row into the form above
+            $(document).on('click', '.tt-edit-lmp-btn', function() {
+                const $btn = $(this);
+                ttEnterEditCompetitorMode({
+                    id: $btn.data('id'),
+                    sku: $btn.attr('data-sku') || $btn.data('sku') || ttCurrentLmpSku,
+                    product_id: $btn.attr('data-product-id') || $btn.data('product-id') || '',
+                    price: $btn.data('price'),
+                    shipping_cost: $btn.data('shipping'),
+                    product_title: $btn.attr('data-title') || '',
+                    product_link: $btn.attr('data-link') || '',
+                    region: $btn.attr('data-region') || 'US',
                 });
             });
 
@@ -4604,7 +4708,8 @@
                     data: { id: id, _token: '{{ csrf_token() }}' },
                     success: function(resp) {
                         if (resp.success) {
-                            ttLoadCompetitorsModal(ttCurrentLmpSku);
+                            ttResetCompetitorForm(ttCurrentLmpSku);
+                            ttLoadCompetitorsModal(ttCurrentLmpSku, ttCurrentLinkedLmpSkus);
                             if (typeof table !== 'undefined' && table) table.replaceData();
                         } else {
                             alert(resp.error || 'Failed to delete');

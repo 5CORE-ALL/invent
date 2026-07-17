@@ -34,7 +34,12 @@
             border-radius: 50%;
         }
         #usersTabulator .tbl-dot--green { background: #22c55e; }
+        #usersTabulator .tbl-dot--yellow { background: #eab308; }
         #usersTabulator .tbl-dot--red { background: #ef4444; }
+        #usersTabulator .tbl-dot--gray { background: #9ca3af; }
+        .status-toggle .btn { font-size: .8rem; }
+        .status-toggle .btn.btn-outline-warning.active,
+        .status-toggle .btn.btn-warning { color: #fff; }
         #usersTabulator .designation-badge {
             background: #eef2ff;
             color: #4338ca;
@@ -386,12 +391,18 @@
                         <input type="text" id="usersSearch" class="form-control border-0 bg-light"
                             placeholder="Search by name, phone, email, designation, R&amp;R, resources, training">
                     </div>
-                    <div class="btn-group status-toggle" role="group" aria-label="Filter by status">
-                        <button type="button" class="btn btn-success active" id="statusActiveBtn">
+                    <div class="btn-group status-toggle" role="group" aria-label="Filter by one or more statuses">
+                        <button type="button" class="btn btn-success active" id="statusActiveBtn" data-status="active" title="Toggle Active">
                             <i class="ri-checkbox-blank-circle-fill me-1"></i>Active
                         </button>
-                        <button type="button" class="btn btn-outline-danger" id="statusInactiveBtn">
+                        <button type="button" class="btn btn-outline-warning" id="statusInactiveBtn" data-status="inactive" title="Toggle Inactive">
                             <i class="ri-checkbox-blank-circle-fill me-1"></i>Inactive
+                        </button>
+                        <button type="button" class="btn btn-outline-danger" id="statusDeletedBtn" data-status="deleted" title="Toggle Deleted">
+                            <i class="ri-checkbox-blank-circle-fill me-1"></i>Deleted
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary" id="statusNaBtn" data-status="na" title="Toggle N/A">
+                            <i class="ri-checkbox-blank-circle-fill me-1"></i>N/A
                         </button>
                     </div>
                 </div>
@@ -2196,6 +2207,7 @@
             $usersTableData = $allUsers->values()->map(function ($u) use ($currentMonthData, $emailMapping) {
                 $tlEmail = getTeamLoggerEmail($u->email ?? '', $emailMapping);
                 $workingHours = $currentMonthData[$tlEmail]['hours'] ?? 0;
+                $accountStatus = \App\Support\UserAccountStatus::for($u);
                 return [
                     'id' => $u->id,
                     'name' => $u->name,
@@ -2213,9 +2225,11 @@
                         ? route('performance.checklist.get', ['designationId' => $u->designation])
                         : '',
                     'has_resume' => ! empty($u->resume_path),
-                    'resume_url' => route('users.resume.show', $u),
+                    'resume_url' => $u->trashed() ? '' : route('users.resume.show', $u),
                     'resume_name' => $u->resume_original_name ?? '',
                     'is_active' => (bool) $u->is_active,
+                    'is_deleted' => $u->trashed(),
+                    'account_status' => $accountStatus,
                     'bank_1' => $u->userSalary?->bank_1 ?? '',
                     'bank_2' => $u->userSalary?->bank_2 ?? '',
                     'upi_id' => $u->userSalary?->upi_id ?? '',
@@ -2249,6 +2263,7 @@
                     (has ? esc(val) : 'No ' + label) + '"></span>';
             };
             const textFmt = (c) => c.getValue() ? esc(c.getValue()) : '<span class="text-muted">-</span>';
+            const rowStatus = (d) => d.account_status || (d.is_deleted ? 'deleted' : (d.is_active !== false ? 'active' : 'inactive'));
 
             const columns = [
                 { title: '#', formatter: 'rownum', width: 55, hozAlign: 'center', headerSort: false },
@@ -2276,17 +2291,26 @@
                     }
                 },
                 {
-                    title: 'Active', field: 'is_active', width: 80, hozAlign: 'center', headerSort: false,
+                    title: 'Active', field: 'account_status', width: 80, hozAlign: 'center', headerSort: false,
                     formatter: (c) => {
                         const d = c.getRow().getData();
-                        const active = d.is_active !== false;
-                        const dotCls = active ? 'tbl-dot--green' : 'tbl-dot--red';
-                        const clickable = canEdit && !d.is_self;
-                        const tip = active
-                            ? (clickable ? 'Active — click to deactivate' : 'Active')
-                            : (clickable ? 'Inactive — click to activate' : 'Inactive');
+                        const status = d.account_status || (d.is_deleted ? 'deleted' : (d.is_active !== false ? 'active' : 'inactive'));
+                        const map = {
+                            active: { cls: 'tbl-dot--green', label: 'Active' },
+                            inactive: { cls: 'tbl-dot--yellow', label: 'Inactive' },
+                            deleted: { cls: 'tbl-dot--red', label: 'Deleted' },
+                            na: { cls: 'tbl-dot--gray', label: 'N/A' },
+                        };
+                        const meta = map[status] || map.na;
+                        const clickable = canEdit && !d.is_self && status !== 'na';
+                        let tip = meta.label;
+                        if (clickable) {
+                            if (status === 'active') tip = 'Active — click to set Inactive';
+                            else if (status === 'inactive') tip = 'Inactive — click to set Active';
+                            else if (status === 'deleted') tip = 'Deleted — click to restore';
+                        }
                         const style = clickable ? 'cursor:pointer;' : '';
-                        return '<span class="tbl-dot status-dot ' + dotCls + '" style="' + style + '" title="' + tip + '"></span>';
+                        return '<span class="tbl-dot status-dot ' + meta.cls + '" style="' + style + '" title="' + tip + '"></span>';
                     },
                     cellClick: function (e, cell) {
                         if (!canEdit) return;
@@ -2337,8 +2361,8 @@
                     formatter: (c) => {
                         const d = c.getRow().getData();
                         let html = '<button type="button" class="btn btn-sm btn-light border edit-user-btn" title="Edit"><i class="ri-edit-line"></i></button>';
-                        if (!d.is_self) {
-                            html += ' <button type="button" class="btn btn-sm btn-light border text-danger delete-user-btn" title="Deactivate user"><i class="ri-delete-bin-line"></i></button>';
+                        if (!d.is_self && rowStatus(d) !== 'deleted') {
+                            html += ' <button type="button" class="btn btn-sm btn-light border text-danger delete-user-btn" title="Delete user"><i class="ri-delete-bin-line"></i></button>';
                         }
                         return html;
                     },
@@ -2374,28 +2398,29 @@
             });
             window.usersTable = usersTable;
 
-            // Toggle a user's active status by clicking the status dot.
+            // Toggle status by clicking the status dot (Active ↔ Inactive, or restore Deleted).
             function toggleActive(d, row) {
                 const userId = d.id;
-                if (d.is_active !== false) {
+                const status = rowStatus(d);
+                if (status === 'active') {
                     if (!confirm('Set this user to Inactive?')) return;
-                    fetch('/users/' + userId, {
-                        method: 'DELETE',
+                    fetch('/users/' + userId + '/deactivate', {
+                        method: 'POST',
                         headers: { 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
                     })
                     .then(r => r.json())
                     .then(result => {
                         if (result.success) {
                             showToast(result.message, 'success');
-                            if (row) row.update({ is_active: false });
+                            if (row) row.update({ is_active: false, is_deleted: false, account_status: 'inactive' });
                             applyUsersFilter();
                         } else {
                             showToast(result.message || 'Failed to update status', 'error');
                         }
                     })
                     .catch(() => showToast('Failed to update status', 'error'));
-                } else {
-                    if (!confirm('Set this user to Active?')) return;
+                } else if (status === 'inactive' || status === 'deleted') {
+                    if (!confirm(status === 'deleted' ? 'Restore this deleted user as Active?' : 'Set this user to Active?')) return;
                     const fd = new FormData();
                     fd.append('_token', csrfToken);
                     fetch('/users/' + userId + '/restore', {
@@ -2407,7 +2432,7 @@
                     .then(result => {
                         if (result.success) {
                             showToast(result.message, 'success');
-                            if (row) row.update({ is_active: true });
+                            if (row) row.update({ is_active: true, is_deleted: false, account_status: 'active' });
                             applyUsersFilter();
                         } else {
                             showToast(result.message || 'Failed to update status', 'error');
@@ -2418,13 +2443,13 @@
             }
 
             const searchInput = document.getElementById('usersSearch');
-            let statusFilter = 'active';
+            const statusFilterSet = new Set(['active']);
 
             function applyUsersFilter() {
                 const term = (searchInput && searchInput.value ? searchInput.value : '').toLowerCase();
+                const selected = Array.from(statusFilterSet);
                 usersTable.setFilter((data) => {
-                    const statusOk = statusFilter === 'active' ? (data.is_active !== false) : (data.is_active === false);
-                    if (!statusOk) return false;
+                    if (selected.length && !selected.includes(rowStatus(data))) return false;
                     if (!term) return true;
                     return ['name', 'email', 'phone', 'designation', 'resources', 'training']
                         .some((f) => String(data[f] || '').toLowerCase().includes(term));
@@ -2440,7 +2465,7 @@
                 let data = [];
                 try { data = usersTable.getData(); } catch (e) { /* table not built yet */ }
                 if (!data || !data.length) data = usersData; // fallback before the table finishes building
-                badge.textContent = data.filter((d) => d.is_active !== false).length;
+                badge.textContent = data.filter((d) => rowStatus(d) === 'active').length;
             }
             window.updateActiveCount = updateActiveCount;
 
@@ -2448,23 +2473,42 @@
                 searchInput.addEventListener('keyup', applyUsersFilter);
             }
 
-            const statusActiveBtn = document.getElementById('statusActiveBtn');
-            const statusInactiveBtn = document.getElementById('statusInactiveBtn');
-            function setStatusFilter(status) {
-                statusFilter = status;
-                if (status === 'active') {
-                    statusActiveBtn.className = 'btn btn-success active';
-                    statusInactiveBtn.className = 'btn btn-outline-danger';
+            const statusBtns = {
+                active: document.getElementById('statusActiveBtn'),
+                inactive: document.getElementById('statusInactiveBtn'),
+                deleted: document.getElementById('statusDeletedBtn'),
+                na: document.getElementById('statusNaBtn'),
+            };
+            const statusBtnClasses = {
+                active: { on: 'btn btn-success active', off: 'btn btn-outline-success' },
+                inactive: { on: 'btn btn-warning active', off: 'btn btn-outline-warning' },
+                deleted: { on: 'btn btn-danger active', off: 'btn btn-outline-danger' },
+                na: { on: 'btn btn-secondary active', off: 'btn btn-outline-secondary' },
+            };
+            function syncStatusButtons() {
+                Object.keys(statusBtns).forEach((key) => {
+                    const btn = statusBtns[key];
+                    if (!btn) return;
+                    btn.className = statusBtnClasses[key][statusFilterSet.has(key) ? 'on' : 'off'];
+                });
+            }
+            function toggleStatusFilter(status) {
+                if (statusFilterSet.has(status)) {
+                    // Keep at least one status selected.
+                    if (statusFilterSet.size === 1) return;
+                    statusFilterSet.delete(status);
                 } else {
-                    statusActiveBtn.className = 'btn btn-outline-success';
-                    statusInactiveBtn.className = 'btn btn-danger active';
+                    statusFilterSet.add(status);
                 }
+                syncStatusButtons();
                 applyUsersFilter();
             }
-            if (statusActiveBtn) statusActiveBtn.addEventListener('click', () => setStatusFilter('active'));
-            if (statusInactiveBtn) statusInactiveBtn.addEventListener('click', () => setStatusFilter('inactive'));
+            Object.keys(statusBtns).forEach((key) => {
+                statusBtns[key]?.addEventListener('click', () => toggleStatusFilter(key));
+            });
 
             // Default view: active users only.
+            syncStatusButtons();
             applyUsersFilter();
 
             const modalEl = document.getElementById('editUserModal');
@@ -2547,7 +2591,11 @@
             }
 
             function deactivateUser(d, row) {
-                if (!confirm('Deactivate this user? They will not be able to sign in until you use Recover.')) return;
+                if (rowStatus(d) === 'deleted') {
+                    showToast('User is already deleted.', 'error');
+                    return;
+                }
+                if (!confirm('Delete this user? They will move to Deleted and can be restored later.')) return;
                 fetch('/users/' + d.id, {
                     method: 'DELETE',
                     headers: { 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
@@ -2556,7 +2604,7 @@
                 .then(result => {
                     if (result.success) {
                         showToast(result.message, 'success');
-                        row.update({ is_active: false });
+                        row.update({ is_active: false, is_deleted: true, account_status: 'deleted' });
                         if (window.applyUsersFilter) window.applyUsersFilter();
                     } else {
                         showToast(result.message || 'Delete failed', 'error');

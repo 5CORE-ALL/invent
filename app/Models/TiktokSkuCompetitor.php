@@ -42,6 +42,14 @@ class TiktokSkuCompetitor extends Model
         return strtoupper(preg_replace('/\s+/', ' ', trim((string) $sku)));
     }
 
+    /**
+     * Landed competitor price = item price + shipping (FREE/null => 0).
+     */
+    public static function landedPrice($item): float
+    {
+        return (float) ($item->price ?? 0) + (float) ($item->shipping_cost ?? 0);
+    }
+
     public function scopeWherePositivePrice($query)
     {
         return $query->whereRaw('CAST(price AS DECIMAL(10,2)) > 0');
@@ -54,20 +62,30 @@ class TiktokSkuCompetitor extends Model
         return $query->orderByRaw('CAST(price AS DECIMAL(10,2)) ' . $dir);
     }
 
+    public function scopeOrderByLandedPrice($query, string $direction = 'asc')
+    {
+        $dir = strtolower($direction) === 'desc' ? 'DESC' : 'ASC';
+
+        return $query->orderByRaw(
+            '(CAST(price AS DECIMAL(10,2)) + CAST(COALESCE(shipping_cost, 0) AS DECIMAL(10,2))) ' . $dir
+        );
+    }
+
     public static function sortCollectionByNumericPrice($items)
     {
-        return collect($items)->sortBy(fn ($item) => (float) ($item->price ?? 0))->values();
+        return collect($items)->sortBy(fn ($item) => self::landedPrice($item))->values();
     }
 
     public static function lowestFromCollection($items)
     {
-        return collect($items)->sortBy(fn ($item) => (float) ($item->price ?? 0))->first();
+        return collect($items)->sortBy(fn ($item) => self::landedPrice($item))->first();
     }
 
     /**
      * Group competitors by normalized SKU. Used by /tiktok-pricing to attach
-     * `lmp_price` / `lmp_entries` / `lmp_entries_total` to each row in one
+     * `lmp_price` / `lmp_entries` / `lmp_entries_total` to each SKU row in one
      * pass. Mirrors AmazonSkuCompetitor::buildGroupedLookup().
+     * Sorted / lowest use landed price (price + shipping).
      *
      * @return array{details: \Illuminate\Support\Collection, lowest: \Illuminate\Support\Collection}
      */
@@ -91,7 +109,7 @@ class TiktokSkuCompetitor extends Model
         return self::whereRaw('UPPER(REPLACE(REPLACE(REPLACE(REPLACE(sku, CHAR(10), " "), CHAR(13), " "), CHAR(9), " "), "  ", " ")) = ?', [$normalizedSku])
             ->where('marketplace', $marketplace)
             ->wherePositivePrice()
-            ->orderByNumericPrice('asc')
+            ->orderByLandedPrice('asc')
             ->first();
     }
 
@@ -102,7 +120,43 @@ class TiktokSkuCompetitor extends Model
         return self::whereRaw('UPPER(REPLACE(REPLACE(REPLACE(REPLACE(sku, CHAR(10), " "), CHAR(13), " "), CHAR(9), " "), "  ", " ")) = ?', [$normalizedSku])
             ->where('marketplace', $marketplace)
             ->wherePositivePrice()
-            ->orderByNumericPrice('asc')
+            ->orderByLandedPrice('asc')
             ->get();
+    }
+
+    /**
+     * Dedupe competitors by product_id (fallback to row id), keeping lowest landed price first.
+     * Mirrors AmazonSkuCompetitor::dedupeByAsin() for TikTok Shop product IDs.
+     */
+    public static function dedupeByProductId(iterable $competitors): \Illuminate\Support\Collection
+    {
+        $seen = [];
+        $unique = [];
+
+        foreach ($competitors as $competitor) {
+            $productId = strtoupper(trim((string) ($competitor->product_id ?? '')));
+            $key = $productId !== '' ? $productId : 'id:' . ($competitor->id ?? spl_object_id($competitor));
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $unique[] = $competitor;
+        }
+
+        return self::sortCollectionByNumericPrice($unique);
+    }
+
+    /**
+     * @param  list<string>  $skus
+     */
+    public static function getCompetitorsForSkus(array $skus, string $marketplace = 'tiktok'): \Illuminate\Support\Collection
+    {
+        $competitors = collect();
+
+        foreach ($skus as $sku) {
+            $competitors = $competitors->merge(self::getCompetitorsForSku($sku, $marketplace));
+        }
+
+        return self::dedupeByProductId($competitors);
     }
 }

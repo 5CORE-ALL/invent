@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Models\UserDoc;
 use App\Services\TeamLoggerService;
 use App\Support\TeamManagementAccess;
+use App\Support\UserAccountStatus;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Storage;
@@ -21,11 +22,10 @@ class UserController extends Controller
             abort(403, 'Not Authorised');
         }
 
-        // Load all users (active + inactive) for the merged table; the Active/Inactive
-        // toggle filters them client-side so there's no separate inactive page.
-        // select() must run before withCount(): a later select() replaces columns and drops the count subquery.
-        $allUsers = User::query()
-            ->select('id', 'name', 'phone', 'email', 'designation', 'date_of_joining', 'avatar', 'is_active', 'deactivated_at', 'show_in_salary', 'resume_path', 'resume_original_name')
+        // Load all users (active, inactive, soft-deleted) for the merged table;
+        // status filters run client-side. select() must run before withCount().
+        $allUsers = User::withTrashed()
+            ->select('id', 'name', 'phone', 'email', 'designation', 'date_of_joining', 'avatar', 'is_active', 'deactivated_at', 'deleted_at', 'show_in_salary', 'resume_path', 'resume_original_name')
             ->with(['userRR', 'userSalary', 'docs'])
             ->withCount('rrPortfolioAssignments')
             ->orderBy('name')
@@ -617,6 +617,9 @@ class UserController extends Controller
         ]);
     }
 
+    /**
+     * Soft-delete a user (Deleted status). Prefer deactivate() for Inactive.
+     */
     public function destroy(User $user)
     {
         if (! TeamManagementAccess::canEdit()) {
@@ -636,10 +639,42 @@ class UserController extends Controller
         $user->is_active = false;
         $user->deactivated_at = now();
         $user->save();
+        $user->delete();
 
         return response()->json([
             'success' => true,
-            'message' => 'User deactivated. They cannot sign in until recovered.',
+            'message' => 'User deleted.',
+            'account_status' => UserAccountStatus::DELETED,
+        ]);
+    }
+
+    /**
+     * Mark user Inactive without soft-deleting (stays in users table).
+     */
+    public function deactivate(User $user)
+    {
+        if (! TeamManagementAccess::canEdit()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You do not have permission to update users.'
+            ], 403);
+        }
+
+        if ($user->id === auth()->id()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You cannot deactivate your own account.'
+            ], 422);
+        }
+
+        $user->is_active = false;
+        $user->deactivated_at = now();
+        $user->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'User set to Inactive.',
+            'account_status' => UserAccountStatus::INACTIVE,
         ]);
     }
 
@@ -684,7 +719,12 @@ class UserController extends Controller
             ], 403);
         }
 
-        $user = User::query()->where('is_active', false)->findOrFail($id);
+        $user = User::withTrashed()->findOrFail($id);
+
+        if ($user->trashed()) {
+            $user->restore();
+        }
+
         $user->is_active = true;
         $user->deactivated_at = null;
         $user->save();
