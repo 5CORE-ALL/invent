@@ -15,7 +15,9 @@ use App\Services\MarketplaceManager\MarketplaceLiveInventoryRules;
 use App\Services\MarketplaceManager\ReverbDetailFormatter;
 use App\Services\MarketplaceManager\ReverbInventorySyncService;
 use App\Services\MarketplaceManager\ReverbLinkMapSyncService;
+use App\Jobs\WarmReverbLiveListingsCache;
 use App\Services\MarketplaceManager\ReverbLiveListingsService;
+use App\Services\MarketplaceManager\ShopifyLiveVerifiedCatalogService;
 use App\Services\MarketplaceManager\ReverbOrderDetailService;
 use App\Services\MarketplaceManager\ReverbOrderPushService;
 use App\Services\MarketplaceManager\ReverbOrderSyncService;
@@ -141,18 +143,33 @@ class ReverbSyncController extends Controller
     {
         $searchSku = trim((string) $request->input('search_sku', ''));
         $searchName = trim((string) $request->input('search_name', ''));
-        $linkTab = strtolower((string) $request->input('link', 'linked'));
-        if (! in_array($linkTab, ['all', 'linked', 'unlinked', 'not_in_shopify'], true)) {
-            $linkTab = 'linked';
+        $linkTab = strtolower((string) $request->input('link', 'all'));
+        // Legacy tab redirects
+        if (in_array($linkTab, ['not_in_shopify', 'linked', 'linked_with_inv'], true)) {
+            $linkTab = 'matched';
+        }
+        if ($linkTab === 'linked_zero') {
+            $linkTab = 'zero';
+        }
+        if (! in_array($linkTab, ['all', 'matched', 'matched_inactive', 'mismatch', 'zero', 'unlinked'], true)) {
+            $linkTab = 'all';
         }
         $stateTab = $this->parseReverbStateTab($request);
         $page = max(1, (int) $request->input('page', 1));
         $perPage = 50;
         $apiError = null;
         $forceLive = $request->boolean('refresh_live');
+        $clearCache = $request->boolean('clear_cache');
         $liveQueued = 0;
-        $liveMode = in_array($linkTab, ['linked', 'not_in_shopify'], true);
+        $liveMode = in_array($linkTab, ['matched', 'matched_inactive', 'mismatch', 'zero'], true);
         $emptyStateCounts = $this->emptyReverbStateCounts();
+        $emptyCounts = ['all' => 0, 'matched' => 0, 'matched_inactive' => 0, 'mismatch' => 0, 'zero' => 0, 'unlinked' => 0, 'linked' => 0];
+        $catalog = app(ShopifyLiveVerifiedCatalogService::class);
+        $liveService = app(ReverbLiveListingsService::class);
+
+        if ($clearCache) {
+            $liveService->clearCache();
+        }
 
         if (! Schema::hasTable('shopify_skus')) {
             $apiError = 'shopify_skus table missing. Run Shopify inventory sync first.';
@@ -165,28 +182,79 @@ class ReverbSyncController extends Controller
                 'searchName' => $searchName,
                 'linkTab' => $linkTab,
                 'stateTab' => $stateTab,
-                'counts' => ['all' => 0, 'linked' => 0, 'unlinked' => 0, 'not_in_shopify' => 0],
+                'counts' => $emptyCounts,
                 'stateCounts' => $emptyStateCounts,
                 'stateCacheReady' => false,
                 'apiError' => $apiError,
                 'connected' => $this->apiConfig->isConfigured('reverb'),
                 'liveMode' => false,
                 'liveQueued' => 0,
+                'shopifyCatalogReady' => false,
+                'shopifyCatalogSyncedAt' => null,
             ]);
         }
 
+        if (! $catalog->tablesReady() || ! $catalog->hasAnyActive()) {
+            $apiError = 'Shared Shopify live catalog is empty — refresh Shopify from Marketplace Manager.';
+        }
+
         if ($forceLive) {
-            // Warm full Reverb catalog in background — never block page on full pull.
-            \App\Jobs\WarmReverbLiveListingsCache::dispatch();
+            WarmReverbLiveListingsCache::dispatch();
         }
 
         $linkedSkus = $this->linkedReverbSkus();
-        $shopifyNormKeys = $this->shopifyNormalizedSkuKeys();
-        $counts = $this->shopifyListingCounts($linkedSkus, $shopifyNormKeys);
-        $liveService = app(ReverbLiveListingsService::class);
+        $allLinkedVerified = $catalog->filterLinkedToVerified($linkedSkus);
+        // Prefer warm live Reverb cache for mismatch/matched classification (not local pricing maps).
+        $mpStock = MarketplaceListingStockResolver::stockMapFromLiveListingRows($liveService->peekCached());
+        if ($mpStock === []) {
+            $mpStock = $this->reverbStockMapForSkus($allLinkedVerified);
+            if (! $forceLive && ! $clearCache) {
+                WarmReverbLiveListingsCache::dispatch();
+            }
+        }
+        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock);
+        $counts = $classified['counts'] ?? $emptyCounts;
+        $counts['all'] = $catalog->countDistinctActiveSkus();
+        $counts['matched_inactive'] = 0;
 
-        // Linked = Shopify-first pagination, then live hydrate current page only.
-        if ($linkTab === 'linked') {
+        // Qty-matched split: marketplace-active vs inactive (ended/draft/other/unknown).
+        $matchedQty = $classified['matched'] ?? [];
+        $matchedActive = $matchedQty;
+        $matchedInactive = [];
+        $matchedNormToSku = [];
+        foreach ($matchedQty as $sku) {
+            $n = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
+            if ($n !== '') {
+                $matchedNormToSku[$n] = (string) $sku;
+            }
+        }
+        $matchedStateIndex = $this->reverbStateIndexFromCache(
+            $liveService,
+            static fn (string $norm): bool => isset($matchedNormToSku[$norm]),
+            count($matchedNormToSku),
+            $matchedNormToSku
+        );
+        if ($matchedStateIndex['ready']) {
+            $activeMpSkus = array_values(array_unique(array_merge(
+                $matchedStateIndex['skusByState']['live'] ?? [],
+                $matchedStateIndex['skusByState']['out_of_stock'] ?? [],
+                $matchedStateIndex['skusByState']['sold'] ?? []
+            )));
+            $matchedActive = $catalog->filterSkusByNormalizedAllowList($matchedQty, $activeMpSkus);
+            $matchedInactive = $catalog->excludeSkusByNormalizedList($matchedQty, $matchedActive);
+            $counts['matched'] = count($matchedActive);
+            $counts['matched_inactive'] = count($matchedInactive);
+            $counts['linked_with_inv'] = $counts['matched'];
+        }
+
+        if ($liveMode) {
+            $tabLinked = match ($linkTab) {
+                'mismatch' => $classified['mismatch'] ?? [],
+                'zero' => $classified['zero'] ?? [],
+                'matched_inactive' => $matchedInactive,
+                default => $matchedActive,
+            };
+
             return $this->syncProductsShopifyFirstLinked(
                 $request,
                 $searchSku,
@@ -194,52 +262,29 @@ class ReverbSyncController extends Controller
                 $stateTab,
                 $page,
                 $perPage,
-                $linkedSkus,
+                $tabLinked,
                 $counts,
                 $liveService,
-                $apiError
+                $catalog,
+                $apiError,
+                $linkTab
             );
         }
 
-        if ($linkTab === 'not_in_shopify') {
-            return $this->syncProductsNotInShopifyLivePage(
-                $request,
-                $searchSku,
-                $searchName,
-                $stateTab,
-                $page,
-                $perPage,
-                $shopifyNormKeys,
-                $counts,
-                $liveService,
-                $apiError
-            );
-        }
+        // All = every Shopify live SKU; Not on marketplace = in-stock active Shopify not linked.
+        $verifiedSkus = $this->filterVerifiedSkusForTab(
+            $catalog,
+            $linkTab === 'all' ? 'all' : 'unlinked',
+            $linkedSkus,
+            $searchSku,
+            $searchName
+        );
 
-        $query = ShopifySku::query()
-            ->whereNotNull('sku')
-            ->where('sku', '!=', '');
-
-        if ($searchSku !== '') {
-            $query->where('sku', 'like', '%'.$searchSku.'%');
-        }
-        if ($searchName !== '') {
-            $query->where(function ($q) use ($searchName) {
-                $q->where('product_title', 'like', '%'.$searchName.'%')
-                    ->orWhere('variant_title', 'like', '%'.$searchName.'%')
-                    ->orWhere('sku', 'like', '%'.$searchName.'%');
-            });
-        }
-
-        if ($linkTab === 'unlinked' && $linkedSkus !== []) {
-            $query->whereNotIn('sku', $linkedSkus);
-        }
-
-        $paginator = $query->orderBy('sku')->paginate($perPage, ['*'], 'page', $page)->withQueryString();
-        $pageRows = collect($paginator->items())->all();
-        $skus = collect($pageRows)->pluck('sku')->filter()->values()->all();
-        $aeMap = $this->reverbMetricMapForSkus($skus);
-        $liveShopifyQty = MarketplaceListingStockResolver::liveShopifyQtyMapForRows($pageRows, true);
+        $paginator = $this->paginateSkuList($verifiedSkus, $page, $perPage);
+        $pageSkus = collect($paginator->items())->all();
+        $pageRows = $this->shopifySkuRowsForVerifiedPage($pageSkus, $catalog);
+        $aeMap = $this->reverbMetricMapForSkus($pageSkus);
+        $liveShopifyQty = MarketplaceListingStockResolver::dbShopifyQtyMapForRows($pageRows);
         $listingIds = [];
         foreach ($aeMap as $metric) {
             if ($metric && ! empty($metric->product_id)) {
@@ -293,11 +338,13 @@ class ReverbSyncController extends Controller
             'connected' => $this->apiConfig->isConfigured('reverb'),
             'liveMode' => $liveMode,
             'liveQueued' => $liveQueued,
+            'shopifyCatalogReady' => $catalog->hasAnyActive(),
+            'shopifyCatalogSyncedAt' => $catalog->latestSyncedAt(),
         ]);
     }
 
     /**
-     * Shopify-first Linked tab: paginate Shopify SKUs that are linked, live-hydrate current page only.
+     * Shopify-first Linked tab: paginate live-verified Shopify SKUs that are linked, live-hydrate current page only.
      *
      * @param  array<int, string>  $linkedSkus
      * @param  array{all: int, linked: int, unlinked: int, not_in_shopify: int}  $counts
@@ -312,62 +359,73 @@ class ReverbSyncController extends Controller
         array $linkedSkus,
         array $counts,
         ReverbLiveListingsService $liveService,
-        ?string $apiError
+        ShopifyLiveVerifiedCatalogService $catalog,
+        ?string $apiError,
+        string $linkTab = 'linked'
     ): View {
+        $verifiedNormToSku = $catalog->tablesReady() ? $catalog->normalizedToSkuMap() : [];
+        $catalogReady = $verifiedNormToSku !== [];
+        $linkedVerifiedSkus = [];
         $linkedNormToSku = [];
         foreach ($linkedSkus as $sku) {
             $n = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
-            if ($n !== '') {
-                $linkedNormToSku[$n] = (string) $sku;
+            if ($n === '') {
+                continue;
             }
+            // $linkedSkus already filtered to with_inv / zero_inv catalog SKUs
+            $canonical = $verifiedNormToSku[$n] ?? (string) $sku;
+            if ($catalogReady && ! isset($verifiedNormToSku[$n])) {
+                continue;
+            }
+            $linkedVerifiedSkus[] = $canonical;
+            $linkedNormToSku[$n] = $canonical;
         }
+        $linkedVerifiedSkus = array_values(array_unique($linkedVerifiedSkus));
 
         $stateIndex = $this->reverbStateIndexFromCache(
             $liveService,
             static fn (string $norm): bool => isset($linkedNormToSku[$norm]),
-            count($linkedSkus),
+            count($linkedVerifiedSkus),
             $linkedNormToSku
         );
 
-        $query = ShopifySku::query()
-            ->whereNotNull('sku')
-            ->where('sku', '!=', '');
-
-        if ($linkedSkus === []) {
-            $query->whereRaw('1 = 0');
-        } elseif ($stateTab !== 'all') {
+        $skuList = $linkedVerifiedSkus;
+        if ($stateTab !== 'all') {
             $stateSkus = $stateIndex['skusByState'][$stateTab] ?? [];
-            if ($stateSkus === []) {
-                $query->whereRaw('1 = 0');
-            } else {
-                $query->whereIn('sku', $stateSkus);
+            $stateNorm = [];
+            foreach ($stateSkus as $s) {
+                $n = ShopifySku::normalizeSkuForShopifyLookup((string) $s);
+                if ($n !== '') {
+                    $stateNorm[$n] = true;
+                }
             }
-        } else {
-            $query->whereIn('sku', $linkedSkus);
+            $skuList = array_values(array_filter(
+                $linkedVerifiedSkus,
+                static function (string $sku) use ($stateNorm) {
+                    $n = ShopifySku::normalizeSkuForShopifyLookup($sku);
+
+                    return $n !== '' && isset($stateNorm[$n]);
+                }
+            ));
         }
 
-        if ($searchSku !== '') {
-            $query->where('sku', 'like', '%'.$searchSku.'%');
-        }
-        if ($searchName !== '') {
-            $query->where(function ($q) use ($searchName) {
-                $q->where('product_title', 'like', '%'.$searchName.'%')
-                    ->orWhere('variant_title', 'like', '%'.$searchName.'%')
-                    ->orWhere('sku', 'like', '%'.$searchName.'%');
-            });
-        }
+        $skuList = $this->applySkuSearchFilter($skuList, $searchSku, $searchName, $catalog);
+        sort($skuList, SORT_STRING | SORT_FLAG_CASE);
 
-        $paginator = $query->orderBy('sku')->paginate($perPage, ['*'], 'page', $page)->withQueryString();
-        $pageRows = collect($paginator->items())->all();
-        $skus = collect($pageRows)->pluck('sku')->filter()->values()->all();
-        $aeMap = $this->reverbMetricMapForSkus($skus);
+        $paginator = $this->paginateSkuList($skuList, $page, $perPage);
+        $pageSkus = collect($paginator->items())->all();
+        $pageRows = $this->shopifySkuRowsForVerifiedPage($pageSkus, $catalog);
+        $aeMap = $this->reverbMetricMapForSkus($pageSkus);
 
-        // 1) Live Shopify qty for this page only
-        $liveShopifyQty = MarketplaceListingStockResolver::liveShopifyQtyMapForRows($pageRows, true);
+        // 1) Live Shopify Admin qty for this page (not stale shopify_skus / local maps)
+        $liveShopifyQty = $liveService->liveShopifyQtyBySkus($pageSkus);
+        if ($liveShopifyQty === []) {
+            $liveShopifyQty = MarketplaceListingStockResolver::dbShopifyQtyMapForRows($pageRows);
+        }
 
         // 2) Live Reverb qty/state for this page's listing IDs only (parallel)
         $listingIds = [];
-        foreach ($skus as $sku) {
+        foreach ($pageSkus as $sku) {
             $metric = $aeMap[$sku] ?? null;
             if ($metric && MarketplaceLiveInventoryRules::isLinked((string) $metric->product_id, (string) $metric->sku)) {
                 $listingIds[] = (string) $metric->product_id;
@@ -375,13 +433,7 @@ class ReverbSyncController extends Controller
         }
         $liveReverb = $liveService->liveDetailsByListingIds($listingIds);
 
-        $mismatchRows = [];
-        $shopifyByUpper = [];
-        foreach ($liveShopifyQty as $upper => $qty) {
-            $shopifyByUpper[(string) $upper] = (int) $qty;
-        }
-
-        $enriched = collect($pageRows)->map(function (ShopifySku $row) use ($aeMap, $liveShopifyQty, $liveReverb, &$mismatchRows) {
+        $enriched = collect($pageRows)->map(function (ShopifySku $row) use ($aeMap, $liveShopifyQty, $liveReverb) {
             $sku = (string) $row->sku;
             $metric = $aeMap[$sku] ?? null;
             $linked = $this->isShopifySkuLinkedOnReverb($metric, $sku);
@@ -391,16 +443,8 @@ class ReverbSyncController extends Controller
 
             $state = (string) ($live['state'] ?? '');
             $rvQty = null;
-            if ($linked && $live !== null && MarketplaceLiveInventoryRules::reverbMayUpdateInventory($state)) {
+            if ($linked && $live !== null) {
                 $rvQty = (int) ($live['inventory'] ?? 0);
-                if ($shopifyQty !== null) {
-                    $mismatchRows[] = [
-                        'sku' => $sku,
-                        'inventory' => $rvQty,
-                        'state' => $state,
-                        'product_id' => $pid,
-                    ];
-                }
             }
 
             return (object) [
@@ -422,7 +466,6 @@ class ReverbSyncController extends Controller
             ];
         });
 
-        $liveQueued = $liveService->queueSyncForMismatches($mismatchRows, $shopifyByUpper);
         $paginator->setCollection($enriched);
 
         return view('marketplace.reverb.products', [
@@ -430,7 +473,7 @@ class ReverbSyncController extends Controller
             'title' => 'Reverb — Listings',
             'searchSku' => $searchSku,
             'searchName' => $searchName,
-            'linkTab' => 'linked',
+            'linkTab' => $linkTab,
             'stateTab' => $stateTab,
             'counts' => $counts,
             'stateCounts' => $stateIndex['counts'],
@@ -438,7 +481,9 @@ class ReverbSyncController extends Controller
             'apiError' => $apiError,
             'connected' => $this->apiConfig->isConfigured('reverb'),
             'liveMode' => true,
-            'liveQueued' => $liveQueued,
+            'liveQueued' => 0,
+            'shopifyCatalogReady' => $catalog->hasAnyActive(),
+            'shopifyCatalogSyncedAt' => $catalog->latestSyncedAt(),
         ]);
     }
 
@@ -507,6 +552,8 @@ class ReverbSyncController extends Controller
             'connected' => $this->apiConfig->isConfigured('reverb'),
             'liveMode' => true,
             'liveQueued' => 0,
+            'shopifyCatalogReady' => app(ShopifyLiveVerifiedCatalogService::class)->hasAnyActive(),
+            'shopifyCatalogSyncedAt' => app(ShopifyLiveVerifiedCatalogService::class)->latestSyncedAt(),
         ]);
     }
     public function showProduct(int $shopifySkuId): View
@@ -796,6 +843,85 @@ class ReverbSyncController extends Controller
         ]);
     }
 
+    /**
+     * Push Shopify → Reverb inventory for mismatch SKUs immediately (no queue).
+     */
+    public function syncMismatchInventoryNow(Request $request): JsonResponse
+    {
+        @set_time_limit(300);
+
+        $settings = MarketplaceSyncSettings::getFor('reverb');
+        if (! ($settings['inventory']['inventory_sync'] ?? false) && ! ($settings['pricing']['price_sync'] ?? false)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Turn on Inventory sync (or Price sync) in settings first.',
+            ], 422);
+        }
+
+        $catalog = app(ShopifyLiveVerifiedCatalogService::class);
+        $liveService = app(ReverbLiveListingsService::class);
+        $linkedSkus = $this->linkedReverbSkus();
+        $mpStock = MarketplaceListingStockResolver::stockMapFromLiveListingRows($liveService->peekCached());
+        if ($mpStock === []) {
+            $mpStock = $this->reverbStockMapForSkus($catalog->filterLinkedToVerified($linkedSkus));
+        }
+        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock);
+        $mismatch = $classified['mismatch'] ?? [];
+
+        $requested = $request->input('skus');
+        if (is_array($requested) && $requested !== []) {
+            $allow = [];
+            foreach ($requested as $sku) {
+                $n = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
+                if ($n !== '') {
+                    $allow[$n] = true;
+                }
+            }
+            $mismatch = array_values(array_filter($mismatch, static function (string $sku) use ($allow) {
+                $n = ShopifySku::normalizeSkuForShopifyLookup($sku);
+
+                return $n !== '' && isset($allow[$n]);
+            }));
+        }
+
+        $offset = max(0, (int) $request->input('offset', 0));
+        $limit = max(1, min(40, (int) $request->input('limit', 25)));
+        $total = count($mismatch);
+        $batch = array_slice($mismatch, $offset, $limit);
+
+        if ($batch === []) {
+            return response()->json([
+                'success' => true,
+                'done' => true,
+                'total' => $total,
+                'offset' => $offset,
+                'updated' => 0,
+                'failed' => 0,
+                'skipped' => 0,
+                'message' => $total === 0 ? 'No mismatch SKUs to sync.' : 'All mismatch batches finished.',
+            ]);
+        }
+
+        $result = app(ReverbInventorySyncService::class)->syncSkusFromShopify($batch);
+        $nextOffset = $offset + count($batch);
+        $done = $nextOffset >= $total;
+
+        return response()->json([
+            'success' => true,
+            'done' => $done,
+            'queued' => false,
+            'total' => $total,
+            'offset' => $nextOffset,
+            'batch' => count($batch),
+            'updated' => (int) ($result['updated'] ?? 0),
+            'failed' => (int) ($result['failed'] ?? 0),
+            'skipped' => (int) ($result['skipped'] ?? 0),
+            'message' => $result['message'] ?? ($done
+                ? 'Mismatch inventory sync complete.'
+                : 'Synced batch '.$nextOffset.' / '.$total.'…'),
+        ]);
+    }
+
     public function pushOrderToShopify(Request $request): JsonResponse
     {
         $id = (int) $request->input('id');
@@ -1051,24 +1177,38 @@ class ReverbSyncController extends Controller
      * @param  array<string, true>  $shopifyNormKeys
      * @return array{all: int, linked: int, unlinked: int, not_in_shopify: int}
      */
-    protected function shopifyListingCounts(array $linkedSkus, array $shopifyNormKeys = []): array
-    {
-        $base = ShopifySku::query()->whereNotNull('sku')->where('sku', '!=', '');
-        $all = (clone $base)->count();
-        $linked = $linkedSkus === [] ? 0 : (clone $base)->whereIn('sku', $linkedSkus)->count();
+    protected function shopifyListingCounts(
+        array $linkedSkus,
+        array $shopifyNormKeys = [],
+        ?ShopifyLiveVerifiedCatalogService $catalog = null
+    ): array {
+        $catalog = $catalog ?? app(ShopifyLiveVerifiedCatalogService::class);
+        $mpStock = $this->reverbStockMapForSkus($catalog->filterLinkedToVerified($linkedSkus));
+        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock);
+        if ($classified !== null) {
+            return $classified['counts'];
+        }
 
-        return [
-            'all' => $all,
-            'linked' => $linked,
-            'unlinked' => max(0, $all - $linked),
-            'not_in_shopify' => $this->countAeNotInShopify($shopifyNormKeys),
-        ];
+        return ['all' => 0, 'matched' => 0, 'matched_inactive' => 0, 'mismatch' => 0, 'zero' => 0, 'unlinked' => 0, 'linked' => 0];
     }
 
     /**
      * @return array<string, true>
      */
     protected function shopifyNormalizedSkuKeys(): array
+    {
+        $catalog = app(ShopifyLiveVerifiedCatalogService::class);
+        if ($catalog->tablesReady() && $catalog->hasAnyActive()) {
+            return $catalog->normalizedKeys();
+        }
+
+        return $this->shopifyNormalizedSkuKeysFromShopifySkusTable();
+    }
+
+    /**
+     * @return array<string, true>
+     */
+    protected function shopifyNormalizedSkuKeysFromShopifySkusTable(): array
     {
         $keys = [];
         ShopifySku::query()
@@ -1086,6 +1226,193 @@ class ReverbSyncController extends Controller
             });
 
         return $keys;
+    }
+
+    /**
+     * @param  array<int, string>  $linkedSkus
+     * @return list<string>
+     */
+    protected function filterVerifiedSkusForTab(
+        ShopifyLiveVerifiedCatalogService $catalog,
+        string $linkTab,
+        array $linkedSkus,
+        string $searchSku,
+        string $searchName
+    ): array {
+        $skus = $catalog->tablesReady()
+            ? (($linkTab === 'all')
+                ? $catalog->activeSkuList()
+                : (($linkTab === 'unlinked')
+                    ? $catalog->inStockActiveSkuList()
+                    : $catalog->activeSkuList()))
+            : [];
+        if ($skus === []) {
+            return [];
+        }
+
+        $linkedNorm = [];
+        foreach ($linkedSkus as $sku) {
+            $n = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
+            if ($n !== '') {
+                $linkedNorm[$n] = true;
+            }
+        }
+
+        if ($linkTab === 'unlinked' && $linkedNorm !== []) {
+            $skus = array_values(array_filter($skus, static function (string $sku) use ($linkedNorm) {
+                $n = ShopifySku::normalizeSkuForShopifyLookup($sku);
+
+                return $n === '' || ! isset($linkedNorm[$n]);
+            }));
+        }
+
+        $skus = $this->applySkuSearchFilter($skus, $searchSku, $searchName, $catalog);
+        sort($skus, SORT_STRING | SORT_FLAG_CASE);
+
+        return $skus;
+    }
+
+    /**
+     * @param  list<string>  $skus
+     * @return list<string>
+     */
+    protected function applySkuSearchFilter(
+        array $skus,
+        string $searchSku,
+        string $searchName,
+        ShopifyLiveVerifiedCatalogService $catalog
+    ): array {
+        if ($searchSku !== '') {
+            $needle = mb_strtolower($searchSku);
+            $skus = array_values(array_filter($skus, static function (string $sku) use ($needle) {
+                return str_contains(mb_strtolower($sku), $needle);
+            }));
+        }
+
+        if ($searchName === '' || $skus === [] || ! $catalog->tablesReady()) {
+            return $skus;
+        }
+
+        $needle = mb_strtolower($searchName);
+        $matchNorm = [];
+        $catalog->activeVariantQuery()
+            ->where(function ($q) use ($needle) {
+                $q->whereRaw('LOWER(p.title) LIKE ?', ['%'.$needle.'%'])
+                    ->orWhereRaw("LOWER(COALESCE(v.variant_title, '')) LIKE ?", ['%'.$needle.'%'])
+                    ->orWhereRaw('LOWER(v.sku) LIKE ?', ['%'.$needle.'%']);
+            })
+            ->select(['v.sku'])
+            ->orderBy('v.id')
+            ->chunk(1000, function ($rows) use (&$matchNorm) {
+                foreach ($rows as $row) {
+                    $n = ShopifySku::normalizeSkuForShopifyLookup((string) ($row->sku ?? ''));
+                    if ($n !== '') {
+                        $matchNorm[$n] = true;
+                    }
+                }
+            });
+
+        return array_values(array_filter($skus, static function (string $sku) use ($matchNorm) {
+            $n = ShopifySku::normalizeSkuForShopifyLookup($sku);
+
+            return $n !== '' && isset($matchNorm[$n]);
+        }));
+    }
+
+    /**
+     * @param  list<string>  $skus
+     */
+    protected function paginateSkuList(array $skus, int $page, int $perPage): LengthAwarePaginator
+    {
+        $total = count($skus);
+        $offset = max(0, ($page - 1) * $perPage);
+        $slice = array_slice($skus, $offset, $perPage);
+
+        return (new LengthAwarePaginator($slice, $total, $perPage, $page))
+            ->withQueryString()
+            ->withPath(request()->url());
+    }
+
+    /**
+     * Build ShopifySku models for a page of verified catalog SKUs (for live qty + detail links).
+     *
+     * @param  list<string>  $pageSkus
+     * @return list<ShopifySku>
+     */
+    protected function shopifySkuRowsForVerifiedPage(array $pageSkus, ShopifyLiveVerifiedCatalogService $catalog): array
+    {
+        if ($pageSkus === []) {
+            return [];
+        }
+
+        $existing = ShopifySku::query()
+            ->whereIn('sku', $pageSkus)
+            ->get()
+            ->keyBy(fn (ShopifySku $r) => ShopifySku::normalizeSkuForShopifyLookup((string) $r->sku));
+
+        $catalogMeta = [];
+        if ($catalog->tablesReady()) {
+            $catalog->activeVariantQuery()
+                ->whereIn('v.sku', $pageSkus)
+                ->select([
+                    'v.sku',
+                    'v.shopify_variant_id',
+                    'v.price',
+                    'v.variant_title',
+                    'v.inventory_quantity',
+                    'p.title as product_title',
+                ])
+                ->orderBy('v.id')
+                ->get()
+                ->each(function ($row) use (&$catalogMeta) {
+                    $n = ShopifySku::normalizeSkuForShopifyLookup((string) ($row->sku ?? ''));
+                    if ($n !== '' && ! isset($catalogMeta[$n])) {
+                        $catalogMeta[$n] = $row;
+                    }
+                });
+        }
+
+        $out = [];
+        foreach ($pageSkus as $sku) {
+            $n = ShopifySku::normalizeSkuForShopifyLookup($sku);
+            $row = $n !== '' ? ($existing[$n] ?? null) : null;
+            $meta = $n !== '' ? ($catalogMeta[$n] ?? null) : null;
+
+            if ($row) {
+                if ($meta) {
+                    if (empty($row->variant_id) && ! empty($meta->shopify_variant_id)) {
+                        $row->variant_id = (string) $meta->shopify_variant_id;
+                    }
+                    if (empty($row->product_title) && ! empty($meta->product_title)) {
+                        $row->product_title = (string) $meta->product_title;
+                    }
+                    if (empty($row->variant_title) && ! empty($meta->variant_title)) {
+                        $row->variant_title = (string) $meta->variant_title;
+                    }
+                    if ($row->price === null && isset($meta->price)) {
+                        $row->price = $meta->price;
+                    }
+                }
+                $out[] = $row;
+
+                continue;
+            }
+
+            $stub = new ShopifySku([
+                'sku' => $sku,
+                'variant_id' => $meta->shopify_variant_id ?? null,
+                'product_title' => $meta->product_title ?? null,
+                'variant_title' => $meta->variant_title ?? null,
+                'price' => $meta->price ?? null,
+                'inv' => $meta->inventory_quantity ?? null,
+                'available_to_sell' => $meta->inventory_quantity ?? null,
+                'on_hand' => $meta->inventory_quantity ?? null,
+            ]);
+            $stub->id = null;
+            $out[] = $stub;
+        }
+
+        return $out;
     }
 
     /**

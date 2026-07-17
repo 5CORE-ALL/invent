@@ -6,14 +6,14 @@
         <a href="{{ route('marketplace.manager.show', 'newegg') }}" class="text-muted small"><i class="ri-arrow-left-line"></i> Newegg Manager</a>
         @include('marketplace._page-heading', ['slug' => 'newegg', 'heading' => 'Newegg Listings'])
         <p class="text-muted mb-3">
-            @if(($linkTab ?? '') === 'linked')
-                <strong>Linked</strong> lists Shopify SKUs linked to Newegg.
-                Use the <strong>State</strong> dropdown to filter by Newegg status (active / inactive from pricing cache).
-                Click <em>Refresh live</em> to warm status counts, then reload.
-            @else
-                <strong>Shopify Qty</strong> is loaded live for the current page. Use <strong>Sync Newegg link map</strong> to refresh SKU ↔ product_id mappings.
-            @endif
+            Linked tabs: <strong>All</strong> = every Shopify live SKU.
+            <strong>Active &amp; Matched</strong> / <strong>Inactive &amp; Matched</strong> = qty matched, split by Newegg status.
+            <em>Refresh live</em> warms Newegg status. Refresh Shopify from <a href="{{ route('marketplace.manager.index') }}">Marketplace Manager</a>.
         </p>
+
+        @if(!empty($shopifyCatalogSyncedAt))
+            <p class="small text-muted mb-2">Shopify catalog last synced: {{ $shopifyCatalogSyncedAt }}</p>
+        @endif
 
         @include('marketplace._queue-status', ['slug' => 'newegg'])
 
@@ -26,19 +26,35 @@
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <span class="badge bg-primary">
-                    @if(($linkTab ?? 'all') === 'not_in_shopify')
-                        {{ $products->total() }} on Newegg, not in Shopify
-                    @elseif(($linkTab ?? '') === 'linked')
-                        {{ $products->total() }} linked Shopify SKU(s)
+                    @if(($linkTab ?? '') === 'all')
+                        {{ $products->total() }} Shopify live SKU(s)
+                    @elseif(($linkTab ?? '') === 'unlinked')
+                        {{ $products->total() }} not on Newegg (in-stock Shopify)
+                    @elseif(($linkTab ?? '') === 'matched')
+                        {{ $products->total() }} active &amp; qty matched
+                    @elseif(($linkTab ?? '') === 'matched_inactive')
+                        {{ $products->total() }} inactive &amp; qty matched
+                    @elseif(($linkTab ?? '') === 'mismatch')
+                        {{ $products->total() }} qty mismatch
+                    @elseif(($linkTab ?? '') === 'zero')
+                        {{ $products->total() }} zero on Shopify
                     @else
                         {{ $products->total() }} Shopify SKU(s)
                     @endif
                 </span>
                 <div class="d-flex gap-2 flex-wrap">
-                    @if(($linkTab ?? '') === 'linked')
-                        <a href="{{ request()->fullUrlWithQuery(['refresh_live' => 1]) }}" class="btn btn-sm btn-outline-success">
+                    @if(in_array(($linkTab ?? ''), ['all', 'matched', 'matched_inactive', 'mismatch', 'zero'], true))
+                        <a href="{{ request()->fullUrlWithQuery(['refresh_live' => 1, 'clear_cache' => null]) }}" class="btn btn-sm btn-outline-success">
                             <i class="ri-flashlight-line"></i> Refresh live
                         </a>
+                        <a href="{{ request()->fullUrlWithQuery(['clear_cache' => 1, 'refresh_live' => null]) }}" class="btn btn-sm btn-outline-secondary" onclick="return confirm('Clear the warm Newegg live listings cache? Counts will refresh after Refresh live.');">
+                            <i class="ri-delete-bin-line"></i> Clear cache
+                        </a>
+                    @endif
+                    @if(($linkTab ?? '') === 'mismatch')
+                        <button type="button" class="btn btn-sm btn-warning" id="btn-sync-mismatch-now">
+                            <i class="ri-upload-2-line"></i> Sync Mismatch inventory now
+                        </button>
                     @endif
                     <button type="button" class="btn btn-sm btn-outline-primary" id="btn-refresh-api">
                         <i class="ri-refresh-line"></i> Sync Newegg link map
@@ -57,12 +73,12 @@
             </div>
             <div class="card-body">
                 @php
-                    $counts = $counts ?? ['all' => 0, 'linked' => 0, 'unlinked' => 0, 'not_in_shopify' => 0];
+                    $counts = $counts ?? ['all' => 0, 'matched' => 0, 'matched_inactive' => 0, 'mismatch' => 0, 'zero' => 0, 'unlinked' => 0, 'linked' => 0];
                     $stateCounts = $stateCounts ?? ['all' => 0, 'active' => 0, 'inactive' => 0, 'other' => 0];
                     $stateTab = $stateTab ?? 'all';
                     $qName = urlencode($searchName ?? '');
                     $qSku = urlencode($searchSku ?? '');
-                    $isLinkedTab = ($linkTab ?? '') === 'linked';
+                    $isLinkedTab = in_array(($linkTab ?? ''), ['matched', 'matched_inactive', 'mismatch', 'zero'], true);
                 @endphp
                 <form method="get" class="mb-3">
                     <div class="row g-2 align-items-end flex-wrap">
@@ -90,7 +106,7 @@
                         @endif
                         <div class="col-auto">
                             <button type="submit" class="btn btn-primary btn-sm">Search</button>
-                            <a href="{{ request()->url() }}?link={{ urlencode($linkTab ?? 'linked') }}" class="btn btn-outline-secondary btn-sm">Clear</a>
+                            <a href="{{ request()->url() }}?link={{ urlencode($linkTab ?? 'all') }}" class="btn btn-outline-secondary btn-sm">Clear</a>
                         </div>
                     </div>
                     @if($isLinkedTab && empty($stateCacheReady))
@@ -100,16 +116,22 @@
 
                 <ul class="nav nav-tabs nav-bordered mb-3" role="tablist">
                     <li class="nav-item">
-                        <a href="{{ request()->url() }}?link=all&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? 'all') === 'all' ? 'active' : '' }}">All {{ $counts['all'] ?? 0 }}</a>
+                        <a href="{{ request()->url() }}?link=all&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'all' ? 'active' : '' }}">All {{ $counts['all'] ?? 0 }}</a>
                     </li>
                     <li class="nav-item">
-                        <a href="{{ request()->url() }}?link=linked&state={{ urlencode($stateTab) }}&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'linked' ? 'active' : '' }}">Linked {{ $counts['linked'] ?? 0 }}</a>
+                        <a href="{{ request()->url() }}?link=matched&state={{ urlencode($stateTab) }}&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'matched' ? 'active' : '' }}">Active &amp; Matched {{ $counts['matched'] ?? 0 }}</a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="{{ request()->url() }}?link=matched_inactive&state={{ urlencode($stateTab) }}&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'matched_inactive' ? 'active' : '' }}">Inactive &amp; Matched {{ $counts['matched_inactive'] ?? 0 }}</a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="{{ request()->url() }}?link=mismatch&state={{ urlencode($stateTab) }}&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'mismatch' ? 'active' : '' }}">Mismatch {{ $counts['mismatch'] ?? 0 }}</a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="{{ request()->url() }}?link=zero&state={{ urlencode($stateTab) }}&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'zero' ? 'active' : '' }}">Zero on Shopify {{ $counts['zero'] ?? 0 }}</a>
                     </li>
                     <li class="nav-item">
                         <a href="{{ request()->url() }}?link=unlinked&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'unlinked' ? 'active' : '' }}">Not on Newegg {{ $counts['unlinked'] ?? 0 }}</a>
-                    </li>
-                    <li class="nav-item">
-                        <a href="{{ request()->url() }}?link=not_in_shopify&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'not_in_shopify' ? 'active' : '' }}">Not in Shopify {{ $counts['not_in_shopify'] ?? 0 }}</a>
                     </li>
                 </ul>
 
@@ -294,6 +316,54 @@ document.getElementById('btn-refresh-api')?.addEventListener('click', function (
     }
 
     runPage(true);
+});
+
+document.getElementById('btn-sync-mismatch-now')?.addEventListener('click', function () {
+    var btn = this;
+    if (!confirm('Sync all Mismatch SKUs from live Shopify → Newegg right now (no queue)? This runs in batches and may take a few minutes.')) {
+        return;
+    }
+    btn.disabled = true;
+    var original = btn.innerHTML;
+    var url = '{{ route('marketplace.manager.newegg.sync.mismatch.inventory') }}';
+    var offset = 0;
+    var totals = { updated: 0, failed: 0, skipped: 0 };
+
+    function tick() {
+        btn.innerHTML = '<i class="ri-loader-4-line"></i> Syncing… ' + offset;
+        return fetch(url, {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ offset: offset, limit: 25 }),
+        }).then(function (r) { return r.json(); }).then(function (data) {
+            if (!data.success) {
+                alert(data.message || 'Sync failed.');
+                btn.disabled = false;
+                btn.innerHTML = original;
+                return;
+            }
+            totals.updated += data.updated || 0;
+            totals.failed += data.failed || 0;
+            totals.skipped += data.skipped || 0;
+            offset = data.offset || offset;
+            if (data.done) {
+                alert((data.message || 'Done.') + '\nUpdated: ' + totals.updated + ', Failed: ' + totals.failed + ', Skipped: ' + totals.skipped);
+                location.reload();
+                return;
+            }
+            setTimeout(tick, 200);
+        }).catch(function () {
+            alert('Request failed.');
+            btn.disabled = false;
+            btn.innerHTML = original;
+        });
+    }
+
+    tick();
 });
 </script>
 @endsection

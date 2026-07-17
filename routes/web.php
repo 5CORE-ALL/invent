@@ -510,12 +510,15 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Marketplace Manager (LitCommerce-style hub — AliExpress, Alibaba, more later)
     Route::prefix('marketplace-manager')->name('marketplace.manager.')->group(function () {
         Route::get('/', [\App\Http\Controllers\MarketplaceManager\MarketplaceManagerController::class, 'index'])->name('index');
+        Route::post('/refresh-shopify', [\App\Http\Controllers\MarketplaceManager\MarketplaceManagerController::class, 'refreshShopify'])->name('refresh.shopify');
+        Route::get('/refresh-shopify/status', [\App\Http\Controllers\MarketplaceManager\MarketplaceManagerController::class, 'refreshShopifyStatus'])->name('refresh.shopify.status');
         Route::get('/aliexpress/connect', [\App\Http\Controllers\MarketPlace\AliexpressSyncController::class, 'connect'])->name('aliexpress.connect');
         Route::post('/aliexpress/test-connection', [\App\Http\Controllers\MarketPlace\AliexpressSyncController::class, 'testConnection'])->name('aliexpress.test');
         Route::post('/aliexpress/refresh-products', [\App\Http\Controllers\MarketPlace\AliexpressSyncController::class, 'refreshProducts'])->name('aliexpress.refresh');
         Route::get('/aliexpress/refresh-products/status', [\App\Http\Controllers\MarketPlace\AliexpressSyncController::class, 'refreshProductsStatus'])->name('aliexpress.refresh.status');
         Route::post('/aliexpress/fetch-orders', [\App\Http\Controllers\MarketPlace\AliexpressSyncController::class, 'fetchOrders'])->name('aliexpress.fetch.orders');
         Route::post('/aliexpress/sync-inventory', [\App\Http\Controllers\MarketPlace\AliexpressSyncController::class, 'syncInventoryNow'])->name('aliexpress.sync.inventory');
+        Route::post('/aliexpress/sync-mismatch-inventory', [\App\Http\Controllers\MarketPlace\AliexpressSyncController::class, 'syncMismatchInventoryNow'])->name('aliexpress.sync.mismatch.inventory');
         Route::get('/alibaba/connect', [\App\Http\Controllers\MarketPlace\AlibabaSyncController::class, 'connect'])->name('alibaba.connect');
         Route::post('/alibaba/test-connection', [\App\Http\Controllers\MarketPlace\AlibabaSyncController::class, 'testConnection'])->name('alibaba.test');
         Route::post('/alibaba/refresh-products', [\App\Http\Controllers\MarketPlace\AlibabaSyncController::class, 'refreshProducts'])->name('alibaba.refresh');
@@ -528,12 +531,14 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/reverb/refresh-products/status', [\App\Http\Controllers\MarketPlace\ReverbSyncController::class, 'refreshProductsStatus'])->name('reverb.refresh.status');
         Route::post('/reverb/fetch-orders', [\App\Http\Controllers\MarketPlace\ReverbSyncController::class, 'fetchOrders'])->name('reverb.fetch.orders');
         Route::post('/reverb/sync-inventory', [\App\Http\Controllers\MarketPlace\ReverbSyncController::class, 'syncInventoryNow'])->name('reverb.sync.inventory');
+        Route::post('/reverb/sync-mismatch-inventory', [\App\Http\Controllers\MarketPlace\ReverbSyncController::class, 'syncMismatchInventoryNow'])->name('reverb.sync.mismatch.inventory');
         Route::get('/newegg/connect', [\App\Http\Controllers\MarketPlace\NeweggSyncController::class, 'connect'])->name('newegg.connect');
         Route::post('/newegg/test-connection', [\App\Http\Controllers\MarketPlace\NeweggSyncController::class, 'testConnection'])->name('newegg.test');
         Route::post('/newegg/refresh-products', [\App\Http\Controllers\MarketPlace\NeweggSyncController::class, 'refreshProducts'])->name('newegg.refresh');
         Route::get('/newegg/refresh-products/status', [\App\Http\Controllers\MarketPlace\NeweggSyncController::class, 'refreshProductsStatus'])->name('newegg.refresh.status');
         Route::post('/newegg/fetch-orders', [\App\Http\Controllers\MarketPlace\NeweggSyncController::class, 'fetchOrders'])->name('newegg.fetch.orders');
         Route::post('/newegg/sync-inventory', [\App\Http\Controllers\MarketPlace\NeweggSyncController::class, 'syncInventoryNow'])->name('newegg.sync.inventory');
+        Route::post('/newegg/sync-mismatch-inventory', [\App\Http\Controllers\MarketPlace\NeweggSyncController::class, 'syncMismatchInventoryNow'])->name('newegg.sync.mismatch.inventory');
         Route::get('/{marketplace}', [\App\Http\Controllers\MarketplaceManager\MarketplaceManagerController::class, 'show'])
             ->name('show')
             ->where('marketplace', 'aliexpress|alibaba|reverb|newegg');

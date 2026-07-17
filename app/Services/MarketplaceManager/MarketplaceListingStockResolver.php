@@ -391,6 +391,33 @@ final class MarketplaceListingStockResolver
     }
 
     /**
+     * Qty map from shared shopify_skus store only (no Shopify API).
+     * Use on marketplace listing indexes — live Admin pulls belong in catalog/inventory sync jobs.
+     *
+     * @param  array<int, ShopifySku>  $rows
+     * @return array<string, int> keyed by UPPER(trim(sku))
+     */
+    public static function dbShopifyQtyMapForRows(array $rows): array
+    {
+        $out = [];
+        foreach ($rows as $row) {
+            if (! $row instanceof ShopifySku) {
+                continue;
+            }
+            $sku = trim((string) ($row->sku ?? ''));
+            if ($sku === '') {
+                continue;
+            }
+            $qty = self::shopifyQtyFromRow($row);
+            if ($qty !== null) {
+                $out[strtoupper($sku)] = $qty;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
      * @param  array<string, int>  $liveMap
      */
     public static function shopifyQtyFromLiveMapOrRow(array $liveMap, ?ShopifySku $row, string $sku = ''): ?int
@@ -428,6 +455,41 @@ final class MarketplaceListingStockResolver
         }
 
         return null;
+    }
+
+    /**
+     * Build UPPER/norm SKU => inventory map from a warm live-listings cache payload.
+     *
+     * @param  array<int, array{sku?: string, inventory?: int|null}>|null  $rows
+     * @return array<string, int>
+     */
+    public static function stockMapFromLiveListingRows(?array $rows): array
+    {
+        if (! is_array($rows) || $rows === []) {
+            return [];
+        }
+
+        $map = [];
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $sku = trim((string) ($row['sku'] ?? ''));
+            if ($sku === '') {
+                continue;
+            }
+            if (! array_key_exists('inventory', $row) || $row['inventory'] === null) {
+                continue;
+            }
+            $qty = (int) $row['inventory'];
+            $map[strtoupper($sku)] = $qty;
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+            if ($norm !== '') {
+                $map[$norm] = $qty;
+            }
+        }
+
+        return $map;
     }
 
     /**

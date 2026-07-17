@@ -823,6 +823,13 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log));
 
      
+        $ist($schedule->command('shopify:sync --store=main')
+            ->everyThreeHours()
+            ->name('shopify-live-catalog-master')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
         $ist($schedule->command('shopify:sync-orders --days=2')
             ->hourly()
             ->name('shopify-sync-orders-recent')

@@ -71,6 +71,15 @@ final class AliexpressLiveListingsService
         }
     }
 
+    public function clearCache(): void
+    {
+        try {
+            Cache::forget(self::CACHE_KEY);
+        } catch (\Throwable $e) {
+            // ignore
+        }
+    }
+
     /**
      * Live AE details for a page of product IDs (getProductInfo).
      *

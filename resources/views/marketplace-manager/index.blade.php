@@ -14,14 +14,37 @@
 @section('content')
 <div class="row">
     <div class="col-12">
-        <div class="d-flex justify-content-between align-items-center mb-3">
+        <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
             <div>
                 <h4 class="mb-1">Marketplace Manager</h4>
                 <p class="text-muted mb-0">Connect marketplaces to Shopify (source shop). Sync listings, inventory, and orders.</p>
             </div>
-            <a href="{{ route('marketplace.manager.index') }}" class="btn btn-primary">
-                <i class="ri-links-line me-1"></i> View channels
-            </a>
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+                <form method="post" action="{{ route('marketplace.manager.refresh.shopify') }}" class="d-inline">
+                    @csrf
+                    <button type="submit" class="btn btn-success">
+                        <i class="ri-store-2-line me-1"></i> Refresh Shopify
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        @if(session('success'))
+            <div class="alert alert-success py-2">{{ session('success') }}</div>
+        @endif
+
+        <div class="alert alert-light border mb-3 py-2">
+            <strong>Shared Shopify live store</strong>
+            — Active SKUs: <strong>{{ number_format((int) ($shopifyActiveSkuCount ?? 0)) }}</strong>
+            @if(!empty($shopifyCatalogSyncedAt))
+                · last synced {{ $shopifyCatalogSyncedAt }}
+            @else
+                · not synced yet
+            @endif
+            @if(!empty($shopifyRefreshStatus['status']))
+                · refresh: {{ $shopifyRefreshStatus['status'] }}
+            @endif
+            <span class="text-muted">· All marketplace listings read this once (no per-page Shopify API).</span>
         </div>
 
         <div class="card">

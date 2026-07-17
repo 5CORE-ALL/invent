@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\MarketplaceManager;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\WarmShopifyLiveCatalogCache;
 use App\Models\AlibabaMetric;
 use App\Models\AliexpressListingStatus;
 use App\Models\AliexpressMetric;
@@ -11,7 +12,11 @@ use App\Models\NeweggMetric;
 use App\Models\ReverbMetric;
 use App\Models\ReverbProduct;
 use App\Services\MarketplaceManager\MarketplaceManagerRegistry;
+use App\Services\MarketplaceManager\ShopifyLiveVerifiedCatalogService;
 use App\Services\Support\MarketplaceApiConfigService;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 
@@ -38,9 +43,41 @@ class MarketplaceManagerController extends Controller
             ]);
         }
 
+        $catalog = app(ShopifyLiveVerifiedCatalogService::class);
+
         return view('marketplace-manager.index', [
             'title' => 'Marketplace Manager',
             'channels' => $channels,
+            'shopifyActiveSkuCount' => $catalog->countDistinctActiveSkus(),
+            'shopifyCatalogSyncedAt' => $catalog->latestSyncedAt(),
+            'shopifyRefreshStatus' => Cache::get(WarmShopifyLiveCatalogCache::STATUS_CACHE_KEY),
+        ]);
+    }
+
+    /**
+     * Shared Shopify live master refresh (once for all marketplaces).
+     */
+    public function refreshShopify(): RedirectResponse
+    {
+        WarmShopifyLiveCatalogCache::dispatch();
+        Cache::put(WarmShopifyLiveCatalogCache::STATUS_CACHE_KEY, [
+            'status' => 'queued',
+            'queued_at' => now()->toDateTimeString(),
+        ], 3600);
+
+        return redirect()
+            ->route('marketplace.manager.index')
+            ->with('success', 'Shopify live catalog refresh queued. Active SKUs + qty will update for all marketplaces shortly.');
+    }
+
+    public function refreshShopifyStatus(): JsonResponse
+    {
+        $catalog = app(ShopifyLiveVerifiedCatalogService::class);
+
+        return response()->json([
+            'status' => Cache::get(WarmShopifyLiveCatalogCache::STATUS_CACHE_KEY),
+            'active_sku_count' => $catalog->countDistinctActiveSkus(),
+            'synced_at' => $catalog->latestSyncedAt(),
         ]);
     }
 

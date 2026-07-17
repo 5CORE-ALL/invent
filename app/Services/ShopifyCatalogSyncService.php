@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\ShopifyCatalogProduct;
 use App\Models\ShopifyCatalogVariant;
+use App\Models\ShopifySku;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -11,7 +12,7 @@ class ShopifyCatalogSyncService
 {
     /**
      * @param  'main'|'pls'  $store
-     * @return array{products: int, variants: int}
+     * @return array{products: int, variants: int, pruned_products?: int, pruned_variants?: int, completed?: bool}
      */
     public function syncCatalog(string $store): array
     {
@@ -39,6 +40,9 @@ class ShopifyCatalogSyncService
         $hasMore = true;
         $productCount = 0;
         $variantCount = 0;
+        $seenProductIds = [];
+        $seenVariantIds = [];
+        $completedFully = true;
 
         while ($hasMore) {
             $queryParams = [
@@ -49,17 +53,32 @@ class ShopifyCatalogSyncService
                 $queryParams['page_info'] = $pageInfo;
             }
 
-            $response = $requestBase->timeout(120)->retry(2, 500)->get(
-                "https://{$domain}/admin/api/2025-01/products.json",
-                $queryParams
-            );
+            $response = null;
+            for ($attempt = 1; $attempt <= 10; $attempt++) {
+                $response = $requestBase->timeout(120)->get(
+                    "https://{$domain}/admin/api/2025-01/products.json",
+                    $queryParams
+                );
+                if ($response->status() === 429) {
+                    $wait = max(2, (int) ($response->header('Retry-After') ?: ($attempt * 2)));
+                    Log::warning('ShopifyCatalogSyncService: rate limited, backing off', [
+                        'store' => $store,
+                        'attempt' => $attempt,
+                        'wait_seconds' => $wait,
+                    ]);
+                    sleep($wait);
+                    continue;
+                }
+                break;
+            }
 
-            if (! $response->successful()) {
+            if (! $response || ! $response->successful()) {
                 Log::error('ShopifyCatalogSyncService: page failed', [
                     'store' => $store,
-                    'status' => $response->status(),
-                    'body' => substr($response->body(), 0, 2000),
+                    'status' => $response ? $response->status() : null,
+                    'body' => $response ? substr($response->body(), 0, 2000) : null,
                 ]);
+                $completedFully = false;
                 break;
             }
 
@@ -71,6 +90,8 @@ class ShopifyCatalogSyncService
                 if ($pid <= 0) {
                     continue;
                 }
+
+                $seenProductIds[$pid] = true;
 
                 $productRow = ShopifyCatalogProduct::updateOrCreate(
                     [
@@ -95,6 +116,8 @@ class ShopifyCatalogSyncService
                         continue;
                     }
 
+                    $seenVariantIds[$vid] = true;
+
                     ShopifyCatalogVariant::updateOrCreate(
                         [
                             'store' => $store,
@@ -112,17 +135,63 @@ class ShopifyCatalogSyncService
                         ]
                     );
                     $variantCount++;
+
+                    // Shared live store: keep shopify_skus qty in sync for marketplace listings (one sync for all MPs).
+                    $sku = isset($variant['sku']) ? trim((string) $variant['sku']) : '';
+                    if ($store === 'main' && $sku !== '' && array_key_exists('inventory_quantity', $variant)) {
+                        $qty = (int) $variant['inventory_quantity'];
+                        ShopifySku::query()->updateOrCreate(
+                            ['sku' => $sku],
+                            [
+                                'variant_id' => (string) $vid,
+                                'available_to_sell' => $qty,
+                                'inv' => $qty,
+                                'on_hand' => $qty,
+                                'product_title' => $product['title'] ?? null,
+                                'variant_title' => $variant['title'] ?? null,
+                                'price' => isset($variant['price']) ? (float) $variant['price'] : null,
+                                'updated_at' => $now,
+                            ]
+                        );
+                    }
                 }
             }
 
             $pageInfo = $this->nextPageInfo($response);
             $hasMore = (bool) $pageInfo;
             if ($hasMore) {
-                usleep(500000);
+                usleep(700000); // stay under Shopify REST 2 req/s bucket
             }
         }
 
-        return ['products' => $productCount, 'variants' => $variantCount];
+        $prunedProducts = 0;
+        $prunedVariants = 0;
+        if ($completedFully && $seenProductIds !== []) {
+            $staleProductIds = ShopifyCatalogProduct::query()
+                ->where('store', $store)
+                ->whereNotIn('shopify_id', array_keys($seenProductIds))
+                ->pluck('id');
+            if ($staleProductIds->isNotEmpty()) {
+                $prunedVariants += ShopifyCatalogVariant::query()
+                    ->whereIn('shopify_catalog_product_id', $staleProductIds)
+                    ->delete();
+                $prunedProducts = ShopifyCatalogProduct::query()
+                    ->whereIn('id', $staleProductIds)
+                    ->delete();
+            }
+            $prunedVariants += ShopifyCatalogVariant::query()
+                ->where('store', $store)
+                ->whereNotIn('shopify_variant_id', array_keys($seenVariantIds))
+                ->delete();
+        }
+
+        return [
+            'products' => $productCount,
+            'variants' => $variantCount,
+            'pruned_products' => $prunedProducts,
+            'pruned_variants' => $prunedVariants,
+            'completed' => $completedFully,
+        ];
     }
 
     /**
