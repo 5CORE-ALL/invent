@@ -44,16 +44,41 @@ class NeweggInventorySyncService
         $qtyPercent = max(0, min(100, (int) ($settings['inventory']['quantity_calc_percent'] ?? 100)));
         $maxQty = $settings['inventory']['max_quantity'] ?? null;
 
+        // Include NBSP-normalized forms so live Shopify Admin lookup matches Admin SKUs.
+        $fetchSkus = $skus;
+        $wantedNorms = [];
+        foreach ($skus as $sku) {
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+            if ($norm !== '') {
+                $wantedNorms[$norm] = true;
+                if ($norm !== $sku) {
+                    $fetchSkus[] = $norm;
+                }
+            }
+        }
+        $fetchSkus = array_values(array_unique($fetchSkus));
+
         $shopifyQty = app(ShopifyQtySource::class)->fetchQuantitiesForPush(
-            $skus,
+            $fetchSkus,
             fn (array $need) => $this->fetchLiveShopifyQuantities($need, $shopifyConfig)
         );
+
+        // Match Newegg rows by normalized SKU (Shopify often stores NBSP; Newegg uses normal spaces).
         $metrics = NeweggMetric::query()
-            ->whereIn('sku', $skus)
             ->whereNotNull('product_id')
             ->where('sku', '!=', '')
             ->whereColumn('sku', '!=', 'product_id')
-            ->get();
+            ->get()
+            ->filter(function (NeweggMetric $metric) use ($wantedNorms, $skus) {
+                $raw = (string) $metric->sku;
+                if (in_array($raw, $skus, true)) {
+                    return true;
+                }
+                $norm = ShopifySku::normalizeSkuForShopifyLookup($raw);
+
+                return $norm !== '' && isset($wantedNorms[$norm]);
+            })
+            ->values();
 
         $inventoryRows = [];
         $skipped = 0;
@@ -67,6 +92,15 @@ class NeweggInventorySyncService
             }
 
             $shopifyStock = $this->resolveShopifyQty($shopifyQty, $sku);
+            foreach ($skus as $requested) {
+                if ($shopifyStock !== null) {
+                    break;
+                }
+                if (ShopifySku::normalizeSkuForShopifyLookup($requested)
+                    === ShopifySku::normalizeSkuForShopifyLookup($sku)) {
+                    $shopifyStock = $this->resolveShopifyQty($shopifyQty, $requested);
+                }
+            }
             $pushQty = $shopifyStock === null
                 ? MarketplaceLiveInventoryRules::qtyWhenMissingFromShopify()
                 : MarketplaceLiveInventoryRules::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty);
@@ -82,8 +116,8 @@ class NeweggInventorySyncService
         if ($inventoryRows === []) {
             return [
                 'updated' => 0,
-                'failed' => 0,
-                'skipped' => $skipped + (count($skus) - $metrics->count()),
+                'failed' => count($skus),
+                'skipped' => $skipped,
                 'message' => 'No linked Newegg SKUs found for inventory sync.',
             ];
         }
@@ -362,9 +396,18 @@ class NeweggInventorySyncService
             return (int) $shopifyQty[$sku];
         }
 
-        $needle = strtoupper(trim($sku));
+        $needle = ShopifySku::normalizeSkuForShopifyLookup($sku);
+        if ($needle !== '') {
+            foreach ($shopifyQty as $key => $qty) {
+                if (ShopifySku::normalizeSkuForShopifyLookup((string) $key) === $needle) {
+                    return (int) $qty;
+                }
+            }
+        }
+
+        $needleUpper = strtoupper(trim($sku));
         foreach ($shopifyQty as $key => $qty) {
-            if (strtoupper(trim((string) $key)) === $needle) {
+            if (strtoupper(trim((string) $key)) === $needleUpper) {
                 return (int) $qty;
             }
         }

@@ -529,11 +529,14 @@ class NeweggSyncController extends Controller
 
         $result = app(NeweggInventorySyncService::class)->syncSkusFromShopify([$sku]);
 
+        $updated = (int) ($result['updated'] ?? 0);
+        $failed = (int) ($result['failed'] ?? 0);
+
         return response()->json([
-            'success' => ((int) ($result['updated'] ?? 0)) > 0 || ((int) ($result['failed'] ?? 0)) === 0,
+            'success' => $updated > 0,
             'queued' => false,
-            'updated' => (int) ($result['updated'] ?? 0),
-            'failed' => (int) ($result['failed'] ?? 0),
+            'updated' => $updated,
+            'failed' => $failed,
             'skipped' => (int) ($result['skipped'] ?? 0),
             'message' => $result['message'] ?? 'Inventory sync finished.',
         ]);
