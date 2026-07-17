@@ -367,6 +367,8 @@ class AlibabaOrderSyncService
             return 0;
         }
 
+        $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('alibaba', $settings);
+
         $orders = AlibabaOrderMetric::query()
             ->whereNull('shopify_order_id')
             ->where('order_date', '>=', self::MIN_ORDER_DATE.' 00:00:00')
@@ -385,6 +387,10 @@ class AlibabaOrderSyncService
 
         $dispatched = 0;
         foreach ($orders as $order) {
+            if ($paidOnly && ! MarketplaceOrderPaidFilter::isPaid('alibaba', $order)) {
+                continue;
+            }
+
             \App\Jobs\ImportAlibabaOrderToShopify::dispatch($order->id);
             $order->update(['import_status' => 'queued']);
             $dispatched++;

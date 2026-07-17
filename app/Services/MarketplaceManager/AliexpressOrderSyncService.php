@@ -367,6 +367,8 @@ class AliexpressOrderSyncService
             return 0;
         }
 
+        $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('aliexpress', $settings);
+
         $orders = AliexpressOrderMetric::query()
             ->whereNull('shopify_order_id')
             ->where('order_date', '>=', self::MIN_ORDER_DATE.' 00:00:00')
@@ -385,6 +387,10 @@ class AliexpressOrderSyncService
 
         $dispatched = 0;
         foreach ($orders as $order) {
+            if ($paidOnly && ! MarketplaceOrderPaidFilter::isPaid('aliexpress', $order)) {
+                continue;
+            }
+
             \App\Jobs\ImportAliexpressOrderToShopify::dispatch($order->id);
             $order->update(['import_status' => 'queued']);
             $dispatched++;

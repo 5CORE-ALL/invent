@@ -76,6 +76,13 @@
                             <span class="form-check-label">Automatically import AliExpress orders to Shopify</span>
                         </label>
                     </div>
+                    <div class="sync-toggle-row">
+                        <label class="form-check form-switch mb-0">
+                            <input class="form-check-input" type="checkbox" name="order[import_paid_orders_only]" value="1" {{ ($settings['order']['import_paid_orders_only'] ?? false) ? 'checked' : '' }}>
+                            <span class="form-check-label">Only auto-import paid orders</span>
+                        </label>
+                        <div class="form-text ms-4">When on, unpaid AliExpress orders stay in our DB but are not queued to Shopify. Manual Push still works.</div>
+                    </div>
                     <div class="mt-2">
                         <label class="form-label small">Shopify import store</label>
                         <select class="form-select form-select-sm" name="order[shopify_store]" style="max-width: 400px;">

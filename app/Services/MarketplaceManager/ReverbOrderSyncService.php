@@ -422,6 +422,8 @@ class ReverbOrderSyncService
             return 0;
         }
 
+        $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('reverb', $settings);
+
         $orders = ReverbOrderMetric::query()
             ->whereNull('shopify_order_id')
             ->where('order_date', '>=', self::MIN_ORDER_DATE.' 00:00:00')
@@ -440,6 +442,10 @@ class ReverbOrderSyncService
 
         $dispatched = 0;
         foreach ($orders as $order) {
+            if ($paidOnly && ! MarketplaceOrderPaidFilter::isPaid('reverb', $order)) {
+                continue;
+            }
+
             \App\Jobs\ImportReverbManagerOrderToShopify::dispatch($order->id);
             $order->update(['import_status' => 'queued']);
             $dispatched++;

@@ -123,6 +123,8 @@ class NeweggOrderSyncService
             return 0;
         }
 
+        $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('newegg', $settings);
+
         $orders = NeweggOrderMetric::query()
             ->whereNull('shopify_order_id')
             ->where(function ($q) {
@@ -135,6 +137,10 @@ class NeweggOrderSyncService
 
         $dispatched = 0;
         foreach ($orders as $order) {
+            if ($paidOnly && ! MarketplaceOrderPaidFilter::isPaid('newegg', $order)) {
+                continue;
+            }
+
             try {
                 \App\Jobs\ImportNeweggOrderToShopify::dispatch((int) $order->id);
                 $order->update(['import_status' => 'queued']);
