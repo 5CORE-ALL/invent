@@ -221,9 +221,12 @@ class ReverbSyncController extends Controller
         $mismatchQty = $classified['mismatch'] ?? [];
         $zeroQty = $classified['zero'] ?? [];
 
-        // Table shows catalog Shopify qty + live Reverb; re-verify mismatch against catalog (no Admin API).
+        // Re-verify mismatch using shopify_skus live qty (available_to_sell) + live Reverb.
         if ($mismatchQty !== []) {
-            $liveShopify = MarketplaceListingStockResolver::catalogShopifyQtyMapForSkus($mismatchQty);
+            $liveShopify = MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($mismatchQty);
+            if ($liveShopify === []) {
+                $liveShopify = MarketplaceListingStockResolver::catalogShopifyQtyMapForSkus($mismatchQty);
+            }
             $metricMap = $this->reverbMetricMapForSkus($mismatchQty);
             $listingIds = [];
             $idToSku = [];
@@ -367,7 +370,10 @@ class ReverbSyncController extends Controller
         $pageSkus = collect($paginator->items())->all();
         $pageRows = $this->shopifySkuRowsForVerifiedPage($pageSkus, $catalog);
         $aeMap = $this->reverbMetricMapForSkus($pageSkus);
-        $liveShopifyQty = MarketplaceListingStockResolver::dbShopifyQtyMapForRows($pageRows);
+        $liveShopifyQty = MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($pageSkus);
+        if ($liveShopifyQty === []) {
+            $liveShopifyQty = MarketplaceListingStockResolver::dbShopifyQtyMapForRows($pageRows);
+        }
         $listingIds = [];
         foreach ($aeMap as $metric) {
             if ($metric && ! empty($metric->product_id)) {
@@ -500,8 +506,11 @@ class ReverbSyncController extends Controller
         $pageRows = $this->shopifySkuRowsForVerifiedPage($pageSkus, $catalog);
         $aeMap = $this->reverbMetricMapForSkus($pageSkus);
 
-        // Shopify qty from local catalog (webhook / Refresh Shopify) — no Admin API on page load.
-        $liveShopifyQty = MarketplaceListingStockResolver::catalogShopifyQtyMapForSkus($pageSkus);
+        // Shopify qty from shopify_skus.available_to_sell (SyncShopifyLiveInventory SoT).
+        $liveShopifyQty = MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($pageSkus);
+        if ($liveShopifyQty === []) {
+            $liveShopifyQty = MarketplaceListingStockResolver::catalogShopifyQtyMapForSkus($pageSkus);
+        }
         if ($liveShopifyQty === []) {
             $liveShopifyQty = MarketplaceListingStockResolver::dbShopifyQtyMapForRows($pageRows);
         }

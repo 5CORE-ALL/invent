@@ -219,7 +219,8 @@ final class ShopifyLiveVerifiedCatalogService
     }
 
     /**
-     * Classify linked SKUs vs marketplace stock (shared Shopify catalog qty).
+     * Classify linked SKUs vs marketplace stock using shopify_skus live qty
+     * (available_to_sell / inv / on_hand — SyncShopifyLiveInventory SoT).
      * Priority: shopify qty <= 0 → zero; else qty match → matched; else → mismatch.
      *
      * @param  array<int, string>  $linkedSkus
@@ -240,7 +241,20 @@ final class ShopifyLiveVerifiedCatalogService
             return null;
         }
 
-        $shopifyInv = $this->shopifyInventoryByNorm($store);
+        // Prefer shopify_skus live inventory columns over catalog variants (linked SKUs only).
+        $shopifyInv = [];
+        foreach (MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($linkedSkus) as $key => $qty) {
+            $n = ShopifySku::normalizeSkuForShopifyLookup((string) $key);
+            if ($n === '') {
+                continue;
+            }
+            if (! isset($shopifyInv[$n]) || (int) $qty > $shopifyInv[$n]) {
+                $shopifyInv[$n] = (int) $qty;
+            }
+        }
+        if ($shopifyInv === []) {
+            $shopifyInv = $this->shopifyInventoryByNorm($store);
+        }
         $map = $this->normalizedToSkuMap($store);
         $inStockNorm = [];
         foreach ($shopifyInv as $n => $qty) {

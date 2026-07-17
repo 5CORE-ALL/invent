@@ -214,7 +214,10 @@ class AliexpressSyncController extends Controller
         $zeroQty = $classified['zero'] ?? [];
 
         if ($mismatchQty !== []) {
-            $liveShopify = MarketplaceListingStockResolver::catalogShopifyQtyMapForSkus($mismatchQty);
+            $liveShopify = MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($mismatchQty);
+            if ($liveShopify === []) {
+                $liveShopify = MarketplaceListingStockResolver::catalogShopifyQtyMapForSkus($mismatchQty);
+            }
             $metricMap = $this->aliexpressMetricMapForSkus($mismatchQty);
             $productIds = [];
             $idToSku = [];
@@ -378,9 +381,12 @@ class AliexpressSyncController extends Controller
         $skus = collect($pageRows)->pluck('sku')->filter()->values()->all();
         $aeMap = $this->aliexpressMetricMapForSkus($skus);
         $aeStockMap = $this->aliexpressStockMapForSkus($skus);
-        $liveShopifyQty = MarketplaceListingStockResolver::dbShopifyQtyMapForRows($pageRows);
+        $liveShopifyQty = MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($skus);
+        if ($liveShopifyQty === []) {
+            $liveShopifyQty = MarketplaceListingStockResolver::dbShopifyQtyMapForRows($pageRows);
+        }
 
-        // Page hydrate: when cache has no state for this page, fetch live product info for IDs on page.
+        // Always live-hydrate marketplace qty for this page's linked product IDs.
         $pageLiveByProduct = [];
         if (in_array($linkTab, $liveLinkTabs, true)) {
             $needIds = [];
@@ -389,13 +395,10 @@ class AliexpressSyncController extends Controller
                 if (! $metric || ! $this->isShopifySkuLinkedOnAliexpress($metric, (string) $sku)) {
                     continue;
                 }
-                if ($this->aeCachedRowForSku((string) $sku, $stateIndex) === null) {
-                    $needIds[] = (string) $metric->product_id;
-                }
+                $needIds[] = (string) $metric->product_id;
             }
             if ($needIds !== []) {
-                // Cap page hydrate so Linked stays responsive while full cache warms.
-                $pageLiveByProduct = $liveService->liveDetailsByProductIds(array_slice(array_values(array_unique($needIds)), 0, 20));
+                $pageLiveByProduct = $liveService->liveDetailsByProductIds(array_slice(array_values(array_unique($needIds)), 0, 50));
             }
         }
 

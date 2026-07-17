@@ -187,12 +187,49 @@ class AlibabaSyncController extends Controller
             $apiError = trim(($apiError ? $apiError.' ' : '').'Shared Shopify live catalog is empty — refresh Shopify from Marketplace Manager.');
         }
 
+        $matchedQty = $classified['matched'] ?? [];
+        $mismatchQty = $classified['mismatch'] ?? [];
+        $zeroQty = $classified['zero'] ?? [];
+
+        // Re-verify mismatch using shopify_skus.available_to_sell vs local Alibaba stock map.
+        if ($mismatchQty !== []) {
+            $liveShopify = MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($mismatchQty);
+            $liveMpByUpper = [];
+            foreach ($mismatchQty as $sku) {
+                $qty = MarketplaceListingStockResolver::qtyFromMap($mpStock, (string) $sku);
+                if ($qty === null) {
+                    continue;
+                }
+                $liveMpByUpper[strtoupper(trim((string) $sku))] = $qty;
+                $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
+                if ($norm !== '') {
+                    $liveMpByUpper[$norm] = $qty;
+                }
+            }
+            $reconciled = MarketplaceListingStockResolver::reconcileLinkedTabsWithLiveQty(
+                $matchedQty,
+                $mismatchQty,
+                $zeroQty,
+                $liveShopify,
+                $liveMpByUpper
+            );
+            $matchedQty = $reconciled['matched'];
+            $mismatchQty = $reconciled['mismatch'];
+            $zeroQty = $reconciled['zero'];
+            $counts['matched'] = count($matchedQty);
+            $counts['mismatch'] = count($mismatchQty);
+            $counts['zero'] = count($zeroQty);
+            $counts['linked'] = $counts['matched'] + $counts['mismatch'] + $counts['zero'];
+            $counts['linked_with_inv'] = $counts['matched'];
+            $counts['linked_zero_inv'] = $counts['zero'];
+        }
+
         $linkedVerified = match ($linkTab) {
-            'mismatch' => $classified['mismatch'] ?? [],
+            'mismatch' => $mismatchQty,
             'mismatch_inactive' => [],
-            'zero' => $classified['zero'] ?? [],
+            'zero' => $zeroQty,
             'matched_inactive' => [],
-            'matched' => $classified['matched'] ?? [],
+            'matched' => $matchedQty,
             default => [],
         };
 
@@ -226,12 +263,13 @@ class AlibabaSyncController extends Controller
         $skus = collect($paginator->items())->pluck('sku')->filter()->values()->all();
         $aeMap = $this->alibabaMetricMapForSkus($skus);
         $aeStockMap = $this->alibabaStockMapForSkus($skus);
+        $liveShopifyQty = MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($skus);
 
-        $enriched = collect($paginator->items())->map(function (ShopifySku $row) use ($aeMap, $aeStockMap) {
+        $enriched = collect($paginator->items())->map(function (ShopifySku $row) use ($aeMap, $aeStockMap, $liveShopifyQty) {
             $sku = (string) $row->sku;
             $metric = $aeMap[$sku] ?? null;
             $linked = $this->isShopifySkuLinkedOnAlibaba($metric, $sku);
-            $shopifyQty = $row->available_to_sell ?? $row->inv ?? $row->on_hand ?? null;
+            $shopifyQty = MarketplaceListingStockResolver::shopifyQtyFromLiveMapOrRow($liveShopifyQty, $row, $sku);
             $shopifyPrice = $row->b2c_price ?? $row->price ?? null;
             $aeQty = $linked ? ($aeStockMap[strtoupper(trim($sku))] ?? null) : null;
 

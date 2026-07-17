@@ -431,8 +431,8 @@ final class MarketplaceListingStockResolver
     }
 
     /**
-     * Qty map from shared shopify_skus store only (no Shopify API).
-     * Prefer catalogShopifyQtyMapForSkus() on listing indexes (webhook-updated catalog).
+     * Qty map for listings fallback: shopify_skus.available_to_sell first,
+     * then catalog variants if the live SKU column is missing.
      *
      * @param  array<int, ShopifySku>  $rows
      * @return array<string, int> keyed by UPPER(trim(sku))
@@ -449,8 +449,7 @@ final class MarketplaceListingStockResolver
             }
         }
 
-        $fromCatalog = self::catalogShopifyQtyMapForSkus($skus);
-        $out = $fromCatalog;
+        $out = self::liveSkuShopifyQtyMapForSkus($skus);
 
         foreach ($rows as $row) {
             if (! $row instanceof ShopifySku) {
@@ -469,6 +468,90 @@ final class MarketplaceListingStockResolver
                 $out[$upper] = $qty;
             }
         }
+
+        if ($out === []) {
+            $out = self::catalogShopifyQtyMapForSkus($skus);
+        } else {
+            foreach (self::catalogShopifyQtyMapForSkus($skus) as $upper => $qty) {
+                if (! array_key_exists($upper, $out)) {
+                    $out[$upper] = $qty;
+                }
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Listings Shopify Qty SoT: shopify_skus.available_to_sell / inv / on_hand
+     * (written by SyncShopifyLiveInventory / Ohio live sync — not catalog variants).
+     * Keys: UPPER(trim(sku)) and normalizeSkuForShopifyLookup(sku).
+     *
+     * @param  array<int, string>  $skus
+     * @return array<string, int>
+     */
+    public static function liveSkuShopifyQtyMapForSkus(array $skus): array
+    {
+        $skus = array_values(array_unique(array_filter(array_map(
+            static fn ($s) => trim((string) $s),
+            $skus
+        ))));
+        if ($skus === [] || ! Schema::hasTable('shopify_skus')) {
+            return [];
+        }
+
+        $out = [];
+        $rows = ShopifySku::query()
+            ->where(function ($q) use ($skus) {
+                $q->whereIn('sku', $skus);
+                foreach ($skus as $sku) {
+                    $q->orWhereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)]);
+                }
+            })
+            ->get(['sku', 'available_to_sell', 'inv', 'on_hand']);
+
+        foreach ($rows as $row) {
+            $qty = self::shopifyQtyFromRow($row);
+            if ($qty === null) {
+                continue;
+            }
+            self::put($out, (string) $row->sku, $qty);
+        }
+
+        return $out;
+    }
+
+    /**
+     * Full-map version for mismatch classification (all linked SKUs).
+     *
+     * @return array<string, int> normalized SKU => qty
+     */
+    public static function liveSkuShopifyInventoryByNorm(): array
+    {
+        if (! Schema::hasTable('shopify_skus')) {
+            return [];
+        }
+
+        $out = [];
+        ShopifySku::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->orderBy('id')
+            ->chunkById(1000, function ($rows) use (&$out) {
+                foreach ($rows as $row) {
+                    $n = ShopifySku::normalizeSkuForShopifyLookup((string) ($row->sku ?? ''));
+                    if ($n === '') {
+                        continue;
+                    }
+                    $qty = self::shopifyQtyFromRow($row);
+                    if ($qty === null) {
+                        continue;
+                    }
+                    if (! isset($out[$n]) || $qty > $out[$n]) {
+                        $out[$n] = $qty;
+                    }
+                }
+            });
 
         return $out;
     }
