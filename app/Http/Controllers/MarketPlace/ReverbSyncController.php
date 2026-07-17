@@ -217,8 +217,63 @@ class ReverbSyncController extends Controller
         $counts['matched_inactive'] = 0;
         $counts['mismatch_inactive'] = 0;
 
-        // Qty-matched split: marketplace-active vs inactive (ended/draft/other/unknown).
         $matchedQty = $classified['matched'] ?? [];
+        $mismatchQty = $classified['mismatch'] ?? [];
+        $zeroQty = $classified['zero'] ?? [];
+
+        // Table shows live Shopify + live Reverb; cache/catalog can lag and false-flag mismatch.
+        // Re-verify mismatch SKUs with the same live sources before building tabs.
+        if ($mismatchQty !== []) {
+            $liveShopify = $liveService->liveShopifyQtyBySkus($mismatchQty);
+            $metricMap = $this->reverbMetricMapForSkus($mismatchQty);
+            $listingIds = [];
+            $idToSku = [];
+            foreach ($mismatchQty as $sku) {
+                $metric = $metricMap[$sku] ?? null;
+                if (! $this->isShopifySkuLinkedOnReverb($metric, (string) $sku)) {
+                    continue;
+                }
+                $pid = (string) ($metric->product_id ?? '');
+                if ($pid === '') {
+                    continue;
+                }
+                $listingIds[] = $pid;
+                $idToSku[$pid] = (string) $sku;
+            }
+            $liveMpByUpper = [];
+            if ($listingIds !== []) {
+                foreach ($liveService->liveDetailsByListingIds(array_values(array_unique($listingIds))) as $pid => $row) {
+                    $sku = $idToSku[(string) $pid] ?? trim((string) ($row['sku'] ?? ''));
+                    if ($sku === '' || ! array_key_exists('inventory', $row) || $row['inventory'] === null) {
+                        continue;
+                    }
+                    $qty = (int) $row['inventory'];
+                    $liveMpByUpper[strtoupper($sku)] = $qty;
+                    $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+                    if ($norm !== '') {
+                        $liveMpByUpper[$norm] = $qty;
+                    }
+                }
+            }
+            $reconciled = MarketplaceListingStockResolver::reconcileLinkedTabsWithLiveQty(
+                $matchedQty,
+                $mismatchQty,
+                $zeroQty,
+                $liveShopify,
+                $liveMpByUpper
+            );
+            $matchedQty = $reconciled['matched'];
+            $mismatchQty = $reconciled['mismatch'];
+            $zeroQty = $reconciled['zero'];
+            $counts['matched'] = count($matchedQty);
+            $counts['mismatch'] = count($mismatchQty);
+            $counts['zero'] = count($zeroQty);
+            $counts['linked'] = $counts['matched'] + $counts['mismatch'] + $counts['zero'];
+            $counts['linked_with_inv'] = $counts['matched'];
+            $counts['linked_zero_inv'] = $counts['zero'];
+        }
+
+        // Qty-matched split: marketplace-active vs inactive (ended/draft/other/unknown).
         $matchedActive = $matchedQty;
         $matchedInactive = [];
         $matchedNormToSku = [];
@@ -248,7 +303,6 @@ class ReverbSyncController extends Controller
         }
 
         // Qty-mismatch split: same active vs inactive rules as matched.
-        $mismatchQty = $classified['mismatch'] ?? [];
         $mismatchActive = $mismatchQty;
         $mismatchInactive = [];
         $mismatchNormToSku = [];
@@ -280,7 +334,7 @@ class ReverbSyncController extends Controller
             $tabLinked = match ($linkTab) {
                 'mismatch' => $mismatchActive,
                 'mismatch_inactive' => $mismatchInactive,
-                'zero' => $classified['zero'] ?? [],
+                'zero' => $zeroQty,
                 'matched_inactive' => $matchedInactive,
                 default => $matchedActive,
             };
