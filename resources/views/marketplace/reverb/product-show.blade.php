@@ -26,6 +26,12 @@
     $shopifyDescription = $s['description_html'] ?? null;
     $aeDescriptionBlocks = $ae['descriptions'] ?? [];
     $shopifyDescSource = $s['description_source'] ?? null;
+    $shopifyQtyShow = $s['available_to_sell'] ?? $s['on_hand'] ?? null;
+    $mpQtyShow = $linked ? ($ae['stock'] ?? $l['rv_stock'] ?? null) : null;
+    $inventoryMismatch = $linked
+        && $shopifyQtyShow !== null
+        && $mpQtyShow !== null
+        && (int) $shopifyQtyShow !== (int) $mpQtyShow;
 
     $shopifyListingRows = [
         'SKU' => '<code>'.e($s['sku'] ?? '—').'</code>',
@@ -117,10 +123,15 @@
                     @endif
                 </div>
             </div>
-            <div class="d-flex gap-2">
+            <div class="d-flex gap-2 flex-wrap">
                 @if($connected)
                     <button type="button" class="btn btn-sm btn-outline-primary" id="btn-pull-ae" data-id="{{ $shopifySkuId }}">
                         <i class="ri-download-cloud-line"></i> Pull from Reverb
+                    </button>
+                @endif
+                @if($connected && !empty($inventoryMismatch))
+                    <button type="button" class="btn btn-sm btn-warning" id="btn-sync-inventory" data-id="{{ $shopifySkuId }}">
+                        <i class="ri-upload-2-line"></i> Sync Inventory
                     </button>
                 @endif
             </div>
@@ -128,26 +139,33 @@
 
         @include('marketplace.reverb._nav', ['active' => 'products'])
 
-        <div class="alert alert-info py-2 small mb-3">
-            <strong>Read-only view.</strong> This page compares Shopify (source) with Reverb side by side. Nothing is pushed from here.
-        </div>
+        @if(!empty($inventoryMismatch))
+            <div class="alert alert-warning py-2 small mb-3">
+                Inventory mismatch: Shopify <strong>{{ (int) $shopifyQtyShow }}</strong> vs Reverb <strong>{{ (int) $mpQtyShow }}</strong>.
+                Click <strong>Sync Inventory</strong> to push Shopify qty to Reverb now.
+            </div>
+        @else
+            <div class="alert alert-info py-2 small mb-3">
+                <strong>Compare view.</strong> Shopify (source) vs Reverb side by side.
+            </div>
+        @endif
 
         <div class="row g-3 mb-3">
             <div class="col-md-6">
                 <div class="card h-100">
                     <div class="card-body py-3">
                         <div class="text-muted small">Shopify Qty</div>
-                        <div class="fs-4 fw-semibold">{{ $s['available_to_sell'] !== null ? $s['available_to_sell'] : ($s['on_hand'] !== null ? $s['on_hand'] : '—') }}</div>
+                        <div class="fs-4 fw-semibold">{{ $shopifyQtyShow !== null ? $shopifyQtyShow : '—' }}</div>
                     </div>
                 </div>
             </div>
             <div class="col-md-6">
-                <div class="card h-100">
+                <div class="card h-100 {{ !empty($inventoryMismatch) ? 'border-warning' : '' }}">
                     <div class="card-body py-3">
                         <div class="text-muted small">Reverb Qty</div>
-                        <div class="fs-4 fw-semibold">
+                        <div class="fs-4 fw-semibold {{ !empty($inventoryMismatch) ? 'text-warning' : '' }}">
                             @if($linked)
-                                {{ $ae['stock'] !== null ? $ae['stock'] : ($l['rv_stock'] !== null ? $l['rv_stock'] : '—') }}
+                                {{ $mpQtyShow !== null ? $mpQtyShow : '—' }}
                             @else
                                 —
                             @endif
@@ -373,6 +391,37 @@ document.getElementById('btn-pull-ae')?.addEventListener('click', function () {
     .finally(function () {
         btn.disabled = false;
         btn.innerHTML = '<i class="ri-download-cloud-line"></i> Pull from Reverb';
+    });
+});
+
+document.getElementById('btn-sync-inventory')?.addEventListener('click', function () {
+    var btn = this;
+    var id = btn.getAttribute('data-id');
+    if (!id) return;
+    if (!confirm('Push live Shopify quantity to Reverb for this SKU now (no queue)?')) return;
+    btn.disabled = true;
+    var original = btn.innerHTML;
+    btn.innerHTML = '<i class="ri-loader-4-line"></i> Syncing…';
+    fetch('{{ url('marketplace/reverb/products') }}/' + id + '/sync-inventory', {
+        method: 'POST',
+        headers: {
+            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+            'Accept': 'application/json',
+        },
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+        alert(data.message || (data.success ? 'Done' : 'Failed'));
+        if (data.success) location.reload();
+        else {
+            btn.disabled = false;
+            btn.innerHTML = original;
+        }
+    })
+    .catch(function () {
+        alert('Request failed.');
+        btn.disabled = false;
+        btn.innerHTML = original;
     });
 });
 </script>

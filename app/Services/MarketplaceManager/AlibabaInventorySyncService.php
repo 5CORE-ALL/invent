@@ -314,8 +314,20 @@ class AlibabaInventorySyncService
             'failed' => $failed,
             'skipped' => $skipped,
             'price_updated' => $priceUpdated,
-            'message' => "Inventory: {$updated} updated, {$failed} failed. Prices: {$priceUpdated} updated. Skipped: {$skipped}.",
+            'message' => "Inventory: {$updated} updated, {$failed} failed. Prices: {$priceUpdated} updated. Skipped: {$skipped}."
+                .$this->appendMismatchPass(!$dryRun && ($settings['inventory']['inventory_sync'] ?? false)),
         ];
+    }
+
+    protected function appendMismatchPass(bool $run): string
+    {
+        if (! $run) {
+            return '';
+        }
+
+        $pass = app(MarketplaceMismatchInventoryPass::class)->run('alibaba');
+
+        return ' '.$pass['message'];
     }
 
   /**
