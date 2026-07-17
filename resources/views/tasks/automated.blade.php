@@ -683,6 +683,60 @@
     .modal-content {
         z-index: 1060 !important;
     }
+
+    /* Checklist history answer highlight */
+    .checklist-answer-hl {
+        background: #ffe566;
+        color: #000;
+        padding: 1px 6px;
+        border-radius: 3px;
+        display: inline-block;
+        font-weight: 600;
+    }
+
+    /* Checklist form + report: ~2x wider, docked to the right */
+    #checklistFormModal.modal,
+    #checklistHistoryModal.modal {
+        padding-right: 0 !important;
+    }
+    #checklistFormModal .modal-dialog,
+    #checklistHistoryModal .modal-dialog {
+        position: fixed;
+        top: 0;
+        right: 0;
+        left: auto;
+        margin: 0;
+        height: 100vh;
+        max-width: 30vw;
+        width: 30vw;
+        min-width: 320px;
+        transform: none;
+    }
+    #checklistFormModal .modal-content,
+    #checklistHistoryModal .modal-content {
+        height: 100vh;
+        border-radius: 0;
+        border: none;
+        border-left: 1px solid rgba(0, 0, 0, 0.12);
+        box-shadow: -8px 0 28px rgba(0, 0, 0, 0.18);
+    }
+    #checklistFormModal .modal-body,
+    #checklistHistoryModal .modal-body {
+        overflow-y: auto;
+        flex: 1 1 auto;
+    }
+    #checklistFormModal.show .modal-dialog,
+    #checklistHistoryModal.show .modal-dialog {
+        transform: none;
+    }
+    @media (max-width: 768px) {
+        #checklistFormModal .modal-dialog,
+        #checklistHistoryModal .modal-dialog {
+            max-width: 100vw;
+            width: 100vw;
+            min-width: 0;
+        }
+    }
     
     </style>
 @endsection
@@ -1095,6 +1149,83 @@
     </div>
 </div>
 
+<!-- Checklist Questionnaire Modal -->
+<div class="modal fade" id="checklistFormModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-scrollable checklist-side-panel">
+        <div class="modal-content">
+            <div class="modal-header" style="background: linear-gradient(135deg, #c4a000 0%, #e0c040 100%); color: #222;">
+                <h5 class="modal-title mb-0">
+                    <i class="mdi mdi-magnify me-2"></i><span id="checklist-modal-title">Checklist Questionnaire</span>
+                </h5>
+                <div class="d-flex align-items-center gap-2 ms-auto">
+                    <a href="#" id="checklist-sop-link" class="d-none" target="_blank" rel="noopener noreferrer" title="Open SOP" aria-label="Open SOP"
+                       style="display:inline-flex;align-items:center;justify-content:center;line-height:1;text-decoration:none;">
+                        <img src="{{ asset('assets/images/task-sop-icon.png') }}" alt="SOP" style="width:28px;height:28px;display:block;">
+                    </a>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="checklist-automate-task-id" value="">
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                    <div>
+                        <div class="small text-muted">Automated Task</div>
+                        <div class="fw-semibold" id="checklist-task-title">—</div>
+                        <div class="small text-muted">Form ID: <span id="checklist-form-id">—</span></div>
+                    </div>
+                    <div class="btn-group btn-group-sm" role="group" id="checklist-mode-toggle" style="display:none;">
+                        <button type="button" class="btn btn-outline-dark active" id="checklist-mode-fill">Fill</button>
+                        <button type="button" class="btn btn-outline-dark" id="checklist-mode-edit">Edit form</button>
+                    </div>
+                </div>
+
+                <div id="checklist-fill-pane">
+                    <div id="checklist-questions-fill" class="vstack gap-3"></div>
+                    <div id="checklist-empty-fill" class="alert alert-warning d-none mb-0">
+                        No checklist form is attached yet.
+                        <span class="d-none" id="checklist-empty-manage-hint"> Use <strong>Edit form</strong> to create one.</span>
+                    </div>
+                </div>
+
+                <div id="checklist-edit-pane" class="d-none">
+                    <div class="mb-2">
+                        <label class="form-label small fw-bold mb-1">Form title</label>
+                        <input type="text" class="form-control form-control-sm" id="checklist-form-title" placeholder="Checklist form title">
+                    </div>
+                    <div id="checklist-questions-edit" class="vstack gap-2 mb-2"></div>
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="checklist-add-checkbox"><i class="mdi mdi-checkbox-marked-outline me-1"></i>Add Yes/No</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="checklist-add-text"><i class="mdi mdi-text me-1"></i>Add text</button>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-warning d-none" id="checklist-save-form-btn"><i class="mdi mdi-content-save me-1"></i>Save form</button>
+                <button type="button" class="btn btn-primary" id="checklist-submit-btn"><i class="mdi mdi-send me-1"></i>Submit</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Checklist History / Report Modal -->
+<div class="modal fade" id="checklistHistoryModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-scrollable checklist-side-panel">
+        <div class="modal-content">
+            <div class="modal-header" style="background: linear-gradient(135deg, #495057 0%, #6c757d 100%); color: white;">
+                <h5 class="modal-title"><i class="mdi mdi-history me-2"></i>Checklist Submission History</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="checklist-history-body" class="vstack gap-3"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- CSV Upload Modal -->
 <div class="modal fade" id="csvUploadModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg">
@@ -1110,7 +1241,7 @@
                 <div class="modal-body">
                     <div class="alert alert-info">
                         <h6 class="alert-heading"><i class="mdi mdi-information me-2"></i>CSV Format Required:</h6>
-                        <p class="mb-1"><strong>Columns:</strong> Group, Task, Assignor, Assignee, Status, Priority, Image, L1, L2, SOP (hover: Training), Video, Form, Report (hover: Form report), CL (hover: Checklist), PL</p>
+                        <p class="mb-1"><strong>Columns:</strong> Group, Task, Assignor, Assignee, Status, Priority, Image, L1, L2, SOP (hover: Training), Video, CL (hover: Checklist), Report (hover: Form report)</p>
                         <p class="mb-1"><strong>Status Options:</strong> Todo, Working, Archived, Done, Need Help, Need Approval, Dependent, Approved, Hold, Cancelled</p>
                         <p class="mb-0"><strong>Priority Options:</strong> Low, Normal, High, Urgent</p>
                         <p class="mb-0"><small class="text-muted">Note: Assignor and Assignee should match exact user names in the system</small></p>
@@ -1156,9 +1287,267 @@
             var selectedTasks = [];
             var bulkActionType = '';
             var isAdmin = {{ $isAdmin ? 'true' : 'false' }};
+            var canManageChecklist = {{ !empty($canManageChecklist) ? 'true' : 'false' }};
             var currentUserId = {{ Auth::id() }};
             var currentUserEmail = '{{ Auth::user()->email }}';
             var TASK_AUTOMATED_FILTERS_KEY = 'taskManager.automatedFilters.v1';
+            var checklistCsrf = '{{ csrf_token() }}';
+            var checklistCurrentQuestions = [];
+            var checklistCurrentMode = 'fill';
+            var checklistCanManageRuntime = canManageChecklist;
+
+            function checklistEsc(t) {
+                return String(t == null ? '' : t)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#039;');
+            }
+
+            function formatChecklistClIcon(rowData) {
+                var hasForm = !!rowData.has_checklist_form;
+                var color = hasForm ? '#c4a000' : '#dc3545';
+                var title = hasForm ? 'Open checklist form' : 'No checklist form attached — click to open';
+                return '<button type="button" class="btn btn-link p-0 border-0 shadow-none at-cl-open" data-id="' + checklistEsc(rowData.id) + '" title="' + title + '" aria-label="Open checklist" style="line-height:1;">' +
+                    '<i class="mdi mdi-magnify" style="font-size:22px;color:' + color + ';"></i></button>';
+            }
+
+            function formatChecklistReportIcon(rowData) {
+                var count = parseInt(rowData.checklist_submission_count || 0, 10) || 0;
+                if (count < 1) {
+                    return '<span style="color:#adb5bd;">-</span>';
+                }
+                return '<button type="button" class="btn btn-link p-0 border-0 shadow-none at-cl-history" data-id="' + checklistEsc(rowData.id) + '" title="View checklist history (' + count + ')" aria-label="Checklist history" style="line-height:1;">' +
+                    '<i class="mdi mdi-magnify" style="font-size:22px;color:#198754;"></i></button>';
+            }
+
+            function checklistNewQuestionId() {
+                return 'q_' + Math.random().toString(36).slice(2, 10);
+            }
+
+            function renderChecklistFill(questions) {
+                var $box = $('#checklist-questions-fill');
+                $box.empty();
+                if (!questions || !questions.length) {
+                    $('#checklist-empty-fill').removeClass('d-none');
+                    $('#checklist-submit-btn').prop('disabled', true);
+                    return;
+                }
+                $('#checklist-empty-fill').addClass('d-none');
+                $('#checklist-submit-btn').prop('disabled', false);
+                questions.forEach(function(q, idx) {
+                    var req = q.required ? ' <span class="text-danger">*</span>' : '';
+                    var qid = checklistEsc(q.id);
+                    var html = '<div class="border rounded p-2 bg-light checklist-fill-item" data-qid="' + qid + '" data-type="' + checklistEsc(q.type) + '">';
+                    html += '<div class="fw-semibold mb-2">' + (idx + 1) + '. ' + checklistEsc(q.label) + req + '</div>';
+                    if (q.type === 'checkbox') {
+                        html += '<div class="d-flex gap-3 mb-2">' +
+                            '<div class="form-check"><input class="form-check-input checklist-yn" type="radio" name="cl_yn_' + qid + '" id="cl_yes_' + qid + '" value="yes" data-qid="' + qid + '">' +
+                            '<label class="form-check-label" for="cl_yes_' + qid + '">Yes</label></div>' +
+                            '<div class="form-check"><input class="form-check-input checklist-yn" type="radio" name="cl_yn_' + qid + '" id="cl_no_' + qid + '" value="no" data-qid="' + qid + '">' +
+                            '<label class="form-check-label" for="cl_no_' + qid + '">No</label></div>' +
+                            '</div>';
+                        html += '<div class="checklist-no-fields d-none border-top pt-2 mt-1" data-qid="' + qid + '">' +
+                            '<div class="small text-muted mb-2">If No — fill at least one of the fields below <span class="text-danger">*</span></div>' +
+                            '<div class="mb-2">' +
+                            '<div class="d-flex justify-content-between align-items-center mb-1">' +
+                            '<label class="form-label small fw-semibold mb-0">Action</label>' +
+                            '<button type="button" class="btn btn-sm btn-outline-primary py-0 px-2 checklist-add-action" data-qid="' + qid + '" title="Add another action">+</button>' +
+                            '</div>' +
+                            '<div class="checklist-actions-list vstack gap-2" data-qid="' + qid + '">' +
+                            '<div class="input-group input-group-sm checklist-action-row">' +
+                            '<input type="text" class="form-control checklist-action" data-qid="' + qid + '" placeholder="Action">' +
+                            '</div></div></div>' +
+                            '<div class="mb-0"><label class="form-label small fw-semibold mb-1">Corrective action</label>' +
+                            '<input type="text" class="form-control form-control-sm checklist-corrective" data-qid="' + qid + '" placeholder="Corrective action"></div>' +
+                            '</div>';
+                    } else {
+                        html += '<input type="text" class="form-control form-control-sm checklist-ans" data-qid="' + qid + '" data-type="text" placeholder="Enter answer">';
+                    }
+                    html += '</div>';
+                    $box.append(html);
+                });
+            }
+
+            function renderChecklistEdit(questions) {
+                var $box = $('#checklist-questions-edit');
+                $box.empty();
+                (questions || []).forEach(function(q, idx) {
+                    var typeLabel = q.type === 'checkbox' ? 'Yes/No' : checklistEsc(q.type);
+                    var card = '<div class="border rounded p-2 checklist-edit-row" data-qid="' + checklistEsc(q.id) + '" data-type="' + checklistEsc(q.type) + '">' +
+                        '<div class="d-flex justify-content-between align-items-center mb-1">' +
+                        '<span class="badge bg-secondary">' + typeLabel + '</span>' +
+                        '<button type="button" class="btn btn-sm btn-outline-danger checklist-remove-q" title="Remove">&times;</button>' +
+                        '</div>' +
+                        '<input type="text" class="form-control form-control-sm mb-1 checklist-q-label" value="' + checklistEsc(q.label) + '" placeholder="Question label">' +
+                        (q.type === 'checkbox' ? '<div class="small text-muted mb-1">Answer: Yes / No. If No — Action &amp; Corrective action (min. one required).</div>' : '') +
+                        '<div class="form-check"><input class="form-check-input checklist-q-required" type="checkbox" id="clreq_' + checklistEsc(q.id) + '"' + (q.required ? ' checked' : '') + '>' +
+                        '<label class="form-check-label small" for="clreq_' + checklistEsc(q.id) + '">Required</label></div>' +
+                        '</div>';
+                    $box.append(card);
+                });
+            }
+
+            function collectChecklistEditQuestions() {
+                var out = [];
+                $('#checklist-questions-edit .checklist-edit-row').each(function() {
+                    var $row = $(this);
+                    var storedType = String($row.data('type') || '').toLowerCase();
+                    var typeBadge = ($row.find('.badge').text() || 'text').trim().toLowerCase();
+                    var type = (storedType === 'checkbox' || typeBadge === 'checkbox' || typeBadge === 'yes/no') ? 'checkbox' : 'text';
+                    out.push({
+                        id: $row.data('qid'),
+                        type: type,
+                        label: ($row.find('.checklist-q-label').val() || '').trim(),
+                        required: $row.find('.checklist-q-required').is(':checked')
+                    });
+                });
+                return out;
+            }
+
+            function setChecklistMode(mode) {
+                checklistCurrentMode = mode;
+                if (mode === 'edit') {
+                    $('#checklist-fill-pane').addClass('d-none');
+                    $('#checklist-edit-pane').removeClass('d-none');
+                    $('#checklist-mode-fill').removeClass('active');
+                    $('#checklist-mode-edit').addClass('active');
+                    $('#checklist-save-form-btn').removeClass('d-none');
+                    $('#checklist-submit-btn').addClass('d-none');
+                    renderChecklistEdit(checklistCurrentQuestions);
+                } else {
+                    $('#checklist-edit-pane').addClass('d-none');
+                    $('#checklist-fill-pane').removeClass('d-none');
+                    $('#checklist-mode-edit').removeClass('active');
+                    $('#checklist-mode-fill').addClass('active');
+                    $('#checklist-save-form-btn').addClass('d-none');
+                    $('#checklist-submit-btn').removeClass('d-none');
+                    renderChecklistFill(checklistCurrentQuestions);
+                }
+            }
+
+            async function openChecklistModal(automateTaskId) {
+                $('#checklist-automate-task-id').val(automateTaskId);
+                $('#checklist-task-title').text('Loading…');
+                $('#checklist-form-id').text('—');
+                $('#checklist-questions-fill').empty();
+                $('#checklist-questions-edit').empty();
+                $('#checklist-sop-link').addClass('d-none').attr('href', '#');
+                try {
+                    var res = await fetch("{{ url('/tasks/automated') }}/" + automateTaskId + "/checklist", {
+                        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                        credentials: 'same-origin'
+                    });
+                    var data = await res.json();
+                    if (!res.ok) {
+                        alert(data.message || 'Failed to load checklist');
+                        return;
+                    }
+                    $('#checklist-task-title').text(data.task_title || ('Task #' + automateTaskId));
+                    var form = data.form;
+                    checklistCurrentQuestions = (form && form.questions) ? form.questions.slice() : [];
+                    $('#checklist-form-id').text(form && form.id ? form.id : '—');
+                    $('#checklist-form-title').val(form && form.title ? form.title : ((data.task_title || '') + ' Checklist'));
+
+                    var sop = String(data.sop_link || '').trim();
+                    if (sop && /^https?:\/\//i.test(sop)) {
+                        $('#checklist-sop-link').attr('href', sop).attr('title', 'Open SOP: ' + sop).removeClass('d-none');
+                    } else {
+                        $('#checklist-sop-link').addClass('d-none').attr('href', '#');
+                    }
+
+                    checklistCanManageRuntime = !!(data.can_manage || canManageChecklist);
+                    if (checklistCanManageRuntime) {
+                        $('#checklist-mode-toggle').show();
+                        $('#checklist-empty-manage-hint').removeClass('d-none');
+                    } else {
+                        $('#checklist-mode-toggle').hide();
+                        $('#checklist-empty-manage-hint').addClass('d-none');
+                    }
+
+                    if (!form && checklistCanManageRuntime) {
+                        setChecklistMode('edit');
+                    } else {
+                        setChecklistMode('fill');
+                    }
+                    bootstrap.Modal.getOrCreateInstance(document.getElementById('checklistFormModal')).show();
+                } catch (e) {
+                    alert('Failed to load checklist');
+                }
+            }
+
+            async function openChecklistHistory(automateTaskId) {
+                $('#checklist-history-body').html('<div class="text-muted">Loading…</div>');
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('checklistHistoryModal')).show();
+                try {
+                    var res = await fetch("{{ url('/tasks/automated') }}/" + automateTaskId + "/checklist/history", {
+                        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                        credentials: 'same-origin'
+                    });
+                    var data = await res.json();
+                    if (!res.ok) {
+                        $('#checklist-history-body').html('<div class="alert alert-danger">' + checklistEsc(data.message || 'Failed to load history') + '</div>');
+                        return;
+                    }
+                    var subs = data.submissions || [];
+                    if (!subs.length) {
+                        $('#checklist-history-body').html('<div class="text-muted">No submissions yet.</div>');
+                        return;
+                    }
+                    var html = '';
+                    subs.forEach(function(s, i) {
+                        html += '<div class="border rounded p-2">';
+                        html += '<div class="d-flex justify-content-between"><strong>#' + (subs.length - i) + '</strong><span class="small text-muted">' + checklistEsc(s.submitted_at) + '</span></div>';
+                        html += '<div class="small mb-2">By: ' + checklistEsc(s.submitted_by) + ' · Submission ID: ' + checklistEsc(s.id) + '</div>';
+                        html += '<ul class="mb-0 ps-3">';
+                        (s.answers || []).forEach(function(a) {
+                            var v;
+                            if (a.type === 'checkbox') {
+                                var ans = a.value;
+                                var isYes = false;
+                                var action = '';
+                                var corrective = '';
+                                var actions = [];
+                                if (ans && typeof ans === 'object') {
+                                    isYes = !!ans.answer;
+                                    if (Array.isArray(ans.actions)) {
+                                        actions = ans.actions.filter(function(x) { return String(x || '').trim(); });
+                                    } else if (ans.action) {
+                                        actions = [ans.action];
+                                    }
+                                    corrective = ans.corrective_action || '';
+                                } else {
+                                    isYes = !!ans;
+                                }
+                                v = '<span class="checklist-answer-hl">' + (isYes
+                                    ? '<i class="mdi mdi-check-circle" style="color:#198754;font-size:18px;vertical-align:middle;" title="Yes"></i> Yes'
+                                    : '<i class="mdi mdi-close-circle" style="color:#dc3545;font-size:18px;vertical-align:middle;" title="No"></i> No'
+                                ) + '</span>';
+                                if (!isYes && (actions.length || corrective)) {
+                                    v += '<ul class="mb-0 mt-1 ps-3 small">';
+                                    actions.forEach(function(act, ai) {
+                                        v += '<li><span class="text-muted">Action' + (actions.length > 1 ? ' ' + (ai + 1) : '') + ':</span> ' +
+                                            '<span class="checklist-answer-hl">' + checklistEsc(act) + '</span></li>';
+                                    });
+                                    if (corrective) {
+                                        v += '<li><span class="text-muted">Corrective action:</span> ' +
+                                            '<span class="checklist-answer-hl">' + checklistEsc(corrective) + '</span></li>';
+                                    }
+                                    v += '</ul>';
+                                }
+                            } else {
+                                v = '<span class="checklist-answer-hl">' + checklistEsc(a.value || '—') + '</span>';
+                            }
+                            html += '<li class="mb-1"><span class="text-muted">' + checklistEsc(a.label) + ':</span> ' + v + '</li>';
+                        });
+                        html += '</ul></div>';
+                    });
+                    $('#checklist-history-body').html(html);
+                } catch (e) {
+                    $('#checklist-history-body').html('<div class="alert alert-danger">Failed to load history</div>');
+                }
+            }
 
             function persistAutomatedTaskFilters() {
                 try {
@@ -1253,6 +1642,7 @@
 
             // Initialize Tabulator
             var table = new Tabulator("#tasks-table", {
+                index: "id",
                 selectable: isAdmin,
                 selectableRangeMode: "click",
                 selectableCheck: function(row) {
@@ -1513,16 +1903,40 @@
                         }
                     });
                     
-                    linkCol("Form", "link5", function(d) { return d.link5 || d.form_link; }, 44);
-                    linkCol("Form", "link5", function(d) { return d.link5 || d.form_link; }, 44);
-                    linkCol("Report", "link6", function(d) { return d.link6 || d.form_report_link; }, 50, { minWidth: 44, headerTooltip: "Form report" });
-                    linkCol("CL", "link7", function(d) { return d.link7 || d.checklist_link; }, 38, {
+                    cols.push({
+                        title: "CL",
+                        field: "has_checklist_form",
+                        width: 42,
+                        minWidth: 38,
+                        widthGrow: 0,
+                        cssClass: "tasks-col-link-icon",
+                        headerClass: "tasks-col-link-icon",
+                        hozAlign: "center",
+                        headerTooltip: "Checklist Form",
                         titleFormatter: function() {
-                            return '<span title="Checklist" style="font-weight:700;font-size:10.8px;color:#495057;">CL</span>';
+                            return '<span title="Checklist Form" style="font-weight:700;font-size:10.8px;color:#495057;">CL</span>';
                         },
-                        headerTooltip: "Checklist"
+                        formatter: function(cell) {
+                            return formatChecklistClIcon(cell.getRow().getData());
+                        },
+                        sorter: function(a, b, aRow, bRow) {
+                            return (aRow.getData().has_checklist_form ? 1 : 0) - (bRow.getData().has_checklist_form ? 1 : 0);
+                        }
                     });
-                    linkCol("PL", "link8", function(d) { return d.link8 || d.pl; }, 36);
+                    cols.push({
+                        title: "Report",
+                        field: "checklist_submission_count",
+                        width: 56,
+                        minWidth: 48,
+                        widthGrow: 0,
+                        cssClass: "tasks-col-link-icon",
+                        headerClass: "tasks-col-link-icon",
+                        hozAlign: "center",
+                        headerTooltip: "Checklist submission history",
+                        formatter: function(cell) {
+                            return formatChecklistReportIcon(cell.getRow().getData());
+                        }
+                    });
                     
                     // TID (Task Initiation Date) - HIDDEN
                     // cols.push({
@@ -2697,6 +3111,200 @@
                 });
             }
 
+            $(document).on('click', '.at-cl-open', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                openChecklistModal($(this).data('id'));
+            });
+
+            $(document).on('click', '.at-cl-history', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                openChecklistHistory($(this).data('id'));
+            });
+
+            $('#checklist-mode-fill').on('click', function() { setChecklistMode('fill'); });
+            $('#checklist-mode-edit').on('click', function() {
+                if (!checklistCanManageRuntime) return;
+                setChecklistMode('edit');
+            });
+
+            $('#checklist-add-checkbox').on('click', function() {
+                checklistCurrentQuestions = collectChecklistEditQuestions();
+                checklistCurrentQuestions.push({ id: checklistNewQuestionId(), type: 'checkbox', label: '', required: false });
+                renderChecklistEdit(checklistCurrentQuestions);
+            });
+
+            $('#checklist-add-text').on('click', function() {
+                checklistCurrentQuestions = collectChecklistEditQuestions();
+                checklistCurrentQuestions.push({ id: checklistNewQuestionId(), type: 'text', label: '', required: false });
+                renderChecklistEdit(checklistCurrentQuestions);
+            });
+
+            $(document).on('click', '.checklist-remove-q', function() {
+                $(this).closest('.checklist-edit-row').remove();
+            });
+
+            $(document).on('change', '.checklist-yn', function() {
+                var qid = $(this).data('qid');
+                var isNo = $(this).val() === 'no' && $(this).is(':checked');
+                var $fields = $('.checklist-no-fields[data-qid="' + qid + '"]');
+                if (isNo) {
+                    $fields.removeClass('d-none');
+                } else {
+                    $fields.addClass('d-none');
+                }
+            });
+
+            $(document).on('click', '.checklist-add-action', function(e) {
+                e.preventDefault();
+                var qid = $(this).data('qid');
+                var $list = $('.checklist-actions-list[data-qid="' + qid + '"]');
+                var row = '<div class="input-group input-group-sm checklist-action-row">' +
+                    '<input type="text" class="form-control checklist-action" data-qid="' + checklistEsc(qid) + '" placeholder="Action">' +
+                    '<button type="button" class="btn btn-outline-danger checklist-remove-action" title="Remove">&times;</button>' +
+                    '</div>';
+                $list.append(row);
+                $list.find('.checklist-action').last().focus();
+            });
+
+            $(document).on('click', '.checklist-remove-action', function(e) {
+                e.preventDefault();
+                var $list = $(this).closest('.checklist-actions-list');
+                $(this).closest('.checklist-action-row').remove();
+                if (!$list.find('.checklist-action-row').length) {
+                    $list.append(
+                        '<div class="input-group input-group-sm checklist-action-row">' +
+                        '<input type="text" class="form-control checklist-action" data-qid="' + checklistEsc($list.data('qid')) + '" placeholder="Action">' +
+                        '</div>'
+                    );
+                }
+            });
+
+            $('#checklist-save-form-btn').on('click', async function() {
+                var automateTaskId = $('#checklist-automate-task-id').val();
+                var questions = collectChecklistEditQuestions().filter(function(q) { return q.label; });
+                if (!questions.length) {
+                    alert('Add at least one question with a label.');
+                    return;
+                }
+                var $btn = $(this).prop('disabled', true);
+                try {
+                    var res = await fetch("{{ url('/tasks/automated') }}/" + automateTaskId + "/checklist", {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': checklistCsrf,
+                            'X-Requested-With': 'XMLHttpRequest'
+                        },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({
+                            title: $('#checklist-form-title').val() || '',
+                            questions: questions
+                        })
+                    });
+                    var data = await res.json().catch(function() { return {}; });
+                    if (!res.ok) {
+                        alert(data.message || 'Failed to save form');
+                        return;
+                    }
+                    checklistCurrentQuestions = (data.form && data.form.questions) ? data.form.questions.slice() : questions;
+                    $('#checklist-form-id').text(data.form && data.form.id ? data.form.id : '—');
+                    if (table) {
+                        var row = table.getRow(parseInt(automateTaskId, 10));
+                        if (row) {
+                            row.update({ has_checklist_form: true, checklist_form_id: data.form.id });
+                        } else {
+                            table.replaceData();
+                        }
+                    }
+                    setChecklistMode('fill');
+                    alert(data.message || 'Checklist form saved.');
+                } catch (err) {
+                    alert('Failed to save form');
+                } finally {
+                    $btn.prop('disabled', false);
+                }
+            });
+
+            $('#checklist-submit-btn').on('click', async function() {
+                var automateTaskId = $('#checklist-automate-task-id').val();
+                if (!checklistCurrentQuestions.length) {
+                    alert('No checklist form is attached.');
+                    return;
+                }
+                var answers = {};
+                var missing = null;
+                checklistCurrentQuestions.forEach(function(q) {
+                    if (q.type === 'checkbox') {
+                        var yn = $('input.checklist-yn[name="cl_yn_' + q.id + '"]:checked').val();
+                        if (!yn) {
+                            if (!missing) missing = 'Select Yes or No for: ' + q.label;
+                            return;
+                        }
+                        var isYes = yn === 'yes';
+                        var actions = [];
+                        $('.checklist-action[data-qid="' + q.id + '"]').each(function() {
+                            var v = ($(this).val() || '').trim();
+                            if (v) actions.push(v);
+                        });
+                        var corrective = ($('.checklist-corrective[data-qid="' + q.id + '"]').val() || '').trim();
+                        if (!isYes && !actions.length && !corrective) {
+                            if (!missing) missing = 'For "' + q.label + '", enter Action or Corrective action (minimum one)';
+                            return;
+                        }
+                        answers[q.id] = {
+                            answer: isYes,
+                            actions: isYes ? [] : actions,
+                            action: isYes ? '' : (actions[0] || ''),
+                            corrective_action: isYes ? '' : corrective
+                        };
+                    } else {
+                        var $el = $('.checklist-ans[data-qid="' + q.id + '"]');
+                        answers[q.id] = ($el.val() || '').trim();
+                        if (q.required && !answers[q.id] && !missing) missing = 'Please complete required field: ' + q.label;
+                    }
+                });
+                if (missing) {
+                    alert(missing);
+                    return;
+                }
+                var $btn = $(this).prop('disabled', true);
+                try {
+                    var res = await fetch("{{ url('/tasks/automated') }}/" + automateTaskId + "/checklist/submit", {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': checklistCsrf,
+                            'X-Requested-With': 'XMLHttpRequest'
+                        },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({ answers: answers })
+                    });
+                    var data = await res.json().catch(function() { return {}; });
+                    if (!res.ok) {
+                        alert(data.message || 'Submit failed');
+                        return;
+                    }
+                    if (table) {
+                        var row = table.getRow(parseInt(automateTaskId, 10));
+                        if (row) {
+                            row.update({ checklist_submission_count: data.submission_count || 1 });
+                        } else {
+                            table.replaceData();
+                        }
+                    }
+                    bootstrap.Modal.getInstance(document.getElementById('checklistFormModal'))?.hide();
+                    alert(data.message || 'Submitted.');
+                } catch (err) {
+                    alert('Submit failed');
+                } finally {
+                    $btn.prop('disabled', false);
+                }
+            });
+
             // Edit Automated Task — when more than one row is selected, the edit button
             // performs a BULK edit (opens the bulk actions modal) instead of opening the
             // single task editor.
@@ -2890,10 +3498,6 @@
                                     <tr>
                                         <th style="color: #6c757d; font-weight: 600;">Checklist Link:</th>
                                         <td>${response.checklist_link ? '<a href="' + response.checklist_link + '" target="_blank" style="color: #0d6efd;">' + response.checklist_link + '</a>' : '<span style="color: #adb5bd;">-</span>'}</td>
-                                    </tr>
-                                    <tr>
-                                        <th style="color: #6c757d; font-weight: 600;">PL:</th>
-                                        <td>${response.pl || '<span style="color: #adb5bd;">-</span>'}</td>
                                     </tr>
                                     <tr>
                                         <th style="color: #6c757d; font-weight: 600;">Process:</th>

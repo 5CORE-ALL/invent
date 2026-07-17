@@ -553,7 +553,15 @@ class PayrollService
                 $stats['skipped_no_data']++;
                 continue;
             }
-            $hours = (float) ($teamLogger[$email]['hours'] ?? 0);
+            // Payroll Hours LM = productive only (TeamLogger total − idle). Never include idle.
+            $entry = $teamLogger[$email];
+            $total = (float) ($entry['total_hours'] ?? 0);
+            $idle = (float) ($entry['idle_hours'] ?? 0);
+            if ($total > 0) {
+                $hours = (float) (int) round(max(0, $total - max(0, $idle)));
+            } else {
+                $hours = (float) ($entry['hours'] ?? $entry['active_hours'] ?? 0);
+            }
             $hoursChanged = (float) $row->hours_worked !== $hours;
             $clearOverride = $freshFromApi && $row->hours_overridden;
 
@@ -586,6 +594,12 @@ class PayrollService
         }
 
         foreach ($teamLogger as $email => $hours) {
+            $total = (float) ($hours['total_hours'] ?? 0);
+            $idle = (float) ($hours['idle_hours'] ?? 0);
+            $productive = $total > 0
+                ? (int) round(max(0, $total - max(0, $idle)))
+                : (int) round((float) ($hours['hours'] ?? $hours['active_hours'] ?? 0));
+
             TeamLoggerHours::updateOrCreate(
                 [
                     'employee_email' => strtolower(trim((string) $email)),
@@ -594,10 +608,10 @@ class PayrollService
                 [
                     'start_date' => $start,
                     'end_date' => $end,
-                    'productive_hours' => (int) ($hours['hours'] ?? 0),
-                    'total_hours' => $hours['total_hours'] ?? 0,
-                    'idle_hours' => $hours['idle_hours'] ?? 0,
-                    'active_hours' => $hours['active_hours'] ?? 0,
+                    'productive_hours' => $productive,
+                    'total_hours' => $total,
+                    'idle_hours' => $idle,
+                    'active_hours' => $productive,
                     'fetched_at' => now(),
                 ]
             );

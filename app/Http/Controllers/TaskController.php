@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AutomateTaskChecklistForm;
+use App\Models\AutomateTaskChecklistSubmission;
 use App\Models\Badge;
 use App\Models\DesignationMgrCheckpoint;
 use App\Models\DesignationRrCheckpoint;
@@ -1727,7 +1729,37 @@ class TaskController extends Controller
     }
 
     /**
-     * Mark a manual task Done with required completion report (Task Manager /tasks).
+     * Checklist form linked to a task via automate_task_id (for Mark as Done modal).
+     */
+    public function doneChecklist($id): JsonResponse
+    {
+        $task = Task::findOrFail($id);
+        $this->authorize('updateStatus', $task);
+
+        $form = null;
+        if ($task->automate_task_id && Schema::hasTable('automate_task_checklist_forms')) {
+            $form = AutomateTaskChecklistForm::query()
+                ->where('automate_task_id', $task->automate_task_id)
+                ->first();
+        }
+
+        $questions = ($form && is_array($form->questions)) ? $form->questions : [];
+        $hasChecklist = $form && count($questions) > 0;
+
+        return response()->json([
+            'task_id' => $task->id,
+            'automate_task_id' => $task->automate_task_id,
+            'has_checklist' => $hasChecklist,
+            'form' => $hasChecklist ? [
+                'id' => $form->id,
+                'title' => $form->title,
+                'questions' => $questions,
+            ] : null,
+        ]);
+    }
+
+    /**
+     * Mark a task Done with checklist (if linked) or normal completion report.
      */
     public function complete(Request $request, $id): JsonResponse
     {
@@ -1743,18 +1775,53 @@ class TaskController extends Controller
         $this->mergeEmptyReferenceLink($request);
         $request->merge(['report' => trim((string) $request->input('report', ''))]);
 
-        $validated = $request->validate([
-            'report' => 'required|string|min:1',
-            'reference_link' => 'nullable|url|max:2048',
-            'atc' => 'required|integer|min:1|digits_between:1,10',
-        ]);
+        $form = null;
+        if ($task->automate_task_id && Schema::hasTable('automate_task_checklist_forms')) {
+            $form = AutomateTaskChecklistForm::query()
+                ->where('automate_task_id', $task->automate_task_id)
+                ->first();
+        }
+        $questions = ($form && is_array($form->questions)) ? $form->questions : [];
+        $hasChecklist = $form && count($questions) > 0;
 
-        $task->report = $validated['report'];
-        $task->reference_link = $validated['reference_link'] ?? null;
-        $task->status = 'Done';
-        $this->applyTaskDoneEffects($task, (int) $validated['atc']);
+        if ($hasChecklist) {
+            $validated = $request->validate([
+                'checklist_answers' => 'required|array',
+                'reference_link' => 'nullable|url|max:2048',
+                'atc' => 'required|integer|min:1|digits_between:1,10',
+            ]);
 
-        $task->save();
+            $normalized = $this->normalizeChecklistAnswers($questions, $validated['checklist_answers']);
+            if ($normalized instanceof JsonResponse) {
+                return $normalized;
+            }
+
+            AutomateTaskChecklistSubmission::create([
+                'form_id' => $form->id,
+                'automate_task_id' => (int) $task->automate_task_id,
+                'submitted_by' => Auth::id(),
+                'answers' => $normalized,
+                'submitted_at' => now(),
+            ]);
+
+            $task->report = $this->formatChecklistReport($form, $questions, $normalized);
+            $task->reference_link = $validated['reference_link'] ?? null;
+            $task->status = 'Done';
+            $this->applyTaskDoneEffects($task, (int) $validated['atc']);
+            $task->save();
+        } else {
+            $validated = $request->validate([
+                'report' => 'required|string|min:1',
+                'reference_link' => 'nullable|url|max:2048',
+                'atc' => 'required|integer|min:1|digits_between:1,10',
+            ]);
+
+            $task->report = $validated['report'];
+            $task->reference_link = $validated['reference_link'] ?? null;
+            $task->status = 'Done';
+            $this->applyTaskDoneEffects($task, (int) $validated['atc']);
+            $task->save();
+        }
 
         try {
             $this->taskWhatsApp->notifyTaskDone($task->fresh());
@@ -1769,8 +1836,130 @@ class TaskController extends Controller
             'success' => true,
             'message' => 'Task completed successfully!',
             'archived' => $archived,
+            'used_checklist' => $hasChecklist,
             'task' => $task->fresh(),
         ]);
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $questions
+     * @param  array<string, mixed>  $answersIn
+     * @return array<string, mixed>|JsonResponse
+     */
+    protected function normalizeChecklistAnswers(array $questions, array $answersIn)
+    {
+        $normalized = [];
+
+        foreach ($questions as $q) {
+            $qid = (string) ($q['id'] ?? '');
+            if ($qid === '') {
+                continue;
+            }
+            $type = $q['type'] ?? 'text';
+            $required = (bool) ($q['required'] ?? false);
+            $raw = $answersIn[$qid] ?? null;
+            $label = $q['label'] ?? $qid;
+
+            if ($type === 'checkbox') {
+                $isYes = null;
+                $actions = [];
+                $corrective = '';
+
+                if (is_array($raw)) {
+                    if (array_key_exists('answer', $raw)) {
+                        $parsed = filter_var($raw['answer'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+                        $isYes = $parsed === null ? (bool) $raw['answer'] : $parsed;
+                    }
+                    if (isset($raw['actions']) && is_array($raw['actions'])) {
+                        foreach ($raw['actions'] as $act) {
+                            $act = trim((string) $act);
+                            if ($act !== '') {
+                                $actions[] = $act;
+                            }
+                        }
+                    } elseif (! empty($raw['action'])) {
+                        $actions[] = trim((string) $raw['action']);
+                    }
+                    $corrective = trim((string) ($raw['corrective_action'] ?? ''));
+                } elseif ($raw === 'yes' || $raw === 'no') {
+                    $isYes = $raw === 'yes';
+                } elseif ($raw !== null) {
+                    $parsed = filter_var($raw, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+                    $isYes = $parsed === null ? (bool) $raw : $parsed;
+                }
+
+                if ($isYes === null) {
+                    return response()->json(['message' => 'Select Yes or No for: '.$label], 422);
+                }
+                if (! $isYes && count($actions) === 0 && $corrective === '') {
+                    return response()->json([
+                        'message' => 'For "'.$label.'", enter Action or Corrective action (minimum one).',
+                    ], 422);
+                }
+
+                $normalized[$qid] = [
+                    'answer' => (bool) $isYes,
+                    'actions' => $isYes ? [] : array_values($actions),
+                    'action' => $isYes ? '' : ($actions[0] ?? ''),
+                    'corrective_action' => $isYes ? '' : $corrective,
+                ];
+            } else {
+                $val = is_string($raw) ? trim($raw) : (string) ($raw ?? '');
+                if ($required && $val === '') {
+                    return response()->json(['message' => 'Please complete required field: '.$label], 422);
+                }
+                $normalized[$qid] = $val;
+            }
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $questions
+     * @param  array<string, mixed>  $normalized
+     */
+    protected function formatChecklistReport(AutomateTaskChecklistForm $form, array $questions, array $normalized): string
+    {
+        $lines = ['Checklist Form #'.$form->id.($form->title ? ' — '.$form->title : '')];
+        $i = 1;
+        foreach ($questions as $q) {
+            $qid = (string) ($q['id'] ?? '');
+            if ($qid === '' || ! array_key_exists($qid, $normalized)) {
+                continue;
+            }
+            $label = $q['label'] ?? $qid;
+            $val = $normalized[$qid];
+            if (($q['type'] ?? '') === 'checkbox' && is_array($val)) {
+                $yes = ! empty($val['answer']);
+                $line = $i.'. '.$label.': '.($yes ? 'Yes' : 'No');
+                if (! $yes) {
+                    $acts = [];
+                    if (isset($val['actions']) && is_array($val['actions'])) {
+                        foreach ($val['actions'] as $act) {
+                            $act = trim((string) $act);
+                            if ($act !== '') {
+                                $acts[] = $act;
+                            }
+                        }
+                    } elseif (! empty($val['action'])) {
+                        $acts[] = trim((string) $val['action']);
+                    }
+                    foreach ($acts as $ai => $act) {
+                        $line .= ' | Action'.(count($acts) > 1 ? ' '.($ai + 1) : '').': '.$act;
+                    }
+                    if (! empty($val['corrective_action'])) {
+                        $line .= ' | Corrective action: '.$val['corrective_action'];
+                    }
+                }
+                $lines[] = $line;
+            } else {
+                $lines[] = $i.'. '.$label.': '.(is_scalar($val) ? (string) $val : json_encode($val));
+            }
+            $i++;
+        }
+
+        return implode("\n", $lines);
     }
 
     public function updateStatus(Request $request, $id)
@@ -2422,6 +2611,7 @@ class TaskController extends Controller
     {
         $user = Auth::user();
         $isAdmin = \App\Support\SuperAdminAccess::isTaskAdmin($user);
+        $canManageChecklist = \App\Http\Controllers\AutomatedTaskChecklistController::canManageChecklist($user);
 
         // Get active users for filter dropdowns (same behavior as task page)
         $users = User::where('is_active', true)
@@ -2442,7 +2632,7 @@ class TaskController extends Controller
             'active' => (clone $automatedQuery)->where('status', 'Todo')->count(),
         ];
 
-        return view('tasks.automated', compact('stats', 'isAdmin', 'users'));
+        return view('tasks.automated', compact('stats', 'isAdmin', 'users', 'canManageChecklist'));
     }
 
     public function getAutomatedData()
@@ -2456,9 +2646,24 @@ class TaskController extends Controller
 
         $tasks = $query->orderBy('id', 'desc')->get();
 
+        $formMeta = collect();
+        $submissionCounts = collect();
+        if (\Schema::hasTable('automate_task_checklist_forms')) {
+            $formMeta = \DB::table('automate_task_checklist_forms')
+                ->select('id', 'automate_task_id')
+                ->get()
+                ->keyBy('automate_task_id');
+        }
+        if (\Schema::hasTable('automate_task_checklist_submissions')) {
+            $submissionCounts = \DB::table('automate_task_checklist_submissions')
+                ->select('automate_task_id', \DB::raw('COUNT(*) as cnt'))
+                ->groupBy('automate_task_id')
+                ->pluck('cnt', 'automate_task_id');
+        }
+
         // Map emails to names and avatar URLs
         $defaultAvatar = asset('images/users/avatar-2.jpg');
-        $tasks->each(function($task) use ($defaultAvatar) {
+        $tasks->each(function($task) use ($defaultAvatar, $formMeta, $submissionCounts) {
             if ($task->assignor) {
                 $assignorUser = User::where('email', $task->assignor)->first();
                 $task->assignor_name = $assignorUser ? $assignorUser->name : $task->assignor;
@@ -2480,6 +2685,11 @@ class TaskController extends Controller
                 $task->assignee_name = '-';
                 $task->assignee_avatar = null;
             }
+
+            $form = $formMeta->get($task->id);
+            $task->checklist_form_id = $form->id ?? null;
+            $task->has_checklist_form = (bool) $form;
+            $task->checklist_submission_count = (int) ($submissionCounts[$task->id] ?? 0);
         });
 
         return response()->json($tasks);

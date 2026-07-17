@@ -115,10 +115,10 @@
                         <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsBgtRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsBgtRuleModal" title="Edit ACOS band thresholds and SBGT tier values">BGT RULE</button>
                         <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsSbidRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsSbidRuleModal" title="Edit U2%/U1% thresholds and CPC multipliers for suggested SBID">SBID RULE</button>
                         <span class="vr align-self-center d-none d-md-inline-block mx-1"></span>
-                        <button type="button" class="btn btn-sm btn-warning text-dark" id="amazonAdsPushSbgtBtn" title="Push SBGT tier as daily budget for the rows on this page (SP/SB only).">
+                        <button type="button" class="btn btn-sm btn-warning text-dark" id="amazonAdsPushSbgtBtn" title="Push SBGT in chunks of 10 as daily budget for the rows on this page (SP/SB only).">
                             <i class="fa fa-cloud-upload-alt"></i> SBGT
                         </button>
-                        <button type="button" class="btn btn-sm btn-warning text-dark" id="amazonAdsPushSbidBtn" title="Push the SBID shown on this page for each row (SP/SB only).">
+                        <button type="button" class="btn btn-sm btn-warning text-dark" id="amazonAdsPushSbidBtn" title="Push SBID in chunks of 10 using the values shown on this page (SP/SB only).">
                             <i class="fa fa-cloud-upload-alt"></i> SBID
                         </button>
                         <span class="vr align-self-center d-none d-md-inline-block mx-1"></span>
@@ -1067,29 +1067,106 @@
                 var origHtml = btn.innerHTML;
                 btn.disabled = true;
                 btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Pushing…';
-                amzShowPushResult(opts.loadingTitle, opts.loadingDetail, 'loading');
-                fetch(opts.url, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
-                        'X-CSRF-TOKEN': csrfToken,
-                        'X-Requested-With': 'XMLHttpRequest'
-                    },
-                    credentials: 'same-origin',
-                    body: JSON.stringify({ rows: opts.rows })
-                })
-                    .then(function (res) { return res.json().then(function (body) { return { ok: res.ok, status: res.status, body: body }; }); })
-                    .then(function (out) {
-                        var b = out.body || {};
-                        var success = out.ok && b.ok !== false && b.status !== 422 && b.status !== 500;
-                        var title = opts.label + ' — ' + (success ? 'finished' : 'failed');
-                        var text = (b.message ? b.message + '\n\n' : '') + JSON.stringify(b, null, 2);
-                        amzShowPushResult(title, text, success ? 'success' : 'error');
-                        if (success && table) Promise.resolve(table.setData()).finally(amzRefreshUiSoon);
-                    })
-                    .catch(function (err) { amzShowPushResult('Request failed', String(err && err.message ? err.message : err), 'error'); })
-                    .finally(function () { btn.innerHTML = origHtml; btn.disabled = false; });
+
+                var allRows = opts.rows;
+                var chunkSize = Number(opts.chunkSize) > 0 ? Number(opts.chunkSize) : 0;
+                var chunks = [];
+                if (chunkSize > 0) {
+                    for (var i = 0; i < allRows.length; i += chunkSize) {
+                        chunks.push(allRows.slice(i, i + chunkSize));
+                    }
+                } else {
+                    chunks = [allRows];
+                }
+
+                var total = allRows.length;
+                var chunkCount = chunks.length;
+                amzShowPushResult(
+                    opts.loadingTitle,
+                    (opts.loadingDetail || '')
+                        + (chunkCount > 1
+                            ? (' Sending in ' + chunkCount + ' chunk(s) of up to ' + chunkSize + '.')
+                            : ''),
+                    'loading'
+                );
+
+                var bodies = [];
+                var messages = [];
+                var anyError = false;
+                var doneCount = 0;
+
+                function postChunk(rows) {
+                    return fetch(opts.url, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken,
+                            'X-Requested-With': 'XMLHttpRequest'
+                        },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({ rows: rows })
+                    }).then(function (res) {
+                        return res.json().then(function (body) {
+                            return { ok: res.ok, status: res.status, body: body };
+                        }).catch(function () {
+                            throw new Error('Server returned a non-JSON response (HTTP '
+                                + res.status + '). Likely a Cloudflare/gateway timeout — retry with fewer rows.');
+                        });
+                    });
+                }
+
+                function finish(success) {
+                    var title = opts.label + ' — ' + (success ? 'finished' : 'failed');
+                    title += ' (' + total + ' row(s) in ' + chunkCount + ' chunk(s))';
+                    var text = (messages.length ? messages.join('\n') + '\n\n' : '')
+                        + bodies.map(function (b, idx) {
+                            return '--- chunk ' + (idx + 1) + '/' + chunkCount + ' ---\n'
+                                + JSON.stringify(b, null, 2);
+                        }).join('\n\n');
+                    amzShowPushResult(title, text || '(no response body)', success ? 'success' : 'error');
+                    if (success && table) Promise.resolve(table.setData()).finally(amzRefreshUiSoon);
+                    btn.innerHTML = origHtml;
+                    btn.disabled = false;
+                }
+
+                function runNext(index) {
+                    if (index >= chunks.length) {
+                        finish(!anyError);
+                        return;
+                    }
+
+                    var chunk = chunks[index];
+                    doneCount += chunk.length;
+                    btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Pushing '
+                        + doneCount + '/' + total + '…';
+                    amzShowPushResult(
+                        opts.loadingTitle,
+                        'Chunk ' + (index + 1) + '/' + chunkCount
+                            + ' (' + doneCount + '/' + total + ' row(s)). Waiting for Amazon Ads API — do not close this tab.',
+                        'loading'
+                    );
+
+                    postChunk(chunk)
+                        .then(function (out) {
+                            var b = out.body || {};
+                            var success = out.ok && b.ok !== false && b.status !== 422 && b.status !== 500;
+                            if (!success) anyError = true;
+                            if (b.message) {
+                                messages.push('[chunk ' + (index + 1) + '/' + chunkCount + '] ' + b.message);
+                            }
+                            bodies.push(b);
+                            runNext(index + 1);
+                        })
+                        .catch(function (err) {
+                            anyError = true;
+                            messages.push('[chunk ' + (index + 1) + '/' + chunkCount + '] '
+                                + String(err && err.message ? err.message : err));
+                            finish(false);
+                        });
+                }
+
+                runNext(0);
             }
 
             var pushSbidBtn = document.getElementById('amazonAdsPushSbidBtn');
@@ -1099,14 +1176,16 @@
                     var rows = amzCollectSbidRows();
                     var nSel = table && table.getSelectedData ? table.getSelectedData().length : 0;
                     var scope = nSel > 0 ? ('the ' + rows.length + ' checked row(s)') : ('all ' + rows.length + ' eligible row(s) on this page');
+                    var chunks = Math.ceil(rows.length / 10) || 1;
                     amzRunPush({
                         url: isSp ? pushSpSbidsUrl : pushSbSbidsUrl,
                         btn: pushSbidBtn,
                         rows: rows,
+                        chunkSize: 10,
                         label: 'SBID push',
-                        confirmMsg: 'Push SBID to ' + scope + '? Each row uses the SBID shown in the grid (Lbid fallback).',
+                        confirmMsg: 'Push SBID to ' + scope + '? Sends in chunks of 10 (' + chunks + ' request(s)). Each row uses the SBID shown in the grid (Lbid fallback).',
                         loadingTitle: 'Pushing SBID…',
-                        loadingDetail: 'Updating SBIDs for ' + rows.length + ' row(s). Waiting for Amazon Ads API — do not close this tab.'
+                        loadingDetail: 'Updating SBIDs for ' + rows.length + ' row(s) in chunks of 10.'
                     });
                 });
             }
@@ -1117,14 +1196,16 @@
                     var rows = amzCollectSbgtRows();
                     var nSel = table && table.getSelectedData ? table.getSelectedData().length : 0;
                     var scope = nSel > 0 ? ('the ' + rows.length + ' checked row(s)') : ('all ' + rows.length + ' eligible row(s) on this page');
+                    var chunks = Math.ceil(rows.length / 10) || 1;
                     amzRunPush({
                         url: isSp ? pushSpSbgtsUrl : pushSbSbgtsUrl,
                         btn: pushSbgtBtn,
                         rows: rows,
+                        chunkSize: 10,
                         label: 'SBGT push',
-                        confirmMsg: 'Push SBGT to ' + scope + '? Each row sets the daily budget to its SBGT tier (in dollars).',
+                        confirmMsg: 'Push SBGT to ' + scope + '? Sends in chunks of 10 (' + chunks + ' request(s)). Each row sets the daily budget to its SBGT tier (in dollars).',
                         loadingTitle: 'Pushing SBGT…',
-                        loadingDetail: 'Updating budgets for ' + rows.length + ' row(s). Waiting for Amazon Ads API — do not close this tab.'
+                        loadingDetail: 'Updating budgets for ' + rows.length + ' row(s) in chunks of 10.'
                     });
                 });
             }

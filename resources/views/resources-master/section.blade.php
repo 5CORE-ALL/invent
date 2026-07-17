@@ -81,7 +81,13 @@
     <div class="card shadow-sm mb-3">
         <div class="card-body">
             <div class="d-flex flex-wrap gap-2 mb-2">
-                <button type="button" class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#rmUploadModal"><i class="ri-upload-2-line"></i> Add resource</button>
+                <button type="button" class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#rmUploadModal">
+                    @if($section === 'checklist_forms')
+                        + Checklist Form
+                    @else
+                        <i class="ri-upload-2-line"></i> Add resource
+                    @endif
+                </button>
                 <button type="button" class="btn btn-outline-success btn-sm" data-bs-toggle="modal" data-bs-target="#rmBulkModal"><i class="ri-stack-line"></i> Bulk upload</button>
                 <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#rmCsvModal">CSV import</button>
                 <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#rmZipModal">ZIP import</button>

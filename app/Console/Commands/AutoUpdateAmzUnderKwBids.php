@@ -541,11 +541,6 @@ class AutoUpdateAmzUnderKwBids extends Command
             if ($row['INV'] > 0 && $row['campaignName'] !== '' && $baseBid > 0 && $bothLowKw && $bidOut['band'] === 'under'
                 && $row['sbid'] !== null && is_numeric($row['sbid']) && (float) $row['sbid'] > 0
                 && ($row['campaignStatus'] ?? '') === 'ENABLED') {
-                if ($price < 10 && $row['sbid'] > 0.10) {
-                    $row['sbid'] = 0.10;
-                } elseif ($price >= 10 && $price < 20 && $row['sbid'] > 0.20) {
-                    $row['sbid'] = 0.20;
-                }
                 $row['ub7'] = $ub7;
                 $row['ub1'] = $ub1;
                 AmazonBidUtilizationService::logBidDecision(

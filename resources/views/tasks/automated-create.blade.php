@@ -154,22 +154,17 @@
                             </div>
 
                             <div class="row">
-                                <div class="col-md-3 mb-2">
+                                <div class="col-md-4 mb-2">
                                     <label for="checklist_link" class="form-label fw-bold" style="font-size: 13px;">Checklist</label>
                                     <input type="text" class="form-control form-control-sm @error('checklist_link') is-invalid @enderror" 
                                            id="checklist_link" name="checklist_link" placeholder="Checklist Link" value="{{ old('checklist_link') }}">
                                 </div>
-                                <div class="col-md-3 mb-2">
-                                    <label for="pl" class="form-label fw-bold" style="font-size: 13px;">PL</label>
-                                    <input type="text" class="form-control form-control-sm @error('pl') is-invalid @enderror" 
-                                           id="pl" name="pl" placeholder="PL Link" value="{{ old('pl') }}">
-                                </div>
-                                <div class="col-md-3 mb-2">
+                                <div class="col-md-4 mb-2">
                                     <label for="image" class="form-label fw-bold" style="font-size: 13px;">Image</label>
                                     <input type="file" class="form-control form-control-sm @error('image') is-invalid @enderror" 
                                            id="image" name="image" accept="image/*">
                                 </div>
-                                <div class="col-md-3 mb-2">
+                                <div class="col-md-4 mb-2">
                                     <label for="schedule_time" class="form-label fw-bold" style="font-size: 13px;">Time <span class="text-danger">*</span></label>
                                     <input type="time" class="form-control form-control-sm" id="schedule_time" name="schedule_time" value="12:01" required>
                                 </div>

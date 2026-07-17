@@ -2856,14 +2856,9 @@ class AmazonAdsController extends Controller
         self::applyUtilizationPercentRangeFilters($query, $table, $request, true);
         self::applyCampaignStatusFilter($query, $table, $request);
 
-        if ($search !== '') {
+        if ($search !== '' && in_array('campaignName', $dbColumns, true)) {
             $escaped = addcslashes($search, '%_\\');
-            $term = '%'.$escaped.'%';
-            $query->where(function ($q) use ($dbColumns, $term) {
-                foreach ($dbColumns as $col) {
-                    $q->orWhere($col, 'LIKE', $term);
-                }
-            });
+            $query->where('campaignName', 'LIKE', '%'.$escaped.'%');
         }
 
         $recordsFiltered = (int) $query->clone()->count();
@@ -4096,26 +4091,20 @@ class AmazonAdsController extends Controller
     }
 
     /**
-     * Replicate the /amazon-ads/all DataTables global search: the term wrapped
-     * in %...% and OR-matched across every column of the table, so these badge
-     * totals line up with what the grid shows for the same typed search.
-     * Columns are qualified with the table name so the same scope also works on
-     * the joined "active" count query without ambiguous-column errors.
+     * Replicate the /amazon-ads/all search box: match campaignName only
+     * (LIKE %term%), so advertisement-master badge totals line up with the grid.
+     * Column is table-qualified for joined "active" count queries.
      *
      * @param  array<int, string>  $dbColumns
      */
     private static function applyAdvertisementMasterSearchScope(Builder $query, array $dbColumns, string $table, string $search): void
     {
-        if ($dbColumns === []) {
+        if ($search === '' || ! in_array('campaignName', $dbColumns, true)) {
             return;
         }
 
         $term = '%'.addcslashes($search, '%_\\').'%';
-        $query->where(function ($q) use ($dbColumns, $table, $term) {
-            foreach ($dbColumns as $col) {
-                $q->orWhere($table.'.'.$col, 'LIKE', $term);
-            }
-        });
+        $query->where($table.'.campaignName', 'LIKE', $term);
     }
 
     /**

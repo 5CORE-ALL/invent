@@ -47,10 +47,29 @@ class TeamLoggerService
      */
     private const CACHE_TTL_MINUTES = 30;
 
+    /**
+     * TeamLogger org settings (Employee Summary):
+     * - Timezone: GMT+0530 (Asia/Kolkata)
+     * - Day Reset: 12:00 → 11:59 next day
+     *
+     * For inclusive dates D1..D2 that means [D1 12:00, (D2+1) 11:59:59.999] in IST.
+     *
+     * @return array{0:int,1:int}
+     */
+    protected function epochRangeForDates(string $startDate, string $endDate): array
+    {
+        $tz = 'Asia/Kolkata';
+        $startTime = Carbon::parse($startDate.' 12:00:00', $tz)->utc()->getTimestamp() * 1000;
+        $endTime = Carbon::parse($endDate, $tz)->addDay()->setTime(11, 59, 59, 999000)->utc()->getTimestamp() * 1000;
+
+        return [$startTime, $endTime];
+    }
+
     public function fetchByDateRange($startDate, $endDate, $useCache = true)
     {
         try {
-            $cacheKey = "teamlogger_{$startDate}_{$endDate}";
+            // v4: IST noon day-reset (matches TeamLogger UI Day Reset / GMT+0530).
+            $cacheKey = "teamlogger_v4_{$startDate}_{$endDate}";
 
             // Layer 1: in-request static cache (avoids repeat work within a single request).
             if ($useCache && isset(self::$cache[$cacheKey])) {
@@ -60,8 +79,7 @@ class TeamLoggerService
             // Layer 2: persistent cross-request cache. The external API call can take several
             // seconds (up to a 30s timeout), so caching the processed result keeps page loads fast.
             $loader = function () use ($startDate, $endDate) {
-                $startTime = Carbon::parse($startDate)->setTime(12, 0, 0)->utc()->getTimestamp() * 1000;
-                $endTime = Carbon::parse($endDate)->addDay()->setTime(11, 59, 59)->utc()->getTimestamp() * 1000;
+                [$startTime, $endTime] = $this->epochRangeForDates($startDate, $endDate);
 
                 $response = $this->callApi($startTime, $endTime);
 
@@ -150,8 +168,10 @@ class TeamLoggerService
             $startDate = Carbon::create($year, $monthNumber, 1)->format('Y-m-d');
             $endDate = Carbon::create($year, $monthNumber)->endOfMonth()->format('Y-m-d');
 
-            Cache::forget("teamlogger_{$startDate}_{$endDate}");
-            unset(self::$cache["teamlogger_{$startDate}_{$endDate}"]);
+            foreach (['teamlogger', 'teamlogger_v2', 'teamlogger_v3', 'teamlogger_v4'] as $prefix) {
+                Cache::forget("{$prefix}_{$startDate}_{$endDate}");
+                unset(self::$cache["{$prefix}_{$startDate}_{$endDate}"]);
+            }
         } catch (\Throwable $e) {
             Log::warning('TeamLogger cache clear failed for '.$month.': '.$e->getMessage());
         }
@@ -251,31 +271,33 @@ class TeamLoggerService
 
             $emailKey = strtolower(trim($email));
 
-            // Extract hours data from various possible fields
-            $totalHours = 0;
-            $rawTotalHours = 0;
-            $idleHours = 0;
+            // Hours for payroll / salary: productive only — never include idle.
+            // Prefer totalHours - idleHours (TeamLogger "Including Idle" minus Idle).
+            // Fall back to fields that are already active/productive.
+            $rawTotalHours = isset($rec['totalHours']) ? (float) $rec['totalHours'] : 0.0;
+            $idleHours = isset($rec['idleHours']) ? (float) $rec['idleHours'] : 0.0;
+            $productiveHours = 0.0;
 
-            if (!empty($rec['totalHours'])) {
-                $rawTotalHours = floatval($rec['totalHours']);
-                $idleHours = isset($rec['idleHours']) ? floatval($rec['idleHours']) : 0;
-                $totalHours = $rawTotalHours - $idleHours;
-            } elseif (!empty($rec['onComputerHours'])) {
-                $totalHours = floatval($rec['onComputerHours']);
-            } elseif (!empty($rec['workHours'])) {
-                $totalHours = floatval($rec['workHours']);
-            } elseif (!empty($rec['hours'])) {
-                $totalHours = floatval($rec['hours']);
+            if ($rawTotalHours > 0) {
+                $productiveHours = max(0, $rawTotalHours - max(0, $idleHours));
+            } elseif (! empty($rec['productiveHours'])) {
+                $productiveHours = (float) $rec['productiveHours'];
+            } elseif (! empty($rec['activeHours'])) {
+                $productiveHours = (float) $rec['activeHours'];
+            } elseif (! empty($rec['onComputerHours'])) {
+                $productiveHours = (float) $rec['onComputerHours'];
+            } elseif (! empty($rec['workHours'])) {
+                $productiveHours = (float) $rec['workHours'];
+            } elseif (! empty($rec['hours'])) {
+                $productiveHours = (float) $rec['hours'];
             }
 
-            // Store processed data. Productive hours are rounded to the nearest whole
-            // hour: half an hour or more rounds up (e.g. 36.5h => 37h), under half
-            // rounds down (e.g. 36.2h => 36h).
+            // Productive hours rounded to nearest whole hour for payroll sheets.
             $employeeDataMap[$emailKey] = [
-                'hours' => (int) round($totalHours),
+                'hours' => (int) round($productiveHours),
                 'total_hours' => round($rawTotalHours, 2),
-                'idle_hours' => round($idleHours, 2),
-                'active_hours' => round($totalHours, 2)
+                'idle_hours' => round(max(0, $idleHours), 2),
+                'active_hours' => round($productiveHours, 2),
             ];
         }
 
@@ -310,8 +332,7 @@ class TeamLoggerService
      */
     public function fetchRaw($startDate, $endDate)
     {
-        $startTime = Carbon::parse($startDate)->setTime(12, 0, 0)->utc()->getTimestamp() * 1000;
-        $endTime = Carbon::parse($endDate)->addDay()->setTime(11, 59, 59)->utc()->getTimestamp() * 1000;
+        [$startTime, $endTime] = $this->epochRangeForDates($startDate, $endDate);
 
         return $this->callApi($startTime, $endTime);
     }

@@ -152,7 +152,11 @@ class ResourcesMasterController extends Controller
             'thumbnail' => 'nullable|image|max:5120',
         ]);
 
-        $validator->after(function ($v) use ($request) {
+        $validator->after(function ($v) use ($request, $category) {
+            // Checklist forms can be created with title only (no file/link).
+            if ($category === 'checklist_forms') {
+                return;
+            }
             if (! $request->hasFile('file') && ! $request->filled('external_link')) {
                 $v->errors()->add('file', 'Upload a file or provide an external link.');
             }
@@ -161,7 +165,7 @@ class ResourcesMasterController extends Controller
         $validator->validate();
 
         $path = null;
-        $fileType = 'link';
+        $fileType = $category === 'checklist_forms' ? 'checklist' : 'link';
         $mime = null;
         $size = null;
         $original = null;

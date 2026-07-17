@@ -1394,6 +1394,26 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(50)
             ->runInBackground()
             ->appendOutputTo($log);
+
+        /*
+        |--------------------------------------------------------------------------
+        | CRON MONITOR — watchdog + retention
+        |--------------------------------------------------------------------------
+        */
+        $schedule->command('cron-monitor:watchdog')
+            ->everyFiveMinutes()
+            ->name('cron-monitor-watchdog')
+            ->withoutOverlapping(4)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('cron-monitor:cleanup')
+            ->dailyAt('03:40')
+            ->timezone('Asia/Kolkata')
+            ->name('cron-monitor-cleanup')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
     }
 
     /**

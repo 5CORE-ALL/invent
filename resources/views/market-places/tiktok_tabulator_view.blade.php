@@ -172,22 +172,22 @@
             }
         }
 
-        /* Toolbar: keep controls above summary/table. Do NOT use overflow-x —
-           it clips Bootstrap dropdowns (Columns eye) and button bottoms.
-           Same stacking pattern as /shein-pricing. */
+        /* Toolbar: above summary/table for dropdowns, but BELOW the desktop
+           sidebar drawer (z-index 1045) and its backdrop (1040). A prior
+           z-index of 1055 made CSV / PRc / Columns paint through the open menu. */
         .tt-toolbar-row {
             position: relative;
-            z-index: 1055;
+            z-index: 20;
             row-gap: 4px;
         }
         .tt-toolbar-row .dropdown,
         .tt-toolbar-row .btn-group,
         .tt-toolbar-row .manual-dropdown-container {
             position: relative;
-            z-index: 1056;
+            z-index: 21;
         }
         .tt-toolbar-row .dropdown-menu {
-            z-index: 1060 !important;
+            z-index: 30 !important;
         }
         #summary-stats,
         #utilized-count-section {
