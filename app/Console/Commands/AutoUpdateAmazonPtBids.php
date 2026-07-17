@@ -613,12 +613,6 @@ class AutoUpdateAmazonPtBids extends Command
             $row['sbid'] = $bidOut['sbid'];
             $row['ub2'] = $ub2;
 
-            if ($price < 10 && $row['sbid'] > 0.10) {
-                $row['sbid'] = 0.10;
-            } elseif ($price >= 10 && $price < 20 && $row['sbid'] > 0.20) {
-                $row['sbid'] = 0.20;
-            }
-
             if (empty($row['campaign_id'])) {
                 continue;
             }
