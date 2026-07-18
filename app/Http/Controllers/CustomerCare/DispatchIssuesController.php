@@ -1393,30 +1393,67 @@ class DispatchIssuesController extends IssueBoardControllerBase
         $tz         = config('app.timezone');
         $days       = max(1, (int) $request->query('days', 30));
         $department = $request->query('department', '');
-        $today      = \Carbon\Carbon::now($tz)->toDateString();
-        $from       = \Carbon\Carbon::now($tz)->subDays($days - 1)->toDateString();
+        $today      = \Carbon\Carbon::now($tz)->startOfDay();
+        $chartFrom  = $today->copy()->subDays($days - 1);
+        // Need an extra (days-1) of history so the first chart point is a full L30 window.
+        $dataFrom   = $chartFrom->copy()->subDays($days - 1);
 
         $query = DB::table($this->issuesTable())
-            ->selectRaw("DATE(created_at) as day, COUNT(*) as issue_count")
-            ->whereRaw("DATE(created_at) BETWEEN ? AND ?", [$from, $today]);
+            ->selectRaw('DATE(created_at) as day, COUNT(*) as issue_count')
+            ->whereRaw('DATE(created_at) BETWEEN ? AND ?', [
+                $dataFrom->toDateString(),
+                $today->toDateString(),
+            ]);
 
         if ($department !== '') {
             CustomerCareDepartments::applyWhereDepartmentMatches($query, 'department', $department);
         }
 
-        $rows = $query->groupByRaw("DATE(created_at)")
-            ->orderByRaw("DATE(created_at)")
-            ->get();
+        $rawDaily = [];
+        foreach ($query->groupByRaw('DATE(created_at)')->orderByRaw('DATE(created_at)')->get() as $row) {
+            $key = \Carbon\Carbon::parse($row->day)->timezone($tz)->toDateString();
+            $rawDaily[$key] = (int) $row->issue_count;
+        }
+
+        // Fill every calendar day so rolling sums stay correct across gaps.
+        $dailyCounts = [];
+        for ($d = $dataFrom->copy(); $d->lte($today); $d->addDay()) {
+            $key = $d->toDateString();
+            $dailyCounts[$key] = $rawDaily[$key] ?? 0;
+        }
+
+        // Each chart point = trailing N-day total ending on that date (not that day's count).
+        $series = [];
+        $orderedKeys = array_keys($dailyCounts);
+        $running = 0;
+        $window = [];
+        foreach ($orderedKeys as $key) {
+            $window[] = $dailyCounts[$key];
+            $running += $dailyCounts[$key];
+            if (count($window) > $days) {
+                $running -= array_shift($window);
+            }
+            $end = \Carbon\Carbon::parse($key, $tz)->startOfDay();
+            if ($end->lt($chartFrom)) {
+                continue;
+            }
+            $periodFrom = $end->copy()->subDays($days - 1)->toDateString();
+            $series[] = [
+                'date'        => $key,
+                'count'       => $running,
+                'period_from' => $periodFrom,
+                'period_to'   => $key,
+            ];
+        }
+
+        $total = (int) ($series[count($series) - 1]['count'] ?? 0);
 
         return response()->json([
-            'total' => (int) $rows->sum('issue_count'),
-            'from'  => $from,
-            'to'    => $today,
-            'days'  => $days,
-            'daily' => $rows->map(fn ($r) => [
-                'date'  => $r->day,
-                'count' => (int) $r->issue_count,
-            ])->values(),
+            'total'  => $total,
+            'from'   => $chartFrom->toDateString(),
+            'to'     => $today->toDateString(),
+            'days'   => $days,
+            'daily'  => $series,
         ]);
     }
 
@@ -1425,24 +1462,26 @@ class DispatchIssuesController extends IssueBoardControllerBase
         $tz         = config('app.timezone');
         $days       = max(1, (int) $request->query('days', 30));
         $department = $request->query('department', '');
-        $today      = \Carbon\Carbon::now($tz)->toDateString();
-        $from       = \Carbon\Carbon::now($tz)->subDays($days - 1)->toDateString();
+        $today      = \Carbon\Carbon::now($tz)->startOfDay();
+        $chartFrom  = $today->copy()->subDays($days - 1);
+        // Extra (days-1) of history so the first chart point is a full L30 window.
+        $dataFrom   = $chartFrom->copy()->subDays($days - 1);
 
-        // Per-row loss is now derived from amazon_datsheets.price ×
-        // issue.order_qty (matches the Loss $ column in the All Issues
-        // table). We pull the raw issue rows for the window and aggregate in
-        // PHP because the SKU normalization needed to join against
-        // amazon_datsheets isn't expressible in plain SQL (spaces stripped +
-        // piece-count fold).
+        // Per-row loss is derived from amazon_datsheets.price × issue.order_qty
+        // (matches the Loss $ column). Aggregated in PHP because SKU
+        // normalization for the amazon join isn't expressible in plain SQL.
         $query = DB::table($this->issuesTable())
             ->select('sku', 'qty', 'order_qty', 'created_at')
-            ->whereRaw("DATE(created_at) BETWEEN ? AND ?", [$from, $today]);
+            ->whereRaw('DATE(created_at) BETWEEN ? AND ?', [
+                $dataFrom->toDateString(),
+                $today->toDateString(),
+            ]);
 
         if ($department !== '') {
             CustomerCareDepartments::applyWhereDepartmentMatches($query, 'department', $department);
         }
 
-        $issueRows = $query->orderByRaw("DATE(created_at)")->get();
+        $issueRows = $query->orderByRaw('DATE(created_at)')->get();
 
         $rawSkus = $issueRows->pluck('sku')
             ->map(fn ($s) => trim((string) $s))
@@ -1474,24 +1513,53 @@ class DispatchIssuesController extends IssueBoardControllerBase
             }
         }
 
-        ksort($perDay);
-        $daily = [];
-        $total = 0.0;
-        foreach ($perDay as $day => $agg) {
-            $loss = round((float) $agg['loss'], 2);
-            $total += $loss;
-            $daily[] = [
-                'date'  => $day,
-                'loss'  => $loss,
-                'count' => (int) $agg['count'],
+        // Fill every calendar day so rolling sums stay correct across gaps.
+        $dailyLoss = [];
+        $dailyCount = [];
+        for ($d = $dataFrom->copy(); $d->lte($today); $d->addDay()) {
+            $key = $d->toDateString();
+            $dailyLoss[$key] = (float) ($perDay[$key]['loss'] ?? 0.0);
+            $dailyCount[$key] = (int) ($perDay[$key]['count'] ?? 0);
+        }
+
+        // Each chart point = trailing N-day loss total ending that date.
+        $series = [];
+        $orderedKeys = array_keys($dailyLoss);
+        $runningLoss = 0.0;
+        $runningCount = 0;
+        $windowLoss = [];
+        $windowCount = [];
+        foreach ($orderedKeys as $key) {
+            $windowLoss[] = $dailyLoss[$key];
+            $windowCount[] = $dailyCount[$key];
+            $runningLoss += $dailyLoss[$key];
+            $runningCount += $dailyCount[$key];
+            if (count($windowLoss) > $days) {
+                $runningLoss -= array_shift($windowLoss);
+                $runningCount -= array_shift($windowCount);
+            }
+            $end = \Carbon\Carbon::parse($key, $tz)->startOfDay();
+            if ($end->lt($chartFrom)) {
+                continue;
+            }
+            $periodFrom = $end->copy()->subDays($days - 1)->toDateString();
+            $series[] = [
+                'date'        => $key,
+                'loss'        => round($runningLoss, 2),
+                'count'       => $runningCount,
+                'period_from' => $periodFrom,
+                'period_to'   => $key,
             ];
         }
 
+        $total = (float) ($series[count($series) - 1]['loss'] ?? 0.0);
+
         return response()->json([
             'total' => round($total, 2),
-            'from'  => $from,
-            'to'    => $today,
-            'daily' => $daily,
+            'from'  => $chartFrom->toDateString(),
+            'to'    => $today->toDateString(),
+            'days'  => $days,
+            'daily' => $series,
         ]);
     }
 

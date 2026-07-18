@@ -102,7 +102,36 @@
         }
         .amz-ads-missing .link-chip .chip-x {
             cursor: pointer;
+            color: #868e96;
+            margin-left: 2px;
+        }
+        .amz-ads-missing .link-chip .chip-x:hover {
+            color: #495057;
+        }
+        .amz-ads-missing .link-chip .chip-trash {
+            cursor: pointer;
             color: #e03131;
+            margin-left: 2px;
+        }
+        .amz-ads-missing .link-chip .chip-trash:hover {
+            color: #c92a2a;
+        }
+        .amz-ads-missing .amz-create-btn {
+            border: 1px solid #2f9e44;
+            background: #fff;
+            color: #2f9e44;
+            border-radius: 6px;
+            padding: 0 8px;
+            line-height: 1.4;
+            cursor: pointer;
+            font-weight: 700;
+        }
+        .amz-ads-missing .amz-create-btn:hover {
+            background: #ebfbee;
+        }
+        .amz-ads-missing .amz-create-btn:disabled {
+            opacity: 0.55;
+            cursor: not-allowed;
         }
         .amz-ads-missing .campaign-dot {
             display: inline-block;
@@ -205,6 +234,188 @@
     </div>
 @endsection
 
+@section('modal')
+    <div class="modal fade" id="amzCreateCampaignModal" tabindex="-1" aria-labelledby="amzCreateCampaignModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title" id="amzCreateCampaignModalLabel">Create Amazon SP Campaign (AUTO / PT)</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-info py-2 small mb-3">
+                        Creates <strong>one PAUSED</strong> Sponsored Products <strong>AUTO</strong> campaign for the parent
+                        (e.g. <code>PARENT PMX</code>). Selected child SKUs become product ads
+                        (Amazon seller rule: ads use seller <code>sku</code>; ASIN is shown for verification).
+                        Campaign negative keywords support Phrase / Exact only (not Broad).
+                    </div>
+                    <form id="amzCreateCampaignForm">
+                        <input type="hidden" id="amzCreateParent" name="parent">
+                        <div class="row g-2 mb-2">
+                            <div class="col-md-4">
+                                <label class="form-label small mb-1">Parent</label>
+                                <input type="text" class="form-control form-control-sm" id="amzCreateParentDisplay" readonly>
+                            </div>
+                            <div class="col-md-8">
+                                <label class="form-label small mb-1">Campaign name</label>
+                                <input type="text" class="form-control form-control-sm" id="amzCreateCampaignName" name="campaign_name" required placeholder="PARENT PMX" maxlength="128">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small mb-1">Daily budget ($)</label>
+                                <input type="number" class="form-control form-control-sm" id="amzCreateBudget" name="budget_amount" min="1" step="0.01" value="10">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small mb-1">Default bid ($)</label>
+                                <input type="number" class="form-control form-control-sm" id="amzCreateDefaultBid" name="default_bid" min="0.02" step="0.01" value="0.50">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small mb-1">Link as</label>
+                                <select class="form-select form-select-sm" id="amzCreateType">
+                                    <option value="PT" selected>PT (AUTO product targeting)</option>
+                                    <option value="KW">KW</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="d-flex align-items-center justify-content-between mb-1">
+                            <label class="form-label small mb-0 fw-semibold">
+                                Child SKUs in this campaign
+                                <span class="text-muted fw-normal" id="amzCreateChildCount"></span>
+                            </label>
+                            <div class="btn-group btn-group-sm">
+                                <button type="button" class="btn btn-outline-secondary" id="amzCreateSelectAll">Select all</button>
+                                <button type="button" class="btn btn-outline-secondary" id="amzCreateSelectNone">Select none</button>
+                            </div>
+                        </div>
+                        <div class="table-responsive border rounded" style="max-height: 320px;">
+                            <table class="table table-sm table-hover mb-0 align-middle" id="amzCreateChildrenTable">
+                                <thead class="table-light sticky-top">
+                                    <tr>
+                                        <th style="width:36px;"></th>
+                                        <th style="min-width:140px;">Seller SKU</th>
+                                        <th style="min-width:140px;">ASIN</th>
+                                        <th style="width:60px;">Inv</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="amzCreateChildrenBody"></tbody>
+                            </table>
+                        </div>
+                        <input type="hidden" id="amzCreateTargetSku" value="">
+
+                        <div class="mt-2">
+                            <a href="#" id="amzCreateAiNegLink" class="small fw-semibold">
+                                <i class="fa fa-magic me-1"></i> Generate AI negative keywords for this product
+                            </a>
+                        </div>
+                    </form>
+                    <div class="text-danger small mt-2 d-none" id="amzCreateError"></div>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-light btn-sm" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-success btn-sm" id="amzCreateSubmitBtn">
+                        <i class="fa fa-plus me-1"></i> Create campaign
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="amzAiNegModal" tabindex="-1" aria-labelledby="amzAiNegModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title" id="amzAiNegModalLabel">AI Negative Keywords (Amazon SP)</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted mb-2" id="amzAiNegSubtitle">Generating suggestions for this product…</p>
+                    <div id="amzAiNegLoading" class="text-center py-4 d-none">
+                        <i class="fa fa-spinner fa-spin fa-2x text-primary"></i>
+                        <div class="small text-muted mt-2">Asking AI for negative keywords…</div>
+                    </div>
+                    <div id="amzAiNegError" class="alert alert-danger py-2 small d-none"></div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold mb-1" for="amzAiNegIdeas">Your ideas (optional)</label>
+                        <textarea class="form-control form-control-sm" id="amzAiNegIdeas" rows="2"
+                            placeholder="e.g. block karaoke, wedding DJ, DJ controller, karaoke mic…"></textarea>
+                        <div class="form-text small">Add themes or sample negatives; AI will expand them into more keywords.</div>
+                    </div>
+                    <div id="amzAiNegExistingWrap" class="mb-3 d-none">
+                        <div class="d-flex align-items-center justify-content-between mb-1">
+                            <div class="fw-semibold small">Already on Amazon KW(-) for this parent</div>
+                            <span class="badge text-bg-secondary" id="amzAiNegExistingCount">0</span>
+                        </div>
+                        <div id="amzAiNegExisting" class="border rounded p-2 small bg-light" style="max-height:120px;overflow:auto;"></div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold mb-1" for="amzAiNegManualInput">Add manual negative keyword</label>
+                        <div class="input-group input-group-sm">
+                            <input type="text" class="form-control" id="amzAiNegManualInput"
+                                placeholder="Type a keyword and press Add (or Enter)">
+                            <button type="button" class="btn btn-outline-success" id="amzAiNegManualAddBtn" title="Add to list">
+                                <i class="fa fa-plus me-1"></i> Add
+                            </button>
+                        </div>
+                    </div>
+                    <div id="amzAiNegSuggestedWrap" class="d-none">
+                        <div class="d-flex align-items-center justify-content-between mb-1">
+                            <div class="fw-semibold small">
+                                Negatives to push
+                                <span class="badge text-bg-danger ms-1" id="amzAiNegSuggestedCount">0</span>
+                            </div>
+                            <div class="btn-group btn-group-sm">
+                                <button type="button" class="btn btn-outline-secondary" id="amzAiNegCopyBtn" title="Copy all">
+                                    <i class="fa fa-copy me-1"></i> Copy
+                                </button>
+                                <button type="button" class="btn btn-outline-secondary" id="amzAiNegExportBtn" title="Export keywords CSV">
+                                    <i class="fa fa-file-csv me-1"></i> Export CSV
+                                </button>
+                            </div>
+                        </div>
+                        <ul id="amzAiNegSuggested" class="list-group list-group-flush border rounded" style="max-height:280px;overflow:auto;"></ul>
+                    </div>
+                    <div class="border rounded p-2 mt-3 bg-light" id="amzAiNegPushWrap">
+                        <div class="fw-semibold small mb-2">Push to Amazon SP campaign (campaign-level)</div>
+                        <div class="row g-2 align-items-end">
+                            <div class="col-md-5">
+                                <label class="form-label small mb-1" for="amzAiNegMatchType">Match type</label>
+                                <select class="form-select form-select-sm" id="amzAiNegMatchType">
+                                    <option value="PHRASE" selected>Phrase (NEGATIVE_PHRASE)</option>
+                                    <option value="EXACT">Exact (NEGATIVE_EXACT)</option>
+                                </select>
+                            </div>
+                            <div class="col-md-7">
+                                <div class="form-check mt-3">
+                                    <input class="form-check-input" type="checkbox" id="amzAiNegIncludeExisting" checked>
+                                    <label class="form-check-label small" for="amzAiNegIncludeExisting">
+                                        Also push existing Amazon KW(-) negatives for this parent
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-text small mt-1">
+                            Pushes campaign negatives to the PT/AUTO campaign for this parent (create it first). Broad is not available at campaign level on Amazon.
+                        </div>
+                        <div class="text-success small mt-2 d-none" id="amzAiNegPushOk"></div>
+                    </div>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-light btn-sm" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="amzAiNegAddMoreBtn" title="Generate more using your ideas">
+                        <i class="fa fa-plus me-1"></i> Add more from ideas
+                    </button>
+                    <button type="button" class="btn btn-primary btn-sm" id="amzAiNegRegenBtn">
+                        <i class="fa fa-sync me-1"></i> Regenerate
+                    </button>
+                    <button type="button" class="btn btn-success btn-sm" id="amzAiNegPushBtn" title="Push negatives to Amazon Ads">
+                        <i class="fa fa-cloud-upload-alt me-1"></i> Push Negative Keywords
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+@endsection
+
 @section('script')
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script>
@@ -213,7 +424,15 @@
             var campaignsUrl = @json(route('amazon.ads.missing.campaigns'));
             var linkUrl = @json(route('amazon.ads.missing.link'));
             var unlinkUrl = @json(route('amazon.ads.missing.unlink'));
+            var createUrl = @json(route('amazon.ads.missing.create'));
+            var deleteUrl = @json(route('amazon.ads.missing.delete'));
+            var aiNegUrl = @json(route('amazon.ads.missing.ai-negatives'));
+            var pushNegUrl = @json(route('amazon.ads.missing.push-negatives'));
             var csrfToken = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+            var lastCreatedCampaignId = '';
+            var aiNegSuggestedCache = [];
+            var aiNegExistingCache = [];
+            var aiNegMeta = { parent: '', target_sku: '', product_title: '' };
 
             function esc(str) {
                 return String(str == null ? '' : str)
@@ -279,10 +498,20 @@
                     var d = cell.getData();
                     var list = (type === 'PT' ? d.pt : d.kw) || [];
                     var chips = list.map(function (c) {
+                        var canArchive = !!(c && (c.campaign_id || c.campaign_name));
                         return '<span class="link-chip" title="' + esc(c.campaign_name) + '">'
                             + statusDot(c)
                             + esc(c.campaign_name)
-                            + ' <i class="fa fa-times chip-x" data-id="' + c.id + '" data-sku="' + esc(d.sku) + '"></i></span>';
+                            + ' <i class="fa fa-times chip-x" title="Unlink only" data-id="' + c.id + '" data-sku="' + esc(d.sku) + '"></i>'
+                            + (canArchive
+                                ? ' <i class="fa fa-trash chip-trash" title="Archive campaign in Amazon Ads"'
+                                    + ' data-sku="' + esc(d.sku) + '"'
+                                    + ' data-id="' + esc(c.id || '') + '"'
+                                    + ' data-type="' + esc(type) + '"'
+                                    + ' data-campaign-id="' + esc(c.campaign_id || '') + '"'
+                                    + ' data-campaign-name="' + esc(c.campaign_name || '') + '"></i>'
+                                : '')
+                            + '</span>';
                     }).join('');
                     return chips
                         + '<button type="button" class="link-add-btn" data-sku="' + esc(d.sku) + '" data-type="' + type + '" title="Link the selected campaign as ' + type + '"><i class="fa fa-plus"></i></button>';
@@ -300,6 +529,117 @@
                     },
                     body: JSON.stringify(payload)
                 }).then(function (res) { return res.json().then(function (b) { return { ok: res.ok, body: b }; }); });
+            }
+
+            function getCreateModal() {
+                var el = document.getElementById('amzCreateCampaignModal');
+                return el && window.bootstrap ? bootstrap.Modal.getOrCreateInstance(el) : null;
+            }
+            function getAiNegModal() {
+                var el = document.getElementById('amzAiNegModal');
+                return el && window.bootstrap ? bootstrap.Modal.getOrCreateInstance(el) : null;
+            }
+
+            function stripCampaignTypeSuffix(name) {
+                var n = String(name || '').trim().replace(/\s+/g, ' ');
+                // Drop trailing PT/KW (and repeats) so we can re-apply the selected type.
+                while (/\s+(PT|KW)$/i.test(n)) {
+                    n = n.replace(/\s+(PT|KW)$/i, '').trim();
+                }
+                return n;
+            }
+
+            function applyCampaignTypeSuffix(type) {
+                var input = document.getElementById('amzCreateCampaignName');
+                if (!input) { return; }
+                var t = String(type || 'PT').toUpperCase() === 'KW' ? 'KW' : 'PT';
+                var base = stripCampaignTypeSuffix(input.value);
+                if (!base) {
+                    var parent = document.getElementById('amzCreateParent').value || '';
+                    base = parent ? ('PARENT ' + parent) : 'PARENT';
+                }
+                input.value = base + ' ' + t;
+            }
+
+            function pickLinkedCampaignId(d, preferType) {
+                var lists = [];
+                var t = String(preferType || 'PT').toUpperCase();
+                if (t === 'KW') {
+                    lists = [d.kw || [], d.pt || []];
+                } else {
+                    lists = [d.pt || [], d.kw || []];
+                }
+                for (var i = 0; i < lists.length; i++) {
+                    var list = lists[i];
+                    for (var j = 0; j < list.length; j++) {
+                        var cid = list[j] && list[j].campaign_id ? String(list[j].campaign_id) : '';
+                        if (cid) { return cid; }
+                    }
+                }
+                return '';
+            }
+
+            function openCreateModal(d) {
+                // Prefer an already-linked campaign id so Push Negatives works without re-create.
+                lastCreatedCampaignId = pickLinkedCampaignId(d, 'PT');
+                document.getElementById('amzCreateParent').value = d.parent || '';
+                document.getElementById('amzCreateParentDisplay').value = d.parent || '';
+                document.getElementById('amzCreateCampaignName').value = d.sku || ('PARENT ' + (d.parent || ''));
+                document.getElementById('amzCreateBudget').value = '10';
+                document.getElementById('amzCreateDefaultBid').value = '0.50';
+                document.getElementById('amzCreateType').value = 'PT';
+                applyCampaignTypeSuffix('PT');
+                // If a PT/KW chip already exists, use that campaign name for push targeting.
+                var preferList = (Array.isArray(d.pt) && d.pt.length) ? d.pt : (d.kw || []);
+                if (preferList.length && preferList[0].campaign_name) {
+                    document.getElementById('amzCreateCampaignName').value = preferList[0].campaign_name;
+                    if (Array.isArray(d.kw) && d.kw[0] && d.kw[0].campaign_name === preferList[0].campaign_name) {
+                        document.getElementById('amzCreateType').value = 'KW';
+                    }
+                }
+                document.getElementById('amzCreateTargetSku').value = d.target_sku || '';
+                document.getElementById('amzCreateError').classList.add('d-none');
+                document.getElementById('amzCreateError').textContent = '';
+
+                var children = Array.isArray(d.children) ? d.children : [];
+                var body = document.getElementById('amzCreateChildrenBody');
+                body.innerHTML = children.map(function (c, idx) {
+                    var sku = c.target_sku || '';
+                    var asin = c.asin || '';
+                    var inv = (c.inv == null ? 0 : Number(c.inv)) || 0;
+                    var disabled = !asin;
+                    var checked = !disabled && inv > 0 ? ' checked' : (!disabled && children.length === 1 ? ' checked' : '');
+                    return '<tr class="' + (disabled ? 'table-secondary' : '') + '">'
+                        + '<td><input type="checkbox" class="form-check-input amz-child-check" data-idx="' + idx + '"'
+                        + (disabled ? ' disabled' : '') + checked + '></td>'
+                        + '<td class="amz-child-sku">' + esc(sku) + '</td>'
+                        + '<td class="amz-child-asin ' + (asin ? '' : 'text-danger') + '">' + esc(asin || '— missing ASIN') + '</td>'
+                        + '<td class="text-end">' + inv.toLocaleString('en-US') + '</td>'
+                        + '</tr>';
+                }).join('');
+                document.getElementById('amzCreateChildCount').textContent = '(' + children.length + ')';
+                syncCreateAiHiddenFromSelection();
+                var modal = getCreateModal();
+                if (modal) { modal.show(); }
+            }
+
+            function collectSelectedChildren() {
+                var rows = [];
+                document.querySelectorAll('#amzCreateChildrenBody tr').forEach(function (tr) {
+                    var cb = tr.querySelector('.amz-child-check');
+                    if (!cb || !cb.checked || cb.disabled) { return; }
+                    rows.push({
+                        target_sku: (tr.querySelector('.amz-child-sku') || {}).textContent || '',
+                        asin: ((tr.querySelector('.amz-child-asin') || {}).textContent || '').replace('— missing ASIN', '').trim()
+                    });
+                });
+                return rows;
+            }
+
+            function syncCreateAiHiddenFromSelection() {
+                var selected = collectSelectedChildren();
+                var first = selected[0] || null;
+                document.getElementById('amzCreateTargetSku').value = first ? first.target_sku : '';
             }
 
             function buildTable(campaignNames) {
@@ -342,6 +682,20 @@
                             formatter: function (cell) {
                                 var v = cell.getValue();
                                 return (v == null || v === '') ? '' : Number(v).toLocaleString('en-US');
+                            }
+                        },
+                        {
+                            title: 'Create', field: 'sku', width: 80,
+                            hozAlign: 'center', headerHozAlign: 'center',
+                            headerSort: false,
+                            formatter: function (cell) {
+                                var d = cell.getData();
+                                var hasPt = Array.isArray(d.pt) && d.pt.length > 0;
+                                var title = hasPt
+                                    ? 'PT already linked — create another AUTO campaign?'
+                                    : 'Create Amazon AUTO SP campaign for this parent';
+                                return '<button type="button" class="amz-create-btn" data-sku="' + esc(d.sku || '') + '" title="' + esc(title) + '">'
+                                    + '<i class="fa fa-plus"></i></button>';
                             }
                         },
                         {
@@ -575,6 +929,29 @@
                         return;
                     }
 
+                    var createBtn = e.target.closest('.amz-create-btn');
+                    if (createBtn) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        var createSku = createBtn.getAttribute('data-sku') || '';
+                        var createRow = null;
+                        try {
+                            if (createSku) { createRow = table.getRow(createSku); }
+                        } catch (err) { createRow = null; }
+                        if (!createRow) {
+                            var rowEl = createBtn.closest('.tabulator-row');
+                            if (rowEl) {
+                                try { createRow = table.getRow(rowEl); } catch (err2) { createRow = null; }
+                            }
+                        }
+                        if (createRow) {
+                            openCreateModal(createRow.getData());
+                        } else {
+                            window.alert('Could not load row data for Create.');
+                        }
+                        return;
+                    }
+
                     // "+" — open the campaign picker for this row + type.
                     var addBtn = e.target.closest('.link-add-btn');
                     if (addBtn) {
@@ -582,7 +959,7 @@
                         return;
                     }
 
-                    // "x" — remove a linked campaign.
+                    // "x" — unlink only (local).
                     var x = e.target.closest('.chip-x');
                     if (x) {
                         var id = x.getAttribute('data-id');
@@ -596,7 +973,417 @@
                                 updateMissingBadges();
                             }
                         });
+                        return;
                     }
+
+                    // Trash — archive in Amazon Ads + unlink.
+                    var trash = e.target.closest('.chip-trash');
+                    if (trash) {
+                        var delSku = trash.getAttribute('data-sku') || '';
+                        var delName = trash.getAttribute('data-campaign-name') || '';
+                        var delCid = trash.getAttribute('data-campaign-id') || '';
+                        var delLinkId = trash.getAttribute('data-id') || '';
+                        var delType = trash.getAttribute('data-type') || '';
+                        var confirmMsg = 'Archive campaign in Amazon Ads?\n\n'
+                            + (delName || delCid)
+                            + '\n\nAmazon does not hard-delete campaigns — this sets state to ARCHIVED and unlinks it here.';
+                        if (!window.confirm(confirmMsg)) {
+                            return;
+                        }
+                        trash.style.opacity = '0.4';
+                        postForm(deleteUrl, {
+                            sku: delSku,
+                            campaign_id: delCid,
+                            campaign_name: delName,
+                            link_id: delLinkId ? Number(delLinkId) : null,
+                            type: delType || null
+                        }).then(function (out) {
+                            trash.style.opacity = '';
+                            if (out.ok && out.body && out.body.ok) {
+                                var rDel = table.getRow(delSku);
+                                if (rDel) {
+                                    rDel.update({ pt: out.body.pt || [], kw: out.body.kw || [] });
+                                }
+                                updateMissingBadges();
+                                window.alert(out.body.message || 'Campaign archived.');
+                            } else {
+                                window.alert((out.body && out.body.message) || 'Failed to archive campaign.');
+                            }
+                        }).catch(function () {
+                            trash.style.opacity = '';
+                            window.alert('Network error archiving campaign.');
+                        });
+                    }
+                });
+
+                function normalizeNegItem(kw, source) {
+                    return { text: String(kw || '').trim(), source: source || 'ai' };
+                }
+                function mergeUniqueNegItems(a, b) {
+                    var out = [];
+                    var seen = {};
+                    (a || []).concat(b || []).forEach(function (item) {
+                        var t = (item && item.text) ? String(item.text).trim() : '';
+                        if (!t) { return; }
+                        var key = t.toLowerCase();
+                        if (seen[key]) { return; }
+                        seen[key] = true;
+                        out.push({ text: t, source: item.source || 'ai' });
+                    });
+                    return out;
+                }
+                function getSuggestedTexts() {
+                    return aiNegSuggestedCache.map(function (i) { return i.text; }).filter(Boolean);
+                }
+                function renderSuggestedList() {
+                    var wrap = document.getElementById('amzAiNegSuggestedWrap');
+                    var list = document.getElementById('amzAiNegSuggested');
+                    var countEl = document.getElementById('amzAiNegSuggestedCount');
+                    if (countEl) { countEl.textContent = String(aiNegSuggestedCache.length); }
+                    if (!aiNegSuggestedCache.length) {
+                        wrap.classList.add('d-none');
+                        list.innerHTML = '';
+                        list.dataset.copyText = '';
+                        return;
+                    }
+                    wrap.classList.remove('d-none');
+                    list.innerHTML = aiNegSuggestedCache.map(function (item, idx) {
+                        var badge = item.source === 'manual'
+                            ? '<span class="badge text-bg-success ms-1">manual</span>'
+                            : '<span class="badge text-bg-primary ms-1">ai</span>';
+                        return '<li class="list-group-item d-flex justify-content-between align-items-center py-1 px-2">'
+                            + '<span class="small">' + esc(item.text) + badge + '</span>'
+                            + '<button type="button" class="btn btn-sm btn-link text-danger amz-ai-neg-del p-0" data-idx="' + idx + '" title="Remove">'
+                            + '<i class="fa fa-times"></i></button></li>';
+                    }).join('');
+                    list.dataset.copyText = getSuggestedTexts().join('\n');
+                }
+                function addManualNegativeKeyword(raw) {
+                    var text = String(raw || '').trim();
+                    if (!text) { return false; }
+                    var next = mergeUniqueNegItems(aiNegSuggestedCache, [normalizeNegItem(text, 'manual')]);
+                    if (next.length === aiNegSuggestedCache.length) { return false; }
+                    aiNegSuggestedCache = next;
+                    renderSuggestedList();
+                    return true;
+                }
+                function exportNegativesCsv() {
+                    var rows = [['keyword', 'source']].concat(
+                        aiNegSuggestedCache.map(function (i) { return [i.text, i.source || 'ai']; })
+                    );
+                    if (document.getElementById('amzAiNegIncludeExisting').checked && aiNegExistingCache.length) {
+                        aiNegExistingCache.forEach(function (kw) {
+                            rows.push([kw, 'amazon_kw']);
+                        });
+                    }
+                    var csv = rows.map(function (r) {
+                        return r.map(function (cell) {
+                            var s = String(cell == null ? '' : cell);
+                            if (/[",\n]/.test(s)) { return '"' + s.replace(/"/g, '""') + '"'; }
+                            return s;
+                        }).join(',');
+                    }).join('\n');
+                    var parent = (aiNegMeta.parent || 'parent').replace(/[^\w\-]+/g, '_');
+                    var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                    var url = URL.createObjectURL(blob);
+                    var a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'amazon-negative-keywords-' + parent + '-' + new Date().toISOString().slice(0, 10) + '.csv';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                }
+                function renderAiNegatives(payload, options) {
+                    options = options || {};
+                    var existing = Array.isArray(payload.existing) ? payload.existing : [];
+                    var suggested = Array.isArray(payload.suggested) ? payload.suggested : [];
+                    var incoming = suggested.map(function (kw) { return normalizeNegItem(kw, 'ai'); });
+                    if (options.append) {
+                        aiNegSuggestedCache = mergeUniqueNegItems(aiNegSuggestedCache, incoming);
+                    } else {
+                        var manuals = aiNegSuggestedCache.filter(function (i) { return i.source === 'manual'; });
+                        aiNegSuggestedCache = mergeUniqueNegItems(manuals, incoming);
+                    }
+                    aiNegExistingCache = existing.slice();
+                    aiNegMeta = {
+                        parent: payload.parent || aiNegMeta.parent || '',
+                        target_sku: payload.target_sku || aiNegMeta.target_sku || '',
+                        product_title: payload.product_title || aiNegMeta.product_title || ''
+                    };
+                    var existingWrap = document.getElementById('amzAiNegExistingWrap');
+                    var existingEl = document.getElementById('amzAiNegExisting');
+                    var existingCountEl = document.getElementById('amzAiNegExistingCount');
+                    if (existingCountEl) { existingCountEl.textContent = String(existing.length); }
+                    if (existing.length) {
+                        existingWrap.classList.remove('d-none');
+                        existingEl.textContent = existing.join(', ');
+                    } else {
+                        existingWrap.classList.add('d-none');
+                        existingEl.textContent = '';
+                    }
+                    renderSuggestedList();
+                }
+                function setAiNegBusy(busy) {
+                    document.getElementById('amzAiNegRegenBtn').disabled = !!busy;
+                    document.getElementById('amzAiNegAddMoreBtn').disabled = !!busy;
+                }
+                function runAiNegatives(options) {
+                    options = options || {};
+                    var append = !!options.append;
+                    var parent = document.getElementById('amzCreateParent').value || '';
+                    var targetSku = document.getElementById('amzCreateTargetSku').value || '';
+                    var campaignName = document.getElementById('amzCreateCampaignName').value || '';
+                    var ideas = (document.getElementById('amzAiNegIdeas').value || '').trim();
+                    var loading = document.getElementById('amzAiNegLoading');
+                    var errEl = document.getElementById('amzAiNegError');
+                    var suggestedWrap = document.getElementById('amzAiNegSuggestedWrap');
+                    var existingWrap = document.getElementById('amzAiNegExistingWrap');
+                    if (append && !ideas) {
+                        errEl.textContent = 'Enter ideas above, then click Add more from ideas.';
+                        errEl.classList.remove('d-none');
+                        return;
+                    }
+                    errEl.classList.add('d-none');
+                    errEl.textContent = '';
+                    if (!append) {
+                        suggestedWrap.classList.add('d-none');
+                        existingWrap.classList.add('d-none');
+                        aiNegSuggestedCache = aiNegSuggestedCache.filter(function (i) {
+                            return i && i.source === 'manual';
+                        });
+                    }
+                    loading.classList.remove('d-none');
+                    setAiNegBusy(true);
+                    postForm(aiNegUrl, {
+                        parent: parent,
+                        target_sku: targetSku,
+                        campaign_name: campaignName,
+                        ideas: ideas,
+                        already_suggested: getSuggestedTexts(),
+                        mode: append ? 'add_more' : 'generate'
+                    }).then(function (out) {
+                        loading.classList.add('d-none');
+                        setAiNegBusy(false);
+                        if (out.ok && out.body && out.body.ok) {
+                            renderAiNegatives(out.body, { append: append });
+                        } else {
+                            errEl.textContent = (out.body && out.body.message) || 'Failed to generate negative keywords.';
+                            errEl.classList.remove('d-none');
+                            if (append && aiNegSuggestedCache.length) {
+                                suggestedWrap.classList.remove('d-none');
+                            }
+                        }
+                    }).catch(function () {
+                        loading.classList.add('d-none');
+                        setAiNegBusy(false);
+                        errEl.textContent = 'Network error generating negative keywords.';
+                        errEl.classList.remove('d-none');
+                    });
+                }
+
+                document.getElementById('amzCreateAiNegLink').addEventListener('click', function (e) {
+                    e.preventDefault();
+                    var modal = getAiNegModal();
+                    if (!modal) {
+                        window.alert('Could not open AI negatives modal.');
+                        return;
+                    }
+                    document.getElementById('amzAiNegIdeas').value = '';
+                    document.getElementById('amzAiNegManualInput').value = '';
+                    aiNegSuggestedCache = [];
+                    aiNegExistingCache = [];
+                    aiNegMeta = {
+                        parent: document.getElementById('amzCreateParent').value || '',
+                        target_sku: document.getElementById('amzCreateTargetSku').value || '',
+                        product_title: ''
+                    };
+                    var pushOk = document.getElementById('amzAiNegPushOk');
+                    if (pushOk) { pushOk.classList.add('d-none'); pushOk.textContent = ''; }
+                    var pushErr = document.getElementById('amzAiNegError');
+                    if (pushErr) { pushErr.classList.add('d-none'); pushErr.textContent = ''; }
+                    modal.show();
+                    runAiNegatives({ append: false });
+                });
+                document.getElementById('amzAiNegRegenBtn').addEventListener('click', function () {
+                    runAiNegatives({ append: false });
+                });
+                document.getElementById('amzAiNegAddMoreBtn').addEventListener('click', function () {
+                    runAiNegatives({ append: true });
+                });
+                document.getElementById('amzAiNegCopyBtn').addEventListener('click', function () {
+                    var text = document.getElementById('amzAiNegSuggested').dataset.copyText || '';
+                    if (!text) { return; }
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(text).then(function () {
+                            window.alert('Copied ' + text.split('\n').filter(Boolean).length + ' negative keyword(s).');
+                        });
+                    }
+                });
+                document.getElementById('amzAiNegExportBtn').addEventListener('click', function () {
+                    exportNegativesCsv();
+                });
+                document.getElementById('amzAiNegManualAddBtn').addEventListener('click', function () {
+                    var input = document.getElementById('amzAiNegManualInput');
+                    var errEl = document.getElementById('amzAiNegError');
+                    errEl.classList.add('d-none');
+                    var ok = addManualNegativeKeyword(input.value);
+                    if (!ok) {
+                        errEl.textContent = (input.value || '').trim()
+                            ? 'Keyword is empty or already in the list.'
+                            : 'Enter a keyword to add.';
+                        errEl.classList.remove('d-none');
+                        return;
+                    }
+                    input.value = '';
+                    input.focus();
+                });
+                document.getElementById('amzAiNegManualInput').addEventListener('keydown', function (e) {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        document.getElementById('amzAiNegManualAddBtn').click();
+                    }
+                });
+                document.getElementById('amzAiNegSuggested').addEventListener('click', function (e) {
+                    var btn = e.target.closest('.amz-ai-neg-del');
+                    if (!btn) { return; }
+                    var idx = Number(btn.getAttribute('data-idx'));
+                    if (!isFinite(idx) || idx < 0 || idx >= aiNegSuggestedCache.length) { return; }
+                    aiNegSuggestedCache.splice(idx, 1);
+                    renderSuggestedList();
+                });
+                document.getElementById('amzAiNegPushBtn').addEventListener('click', function () {
+                    var btn = document.getElementById('amzAiNegPushBtn');
+                    var errEl = document.getElementById('amzAiNegError');
+                    var okEl = document.getElementById('amzAiNegPushOk');
+                    errEl.classList.add('d-none');
+                    errEl.textContent = '';
+                    okEl.classList.add('d-none');
+                    okEl.textContent = '';
+                    var keywords = getSuggestedTexts();
+                    var includeExisting = !!document.getElementById('amzAiNegIncludeExisting').checked;
+                    if (!keywords.length && !includeExisting) {
+                        errEl.textContent = 'Add keywords (AI or manual), or enable existing KW(-) negatives.';
+                        errEl.classList.remove('d-none');
+                        return;
+                    }
+                    var payload = {
+                        parent: document.getElementById('amzCreateParent').value || '',
+                        campaign_name: document.getElementById('amzCreateCampaignName').value || '',
+                        campaign_id: lastCreatedCampaignId || '',
+                        keywords: keywords,
+                        include_existing: includeExisting,
+                        match_type: document.getElementById('amzAiNegMatchType').value || 'PHRASE'
+                    };
+                    if (!payload.parent) {
+                        errEl.textContent = 'Parent is missing. Open Create from a parent row first.';
+                        errEl.classList.remove('d-none');
+                        return;
+                    }
+                    if (!payload.campaign_id) {
+                        // Soft warn only — backend still tries link/SP-report lookup by name.
+                        console.info('Push negatives: no local campaign_id yet; resolving by campaign name / links.');
+                    }
+                    btn.disabled = true;
+                    btn.innerHTML = '<i class="fa fa-spinner fa-spin me-1"></i> Pushing…';
+                    postForm(pushNegUrl, payload).then(function (out) {
+                        btn.disabled = false;
+                        btn.innerHTML = '<i class="fa fa-cloud-upload-alt me-1"></i> Push Negative Keywords';
+                        if (out.ok && out.body && out.body.ok) {
+                            if (out.body.campaign_id) {
+                                lastCreatedCampaignId = String(out.body.campaign_id);
+                            }
+                            okEl.textContent = out.body.message || 'Negative keywords pushed.';
+                            okEl.classList.remove('d-none');
+                        } else {
+                            errEl.textContent = (out.body && out.body.message) || 'Failed to push negative keywords.';
+                            errEl.classList.remove('d-none');
+                        }
+                    }).catch(function () {
+                        btn.disabled = false;
+                        btn.innerHTML = '<i class="fa fa-cloud-upload-alt me-1"></i> Push Negative Keywords';
+                        errEl.textContent = 'Network error pushing negative keywords.';
+                        errEl.classList.remove('d-none');
+                    });
+                });
+
+                document.getElementById('amzCreateType').addEventListener('change', function () {
+                    applyCampaignTypeSuffix(this.value || 'PT');
+                });
+                document.getElementById('amzCreateSelectAll').addEventListener('click', function () {
+                    document.querySelectorAll('#amzCreateChildrenBody .amz-child-check').forEach(function (cb) {
+                        if (!cb.disabled) { cb.checked = true; }
+                    });
+                    syncCreateAiHiddenFromSelection();
+                });
+                document.getElementById('amzCreateSelectNone').addEventListener('click', function () {
+                    document.querySelectorAll('#amzCreateChildrenBody .amz-child-check').forEach(function (cb) {
+                        cb.checked = false;
+                    });
+                    syncCreateAiHiddenFromSelection();
+                });
+                document.getElementById('amzCreateChildrenBody').addEventListener('change', function (e) {
+                    if (e.target && e.target.classList.contains('amz-child-check')) {
+                        syncCreateAiHiddenFromSelection();
+                    }
+                });
+
+                document.getElementById('amzCreateSubmitBtn').addEventListener('click', function () {
+                    var btn = document.getElementById('amzCreateSubmitBtn');
+                    var errEl = document.getElementById('amzCreateError');
+                    errEl.classList.add('d-none');
+                    errEl.textContent = '';
+                    syncCreateAiHiddenFromSelection();
+                    var children = collectSelectedChildren();
+                    var payload = {
+                        parent: document.getElementById('amzCreateParent').value,
+                        campaign_name: document.getElementById('amzCreateCampaignName').value,
+                        budget_amount: parseFloat(document.getElementById('amzCreateBudget').value) || 10,
+                        default_bid: parseFloat(document.getElementById('amzCreateDefaultBid').value) || 0.5,
+                        type: document.getElementById('amzCreateType').value || 'PT',
+                        children: children
+                    };
+                    if (!payload.parent || !(payload.campaign_name || '').trim()) {
+                        errEl.textContent = 'Parent and campaign name are required.';
+                        errEl.classList.remove('d-none');
+                        return;
+                    }
+                    if (!children.length) {
+                        errEl.textContent = 'Select at least one child SKU with a valid ASIN.';
+                        errEl.classList.remove('d-none');
+                        return;
+                    }
+                    btn.disabled = true;
+                    btn.innerHTML = '<i class="fa fa-spinner fa-spin me-1"></i> Creating…';
+                    postForm(createUrl, payload).then(function (out) {
+                        btn.disabled = false;
+                        btn.innerHTML = '<i class="fa fa-plus me-1"></i> Create campaign';
+                        if (out.ok && out.body && out.body.ok) {
+                            var sku = out.body.sku || ('PARENT ' + payload.parent);
+                            var r = table.getRow(sku);
+                            if (r) {
+                                r.update({ pt: out.body.pt || [], kw: out.body.kw || [] });
+                            }
+                            if (out.body.campaign_id) {
+                                lastCreatedCampaignId = String(out.body.campaign_id);
+                            }
+                            if (out.body.campaign_name) {
+                                document.getElementById('amzCreateCampaignName').value = out.body.campaign_name;
+                            }
+                            updateMissingBadges();
+                            // Keep Create modal open so AI Negatives → Push can use the new campaign id.
+                            window.alert((out.body.message || 'Campaign created.')
+                                + '\n\nYou can now open "Generate AI negative keywords" and Push.');
+                        } else {
+                            errEl.textContent = (out.body && out.body.message) || 'Failed to create campaign.';
+                            errEl.classList.remove('d-none');
+                        }
+                    }).catch(function () {
+                        btn.disabled = false;
+                        btn.innerHTML = '<i class="fa fa-plus me-1"></i> Create campaign';
+                        errEl.textContent = 'Network error creating campaign.';
+                        errEl.classList.remove('d-none');
+                    });
                 });
             }
 

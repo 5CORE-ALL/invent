@@ -444,8 +444,9 @@
             min-width: 70px;
         }
 
-        /* ── Department dropdown filter ──────────────────────────── */
-        #dept-filter-select {
+        /* ── Department / Carrier dropdown filters ───────────────── */
+        #dept-filter-select,
+        #carrier-filter-select {
             font-size: 12px;
             padding: 2px 8px;
             height: 28px;
@@ -1060,7 +1061,8 @@
             max-width: 100%;
         }
 
-        .issues-toolbar-header .issues-toolbar-actions #dept-filter-select {
+        .issues-toolbar-header .issues-toolbar-actions #dept-filter-select,
+        .issues-toolbar-header .issues-toolbar-actions #carrier-filter-select {
             width: auto;
             max-width: min(220px, 100%);
             min-width: 8rem;
@@ -1231,6 +1233,12 @@
                                                 </select>
                                             @endif
                                         @endif
+                                    @endif
+                                    @if ($showCarrierColumn ?? false)
+                                        <select id="carrier-filter-select" class="form-select form-select-sm"
+                                            aria-label="Filter by carrier" title="Filter by carrier">
+                                            <option value="">All Carriers</option>
+                                        </select>
                                     @endif
                                 </div>
                                 {{-- Search bar defaults to ON for every page that includes this
@@ -1917,6 +1925,9 @@
                             data-bs-dismiss="modal"></button>
                     </div>
                     <div class="modal-body p-2">
+                        <div class="text-muted small px-1 mb-1">
+                            Each point is the trailing L30 loss total ending that day (not that day's loss).
+                        </div>
                         <div style="height:240px;display:flex;align-items:stretch;">
                             <div style="flex:1;min-width:0;position:relative;">
                                 <canvas id="l30LossLineChart"></canvas>
@@ -1947,9 +1958,6 @@
                                 </div>
                             </div>
                         </div>
-                        <div style="height:150px;margin-top:8px;">
-                            <canvas id="l30LossBarChart"></canvas>
-                        </div>
                     </div>
                 </div>
             </div>
@@ -1969,6 +1977,9 @@
                             data-bs-dismiss="modal"></button>
                     </div>
                     <div class="modal-body p-2">
+                        <div class="text-muted small px-1 mb-1">
+                            Each point is the trailing L30 total ending that day (not that day's count).
+                        </div>
                         <div style="height:240px;display:flex;align-items:stretch;">
                             <div style="flex:1;min-width:0;position:relative;">
                                 <canvas id="l30IssuesLineChart"></canvas>
@@ -1998,26 +2009,6 @@
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                        <div style="height:150px;margin-top:8px;">
-                            <canvas id="l30IssuesBarChart"></canvas>
-                        </div>
-                        <hr class="my-2">
-                        <div class="table-responsive" style="max-height:220px;overflow-y:auto;">
-                            <table class="table table-sm table-striped table-hover mb-0">
-                                <thead class="table-light sticky-top">
-                                    <tr>
-                                        <th>Date</th>
-                                        <th class="text-end">Issues</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="l30-issues-table-body">
-                                    <tr>
-                                        <td colspan="2" class="text-center text-muted py-3">Loading…</td>
-                                    </tr>
-                                </tbody>
-                                <tfoot id="l30-issues-table-foot"></tfoot>
-                            </table>
                         </div>
                     </div>
                 </div>
@@ -2101,11 +2092,13 @@
             const claimsStatsUrl = @json($claimsStatsUrl ?? null);
             const showClaimsSummaryBadges = @json((bool) ($showClaimsSummaryBadges ?? false));
             const issueCarrierOptions = ['USPS', 'UPS', 'FEDEX', 'GOFO'];
+            const CARRIER_FILTER_EMPTY = '__empty__';
             let skuTimer = null;
             let holdIssueRows = [];
             let holdIssueHistoryRows = [];
             let editingIssueId = null;
             let activeDeptFilter = lockedDepartment || defaultDepartmentFilter || null;
+            let activeCarrierFilter = null;
 
             if (modalEl && showDispatchExtras) {
                 modalEl.addEventListener('paste', function(pe) {
@@ -2269,6 +2262,17 @@
                 return rowDepartments(r).some(d => String(d).trim().toLowerCase() === needle);
             }
 
+            function rowCarrierValue(r) {
+                return String(r?.issue_carrier ?? '').trim().toUpperCase();
+            }
+
+            function rowMatchesActiveCarrierFilter(r) {
+                if (!activeCarrierFilter) return true;
+                const v = rowCarrierValue(r);
+                if (activeCarrierFilter === CARRIER_FILTER_EMPTY) return v === '';
+                return v === String(activeCarrierFilter).trim().toUpperCase();
+            }
+
             // Quick-search query (lowercased). Empty string = no search filter.
             let activeSearchQuery = '';
 
@@ -2298,6 +2302,7 @@
             function getFilteredRows() {
                 let rows = holdIssueRows;
                 if (activeDeptFilter) rows = rows.filter(rowMatchesActiveDeptFilter);
+                if (activeCarrierFilter) rows = rows.filter(rowMatchesActiveCarrierFilter);
                 if (activeSearchQuery) rows = rows.filter(rowMatchesSearchQuery);
                 return rows;
             }
@@ -2333,11 +2338,70 @@
                 }
             }
 
+            function buildCarrierFilters() {
+                const sel = document.getElementById('carrier-filter-select');
+                if (!sel || !showCarrierColumn) return;
+                const counts = {};
+                let emptyCount = 0;
+                holdIssueRows.forEach(r => {
+                    const v = rowCarrierValue(r);
+                    if (!v) {
+                        emptyCount += 1;
+                        return;
+                    }
+                    counts[v] = (counts[v] || 0) + 1;
+                });
+                // Always list the allow-listed carriers so the filter stays
+                // discoverable even when a carrier has zero matching rows.
+                issueCarrierOptions.forEach(c => {
+                    if (!Object.prototype.hasOwnProperty.call(counts, c)) counts[c] = 0;
+                });
+                const carriers = Object.keys(counts).sort((a, b) => {
+                    const ai = issueCarrierOptions.indexOf(a);
+                    const bi = issueCarrierOptions.indexOf(b);
+                    if (ai !== -1 || bi !== -1) {
+                        return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+                    }
+                    return a.localeCompare(b);
+                });
+                const prev = sel.value !== '' ? sel.value : (activeCarrierFilter || '');
+                sel.innerHTML = '<option value="">All Carriers (' + holdIssueRows.length + ')</option>';
+                carriers.forEach(c => {
+                    const opt = document.createElement('option');
+                    opt.value = c;
+                    opt.textContent = c + ' (' + counts[c] + ')';
+                    if (c === prev) opt.selected = true;
+                    sel.appendChild(opt);
+                });
+                const emptyOpt = document.createElement('option');
+                emptyOpt.value = CARRIER_FILTER_EMPTY;
+                emptyOpt.textContent = '— Unset (' + emptyCount + ')';
+                if (prev === CARRIER_FILTER_EMPTY) emptyOpt.selected = true;
+                sel.appendChild(emptyOpt);
+
+                const known = Object.prototype.hasOwnProperty.call(counts, prev) || prev === CARRIER_FILTER_EMPTY;
+                if (prev && !known) {
+                    activeCarrierFilter = null;
+                    sel.value = '';
+                } else if (prev) {
+                    activeCarrierFilter = prev;
+                    sel.value = prev;
+                } else {
+                    activeCarrierFilter = null;
+                    sel.value = '';
+                }
+            }
+
             document.getElementById('dept-filter-select')?.addEventListener('change', (e) => {
                 activeDeptFilter = e.target.value || null;
                 renderRows();
                 loadL30Loss();
                 loadL30Issues();
+            });
+
+            document.getElementById('carrier-filter-select')?.addEventListener('change', (e) => {
+                activeCarrierFilter = e.target.value || null;
+                renderRows();
             });
 
             // Quick-search: debounced filter across SKU / order / tracking /
@@ -2615,6 +2679,8 @@
                     if (r) {
                         r.issue_carrier = newV;
                     }
+                    buildCarrierFilters();
+                    if (activeCarrierFilter) renderRows();
                 } catch (e) {
                     alert(e.message || 'Could not save carrier');
                     sel.value = prev;
@@ -4069,11 +4135,13 @@
                     const data = await response.json();
                     holdIssueRows = Array.isArray(data?.data) ? data.data.map(normalizeRecord) : [];
                     buildDeptFilters();
+                    buildCarrierFilters();
                     renderRows();
                     loadClaimsStats();
                 } catch (error) {
                     holdIssueRows = [];
                     buildDeptFilters();
+                    buildCarrierFilters();
                     renderRows();
                     loadClaimsStats();
                 }
@@ -4299,6 +4367,7 @@
                     }
                     holdIssueRows = holdIssueRows.filter(r => Number(r.id) !== Number(recordId));
                     buildDeptFilters();
+                    buildCarrierFilters();
                     renderRows();
                     loadHoldIssueHistoryRows();
                     showAlert(data?.message || 'Hold issue archived successfully.', 'success');
@@ -5216,70 +5285,6 @@
                     return chart;
                 }
 
-                function _buildBarChart(canvasId, labels, vals, fmt, color, barChart) {
-                    const canvas = document.getElementById(canvasId);
-                    if (!canvas) return null;
-                    if (barChart) {
-                        barChart.destroy();
-                        barChart = null;
-                    }
-                    return new Chart(canvas.getContext('2d'), {
-                        type: 'bar',
-                        data: {
-                            labels,
-                            datasets: [{
-                                data: vals,
-                                backgroundColor: color + 'cc',
-                                borderColor: color,
-                                borderWidth: 1
-                            }]
-                        },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            layout: {
-                                padding: {
-                                    top: 4,
-                                    left: 2,
-                                    right: 2,
-                                    bottom: 16
-                                }
-                            },
-                            plugins: {
-                                legend: {
-                                    display: false
-                                },
-                                tooltip: {
-                                    callbacks: {
-                                        label: ctx => fmt(ctx.raw)
-                                    }
-                                }
-                            },
-                            scales: {
-                                x: {
-                                    ticks: {
-                                        maxRotation: 45,
-                                        minRotation: 45,
-                                        font: {
-                                            size: 7
-                                        },
-                                        autoSkip: false,
-                                        maxTicksLimit: 31
-                                    }
-                                },
-                                y: {
-                                    ticks: {
-                                        font: {
-                                            size: 9
-                                        },
-                                        callback: v => fmt(v)
-                                    }
-                                }
-                            }
-                        }
-                    });
-                }
-
                 function renderL30FullChart(daily) {
                     const labels = daily.map(d => d.date);
                     const vals = daily.map(d => parseFloat(d.loss) || 0);
@@ -5295,7 +5300,6 @@
                         document.getElementById('l30-loss-median').textContent = fmt(median);
                         document.getElementById('l30-loss-lowest').textContent = fmt(min);
                     }
-                    _buildBarChart('l30LossBarChart', labels, vals, fmt, '#dc3545', null);
                 }
 
                 function renderL30Table(daily) {
@@ -5312,11 +5316,29 @@
                 });
 
                 // ── L30 Issues Badge ──────────────────────────────────────────────────
+                // Graph points are rolling L30 totals (not that day's issue count).
                 const l30IssuesUrl = @json(route('customer.care.dispatch.issues.l30.issues'));
                 let l30IssuesData = null;
-                let l30IssuesSparkChart = null;
                 let l30IssuesFullChart = null;
                 let l30IssuesDays = 30;
+
+                function renderL30IssuesFullChart(series) {
+                    const labels = series.map(d => d.date);
+                    const vals = series.map(d => d.count);
+                    const fmt = v => Math.round(v).toLocaleString('en-US');
+                    l30IssuesFullChart = _buildLineChart('l30IssuesLineChart', labels, vals, fmt, '#0d6efd',
+                        l30IssuesFullChart);
+                    if (l30IssuesFullChart) {
+                        const {
+                            min,
+                            max,
+                            median
+                        } = _l30CalcStats(vals);
+                        document.getElementById('l30-issues-highest').textContent = fmt(max);
+                        document.getElementById('l30-issues-median').textContent = fmt(median);
+                        document.getElementById('l30-issues-lowest').textContent = fmt(min);
+                    }
+                }
 
                 async function loadL30Issues() {
                     try {
@@ -5336,72 +5358,19 @@
                         if (totalEl) totalEl.textContent = json.total || 0;
                         const labelEl = document.getElementById('l30-issues-badge-label');
                         if (labelEl) labelEl.textContent = 'L' + l30IssuesDays;
-                        renderL30IssuesSparkline(json.daily || []);
                     } catch (e) {
                         /* silent */ }
                 }
 
-                function renderL30IssuesSparkline(daily) {
-                    /* sparklines hidden */ }
-
-                function renderL30IssuesFullChart(daily) {
-                    const labels = daily.map(d => d.date);
-                    const vals = daily.map(d => d.count);
-                    const fmt = v => Math.round(v).toLocaleString('en-US');
-                    l30IssuesFullChart = _buildLineChart('l30IssuesLineChart', labels, vals, fmt, '#0d6efd',
-                        l30IssuesFullChart);
-                    if (l30IssuesFullChart) {
-                        const {
-                            min,
-                            max,
-                            median
-                        } = _l30CalcStats(vals);
-                        document.getElementById('l30-issues-highest').textContent = fmt(max);
-                        document.getElementById('l30-issues-median').textContent = fmt(median);
-                        document.getElementById('l30-issues-lowest').textContent = fmt(min);
-                    }
-                    _buildBarChart('l30IssuesBarChart', labels, vals, fmt, '#0d6efd', null);
-                }
-
-                function renderL30IssuesTable(daily) {
-                    const tbody = document.getElementById('l30-issues-table-body');
-                    const tfoot = document.getElementById('l30-issues-table-foot');
-                    if (!tbody) return;
-                    if (!daily.length) {
-                        tbody.innerHTML = '<tr><td colspan="2" class="text-center text-muted py-3">No data.</td></tr>';
-                        if (tfoot) tfoot.innerHTML = '';
-                        return;
-                    }
-                    tbody.innerHTML = daily.slice().reverse().map(d =>
-                        '<tr><td>' + escapeHtml(d.date) + '</td><td class="text-end fw-semibold">' + d.count +
-                        '</td></tr>'
-                    ).join('');
-                    const total = daily.reduce((s, d) => s + (parseInt(d.count) || 0), 0);
-                    if (tfoot) tfoot.innerHTML = '<tr class="table-primary fw-bold"><td>Total (L' + l30IssuesDays +
-                        ')</td><td class="text-end">' + total + '</td></tr>';
-                }
-
                 loadL30Issues();
 
-                // Period pill clicks
-                document.getElementById('l30-issues-period-pills')?.addEventListener('click', (e) => {
-                    const pill = e.target.closest('.l30-period-pill');
-                    if (!pill) return;
-                    e.stopPropagation();
-                    l30IssuesDays = parseInt(pill.getAttribute('data-days')) || 30;
-                    document.querySelectorAll('#l30-issues-period-pills .l30-period-pill').forEach(p => p
-                        .classList.remove('active'));
-                    pill.classList.add('active');
-                    loadL30Issues();
-                });
-
                 document.getElementById('l30IssuesModal')?.addEventListener('show.bs.modal', () => {
-                    const daily = l30IssuesData?.daily || [];
+                    const series = l30IssuesData?.daily || [];
                     const rangeEl = document.getElementById('l30-issues-modal-range');
-                    if (rangeEl && l30IssuesData) rangeEl.textContent = ' (' + l30IssuesData.from + ' → ' +
-                        l30IssuesData.to + ')';
-                    renderL30IssuesFullChart(daily);
-                    renderL30IssuesTable(daily);
+                    if (rangeEl && l30IssuesData) {
+                        rangeEl.textContent = ' (' + l30IssuesData.from + ' → ' + l30IssuesData.to + ')';
+                    }
+                    renderL30IssuesFullChart(series);
                 });
             @endif
 

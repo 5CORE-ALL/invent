@@ -269,6 +269,470 @@ class AmazonAdsService
     }
 
     /**
+     * Create Sponsored Products campaigns (v3).
+     *
+     * @param  list<array<string, mixed>>  $campaigns
+     * @return array<string, mixed>
+     */
+    public function createCampaigns(array $campaigns): array
+    {
+        return $this->post('/sp/campaigns', [
+            'campaigns' => array_values($campaigns),
+        ], [
+            'Content-Type' => 'application/vnd.spCampaign.v3+json',
+            'Accept' => 'application/vnd.spCampaign.v3+json',
+        ]);
+    }
+
+    /**
+     * Update Sponsored Products campaigns (v3) — budget, state (ENABLED/PAUSED/ARCHIVED), etc.
+     *
+     * @param  list<array<string, mixed>>  $campaigns
+     * @return array<string, mixed>
+     */
+    public function updateCampaigns(array $campaigns): array
+    {
+        return $this->put('/sp/campaigns', [
+            'campaigns' => array_values($campaigns),
+        ], [
+            'Content-Type' => 'application/vnd.spCampaign.v3+json',
+            'Accept' => 'application/vnd.spCampaign.v3+json',
+        ]);
+    }
+
+    /**
+     * Create Sponsored Products ad groups (v3).
+     *
+     * @param  list<array<string, mixed>>  $adGroups
+     * @return array<string, mixed>
+     */
+    public function createAdGroups(array $adGroups): array
+    {
+        return $this->post('/sp/adGroups', [
+            'adGroups' => array_values($adGroups),
+        ], [
+            'Content-Type' => 'application/vnd.spAdGroup.v3+json',
+            'Accept' => 'application/vnd.spAdGroup.v3+json',
+        ]);
+    }
+
+    /**
+     * Create Sponsored Products product ads (v3).
+     * Sellers must pass sku; vendors pass asin.
+     *
+     * @param  list<array<string, mixed>>  $productAds
+     * @return array<string, mixed>
+     */
+    public function createProductAds(array $productAds): array
+    {
+        return $this->post('/sp/productAds', [
+            'productAds' => array_values($productAds),
+        ], [
+            'Content-Type' => 'application/vnd.spProductAd.v3+json',
+            'Accept' => 'application/vnd.spProductAd.v3+json',
+        ]);
+    }
+
+    /**
+     * Create campaign-level negative keywords (v3).
+     * Match types: NEGATIVE_EXACT, NEGATIVE_PHRASE (Amazon SP campaign rules).
+     *
+     * @param  list<array{campaignId: string, keywordText: string, matchType: string, state?: string}>  $keywords
+     * @return array<string, mixed>
+     */
+    public function createCampaignNegativeKeywords(array $keywords): array
+    {
+        $items = [];
+        foreach ($keywords as $kw) {
+            $items[] = [
+                'campaignId' => (string) ($kw['campaignId'] ?? ''),
+                'keywordText' => (string) ($kw['keywordText'] ?? ''),
+                'matchType' => (string) ($kw['matchType'] ?? 'NEGATIVE_PHRASE'),
+                'state' => (string) ($kw['state'] ?? 'ENABLED'),
+            ];
+        }
+
+        return $this->post('/sp/campaignNegativeKeywords', [
+            'campaignNegativeKeywords' => $items,
+        ], [
+            'Content-Type' => 'application/vnd.spCampaignNegativeKeyword.v3+json',
+            'Accept' => 'application/vnd.spCampaignNegativeKeyword.v3+json',
+        ]);
+    }
+
+    /**
+     * Archive a Sponsored Products campaign (Amazon has no hard delete — use ARCHIVED).
+     *
+     * @return array{success: bool, message?: string, response?: array}
+     */
+    public function archiveCampaign(string $campaignId): array
+    {
+        $campaignId = trim($campaignId);
+        if ($campaignId === '') {
+            return ['success' => false, 'message' => 'Campaign ID is required.'];
+        }
+
+        try {
+            $response = $this->updateCampaigns([
+                [
+                    'campaignId' => $campaignId,
+                    'state' => 'ARCHIVED',
+                ],
+            ]);
+
+            $errors = data_get($response, 'campaigns.error', []);
+            if (is_array($errors) && $errors !== []) {
+                $msg = $this->formatAmazonMultiStatusError($errors);
+
+                return ['success' => false, 'message' => $msg !== '' ? $msg : 'Amazon rejected campaign archive.', 'response' => $response];
+            }
+
+            return ['success' => true, 'response' => $response];
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $this->formatAmazonException($e)];
+        }
+    }
+
+    /**
+     * Create one PAUSED AUTO Sponsored Products campaign + ad group + seller product ads.
+     * Amazon equivalent of a parent-level Shopping campaign targeting specific child listings.
+     *
+     * @param  list<string>  $sellerSkus  Seller SKUs (not ASINs) for product ads
+     * @return array{success: bool, message?: string, campaign_id?: string, ad_group_id?: string, campaign_name?: string, product_ads_created?: int, errors?: list<string>}
+     */
+    public function createPausedAutoCampaignWithProductAds(
+        string $campaignName,
+        array $sellerSkus,
+        float $dailyBudget = 10.0,
+        float $defaultBid = 0.50
+    ): array {
+        $campaignName = trim($campaignName);
+        $sellerSkus = array_values(array_unique(array_filter(array_map(
+            static fn ($s) => trim((string) $s),
+            $sellerSkus
+        ))));
+
+        if ($campaignName === '') {
+            return ['success' => false, 'message' => 'Campaign name is required.'];
+        }
+        if ($sellerSkus === []) {
+            return ['success' => false, 'message' => 'At least one seller SKU is required for product ads.'];
+        }
+        if ($dailyBudget < 1) {
+            $dailyBudget = 1.0;
+        }
+        if ($defaultBid < 0.02) {
+            $defaultBid = 0.02;
+        }
+
+        $errors = [];
+
+        try {
+            $campaignResp = $this->createCampaigns([
+                [
+                    'name' => $campaignName,
+                    'targetingType' => 'AUTO',
+                    'state' => 'PAUSED',
+                    'budget' => [
+                        'budget' => round($dailyBudget, 2),
+                        'budgetType' => 'DAILY',
+                    ],
+                    'startDate' => now()->format('Y-m-d'),
+                    'dynamicBidding' => [
+                        'strategy' => 'LEGACY_FOR_SALES',
+                    ],
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => 'Create campaign failed: '.$this->formatAmazonException($e)];
+        }
+
+        $campaignId = (string) (data_get($campaignResp, 'campaigns.success.0.campaignId')
+            ?? data_get($campaignResp, 'campaigns.success.0.campaign.campaignId')
+            ?? '');
+        if ($campaignId === '') {
+            $msg = $this->formatAmazonMultiStatusError(data_get($campaignResp, 'campaigns.error', []));
+
+            return [
+                'success' => false,
+                'message' => $msg !== '' ? $msg : 'Amazon did not return a campaignId.',
+                'response' => $campaignResp,
+            ];
+        }
+
+        try {
+            $adGroupResp = $this->createAdGroups([
+                [
+                    'name' => mb_substr($campaignName, 0, 240).' AG',
+                    'campaignId' => $campaignId,
+                    'defaultBid' => round($defaultBid, 2),
+                    'state' => 'ENABLED',
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            return [
+                'success' => false,
+                'message' => 'Campaign created but ad group failed: '.$this->formatAmazonException($e),
+                'campaign_id' => $campaignId,
+                'campaign_name' => $campaignName,
+            ];
+        }
+
+        $adGroupId = (string) (data_get($adGroupResp, 'adGroups.success.0.adGroupId')
+            ?? data_get($adGroupResp, 'adGroups.success.0.adGroup.adGroupId')
+            ?? '');
+        if ($adGroupId === '') {
+            $msg = $this->formatAmazonMultiStatusError(data_get($adGroupResp, 'adGroups.error', []));
+
+            return [
+                'success' => false,
+                'message' => $msg !== '' ? $msg : 'Amazon did not return an adGroupId.',
+                'campaign_id' => $campaignId,
+                'campaign_name' => $campaignName,
+                'response' => $adGroupResp,
+            ];
+        }
+
+        $createdAds = 0;
+        foreach (array_chunk($sellerSkus, 100) as $chunk) {
+            $payload = [];
+            foreach ($chunk as $sku) {
+                $payload[] = [
+                    'campaignId' => $campaignId,
+                    'adGroupId' => $adGroupId,
+                    'sku' => $sku,
+                    'state' => 'ENABLED',
+                ];
+            }
+
+            try {
+                $adsResp = $this->createProductAds($payload);
+            } catch (\Throwable $e) {
+                $errors[] = $this->formatAmazonException($e);
+
+                continue;
+            }
+
+            $successList = data_get($adsResp, 'productAds.success', []);
+            if (is_array($successList)) {
+                $createdAds += count($successList);
+            }
+            $errList = data_get($adsResp, 'productAds.error', []);
+            if (is_array($errList) && $errList !== []) {
+                $fmt = $this->formatAmazonMultiStatusError($errList);
+                if ($fmt !== '') {
+                    $errors[] = $fmt;
+                }
+            }
+        }
+
+        if ($createdAds === 0) {
+            return [
+                'success' => false,
+                'message' => 'Campaign and ad group created, but no product ads were accepted.'
+                    .($errors !== [] ? ' '.implode(' | ', array_slice($errors, 0, 3)) : ''),
+                'campaign_id' => $campaignId,
+                'ad_group_id' => $adGroupId,
+                'campaign_name' => $campaignName,
+                'product_ads_created' => 0,
+                'errors' => $errors,
+            ];
+        }
+
+        return [
+            'success' => true,
+            'campaign_id' => $campaignId,
+            'ad_group_id' => $adGroupId,
+            'campaign_name' => $campaignName,
+            'product_ads_created' => $createdAds,
+            'errors' => $errors,
+        ];
+    }
+
+    /**
+     * Push campaign-level negative keywords in batches of 100.
+     *
+     * @param  list<string>  $keywords
+     * @return array{success: bool, added: int, failed: int, duplicates: int, message: string, errors: list<string>}
+     */
+    public function pushCampaignNegativeKeywords(
+        string $campaignId,
+        array $keywords,
+        string $matchType = 'NEGATIVE_PHRASE'
+    ): array {
+        $campaignId = trim($campaignId);
+        $matchType = strtoupper(trim($matchType));
+        if (! in_array($matchType, ['NEGATIVE_EXACT', 'NEGATIVE_PHRASE'], true)) {
+            $matchType = 'NEGATIVE_PHRASE';
+        }
+
+        $texts = collect($keywords)
+            ->map(fn ($t) => trim((string) $t))
+            ->filter()
+            ->unique(fn ($t) => strtolower($t))
+            ->values()
+            ->all();
+
+        if ($campaignId === '' || $texts === []) {
+            return [
+                'success' => false,
+                'added' => 0,
+                'failed' => 0,
+                'duplicates' => 0,
+                'message' => 'Campaign ID and at least one keyword are required.',
+                'errors' => [],
+            ];
+        }
+
+        $added = 0;
+        $failed = 0;
+        $duplicates = 0;
+        $errors = [];
+
+        foreach (array_chunk($texts, 100) as $chunk) {
+            $payload = [];
+            foreach ($chunk as $text) {
+                $payload[] = [
+                    'campaignId' => $campaignId,
+                    'keywordText' => $text,
+                    'matchType' => $matchType,
+                    'state' => 'ENABLED',
+                ];
+            }
+
+            try {
+                $resp = $this->createCampaignNegativeKeywords($payload);
+            } catch (\Throwable $e) {
+                $failed += count($chunk);
+                $errors[] = $this->formatAmazonException($e);
+
+                continue;
+            }
+
+            $successList = data_get($resp, 'campaignNegativeKeywords.success', []);
+            if (is_array($successList)) {
+                $added += count($successList);
+            }
+
+            $errorList = data_get($resp, 'campaignNegativeKeywords.error', []);
+            if (is_array($errorList)) {
+                foreach ($errorList as $e) {
+                    $msg = $this->extractAmazonErrorMessage($e);
+                    if (stripos($msg, 'duplicate') !== false) {
+                        $duplicates++;
+                    } else {
+                        $failed++;
+                        if ($msg !== '') {
+                            $errors[] = $msg;
+                        }
+                    }
+                }
+            }
+        }
+
+        $errors = array_values(array_unique(array_filter($errors)));
+        $ok = $added > 0 || ($failed === 0 && $duplicates > 0);
+        $msg = "Added {$added} campaign negative keyword(s).";
+        if ($duplicates > 0) {
+            $msg .= " ({$duplicates} already existed.)";
+        }
+        if ($failed > 0) {
+            $msg .= " ({$failed} rejected.)";
+            if ($errors !== []) {
+                $msg .= ' '.implode(' | ', array_slice($errors, 0, 3));
+            }
+        }
+
+        return [
+            'success' => $ok,
+            'added' => $added,
+            'failed' => $failed,
+            'duplicates' => $duplicates,
+            'message' => $msg,
+            'errors' => $errors,
+        ];
+    }
+
+    /**
+     * @param  mixed  $errorList
+     */
+    protected function formatAmazonMultiStatusError($errorList): string
+    {
+        if (! is_array($errorList) || $errorList === []) {
+            return '';
+        }
+
+        $parts = [];
+        foreach ($errorList as $e) {
+            $msg = $this->extractAmazonErrorMessage($e);
+            if ($msg !== '') {
+                $parts[] = $msg;
+            }
+        }
+
+        return implode(' | ', array_slice(array_values(array_unique($parts)), 0, 5));
+    }
+
+    /**
+     * @param  mixed  $error
+     */
+    protected function extractAmazonErrorMessage($error): string
+    {
+        if (! is_array($error)) {
+            return trim((string) $error);
+        }
+
+        $candidates = [
+            data_get($error, 'errors.0.errorValue.message'),
+            data_get($error, 'errors.0.message'),
+            data_get($error, 'errorValue.message'),
+            data_get($error, 'message'),
+            data_get($error, 'errorMessage'),
+        ];
+        foreach ($candidates as $c) {
+            $c = trim((string) $c);
+            if ($c !== '') {
+                return $c;
+            }
+        }
+
+        return '';
+    }
+
+    protected function formatAmazonException(\Throwable $e): string
+    {
+        $msg = $e->getMessage();
+        if ($e instanceof \GuzzleHttp\Exception\RequestException && $e->hasResponse()) {
+            $body = (string) $e->getResponse()->getBody();
+            $decoded = json_decode($body, true);
+            if (is_array($decoded)) {
+                $fromMulti = $this->formatAmazonMultiStatusError(
+                    data_get($decoded, 'campaigns.error')
+                    ?? data_get($decoded, 'adGroups.error')
+                    ?? data_get($decoded, 'productAds.error')
+                    ?? data_get($decoded, 'campaignNegativeKeywords.error')
+                    ?? []
+                );
+                if ($fromMulti !== '') {
+                    return $fromMulti;
+                }
+                $detail = (string) (data_get($decoded, 'message')
+                    ?? data_get($decoded, 'details')
+                    ?? data_get($decoded, 'code')
+                    ?? '');
+                if ($detail !== '') {
+                    return $detail;
+                }
+            }
+            if ($body !== '') {
+                return mb_substr($body, 0, 400);
+            }
+        }
+
+        return $msg;
+    }
+
+    /**
      * Request a Sponsored Products search term report (Reporting API v3, async).
      * Returns the create-report payload (e.g. reportId); download after status is COMPLETED.
      * No caching — each call hits Amazon with a new request.
