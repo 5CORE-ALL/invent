@@ -12,6 +12,7 @@ use App\Services\ReverbManagerApiService;
 use App\Services\ReverbAuthService;
 use App\Services\MarketplaceManager\MarketplaceListingStockResolver;
 use App\Services\MarketplaceManager\MarketplaceLiveInventoryRules;
+use App\Services\MarketplaceManager\MarketplaceOrderPaidFilter;
 use App\Services\MarketplaceManager\ReverbDetailFormatter;
 use App\Services\MarketplaceManager\ReverbInventorySyncService;
 use App\Services\MarketplaceManager\ReverbLinkMapSyncService;
@@ -848,6 +849,7 @@ class ReverbSyncController extends Controller
             'title' => 'Reverb — Orders',
             'apiError' => $apiError,
             'connected' => $this->apiConfig->isConfigured('reverb'),
+            'importPaidOrdersOnly' => MarketplaceSyncSettings::importPaidOrdersOnly('reverb'),
         ]);
     }
 
@@ -899,6 +901,8 @@ class ReverbSyncController extends Controller
             'aeLiveError' => $aeLiveError,
             'aeDataSource' => $aeDataSource,
             'connected' => $this->apiConfig->isConfigured('reverb'),
+            'importPaidOrdersOnly' => MarketplaceSyncSettings::importPaidOrdersOnly('reverb'),
+            'orderIsPaid' => MarketplaceOrderPaidFilter::isPaid('reverb', $line),
         ]);
     }
 
@@ -1111,6 +1115,13 @@ class ReverbSyncController extends Controller
             ]);
         }
 
+        if (MarketplaceOrderPaidFilter::blocksUnpaidPush('reverb', $order)) {
+            return response()->json([
+                'success' => false,
+                'message' => MarketplaceOrderPaidFilter::unpaidPushBlockedMessage(),
+            ], 422);
+        }
+
         // Manual push is synchronous — only auto-import uses the queue.
         $push = app(ReverbOrderPushService::class);
         try {
@@ -1255,7 +1266,7 @@ class ReverbSyncController extends Controller
         // Hard rule: never invent marketplace stock from Shopify 0 via min_quantity.
         $inventory['min_quantity'] = 0;
         $order = $this->mergeSettingsSection($current['order'] ?? [], $request->input('order', []), [
-            'fetch_orders', 'auto_import_to_shopify', 'keep_order_number_from_channel',
+            'fetch_orders', 'auto_import_to_shopify', 'import_paid_orders_only', 'keep_order_number_from_channel',
         ]);
         $listings = $this->mergeSettingsSection($current['listings'] ?? [], $request->input('listings', []), [
             'auto_link_by_sku', 'create_products_on_reverb', 'sync_title', 'sync_images',

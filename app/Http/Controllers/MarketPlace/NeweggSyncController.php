@@ -18,6 +18,7 @@ use App\Services\MarketplaceManager\NeweggOrderDetailService;
 use App\Services\MarketplaceManager\NeweggOrderPushService;
 use App\Services\MarketplaceManager\NeweggOrderSyncService;
 use App\Services\MarketplaceManager\MarketplaceListingStockResolver;
+use App\Services\MarketplaceManager\MarketplaceOrderPaidFilter;
 use App\Services\MarketplaceManager\ReverbLiveListingsService;
 use App\Services\MarketplaceManager\ShopifyLiveVerifiedCatalogService;
 use App\Services\ShopifyApiService;
@@ -529,11 +530,14 @@ class NeweggSyncController extends Controller
 
         $result = app(NeweggInventorySyncService::class)->syncSkusFromShopify([$sku]);
 
+        $updated = (int) ($result['updated'] ?? 0);
+        $failed = (int) ($result['failed'] ?? 0);
+
         return response()->json([
-            'success' => ((int) ($result['updated'] ?? 0)) > 0 || ((int) ($result['failed'] ?? 0)) === 0,
+            'success' => $updated > 0,
             'queued' => false,
-            'updated' => (int) ($result['updated'] ?? 0),
-            'failed' => (int) ($result['failed'] ?? 0),
+            'updated' => $updated,
+            'failed' => $failed,
             'skipped' => (int) ($result['skipped'] ?? 0),
             'message' => $result['message'] ?? 'Inventory sync finished.',
         ]);
@@ -639,6 +643,7 @@ class NeweggSyncController extends Controller
             'title' => 'Newegg — Orders',
             'apiError' => $apiError,
             'connected' => $this->apiConfig->isConfigured('newegg'),
+            'importPaidOrdersOnly' => MarketplaceSyncSettings::importPaidOrdersOnly('newegg'),
         ]);
     }
 
@@ -677,6 +682,8 @@ class NeweggSyncController extends Controller
             'aeLiveError' => $aeLiveError,
             'aeDataSource' => $aeDataSource,
             'connected' => $this->apiConfig->isConfigured('newegg'),
+            'importPaidOrdersOnly' => MarketplaceSyncSettings::importPaidOrdersOnly('newegg'),
+            'orderIsPaid' => MarketplaceOrderPaidFilter::isPaid('newegg', $line),
         ]);
     }
 
@@ -882,6 +889,13 @@ class NeweggSyncController extends Controller
             ]);
         }
 
+        if (MarketplaceOrderPaidFilter::blocksUnpaidPush('newegg', $order)) {
+            return response()->json([
+                'success' => false,
+                'message' => MarketplaceOrderPaidFilter::unpaidPushBlockedMessage(),
+            ], 422);
+        }
+
         // Manual push is synchronous — only auto-import uses the queue.
         $push = app(NeweggOrderPushService::class);
         try {
@@ -1013,7 +1027,7 @@ class NeweggSyncController extends Controller
         // Hard rule: never invent marketplace stock from Shopify 0 via min_quantity.
         $inventory['min_quantity'] = 0;
         $order = $this->mergeSettingsSection($current['order'] ?? [], $request->input('order', []), [
-            'fetch_orders', 'auto_import_to_shopify', 'keep_order_number_from_channel',
+            'fetch_orders', 'auto_import_to_shopify', 'import_paid_orders_only', 'keep_order_number_from_channel',
         ]);
         $listings = $this->mergeSettingsSection($current['listings'] ?? [], $request->input('listings', []), [
             'auto_link_by_sku', 'create_products_on_newegg', 'sync_title', 'sync_images',

@@ -19,9 +19,10 @@ class SyncShopifyLiveInventory extends Command
                             {--sku= : Sync a single SKU only}
                             {--probe= : Fast: comma-separated SKUs only (no full catalog; seconds not hours)}
                             {--limit= : Fast: sync first N rows from shopify_skus (has variant_id), same GraphQL path as full sync}
+                            {--full-catalog : Slow legacy path: paginate all Shopify products.json pages}
                             {--samples=0 : Print GraphQL payloads for the first N SKUs (use with full sync; with --limit, defaults to all in batch)}';
 
-    protected $description = 'Sync Ohio inventory via GraphQL. Use --limit=10 or --probe= for fast checks; full sync paginates all products (slow). After sync, run shopify:spot-check-sku-list to print SKUs to compare in Admin.';
+    protected $description = 'Sync Ohio inventory via GraphQL into shopify_skus. Default uses lean local variant_ids (shopify_skus / catalog). Use --full-catalog only if lean map is empty.';
 
     public function handle()
     {
@@ -33,9 +34,14 @@ class SyncShopifyLiveInventory extends Command
         $limitOpt = $this->option('limit');
         $limit = ($limitOpt !== null && $limitOpt !== '') ? max(0, (int) $limitOpt) : 0;
 
+        $fullCatalog = (bool) $this->option('full-catalog');
         $runId = uniqid('cmd_', true);
         $t0 = microtime(true);
-        $mode = filled($probe) ? 'probe' : ($limit > 0 ? 'limit' : ($sku ? 'single_sku' : 'full_catalog'));
+        $mode = filled($probe)
+            ? 'probe'
+            : ($limit > 0
+                ? 'limit'
+                : ($sku ? 'single_sku' : ($fullCatalog ? 'full_product_catalog' : 'lean_local')));
 
         Log::channel('shopify_live_inventory')->info('artisan_run_started', [
             'run_id' => $runId,
@@ -44,6 +50,7 @@ class SyncShopifyLiveInventory extends Command
             'limit' => $limit > 0 ? $limit : null,
             'sku' => $sku ?: null,
             'samples_cli' => $samplesN,
+            'full_catalog' => $fullCatalog,
         ]);
 
         if (filled($probe)) {
@@ -204,7 +211,12 @@ class SyncShopifyLiveInventory extends Command
         }
 
         $controller = new ShopifyApiInventoryController();
-        $success = $controller->syncLiveInventoryToDb($samplesN);
+        if ($fullCatalog) {
+            $this->warn('Using legacy --full-catalog product crawl (slow).');
+        } else {
+            $this->info('Lean sync: shopify_skus / catalog variant_ids → Ohio GraphQL qty.');
+        }
+        $success = $controller->syncLiveInventoryToDb($samplesN, $fullCatalog);
 
         if ($samplesN > 0) {
             $this->newLine();
@@ -220,7 +232,7 @@ class SyncShopifyLiveInventory extends Command
 
         $finished = [
             'run_id' => $runId,
-            'mode' => 'full_catalog',
+            'mode' => $mode,
             'ok' => $success,
             'duration_seconds' => round(microtime(true) - $t0, 2),
         ];

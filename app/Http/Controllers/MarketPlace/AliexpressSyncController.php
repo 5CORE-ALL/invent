@@ -19,6 +19,7 @@ use App\Services\MarketplaceManager\AliexpressOrderDetailService;
 use App\Services\MarketplaceManager\AliexpressOrderPushService;
 use App\Services\MarketplaceManager\AliexpressOrderSyncService;
 use App\Services\MarketplaceManager\MarketplaceListingStockResolver;
+use App\Services\MarketplaceManager\MarketplaceOrderPaidFilter;
 use App\Services\MarketplaceManager\ReverbLiveListingsService;
 use App\Services\MarketplaceManager\ShopifyLiveVerifiedCatalogService;
 use App\Services\ShopifyApiService;
@@ -657,6 +658,7 @@ class AliexpressSyncController extends Controller
             'title' => 'AliExpress — Orders',
             'apiError' => $apiError,
             'connected' => $this->apiConfig->isConfigured('aliexpress'),
+            'importPaidOrdersOnly' => MarketplaceSyncSettings::importPaidOrdersOnly('aliexpress'),
         ]);
     }
 
@@ -695,6 +697,8 @@ class AliexpressSyncController extends Controller
             'aeLiveError' => $aeLiveError,
             'aeDataSource' => $aeDataSource,
             'connected' => $this->apiConfig->isConfigured('aliexpress'),
+            'importPaidOrdersOnly' => MarketplaceSyncSettings::importPaidOrdersOnly('aliexpress'),
+            'orderIsPaid' => MarketplaceOrderPaidFilter::isPaid('aliexpress', $line),
         ]);
     }
 
@@ -903,6 +907,13 @@ class AliexpressSyncController extends Controller
             ]);
         }
 
+        if (MarketplaceOrderPaidFilter::blocksUnpaidPush('aliexpress', $order)) {
+            return response()->json([
+                'success' => false,
+                'message' => MarketplaceOrderPaidFilter::unpaidPushBlockedMessage(),
+            ], 422);
+        }
+
         // Manual push is synchronous — only auto-import uses the queue.
         $push = app(AliexpressOrderPushService::class);
         try {
@@ -1034,7 +1045,7 @@ class AliexpressSyncController extends Controller
         // Hard rule: never invent marketplace stock from Shopify 0 via min_quantity.
         $inventory['min_quantity'] = 0;
         $order = $this->mergeSettingsSection($current['order'] ?? [], $request->input('order', []), [
-            'fetch_orders', 'auto_import_to_shopify', 'keep_order_number_from_channel',
+            'fetch_orders', 'auto_import_to_shopify', 'import_paid_orders_only', 'keep_order_number_from_channel',
         ]);
         $listings = $this->mergeSettingsSection($current['listings'] ?? [], $request->input('listings', []), [
             'auto_link_by_sku', 'create_products_on_aliexpress', 'sync_title', 'sync_images',

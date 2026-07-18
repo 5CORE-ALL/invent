@@ -65,6 +65,20 @@ class MarketplaceSyncSettings extends Model
         return (bool) ($settings['order']['fetch_orders'] ?? true);
     }
 
+    public static function canAutoImportToShopify(string $marketplace, ?array $settings = null): bool
+    {
+        $settings ??= self::getFor($marketplace);
+
+        return (bool) ($settings['order']['auto_import_to_shopify'] ?? false);
+    }
+
+    public static function importPaidOrdersOnly(string $marketplace, ?array $settings = null): bool
+    {
+        $settings ??= self::getFor($marketplace);
+
+        return (bool) ($settings['order']['import_paid_orders_only'] ?? false);
+    }
+
     public static function canAutoLinkBySku(string $marketplace, ?array $settings = null): bool
     {
         $settings ??= self::getFor($marketplace);
@@ -112,6 +126,7 @@ class MarketplaceSyncSettings extends Model
             'order' => [
                 'fetch_orders' => true,
                 'auto_import_to_shopify' => false,
+                'import_paid_orders_only' => false,
                 'keep_order_number_from_channel' => true,
                 'shopify_order_tags' => [],
                 'shopify_store' => 'main',

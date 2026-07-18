@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Carbon\Carbon;
 use App\Models\ShopifySku;
 
@@ -736,33 +737,230 @@ GQL;
         return ($iid !== null && $iid !== '') ? (string) $iid : null;
     }
 
-    public function fetchInventoryWithCommitment(): array
+    /**
+     * Batch-resolve ProductVariant → inventory_item_id via Admin GraphQL (no product catalog crawl).
+     *
+     * @param  array<int, int>  $variantIds
+     * @return array{iids: array<int, string>, images: array<int, string|null>}
+     */
+    protected function resolveVariantInventoryItemIdsViaGraphQl(array $variantIds): array
     {
-        set_time_limit(0);
-        $shopUrl = 'https://'.config('services.shopify.store_url');
+        $variantIds = array_values(array_unique(array_filter(array_map('intval', $variantIds))));
+        $iids = [];
+        $images = [];
+        if ($variantIds === []) {
+            return ['iids' => $iids, 'images' => $images];
+        }
 
-        $locationId = null;
+        $query = <<<'GQL'
+query VariantInventoryItems($ids: [ID!]!) {
+  nodes(ids: $ids) {
+    ... on ProductVariant {
+      id
+      inventoryItem { id }
+      image { url }
+    }
+  }
+}
+GQL;
+
+        foreach (array_chunk($variantIds, 50) as $chunk) {
+            $gids = array_map(static fn (int $id) => 'gid://shopify/ProductVariant/'.$id, $chunk);
+            $json = $this->shopifyGraphqlPost($query, ['ids' => $gids]);
+            if ($json === null) {
+                continue;
+            }
+
+            foreach ($json['data']['nodes'] ?? [] as $node) {
+                if (! is_array($node) || empty($node['id'])) {
+                    continue;
+                }
+                if (! preg_match('#ProductVariant/(\d+)#', (string) $node['id'], $vm)) {
+                    continue;
+                }
+                $vid = (int) $vm[1];
+                $itemGid = $node['inventoryItem']['id'] ?? null;
+                if (! is_string($itemGid) || ! preg_match('#InventoryItem/(\d+)#', $itemGid, $im)) {
+                    continue;
+                }
+                $iids[$vid] = $im[1];
+                $images[$vid] = $node['image']['url'] ?? null;
+            }
+
+            usleep(300000);
+        }
+
+        return ['iids' => $iids, 'images' => $images];
+    }
+
+    /**
+     * Ohio location id, or null.
+     */
+    protected function resolveOhioLocationId(string $shopUrl): ?int
+    {
         $locationResponse = $this->shopifyGet("$shopUrl/admin/api/2025-01/locations.json");
+        if (! $locationResponse->successful()) {
+            return null;
+        }
 
-        if ($locationResponse->successful()) {
-            foreach ($locationResponse->json('locations') as $loc) {
-                if (stripos($loc['name'], 'Ohio') !== false) {
-                    $locationId = $loc['id'];
-                    Log::info('Matched Ohio location ID', ['id' => $locationId]);
-                    break;
+        foreach ($locationResponse->json('locations') ?? [] as $loc) {
+            if (stripos((string) ($loc['name'] ?? ''), 'Ohio') !== false) {
+                Log::info('Matched Ohio location ID', ['id' => $loc['id']]);
+
+                return (int) $loc['id'];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Build sku → inventory_item_id from local shopify_skus (+ catalog variant_ids when missing).
+     *
+     * @return array{0: array<string, string|int>, 1: array<string, string|null>}
+     */
+    protected function buildSkuInventoryMapsFromLocalTables(string $shopUrl): array
+    {
+        $skuToVariant = [];
+        $imageMap = [];
+
+        foreach (ShopifySku::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->select(['sku', 'variant_id', 'image_src'])
+            ->cursor() as $row) {
+            $sku = trim((string) $row->sku);
+            if ($sku === '') {
+                continue;
+            }
+            $vid = (int) ($row->variant_id ?? 0);
+            if ($vid > 0) {
+                $skuToVariant[$sku] = $vid;
+            }
+            $imageMap[$sku] = $row->image_src;
+        }
+
+        // Fill missing variant_ids from lean catalog mirror (main store).
+        if (Schema::hasTable('shopify_catalog_variants')) {
+            $needSku = [];
+            foreach ($imageMap as $sku => $_img) {
+                if (! isset($skuToVariant[$sku])) {
+                    $needSku[$sku] = true;
+                }
+            }
+            if ($needSku !== []) {
+                $catalogRows = DB::table('shopify_catalog_variants')
+                    ->where('store', 'main')
+                    ->whereNotNull('sku')
+                    ->where('sku', '!=', '')
+                    ->whereNotNull('shopify_variant_id')
+                    ->whereIn('sku', array_keys($needSku))
+                    ->get(['sku', 'shopify_variant_id']);
+                foreach ($catalogRows as $c) {
+                    $sku = trim((string) $c->sku);
+                    $vid = (int) $c->shopify_variant_id;
+                    if ($sku !== '' && $vid > 0 && ! isset($skuToVariant[$sku])) {
+                        $skuToVariant[$sku] = $vid;
+                    }
                 }
             }
         }
 
-        usleep(6000000);
+        $variantIds = array_values(array_unique(array_values($skuToVariant)));
+        $resolved = $this->resolveVariantInventoryItemIdsViaGraphQl($variantIds);
+        $variantIdToIid = $resolved['iids'];
+        $variantIdToImage = $resolved['images'];
 
+        // REST fallback for any variants GraphQL missed.
+        $missing = [];
+        foreach ($variantIds as $vid) {
+            if (! isset($variantIdToIid[$vid])) {
+                $missing[] = $vid;
+            }
+        }
+        if ($missing !== []) {
+            Log::info('fetchInventoryWithCommitment: REST fallback for unresolved variants', [
+                'count' => count($missing),
+            ]);
+            foreach ($missing as $vid) {
+                $iid = $this->resolveInventoryItemIdForVariant($shopUrl, $vid);
+                if ($iid !== null) {
+                    $variantIdToIid[$vid] = $iid;
+                }
+                usleep(100000);
+            }
+        }
+
+        $skuMap = [];
+        foreach ($skuToVariant as $sku => $vid) {
+            if (! isset($variantIdToIid[$vid])) {
+                continue;
+            }
+            $skuMap[$sku] = $variantIdToIid[$vid];
+            if (empty($imageMap[$sku]) && ! empty($variantIdToImage[$vid])) {
+                $imageMap[$sku] = $variantIdToImage[$vid];
+            }
+        }
+
+        Log::info('fetchInventoryWithCommitment: lean local skuMap', [
+            'sku_rows' => count($imageMap),
+            'with_variant_id' => count($skuToVariant),
+            'sku_map' => count($skuMap),
+            'resolved_iids' => count($variantIdToIid),
+        ]);
+
+        return [$skuMap, $imageMap];
+    }
+
+    /**
+     * Live Ohio inventory for shopify_skus.
+     * Default: lean local (shopify_skus / catalog variant ids → GraphQL qty).
+     * Pass $fullProductCatalog=true for the old products.json crawl (hours).
+     */
+    public function fetchInventoryWithCommitment(bool $fullProductCatalog = false): array
+    {
+        set_time_limit(0);
+        $shopUrl = 'https://'.config('services.shopify.store_url');
+
+        $locationId = $this->resolveOhioLocationId($shopUrl);
         if (! $locationId) {
             Log::error('Ohio location not found.');
 
             return [];
         }
 
-        // 1) Walk the whole catalog once: variant_id -> inventory_item_id (and image), same fields as product JSON.
+        if ($fullProductCatalog) {
+            return $this->fetchInventoryWithCommitmentViaProductCatalog($shopUrl, $locationId);
+        }
+
+        usleep(250000);
+
+        [$skuMap, $imageMap] = $this->buildSkuInventoryMapsFromLocalTables($shopUrl);
+        if ($skuMap === []) {
+            Log::warning('fetchInventoryWithCommitment: lean local map empty; falling back to product catalog crawl');
+
+            return $this->fetchInventoryWithCommitmentViaProductCatalog($shopUrl, $locationId);
+        }
+
+        $graphQl = $this->fetchDashboardInventoryViaGraphQl($skuMap, $imageMap, $locationId);
+        if ($graphQl !== []) {
+            Log::info('fetchInventoryWithCommitment: lean GraphQL quantities', ['sku_count' => count($graphQl)]);
+
+            return $graphQl;
+        }
+
+        Log::warning('fetchInventoryWithCommitment: GraphQL empty on lean path; REST fallback');
+
+        return $this->fetchInventoryWithCommitmentRestFallback($skuMap, $imageMap, $locationId);
+    }
+
+    /**
+     * Legacy slow path: paginate all products.json pages (6s between pages).
+     */
+    protected function fetchInventoryWithCommitmentViaProductCatalog(string $shopUrl, int $locationId): array
+    {
+        usleep(6000000);
+
         $variantIdToIid = [];
         $variantIdToImage = [];
         $nextPageUrl = "$shopUrl/admin/api/2025-01/products.json?limit=250&fields=variants,image,title,handle,id";
@@ -803,18 +1001,6 @@ GQL;
 
                     $variantIdToIid[$variantId] = $iid;
                     $variantIdToImage[$variantId] = $mainImage;
-
-                    $sku = trim((string) ($variant['sku'] ?? ''));
-                    if (stripos($sku, 'SS HD 2PK ORG WOB') !== false || stripos($sku, 'SS ECO 2PK BLK') !== false) {
-                        Log::info('=== fetchInventoryWithCommitment: catalog variant ===', [
-                            'sku' => $sku,
-                            'inventory_item_id' => $iid,
-                            'variant_id' => $variantId,
-                            'product_id' => $product['id'],
-                            'product_title' => $product['title'] ?? null,
-                            'image_url' => $mainImage,
-                        ]);
-                    }
                 }
             }
 
@@ -829,7 +1015,6 @@ GQL;
             }
         } while ($nextPageUrl);
 
-        // 2) Variant IDs we need from shopify_skus but did not see in the catalog (same GET as single-SKU sync).
         $missingVariantIds = [];
         foreach (ShopifySku::query()
             ->whereNotNull('variant_id')
@@ -856,7 +1041,6 @@ GQL;
             }
         }
 
-        // 3) Build sku -> inventory_item_id from shopify_skus.variant_id (same linkage as --sku= single sync).
         $skuMap = [];
         $imageMap = [];
         foreach (ShopifySku::query()
@@ -873,12 +1057,13 @@ GQL;
             $imageMap[$sku] = $row->image_src ?: ($variantIdToImage[$vid] ?? null);
         }
 
-        Log::info('fetchInventoryWithCommitment: skuMap built from shopify_skus.variant_id', [
+        Log::info('fetchInventoryWithCommitment: skuMap built from product catalog crawl', [
             'sku_count' => count($skuMap),
             'catalog_variants' => count($variantIdToIid),
+            'pages' => $pageCount,
         ]);
 
-        $graphQl = $this->fetchDashboardInventoryViaGraphQl($skuMap, $imageMap, (int) $locationId);
+        $graphQl = $this->fetchDashboardInventoryViaGraphQl($skuMap, $imageMap, $locationId);
         if ($graphQl !== []) {
             Log::info('fetchInventoryWithCommitment: using Shopify Admin GraphQL quantities', ['sku_count' => count($graphQl)]);
 
@@ -1229,6 +1414,7 @@ GQL;
 
             $skuMap = [];
             $imageMap = [];
+            $skuToVariant = [];
 
             foreach ($skuInputs as $skuInput) {
                 $normalized = strtoupper(trim((string) $skuInput));
@@ -1239,21 +1425,24 @@ GQL;
                     continue;
                 }
 
-                $variantRes = $this->shopifyGet("$shopUrl/admin/api/2025-01/variants/{$row->variant_id}.json");
-                if (! $variantRes->successful()) {
-                    Log::warning('syncLiveInventoryForSkuList: variant API failed', ['sku' => $row->sku]);
-
-                    continue;
-                }
-
-                $inventoryItemId = $variantRes->json('variant.inventory_item_id');
-                if (! $inventoryItemId) {
-                    continue;
-                }
-
                 $exactSku = $row->sku;
-                $skuMap[$exactSku] = $inventoryItemId;
+                $skuToVariant[$exactSku] = (int) $row->variant_id;
                 $imageMap[$exactSku] = $row->image_src;
+            }
+
+            $resolved = $this->resolveVariantInventoryItemIdsViaGraphQl(array_values($skuToVariant));
+            foreach ($skuToVariant as $exactSku => $vid) {
+                $iid = $resolved['iids'][$vid] ?? null;
+                if ($iid === null) {
+                    $iid = $this->resolveInventoryItemIdForVariant($shopUrl, $vid);
+                }
+                if ($iid === null) {
+                    continue;
+                }
+                $skuMap[$exactSku] = $iid;
+                if (empty($imageMap[$exactSku]) && ! empty($resolved['images'][$vid])) {
+                    $imageMap[$exactSku] = $resolved['images'][$vid];
+                }
             }
 
             if ($skuMap === []) {
@@ -1306,22 +1495,24 @@ GQL;
      * Fetch live inventory (available_to_sell, committed, on_hand) from Shopify
      * and persist those values into `shopify_skus` table.
      *
-     * This uses the existing fetchInventoryWithCommitment() which returns
-     * an array keyed by normalized SKU.
+     * Default: lean local variant_ids (shopify_skus / catalog) → GraphQL quantities.
+     * Pass $fullProductCatalog=true for the legacy products.json crawl.
      */
-    public function syncLiveInventoryToDb(int $graphQlSampleLimit = 0): bool
+    public function syncLiveInventoryToDb(int $graphQlSampleLimit = 0, bool $fullProductCatalog = false): bool
     {
         $this->setGraphQlQuantitySampleLimit($graphQlSampleLimit);
         $runId = uniqid('slv_', true);
         $t0 = microtime(true);
+        $mode = $fullProductCatalog ? 'full_product_catalog' : 'lean_local';
 
         try {
             $this->logShopifyLiveInventory('full_sync_started', [
                 'run_id' => $runId,
+                'mode' => $mode,
                 'graphQl_sample_limit' => $graphQlSampleLimit,
             ]);
 
-            $live = $this->fetchInventoryWithCommitment();
+            $live = $this->fetchInventoryWithCommitment($fullProductCatalog);
 
             if (empty($live)) {
                 Log::warning('No live inventory returned from Shopify (sync skipped).');

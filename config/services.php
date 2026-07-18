@@ -134,7 +134,7 @@ return [
         /** Admin REST API version path segment, e.g. 2025-01 */
         'api_version' => env('SHOPIFY_API_VERSION', '2025-01'),
         'inventory_location_id' => env('SHOPIFY_INVENTORY_LOCATION_ID'),
-        'webhook_secret' => env('SHOPIFY_WEBHOOK_SECRET'),
+        'webhook_secret' => env('SHOPIFY_WEBHOOK_SECRET', env('SHOPIFY_API_SECRET', env('SHOPIFY_SHARED_SECRET'))),
         /** Guzzle timeouts (seconds) */
         'http_timeout' => env('SHOPIFY_HTTP_TIMEOUT', 120),
         'connect_timeout' => env('SHOPIFY_CONNECT_TIMEOUT', 15),
