@@ -424,9 +424,10 @@ class ShopifyApiInventoryController extends Controller
     }
 
     /**
-     * Parse Shopify quantity fields safely (GraphQL/REST) and never persist negatives.
+     * Parse Shopify quantity fields safely (GraphQL/REST).
+     * Available / on_hand may be negative in Shopify Admin — pass $allowNegative = true for those.
      */
-    protected function sanitizeInventoryInt(mixed $value): int
+    protected function sanitizeInventoryInt(mixed $value, bool $allowNegative = false): int
     {
         if (is_array($value)) {
             $value = $value['quantity'] ?? $value['value'] ?? 0;
@@ -439,21 +440,27 @@ class ShopifyApiInventoryController extends Controller
         }
 
         $n = (int) round((float) $value);
+        $max = 2_000_000_000;
 
-        return max(0, min($n, 2_000_000_000));
+        if ($allowNegative) {
+            return max(-$max, min($n, $max));
+        }
+
+        return max(0, min($n, $max));
     }
 
     /**
      * DB columns to persist after GraphQL Ohio inventory (matches Shopify Admin for that location).
      * Sets legacy `inv` to the same value as available_to_sell so reports using `inv` reflect sellable stock.
+     * available_to_sell / on_hand keep Shopify negatives; other states stay non-negative.
      *
      * @param  array<string, mixed>  $data
      * @return array<string, int>
      */
     protected function shopifySkuQuantitiesFromGraphQlRow(array $data): array
     {
-        $onHand = max(0, (int) ($data['on_hand'] ?? 0));
-        $availableToSell = max(0, (int) ($data['available_to_sell'] ?? 0));
+        $onHand = (int) ($data['on_hand'] ?? 0);
+        $availableToSell = (int) ($data['available_to_sell'] ?? 0);
 
         return [
             'available_to_sell' => $availableToSell,
@@ -575,7 +582,9 @@ GQL;
                 if (is_array($level) && ! empty($level['quantities'])) {
                     foreach ($level['quantities'] as $row) {
                         if (! empty($row['name'])) {
-                            $qtyByName[$row['name']] = $this->sanitizeInventoryInt($row['quantity'] ?? 0);
+                            $name = (string) $row['name'];
+                            $allowNegative = in_array($name, ['available', 'on_hand'], true);
+                            $qtyByName[$name] = $this->sanitizeInventoryInt($row['quantity'] ?? 0, $allowNegative);
                         }
                     }
                 }
@@ -631,14 +640,16 @@ GQL;
 
         // Shopify Admin "Available" / "On hand" come from GraphQL InventoryLevel.quantities — use those.
         // REST inventory_levels.available can differ (e.g. 50 vs 46) and will not match the dashboard.
+        // available / on_hand may be negative in Shopify Admin; keep those values.
         foreach ($final as $sku => &$row) {
-            $row['available_to_sell'] = $this->sanitizeInventoryInt($row['available_to_sell'] ?? 0);
+            $row['available_to_sell'] = $this->sanitizeInventoryInt($row['available_to_sell'] ?? 0, true);
             $row['committed'] = $this->sanitizeInventoryInt($row['committed'] ?? 0);
             $row['unavailable'] = $this->sanitizeInventoryInt($row['unavailable'] ?? 0);
             $row['incoming'] = $this->sanitizeInventoryInt($row['incoming'] ?? 0);
-            $gqlOh = $this->sanitizeInventoryInt($row['on_hand'] ?? 0);
+            $gqlOh = $this->sanitizeInventoryInt($row['on_hand'] ?? 0, true);
             $sumParts = $row['available_to_sell'] + $row['committed'] + $row['unavailable'];
-            $row['on_hand'] = $gqlOh > 0 ? $gqlOh : $sumParts;
+            // Prefer GraphQL on_hand including negatives; fall back to sum when GraphQL on_hand is 0 but parts aren't.
+            $row['on_hand'] = $gqlOh !== 0 ? $gqlOh : $sumParts;
         }
         unset($row);
 
@@ -669,7 +680,7 @@ GQL;
             foreach ($invResponse->json('inventory_levels') ?? [] as $level) {
                 $iid = $level['inventory_item_id'];
                 $availableByIid[$iid] = ($availableByIid[$iid] ?? 0)
-                    + $this->sanitizeInventoryInt($level['available'] ?? 0);
+                    + $this->sanitizeInventoryInt($level['available'] ?? 0, true);
             }
 
             usleep(6000000);
@@ -701,7 +712,7 @@ GQL;
 
         $final = [];
         foreach ($skuMap as $sku => $iid) {
-            $available = $this->sanitizeInventoryInt($availableByIid[$iid] ?? 0);
+            $available = $this->sanitizeInventoryInt($availableByIid[$iid] ?? 0, true);
             $committed = $this->sanitizeInventoryInt($committedBySku[$sku] ?? 0);
             $onHand = $available + $committed;
 

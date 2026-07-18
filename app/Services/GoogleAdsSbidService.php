@@ -28,8 +28,11 @@ use Google\Ads\GoogleAds\V22\Resources\Ad;
 use Google\Ads\GoogleAds\V22\Common\MaximizeConversions;
 use Google\Ads\GoogleAds\V22\Common\TargetSpend;
 use Google\Ads\GoogleAds\V22\Common\ManualCpc;
+use Google\Ads\GoogleAds\V22\Common\ListingDimensionInfo;
 use Google\Ads\GoogleAds\V22\Common\ListingGroupInfo;
+use Google\Ads\GoogleAds\V22\Common\ProductItemIdInfo;
 use Google\Ads\GoogleAds\V22\Common\ShoppingProductAdInfo;
+use Google\Ads\GoogleAds\Util\V22\ResourceNames;
 use Google\Ads\GoogleAds\V22\Enums\CampaignStatusEnum\CampaignStatus;
 use Google\Ads\GoogleAds\V22\Enums\AdvertisingChannelTypeEnum\AdvertisingChannelType;
 use Google\Ads\GoogleAds\V22\Enums\AdGroupTypeEnum\AdGroupType;
@@ -805,6 +808,11 @@ class GoogleAdsSbidService
             ? (bool) $params['enable_local']
             : true;
 
+        $itemId = trim((string) ($params['item_id'] ?? ''));
+        if ($itemId === '') {
+            throw new \InvalidArgumentException('item_id is required (Merchant Center product Item ID)');
+        }
+
         try {
             // 1) Budget
             $budget = new CampaignBudget([
@@ -887,21 +895,57 @@ class GoogleAdsSbidService
                 ])
             );
 
-            // 5) Default listing group (All products) with CPC bid
-            $listingCriterion = new AdGroupCriterion([
+            // 5) Listing group tree: include only this Merchant Center Item ID
+            $adGroupId = (int) (preg_replace('/^.*\//', '', $adGroupResourceName) ?: 0);
+            if ($adGroupId <= 0) {
+                throw new \RuntimeException('Failed to parse ad group ID from resource name');
+            }
+
+            $rootResourceName = ResourceNames::forAdGroupCriterion($customerId, $adGroupId, -1);
+
+            $rootCriterion = new AdGroupCriterion([
+                'resource_name' => $rootResourceName,
+                'status' => AdGroupCriterionStatus::ENABLED,
+                'listing_group' => new ListingGroupInfo([
+                    'type' => ListingGroupType::SUBDIVISION,
+                ]),
+            ]);
+
+            $itemUnitCriterion = new AdGroupCriterion([
                 'ad_group' => $adGroupResourceName,
                 'status' => AdGroupCriterionStatus::ENABLED,
                 'listing_group' => new ListingGroupInfo([
                     'type' => ListingGroupType::UNIT,
+                    'parent_ad_group_criterion' => $rootResourceName,
+                    'case_value' => new ListingDimensionInfo([
+                        'product_item_id' => new ProductItemIdInfo(['value' => $itemId]),
+                    ]),
                 ]),
                 'cpc_bid_micros' => $cpcBidMicros,
             ]);
-            $listingOp = new AdGroupCriterionOperation();
-            $listingOp->setCreate($listingCriterion);
+
+            // "Everything else" — required sibling; exclude from bidding
+            $otherUnitCriterion = new AdGroupCriterion([
+                'ad_group' => $adGroupResourceName,
+                'status' => AdGroupCriterionStatus::ENABLED,
+                'negative' => true,
+                'listing_group' => new ListingGroupInfo([
+                    'type' => ListingGroupType::UNIT,
+                    'parent_ad_group_criterion' => $rootResourceName,
+                    'case_value' => new ListingDimensionInfo([
+                        'product_item_id' => new ProductItemIdInfo(),
+                    ]),
+                ]),
+            ]);
+
             $this->getClient()->getAdGroupCriterionServiceClient()->mutateAdGroupCriteria(
                 new MutateAdGroupCriteriaRequest([
                     'customer_id' => $customerId,
-                    'operations' => [$listingOp],
+                    'operations' => [
+                        (new AdGroupCriterionOperation())->setCreate($rootCriterion),
+                        (new AdGroupCriterionOperation())->setCreate($itemUnitCriterion),
+                        (new AdGroupCriterionOperation())->setCreate($otherUnitCriterion),
+                    ],
                 ])
             );
 
@@ -911,6 +955,7 @@ class GoogleAdsSbidService
                 'customer_id' => $customerId,
                 'campaign_name' => $campaignName,
                 'campaign_id' => $campaignId,
+                'item_id' => $itemId,
                 'budget_resource' => $budgetResourceName,
                 'ad_group_resource' => $adGroupResourceName,
             ]);
@@ -921,6 +966,7 @@ class GoogleAdsSbidService
                 'budget_resource_name' => $budgetResourceName,
                 'ad_group_resource_name' => $adGroupResourceName,
                 'campaign_name' => $campaignName,
+                'item_id' => $itemId,
             ];
         } catch (\Throwable $e) {
             Log::error('Failed to create Google Shopping product campaign', [

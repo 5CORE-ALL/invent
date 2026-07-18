@@ -224,8 +224,9 @@ GQL;
                 $updates['variant_id'] = $variantId;
             }
             if ($available !== null) {
-                $updates['available_to_sell'] = max(0, $available);
-                $updates['inv'] = max(0, $available);
+                // Keep Shopify negatives (oversell) so Main-INV matches Admin.
+                $updates['available_to_sell'] = (int) $available;
+                $updates['inv'] = (int) $available;
             }
             if ($updates !== []) {
                 $row->fill($updates)->save();

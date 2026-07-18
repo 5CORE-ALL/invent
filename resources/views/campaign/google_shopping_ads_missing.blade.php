@@ -280,6 +280,7 @@
                     <div class="alert alert-info py-2 small mb-3">
                         Prefills from the parent row and Shopify B2C buyer link (<code>/shopify-b2c-pricing</code>).
                         Campaign is created <strong>PAUSED</strong> in Google Ads.
+                        Product group bids only on the Item ID below (Everything else is excluded).
                     </div>
                     <form id="gsCreateCampaignForm">
                         <input type="hidden" id="gsCreateParent" name="parent">
@@ -289,8 +290,8 @@
                                 <input type="text" class="form-control form-control-sm" id="gsCreateParentDisplay" readonly>
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label small mb-1">Target SKU</label>
-                                <input type="text" class="form-control form-control-sm" id="gsCreateTargetSku" name="target_sku">
+                                <label class="form-label small mb-1">Item ID (Merchant Center)</label>
+                                <input type="text" class="form-control form-control-sm" id="gsCreateTargetSku" name="target_sku" required placeholder="Merchant Center offer / item id">
                             </div>
                             <div class="col-12">
                                 <label class="form-label small mb-1">Campaign name</label>
@@ -1176,8 +1177,8 @@
                         feed_label: document.getElementById('gsCreateFeedLabel').value || 'US'
                     };
 
-                    if (!payload.parent || !payload.campaign_name || !payload.merchant_id) {
-                        errEl.textContent = 'Parent, campaign name, and merchant ID are required.';
+                    if (!payload.parent || !payload.campaign_name || !payload.merchant_id || !(payload.target_sku || '').trim()) {
+                        errEl.textContent = 'Parent, Item ID (Merchant Center), campaign name, and merchant ID are required.';
                         errEl.classList.remove('d-none');
                         return;
                     }

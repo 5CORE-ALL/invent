@@ -383,7 +383,7 @@ class VerificationAdjustmentController extends Controller
                     $item->COMMITTED = (int) ($shopify->committed ?? 0);
                     $item->UNAVAILABLE = (int) ($shopify->getAttribute('unavailable') ?? 0);
                     $item->INCOMING = (int) ($shopify->getAttribute('incoming') ?? 0);
-                    $onHand = max(0, (int) ($shopify->on_hand ?? 0));
+                    $onHand = (int) ($shopify->on_hand ?? 0);
                     $item->ON_HAND = $onHand;
                     $item->INV = $item->AVAILABLE_TO_SELL;
                     $item->L30 = $shopify->quantity ?? 0;
@@ -532,7 +532,7 @@ class VerificationAdjustmentController extends Controller
         }
 
         $availableToSell = (int) ($row->available_to_sell ?? 0);
-        $onHand = max(0, (int) ($row->on_hand ?? 0));
+        $onHand = (int) ($row->on_hand ?? 0);
         $l30 = (float) ($row->quantity ?? 0);
         $inv = $availableToSell;
 

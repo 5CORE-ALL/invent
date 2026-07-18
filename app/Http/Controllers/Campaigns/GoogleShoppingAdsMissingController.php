@@ -176,12 +176,19 @@ class GoogleShoppingAdsMissingController extends Controller
             'merchant_id' => ['nullable', 'integer', 'min:1'],
             'campaign_priority' => ['nullable', 'integer', 'min:0', 'max:2'],
             'feed_label' => ['nullable', 'string', 'max:32'],
-            'target_sku' => ['nullable', 'string', 'max:255'],
+            'target_sku' => ['required', 'string', 'max:255'],
             'buyer_link' => ['nullable', 'string', 'max:2000'],
         ]);
 
         $parent = preg_replace('/\s+/', ' ', trim($validated['parent']));
         $campaignName = trim($validated['campaign_name']);
+        $itemId = trim((string) $validated['target_sku']);
+        if ($itemId === '') {
+            return response()->json([
+                'ok' => false,
+                'message' => 'Item ID (Merchant Center) is required.',
+            ], 422);
+        }
         $sku = 'PARENT '.$parent;
 
         $existing = $this->autoMatchedShoppingCampaign($sku);
@@ -225,6 +232,7 @@ class GoogleShoppingAdsMissingController extends Controller
                 'campaign_priority' => (int) ($validated['campaign_priority'] ?? 0),
                 'feed_label' => $validated['feed_label'] ?? 'US',
                 'enable_local' => true,
+                'item_id' => $itemId,
             ]);
         } catch (\Throwable $e) {
             Log::error('Google Shopping missing create failed', [
@@ -263,7 +271,7 @@ class GoogleShoppingAdsMissingController extends Controller
             'message' => 'Shopping campaign created (PAUSED).',
             'parent' => $parent,
             'sku' => $sku,
-            'target_sku' => $validated['target_sku'] ?? '',
+            'target_sku' => $itemId,
             'buyer_link' => $validated['buyer_link'] ?? '',
             'campaign' => $created,
             'campaigns' => $this->campaignsResponseForSku($sku)['campaigns'],
