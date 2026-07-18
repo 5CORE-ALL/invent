@@ -76,6 +76,15 @@
             background-color: #b45309 !important;
         }
 
+        /* AliExpress badge colors (red) */
+        .badge.ali-off {
+            background-color: #e62e04 !important;
+        }
+
+        .badge.ali-on {
+            background-color: #a31f02 !important;
+        }
+
         /* Active badge outline */
         .badge.map-active {
             box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.55);
@@ -192,6 +201,15 @@
                         <span class="badge ne-off fs-6 p-2" id="newegg-missing-listing-count-badge"
                             style="color: white; font-weight: bold; cursor: pointer;"
                             title="Newegg Missing Listing — not listed on Newegg, marked REQ, INV > 0">NE NL: 0</span>
+                        <span class="badge ali-off fs-6 p-2" id="aliexpress-not-map-count-badge"
+                            style="color: white; font-weight: bold; cursor: pointer;"
+                            title="AliExpress Not Mapped — listed on AliExpress but INV does not match Ali Inv">ALI NP: 0</span>
+                        <span class="badge ali-off fs-6 p-2" id="aliexpress-mismatch-count-badge"
+                            style="color: white; font-weight: bold; cursor: pointer;"
+                            title="AliExpress SKU Mismatch — AliExpress SKU does not exactly match the Product Master SKU">ALI SM: 0</span>
+                        <span class="badge ali-off fs-6 p-2" id="aliexpress-missing-listing-count-badge"
+                            style="color: white; font-weight: bold; cursor: pointer;"
+                            title="AliExpress Missing Listing — not listed on AliExpress, marked REQ, INV > 0">ALI NL: 0</span>
                     </div>
                     <div class="mb-3 d-flex gap-4">
                         <div class="form-check form-switch">
@@ -257,9 +275,9 @@
             var showSiteOnly = false; // "Show SKUs not in Product Master" toggle
             var hideSmallDiff = false; // "Hide ≤3% diff rows" toggle
 
-            var invFieldByMarket = { ebay: 'Ebay Inv', ebay2: 'Ebay2 Inv', ebay3: 'Ebay3 Inv', amazon: 'Amazon Inv', reverb: 'Reverb Inv', macys: 'Macys Inv', bestbuy: 'Bestbuy Inv', tiendamia: 'Tiendamia Inv', temu: 'Temu Inv', shein: 'Shein Inv', newegg: 'Newegg Inv' };
-            var nrFieldByMarket  = { ebay: 'ebay_nr_req', ebay2: 'ebay2_nr_req', ebay3: 'ebay3_nr_req', amazon: 'amazon_nr_req', reverb: 'reverb_nr_req', macys: 'macys_nr_req', bestbuy: 'bestbuy_nr_req', tiendamia: 'tiendamia_nr_req', temu: 'temu_nr_req', shein: 'shein_nr_req', newegg: 'newegg_nr_req' };
-            var within3FieldByMarket = { ebay: 'ebay_within3', ebay2: 'ebay2_within3', ebay3: 'ebay3_within3', amazon: 'amazon_within3', reverb: 'reverb_within3', macys: 'macys_within3', bestbuy: 'bestbuy_within3', tiendamia: 'tiendamia_within3', temu: 'temu_within3', shein: 'shein_within3', newegg: 'newegg_within3' };
+            var invFieldByMarket = { ebay: 'Ebay Inv', ebay2: 'Ebay2 Inv', ebay3: 'Ebay3 Inv', amazon: 'Amazon Inv', reverb: 'Reverb Inv', macys: 'Macys Inv', bestbuy: 'Bestbuy Inv', tiendamia: 'Tiendamia Inv', temu: 'Temu Inv', shein: 'Shein Inv', newegg: 'Newegg Inv', aliexpress: 'Ali Inv' };
+            var nrFieldByMarket  = { ebay: 'ebay_nr_req', ebay2: 'ebay2_nr_req', ebay3: 'ebay3_nr_req', amazon: 'amazon_nr_req', reverb: 'reverb_nr_req', macys: 'macys_nr_req', bestbuy: 'bestbuy_nr_req', tiendamia: 'tiendamia_nr_req', temu: 'temu_nr_req', shein: 'shein_nr_req', newegg: 'newegg_nr_req', aliexpress: 'aliexpress_nr_req' };
+            var within3FieldByMarket = { ebay: 'ebay_within3', ebay2: 'ebay2_within3', ebay3: 'ebay3_within3', amazon: 'amazon_within3', reverb: 'reverb_within3', macys: 'macys_within3', bestbuy: 'bestbuy_within3', tiendamia: 'tiendamia_within3', temu: 'temu_within3', shein: 'shein_within3', newegg: 'newegg_within3', aliexpress: 'aliexpress_within3' };
 
             // NR/REQ column: green "Req", red "Not Req" (anything other than REQ).
             function nrReqFormatter(cell) {
@@ -424,6 +442,12 @@
                         'NE SM: ' + (response.newegg_mismatch_count || 0).toLocaleString();
                     document.getElementById('newegg-missing-listing-count-badge').textContent =
                         'NE NL: ' + (response.newegg_missing_listing_count || 0).toLocaleString();
+                    document.getElementById('aliexpress-not-map-count-badge').textContent =
+                        'ALI NP: ' + (response.aliexpress_not_map_count || 0).toLocaleString();
+                    document.getElementById('aliexpress-mismatch-count-badge').textContent =
+                        'ALI SM: ' + (response.aliexpress_mismatch_count || 0).toLocaleString();
+                    document.getElementById('aliexpress-missing-listing-count-badge').textContent =
+                        'ALI NL: ' + (response.aliexpress_missing_listing_count || 0).toLocaleString();
                     document.getElementById('site-only-count').textContent =
                         response.pm_missing_count ? '(' + response.pm_missing_count.toLocaleString() + ')' : '';
                     return response.data || [];
@@ -457,6 +481,7 @@
                     { title: 'NR/REQ', field: 'temu_nr_req', visible: false, editor: 'list', editorParams: { values: { REQ: 'Req', NR: 'Not Req' } }, formatter: nrReqFormatter, cellEdited: nrEdited('temu') },
                     { title: 'NR/REQ', field: 'shein_nr_req', visible: false, formatter: nrReqFormatter },
                     { title: 'NR/REQ', field: 'newegg_nr_req', visible: false, editor: 'list', editorParams: { values: { REQ: 'Req', NR: 'Not Req' } }, formatter: nrReqFormatter, cellEdited: nrEdited('newegg') },
+                    { title: 'NR/REQ', field: 'aliexpress_nr_req', visible: false, editor: 'list', editorParams: { values: { REQ: 'Req', NR: 'Not Req' } }, formatter: nrReqFormatter, cellEdited: nrEdited('aliexpress') },
                     { title: 'INV', field: 'INV', hozAlign: 'right', sorter: 'number' },
                     {
                         title: 'Ebay Inv', field: 'Ebay Inv', hozAlign: 'right', sorter: 'number',
@@ -568,6 +593,16 @@
                             }
                         },
                     },
+                    {
+                        title: 'Ali Inv', field: 'Ali Inv', hozAlign: 'right', sorter: 'number',
+                        formatter: invFormatter('aliexpress_mismatch'),
+                        cellClick: function (e, cell) {
+                            if (e.target.classList.contains('map-info-icon')) {
+                                var d = cell.getRow().getData();
+                                showIssueModal('AliExpress', d['(Child) sku'], d.aliexpress_sku, d.aliexpress_issue);
+                            }
+                        },
+                    },
                     { title: 'Diff', field: 'diff', visible: false, hozAlign: 'right', formatter: diffFormatter, sorter: diffSorter },
                 ],
             });
@@ -608,6 +643,9 @@
                 nenp: { el: document.getElementById('newegg-not-map-count-badge'),  field: 'newegg_not_map', market: 'newegg', off: 'ne-off',  on: 'ne-on' },
                 nesm: { el: document.getElementById('newegg-mismatch-count-badge'), field: 'newegg_mismatch',market: 'newegg', off: 'ne-off',  on: 'ne-on' },
                 neml: { el: document.getElementById('newegg-missing-listing-count-badge'), field: 'newegg_missing_listing', market: 'newegg', off: 'ne-off', on: 'ne-on' },
+                alinp: { el: document.getElementById('aliexpress-not-map-count-badge'),  field: 'aliexpress_not_map', market: 'aliexpress', off: 'ali-off',  on: 'ali-on' },
+                alism: { el: document.getElementById('aliexpress-mismatch-count-badge'), field: 'aliexpress_mismatch',market: 'aliexpress', off: 'ali-off',  on: 'ali-on' },
+                aliml: { el: document.getElementById('aliexpress-missing-listing-count-badge'), field: 'aliexpress_missing_listing', market: 'aliexpress', off: 'ali-off', on: 'ali-on' },
             };
 
             function applyFilters() {

@@ -115,7 +115,19 @@
         }
         .gs-ads-missing .link-chip .chip-x {
             cursor: pointer;
+            color: #868e96;
+            margin-left: 2px;
+        }
+        .gs-ads-missing .link-chip .chip-x:hover {
+            color: #495057;
+        }
+        .gs-ads-missing .link-chip .chip-trash {
+            cursor: pointer;
             color: #e03131;
+            margin-left: 2px;
+        }
+        .gs-ads-missing .link-chip .chip-trash:hover {
+            color: #c92a2a;
         }
         .gs-ads-missing .link-add-btn {
             border: 1px solid #adb5bd;
@@ -270,7 +282,7 @@
 @section('modal')
     {{-- Create Google Shopping campaign modal (must live in modal section so Bootstrap can show it) --}}
     <div class="modal fade" id="gsCreateCampaignModal" tabindex="-1" aria-labelledby="gsCreateCampaignModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header py-2">
                     <h5 class="modal-title" id="gsCreateCampaignModalLabel">Create Google Shopping Ad</h5>
@@ -278,24 +290,20 @@
                 </div>
                 <div class="modal-body">
                     <div class="alert alert-info py-2 small mb-3">
-                        Prefills from the parent row and Shopify B2C buyer link (<code>/shopify-b2c-pricing</code>).
-                        Campaign is created <strong>PAUSED</strong> in Google Ads.
-                        Product group bids only on the Item ID below (Everything else is excluded).
+                        Creates <strong>one PAUSED</strong> Shopping campaign for the parent
+                        (e.g. <code>PARENT DT AH</code>). Selected child SKUs are included as
+                        Merchant Center Item IDs under that campaign; Everything else is excluded.
                     </div>
                     <form id="gsCreateCampaignForm">
                         <input type="hidden" id="gsCreateParent" name="parent">
-                        <div class="row g-2">
-                            <div class="col-md-6">
+                        <div class="row g-2 mb-2">
+                            <div class="col-md-4">
                                 <label class="form-label small mb-1">Parent</label>
                                 <input type="text" class="form-control form-control-sm" id="gsCreateParentDisplay" readonly>
                             </div>
-                            <div class="col-md-6">
-                                <label class="form-label small mb-1">Item ID (Merchant Center)</label>
-                                <input type="text" class="form-control form-control-sm" id="gsCreateTargetSku" name="target_sku" required placeholder="Merchant Center offer / item id">
-                            </div>
-                            <div class="col-12">
+                            <div class="col-md-8">
                                 <label class="form-label small mb-1">Campaign name</label>
-                                <input type="text" class="form-control form-control-sm" id="gsCreateCampaignName" name="campaign_name" required>
+                                <input type="text" class="form-control form-control-sm" id="gsCreateCampaignName" name="campaign_name" required placeholder="PARENT DT AH">
                             </div>
                             <div class="col-12">
                                 <label class="form-label small mb-1">Buyer link (Shopify B2C)</label>
@@ -304,31 +312,58 @@
                                     <a class="btn btn-outline-secondary" id="gsCreateBuyerLinkOpen" href="#" target="_blank" title="Open buyer link">Open</a>
                                 </div>
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-md-3">
                                 <label class="form-label small mb-1">Daily budget ($)</label>
                                 <input type="number" class="form-control form-control-sm" id="gsCreateBudget" name="budget_amount" min="1" step="0.01" value="1">
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-md-3">
                                 <label class="form-label small mb-1">CPC bid / SBID ($)</label>
                                 <input type="number" class="form-control form-control-sm" id="gsCreateCpcBid" name="cpc_bid" min="0.01" step="0.01" value="0.50">
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-md-2">
                                 <label class="form-label small mb-1">Priority (0–2)</label>
                                 <input type="number" class="form-control form-control-sm" id="gsCreatePriority" name="campaign_priority" min="0" max="2" value="0">
                             </div>
-                            <div class="col-md-6">
+                            <div class="col-md-2">
                                 <label class="form-label small mb-1">Merchant Center ID</label>
                                 <input type="number" class="form-control form-control-sm" id="gsCreateMerchantId" name="merchant_id" required>
                             </div>
-                            <div class="col-md-6">
+                            <div class="col-md-2">
                                 <label class="form-label small mb-1">Feed label</label>
                                 <input type="text" class="form-control form-control-sm" id="gsCreateFeedLabel" name="feed_label" value="US">
                             </div>
-                            <div class="col-12 mt-1">
-                                <a href="#" id="gsCreateAiNegLink" class="small fw-semibold">
-                                    <i class="fa fa-magic me-1"></i> Generate AI negative keywords for this product
-                                </a>
+                        </div>
+
+                        <div class="d-flex align-items-center justify-content-between mb-1">
+                            <label class="form-label small mb-0 fw-semibold">
+                                Child SKUs in this campaign
+                                <span class="text-muted fw-normal" id="gsCreateChildCount"></span>
+                            </label>
+                            <div class="btn-group btn-group-sm">
+                                <button type="button" class="btn btn-outline-secondary" id="gsCreateSelectAll">Select all</button>
+                                <button type="button" class="btn btn-outline-secondary" id="gsCreateSelectNone">Select none</button>
                             </div>
+                        </div>
+                        <div class="table-responsive border rounded" style="max-height: 320px;">
+                            <table class="table table-sm table-hover mb-0 align-middle" id="gsCreateChildrenTable">
+                                <thead class="table-light sticky-top">
+                                    <tr>
+                                        <th style="width:36px;"></th>
+                                        <th style="min-width:140px;">Target SKU</th>
+                                        <th style="min-width:280px;">Item ID (Merchant Center)</th>
+                                        <th style="width:60px;">Inv</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="gsCreateChildrenBody"></tbody>
+                            </table>
+                        </div>
+                        <input type="hidden" id="gsCreateTargetSku" value="">
+                        <input type="hidden" id="gsCreateItemId" value="">
+
+                        <div class="mt-2">
+                            <a href="#" id="gsCreateAiNegLink" class="small fw-semibold">
+                                <i class="fa fa-magic me-1"></i> Generate AI negative keywords for this product
+                            </a>
                         </div>
                     </form>
                     <div class="text-danger small mt-2 d-none" id="gsCreateError"></div>
@@ -371,17 +406,58 @@
                         </div>
                         <div id="gsAiNegExisting" class="border rounded p-2 small bg-light" style="max-height:120px;overflow:auto;"></div>
                     </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold mb-1" for="gsAiNegManualInput">Add manual negative keyword</label>
+                        <div class="input-group input-group-sm">
+                            <input type="text" class="form-control" id="gsAiNegManualInput"
+                                placeholder="Type a keyword and press Add (or Enter)">
+                            <button type="button" class="btn btn-outline-success" id="gsAiNegManualAddBtn" title="Add to list">
+                                <i class="fa fa-plus me-1"></i> Add
+                            </button>
+                        </div>
+                        <div class="form-text small">Manual keywords are included when you Push / Export.</div>
+                    </div>
                     <div id="gsAiNegSuggestedWrap" class="d-none">
                         <div class="d-flex align-items-center justify-content-between mb-1">
                             <div class="fw-semibold small">
-                                AI suggested negatives to add
+                                Negatives to push
                                 <span class="badge text-bg-danger ms-1" id="gsAiNegSuggestedCount">0</span>
                             </div>
-                            <button type="button" class="btn btn-sm btn-outline-secondary" id="gsAiNegCopyBtn" title="Copy all">
-                                <i class="fa fa-copy me-1"></i> Copy all
-                            </button>
+                            <div class="btn-group btn-group-sm">
+                                <button type="button" class="btn btn-outline-secondary" id="gsAiNegCopyBtn" title="Copy all">
+                                    <i class="fa fa-copy me-1"></i> Copy
+                                </button>
+                                <button type="button" class="btn btn-outline-secondary" id="gsAiNegExportBtn" title="Export keywords CSV">
+                                    <i class="fa fa-file-csv me-1"></i> Export CSV
+                                </button>
+                            </div>
                         </div>
                         <ul id="gsAiNegSuggested" class="list-group list-group-flush border rounded" style="max-height:280px;overflow:auto;"></ul>
+                    </div>
+                    <div class="border rounded p-2 mt-3 bg-light" id="gsAiNegPushWrap">
+                        <div class="fw-semibold small mb-2">Push to Google Ads campaign</div>
+                        <div class="row g-2 align-items-end">
+                            <div class="col-md-5">
+                                <label class="form-label small mb-1" for="gsAiNegMatchType">Match type</label>
+                                <select class="form-select form-select-sm" id="gsAiNegMatchType">
+                                    <option value="PHRASE" selected>Phrase</option>
+                                    <option value="BROAD">Broad</option>
+                                    <option value="EXACT">Exact</option>
+                                </select>
+                            </div>
+                            <div class="col-md-7">
+                                <div class="form-check mt-3">
+                                    <input class="form-check-input" type="checkbox" id="gsAiNegIncludeAmazon" checked>
+                                    <label class="form-check-label small" for="gsAiNegIncludeAmazon">
+                                        Also push Amazon KW(-) negatives for this parent
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-text small mt-1">
+                            Pushes to the Shopping campaign for this parent (create/link it first).
+                        </div>
+                        <div class="text-success small mt-2 d-none" id="gsAiNegPushOk"></div>
                     </div>
                 </div>
                 <div class="modal-footer py-2">
@@ -391,6 +467,9 @@
                     </button>
                     <button type="button" class="btn btn-primary btn-sm" id="gsAiNegRegenBtn">
                         <i class="fa fa-sync me-1"></i> Regenerate
+                    </button>
+                    <button type="button" class="btn btn-success btn-sm" id="gsAiNegPushBtn" title="Push negatives to Google Ads">
+                        <i class="fa fa-cloud-upload-alt me-1"></i> Push Negative Keywords
                     </button>
                 </div>
             </div>
@@ -406,9 +485,12 @@
             var campaignsUrl = @json(route('google.shopping.ads.missing.campaigns'));
             var linkUrl = @json(route('google.shopping.ads.missing.link'));
             var unlinkUrl = @json(route('google.shopping.ads.missing.unlink'));
+            var deleteUrl = @json(route('google.shopping.ads.missing.delete'));
             var createUrl = @json(route('google.shopping.ads.missing.create'));
             var aiNegUrl = @json(route('google.shopping.ads.missing.ai-negatives'));
+            var pushNegUrl = @json(route('google.shopping.ads.missing.push-negatives'));
             var csrfToken = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+            var lastCreatedCampaignId = '';
 
             function esc(str) {
                 return String(str == null ? '' : str)
@@ -546,12 +628,20 @@
                 var d = cell.getData();
                 var list = cell.getValue() || [];
                 var chips = (Array.isArray(list) ? list : []).map(function (c) {
-                    var canRemove = c && c.source === 'manual' && c.id;
+                    var canUnlink = c && c.source === 'manual' && c.id;
+                    var canDelete = c && (c.campaign_id || c.campaign_name);
                     return '<span class="link-chip" title="' + esc(c.campaign_name) + (c.source === 'manual' ? ' (manual)' : ' (auto)') + '">'
                         + statusDot(c)
                         + esc(c.campaign_name)
-                        + (canRemove
-                            ? ' <i class="fa fa-times chip-x" data-id="' + c.id + '" data-sku="' + esc(d.sku) + '"></i>'
+                        + (canUnlink
+                            ? ' <i class="fa fa-times chip-x" title="Unlink only (keep in Google Ads)" data-id="' + c.id + '" data-sku="' + esc(d.sku) + '"></i>'
+                            : '')
+                        + (canDelete
+                            ? ' <i class="fa fa-trash chip-trash" title="Delete campaign in Google Ads"'
+                                + ' data-sku="' + esc(d.sku) + '"'
+                                + ' data-id="' + esc(c.id || '') + '"'
+                                + ' data-campaign-id="' + esc(c.campaign_id || '') + '"'
+                                + ' data-campaign-name="' + esc(c.campaign_name || '') + '"></i>'
                             : '')
                         + '</span>';
                 }).join('');
@@ -938,6 +1028,43 @@
                                 updateMissingBadge();
                             }
                         });
+                        return;
+                    }
+
+                    var trash = e.target.closest('.chip-trash');
+                    if (trash) {
+                        var delSku = trash.getAttribute('data-sku') || '';
+                        var delName = trash.getAttribute('data-campaign-name') || '';
+                        var delCid = trash.getAttribute('data-campaign-id') || '';
+                        var delLinkId = trash.getAttribute('data-id') || '';
+                        var confirmMsg = 'Delete campaign in Google Ads?\n\n'
+                            + (delName || delCid)
+                            + '\n\nThis sets the campaign to REMOVED in Google Ads and unlinks it here.';
+                        if (!window.confirm(confirmMsg)) {
+                            return;
+                        }
+                        trash.style.opacity = '0.4';
+                        postJson(deleteUrl, {
+                            sku: delSku,
+                            campaign_id: delCid,
+                            campaign_name: delName,
+                            link_id: delLinkId ? Number(delLinkId) : null
+                        }).then(function (out) {
+                            trash.style.opacity = '';
+                            if (out.ok && out.body && out.body.ok) {
+                                var rDel = table.getRow(delSku);
+                                if (rDel) {
+                                    rDel.update({ campaigns: out.body.campaigns || [] });
+                                }
+                                updateMissingBadge();
+                                window.alert(out.body.message || 'Campaign deleted.');
+                            } else {
+                                window.alert((out.body && out.body.message) || 'Failed to delete campaign.');
+                            }
+                        }).catch(function () {
+                            trash.style.opacity = '';
+                            window.alert('Network error deleting campaign.');
+                        });
                     }
                 });
 
@@ -956,11 +1083,82 @@
                     return null;
                 }
 
+                function escAttr(s) {
+                    return String(s == null ? '' : s)
+                        .replace(/&/g, '&amp;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;');
+                }
+
+                function syncCreateAiHiddenFromSelection() {
+                    var first = document.querySelector('#gsCreateChildrenBody .gs-child-check:checked');
+                    var row = first ? first.closest('tr') : document.querySelector('#gsCreateChildrenBody tr');
+                    if (!row) {
+                        document.getElementById('gsCreateTargetSku').value = '';
+                        document.getElementById('gsCreateItemId').value = '';
+                        return;
+                    }
+                    var skuEl = row.querySelector('.gs-child-sku');
+                    var itemEl = row.querySelector('.gs-child-item-id');
+                    document.getElementById('gsCreateTargetSku').value = skuEl ? skuEl.value : '';
+                    document.getElementById('gsCreateItemId').value = itemEl ? itemEl.value : '';
+                }
+
+                function renderCreateChildren(row) {
+                    var body = document.getElementById('gsCreateChildrenBody');
+                    var countEl = document.getElementById('gsCreateChildCount');
+                    var children = Array.isArray(row.children) ? row.children.slice() : [];
+                    if (!children.length && (row.target_sku || row.merchant_item_id)) {
+                        children = [{
+                            target_sku: row.target_sku || '',
+                            merchant_item_id: row.merchant_item_id || '',
+                            inv: null
+                        }];
+                    }
+                    if (!children.length) {
+                        body.innerHTML = '<tr><td colspan="4" class="text-muted small px-3 py-3">No child SKUs found for this parent.</td></tr>';
+                        countEl.textContent = '(0)';
+                        return;
+                    }
+                    var html = '';
+                    children.forEach(function (c, idx) {
+                        var sku = c.target_sku || '';
+                        var itemId = c.merchant_item_id || '';
+                        var inv = (c.inv == null || c.inv === '') ? '—' : String(c.inv);
+                        var checked = itemId.indexOf('shopify_us_') === 0 ? ' checked' : '';
+                        var warn = itemId.indexOf('shopify_us_') === 0 ? '' : ' table-warning';
+                        html += '<tr class="' + warn + '" data-idx="' + idx + '">'
+                            + '<td class="text-center"><input type="checkbox" class="form-check-input gs-child-check"' + checked + '></td>'
+                            + '<td><input type="text" class="form-control form-control-sm gs-child-sku" value="' + escAttr(sku) + '"></td>'
+                            + '<td><input type="text" class="form-control form-control-sm gs-child-item-id" value="' + escAttr(itemId) + '" placeholder="shopify_us_…"></td>'
+                            + '<td class="small text-muted">' + escAttr(inv) + '</td>'
+                            + '</tr>';
+                    });
+                    body.innerHTML = html;
+                    countEl.textContent = '(' + children.length + ')';
+                    syncCreateAiHiddenFromSelection();
+                }
+
+                function collectSelectedChildren() {
+                    var out = [];
+                    document.querySelectorAll('#gsCreateChildrenBody tr').forEach(function (tr) {
+                        var check = tr.querySelector('.gs-child-check');
+                        if (!check || !check.checked) { return; }
+                        var skuEl = tr.querySelector('.gs-child-sku');
+                        var itemEl = tr.querySelector('.gs-child-item-id');
+                        out.push({
+                            target_sku: (skuEl ? skuEl.value : '').trim(),
+                            item_id: (itemEl ? itemEl.value : '').trim()
+                        });
+                    });
+                    return out;
+                }
+
                 function openCreateModal(row) {
                     if (!row) { return; }
                     document.getElementById('gsCreateParent').value = row.parent || '';
                     document.getElementById('gsCreateParentDisplay').value = row.parent || '';
-                    document.getElementById('gsCreateTargetSku').value = row.target_sku || '';
                     document.getElementById('gsCreateCampaignName').value = row.suggested_campaign_name || ('PARENT ' + (row.parent || ''));
                     document.getElementById('gsCreateBuyerLink').value = row.buyer_link || '';
                     document.getElementById('gsCreateBudget').value = '1';
@@ -970,6 +1168,14 @@
                     document.getElementById('gsCreateFeedLabel').value = 'US';
                     document.getElementById('gsCreateError').classList.add('d-none');
                     document.getElementById('gsCreateError').textContent = '';
+                    renderCreateChildren(row);
+                    if (!(Array.isArray(row.children) && row.children.some(function (c) {
+                        return (c.merchant_item_id || '').indexOf('shopify_us_') === 0;
+                    }))) {
+                        document.getElementById('gsCreateError').textContent =
+                            'No Merchant Center Item IDs resolved. Enter shopify_us_{productId}_{variantId} for each child, then select them.';
+                        document.getElementById('gsCreateError').classList.remove('d-none');
+                    }
                     syncBuyerLinkOpen();
                     var modal = getCreateModal();
                     if (modal) {
@@ -988,50 +1194,158 @@
                     return null;
                 }
 
+                // [{ text, source: 'ai'|'manual' }]
                 var aiNegSuggestedCache = [];
+                var aiNegExistingCache = [];
+                var aiNegMeta = { parent: '', target_sku: '', product_title: '' };
 
-                function mergeUniqueKeywords(base, extra) {
+                function normalizeNegItem(kw, source) {
+                    if (kw && typeof kw === 'object') {
+                        return {
+                            text: String(kw.text || '').trim(),
+                            source: kw.source === 'manual' ? 'manual' : 'ai'
+                        };
+                    }
+                    return {
+                        text: String(kw || '').trim(),
+                        source: source === 'manual' ? 'manual' : 'ai'
+                    };
+                }
+
+                function mergeUniqueNegItems(base, extra) {
                     var seen = {};
                     var out = [];
                     [base, extra].forEach(function (list) {
                         (Array.isArray(list) ? list : []).forEach(function (kw) {
-                            var t = String(kw || '').trim();
-                            if (!t) { return; }
-                            var key = t.toLowerCase();
+                            var item = normalizeNegItem(kw);
+                            if (!item.text) { return; }
+                            var key = item.text.toLowerCase();
                             if (seen[key]) { return; }
                             seen[key] = true;
-                            out.push(t);
+                            out.push(item);
                         });
                     });
                     return out;
+                }
+
+                function getSuggestedTexts() {
+                    return aiNegSuggestedCache.map(function (i) { return i.text; }).filter(Boolean);
+                }
+
+                function renderSuggestedList() {
+                    var suggestedWrap = document.getElementById('gsAiNegSuggestedWrap');
+                    var suggestedEl = document.getElementById('gsAiNegSuggested');
+                    var suggestedCountEl = document.getElementById('gsAiNegSuggestedCount');
+                    var subtitle = document.getElementById('gsAiNegSubtitle');
+                    var texts = getSuggestedTexts();
+
+                    if (suggestedCountEl) { suggestedCountEl.textContent = String(texts.length); }
+                    suggestedWrap.classList.remove('d-none');
+                    suggestedEl.innerHTML = texts.length
+                        ? aiNegSuggestedCache.map(function (item, idx) {
+                            var badge = item.source === 'manual'
+                                ? '<span class="badge bg-success-subtle text-success border">Manual</span>'
+                                : '<span class="badge bg-danger-subtle text-danger border">AI</span>';
+                            return '<li class="list-group-item py-1 px-2 small d-flex justify-content-between align-items-center gap-2">'
+                                + '<span class="flex-grow-1">' + esc(item.text) + '</span>'
+                                + badge
+                                + '<button type="button" class="btn btn-link btn-sm text-danger p-0 gs-ai-neg-del" data-idx="' + idx + '" title="Remove keyword">'
+                                + '<i class="fa fa-trash"></i></button>'
+                                + '</li>';
+                        }).join('')
+                        : '<li class="list-group-item py-2 px-2 small text-muted">No keywords yet. Generate AI suggestions or add manually.</li>';
+                    suggestedEl.dataset.copyText = texts.join('\n');
+
+                    subtitle.textContent = (aiNegMeta.parent ? ('Parent: ' + aiNegMeta.parent) : '')
+                        + (aiNegMeta.target_sku ? (' · SKU: ' + aiNegMeta.target_sku) : '')
+                        + (aiNegMeta.product_title ? (' · ' + aiNegMeta.product_title) : '')
+                        + ' · ' + texts.length + ' to push'
+                        + (aiNegExistingCache.length ? (' · ' + aiNegExistingCache.length + ' already on Amazon') : '');
+                }
+
+                function addManualNegativeKeyword(raw) {
+                    var text = String(raw || '').trim().replace(/\s+/g, ' ');
+                    if (!text) { return false; }
+                    var exists = aiNegSuggestedCache.some(function (i) {
+                        return i.text.toLowerCase() === text.toLowerCase();
+                    });
+                    if (exists) {
+                        return false;
+                    }
+                    aiNegSuggestedCache.push({ text: text, source: 'manual' });
+                    renderSuggestedList();
+                    return true;
+                }
+
+                function exportNegativesCsv() {
+                    var rows = [['keyword', 'source']];
+                    aiNegSuggestedCache.forEach(function (item) {
+                        rows.push([item.text, item.source || 'ai']);
+                    });
+                    if (document.getElementById('gsAiNegIncludeAmazon').checked) {
+                        aiNegExistingCache.forEach(function (kw) {
+                            var t = String(kw || '').trim();
+                            if (!t) { return; }
+                            var already = aiNegSuggestedCache.some(function (i) {
+                                return i.text.toLowerCase() === t.toLowerCase();
+                            });
+                            if (!already) {
+                                rows.push([t, 'amazon']);
+                            }
+                        });
+                    }
+                    if (rows.length <= 1) {
+                        window.alert('No keywords to export.');
+                        return;
+                    }
+                    var csv = rows.map(function (r) {
+                        return r.map(function (cell) {
+                            var s = String(cell == null ? '' : cell);
+                            if (/[",\n]/.test(s)) {
+                                return '"' + s.replace(/"/g, '""') + '"';
+                            }
+                            return s;
+                        }).join(',');
+                    }).join('\n');
+                    var parent = (aiNegMeta.parent || 'parent').replace(/[^\w\-]+/g, '_');
+                    var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                    var url = URL.createObjectURL(blob);
+                    var a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'negative-keywords-' + parent + '-' + new Date().toISOString().slice(0, 10) + '.csv';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
                 }
 
                 function renderAiNegatives(payload, options) {
                     options = options || {};
                     var existing = Array.isArray(payload.existing) ? payload.existing : [];
                     var suggested = Array.isArray(payload.suggested) ? payload.suggested : [];
+                    var incoming = suggested.map(function (kw) { return normalizeNegItem(kw, 'ai'); });
+
                     if (options.append) {
-                        suggested = mergeUniqueKeywords(aiNegSuggestedCache, suggested);
+                        // Keep existing manual/AI items; append new AI ones.
+                        aiNegSuggestedCache = mergeUniqueNegItems(aiNegSuggestedCache, incoming);
+                    } else {
+                        // Regenerate replaces AI items but keeps manually added keywords.
+                        var manuals = aiNegSuggestedCache.filter(function (i) { return i.source === 'manual'; });
+                        aiNegSuggestedCache = mergeUniqueNegItems(manuals, incoming);
                     }
-                    aiNegSuggestedCache = suggested;
+
+                    aiNegExistingCache = existing.slice();
+                    aiNegMeta = {
+                        parent: payload.parent || aiNegMeta.parent || '',
+                        target_sku: payload.target_sku || aiNegMeta.target_sku || '',
+                        product_title: payload.product_title || aiNegMeta.product_title || ''
+                    };
 
                     var existingWrap = document.getElementById('gsAiNegExistingWrap');
                     var existingEl = document.getElementById('gsAiNegExisting');
-                    var suggestedWrap = document.getElementById('gsAiNegSuggestedWrap');
-                    var suggestedEl = document.getElementById('gsAiNegSuggested');
-                    var subtitle = document.getElementById('gsAiNegSubtitle');
                     var existingCountEl = document.getElementById('gsAiNegExistingCount');
-                    var suggestedCountEl = document.getElementById('gsAiNegSuggestedCount');
-
-                    subtitle.textContent = (payload.parent ? ('Parent: ' + payload.parent) : '')
-                        + (payload.target_sku ? (' · SKU: ' + payload.target_sku) : '')
-                        + (payload.product_title ? (' · ' + payload.product_title) : '')
-                        + ' · ' + suggested.length + ' suggested'
-                        + (existing.length ? (' · ' + existing.length + ' already on Amazon') : '');
 
                     if (existingCountEl) { existingCountEl.textContent = String(existing.length); }
-                    if (suggestedCountEl) { suggestedCountEl.textContent = String(suggested.length); }
-
                     if (existing.length) {
                         existingWrap.classList.remove('d-none');
                         existingEl.textContent = existing.join(', ');
@@ -1040,16 +1354,7 @@
                         existingEl.textContent = '';
                     }
 
-                    suggestedWrap.classList.remove('d-none');
-                    suggestedEl.innerHTML = suggested.length
-                        ? suggested.map(function (kw) {
-                            return '<li class="list-group-item py-1 px-2 small d-flex justify-content-between align-items-center">'
-                                + '<span>' + esc(kw) + '</span>'
-                                + '<span class="badge bg-danger-subtle text-danger border">AI</span>'
-                                + '</li>';
-                        }).join('')
-                        : '<li class="list-group-item py-2 px-2 small text-muted">No suggestions returned.</li>';
-                    suggestedEl.dataset.copyText = suggested.join('\n');
+                    renderSuggestedList();
                 }
 
                 function setAiNegBusy(busy) {
@@ -1081,7 +1386,10 @@
                     if (!append) {
                         suggestedWrap.classList.add('d-none');
                         existingWrap.classList.add('d-none');
-                        aiNegSuggestedCache = [];
+                        // Keep manual keywords across regenerate.
+                        aiNegSuggestedCache = aiNegSuggestedCache.filter(function (i) {
+                            return i && i.source === 'manual';
+                        });
                     }
                     loading.classList.remove('d-none');
                     setAiNegBusy(true);
@@ -1092,7 +1400,7 @@
                         campaign_name: campaignName,
                         buyer_link: buyerLink,
                         ideas: ideas,
-                        already_suggested: append ? aiNegSuggestedCache : [],
+                        already_suggested: append ? getSuggestedTexts() : getSuggestedTexts(),
                         mode: append ? 'add_more' : 'generate'
                     }).then(function (out) {
                         loading.classList.add('d-none');
@@ -1125,7 +1433,24 @@
                         return;
                     }
                     document.getElementById('gsAiNegIdeas').value = '';
+                    document.getElementById('gsAiNegManualInput').value = '';
                     aiNegSuggestedCache = [];
+                    aiNegExistingCache = [];
+                    aiNegMeta = {
+                        parent: document.getElementById('gsCreateParent').value || '',
+                        target_sku: document.getElementById('gsCreateTargetSku').value || '',
+                        product_title: ''
+                    };
+                    var pushOk = document.getElementById('gsAiNegPushOk');
+                    if (pushOk) {
+                        pushOk.classList.add('d-none');
+                        pushOk.textContent = '';
+                    }
+                    var pushErr = document.getElementById('gsAiNegError');
+                    if (pushErr) {
+                        pushErr.classList.add('d-none');
+                        pushErr.textContent = '';
+                    }
                     modal.show();
                     runAiNegatives({ append: false });
                 });
@@ -1144,6 +1469,92 @@
                         });
                     }
                 });
+                document.getElementById('gsAiNegExportBtn').addEventListener('click', function () {
+                    exportNegativesCsv();
+                });
+                document.getElementById('gsAiNegManualAddBtn').addEventListener('click', function () {
+                    var input = document.getElementById('gsAiNegManualInput');
+                    var errEl = document.getElementById('gsAiNegError');
+                    errEl.classList.add('d-none');
+                    var ok = addManualNegativeKeyword(input.value);
+                    if (!ok) {
+                        errEl.textContent = (input.value || '').trim()
+                            ? 'Keyword is empty or already in the list.'
+                            : 'Enter a keyword to add.';
+                        errEl.classList.remove('d-none');
+                        return;
+                    }
+                    input.value = '';
+                    input.focus();
+                });
+                document.getElementById('gsAiNegManualInput').addEventListener('keydown', function (e) {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        document.getElementById('gsAiNegManualAddBtn').click();
+                    }
+                });
+                document.getElementById('gsAiNegSuggested').addEventListener('click', function (e) {
+                    var btn = e.target.closest('.gs-ai-neg-del');
+                    if (!btn) { return; }
+                    var idx = Number(btn.getAttribute('data-idx'));
+                    if (!isFinite(idx) || idx < 0 || idx >= aiNegSuggestedCache.length) { return; }
+                    aiNegSuggestedCache.splice(idx, 1);
+                    renderSuggestedList();
+                });
+
+                document.getElementById('gsAiNegPushBtn').addEventListener('click', function () {
+                    var btn = document.getElementById('gsAiNegPushBtn');
+                    var errEl = document.getElementById('gsAiNegError');
+                    var okEl = document.getElementById('gsAiNegPushOk');
+                    errEl.classList.add('d-none');
+                    errEl.textContent = '';
+                    okEl.classList.add('d-none');
+                    okEl.textContent = '';
+
+                    var keywords = getSuggestedTexts();
+                    var includeAmazon = !!document.getElementById('gsAiNegIncludeAmazon').checked;
+                    if (!keywords.length && !includeAmazon) {
+                        errEl.textContent = 'Add keywords (AI or manual), or enable Amazon KW(-) negatives.';
+                        errEl.classList.remove('d-none');
+                        return;
+                    }
+
+                    var payload = {
+                        parent: document.getElementById('gsCreateParent').value || '',
+                        campaign_name: document.getElementById('gsCreateCampaignName').value || '',
+                        campaign_id: lastCreatedCampaignId || '',
+                        keywords: keywords,
+                        include_amazon: includeAmazon,
+                        match_type: document.getElementById('gsAiNegMatchType').value || 'PHRASE'
+                    };
+                    if (!payload.parent) {
+                        errEl.textContent = 'Parent is missing. Open Create from a parent row first.';
+                        errEl.classList.remove('d-none');
+                        return;
+                    }
+
+                    btn.disabled = true;
+                    btn.innerHTML = '<i class="fa fa-spinner fa-spin me-1"></i> Pushing…';
+                    postJson(pushNegUrl, payload).then(function (out) {
+                        btn.disabled = false;
+                        btn.innerHTML = '<i class="fa fa-cloud-upload-alt me-1"></i> Push Negative Keywords';
+                        if (out.ok && out.body && out.body.ok) {
+                            if (out.body.campaign_id) {
+                                lastCreatedCampaignId = String(out.body.campaign_id);
+                            }
+                            okEl.textContent = out.body.message || 'Negative keywords pushed.';
+                            okEl.classList.remove('d-none');
+                        } else {
+                            errEl.textContent = (out.body && out.body.message) || 'Failed to push negative keywords.';
+                            errEl.classList.remove('d-none');
+                        }
+                    }).catch(function () {
+                        btn.disabled = false;
+                        btn.innerHTML = '<i class="fa fa-cloud-upload-alt me-1"></i> Push Negative Keywords';
+                        errEl.textContent = 'Network error pushing negative keywords.';
+                        errEl.classList.remove('d-none');
+                    });
+                });
 
                 function syncBuyerLinkOpen() {
                     var href = (document.getElementById('gsCreateBuyerLink').value || '').trim();
@@ -1159,28 +1570,66 @@
                 }
                 document.getElementById('gsCreateBuyerLink').addEventListener('input', syncBuyerLinkOpen);
 
+                document.getElementById('gsCreateSelectAll').addEventListener('click', function () {
+                    document.querySelectorAll('#gsCreateChildrenBody .gs-child-check').forEach(function (cb) {
+                        cb.checked = true;
+                    });
+                    syncCreateAiHiddenFromSelection();
+                });
+                document.getElementById('gsCreateSelectNone').addEventListener('click', function () {
+                    document.querySelectorAll('#gsCreateChildrenBody .gs-child-check').forEach(function (cb) {
+                        cb.checked = false;
+                    });
+                    syncCreateAiHiddenFromSelection();
+                });
+                document.getElementById('gsCreateChildrenBody').addEventListener('change', function (e) {
+                    if (e.target && e.target.classList.contains('gs-child-check')) {
+                        syncCreateAiHiddenFromSelection();
+                    }
+                });
+
                 document.getElementById('gsCreateSubmitBtn').addEventListener('click', function () {
                     var btn = document.getElementById('gsCreateSubmitBtn');
                     var errEl = document.getElementById('gsCreateError');
                     errEl.classList.add('d-none');
                     errEl.textContent = '';
 
+                    syncCreateAiHiddenFromSelection();
+                    var children = collectSelectedChildren();
                     var payload = {
                         parent: document.getElementById('gsCreateParent').value,
                         campaign_name: document.getElementById('gsCreateCampaignName').value,
-                        target_sku: document.getElementById('gsCreateTargetSku').value,
                         buyer_link: document.getElementById('gsCreateBuyerLink').value,
                         budget_amount: parseFloat(document.getElementById('gsCreateBudget').value) || 1,
                         cpc_bid: parseFloat(document.getElementById('gsCreateCpcBid').value) || 0.5,
                         campaign_priority: parseInt(document.getElementById('gsCreatePriority').value, 10) || 0,
                         merchant_id: parseInt(document.getElementById('gsCreateMerchantId').value, 10) || 0,
-                        feed_label: document.getElementById('gsCreateFeedLabel').value || 'US'
+                        feed_label: document.getElementById('gsCreateFeedLabel').value || 'US',
+                        children: children
                     };
 
-                    if (!payload.parent || !payload.campaign_name || !payload.merchant_id || !(payload.target_sku || '').trim()) {
-                        errEl.textContent = 'Parent, Item ID (Merchant Center), campaign name, and merchant ID are required.';
+                    if (!payload.parent || !payload.merchant_id || !(payload.campaign_name || '').trim()) {
+                        errEl.textContent = 'Parent, campaign name, and merchant ID are required.';
                         errEl.classList.remove('d-none');
                         return;
+                    }
+                    if (!children.length) {
+                        errEl.textContent = 'Select at least one child SKU to include in the campaign.';
+                        errEl.classList.remove('d-none');
+                        return;
+                    }
+                    for (var i = 0; i < children.length; i++) {
+                        var c = children[i];
+                        if (!c.target_sku) {
+                            errEl.textContent = 'Each selected row needs a Target SKU.';
+                            errEl.classList.remove('d-none');
+                            return;
+                        }
+                        if ((c.item_id || '').indexOf('shopify_us_') !== 0) {
+                            errEl.textContent = 'Item ID for "' + c.target_sku + '" must look like shopify_us_{productId}_{variantId}.';
+                            errEl.classList.remove('d-none');
+                            return;
+                        }
                     }
 
                     btn.disabled = true;
@@ -1194,6 +1643,9 @@
                             var r = table.getRow(sku);
                             if (r) {
                                 r.update({ campaigns: out.body.campaigns || [] });
+                            }
+                            if (out.body.campaign && out.body.campaign.campaign_id) {
+                                lastCreatedCampaignId = String(out.body.campaign.campaign_id);
                             }
                             updateMissingBadge();
                             var modalHide = getCreateModal();

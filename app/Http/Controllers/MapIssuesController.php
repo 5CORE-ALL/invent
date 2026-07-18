@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AliexpressDataView;
+use App\Models\AliexpressPricingPrice;
 use App\Models\AmazonDatasheet;
 use App\Models\AmazonDataView;
 use App\Models\AmazonListingStatus;
@@ -102,6 +104,9 @@ class MapIssuesController extends Controller
                 'newegg_not_map_count' => 0,
                 'newegg_mismatch_count' => 0,
                 'newegg_missing_listing_count' => 0,
+                'aliexpress_not_map_count' => 0,
+                'aliexpress_mismatch_count' => 0,
+                'aliexpress_missing_listing_count' => 0,
             ]);
         }
 
@@ -174,6 +179,12 @@ class MapIssuesController extends Controller
         $neweggByNorm   = $this->buildNeweggLookupByNormalizedSku();
         $neweggNrByNorm = $this->buildNeweggNrLookup();
 
+        // AliExpress: stock (ae_stock), price and stored SKU come from aliexpress_pricing_prices
+        // (listed = a pricing row with price > 0, same as the aliexpress-pricing page). REQ/NR
+        // comes from aliexpress_data_views meta (NRL/NR keys), matching that page.
+        $aliexpressByNorm   = $this->buildAliexpressLookupByNormalizedSku();
+        $aliexpressNrByNorm = $this->buildAliexpressNrLookup();
+
         // 4. Build rows
         $result = [];
         $notMapCount = 0;          // eBay:  INV != eBay Stock (same logic as eBay page)
@@ -209,6 +220,9 @@ class MapIssuesController extends Controller
         $neweggNotMapCount = 0;          // Newegg: INV != Newegg Stock
         $neweggMismatchCount = 0;        // Newegg: SKU stored differently
         $neweggMissingListingCount = 0;  // Newegg: not listed, REQ, INV > 0
+        $aliexpressNotMapCount = 0;          // AliExpress: INV != Ali Stock
+        $aliexpressMismatchCount = 0;        // AliExpress: SKU stored differently
+        $aliexpressMissingListingCount = 0;  // AliExpress: not listed, REQ, INV > 0
         foreach ($productMasters as $pm) {
             $key = ShopifySku::normalizeSkuForShopifyLookup($pm->sku);
 
@@ -235,6 +249,9 @@ class MapIssuesController extends Controller
             // Newegg matches by alphanumeric-only key, same as the newegg-pricing page.
             $neweggKey = $this->normalizeNeweggSku($pm->sku);
             $newegg  = $neweggKey !== '' ? ($neweggByNorm[$neweggKey] ?? null) : null;
+            // AliExpress matches by uppercase+collapsed-space key, same as the aliexpress-pricing page.
+            $aliexpressKey = $this->normalizeAliexpressSku($pm->sku);
+            $aliexpress = $aliexpressKey !== '' ? ($aliexpressByNorm[$aliexpressKey] ?? null) : null;
 
             $inv = floatval($shopify->inv ?? 0);
 
@@ -594,6 +611,38 @@ class MapIssuesController extends Controller
                 $neweggMissingListingCount++;
             }
 
+            // ---- AliExpress ----
+            $aliexpressStock = floatval($aliexpress->ae_stock ?? 0);
+            $aliexpressPrice = floatval($aliexpress->price ?? 0);
+            // Listed = a pricing row with price > 0 (same as the aliexpress-pricing page).
+            $aliexpressListed = $aliexpress !== null && $aliexpressPrice > 0;
+            $aliexpressSku = $aliexpress->sku ?? null;
+            $aliexpressReason = $aliexpressSku !== null
+                ? $this->skuDifferenceReason($pm->sku, $aliexpressSku, [$this, 'normalizeAliexpressSku'])
+                : '';
+            $aliexpressHasIssue = $aliexpressReason !== '';
+            if ($aliexpressHasIssue) {
+                $aliexpressMismatchCount++;
+            }
+            $aliexpressNrReq = $this->resolveAliexpressNrReq($aliexpressNrByNorm, $aliexpressKey);
+            $aliexpressIsNotMap = false;
+            $aliexpressWithin3 = false;
+            // N Map — same gate/tolerance as the aliexpress-pricing page: listed, REQ, INV > 0,
+            // Map when diff ≤ 3 units OR diff ≤ 3% of INV (no AE-stock > 0 gate).
+            if ($aliexpressListed && $aliexpressNrReq === 'REQ' && $inv > 0) {
+                $aliexpressDiffUnits = abs($inv - $aliexpressStock);
+                $aliexpressWithin3 = ($aliexpressDiffUnits <= 3.0) || ($aliexpressDiffUnits <= $inv * 0.03);
+                $aliexpressIsNotMap = ! $aliexpressWithin3;
+                if ($aliexpressIsNotMap) {
+                    $aliexpressNotMapCount++;
+                }
+            }
+            // Missing L — not listed, REQ, INV > 0 (same as the aliexpress-pricing page).
+            $aliexpressMissingListing = ! $aliexpressListed && $inv > 0;
+            if ($aliexpressMissingListing && $aliexpressNrReq === 'REQ') {
+                $aliexpressMissingListingCount++;
+            }
+
             $result[] = [
                 '(Child) sku'    => $pm->sku,
                 'INV'            => $shopify->inv ?? 0,
@@ -699,6 +748,15 @@ class MapIssuesController extends Controller
                 'newegg_missing_listing'=> $neweggMissingListing,
                 'newegg_nr_req'         => $neweggNrReq,
 
+                'Ali Inv'                  => $aliexpressStock,
+                'aliexpress_sku'           => $aliexpressSku,
+                'aliexpress_mismatch'      => $aliexpressHasIssue,
+                'aliexpress_issue'         => $aliexpressReason,
+                'aliexpress_not_map'       => $aliexpressIsNotMap,
+                'aliexpress_within3'       => $aliexpressWithin3,
+                'aliexpress_missing_listing'=> $aliexpressMissingListing,
+                'aliexpress_nr_req'        => $aliexpressNrReq,
+
                 'pm_missing'            => false,
             ];
         }
@@ -746,6 +804,9 @@ class MapIssuesController extends Controller
             'newegg_not_map_count'  => $neweggNotMapCount,
             'newegg_mismatch_count' => $neweggMismatchCount,
             'newegg_missing_listing_count' => $neweggMissingListingCount,
+            'aliexpress_not_map_count'  => $aliexpressNotMapCount,
+            'aliexpress_mismatch_count' => $aliexpressMismatchCount,
+            'aliexpress_missing_listing_count' => $aliexpressMissingListingCount,
             'pm_missing_count'      => $pmMissingCount,
         ]);
     }
@@ -781,7 +842,7 @@ class MapIssuesController extends Controller
                             continue;
                         }
                         if (! isset($map[$k])) {
-                            $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null, 'shein' => null, 'newegg' => null];
+                            $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null, 'shein' => null, 'newegg' => null, 'aliexpress' => null];
                         }
                         $map[$k][$field] = $r->ebay_stock ?? 0;
                     }
@@ -807,7 +868,7 @@ class MapIssuesController extends Controller
                         continue;
                     }
                     if (! isset($map[$k])) {
-                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null, 'shein' => null, 'newegg' => null];
+                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null, 'shein' => null, 'newegg' => null, 'aliexpress' => null];
                     }
                     $map[$k]['amazon'] = 0; // listed flag; real stock filled in below
                 }
@@ -827,7 +888,7 @@ class MapIssuesController extends Controller
                         continue;
                     }
                     if (! isset($map[$k])) {
-                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null, 'shein' => null, 'newegg' => null];
+                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null, 'shein' => null, 'newegg' => null, 'aliexpress' => null];
                     }
                     $map[$k]['reverb'] = floatval($r->remaining_inventory ?? 0);
                 }
@@ -847,7 +908,7 @@ class MapIssuesController extends Controller
                         continue;
                     }
                     if (! isset($map[$k])) {
-                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null, 'shein' => null, 'newegg' => null];
+                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null, 'shein' => null, 'newegg' => null, 'aliexpress' => null];
                     }
                     $map[$k]['macys'] = floatval($r->stock ?? 0);
                 }
@@ -867,7 +928,7 @@ class MapIssuesController extends Controller
                         continue;
                     }
                     if (! isset($map[$k])) {
-                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null, 'shein' => null, 'newegg' => null];
+                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null, 'shein' => null, 'newegg' => null, 'aliexpress' => null];
                     }
                     $map[$k]['bestbuy'] = floatval($r->stock ?? 0);
                 }
@@ -886,7 +947,7 @@ class MapIssuesController extends Controller
                         continue;
                     }
                     if (! isset($map[$k])) {
-                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null, 'shein' => null, 'newegg' => null];
+                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null, 'shein' => null, 'newegg' => null, 'aliexpress' => null];
                     }
                     $map[$k]['tiendamia'] = floatval($r->stock ?? 0);
                 }
@@ -906,7 +967,7 @@ class MapIssuesController extends Controller
                         continue;
                     }
                     if (! isset($map[$k])) {
-                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null, 'shein' => null, 'newegg' => null];
+                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null, 'shein' => null, 'newegg' => null, 'aliexpress' => null];
                     }
                     $map[$k]['temu'] = floatval($r->quantity ?? 0);
                 }
@@ -926,7 +987,7 @@ class MapIssuesController extends Controller
                         continue;
                     }
                     if (! isset($map[$k])) {
-                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null, 'shein' => null, 'newegg' => null];
+                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null, 'shein' => null, 'newegg' => null, 'aliexpress' => null];
                     }
                     $map[$k]['shein'] = floatval($r->shein_stock ?? 0);
                 }
@@ -945,9 +1006,29 @@ class MapIssuesController extends Controller
                         continue;
                     }
                     if (! isset($map[$k])) {
-                        $map[$k] = ['sku' => $r->seller_part_number, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null, 'shein' => null, 'newegg' => null];
+                        $map[$k] = ['sku' => $r->seller_part_number, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null, 'shein' => null, 'newegg' => null, 'aliexpress' => null];
                     }
                     $map[$k]['newegg'] = floatval($r->available_quantity ?? 0);
+                }
+
+                return true;
+            });
+
+        // AliExpress: a SKU is "listed" when it has a pricing row with price > 0.
+        AliexpressPricingPrice::query()
+            ->select('sku', 'price', 'ae_stock', 'id')
+            ->where('price', '>', 0)
+            ->orderBy('id')
+            ->chunkById(3000, function ($rows) use (&$map, $pmKeys) {
+                foreach ($rows as $r) {
+                    $k = ShopifySku::normalizeSkuForShopifyLookup((string) $r->sku);
+                    if ($k === '' || isset($pmKeys[$k])) {
+                        continue;
+                    }
+                    if (! isset($map[$k])) {
+                        $map[$k] = ['sku' => $r->sku, 'ebay' => null, 'ebay2' => null, 'ebay3' => null, 'amazon' => null, 'reverb' => null, 'macys' => null, 'bestbuy' => null, 'tiendamia' => null, 'temu' => null, 'shein' => null, 'newegg' => null, 'aliexpress' => null];
+                    }
+                    $map[$k]['aliexpress'] = floatval($r->ae_stock ?? 0);
                 }
 
                 return true;
@@ -1007,6 +1088,9 @@ class MapIssuesController extends Controller
             }
             if ($m['newegg'] !== null) {
                 $listedOn[] = 'Newegg';
+            }
+            if ($m['aliexpress'] !== null) {
+                $listedOn[] = 'AliExpress';
             }
 
             $rows[] = [
@@ -1114,6 +1198,15 @@ class MapIssuesController extends Controller
                 'newegg_missing_listing'=> false,
                 'newegg_nr_req'         => 'REQ',
 
+                'Ali Inv'                  => $m['aliexpress'] ?? 0,
+                'aliexpress_sku'           => $m['aliexpress'] !== null ? $m['sku'] : null,
+                'aliexpress_mismatch'      => false,
+                'aliexpress_issue'         => '',
+                'aliexpress_not_map'       => false,
+                'aliexpress_within3'       => false,
+                'aliexpress_missing_listing'=> false,
+                'aliexpress_nr_req'        => 'REQ',
+
                 'pm_missing'            => true,
             ];
         }
@@ -1145,6 +1238,7 @@ class MapIssuesController extends Controller
             'tiendamia' => ['model' => TiendamiaDataView::class,   'key' => 'NRP',    'notReq' => 'NR', 'transform' => ['REQ' => 'RA', 'NR' => 'NRA']],
             'temu'   => ['model' => TemuListingStatus::class,      'key' => 'nr_req', 'notReq' => 'NR'],
             'newegg' => ['model' => NeweggDataView::class,         'key' => 'NR',     'notReq' => 'NR'],
+            'aliexpress' => ['model' => AliexpressDataView::class, 'key' => 'NR',     'notReq' => 'NR'],
         ];
 
         if ($sku === '' || ! isset($config[$market])) {
@@ -1928,6 +2022,95 @@ class MapIssuesController extends Controller
      * @param  array<string, string>  $nrByNorm
      */
     private function resolveNeweggNrReq(array $nrByNorm, string $key): string
+    {
+        return $key !== '' ? ($nrByNorm[$key] ?? 'REQ') : 'REQ';
+    }
+
+    /**
+     * Normalize a SKU the same way the aliexpress-pricing page does: collapse
+     * whitespace / NBSP variants and uppercase.
+     */
+    private function normalizeAliexpressSku(string $sku): string
+    {
+        $sku = str_replace(["\xC2\xA0", "\xE2\x80\xAF", "\xA0"], ' ', trim($sku));
+        $clean = @iconv('UTF-8', 'UTF-8//IGNORE', $sku);
+
+        return strtoupper(preg_replace('/\s+/u', ' ', $clean !== false ? $clean : $sku) ?? '');
+    }
+
+    /**
+     * Build a normalized-SKU => aliexpress_pricing_prices row lookup
+     * (sku + price + ae_stock), keyed by the aliexpress-pricing normalization.
+     *
+     * @return array<string, \Illuminate\Database\Eloquent\Model>
+     */
+    private function buildAliexpressLookupByNormalizedSku(): array
+    {
+        $byNorm = [];
+        foreach (AliexpressPricingPrice::select('sku', 'price', 'ae_stock')->get() as $row) {
+            $k = $this->normalizeAliexpressSku((string) $row->sku);
+            if ($k !== '' && ! isset($byNorm[$k])) {
+                $byNorm[$k] = $row;
+            }
+        }
+
+        return $byNorm;
+    }
+
+    /**
+     * Build a normalized-SKU => REQ/NR lookup from aliexpress_data_views.value JSON.
+     * Mirrors AliexpressController::resolveAeNrFromMeta for product-master SKUs (default REQ).
+     *
+     * @return array<string, string>
+     */
+    private function buildAliexpressNrLookup(): array
+    {
+        $byNorm = [];
+        foreach (AliexpressDataView::query()->get(['sku', 'value']) as $row) {
+            $k = $this->normalizeAliexpressSku((string) $row->sku);
+            if ($k === '' || isset($byNorm[$k])) {
+                continue;
+            }
+            $val = is_array($row->value) ? $row->value : (json_decode((string) $row->value, true) ?: []);
+            $byNorm[$k] = $this->resolveAliexpressNrFromMeta($val);
+        }
+
+        return $byNorm;
+    }
+
+    /**
+     * Resolve AliExpress REQ/NR from aliexpress_data_views meta (default REQ).
+     *
+     * @param  array<string, mixed>  $meta
+     */
+    private function resolveAliexpressNrFromMeta(array $meta): string
+    {
+        $nrl = strtoupper(trim((string) ($meta['NRL'] ?? '')));
+        if ($nrl === 'NRL') {
+            return 'NR';
+        }
+        if ($nrl === 'REQ') {
+            return 'REQ';
+        }
+
+        $nr = $meta['NR'] ?? $meta['NRP'] ?? null;
+        if (is_bool($nr)) {
+            return $nr ? 'NR' : 'REQ';
+        }
+        $nrOut = strtoupper(trim((string) $nr));
+        if ($nrOut === 'NR' || $nrOut === 'NRL') {
+            return 'NR';
+        }
+
+        return 'REQ';
+    }
+
+    /**
+     * Resolve AliExpress REQ/NR from the aliexpress_data_views lookup (default REQ).
+     *
+     * @param  array<string, string>  $nrByNorm
+     */
+    private function resolveAliexpressNrReq(array $nrByNorm, string $key): string
     {
         return $key !== '' ? ($nrByNorm[$key] ?? 'REQ') : 'REQ';
     }

@@ -27,6 +27,7 @@ use Google\Ads\GoogleAds\V22\Resources\Campaign\ShoppingSetting;
 use Google\Ads\GoogleAds\V22\Resources\Ad;
 use Google\Ads\GoogleAds\V22\Common\MaximizeConversions;
 use Google\Ads\GoogleAds\V22\Common\TargetSpend;
+use Google\Ads\GoogleAds\V22\Common\KeywordInfo;
 use Google\Ads\GoogleAds\V22\Common\ManualCpc;
 use Google\Ads\GoogleAds\V22\Common\ListingDimensionInfo;
 use Google\Ads\GoogleAds\V22\Common\ListingGroupInfo;
@@ -38,9 +39,13 @@ use Google\Ads\GoogleAds\V22\Enums\AdvertisingChannelTypeEnum\AdvertisingChannel
 use Google\Ads\GoogleAds\V22\Enums\AdGroupTypeEnum\AdGroupType;
 use Google\Ads\GoogleAds\V22\Enums\AdGroupStatusEnum\AdGroupStatus;
 use Google\Ads\GoogleAds\V22\Enums\AdGroupCriterionStatusEnum\AdGroupCriterionStatus;
+use Google\Ads\GoogleAds\V22\Enums\KeywordMatchTypeEnum\KeywordMatchType;
 use Google\Ads\GoogleAds\V22\Enums\ListingGroupTypeEnum\ListingGroupType;
 use Google\Ads\GoogleAds\V22\Enums\BudgetDeliveryMethodEnum\BudgetDeliveryMethod;
 use Google\Ads\GoogleAds\V22\Enums\EuPoliticalAdvertisingStatusEnum\EuPoliticalAdvertisingStatus;
+use Google\Ads\GoogleAds\V22\Resources\CampaignCriterion;
+use Google\Ads\GoogleAds\V22\Services\CampaignCriterionOperation;
+use Google\Ads\GoogleAds\V22\Services\MutateCampaignCriteriaRequest;
 
 class GoogleAdsSbidService
 {
@@ -499,6 +504,67 @@ class GoogleAdsSbidService
     }
 
     /**
+     * Remove (delete) a campaign by setting its status to REMOVED.
+     * Google Ads does not hard-delete campaigns; REMOVED is the API delete.
+     */
+    public function removeCampaign(string $customerId, string $campaignIdOrResourceName): array
+    {
+        $customerId = str_replace('-', '', trim($customerId));
+        $raw = trim($campaignIdOrResourceName);
+        if ($customerId === '' || $raw === '') {
+            throw new \InvalidArgumentException('customer_id and campaign_id are required');
+        }
+
+        if (str_contains($raw, '/campaigns/')) {
+            $campaignResourceName = $raw;
+            $campaignId = preg_replace('/^.*\//', '', $raw) ?: '';
+        } else {
+            $campaignId = preg_replace('/\D+/', '', $raw) ?: '';
+            if ($campaignId === '') {
+                throw new \InvalidArgumentException('Invalid campaign_id');
+            }
+            $campaignResourceName = ResourceNames::forCampaign($customerId, $campaignId);
+        }
+
+        try {
+            // Google Ads rejects status=REMOVED updates (INVALID_ENUM_VALUE).
+            // Use the remove operation with the campaign resource name instead.
+            $operation = new CampaignOperation();
+            $operation->setRemove($campaignResourceName);
+
+            $response = $this->getClient()->getCampaignServiceClient()->mutateCampaigns(
+                new MutateCampaignsRequest([
+                    'customer_id' => $customerId,
+                    'operations' => [$operation],
+                ])
+            );
+
+            if (! $response || ! $response->getResults() || count($response->getResults()) === 0) {
+                throw new \RuntimeException('No results returned from campaign remove operation');
+            }
+
+            Log::info('Removed Google Ads campaign', [
+                'customer_id' => $customerId,
+                'campaign_id' => $campaignId,
+                'campaign_resource' => $campaignResourceName,
+            ]);
+
+            return [
+                'campaign_id' => (string) $campaignId,
+                'campaign_resource_name' => $campaignResourceName,
+                'status' => 'REMOVED',
+            ];
+        } catch (\Throwable $e) {
+            Log::error('Failed to remove Google Ads campaign', [
+                'customer_id' => $customerId,
+                'campaign_resource' => $campaignResourceName,
+                'error' => $e->getMessage(),
+            ]);
+            throw $e;
+        }
+    }
+
+    /**
      * Pause a campaign by setting its status to PAUSED
      */
     public function pauseCampaign($customerId, $campaignResourceName)
@@ -808,9 +874,25 @@ class GoogleAdsSbidService
             ? (bool) $params['enable_local']
             : true;
 
-        $itemId = trim((string) ($params['item_id'] ?? ''));
-        if ($itemId === '') {
-            throw new \InvalidArgumentException('item_id is required (Merchant Center product Item ID)');
+        // One or more Merchant Center Item IDs (shopify_us_{productId}_{variantId}).
+        // All included under a single campaign listing-group tree.
+        $itemIds = [];
+        if (! empty($params['item_ids']) && is_array($params['item_ids'])) {
+            foreach ($params['item_ids'] as $rawId) {
+                $id = trim((string) $rawId);
+                if ($id !== '') {
+                    $itemIds[] = $id;
+                }
+            }
+        } elseif (! empty($params['item_id'])) {
+            $id = trim((string) $params['item_id']);
+            if ($id !== '') {
+                $itemIds[] = $id;
+            }
+        }
+        $itemIds = array_values(array_unique($itemIds));
+        if ($itemIds === []) {
+            throw new \InvalidArgumentException('item_id / item_ids is required (Merchant Center product Item ID)');
         }
 
         try {
@@ -895,7 +977,7 @@ class GoogleAdsSbidService
                 ])
             );
 
-            // 5) Listing group tree: include only this Merchant Center Item ID
+            // 5) Listing group tree: include selected Merchant Center Item IDs only
             $adGroupId = (int) (preg_replace('/^.*\//', '', $adGroupResourceName) ?: 0);
             if ($adGroupId <= 0) {
                 throw new \RuntimeException('Failed to parse ad group ID from resource name');
@@ -903,29 +985,32 @@ class GoogleAdsSbidService
 
             $rootResourceName = ResourceNames::forAdGroupCriterion($customerId, $adGroupId, -1);
 
-            $rootCriterion = new AdGroupCriterion([
+            $listingOps = [];
+            $listingOps[] = (new AdGroupCriterionOperation())->setCreate(new AdGroupCriterion([
                 'resource_name' => $rootResourceName,
                 'status' => AdGroupCriterionStatus::ENABLED,
                 'listing_group' => new ListingGroupInfo([
                     'type' => ListingGroupType::SUBDIVISION,
                 ]),
-            ]);
+            ]));
 
-            $itemUnitCriterion = new AdGroupCriterion([
-                'ad_group' => $adGroupResourceName,
-                'status' => AdGroupCriterionStatus::ENABLED,
-                'listing_group' => new ListingGroupInfo([
-                    'type' => ListingGroupType::UNIT,
-                    'parent_ad_group_criterion' => $rootResourceName,
-                    'case_value' => new ListingDimensionInfo([
-                        'product_item_id' => new ProductItemIdInfo(['value' => $itemId]),
+            foreach ($itemIds as $itemId) {
+                $listingOps[] = (new AdGroupCriterionOperation())->setCreate(new AdGroupCriterion([
+                    'ad_group' => $adGroupResourceName,
+                    'status' => AdGroupCriterionStatus::ENABLED,
+                    'listing_group' => new ListingGroupInfo([
+                        'type' => ListingGroupType::UNIT,
+                        'parent_ad_group_criterion' => $rootResourceName,
+                        'case_value' => new ListingDimensionInfo([
+                            'product_item_id' => new ProductItemIdInfo(['value' => $itemId]),
+                        ]),
                     ]),
-                ]),
-                'cpc_bid_micros' => $cpcBidMicros,
-            ]);
+                    'cpc_bid_micros' => $cpcBidMicros,
+                ]));
+            }
 
             // "Everything else" — required sibling; exclude from bidding
-            $otherUnitCriterion = new AdGroupCriterion([
+            $listingOps[] = (new AdGroupCriterionOperation())->setCreate(new AdGroupCriterion([
                 'ad_group' => $adGroupResourceName,
                 'status' => AdGroupCriterionStatus::ENABLED,
                 'negative' => true,
@@ -936,16 +1021,12 @@ class GoogleAdsSbidService
                         'product_item_id' => new ProductItemIdInfo(),
                     ]),
                 ]),
-            ]);
+            ]));
 
             $this->getClient()->getAdGroupCriterionServiceClient()->mutateAdGroupCriteria(
                 new MutateAdGroupCriteriaRequest([
                     'customer_id' => $customerId,
-                    'operations' => [
-                        (new AdGroupCriterionOperation())->setCreate($rootCriterion),
-                        (new AdGroupCriterionOperation())->setCreate($itemUnitCriterion),
-                        (new AdGroupCriterionOperation())->setCreate($otherUnitCriterion),
-                    ],
+                    'operations' => $listingOps,
                 ])
             );
 
@@ -955,7 +1036,8 @@ class GoogleAdsSbidService
                 'customer_id' => $customerId,
                 'campaign_name' => $campaignName,
                 'campaign_id' => $campaignId,
-                'item_id' => $itemId,
+                'item_ids' => $itemIds,
+                'item_count' => count($itemIds),
                 'budget_resource' => $budgetResourceName,
                 'ad_group_resource' => $adGroupResourceName,
             ]);
@@ -966,7 +1048,8 @@ class GoogleAdsSbidService
                 'budget_resource_name' => $budgetResourceName,
                 'ad_group_resource_name' => $adGroupResourceName,
                 'campaign_name' => $campaignName,
-                'item_id' => $itemId,
+                'item_ids' => $itemIds,
+                'item_id' => $itemIds[0],
             ];
         } catch (\Throwable $e) {
             Log::error('Failed to create Google Shopping product campaign', [
@@ -976,6 +1059,130 @@ class GoogleAdsSbidService
             ]);
             throw $e;
         }
+    }
+
+    /**
+     * Push campaign-level negative keywords to a Google Ads campaign.
+     *
+     * @param  list<string>  $keywords
+     * @return array{added: int, skipped: int, failed: int, campaign_id: string, match_type: string, errors: list<string>}
+     */
+    public function pushCampaignNegativeKeywords(
+        string $customerId,
+        string $campaignId,
+        array $keywords,
+        string $matchType = 'PHRASE'
+    ): array {
+        $customerId = str_replace('-', '', trim($customerId));
+        $campaignId = preg_replace('/\D+/', '', trim($campaignId)) ?: '';
+        if ($customerId === '' || $campaignId === '') {
+            throw new \InvalidArgumentException('customer_id and campaign_id are required');
+        }
+
+        $matchType = strtoupper(trim($matchType));
+        $matchEnum = match ($matchType) {
+            'EXACT' => KeywordMatchType::EXACT,
+            'BROAD' => KeywordMatchType::BROAD,
+            default => KeywordMatchType::PHRASE,
+        };
+        if (! in_array($matchType, ['EXACT', 'BROAD', 'PHRASE'], true)) {
+            $matchType = 'PHRASE';
+        }
+
+        $clean = [];
+        $seen = [];
+        foreach ($keywords as $kw) {
+            $text = preg_replace('/\s+/', ' ', trim((string) $kw));
+            if ($text === '') {
+                continue;
+            }
+            // Google Ads keyword text max length is 80 chars.
+            if (mb_strlen($text) > 80) {
+                $text = mb_substr($text, 0, 80);
+            }
+            $key = strtolower($text);
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $clean[] = $text;
+        }
+
+        if ($clean === []) {
+            return [
+                'added' => 0,
+                'skipped' => 0,
+                'failed' => 0,
+                'campaign_id' => $campaignId,
+                'match_type' => $matchType,
+                'errors' => ['No keywords to push.'],
+            ];
+        }
+
+        $campaignResource = ResourceNames::forCampaign($customerId, $campaignId);
+        $added = 0;
+        $failed = 0;
+        $errors = [];
+
+        foreach (array_chunk($clean, 100) as $chunk) {
+            $operations = [];
+            foreach ($chunk as $text) {
+                $operations[] = (new CampaignCriterionOperation())->setCreate(new CampaignCriterion([
+                    'campaign' => $campaignResource,
+                    'negative' => true,
+                    'keyword' => new KeywordInfo([
+                        'text' => $text,
+                        'match_type' => $matchEnum,
+                    ]),
+                ]));
+            }
+
+            try {
+                $resp = $this->getClient()->getCampaignCriterionServiceClient()->mutateCampaignCriteria(
+                    new MutateCampaignCriteriaRequest([
+                        'customer_id' => $customerId,
+                        'operations' => $operations,
+                        'partial_failure' => true,
+                    ])
+                );
+                $added += $resp->getResults() ? $resp->getResults()->count() : 0;
+
+                if ($resp->hasPartialFailureError()) {
+                    $msg = $resp->getPartialFailureError()->getMessage();
+                    if ($msg !== '') {
+                        $errors[] = $msg;
+                    }
+                    $failed += max(0, count($chunk) - ($resp->getResults() ? $resp->getResults()->count() : 0));
+                }
+            } catch (\Throwable $e) {
+                Log::error('Failed pushing Google Ads negative keywords', [
+                    'customer_id' => $customerId,
+                    'campaign_id' => $campaignId,
+                    'chunk_size' => count($chunk),
+                    'error' => $e->getMessage(),
+                ]);
+                $failed += count($chunk);
+                $errors[] = $e->getMessage();
+            }
+        }
+
+        Log::info('Pushed Google Ads campaign negative keywords', [
+            'customer_id' => $customerId,
+            'campaign_id' => $campaignId,
+            'match_type' => $matchType,
+            'requested' => count($clean),
+            'added' => $added,
+            'failed' => $failed,
+        ]);
+
+        return [
+            'added' => $added,
+            'skipped' => 0,
+            'failed' => $failed,
+            'campaign_id' => $campaignId,
+            'match_type' => $matchType,
+            'errors' => array_slice($errors, 0, 5),
+        ];
     }
 
 }

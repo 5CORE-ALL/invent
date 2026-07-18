@@ -137,7 +137,10 @@ class GoogleShoppingAdsMissingController extends Controller
                 'buyer_link' => '',
                 'seller_link' => '',
                 'target_sku' => '',
+                'merchant_item_id' => '',
+                'children' => [],
             ];
+            $children = is_array($meta['children'] ?? null) ? $meta['children'] : [];
 
             return [
                 'parent' => $parent,
@@ -152,7 +155,11 @@ class GoogleShoppingAdsMissingController extends Controller
                 'buyer_link' => $meta['buyer_link'] ?? '',
                 'seller_link' => $meta['seller_link'] ?? '',
                 'target_sku' => $meta['target_sku'] ?? '',
+                // Google Merchant Center offer id, e.g. shopify_us_{productId}_{variantId}
+                'merchant_item_id' => $meta['merchant_item_id'] ?? '',
                 'suggested_campaign_name' => $sku,
+                // All child SKUs included under one parent campaign.
+                'children' => $children,
                 'default_merchant_id' => $defaultMerchantId,
                 'campaigns' => $this->campaignsForParentSku($sku, $manualBySku->get($sku) ?? collect(), $statusMap),
             ];
@@ -162,34 +169,31 @@ class GoogleShoppingAdsMissingController extends Controller
     }
 
     /**
-     * Create a new Google Shopping product campaign for a parent (PAUSED), then
-     * auto-link it on this missing page. Form fields are prefilled from parent /
-     * Shopify B2C buyer link (/shopify-b2c-pricing listing status).
+     * Create one Google Shopping campaign for a parent (PAUSED), including all
+     * selected child SKUs as product Item IDs under that single campaign.
      */
     public function create(Request $request): JsonResponse
     {
         $validated = $request->validate([
             'parent' => ['required', 'string', 'max:255'],
-            'campaign_name' => ['required', 'string', 'max:255'],
+            'campaign_name' => ['nullable', 'string', 'max:255'],
             'budget_amount' => ['nullable', 'numeric', 'min:1'],
             'cpc_bid' => ['nullable', 'numeric', 'min:0.01'],
             'merchant_id' => ['nullable', 'integer', 'min:1'],
             'campaign_priority' => ['nullable', 'integer', 'min:0', 'max:2'],
             'feed_label' => ['nullable', 'string', 'max:32'],
-            'target_sku' => ['required', 'string', 'max:255'],
             'buyer_link' => ['nullable', 'string', 'max:2000'],
+            'children' => ['required', 'array', 'min:1'],
+            'children.*.target_sku' => ['required', 'string', 'max:255'],
+            'children.*.item_id' => ['nullable', 'string', 'max:255'],
         ]);
 
         $parent = preg_replace('/\s+/', ' ', trim($validated['parent']));
-        $campaignName = trim($validated['campaign_name']);
-        $itemId = trim((string) $validated['target_sku']);
-        if ($itemId === '') {
-            return response()->json([
-                'ok' => false,
-                'message' => 'Item ID (Merchant Center) is required.',
-            ], 422);
-        }
         $sku = 'PARENT '.$parent;
+        $campaignName = trim((string) ($validated['campaign_name'] ?? ''));
+        if ($campaignName === '') {
+            $campaignName = $sku;
+        }
 
         $existing = $this->autoMatchedShoppingCampaign($sku);
         if ($existing !== null) {
@@ -199,15 +203,43 @@ class GoogleShoppingAdsMissingController extends Controller
             ], 422);
         }
 
-        $normName = $this->normalizeCampaignName($campaignName);
-        foreach ($this->shoppingCampaignIndex() as $key => $info) {
-            if ($key === $normName) {
+        $resolvedChildren = [];
+        $itemIds = [];
+        foreach ($validated['children'] as $child) {
+            $targetSku = trim((string) ($child['target_sku'] ?? ''));
+            if ($targetSku === '') {
+                continue;
+            }
+            $itemId = trim((string) ($child['item_id'] ?? ''));
+            if ($itemId === '' || ! str_starts_with($itemId, 'shopify_us_')) {
+                if (str_starts_with($targetSku, 'shopify_us_')) {
+                    $itemId = $targetSku;
+                } else {
+                    $itemId = (string) ($this->resolveMerchantCenterItemId($targetSku) ?? '');
+                }
+            }
+            if ($itemId === '' || ! str_starts_with($itemId, 'shopify_us_')) {
                 return response()->json([
                     'ok' => false,
-                    'message' => 'Campaign name already exists in Google Shopping: '.$info['campaign_name'],
+                    'message' => 'Could not resolve Merchant Center Item ID for SKU: '.$targetSku,
                 ], 422);
             }
+            $resolvedChildren[] = [
+                'target_sku' => $targetSku,
+                'item_id' => $itemId,
+            ];
+            $itemIds[] = $itemId;
         }
+        $itemIds = array_values(array_unique($itemIds));
+
+        if ($itemIds === []) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'Select at least one child SKU with a valid Merchant Center Item ID.',
+            ], 422);
+        }
+
+        $campaignName = $this->ensureUniqueCampaignName($campaignName);
 
         $customerId = str_replace('-', '', (string) config('services.google_ads.login_customer_id'));
         if ($customerId === '') {
@@ -224,7 +256,7 @@ class GoogleShoppingAdsMissingController extends Controller
         }
 
         try {
-            $created = app(GoogleAdsSbidService::class)->createShoppingProductCampaign($customerId, [
+            $created = $this->createShoppingCampaignWithUniqueNameRetry($customerId, [
                 'campaign_name' => $campaignName,
                 'budget_amount' => (float) ($validated['budget_amount'] ?? 1),
                 'cpc_bid' => (float) ($validated['cpc_bid'] ?? 0.5),
@@ -232,27 +264,28 @@ class GoogleShoppingAdsMissingController extends Controller
                 'campaign_priority' => (int) ($validated['campaign_priority'] ?? 0),
                 'feed_label' => $validated['feed_label'] ?? 'US',
                 'enable_local' => true,
-                'item_id' => $itemId,
+                'item_ids' => $itemIds,
             ]);
+            $campaignName = (string) ($created['campaign_name'] ?? $campaignName);
         } catch (\Throwable $e) {
             Log::error('Google Shopping missing create failed', [
                 'parent' => $parent,
                 'campaign_name' => $campaignName,
+                'item_ids' => $itemIds,
                 'error' => $e->getMessage(),
             ]);
 
             return response()->json([
                 'ok' => false,
-                'message' => 'Google Ads create failed: '.$e->getMessage(),
+                'message' => 'Google Ads create failed: '.$this->formatGoogleAdsCreateError($e),
             ], 500);
         }
 
-        // Persist manual link so the Campaign column updates immediately (before next sync).
         GoogleAdsMissingLink::firstOrCreate(
             [
                 'channel' => self::CHANNEL,
                 'sku' => $sku,
-                'campaign_name' => $created['campaign_name'],
+                'campaign_name' => $campaignName,
             ],
             [
                 'campaign_id' => $created['campaign_id'] ?: null,
@@ -268,10 +301,13 @@ class GoogleShoppingAdsMissingController extends Controller
 
         return response()->json([
             'ok' => true,
-            'message' => 'Shopping campaign created (PAUSED).',
+            'message' => 'Shopping campaign created (PAUSED): '.$campaignName
+                .' with '.count($itemIds).' child Item ID(s).',
             'parent' => $parent,
             'sku' => $sku,
-            'target_sku' => $itemId,
+            'campaign_name' => $campaignName,
+            'item_ids' => $itemIds,
+            'children' => $resolvedChildren,
             'buyer_link' => $validated['buyer_link'] ?? '',
             'campaign' => $created,
             'campaigns' => $this->campaignsResponseForSku($sku)['campaigns'],
@@ -455,6 +491,185 @@ PROMPT;
     }
 
     /**
+     * Push negative keywords to the parent's linked/created Google Shopping campaign.
+     * Keywords typically come from AI suggestions and/or Amazon KW(-) for the parent.
+     */
+    public function pushNegativeKeywords(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'parent' => ['required', 'string', 'max:255'],
+            'campaign_name' => ['nullable', 'string', 'max:255'],
+            'campaign_id' => ['nullable', 'string', 'max:64'],
+            'keywords' => ['nullable', 'array'],
+            'keywords.*' => ['string', 'max:255'],
+            'include_amazon' => ['nullable', 'boolean'],
+            'match_type' => ['nullable', 'string', 'in:PHRASE,BROAD,EXACT'],
+        ]);
+
+        $parent = preg_replace('/\s+/', ' ', trim($validated['parent']));
+        $sku = 'PARENT '.$parent;
+        $campaignName = trim((string) ($validated['campaign_name'] ?? ''));
+        if ($campaignName === '') {
+            $campaignName = $sku;
+        }
+        $matchType = strtoupper(trim((string) ($validated['match_type'] ?? 'PHRASE')));
+
+        $keywords = collect($validated['keywords'] ?? [])
+            ->map(fn ($t) => trim((string) $t))
+            ->filter()
+            ->values()
+            ->all();
+
+        if (! empty($validated['include_amazon'])) {
+            $keywords = array_values(array_unique(array_merge(
+                $keywords,
+                $this->existingAmazonNegativesForParent($parent)
+            )));
+        }
+
+        if ($keywords === []) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'No negative keywords to push. Generate AI suggestions first (or include Amazon KW negatives).',
+            ], 422);
+        }
+
+        $campaignId = preg_replace('/\D+/', '', trim((string) ($validated['campaign_id'] ?? ''))) ?: '';
+
+        if ($campaignId === '') {
+            $resolved = $this->resolveShoppingCampaignIdForParent($sku, $campaignName);
+            $campaignId = $resolved['campaign_id'] ?? '';
+            if (($resolved['campaign_name'] ?? '') !== '') {
+                $campaignName = $resolved['campaign_name'];
+            }
+        }
+
+        if ($campaignId === '') {
+            return response()->json([
+                'ok' => false,
+                'message' => 'No Google Shopping campaign found for this parent. Create the campaign first, then push negatives.',
+            ], 422);
+        }
+
+        $customerId = str_replace('-', '', (string) config('services.google_ads.login_customer_id'));
+        if ($customerId === '') {
+            return response()->json(['ok' => false, 'message' => 'Google Ads customer ID is not configured.'], 500);
+        }
+
+        try {
+            $result = app(GoogleAdsSbidService::class)->pushCampaignNegativeKeywords(
+                $customerId,
+                $campaignId,
+                $keywords,
+                $matchType
+            );
+        } catch (\Throwable $e) {
+            Log::error('Google Shopping push negatives failed', [
+                'parent' => $parent,
+                'campaign_id' => $campaignId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'ok' => false,
+                'message' => 'Push failed: '.$this->formatGoogleAdsCreateError($e),
+            ], 500);
+        }
+
+        $added = (int) ($result['added'] ?? 0);
+        $failed = (int) ($result['failed'] ?? 0);
+        $message = "Pushed {$added} negative keyword(s) to {$campaignName} ({$matchType}).";
+        if ($failed > 0) {
+            $message .= " {$failed} failed (may already exist).";
+        }
+
+        return response()->json([
+            'ok' => $added > 0 || $failed === 0,
+            'message' => $message,
+            'parent' => $parent,
+            'campaign_name' => $campaignName,
+            'campaign_id' => $campaignId,
+            'result' => $result,
+        ], $added > 0 || $failed === 0 ? 200 : 500);
+    }
+
+    /**
+     * Resolve a Shopping campaign_id for PARENT {parent} from links / local campaign index.
+     *
+     * @return array{campaign_id: string, campaign_name: string}
+     */
+    private function resolveShoppingCampaignIdForParent(string $parentSku, string $preferredName = ''): array
+    {
+        $preferredName = trim($preferredName);
+
+        if ($preferredName !== '' && Schema::hasTable(self::CAMPAIGNS_TABLE)) {
+            $id = DB::table(self::CAMPAIGNS_TABLE)
+                ->where('advertising_channel_type', 'SHOPPING')
+                ->where('campaign_name', $preferredName)
+                ->orderByDesc('id')
+                ->value('campaign_id');
+            if ($id) {
+                return ['campaign_id' => (string) $id, 'campaign_name' => $preferredName];
+            }
+        }
+
+        $auto = $this->autoMatchedShoppingCampaign($parentSku);
+        if ($auto !== null && ! empty($auto['campaign_id'])) {
+            return [
+                'campaign_id' => (string) $auto['campaign_id'],
+                'campaign_name' => (string) $auto['campaign_name'],
+            ];
+        }
+
+        $links = $this->manualLinksBySku()->get($parentSku) ?? collect();
+        foreach ($links as $link) {
+            $cid = trim((string) ($link->campaign_id ?? ''));
+            $name = trim((string) ($link->campaign_name ?? ''));
+            if ($cid !== '') {
+                return ['campaign_id' => $cid, 'campaign_name' => $name !== '' ? $name : $preferredName];
+            }
+            if ($name !== '' && Schema::hasTable(self::CAMPAIGNS_TABLE)) {
+                $id = DB::table(self::CAMPAIGNS_TABLE)
+                    ->where('advertising_channel_type', 'SHOPPING')
+                    ->where('campaign_name', $name)
+                    ->orderByDesc('id')
+                    ->value('campaign_id');
+                if ($id) {
+                    return ['campaign_id' => (string) $id, 'campaign_name' => $name];
+                }
+            }
+        }
+
+        // Freshly created campaigns may only exist in Google Ads until sync —
+        // try GAQL by campaign name when we have a preferred name.
+        if ($preferredName !== '') {
+            try {
+                $customerId = str_replace('-', '', (string) config('services.google_ads.login_customer_id'));
+                if ($customerId !== '') {
+                    $escaped = str_replace("'", "\\'", $preferredName);
+                    $rows = app(GoogleAdsSbidService::class)->runQuery(
+                        $customerId,
+                        "SELECT campaign.id, campaign.name FROM campaign "
+                        ."WHERE campaign.name = '{$escaped}' AND campaign.advertising_channel_type = 'SHOPPING' "
+                        .'LIMIT 1'
+                    );
+                    $id = (string) (data_get($rows, '0.campaign.id') ?: data_get($rows, '0.campaignId') ?: '');
+                    if ($id !== '') {
+                        return ['campaign_id' => $id, 'campaign_name' => $preferredName];
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning('resolveShoppingCampaignIdForParent GAQL failed', [
+                    'campaign_name' => $preferredName,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return ['campaign_id' => '', 'campaign_name' => $preferredName];
+    }
+
+    /**
      * Distinct Google Shopping campaigns for the manual link picker.
      */
     public function campaigns(): JsonResponse
@@ -533,6 +748,112 @@ PROMPT;
         }
 
         return response()->json($this->campaignsResponseForSku($sku));
+    }
+
+    /**
+     * Delete (remove) a Google Shopping campaign in Google Ads and unlink it locally.
+     */
+    public function delete(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'sku' => ['required', 'string', 'max:255'],
+            'campaign_id' => ['nullable', 'string', 'max:64'],
+            'campaign_name' => ['nullable', 'string', 'max:255'],
+            'link_id' => ['nullable', 'integer'],
+        ]);
+
+        $sku = trim($validated['sku']);
+        $campaignName = trim((string) ($validated['campaign_name'] ?? ''));
+        $campaignId = preg_replace('/\D+/', '', trim((string) ($validated['campaign_id'] ?? ''))) ?: '';
+
+        if ($campaignId === '' && $campaignName !== '') {
+            $resolved = $this->resolveShoppingCampaignIdForParent($sku, $campaignName);
+            $campaignId = $resolved['campaign_id'] ?? '';
+            if (($resolved['campaign_name'] ?? '') !== '') {
+                $campaignName = $resolved['campaign_name'];
+            }
+        }
+
+        if ($campaignId === '' && ! empty($validated['link_id'])) {
+            $link = GoogleAdsMissingLink::query()
+                ->where('id', (int) $validated['link_id'])
+                ->where('channel', self::CHANNEL)
+                ->first();
+            if ($link) {
+                $campaignId = preg_replace('/\D+/', '', trim((string) ($link->campaign_id ?? ''))) ?: '';
+                if ($campaignName === '') {
+                    $campaignName = trim((string) ($link->campaign_name ?? ''));
+                }
+                if ($campaignId === '' && $campaignName !== '') {
+                    $resolved = $this->resolveShoppingCampaignIdForParent($sku, $campaignName);
+                    $campaignId = $resolved['campaign_id'] ?? '';
+                }
+            }
+        }
+
+        if ($campaignId === '') {
+            return response()->json([
+                'ok' => false,
+                'message' => 'Could not resolve campaign ID to delete. Provide campaign_id or a known campaign_name.',
+            ], 422);
+        }
+
+        $customerId = str_replace('-', '', (string) config('services.google_ads.login_customer_id'));
+        if ($customerId === '') {
+            return response()->json(['ok' => false, 'message' => 'Google Ads customer ID is not configured.'], 500);
+        }
+
+        try {
+            $removed = app(GoogleAdsSbidService::class)->removeCampaign($customerId, $campaignId);
+        } catch (\Throwable $e) {
+            Log::error('Google Shopping missing delete failed', [
+                'sku' => $sku,
+                'campaign_id' => $campaignId,
+                'campaign_name' => $campaignName,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'ok' => false,
+                'message' => 'Google Ads delete failed: '.$this->formatGoogleAdsCreateError($e),
+            ], 500);
+        }
+
+        // Drop local link(s) for this parent + campaign.
+        $linkQuery = GoogleAdsMissingLink::query()
+            ->where('channel', self::CHANNEL)
+            ->where('sku', $sku);
+        $linkQuery->where(function ($q) use ($campaignId, $campaignName, $validated) {
+            $q->where('campaign_id', $campaignId);
+            if ($campaignName !== '') {
+                $q->orWhere('campaign_name', $campaignName);
+            }
+            if (! empty($validated['link_id'])) {
+                $q->orWhere('id', (int) $validated['link_id']);
+            }
+        })->delete();
+
+        if (Schema::hasTable(self::CAMPAIGNS_TABLE)) {
+            DB::table(self::CAMPAIGNS_TABLE)
+                ->where('campaign_id', $campaignId)
+                ->update(['campaign_status' => 'REMOVED']);
+        }
+
+        $this->manualLinksCache = null;
+        $this->campaignStatusMapCache = null;
+        $this->shoppingCampaignIndexCache = null;
+        self::forgetMissingTotalCache();
+
+        return response()->json([
+            'ok' => true,
+            'message' => 'Campaign removed in Google Ads'
+                .($campaignName !== '' ? ': '.$campaignName : ' (ID '.$campaignId.')').'.',
+            'sku' => $sku,
+            'campaign_id' => $campaignId,
+            'campaign_name' => $campaignName,
+            'removed' => $removed,
+            'campaigns' => $this->campaignsResponseForSku($sku)['campaigns'],
+        ]);
     }
 
     private function computeMissingTotal(): int
@@ -619,16 +940,18 @@ PROMPT;
             $status = $auto['status'] !== ''
                 ? $auto['status']
                 : ($statusMap[$key] ?? '');
-            $out[] = [
-                'id' => 0,
-                'campaign_id' => $auto['campaign_id'],
-                'campaign_name' => $auto['campaign_name'],
-                'status' => $status,
-                'dot' => $status === 'ENABLED' ? 'green' : ($status !== '' ? 'red' : ''),
-                'source' => 'auto',
-            ];
-            if ($key !== '') {
-                $seen[$key] = true;
+            if ($status !== 'REMOVED') {
+                $out[] = [
+                    'id' => 0,
+                    'campaign_id' => $auto['campaign_id'],
+                    'campaign_name' => $auto['campaign_name'],
+                    'status' => $status,
+                    'dot' => $status === 'ENABLED' ? 'green' : ($status !== '' ? 'red' : ''),
+                    'source' => 'auto',
+                ];
+                if ($key !== '') {
+                    $seen[$key] = true;
+                }
             }
         }
 
@@ -639,6 +962,9 @@ PROMPT;
                 continue;
             }
             $status = $statusMap[$key] ?? '';
+            if ($status === 'REMOVED') {
+                continue;
+            }
             $out[] = [
                 'id' => (int) $l->id,
                 'campaign_id' => $l->campaign_id,
@@ -708,10 +1034,14 @@ PROMPT;
                 if ($key === '') {
                     continue;
                 }
+                $status = strtoupper(trim((string) ($row->campaign_status ?? '')));
+                if ($status === 'REMOVED') {
+                    continue;
+                }
                 $index[$key] = [
                     'campaign_name' => (string) ($row->campaign_name ?? $name),
                     'campaign_id' => $row->campaign_id !== null ? (string) $row->campaign_id : null,
-                    'status' => strtoupper(trim((string) ($row->campaign_status ?? ''))),
+                    'status' => $status,
                 ];
             }
         }
@@ -804,6 +1134,100 @@ PROMPT;
     }
 
     /**
+     * Ensure campaign name is unique against locally synced Shopping campaigns.
+     */
+    private function ensureUniqueCampaignName(string $desired): string
+    {
+        $base = trim($desired);
+        if ($base === '') {
+            return $base;
+        }
+
+        $index = $this->shoppingCampaignIndex();
+        $candidate = $base;
+        $n = 2;
+        while (isset($index[$this->normalizeCampaignName($candidate)])) {
+            $candidate = $base.' #'.$n;
+            $n++;
+            if ($n > 50) {
+                $candidate = $base.' '.date('YmdHis');
+                break;
+            }
+        }
+
+        return $candidate;
+    }
+
+    /**
+     * Create Shopping campaign; on Google DUPLICATE_CAMPAIGN_NAME, retry once with a unique suffix.
+     *
+     * @param  array<string, mixed>  $params
+     * @return array<string, mixed>
+     */
+    private function createShoppingCampaignWithUniqueNameRetry(string $customerId, array $params): array
+    {
+        $service = app(GoogleAdsSbidService::class);
+        try {
+            return $service->createShoppingProductCampaign($customerId, $params);
+        } catch (\Throwable $e) {
+            if (! $this->isDuplicateCampaignNameError($e)) {
+                throw $e;
+            }
+
+            $original = trim((string) ($params['campaign_name'] ?? ''));
+            $retryName = $this->ensureUniqueCampaignName($original.' '.date('YmdHis'));
+            if ($this->normalizeCampaignName($retryName) === $this->normalizeCampaignName($original)) {
+                $retryName = $original.' '.substr(uniqid('', true), -6);
+            }
+
+            Log::warning('Google Shopping create retrying with unique campaign name', [
+                'original' => $original,
+                'retry' => $retryName,
+            ]);
+
+            $params['campaign_name'] = $retryName;
+
+            return $service->createShoppingProductCampaign($customerId, $params);
+        }
+    }
+
+    private function isDuplicateCampaignNameError(\Throwable $e): bool
+    {
+        $msg = $e->getMessage();
+
+        return stripos($msg, 'DUPLICATE_CAMPAIGN_NAME') !== false
+            || stripos($msg, 'already assigned to another active or paused campaign') !== false;
+    }
+
+    /**
+     * Prefer a short Google Ads error over the raw JSON blob.
+     */
+    private function formatGoogleAdsCreateError(\Throwable $e): string
+    {
+        $raw = $e->getMessage();
+
+        if ($this->isDuplicateCampaignNameError($e)) {
+            return 'Campaign name already exists in Google Ads. Change the Campaign name (include the Item ID) and try again.';
+        }
+
+        // Prefer the most specific GoogleAdsFailure error message (skip generic wrapper text).
+        if (preg_match_all('/"message"\s*:\s*"((?:\\\\.|[^"\\\\])*)"/', $raw, $matches)) {
+            $generic = [
+                'request contains an invalid argument.',
+                'request contains an invalid argument',
+            ];
+            foreach (array_reverse($matches[1]) as $encoded) {
+                $msg = stripcslashes($encoded);
+                if ($msg !== '' && ! in_array(strtolower($msg), $generic, true)) {
+                    return $msg;
+                }
+            }
+        }
+
+        return $raw;
+    }
+
+    /**
      * Best-effort product title for AI context (Shopify title / product_master Values).
      */
     private function resolveProductTitleForAi(string $parent, string $targetSku): string
@@ -885,12 +1309,100 @@ PROMPT;
     }
 
     /**
+     * Merchant Center Item ID used in Google Shopping product groups:
+     * shopify_us_{shopifyProductId}_{shopifyVariantId}
+     */
+    private function resolveMerchantCenterItemId(string $sku): ?string
+    {
+        $map = $this->resolveMerchantCenterItemIds([$sku]);
+
+        return $map[$sku] ?? null;
+    }
+
+    /**
+     * @param  list<string>  $skus
+     * @return array<string, string> sku => shopify_us_{productId}_{variantId}
+     */
+    private function resolveMerchantCenterItemIds(array $skus): array
+    {
+        $skus = array_values(array_unique(array_filter(array_map(
+            static fn ($s) => trim((string) $s),
+            $skus
+        ))));
+        if ($skus === [] || ! Schema::hasTable('shopify_catalog_variants')) {
+            return [];
+        }
+
+        $out = [];
+
+        $rows = DB::table('shopify_catalog_variants')
+            ->whereIn('sku', $skus)
+            ->whereNotNull('shopify_product_id')
+            ->whereNotNull('shopify_variant_id')
+            ->where('shopify_product_id', '!=', '')
+            ->where('shopify_variant_id', '!=', '')
+            ->orderByRaw("CASE WHEN store = 'main' THEN 0 ELSE 1 END")
+            ->orderByDesc('synced_at')
+            ->get(['sku', 'shopify_product_id', 'shopify_variant_id']);
+
+        foreach ($rows as $row) {
+            $sku = (string) $row->sku;
+            if ($sku === '' || isset($out[$sku])) {
+                continue;
+            }
+            $out[$sku] = 'shopify_us_'.$row->shopify_product_id.'_'.$row->shopify_variant_id;
+        }
+
+        $missing = array_values(array_filter($skus, static fn ($s) => ! isset($out[$s])));
+        if ($missing === []) {
+            return $out;
+        }
+
+        $shopifyBySku = ShopifySku::mapByProductSkus($missing);
+        $variantToSku = [];
+        foreach ($missing as $sku) {
+            $variantId = trim((string) ($shopifyBySku->get($sku)?->variant_id ?? ''));
+            if ($variantId !== '') {
+                $variantToSku[$variantId] = $sku;
+            }
+        }
+
+        if ($variantToSku === []) {
+            return $out;
+        }
+
+        $byVariant = DB::table('shopify_catalog_variants')
+            ->whereIn('shopify_variant_id', array_keys($variantToSku))
+            ->whereNotNull('shopify_product_id')
+            ->where('shopify_product_id', '!=', '')
+            ->orderByRaw("CASE WHEN store = 'main' THEN 0 ELSE 1 END")
+            ->orderByDesc('synced_at')
+            ->get(['shopify_variant_id', 'shopify_product_id']);
+
+        foreach ($byVariant as $row) {
+            $sku = $variantToSku[(string) $row->shopify_variant_id] ?? null;
+            if ($sku === null || isset($out[$sku])) {
+                continue;
+            }
+            $out[$sku] = 'shopify_us_'.$row->shopify_product_id.'_'.$row->shopify_variant_id;
+        }
+
+        return $out;
+    }
+
+    /**
      * Buyer / seller links from /shopify-b2c-pricing (shopify_b2c_listing_statuses)
-     * plus a target child SKU for the selected parent.
+     * plus all child SKUs (with Merchant Center Item IDs) for the selected parent.
      *
      * @param  \Illuminate\Support\Collection  $productRows
      * @param  array<string, string>  $parents  upper(parent) => display parent
-     * @return array<string, array{buyer_link: string, seller_link: string, target_sku: string}>
+     * @return array<string, array{
+     *   buyer_link: string,
+     *   seller_link: string,
+     *   target_sku: string,
+     *   merchant_item_id: string,
+     *   children: list<array{target_sku: string, merchant_item_id: string, inv: float}>
+     * }>
      */
     private function shopifyB2cMetaByParent($productRows, array $parents): array
     {
@@ -935,13 +1447,18 @@ PROMPT;
                 });
         }
 
+        $itemIds = $this->resolveMerchantCenterItemIds($allChildSkus);
+
         $out = [];
-        foreach ($parents as $pKey => $_parent) {
-            $children = $childrenByParent[$pKey] ?? [];
+        foreach ($parents as $pKey => $parent) {
+            $children = array_values(array_unique($childrenByParent[$pKey] ?? []));
+            sort($children, SORT_NATURAL | SORT_FLAG_CASE);
+
             $buyer = '';
             $seller = '';
             $targetSku = '';
             $fallbackSku = '';
+            $childRows = [];
 
             foreach ($children as $childSku) {
                 if ($fallbackSku === '') {
@@ -952,18 +1469,24 @@ PROMPT;
                     $targetSku = $childSku;
                 }
                 $links = $listingBySku[$childSku] ?? null;
-                if (! is_array($links)) {
-                    continue;
-                }
-                if ($buyer === '' && ! empty($links['buyer_link'])) {
-                    $buyer = (string) $links['buyer_link'];
-                    if ($targetSku === '') {
-                        $targetSku = $childSku;
+                if (is_array($links)) {
+                    if ($buyer === '' && ! empty($links['buyer_link'])) {
+                        $buyer = (string) $links['buyer_link'];
+                        if ($targetSku === '') {
+                            $targetSku = $childSku;
+                        }
+                    }
+                    if ($seller === '' && ! empty($links['seller_link'])) {
+                        $seller = (string) $links['seller_link'];
                     }
                 }
-                if ($seller === '' && ! empty($links['seller_link'])) {
-                    $seller = (string) $links['seller_link'];
-                }
+
+                $merchantItemId = $itemIds[$childSku] ?? '';
+                $childRows[] = [
+                    'target_sku' => $childSku,
+                    'merchant_item_id' => $merchantItemId,
+                    'inv' => $inv,
+                ];
             }
 
             if ($targetSku === '') {
@@ -974,6 +1497,8 @@ PROMPT;
                 'buyer_link' => $buyer,
                 'seller_link' => $seller,
                 'target_sku' => $targetSku,
+                'merchant_item_id' => $targetSku !== '' ? ($itemIds[$targetSku] ?? '') : '',
+                'children' => $childRows,
             ];
         }
 
