@@ -9,6 +9,8 @@ use App\Listeners\CronMonitor\AutoMonitorScheduledCommand;
 use App\Listeners\CronMonitor\SendCronExecutionAlert;
 use App\Listeners\CronMonitor\SendCronWatchdogAlert;
 use App\Repositories\CronExecutionLogRepository;
+use App\Services\CronMonitor\AlertGroupingService;
+use App\Services\CronMonitor\CheckpointService;
 use App\Services\CronMonitor\CronAnomalyDetector;
 use App\Services\CronMonitor\CronHealthScoreCalculator;
 use App\Services\CronMonitor\CronMonitorService;
@@ -17,7 +19,15 @@ use App\Services\CronMonitor\CronRetryService;
 use App\Services\CronMonitor\CronStatusResolver;
 use App\Services\CronMonitor\CronValidationService;
 use App\Services\CronMonitor\CronWatchdogService;
+use App\Services\CronMonitor\DuplicateLockService;
+use App\Services\CronMonitor\FailureClassifier;
+use App\Services\CronMonitor\HistoricalAnalysisService;
+use App\Services\CronMonitor\IntelligentRetryService;
+use App\Services\CronMonitor\ManualActionService;
+use App\Services\CronMonitor\RootCauseAnalyzer;
 use App\Services\CronMonitor\ScheduledJobRegistry;
+use App\Services\CronMonitor\SelfHealingService;
+use App\Services\CronMonitor\StuckJobDetector;
 use App\Services\CronMonitor\TaskManagerStatusReporter;
 use Illuminate\Console\Events\CommandFinished;
 use Illuminate\Console\Events\CommandStarting;
@@ -33,14 +43,22 @@ class CronMonitorServiceProvider extends ServiceProvider
         $this->app->singleton(CronStatusResolver::class);
         $this->app->singleton(CronHealthScoreCalculator::class);
         $this->app->singleton(CronAnomalyDetector::class);
+        $this->app->singleton(FailureClassifier::class);
+        $this->app->singleton(RootCauseAnalyzer::class);
+        $this->app->singleton(CheckpointService::class);
+        $this->app->singleton(DuplicateLockService::class);
+        $this->app->singleton(SelfHealingService::class);
+        $this->app->singleton(HistoricalAnalysisService::class);
+        $this->app->singleton(IntelligentRetryService::class);
+        $this->app->singleton(AlertGroupingService::class);
+        $this->app->singleton(StuckJobDetector::class);
+        $this->app->singleton(ManualActionService::class);
         $this->app->singleton(CronNotificationDispatcher::class);
         $this->app->singleton(CronWatchdogService::class);
         $this->app->singleton(CronRetryService::class);
         $this->app->singleton(TaskManagerStatusReporter::class);
         $this->app->singleton(ScheduledJobRegistry::class);
         $this->app->singleton(AutoMonitorScheduledCommand::class);
-
-        // Scoped per-console-run so context is isolated
         $this->app->singleton(CronMonitorService::class);
     }
 

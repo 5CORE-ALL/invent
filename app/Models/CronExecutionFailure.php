@@ -12,8 +12,13 @@ class CronExecutionFailure extends Model
         'sku',
         'marketplace',
         'failure_reason',
+        'failure_category',
+        'http_status',
+        'recoverable',
+        'root_cause',
         'api_response',
         'retry_count',
+        'last_retry_at',
         'resolved',
         'resolved_at',
         'meta',
@@ -21,7 +26,9 @@ class CronExecutionFailure extends Model
 
     protected $casts = [
         'resolved' => 'boolean',
+        'recoverable' => 'boolean',
         'resolved_at' => 'datetime',
+        'last_retry_at' => 'datetime',
         'meta' => 'array',
     ];
 

@@ -2,23 +2,25 @@
 
 namespace App\Services\CronMonitor;
 
-use App\Jobs\CronMonitor\DispatchCronAlertJob;
 use App\Models\CronExecutionLog;
 use App\Models\CronMonitorAlert;
 use Illuminate\Support\Facades\Log;
 
 class CronNotificationDispatcher
 {
+    public function __construct(protected AlertGroupingService $grouping) {}
+
     public function shouldNotify(CronExecutionLog $log): bool
     {
         if (! config('cron-monitor.notifications.enabled', true)) {
             return false;
         }
 
-        if ($log->status === CronExecutionLog::STATUS_SUCCESS && empty($log->anomalies)) {
+        if (in_array($log->status, [CronExecutionLog::STATUS_SUCCESS], true) && empty($log->anomalies)) {
             return false;
         }
 
+        // Recovered still notifies if configured
         $alertOn = config('cron-monitor.notifications.alert_on', []);
 
         if (in_array($log->status, $alertOn, true)) {
@@ -29,7 +31,7 @@ class CronNotificationDispatcher
             return true;
         }
 
-        if ((int) $log->updated_records === 0 && in_array('no_updates', $alertOn, true)) {
+        if ((int) $log->updated_records === 0 && in_array('no_updates', $alertOn, true) && $log->status !== CronExecutionLog::STATUS_SUCCESS) {
             return true;
         }
 
@@ -51,10 +53,12 @@ class CronNotificationDispatcher
             CronExecutionLog::STATUS_FAILED => $log->validation_message ? 'validation_failed' : 'failed',
             CronExecutionLog::STATUS_TIMED_OUT => 'timed_out',
             CronExecutionLog::STATUS_MISSED => 'cron_missed',
+            CronExecutionLog::STATUS_STUCK => 'stuck',
+            CronExecutionLog::STATUS_RECOVERED => 'recovered',
             default => 'anomaly',
         };
 
-        if ((int) $log->updated_records === 0 && $log->status !== CronExecutionLog::STATUS_SUCCESS) {
+        if ((int) $log->updated_records === 0 && ! in_array($log->status, [CronExecutionLog::STATUS_SUCCESS, CronExecutionLog::STATUS_RECOVERED], true)) {
             $alertType = 'no_updates';
         }
 
@@ -62,7 +66,11 @@ class CronNotificationDispatcher
             'execution_log_id' => $log->id,
             'job_name' => $log->job_name,
             'alert_type' => $alertType,
-            'severity' => $log->status === CronExecutionLog::STATUS_PARTIAL_SUCCESS ? 'warning' : 'critical',
+            'severity' => in_array($log->status, [
+                CronExecutionLog::STATUS_PARTIAL_SUCCESS,
+                CronExecutionLog::STATUS_RECOVERED,
+                CronExecutionLog::STATUS_STUCK,
+            ], true) ? 'warning' : 'critical',
             'title' => $this->titleFor($log, $alertType),
             'message' => $this->messageFor($log),
             'payload' => [
@@ -71,29 +79,26 @@ class CronNotificationDispatcher
                 'health_score' => $log->health_score,
                 'updated_records' => $log->updated_records,
                 'failed_records' => $log->failed_records,
+                'root_cause' => $log->root_cause,
+                'failure_category' => $log->failure_category,
+                'recovery_status' => $log->recovery_status,
                 'anomalies' => $log->anomalies,
             ],
         ]);
 
-        $this->queueAlert($alert);
+        try {
+            $this->grouping->buffer($alert);
+        } catch (\Throwable $e) {
+            Log::error('[CronMonitor] Failed to buffer alert: ' . $e->getMessage());
+        }
     }
 
     public function dispatchAlert(CronMonitorAlert $alert): void
     {
-        $this->queueAlert($alert);
-    }
-
-    protected function queueAlert(CronMonitorAlert $alert): void
-    {
-        $queue = config('cron-monitor.notifications.queue', 'default');
-
         try {
-            DispatchCronAlertJob::dispatch($alert->id)->onQueue($queue);
+            $this->grouping->buffer($alert);
         } catch (\Throwable $e) {
-            Log::error('[CronMonitor] Failed to queue alert', [
-                'alert_id' => $alert->id,
-                'error' => $e->getMessage(),
-            ]);
+            Log::error('[CronMonitor] Failed to buffer alert: ' . $e->getMessage());
         }
     }
 
@@ -105,6 +110,8 @@ class CronNotificationDispatcher
             'no_updates' => "No updates: {$log->job_name}",
             'timed_out' => "Timed out: {$log->job_name}",
             'cron_missed' => "Missed: {$log->job_name}",
+            'stuck' => "Stuck: {$log->job_name}",
+            'recovered' => "Recovered: {$log->job_name}",
             'anomaly' => "Anomaly detected: {$log->job_name}",
             default => "Cron failed: {$log->job_name}",
         };
@@ -119,17 +126,25 @@ class CronNotificationDispatcher
             "Fetched: {$log->fetched_records}",
             "Updated: {$log->updated_records}",
             "Failed: {$log->failed_records}",
+            "Retries: {$log->retry_count}",
             "Duration: {$log->duration_seconds}s",
         ];
 
+        if ($log->root_cause) {
+            $parts[] = "Root Cause: {$log->root_cause}";
+        }
+        if ($log->failure_category) {
+            $parts[] = "Category: {$log->failure_category}";
+        }
+        if ($log->recovery_status && $log->recovery_status !== 'none') {
+            $parts[] = "Recovery: {$log->recovery_status}";
+        }
         if ($log->validation_message) {
             $parts[] = "Validation: {$log->validation_message}";
         }
-
         if ($log->error_message) {
             $parts[] = "Error: {$log->error_message}";
         }
-
         if (! empty($log->anomalies)) {
             foreach ($log->anomalies as $anomaly) {
                 $parts[] = '⚠ ' . ($anomaly['message'] ?? 'Anomaly');

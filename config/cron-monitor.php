@@ -2,22 +2,8 @@
 
 return [
 
-    /*
-    |--------------------------------------------------------------------------
-    | Feature toggle
-    |--------------------------------------------------------------------------
-    */
     'enabled' => env('CRON_MONITOR_ENABLED', true),
 
-    /*
-    |--------------------------------------------------------------------------
-    | Auto-monitor every artisan command in Kernel::schedule()
-    |--------------------------------------------------------------------------
-    |
-    | Uses CommandStarting/Finished so runInBackground() jobs are tracked until
-    | they actually complete. Rich metrics still require MonitoredCommand.
-    |
-    */
     'auto_monitor' => [
         'enabled' => env('CRON_MONITOR_AUTO', true),
         'skip' => [
@@ -35,19 +21,8 @@ return [
         ],
     ],
 
-    // Watchdog miss-detection for all Kernel commands (except skip_miss_schedules)
     'auto_watch_scheduled' => env('CRON_MONITOR_AUTO_WATCH', true),
 
-    /*
-    |--------------------------------------------------------------------------
-    | Status thresholds (success percentage)
-    |--------------------------------------------------------------------------
-    |
-    | Success:        >= success_min
-    | Partial Success: success_min > rate >= partial_min
-    | Failed:         < partial_min
-    |
-    */
     'thresholds' => [
         'success_min' => (float) env('CRON_MONITOR_SUCCESS_MIN', 95),
         'partial_min' => (float) env('CRON_MONITOR_PARTIAL_MIN', 60),
@@ -55,60 +30,45 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Health score weights (must sum to 100)
+    | Health score weights (sum should be 100)
     |--------------------------------------------------------------------------
     */
     'health_score' => [
-        'cron_started' => 20,
-        'api_successful' => 20,
-        'fetched_records' => 20,
-        'updated_records' => 20,
-        'validation_passed' => 20,
+        'cron_started' => 15,
+        'api_successful' => 15,
+        'fetched_records' => 15,
+        'updated_records' => 15,
+        'validation_passed' => 15,
+        'retry_success' => 10,
+        'runtime' => 10,
+        'historical' => 5,
         'labels' => [
             'healthy' => 80,
             'warning' => 50,
-            // below warning => critical
         ],
     ],
 
-    /*
-    |--------------------------------------------------------------------------
-    | Validation rules
-    |--------------------------------------------------------------------------
-    */
     'validation' => [
         'require_api_data' => true,
         'require_fetched' => true,
         'require_processed' => true,
         'require_updates' => true,
         'allow_zero_when_expected_zero' => true,
-        // Fail when updated/expected is below this ratio (e.g. 0.60 = 60%)
         'min_update_ratio_vs_expected' => (float) env('CRON_MONITOR_MIN_UPDATE_RATIO', 0.60),
     ],
 
-    /*
-    |--------------------------------------------------------------------------
-    | Historical anomaly detection
-    |--------------------------------------------------------------------------
-    |
-    | Compare against the previous successful run for the same job.
-    | Values are drop/increase ratios that trigger alerts.
-    |
-    */
     'anomaly' => [
         'enabled' => env('CRON_MONITOR_ANOMALY_ENABLED', true),
         'update_drop_percent' => (float) env('CRON_MONITOR_ANOMALY_UPDATE_DROP', 50),
         'fetch_drop_percent' => (float) env('CRON_MONITOR_ANOMALY_FETCH_DROP', 50),
         'runtime_increase_percent' => (float) env('CRON_MONITOR_ANOMALY_RUNTIME_INCREASE', 100),
         'failure_spike_multiplier' => (float) env('CRON_MONITOR_ANOMALY_FAILURE_SPIKE', 3),
+        'failure_rate_increase_percent' => (float) env('CRON_MONITOR_ANOMALY_FAILURE_RATE', 50),
+        'memory_increase_percent' => (float) env('CRON_MONITOR_ANOMALY_MEMORY', 100),
+        'latency_increase_percent' => (float) env('CRON_MONITOR_ANOMALY_LATENCY', 100),
         'min_baseline_updates' => (int) env('CRON_MONITOR_ANOMALY_MIN_BASELINE', 100),
     ],
 
-    /*
-    |--------------------------------------------------------------------------
-    | Timeouts & watchdog
-    |--------------------------------------------------------------------------
-    */
     'timeouts' => [
         'default_minutes' => (int) env('CRON_MONITOR_DEFAULT_TIMEOUT', 120),
         'stale_running_minutes' => (int) env('CRON_MONITOR_STALE_RUNNING', 180),
@@ -117,44 +77,68 @@ return [
     'watchdog' => [
         'enabled' => env('CRON_MONITOR_WATCHDOG_ENABLED', true),
         'grace_minutes' => (int) env('CRON_MONITOR_GRACE_MINUTES', 30),
-        // Miss alerts are noisy for these; timeouts/stuck still apply
         'skip_miss_schedules' => [
             'every_minute',
             'every_five_minutes',
             'every_ten_minutes',
             'every_thirty_minutes',
         ],
+        'auto_unlock_stuck' => env('CRON_MONITOR_AUTO_UNLOCK_STUCK', false),
     ],
 
     /*
     |--------------------------------------------------------------------------
-    | Retry failed records
+    | Intelligent retry
     |--------------------------------------------------------------------------
     */
     'retry' => [
         'max_attempts' => (int) env('CRON_MONITOR_MAX_RETRY', 3),
         'queue' => env('CRON_MONITOR_RETRY_QUEUE', 'default'),
+        'retry_delay' => [
+            1 => (int) env('CRON_MONITOR_RETRY_DELAY_1', 30),
+            2 => (int) env('CRON_MONITOR_RETRY_DELAY_2', 120),
+            3 => (int) env('CRON_MONITOR_RETRY_DELAY_3', 300),
+        ],
+        'recoverable_http' => [429, 500, 502, 503, 504],
+        'recoverable_categories' => [
+            'timeout',
+            'rate_limit',
+            'network',
+            'database',
+            'api',
+        ],
+        'non_recoverable_categories' => [
+            'validation',
+            'logic',
+            'authentication',
+        ],
     ],
 
-    /*
-    |--------------------------------------------------------------------------
-    | Retention
-    |--------------------------------------------------------------------------
-    */
+    'locks' => [
+        'enabled' => env('CRON_MONITOR_LOCKS', true),
+        'ttl_seconds' => (int) env('CRON_MONITOR_LOCK_TTL', 7200),
+        'prefix' => 'cron-monitor:lock:',
+    ],
+
+    'stuck' => [
+        'enabled' => env('CRON_MONITOR_STUCK_ENABLED', true),
+        'multiplier' => (float) env('CRON_MONITOR_STUCK_MULTIPLIER', 3.0),
+        'min_expected_seconds' => (int) env('CRON_MONITOR_STUCK_MIN_EXPECTED', 120),
+    ],
+
+    'self_healing' => [
+        'enabled' => env('CRON_MONITOR_HEALING_ENABLED', true),
+        'db_reconnect' => env('CRON_MONITOR_HEAL_DB', true),
+        'queue_watchdog' => env('CRON_MONITOR_HEAL_QUEUE', true),
+    ],
+
+    'alerts' => [
+        'group_window_minutes' => (int) env('CRON_MONITOR_ALERT_GROUP_MINUTES', 15),
+        'flush_on_critical' => env('CRON_MONITOR_ALERT_FLUSH_CRITICAL', false),
+    ],
+
     'retention_days' => (int) env('CRON_MONITOR_RETENTION_DAYS', 90),
 
-    /*
-    |--------------------------------------------------------------------------
-    | Notifications — only non-healthy outcomes
-    |--------------------------------------------------------------------------
-    |
-    | Uses your existing in-app channels (no external webhooks):
-    |   taskmanager  → TASKMANAGER_URL + TASKMANAGER_API_KEY (same as scheduler hooks)
-    |   database     → Laravel notifications for users
-    |   mail         → CRON_MONITOR_MAIL_TO or ADMIN_EMAIL
-    |   whatsapp     → existing WhatsAppService / Gupshup
-    |
-    */
     'notifications' => [
         'enabled' => env('CRON_MONITOR_NOTIFY_ENABLED', true),
         'queue' => env('CRON_MONITOR_NOTIFY_QUEUE', 'default'),
@@ -168,7 +152,6 @@ return [
         'whatsapp' => [
             'to' => array_filter(array_map('trim', explode(',', env('CRON_MONITOR_WHATSAPP_TO', '')))),
         ],
-        // Alert only on these statuses / events
         'alert_on' => [
             'failed',
             'partial_success',
@@ -177,33 +160,15 @@ return [
             'cron_missed',
             'runtime_exceeded',
             'timed_out',
+            'stuck',
             'anomaly',
             'still_running',
+            'recovered',
         ],
     ],
 
-    /*
-    |--------------------------------------------------------------------------
-    | Watched jobs (for miss / timeout detection)
-    |--------------------------------------------------------------------------
-    |
-    | schedule: daily|hourly|weekly|every_minute|every_five_minutes|every_ten_minutes|custom
-    | expected_at: HH:MM for daily/weekly (timezone applied)
-    | day_of_week: 0=Sunday … 6=Saturday (weekly only)
-    | timeout_minutes: mark running executions as timed out after this
-    | grace_minutes: how late a job may start before "missed"
-    |
-    */
     'watched_jobs' => [
-        // Example — uncomment / add real commands as you adopt monitoring:
-        // 'amazon:auto-update-over-kw-bids' => [
-        //     'job_name' => 'Amazon Bid Sync (KW Over)',
-        //     'schedule' => 'daily',
-        //     'expected_at' => '02:00',
-        //     'timezone' => 'Asia/Kolkata',
-        //     'timeout_minutes' => 90,
-        //     'grace_minutes' => 45,
-        // ],
+        // Optional overrides for Kernel-discovered jobs
     ],
 
 ];

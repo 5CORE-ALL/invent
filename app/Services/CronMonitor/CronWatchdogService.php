@@ -11,7 +11,10 @@ use Illuminate\Support\Facades\Log;
 
 class CronWatchdogService
 {
-    public function __construct(protected ScheduledJobRegistry $registry) {}
+    public function __construct(
+        protected ScheduledJobRegistry $registry,
+        protected StuckJobDetector $stuckDetector,
+    ) {}
 
     /**
      * @return list<CronMonitorAlert>
@@ -23,6 +26,7 @@ class CronWatchdogService
         }
 
         $alerts = [];
+        $alerts = array_merge($alerts, $this->stuckDetector->detect());
         $alerts = array_merge($alerts, $this->checkStaleRunning());
         $alerts = array_merge($alerts, $this->checkWatchedJobs());
 

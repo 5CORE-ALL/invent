@@ -6343,10 +6343,17 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // CRON MONITORING & HEALTH CHECK
     // =========================================================================
     Route::prefix('cron-monitor')->name('cron-monitor.')->group(function () {
-        Route::get('/', [\App\Http\Controllers\CronMonitor\CronMonitorDashboardController::class, 'index'])->name('index');
-        Route::get('/trend', [\App\Http\Controllers\CronMonitor\CronMonitorDashboardController::class, 'trend'])->name('trend');
-        Route::get('/{id}', [\App\Http\Controllers\CronMonitor\CronMonitorDashboardController::class, 'show'])->name('show')->whereNumber('id');
-        Route::post('/failures/{id}/resolve', [\App\Http\Controllers\CronMonitor\CronMonitorDashboardController::class, 'resolveFailure'])->name('failures.resolve')->whereNumber('id');
+        $c = \App\Http\Controllers\CronMonitor\CronMonitorDashboardController::class;
+        Route::get('/', [$c, 'index'])->name('index');
+        Route::get('/trend', [$c, 'trend'])->name('trend');
+        Route::post('/unlock', [$c, 'unlock'])->name('unlock');
+        Route::get('/{id}', [$c, 'show'])->name('show')->whereNumber('id');
+        Route::get('/{id}/download', [$c, 'downloadLog'])->name('download')->whereNumber('id');
+        Route::post('/{id}/retry', [$c, 'retryJob'])->name('retry')->whereNumber('id');
+        Route::post('/{id}/resume', [$c, 'resumeJob'])->name('resume')->whereNumber('id');
+        Route::post('/{id}/retry-failures', [$c, 'retryFailures'])->name('retry-failures')->whereNumber('id');
+        Route::post('/{id}/cancel', [$c, 'cancelJob'])->name('cancel')->whereNumber('id');
+        Route::post('/failures/{id}/resolve', [$c, 'resolveFailure'])->name('failures.resolve')->whereNumber('id');
     });
 
     // =========================================================================

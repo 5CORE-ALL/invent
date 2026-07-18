@@ -48,13 +48,36 @@ class CronExecutionLogRepository
             ->get();
     }
 
-    public function paginate(int $perPage = 25, ?string $jobName = null, ?string $status = null): LengthAwarePaginator
-    {
+    public function paginate(
+        int $perPage = 25,
+        ?string $jobName = null,
+        ?string $status = null,
+        ?string $category = null
+    ): LengthAwarePaginator {
         return CronExecutionLog::query()
             ->when($jobName, fn ($q) => $q->where('job_name', $jobName))
             ->when($status, fn ($q) => $q->where('status', $status))
+            ->when($category, fn ($q) => $q->where('failure_category', $category))
             ->orderByDesc('started_at')
             ->paginate($perPage);
+    }
+
+    public function lastSuccess(string $jobName): ?CronExecutionLog
+    {
+        return CronExecutionLog::query()
+            ->forJob($jobName)
+            ->whereIn('status', [CronExecutionLog::STATUS_SUCCESS, CronExecutionLog::STATUS_RECOVERED])
+            ->orderByDesc('finished_at')
+            ->first();
+    }
+
+    public function failureCategories(): Collection
+    {
+        return CronExecutionLog::query()
+            ->whereNotNull('failure_category')
+            ->distinct()
+            ->orderBy('failure_category')
+            ->pluck('failure_category');
     }
 
     public function averageRuntime(string $jobName, int $sample = 30): ?float

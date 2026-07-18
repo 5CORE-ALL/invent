@@ -5,18 +5,12 @@ namespace App\Console\Commands\Concerns;
 use App\Models\CronExecutionLog;
 use App\Services\CronMonitor\CronExecutionContext;
 use App\Services\CronMonitor\CronMonitorService;
+use App\Services\CronMonitor\DuplicateLockService;
+use App\Services\CronMonitor\IntelligentRetryService;
 use Throwable;
 
 /**
  * Drop-in monitoring for any Artisan command.
- *
- * Usage:
- *   return $this->runMonitored(function (CronExecutionContext $m) {
- *       $m->markApiConnected();
- *       $m->setFetched(100);
- *       // ... business logic ...
- *       return self::SUCCESS;
- *   }, 'My Job Name');
  */
 trait MonitorsCronExecution
 {
@@ -42,11 +36,39 @@ trait MonitorsCronExecution
     {
         $jobName ??= $this->monitoredJobName();
         $command = method_exists($this, 'getName') ? $this->getName() : ($this->signature ?? null);
-        $monitor = $this->cronMonitor();
-        $ctx = $monitor->start($jobName, is_string($command) ? explode(' ', $command)[0] : null);
+        $commandName = is_string($command) ? explode(' ', $command)[0] : $jobName;
+
+        $locks = app(DuplicateLockService::class);
+        $lockKey = '';
 
         try {
-            $exitCode = (int) $callback($ctx);
+            $lockKey = $locks->acquire($commandName);
+        } catch (Throwable $e) {
+            $this->error($e->getMessage());
+
+            return self::FAILURE;
+        }
+
+        $monitor = $this->cronMonitor();
+        $ctx = $monitor->start($jobName, $commandName);
+        $ctx->lockKey = $lockKey;
+        $ctx->cpuStart = $ctx->cpuStart ?: (microtime(true) * 1000);
+
+        if ($ctx->log && $lockKey) {
+            $ctx->log->update(['lock_key' => $lockKey, 'pid' => getmypid() ?: null]);
+        }
+
+        if ($ctx->resumeFrom) {
+            $this->warn("Resuming from offset {$ctx->resumeFrom}");
+        }
+
+        try {
+            $retry = app(IntelligentRetryService::class);
+            $exitCode = (int) $retry->runWithRetry(
+                $ctx,
+                fn () => $callback($ctx),
+                $jobName
+            );
             $log = $monitor->finish();
             $this->renderMonitorSummary($log);
 
@@ -57,6 +79,8 @@ trait MonitorsCronExecution
             $this->error($e->getMessage());
 
             return self::FAILURE;
+        } finally {
+            $locks->release($lockKey);
         }
     }
 
@@ -82,7 +106,9 @@ trait MonitorsCronExecution
         return match ($log->status) {
             CronExecutionLog::STATUS_FAILED,
             CronExecutionLog::STATUS_TIMED_OUT,
-            CronExecutionLog::STATUS_MISSED => self::FAILURE,
+            CronExecutionLog::STATUS_MISSED,
+            CronExecutionLog::STATUS_STUCK,
+            CronExecutionLog::STATUS_CANCELLED => self::FAILURE,
             default => self::SUCCESS,
         };
     }
@@ -105,6 +131,15 @@ trait MonitorsCronExecution
         if ($log->failed_records > 0) {
             $this->warn("⚠ {$log->failed_records} Records Failed");
         }
+        if ($log->retry_count > 0) {
+            $this->line("🔁 Retries = {$log->retry_count}");
+        }
+        if ($log->root_cause) {
+            $this->line('Root Cause: ' . $log->root_cause);
+        }
+        if ($log->recovery_status && $log->recovery_status !== 'none') {
+            $this->line('Recovery: ' . $log->recovery_status);
+        }
 
         $rateIcon = match (true) {
             ($log->success_percentage ?? 0) >= 95 => '✅',
@@ -117,7 +152,7 @@ trait MonitorsCronExecution
 
         $statusLine = 'Overall Status: ' . strtoupper(str_replace('_', ' ', $log->status));
         match ($log->status) {
-            CronExecutionLog::STATUS_SUCCESS => $this->info($statusLine),
+            CronExecutionLog::STATUS_SUCCESS, CronExecutionLog::STATUS_RECOVERED => $this->info($statusLine),
             CronExecutionLog::STATUS_PARTIAL_SUCCESS => $this->warn($statusLine),
             default => $this->error($statusLine),
         };

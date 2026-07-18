@@ -53,6 +53,10 @@ class CronStatusResolver
             default => CronExecutionLog::STATUS_FAILED,
         };
 
+        if ($status === CronExecutionLog::STATUS_SUCCESS && $ctx->retryCount > 0) {
+            $status = CronExecutionLog::STATUS_RECOVERED;
+        }
+
         return [
             'status' => $status,
             'success_percentage' => $percentage,

@@ -17,6 +17,13 @@
 @section('content')
 @include('layouts.shared.page-title', ['page_title' => 'Cron Monitor', 'sub_title' => 'Health & Execution'])
 
+@if(session('success'))
+    <div class="alert alert-success">{{ session('success') }}</div>
+@endif
+@if(session('error'))
+    <div class="alert alert-danger">{{ session('error') }}</div>
+@endif
+
 <div class="row g-3 mb-3">
     <div class="col-6 col-md-3">
         <div class="card cm-stat shadow-sm h-100">
@@ -76,6 +83,9 @@
                         @if($avgRuntime !== null)
                             · Avg runtime {{ $avgRuntime }}s
                         @endif
+                        @if($lastSuccess)
+                            · Last success {{ $lastSuccess->finished_at?->diffForHumans() }}
+                        @endif
                     </div>
                     <div id="cmTrendChart"></div>
                 @else
@@ -117,8 +127,11 @@
                 <tr>
                     <th>Job</th>
                     <th>Status</th>
-                    <th>Last run</th>
-                    <th>Duration</th>
+                    <th>Recovery</th>
+                    <th>Root cause</th>
+                    <th>Retries</th>
+                    <th>Consecutive fails</th>
+                    <th>Last success</th>
                     <th>Success %</th>
                     <th>Health</th>
                     <th>Updated</th>
@@ -130,8 +143,8 @@
                 @forelse($latest as $row)
                     @php
                         $badge = match($row->status) {
-                            'success' => 'success',
-                            'partial_success' => 'warning',
+                            'success', 'recovered' => 'success',
+                            'partial_success', 'stuck' => 'warning',
                             'running' => 'info',
                             default => 'danger',
                         };
@@ -139,10 +152,13 @@
                     <tr class="cm-job-row">
                         <td class="fw-semibold">{{ $row->job_name }}</td>
                         <td><span class="badge cm-badge-{{ $badge }}">{{ str_replace('_', ' ', $row->status) }}</span></td>
-                        <td>{{ $row->started_at?->format('Y-m-d H:i') ?? '—' }}</td>
-                        <td>{{ $row->duration_seconds !== null ? $row->duration_seconds.'s' : '—' }}</td>
+                        <td class="small">{{ $row->recovery_status && $row->recovery_status !== 'none' ? $row->recovery_status : '—' }}</td>
+                        <td class="small text-truncate" style="max-width:160px" title="{{ $row->root_cause }}">{{ $row->root_cause ?: '—' }}</td>
+                        <td>{{ $row->retry_count }}@if($row->last_retry_at)<div class="text-muted small">{{ $row->last_retry_at->diffForHumans() }}</div>@endif</td>
+                        <td>{{ $row->consecutive_failures }}</td>
+                        <td class="small">{{ $row->last_success_at?->format('Y-m-d H:i') ?? '—' }}</td>
                         <td>{{ $row->success_percentage !== null ? $row->success_percentage.'%' : '—' }}</td>
-                        <td style="min-width:120px">
+                        <td style="min-width:100px">
                             <div class="small mb-1">{{ $row->health_score ?? '—' }}/100</div>
                             <div class="cm-health-bar">
                                 <span style="width: {{ min(100, (int)($row->health_score ?? 0)) }}%; background: {{ $badge === 'success' ? '#198754' : ($badge === 'warning' ? '#ffc107' : '#dc3545') }}"></span>
@@ -153,7 +169,7 @@
                         <td><a href="{{ route('cron-monitor.show', $row->id) }}" class="btn btn-sm btn-outline-primary">Details</a></td>
                     </tr>
                 @empty
-                    <tr><td colspan="9" class="text-muted p-4">No monitored cron runs yet. Try <code>php artisan cron-monitor:demo</code>.</td></tr>
+                    <tr><td colspan="12" class="text-muted p-4">No monitored cron runs yet. Try <code>php artisan cron-monitor:demo</code>.</td></tr>
                 @endforelse
             </tbody>
         </table>
@@ -172,8 +188,14 @@
             </select>
             <select name="status" class="form-select form-select-sm">
                 <option value="">All statuses</option>
-                @foreach(['success','partial_success','failed','running','timed_out','missed'] as $st)
+                @foreach(['success','recovered','partial_success','failed','running','stuck','timed_out','missed','cancelled'] as $st)
                     <option value="{{ $st }}" @selected(($filters['status'] ?? '') === $st)>{{ str_replace('_',' ',$st) }}</option>
+                @endforeach
+            </select>
+            <select name="category" class="form-select form-select-sm">
+                <option value="">All categories</option>
+                @foreach($categories as $cat)
+                    <option value="{{ $cat }}" @selected(($filters['category'] ?? '') === $cat)>{{ $cat }}</option>
                 @endforeach
             </select>
             <button class="btn btn-sm btn-primary">Filter</button>
@@ -186,13 +208,15 @@
                     <th>ID</th>
                     <th>Job</th>
                     <th>Status</th>
+                    <th>Category</th>
                     <th>Started</th>
                     <th>Duration</th>
-                    <th>Fetched</th>
+                    <th>Retries</th>
                     <th>Updated</th>
                     <th>Failed</th>
                     <th>Success %</th>
                     <th>Health</th>
+                    <th>API latency</th>
                 </tr>
             </thead>
             <tbody>
@@ -201,13 +225,15 @@
                         <td><a href="{{ route('cron-monitor.show', $log->id) }}">#{{ $log->id }}</a></td>
                         <td>{{ $log->job_name }}</td>
                         <td>{{ str_replace('_', ' ', $log->status) }}</td>
+                        <td>{{ $log->failure_category ?: '—' }}</td>
                         <td>{{ $log->started_at?->format('Y-m-d H:i:s') }}</td>
                         <td>{{ $log->duration_seconds }}s</td>
-                        <td>{{ number_format((int)$log->fetched_records) }}</td>
+                        <td>{{ $log->retry_count }}</td>
                         <td>{{ number_format((int)$log->updated_records) }}</td>
                         <td>{{ number_format((int)$log->failed_records) }}</td>
                         <td>{{ $log->success_percentage }}%</td>
                         <td>{{ $log->health_score }}</td>
+                        <td>{{ $log->api_latency_ms_avg ? $log->api_latency_ms_avg.'ms' : '—' }}</td>
                     </tr>
                 @endforeach
             </tbody>

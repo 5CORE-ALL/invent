@@ -37,6 +37,24 @@ class CronExecutionContext
 
     public int $retryCount = 0;
 
+    public ?int $resumeFrom = null;
+
+    public mixed $checkpointCursor = null;
+
+    public int $apiLatencyTotalMs = 0;
+
+    public int $apiLatencySamples = 0;
+
+    public ?string $failureCategory = null;
+
+    public ?string $rootCause = null;
+
+    public string $recoveryStatus = CronExecutionLog::RECOVERY_NONE;
+
+    public ?string $lockKey = null;
+
+    public float $cpuStart = 0.0;
+
     /** @var array<int, array<string, mixed>> */
     public array $pendingFailures = [];
 
@@ -46,6 +64,8 @@ class CronExecutionContext
     public ?string $errorMessage = null;
 
     public ?string $exception = null;
+
+    public ?string $validationMessage = null;
 
     public bool $started = false;
 
@@ -68,6 +88,23 @@ class CronExecutionContext
         $this->apiCalls += $by;
 
         return $this;
+    }
+
+    public function incrementApiLatency(int $ms): self
+    {
+        $this->apiLatencyTotalMs += max(0, $ms);
+        $this->apiLatencySamples++;
+
+        return $this;
+    }
+
+    public function averageApiLatencyMs(): ?int
+    {
+        if ($this->apiLatencySamples === 0) {
+            return null;
+        }
+
+        return (int) round($this->apiLatencyTotalMs / $this->apiLatencySamples);
     }
 
     public function setFetched(int $count): self
@@ -154,13 +191,59 @@ class CronExecutionContext
         return $this;
     }
 
+    public function checkpoint(mixed $cursor, ?int $processedOffset = null): self
+    {
+        $this->checkpointCursor = $cursor;
+        $offset = $processedOffset ?? $this->processedRecords;
+        $this->resumeFrom = $offset;
+
+        app(CheckpointService::class)->save(
+            $this->jobName,
+            $cursor,
+            $offset,
+            $this->command,
+            $this->log
+        );
+
+        return $this;
+    }
+
+    public function resumeFrom(): mixed
+    {
+        if ($this->checkpointCursor !== null) {
+            return $this->checkpointCursor;
+        }
+
+        $service = app(CheckpointService::class);
+        $this->checkpointCursor = $service->resumeCursor($this->jobName);
+        $this->resumeFrom = $service->resumeOffset($this->jobName);
+
+        return $this->checkpointCursor;
+    }
+
+    public function resumeOffset(): int
+    {
+        if ($this->resumeFrom !== null) {
+            return $this->resumeFrom;
+        }
+
+        return app(CheckpointService::class)->resumeOffset($this->jobName);
+    }
+
     public function recordFailure(
         ?string $sku = null,
         ?string $marketplace = null,
         ?string $reason = null,
         mixed $apiResponse = null,
-        array $meta = []
+        array $meta = [],
+        ?string $category = null,
+        ?int $httpStatus = null,
+        ?bool $recoverable = null,
+        ?string $rootCause = null
     ): self {
+        $classifier = app(FailureClassifier::class);
+        $classified = $classifier->classify(null, $reason, $httpStatus, $apiResponse);
+
         $this->failedRecords++;
         $this->pendingFailures[] = [
             'sku' => $sku,
@@ -169,10 +252,36 @@ class CronExecutionContext
             'api_response' => is_string($apiResponse)
                 ? $apiResponse
                 : (json_encode($apiResponse) ?: null),
+            'failure_category' => $category ?? $classified['category'],
+            'http_status' => $httpStatus ?? $classified['http_status'],
+            'recoverable' => $recoverable ?? $classified['recoverable'],
+            'root_cause' => $rootCause ?? $classified['root_cause'],
             'meta' => $meta,
         ];
 
+        $this->failureCategory ??= $category ?? $classified['category'];
+        $this->rootCause ??= $rootCause ?? $classified['root_cause'];
+
         return $this;
+    }
+
+    public function classifyAndRecord(Throwable $e, ?string $sku = null, ?string $marketplace = null): self
+    {
+        $classified = app(FailureClassifier::class)->classify($e);
+        $this->captureException($e);
+        $this->failureCategory = $classified['category'];
+        $this->rootCause = $classified['root_cause'];
+
+        return $this->recordFailure(
+            sku: $sku,
+            marketplace: $marketplace,
+            reason: $e->getMessage(),
+            apiResponse: null,
+            category: $classified['category'],
+            httpStatus: $classified['http_status'],
+            recoverable: $classified['recoverable'],
+            rootCause: $classified['root_cause']
+        );
     }
 
     public function mergeMeta(array $meta): self
@@ -187,20 +296,18 @@ class CronExecutionContext
         $this->errorMessage = $e->getMessage();
         $this->exception = $e::class . ': ' . $e->getMessage() . "\n" . $e->getTraceAsString();
 
+        $classified = app(FailureClassifier::class)->classify($e);
+        $this->failureCategory ??= $classified['category'];
+        $this->rootCause ??= $classified['root_cause'];
+
         return $this;
     }
 
-    /**
-     * Effective "done" count used for success rate (updated + inserted).
-     */
     public function effectiveUpdated(): int
     {
         return $this->updatedRecords + $this->insertedRecords;
     }
 
-    /**
-     * Denominator for success percentage.
-     */
     public function successDenominator(): int
     {
         if ($this->expectedRecords !== null && $this->expectedRecords > 0) {
@@ -229,8 +336,15 @@ class CronExecutionContext
             'skipped_records' => $this->skippedRecords,
             'failed_records' => $this->failedRecords,
             'api_calls' => $this->apiCalls,
+            'api_latency_ms_avg' => $this->averageApiLatencyMs(),
             'api_connected' => $this->apiConnected,
             'retry_count' => $this->retryCount,
+            'resume_from' => $this->resumeFrom,
+            'failure_category' => $this->failureCategory,
+            'root_cause' => $this->rootCause,
+            'recovery_status' => $this->recoveryStatus,
+            'lock_key' => $this->lockKey,
+            'pid' => getmypid() ?: null,
             'meta' => $this->meta,
             'error_message' => $this->errorMessage,
             'exception' => $this->exception,

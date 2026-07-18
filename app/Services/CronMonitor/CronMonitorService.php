@@ -20,6 +20,9 @@ class CronMonitorService
         protected CronStatusResolver $statusResolver,
         protected CronHealthScoreCalculator $healthCalculator,
         protected CronAnomalyDetector $anomalyDetector,
+        protected RootCauseAnalyzer $rootCauseAnalyzer,
+        protected CheckpointService $checkpoints,
+        protected HistoricalAnalysisService $historical,
     ) {}
 
     public function context(): ?CronExecutionContext
@@ -35,11 +38,15 @@ class CronMonitorService
             $this->context->command = $command ?: $this->context->command;
             $this->context->meta['auto'] = false;
             $this->context->meta['mode'] = 'rich';
+            $this->context->cpuStart = $this->context->cpuStart ?: $this->cpuMs();
+            $this->hydrateResume($this->context);
             if ($this->context->log) {
                 $this->context->log->update([
                     'job_name' => $this->context->jobName,
                     'command' => $this->context->command,
                     'meta' => $this->context->meta,
+                    'resume_from' => $this->context->resumeFrom,
+                    'pid' => getmypid() ?: null,
                 ]);
             }
 
@@ -51,6 +58,7 @@ class CronMonitorService
             $this->context->jobName = $jobName;
             $this->context->command = $command;
             $this->context->started = true;
+            $this->context->cpuStart = $this->cpuMs();
 
             return $this->context;
         }
@@ -59,7 +67,14 @@ class CronMonitorService
         $ctx->jobName = $jobName;
         $ctx->command = $command;
         $ctx->started = true;
+        $ctx->cpuStart = $this->cpuMs();
         $ctx->log = $this->repository->createRunning($jobName, $command);
+        $this->hydrateResume($ctx);
+        $ctx->log->update([
+            'resume_from' => $ctx->resumeFrom,
+            'pid' => getmypid() ?: null,
+            'consecutive_failures' => $this->previousConsecutiveFailures($jobName),
+        ]);
         $this->context = $ctx;
 
         event(new CronExecutionStarted($ctx->log));
@@ -67,14 +82,12 @@ class CronMonitorService
         Log::info('[CronMonitor] Started', [
             'job' => $jobName,
             'log_id' => $ctx->log->id,
+            'resume_from' => $ctx->resumeFrom,
         ]);
 
         return $ctx;
     }
 
-    /**
-     * Persist mid-run counters (optional heartbeat).
-     */
     public function sync(): void
     {
         if (! $this->context?->log || ! config('cron-monitor.enabled', true)) {
@@ -83,7 +96,10 @@ class CronMonitorService
 
         $this->context->log->update(array_merge(
             $this->context->toMetricsArray(),
-            ['memory_usage' => $this->repository->memoryUsage()]
+            [
+                'memory_usage' => $this->repository->memoryUsage(),
+                'cpu_time_ms' => max(0, (int) ($this->cpuMs() - $this->context->cpuStart)),
+            ]
         ));
     }
 
@@ -112,10 +128,34 @@ class CronMonitorService
             $ctx->captureException($exception);
         }
 
+        // Cancel requested mid-run
+        if ($ctx->log?->fresh()?->cancelled_at) {
+            $ctx->log->fill(array_merge($ctx->toMetricsArray(), [
+                'status' => CronExecutionLog::STATUS_CANCELLED,
+                'finished_at' => now(),
+                'duration_seconds' => max(0, now()->diffInSeconds($ctx->log->started_at ?? now())),
+                'memory_usage' => $this->repository->memoryUsage(),
+                'cpu_time_ms' => max(0, (int) ($this->cpuMs() - $ctx->cpuStart)),
+                'root_cause' => 'Cancelled by admin',
+            ]));
+            $ctx->log->save();
+            $this->persistFailures($ctx);
+            $log = $ctx->log;
+            $this->context = null;
+            event(new CronExecutionFinished($log->fresh(['failures'])));
+
+            return $log;
+        }
+
         $validation = $this->validator->validate($ctx);
         $hadException = $exception !== null;
         $statusResult = $this->statusResolver->resolve($ctx, $validation['passed'], $hadException);
-        $health = $this->healthCalculator->calculate($ctx, $validation['passed'] && ! $hadException);
+        $historical = $this->historical->compare($ctx);
+        $health = $this->healthCalculator->calculate(
+            $ctx,
+            $validation['passed'] && ! $hadException,
+            $historical
+        );
 
         $startedAt = $ctx->log->started_at ?? now();
         $finishedAt = now();
@@ -123,6 +163,47 @@ class CronMonitorService
 
         $status = $statusResult['status'];
         $healthLabel = $health['label'];
+
+        $classification = $ctx->meta['last_classification'] ?? [
+            'category' => $ctx->failureCategory,
+            'recoverable' => false,
+            'root_cause' => $ctx->rootCause,
+            'http_status' => null,
+        ];
+
+        $recovered = $ctx->retryCount > 0
+            && ! $hadException
+            && $validation['passed']
+            && in_array($status, [
+                CronExecutionLog::STATUS_SUCCESS,
+                CronExecutionLog::STATUS_RECOVERED,
+                CronExecutionLog::STATUS_PARTIAL_SUCCESS,
+            ], true);
+
+        if ($recovered && in_array($status, [CronExecutionLog::STATUS_SUCCESS, CronExecutionLog::STATUS_RECOVERED], true)) {
+            $status = CronExecutionLog::STATUS_RECOVERED;
+            $ctx->recoveryStatus = CronExecutionLog::RECOVERY_RECOVERED;
+        } elseif ($hadException || ! $validation['passed']) {
+            $ctx->recoveryStatus = $ctx->retryCount > 0
+                ? CronExecutionLog::RECOVERY_EXHAUSTED
+                : CronExecutionLog::RECOVERY_NONE;
+        } elseif ($ctx->retryCount > 0) {
+            $ctx->recoveryStatus = CronExecutionLog::RECOVERY_RECOVERED;
+        }
+
+        $anomalies = array_merge(
+            $this->anomalyDetector->detect($ctx, $ctx->log),
+            $historical['anomalies'] ?? []
+        );
+
+        $rootCause = $this->rootCauseAnalyzer->summarize(
+            $ctx,
+            is_array($classification) ? $classification : [],
+            $recovered,
+            $anomalies
+        );
+
+        $consecutive = $this->resolveConsecutiveFailures($ctx->jobName, $status, $ctx->log->id);
 
         $ctx->log->fill(array_merge($ctx->toMetricsArray(), [
             'status' => $status,
@@ -135,16 +216,20 @@ class CronMonitorService
                 ? implode(' ', $validation['messages'])
                 : null,
             'memory_usage' => $this->repository->memoryUsage(),
+            'cpu_time_ms' => max(0, (int) ($this->cpuMs() - $ctx->cpuStart)),
+            'failure_category' => $ctx->failureCategory ?? ($classification['category'] ?? null),
+            'root_cause' => $rootCause,
+            'recovery_status' => $ctx->recoveryStatus,
+            'consecutive_failures' => $consecutive,
+            'last_retry_at' => $ctx->retryCount > 0 ? ($ctx->log->last_retry_at ?? now()) : $ctx->log->last_retry_at,
             'meta' => array_merge($ctx->meta, [
                 'health_breakdown' => $health['breakdown'],
+                'historical' => $historical['summary'] ?? null,
             ]),
         ]));
 
-        // Detect anomalies after duration is known
-        $anomalies = $this->anomalyDetector->detect($ctx, $ctx->log);
         $ctx->log->anomalies = $anomalies ?: null;
 
-        // Escalate status on critical anomalies when otherwise "success"
         if (
             $ctx->log->status === CronExecutionLog::STATUS_SUCCESS
             && collect($anomalies)->contains(fn ($a) => ($a['severity'] ?? '') === 'critical')
@@ -152,16 +237,24 @@ class CronMonitorService
             $ctx->log->status = CronExecutionLog::STATUS_PARTIAL_SUCCESS;
         }
 
-        // Align display label with final status
         $ctx->log->health_label = match ($ctx->log->status) {
-            CronExecutionLog::STATUS_SUCCESS => $healthLabel === 'critical' ? 'warning' : $healthLabel,
-            CronExecutionLog::STATUS_PARTIAL_SUCCESS => 'warning',
+            CronExecutionLog::STATUS_SUCCESS, CronExecutionLog::STATUS_RECOVERED => $healthLabel === 'critical' ? 'warning' : $healthLabel,
+            CronExecutionLog::STATUS_PARTIAL_SUCCESS, CronExecutionLog::STATUS_STUCK => 'warning',
             default => 'critical',
         };
 
         $ctx->log->save();
 
         $this->persistFailures($ctx);
+
+        // Clear resume cursor when the run completed its work without hard failure
+        if (in_array($ctx->log->status, [
+            CronExecutionLog::STATUS_SUCCESS,
+            CronExecutionLog::STATUS_RECOVERED,
+            CronExecutionLog::STATUS_PARTIAL_SUCCESS,
+        ], true)) {
+            $this->checkpoints->clear($ctx->jobName);
+        }
 
         event(new CronExecutionFinished($ctx->log->fresh(['failures'])));
 
@@ -171,6 +264,7 @@ class CronMonitorService
             'status' => $ctx->log->status,
             'success_percentage' => $ctx->log->success_percentage,
             'health_score' => $ctx->log->health_score,
+            'root_cause' => $ctx->log->root_cause,
         ]);
 
         $log = $ctx->log;
@@ -179,10 +273,6 @@ class CronMonitorService
         return $log;
     }
 
-    /**
-     * Finish an auto-monitored Kernel schedule run (no business metrics required).
-     * Exit code 0 => success; used by AutoMonitorScheduledCommand.
-     */
     public function finishBasic(): CronExecutionLog
     {
         $ctx = $this->context;
@@ -190,7 +280,6 @@ class CronMonitorService
             throw new \RuntimeException('CronMonitorService::finishBasic() called without an active context.');
         }
 
-        // Soft metrics so validation / health treat "ran cleanly" as healthy
         $ctx->mergeMeta(['mode' => 'schedule', 'auto' => true]);
         $ctx->markApiConnected(true);
         if ($ctx->fetchedRecords === 0 && $ctx->expectedRecords === null) {
@@ -201,8 +290,6 @@ class CronMonitorService
     }
 
     /**
-     * Run a callable inside a monitored lifecycle.
-     *
      * @param  callable(CronExecutionContext): mixed  $callback
      */
     public function run(string $jobName, callable $callback, ?string $command = null): mixed
@@ -220,6 +307,70 @@ class CronMonitorService
         }
     }
 
+    protected function hydrateResume(CronExecutionContext $ctx): void
+    {
+        $checkpoint = $this->checkpoints->load($ctx->jobName);
+        if (! $checkpoint) {
+            return;
+        }
+
+        $ctx->checkpointCursor = $checkpoint->decodedCursor();
+        $ctx->resumeFrom = (int) $checkpoint->processed_offset;
+        $ctx->mergeMeta(['resuming' => true, 'resume_offset' => $ctx->resumeFrom]);
+    }
+
+    protected function previousConsecutiveFailures(string $jobName): int
+    {
+        $prev = CronExecutionLog::query()
+            ->forJob($jobName)
+            ->finished()
+            ->orderByDesc('id')
+            ->first();
+
+        if (! $prev) {
+            return 0;
+        }
+
+        if (in_array($prev->status, [CronExecutionLog::STATUS_SUCCESS, CronExecutionLog::STATUS_RECOVERED], true)) {
+            return 0;
+        }
+
+        return (int) $prev->consecutive_failures + 1;
+    }
+
+    protected function resolveConsecutiveFailures(string $jobName, string $status, ?int $currentId = null): int
+    {
+        if (in_array($status, [CronExecutionLog::STATUS_SUCCESS, CronExecutionLog::STATUS_RECOVERED], true)) {
+            return 0;
+        }
+
+        $prev = CronExecutionLog::query()
+            ->forJob($jobName)
+            ->finished()
+            ->when($currentId, fn ($q) => $q->where('id', '!=', $currentId))
+            ->orderByDesc('id')
+            ->first();
+
+        if (! $prev || in_array($prev->status, [CronExecutionLog::STATUS_SUCCESS, CronExecutionLog::STATUS_RECOVERED], true)) {
+            return 1;
+        }
+
+        return (int) $prev->consecutive_failures + 1;
+    }
+
+    protected function cpuMs(): float
+    {
+        if (function_exists('getrusage')) {
+            $r = getrusage();
+            $user = ($r['ru_utime.tv_sec'] ?? 0) * 1000 + ($r['ru_utime.tv_usec'] ?? 0) / 1000;
+            $sys = ($r['ru_stime.tv_sec'] ?? 0) * 1000 + ($r['ru_stime.tv_usec'] ?? 0) / 1000;
+
+            return $user + $sys;
+        }
+
+        return microtime(true) * 1000;
+    }
+
     protected function persistFailures(CronExecutionContext $ctx): void
     {
         if (! $ctx->log || $ctx->pendingFailures === []) {
@@ -234,6 +385,10 @@ class CronMonitorService
                 'sku' => $failure['sku'] ?? null,
                 'marketplace' => $failure['marketplace'] ?? null,
                 'failure_reason' => $failure['failure_reason'] ?? null,
+                'failure_category' => $failure['failure_category'] ?? null,
+                'http_status' => $failure['http_status'] ?? null,
+                'recoverable' => (bool) ($failure['recoverable'] ?? false),
+                'root_cause' => $failure['root_cause'] ?? null,
                 'api_response' => $failure['api_response'] ?? null,
                 'retry_count' => 0,
                 'resolved' => false,

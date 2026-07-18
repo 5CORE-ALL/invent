@@ -9,17 +9,12 @@ use Illuminate\Console\Command;
 /**
  * Extend this instead of Command to get automatic cron health monitoring.
  *
- * Implement handleMonitored() with business logic only.
- * Use $this->monitor() (or the injected context) to record metrics.
+ * Implement handleMonitored() (or executeJob()) with business logic only.
  */
 abstract class MonitoredCommand extends Command
 {
     use MonitorsCronExecution;
 
-    /**
-     * Optional friendly name shown in dashboard / alerts.
-     * Defaults to the artisan signature name.
-     */
     protected string $monitorJobName = '';
 
     /**
@@ -27,10 +22,18 @@ abstract class MonitoredCommand extends Command
      */
     abstract protected function handleMonitored(CronExecutionContext $monitor): int;
 
+    /**
+     * Alias used in docs / newer integrations.
+     */
+    protected function executeJob(CronExecutionContext $monitor): int
+    {
+        return $this->handleMonitored($monitor);
+    }
+
     public function handle(): int
     {
         return $this->runMonitored(
-            fn (CronExecutionContext $ctx) => $this->handleMonitored($ctx),
+            fn (CronExecutionContext $ctx) => $this->executeJob($ctx),
             $this->monitorJobName !== '' ? $this->monitorJobName : null
         );
     }
