@@ -111,6 +111,7 @@ class ProductMasterController extends Controller
         $productMasterFullAccessEmails = [
             'president@5core.com',
             'mgr-content@5core.com',
+            'ecomm6@5core.com',
         ];
         foreach ($productMasterFullAccessEmails as $fullAccessEmail) {
             $emailColumnMap[$fullAccessEmail] = [];

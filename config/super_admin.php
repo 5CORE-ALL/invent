@@ -8,6 +8,7 @@ return [
     */
     'emails' => [
         'software5@5core.com',
+        'ecomm6@5core.com',
     ],
 
 ];

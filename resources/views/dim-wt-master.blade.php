@@ -995,7 +995,7 @@
 
             // Change History is restricted to Ritu mam (inventory mail) and President sir only.
             @php
-                $__dimWtHistoryEmails = ['inventory@5core.com', 'ritu.kaur013@gmail.com', 'president@5core.com'];
+                $__dimWtHistoryEmails = ['inventory@5core.com', 'ritu.kaur013@gmail.com', 'president@5core.com', 'ecomm6@5core.com'];
                 $__canViewDimWtHistory = in_array(strtolower(trim((string) (auth()->user()->email ?? ''))), $__dimWtHistoryEmails, true);
             @endphp
             const canViewDimWtHistory = @json($__canViewDimWtHistory);
