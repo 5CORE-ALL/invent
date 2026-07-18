@@ -1649,8 +1649,8 @@
 
                                     <th>Parent</th>
                                     <th>SKU</th>
-                                    <th>UPC</th>
                                     <th>Status</th>
+                                    <th>UPC</th>
                                     <th>Inv</th>
                                     <th>L30</th>
                                     <th>DIL</th>
@@ -1953,7 +1953,7 @@
 
                 // All available columns
                 const allColumns = [
-                    "Image", "Parent", "SKU", "UPC", "Status", "Inventory", "OV L30", "DIL", "Unit", "CP$",
+                    "Image", "Parent", "SKU", "Status", "UPC", "Inventory", "OV L30", "DIL", "Unit", "CP$",
                     "FRGHT", "LP", "SHIP", "TEMU SHIP", "MOQ", "EBAY2 SHIP", "Label QTY", "WT ACT", "WT DECL", "Length", "Width", "Height",
                     "CBM", "Url", "Verified", "Action"
                 ];
@@ -3194,7 +3194,7 @@
 
                 // All available columns
                 const allColumns = [
-                    "Images", "Parent", "SKU", "UPC","STATUS", "Inventory", "OV L30", "DIL", "Unit", "CP$",
+                    "Images", "Parent", "SKU", "STATUS", "UPC", "Inventory", "OV L30", "DIL", "Unit", "CP$",
                     "FRGHT", "LP", "SHIP", "TEMU SHIP", "MOQ", "EBAY2 SHIP", "Label QTY", "WT ACT", "WT DECL", "Length", "Width", "Height",
                     "CBM", "Url", "Verified", "Action"
                 ];
@@ -4327,8 +4327,8 @@
 
             // Function to get columns to hide for current user
             function getUserHiddenColumns() {
-                // Always hide these columns (both 'Status' body key and 'STATUS' header label)
-                const alwaysHiddenColumns = ['Status', 'STATUS', 'MOQ', 'Url', 'WT ACT', 'WT DECL', 'Width', 'Height', 'Length', 'Label QTY', 'CBM', 'SHIP', 'TEMU SHIP', 'EBAY2 SHIP'];
+                // Always hide these columns
+                const alwaysHiddenColumns = ['MOQ', 'Url', 'WT ACT', 'WT DECL', 'Width', 'Height', 'Length', 'Label QTY', 'CBM', 'SHIP', 'TEMU SHIP', 'EBAY2 SHIP'];
                 
                 // Default columns to hide if user has no specific permissions
                 const defaultHiddenColumns = [...alwaysHiddenColumns];

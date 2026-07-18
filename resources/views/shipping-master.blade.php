@@ -791,9 +791,6 @@
                                         <input type="text" id="skuSearch" class="form-control-sm header-search-120"
                                             placeholder="Search" style="font-size: 9px; padding: 2px 4px;">
                                     </th>
-                                    <th class="shipping-rate-header">
-                                        <span class="th-vertical-label">Label<br>Qty</span>
-                                    </th>
                                     <th class="th-has-filter">
                                         <div class="th-vertical-label" style="font-size: 9px;">STATUS</div>
                                         <select id="filterSTATUS" class="form-control form-control-sm mt-1 missing-data-filter" style="font-size: 9px; padding: 2px 4px;" data-column="STATUS">
@@ -804,6 +801,15 @@
                                             <option value="DC">🔴 DC</option>
                                             <option value="upcoming">🟡 Upcoming</option>
                                             <option value="2BDC">🔵 2BDC</option>
+                                        </select>
+                                    </th>
+                                    <th class="th-has-filter shipping-rate-header">
+                                        <div class="th-vertical-label">Label<br>Qty</div>
+                                        <select id="filterLabelQty" class="form-control form-control-sm mt-1 missing-data-filter" style="font-size: 9px; padding: 2px 4px; max-width: 100%;" title="Filter Label Qty column">
+                                            <option value="all">All</option>
+                                            <option value="missing">Missing</option>
+                                            <option value="zero">0</option>
+                                            <option value="has">Has value</option>
                                         </select>
                                     </th>
                                     <th class="shipping-rate-header"><span class="th-vertical-label">INV</span></th>
@@ -1616,6 +1622,12 @@
                     skuCell.textContent = skuDisplay ? escapeHtml(skuDisplay) : '-';
                     row.appendChild(skuCell);
 
+                    // Status column – colored dot (same as product master)
+                    const statusCell = document.createElement('td');
+                    statusCell.className = 'text-center';
+                    statusCell.innerHTML = getStatusDot(item.status);
+                    row.appendChild(statusCell);
+
                     // Label Qty column (from Product Master Values.label_qty)
                     const labelQtyCell = document.createElement('td');
                     labelQtyCell.className = 'text-center shipping-rate-cell';
@@ -1627,12 +1639,6 @@
                         labelQtyCell.textContent = Number.isFinite(labelQtyNum) ? String(labelQtyNum) : String(labelQtyRaw);
                     }
                     row.appendChild(labelQtyCell);
-
-                    // Status column – colored dot (same as product master)
-                    const statusCell = document.createElement('td');
-                    statusCell.className = 'text-center';
-                    statusCell.innerHTML = getStatusDot(item.status);
-                    row.appendChild(statusCell);
 
                     // INV column (bold; child 0 / missing = red)
                     const invCell = document.createElement('td');
@@ -1931,7 +1937,7 @@
              *  /dim-wt-master/update payload). Used by the missing-indicator
              *  click handler to focus the right input. */
             const SHIPPING_COLUMN_INDEX_TO_FIELD = {
-                4:  'label_qty',
+                5:  'label_qty',
                 6:  'inv',
                 7:  'ship',
                 8:  'ship_bb',
@@ -2803,6 +2809,7 @@
                 const filterL = document.getElementById('filterL').value;
                 const filterW = document.getElementById('filterW').value;
                 const filterH = document.getElementById('filterH').value;
+                const filterLabelQty = document.getElementById('filterLabelQty')?.value || 'all';
                 const filterShipCol = document.getElementById('filterShipCol')?.value || 'all';
                 const filterShipBbCol = document.getElementById('filterShipBbCol')?.value || 'all';
                 const filterTtShipCol = document.getElementById('filterTtShipCol')?.value || 'all';
@@ -2814,7 +2821,7 @@
                 const filterUpsCol = document.getElementById('filterUpsCol')?.value || 'all';
                 const filterUspsCol = document.getElementById('filterUspsCol')?.value || 'all';
                 const filterUniCol = document.getElementById('filterUniCol')?.value || 'all';
-                const hasMissingDataFilter = filterStatusValue === 'missing' || filterWtActKg === 'missing' || filterWtAct === 'missing' || filterWtAct === 'lb_0' || filterWtDecl === 'missing' ||
+                const hasMissingDataFilter = filterStatusValue === 'missing' || filterLabelQty === 'missing' || filterWtActKg === 'missing' || filterWtAct === 'missing' || filterWtAct === 'lb_0' || filterWtDecl === 'missing' ||
                                             filterL === 'missing' || filterW === 'missing' ||
                                             filterH === 'missing';
 
@@ -2842,6 +2849,21 @@
                             if (raw !== '') return false;
                         } else {
                             if (raw.toLowerCase() !== String(filterStatusValue).toLowerCase()) return false;
+                        }
+                    }
+
+                    // Label Qty filter
+                    if (filterLabelQty && filterLabelQty !== 'all') {
+                        const labelQtyRaw = item.label_qty ?? item['Label QTY'] ?? item.Label_QTY;
+                        const blank = labelQtyRaw === null || labelQtyRaw === undefined || labelQtyRaw === '' ||
+                            (typeof labelQtyRaw === 'string' && labelQtyRaw.trim() === '');
+                        const num = blank ? NaN : parseInt(labelQtyRaw, 10);
+                        if (filterLabelQty === 'missing') {
+                            if (!blank) return false;
+                        } else if (filterLabelQty === 'zero') {
+                            if (!Number.isFinite(num) || num !== 0) return false;
+                        } else if (filterLabelQty === 'has') {
+                            if (blank || !Number.isFinite(num) || num === 0) return false;
                         }
                     }
 
@@ -2913,7 +2935,7 @@
 
                 const filterSTATUSEl = document.getElementById('filterSTATUS');
                 if (filterSTATUSEl) filterSTATUSEl.addEventListener('change', applyFilters);
-                const filterIds = ['filterWtActKg', 'filterWtAct', 'filterWtDecl', 'filterL', 'filterW', 'filterH'];
+                const filterIds = ['filterLabelQty', 'filterWtActKg', 'filterWtAct', 'filterWtDecl', 'filterL', 'filterW', 'filterH'];
                 filterIds.forEach(id => {
                     const el = document.getElementById(id);
                     if (el) el.addEventListener('change', applyFilters);
@@ -2968,7 +2990,7 @@
             function setupExcelExport() {
                 document.getElementById('downloadExcel').addEventListener('click', function() {
                     // Columns to export (excluding Image, Action, and Parent)
-                    const columns = ["SKU", "Label Qty", "Status", "INV", "Ship", "Ship BB", "TT 1 Ship", "Temu ship", "Temu GOFO", "Ebay2 ship", "GOFO", "Fedex", "UPS", "USPS", "UNI", "Pick Pack", "Avg", "FBA SKU", "FBA ship", "FBA manual ship", "Weight ACT (Kg)", "WT ACT (LB)", "Item Weight (OZ)", "WT DECL (LB)", "Length (inch)", "Width (inch)", "Height (Inch)", "Length (CM)", "Width (CM)", "Height (CM)", "CTN L (CM)", "CTN W (CM)", "CTN H (CM)", "CTN (CBM)", "CTN (QTY)", "CTN (CBM/Each)"];
+                    const columns = ["SKU", "Status", "Label Qty", "INV", "Ship", "Ship BB", "TT 1 Ship", "Temu ship", "Temu GOFO", "Ebay2 ship", "GOFO", "Fedex", "UPS", "USPS", "UNI", "Pick Pack", "Avg", "FBA SKU", "FBA ship", "FBA manual ship", "Weight ACT (Kg)", "WT ACT (LB)", "Item Weight (OZ)", "WT DECL (LB)", "Length (inch)", "Width (inch)", "Height (Inch)", "Length (CM)", "Width (CM)", "Height (CM)", "CTN L (CM)", "CTN W (CM)", "CTN H (CM)", "CTN (CBM)", "CTN (QTY)", "CTN (CBM/Each)"];
 
                     // Column definitions with their data keys
                     const columnDefs = {
