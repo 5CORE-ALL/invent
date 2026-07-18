@@ -156,6 +156,17 @@
         .shopify-b2c-page #summary-stats { padding: 10px 12px !important; }
         .shopify-b2c-page #discount-input-container { padding: 8px 12px !important; }
 
+        /* Parent summary rows (Amazon-style) */
+        #reverb-table .tabulator-row.parent-row,
+        #reverb-table .tabulator-row.parent-row .tabulator-cell {
+            background-color: rgba(189, 224, 255, 0.55) !important;
+            font-weight: 600;
+        }
+        #reverb-table .tabulator-row.parent-row:hover,
+        #reverb-table .tabulator-row.parent-row:hover .tabulator-cell {
+            background-color: rgba(189, 224, 255, 0.8) !important;
+        }
+
         /* Column visibility dropdown — 4 columns */
         .column-dropdown-multicol {
             min-width: 560px;
@@ -529,6 +540,14 @@
         return parseFloat(SHOPIFY_DIRECT_TCOS_PCT) || 0;
     }
 
+    /** Amazon-style parent summary row (SKU like "PARENT 10 FR"). */
+    function isShopifyB2cParentRow(row) {
+        if (!row) return false;
+        if (row.is_parent_summary === true) return true;
+        const sku = String(row['(Child) sku'] || '').toUpperCase();
+        return sku.includes('PARENT');
+    }
+
     /**
      * Net ROI (NROI% / SNROI) — Amazon unit formula (works even when L30 qty = 0):
      *   ((Price × 0.95 − Ship − LP − Price × Ads%/100) / LP) × 100
@@ -654,7 +673,7 @@
         // Select all checkbox handler
         $(document).on('change', '#select-all-checkbox', function() {
             const isChecked = $(this).prop('checked');
-            const filteredData = table.getData('active').filter(row => !(row.Parent && row.Parent.startsWith('PARENT')));
+            const filteredData = table.getData('active').filter(row => !isShopifyB2cParentRow(row));
             
             filteredData.forEach(row => {
                 if (isChecked) {
@@ -736,7 +755,7 @@
                 if (rows.length === 0) return;
                 const row = rows[0];
                 const rowData = row.getData();
-                if (rowData.Parent && String(rowData.Parent).startsWith('PARENT')) return;
+                if (isShopifyB2cParentRow(rowData)) return;
 
                 const lp = parseFloat(rowData['LP_productmaster']) || 0;
                 if (lp <= 0) { skippedNoLp++; return; }
@@ -818,7 +837,7 @@
                 if (rows.length === 0) return;
                 const row = rows[0];
                 const rowData = row.getData();
-                if (rowData.Parent && String(rowData.Parent).startsWith('PARENT')) return;
+                if (isShopifyB2cParentRow(rowData)) return;
 
                 const lp = parseFloat(rowData['LP_productmaster']) || 0;
                 if (lp <= 0) { skippedNoLp++; return; }
@@ -967,7 +986,7 @@
         function updateSelectAllCheckbox() {
             if (!table) return;
             
-            const filteredData = table.getData('active').filter(row => !(row.Parent && row.Parent.startsWith('PARENT')));
+            const filteredData = table.getData('active').filter(row => !isShopifyB2cParentRow(row));
             
             if (filteredData.length === 0) {
                 $('#select-all-checkbox').prop('checked', false);
@@ -1319,8 +1338,8 @@
                 dir: "desc"
             }],
             rowFormatter: function(row) {
-                if (row.getData().Parent && row.getData().Parent.startsWith('PARENT')) {
-                    row.getElement().style.backgroundColor = "rgba(69, 233, 255, 0.1)";
+                if (isShopifyB2cParentRow(row.getData())) {
+                    row.getElement().classList.add('parent-row');
                 }
             },
             columns: [
@@ -1334,7 +1353,7 @@
                     tooltip: true,
                     frozen: true,
                     width: 150,
-                    visible: false
+                    visible: true
                 },
                 {
                     title: "Image",
@@ -1360,6 +1379,10 @@
                     width: 250,
                     formatter: function(cell) {
                         const sku = cell.getValue();
+                        const rowData = cell.getRow().getData();
+                        if (isShopifyB2cParentRow(rowData)) {
+                            return `<span style="font-weight: bold;">${sku}</span>`;
+                        }
                         let html = `<span>${sku}</span>`;
                         
                         html += `<i class="fa fa-copy text-secondary copy-sku-btn" 
@@ -1516,9 +1539,15 @@
                     hozAlign: "center",
                     headerSort: false,
                     formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
                         let value = cell.getValue();
-                        if (value === null || value === undefined || value === '' || value.trim() === '') {
+                        if (value === null || value === undefined || value === '' || String(value).trim() === '') {
                             value = 'REQ';
+                        }
+                        if (isShopifyB2cParentRow(rowData)) {
+                            return value === 'NR'
+                                ? '<span title="Derived from children">🔴</span>'
+                                : '<span title="Derived from children">🟢</span>';
                         }
                         
                         return `<select class="form-select form-select-sm nr-req-dropdown" 
@@ -1723,6 +1752,7 @@
                     visible: false,
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
+                        if (isShopifyB2cParentRow(rowData)) return '';
                         const sku = rowData['(Child) sku'];
                         const isChecked = selectedSkus.has(sku) ? 'checked' : '';
                         return `<input type='checkbox' class='sku-select-checkbox' data-sku='${sku}' ${isChecked}>`;
@@ -1733,14 +1763,20 @@
                     field: "SPRICE",
                     hozAlign: "center",
                     editor: "number",
+                    editable: function(cell) {
+                        return !isShopifyB2cParentRow(cell.getRow().getData());
+                    },
                     editorParams: {
                         min: 0,
                         step: 0.01
                     },
                     sorter: "number",
                     formatter: function(cell) {
-                        const value = parseFloat(cell.getValue() || 0);
                         const rowData = cell.getRow().getData();
+                        if (isShopifyB2cParentRow(rowData)) {
+                            return '';
+                        }
+                        const value = parseFloat(cell.getValue() || 0);
                         const hasCustom = rowData.has_custom_sprice;
                         const status = rowData.SPRICE_STATUS;
                         
@@ -1888,6 +1924,7 @@
             if (cell.getField() === 'SPRICE') {
                 const row = cell.getRow();
                 const rowData = row.getData();
+                if (isShopifyB2cParentRow(rowData)) return;
                 const sku = rowData['(Child) sku'];
                 const newSprice = parseFloat(cell.getValue()) || 0;
                 
@@ -2060,8 +2097,8 @@
             // Get ALL data (ignore search filter) and manually apply ONLY dropdown filters
             const allData = table.getData();
             const data = allData.filter(row => {
-                // Exclude parent rows
-                if (row.Parent && row.Parent.startsWith('PARENT')) return false;
+                // Exclude parent summary rows from badge math
+                if (isShopifyB2cParentRow(row)) return false;
                 
                 // Apply inventory filter
                 const inv = parseFloat(row.INV) || 0;

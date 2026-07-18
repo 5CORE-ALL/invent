@@ -12,6 +12,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class GoogleShoppingCampaignsController extends Controller
 {
@@ -698,27 +699,65 @@ class GoogleShoppingCampaignsController extends Controller
     }
 
     /**
-     * Upsert today's computed SBGT for every campaign in this channel's scope into
-     * google_ads_sbgt_snapshots. Gated to run at most once per calendar day per channel
-     * (cache lock) so paging/filtering the grid doesn't recompute the whole set on every
-     * request. Enriches the full (unpaginated, unfiltered) base query so the trend covers
-     * every campaign, not just the current page.
+     * Last completed USA (Pacific) calendar day to use for charts / L30 snapshots.
+     * The current US day is incomplete, so we never anchor on "today" Pacific —
+     * same convention as all-marketplace-master (preceding completed day). Also
+     * never past the latest date present in google_ads_campaigns.
+     */
+    public function badgeChartCompletedEndDate(): Carbon
+    {
+        $tz = 'America/Los_Angeles';
+        $usYesterday = Carbon::now($tz)->subDay()->startOfDay();
+
+        $maxDateStr = DB::table('google_ads_campaigns')->whereNotNull('date')->max('date');
+        if ($maxDateStr !== null && $maxDateStr !== '') {
+            $maxData = Carbon::parse((string) $maxDateStr, $tz)->startOfDay();
+            if ($maxData->lt($usYesterday)) {
+                return $maxData;
+            }
+        }
+
+        return $usYesterday;
+    }
+
+    /**
+     * Upsert the preceding completed US day's SBGT + rolling L30 badge metrics for
+     * every campaign in this channel's scope. Gated once per calendar day per channel
+     * (cache lock) so paging/filtering the grid doesn't recompute on every request.
      *
      * @param  array{sbgt: array<string, float|int>, sbid: array<string, float>}  $rawRule
      */
     protected function snapshotSbgtForToday(array $rawRule): void
     {
-        $today = Carbon::now(config('app.timezone'))->toDateString();
+        $anchor = $this->badgeChartCompletedEndDate()->toDateString();
         $channel = $this->channelKey();
-        $lockKey = "gads_sbgt_snap:{$channel}:{$today}";
+        // v3 lock — snapshots are keyed to the completed US day (not incomplete "today").
+        $lockKey = "gads_sbgt_snap_v3:{$channel}:{$anchor}";
 
         // Cache::add is atomic — only the first caller today for this channel proceeds.
         if (! Cache::add($lockKey, 1, now()->addDay())) {
             return;
         }
 
+        $this->persistBadgeL30SnapshotsForDate($anchor, true, $rawRule);
+    }
+
+    /**
+     * Persist rolling L30 badge metrics (+ SBGT / ACOS) for every campaign in this
+     * channel as of $endYmd. Used by the daily grid snapshot, the artisan cron, and
+     * on-demand chart backfill. Returns number of campaign rows upserted.
+     *
+     * @param  array{sbgt: array<string, float|int>, sbid: array<string, float>}|null  $rawRule
+     */
+    public function persistBadgeL30SnapshotsForDate(string $endYmd, bool $force = false, ?array $rawRule = null): int
+    {
+        $endYmd = Carbon::parse($endYmd)->toDateString();
+        $channel = $this->channelKey();
+        $rawRule = $rawRule ?? GoogleShoppingCampaignsRawRule::resolvedRule();
         $now = now();
-        foreach ($this->buildRawGridBaseQuery()->get() as $row) {
+        $count = 0;
+
+        foreach ($this->buildRawGridBaseQuery($endYmd)->get() as $row) {
             $arr = json_decode(json_encode($row), true);
             if (isset($arr['spend_window_micros'])) {
                 $arr['metrics_cost_micros'] = (int) $arr['spend_window_micros'];
@@ -732,16 +771,86 @@ class GoogleShoppingCampaignsController extends Controller
             }
 
             DB::table('google_ads_sbgt_snapshots')->updateOrInsert(
-                ['campaign_id' => $cid, 'snapshot_date' => $today],
+                ['campaign_id' => $cid, 'snapshot_date' => $endYmd],
                 [
                     'channel' => $channel,
                     'sbgt' => (float) ($arr['sbgt'] ?? 0),
                     'acos' => round((float) ($arr['acos_l30'] ?? 0), 2),
+                    'spend_l30' => round((float) ($arr['spend'] ?? 0), 2),
+                    'sales_l30' => round((float) ($arr['ad_sales_L30'] ?? 0), 2),
+                    'clicks_l30' => round((float) ($arr['metrics_clicks'] ?? 0), 2),
+                    'sold_l30' => round((float) ($arr['ad_sold_L30'] ?? 0), 2),
+                    'bgt' => round((float) ($arr['bgt'] ?? 0), 2),
                     'updated_at' => $now,
                     'created_at' => $now,
                 ]
             );
+            $count++;
         }
+
+        return $count;
+    }
+
+    /**
+     * Best-effort: persist the preceding completed US day's L30 badge snapshot if the
+     * daily lock is free. Full historical backfill:
+     * `google:save-badge-l30-snapshots --backfill=N`.
+     */
+    protected function ensureTodayBadgeL30Snapshot(): void
+    {
+        if (! Schema::hasTable('google_ads_sbgt_snapshots')
+            || ! Schema::hasColumn('google_ads_sbgt_snapshots', 'spend_l30')) {
+            return;
+        }
+
+        try {
+            $this->snapshotSbgtForToday(GoogleShoppingCampaignsRawRule::resolvedRule());
+        } catch (\Throwable $e) {
+            report($e);
+        }
+    }
+
+    /**
+     * Fast account-level L30 totals ending on $endYmd (for chart gaps before snapshots exist).
+     *
+     * @param  list<string>  $campaignIds
+     * @return array{spend: float, sales: float, clicks: float, sold: float, bgt: float}
+     */
+    protected function computeL30BadgeTotalsForDate(string $endYmd, array $campaignIds = []): array
+    {
+        $end = Carbon::parse($endYmd)->startOfDay();
+        $start = $end->copy()->subDays(29);
+
+        $query = DB::table('google_ads_campaigns')
+            ->whereNotNull('date')
+            ->whereBetween('date', [$start->format('Y-m-d'), $end->format('Y-m-d')]);
+        $this->applyCampaignNameScope($query);
+        if ($campaignIds !== []) {
+            $query->whereIn('campaign_id', $campaignIds);
+        }
+
+        $endStr = $end->format('Y-m-d');
+        $row = $query->selectRaw("
+                COALESCE(SUM(metrics_cost_micros), 0) / 1000000.0 AS spend,
+                COALESCE(SUM(ga4_actual_revenue), 0) AS actual_sales,
+                COALESCE(SUM(ga4_ad_sales), 0) AS ad_sales,
+                COALESCE(SUM(metrics_clicks), 0) AS clicks,
+                COALESCE(SUM(ga4_actual_sold_units), 0) AS sold,
+                COALESCE(SUM(CASE WHEN date = '{$endStr}' THEN COALESCE(budget_amount_micros, 0) ELSE 0 END), 0) / 1000000.0 AS bgt
+            ")
+            ->first();
+
+        $actual = (float) ($row->actual_sales ?? 0);
+        $ads = (float) ($row->ad_sales ?? 0);
+        $sales = static::resolveSalesL30Value($actual, $ads);
+
+        return [
+            'spend' => round((float) ($row->spend ?? 0), 2),
+            'sales' => round($sales, 2),
+            'clicks' => (float) ($row->clicks ?? 0),
+            'sold' => (float) ($row->sold ?? 0),
+            'bgt' => round((float) ($row->bgt ?? 0), 2),
+        ];
     }
 
     /**
@@ -1147,13 +1256,14 @@ class GoogleShoppingCampaignsController extends Controller
     }
 
     /**
-     * Daily badge trend values for the Google Shopping toolbar chart.
-     * Optional query: campaign_ids=123,456 limits the chart to the rows currently visible in the grid.
+     * Toolbar badge trend chart — each point is the rolling L30 average as-of that
+     * calendar day (saved in google_ads_sbgt_snapshots), not single-day metrics.
+     * Optional query: campaign_ids=123,456 limits the chart to visible grid rows.
      */
     public function badgeHistory(Request $request): JsonResponse
     {
         $metric = strtolower((string) $request->input('metric', ''));
-        $days = max(1, min(180, (int) $request->input('days', 32)));
+        $days = max(1, min(180, (int) $request->input('days', 30)));
         $allowed = ['spend', 'clicks', 'sold', 'sales', 'acos', 'cvr', 'bgt'];
         if (! in_array($metric, $allowed, true)) {
             return response()->json([
@@ -1175,43 +1285,64 @@ class GoogleShoppingCampaignsController extends Controller
             }
         }
 
-        $tz = config('app.timezone');
-        $end = Carbon::now($tz)->startOfDay();
+        // Persist the preceding completed US day's L30 snapshot when the lock is free.
+        $this->ensureTodayBadgeL30Snapshot();
+
+        // Chart window ends on the last completed USA day (never the incomplete current day).
+        $end = $this->badgeChartCompletedEndDate();
         $start = $end->copy()->subDays($days - 1);
+        $channel = $this->channelKey();
+        $cidList = array_keys($campaignIds);
 
-        $query = DB::table('google_ads_campaigns')
-            ->whereNotNull('date')
-            ->whereBetween('date', [$start->format('Y-m-d'), $end->format('Y-m-d')]);
-        if ($campaignIds !== []) {
-            $query->whereIn('campaign_id', array_keys($campaignIds));
+        $rows = collect();
+        if (Schema::hasTable('google_ads_sbgt_snapshots')
+            && Schema::hasColumn('google_ads_sbgt_snapshots', 'spend_l30')) {
+            $query = DB::table('google_ads_sbgt_snapshots')
+                ->where('channel', $channel)
+                ->whereBetween('snapshot_date', [$start->format('Y-m-d'), $end->format('Y-m-d')])
+                ->whereNotNull('spend_l30');
+            if ($campaignIds !== []) {
+                $query->whereIn('campaign_id', $cidList);
+            }
+
+            $rows = $query
+                ->groupBy('snapshot_date')
+                ->orderBy('snapshot_date')
+                ->selectRaw('
+                    snapshot_date,
+                    SUM(COALESCE(spend_l30, 0)) AS spend,
+                    SUM(COALESCE(sales_l30, 0)) AS sales,
+                    SUM(COALESCE(clicks_l30, 0)) AS clicks,
+                    SUM(COALESCE(sold_l30, 0)) AS sold,
+                    SUM(COALESCE(bgt, 0)) AS bgt
+                ')
+                ->get()
+                ->keyBy(function ($r) {
+                    return Carbon::parse((string) $r->snapshot_date)->format('Y-m-d');
+                });
         }
-        $this->applyCampaignNameScope($query);
-
-        $rows = $query
-            ->groupBy('date')
-            ->orderBy('date')
-            ->selectRaw('
-                date,
-                SUM(metrics_cost_micros) / 1000000.0 AS spend,
-                SUM(metrics_clicks) AS clicks,
-                SUM(ga4_actual_revenue) AS actual_sales,
-                SUM(ga4_ad_sales) AS ad_sales,
-                SUM(ga4_actual_sold_units) AS actual_sold,
-                SUM(COALESCE(budget_amount_micros, 0)) / 1000000.0 AS bgt
-            ')
-            ->get()
-            ->keyBy('date');
 
         $data = [];
         for ($d = $start->copy(); $d->lte($end); $d->addDay()) {
             $key = $d->format('Y-m-d');
             $row = $rows->get($key);
-            $spend = (float) ($row->spend ?? 0);
-            $clicks = (float) ($row->clicks ?? 0);
-            $sales = ((float) ($row->actual_sales ?? 0)) > 0 ? (float) $row->actual_sales : (float) ($row->ad_sales ?? 0);
-            $sold = (float) ($row->actual_sold ?? 0);
-            $bgt = (float) ($row->bgt ?? 0);
+            if ($row) {
+                $spend = (float) ($row->spend ?? 0);
+                $clicks = (float) ($row->clicks ?? 0);
+                $sales = (float) ($row->sales ?? 0);
+                $sold = (float) ($row->sold ?? 0);
+                $bgt = (float) ($row->bgt ?? 0);
+            } else {
+                // Gap before snapshots existed — compute the same L30 window on the fly.
+                $tot = $this->computeL30BadgeTotalsForDate($key, $cidList);
+                $spend = $tot['spend'];
+                $clicks = $tot['clicks'];
+                $sales = $tot['sales'];
+                $sold = $tot['sold'];
+                $bgt = $tot['bgt'];
+            }
 
+            // Same edge cases as the toolbar / grid ACOS L30.
             switch ($metric) {
                 case 'spend':
                     $value = round($spend, 2);
@@ -1226,7 +1357,13 @@ class GoogleShoppingCampaignsController extends Controller
                     $value = round($sales, 2);
                     break;
                 case 'acos':
-                    $value = $sales > 0 ? round(($spend / $sales) * 100, 1) : 0;
+                    if ($spend <= 0.0) {
+                        $value = 0.0;
+                    } elseif ($sales < 1.0) {
+                        $value = 100.0;
+                    } else {
+                        $value = round(($spend / $sales) * 100, 1);
+                    }
                     break;
                 case 'cvr':
                     $value = $clicks > 0 ? round(($sold / $clicks) * 100, 1) : 0;
@@ -1248,6 +1385,9 @@ class GoogleShoppingCampaignsController extends Controller
             'success' => true,
             'metric' => $metric,
             'days' => $days,
+            'mode' => 'l30_avg',
+            'end_date' => $end->toDateString(),
+            'timezone' => 'America/Los_Angeles',
             'data' => $data,
         ]);
     }

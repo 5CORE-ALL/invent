@@ -89,6 +89,7 @@ class Kernel extends ConsoleKernel
         AmazonSpNegativeKeywords::class,
         FetchGoogleAdsCampaigns::class,
         \App\Console\Commands\FetchGoogleAdsNegativeKeywords::class,
+        \App\Console\Commands\SaveGoogleAdsBadgeL30Snapshots::class,
         \App\Console\Commands\SyncMetaAllAds::class,
         \App\Console\Commands\MetaAdsSyncCommand::class,
         \App\Console\Commands\MetaAdsImportRawCommand::class,
@@ -765,6 +766,16 @@ class Kernel extends ConsoleKernel
 
      
         $retryFiveTimesUntil('app:fetch-google-ads-negative-keywords --prune', 'fetch-google-ads-negative-keywords', '17:15');
+
+        // Save rolling L30 badge metrics (ACOS / spend / sales…) for Shopping + SERP + YT
+        // charts — one snapshot per campaign per day. Runs after Ads + GA4 pulls.
+        $ist($schedule->command('google:save-badge-l30-snapshots')
+            ->dailyAt('17:45')
+            ->timezone('Asia/Kolkata')
+            ->name('google-badge-l30-snapshots')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log));
 
         $ist($schedule->command('sbid:update')
             ->dailyAt('17:48')

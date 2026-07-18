@@ -23,9 +23,21 @@ use Google\Ads\GoogleAds\V22\Enums\AdGroupAdStatusEnum\AdGroupAdStatus;
 use Google\Ads\GoogleAds\V22\Services\CampaignOperation;
 use Google\Ads\GoogleAds\V22\Services\MutateCampaignsRequest;
 use Google\Ads\GoogleAds\V22\Resources\Campaign;
+use Google\Ads\GoogleAds\V22\Resources\Campaign\ShoppingSetting;
+use Google\Ads\GoogleAds\V22\Resources\Ad;
 use Google\Ads\GoogleAds\V22\Common\MaximizeConversions;
 use Google\Ads\GoogleAds\V22\Common\TargetSpend;
+use Google\Ads\GoogleAds\V22\Common\ManualCpc;
+use Google\Ads\GoogleAds\V22\Common\ListingGroupInfo;
+use Google\Ads\GoogleAds\V22\Common\ShoppingProductAdInfo;
 use Google\Ads\GoogleAds\V22\Enums\CampaignStatusEnum\CampaignStatus;
+use Google\Ads\GoogleAds\V22\Enums\AdvertisingChannelTypeEnum\AdvertisingChannelType;
+use Google\Ads\GoogleAds\V22\Enums\AdGroupTypeEnum\AdGroupType;
+use Google\Ads\GoogleAds\V22\Enums\AdGroupStatusEnum\AdGroupStatus;
+use Google\Ads\GoogleAds\V22\Enums\AdGroupCriterionStatusEnum\AdGroupCriterionStatus;
+use Google\Ads\GoogleAds\V22\Enums\ListingGroupTypeEnum\ListingGroupType;
+use Google\Ads\GoogleAds\V22\Enums\BudgetDeliveryMethodEnum\BudgetDeliveryMethod;
+use Google\Ads\GoogleAds\V22\Enums\EuPoliticalAdvertisingStatusEnum\EuPoliticalAdvertisingStatus;
 
 class GoogleAdsSbidService
 {
@@ -733,6 +745,190 @@ class GoogleAdsSbidService
 
         if (! $response || ! $response->getResults() || count($response->getResults()) === 0) {
             throw new \Exception('No results returned from campaign bid update operation');
+        }
+    }
+
+    /**
+     * Create a standard Shopping product campaign (budget + campaign + ad group +
+     * shopping product ad + default "All products" listing group), matching Google's
+     * AddShoppingProductAd sample. Created PAUSED so it does not serve immediately.
+     *
+     * @param  array{
+     *   campaign_name: string,
+     *   budget_amount?: float|int,
+     *   merchant_id?: int|string,
+     *   campaign_priority?: int,
+     *   feed_label?: string|null,
+     *   cpc_bid?: float|int,
+     *   enable_local?: bool
+     * }  $params
+     * @return array{
+     *   campaign_id: string,
+     *   campaign_resource_name: string,
+     *   budget_resource_name: string,
+     *   ad_group_resource_name: string,
+     *   campaign_name: string
+     * }
+     */
+    public function createShoppingProductCampaign(string $customerId, array $params): array
+    {
+        $customerId = str_replace('-', '', trim($customerId));
+        $campaignName = trim((string) ($params['campaign_name'] ?? ''));
+        if ($customerId === '' || $campaignName === '') {
+            throw new \InvalidArgumentException('customer_id and campaign_name are required');
+        }
+
+        $budgetAmount = (float) ($params['budget_amount'] ?? 1.0);
+        if ($budgetAmount <= 0) {
+            $budgetAmount = 1.0;
+        }
+        $budgetMicros = max(1_000_000, (int) round($budgetAmount * 1_000_000));
+
+        $merchantId = (int) ($params['merchant_id'] ?? 0);
+        if ($merchantId <= 0) {
+            throw new \InvalidArgumentException('merchant_id is required');
+        }
+
+        $priority = (int) ($params['campaign_priority'] ?? 0);
+        if ($priority < 0 || $priority > 2) {
+            $priority = 0;
+        }
+
+        $cpcBid = (float) ($params['cpc_bid'] ?? 0.5);
+        if ($cpcBid <= 0) {
+            $cpcBid = 0.5;
+        }
+        $cpcBidMicros = $this->sbidDollarsToMicros($cpcBid);
+
+        $feedLabel = trim((string) ($params['feed_label'] ?? ''));
+        $enableLocal = array_key_exists('enable_local', $params)
+            ? (bool) $params['enable_local']
+            : true;
+
+        try {
+            // 1) Budget
+            $budget = new CampaignBudget([
+                'name' => $campaignName,
+                'delivery_method' => BudgetDeliveryMethod::STANDARD,
+                'amount_micros' => $budgetMicros,
+                'explicitly_shared' => false,
+            ]);
+            $budgetOp = new CampaignBudgetOperation();
+            $budgetOp->setCreate($budget);
+            $budgetResp = $this->getClient()->getCampaignBudgetServiceClient()->mutateCampaignBudgets(
+                new MutateCampaignBudgetsRequest([
+                    'customer_id' => $customerId,
+                    'operations' => [$budgetOp],
+                ])
+            );
+            $budgetResourceName = $budgetResp->getResults()[0]->getResourceName();
+
+            // 2) Campaign
+            $shoppingSetting = new ShoppingSetting([
+                'merchant_id' => $merchantId,
+                'campaign_priority' => $priority,
+                'enable_local' => $enableLocal,
+            ]);
+            if ($feedLabel !== '') {
+                $shoppingSetting->setFeedLabel($feedLabel);
+            }
+
+            $campaign = new Campaign([
+                'name' => $campaignName,
+                'advertising_channel_type' => AdvertisingChannelType::SHOPPING,
+                'status' => CampaignStatus::PAUSED,
+                'campaign_budget' => $budgetResourceName,
+                'manual_cpc' => new ManualCpc(),
+                'shopping_setting' => $shoppingSetting,
+                'contains_eu_political_advertising' => EuPoliticalAdvertisingStatus::DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING,
+            ]);
+            $campaignOp = new CampaignOperation();
+            $campaignOp->setCreate($campaign);
+            $campaignResp = $this->getClient()->getCampaignServiceClient()->mutateCampaigns(
+                new MutateCampaignsRequest([
+                    'customer_id' => $customerId,
+                    'operations' => [$campaignOp],
+                ])
+            );
+            $campaignResourceName = $campaignResp->getResults()[0]->getResourceName();
+
+            // 3) Ad group
+            $adGroup = new AdGroup([
+                'name' => $campaignName,
+                'campaign' => $campaignResourceName,
+                'status' => AdGroupStatus::ENABLED,
+                'type' => AdGroupType::SHOPPING_PRODUCT_ADS,
+                'cpc_bid_micros' => $cpcBidMicros,
+            ]);
+            $adGroupOp = new AdGroupOperation();
+            $adGroupOp->setCreate($adGroup);
+            $adGroupResp = $this->getClient()->getAdGroupServiceClient()->mutateAdGroups(
+                new MutateAdGroupsRequest([
+                    'customer_id' => $customerId,
+                    'operations' => [$adGroupOp],
+                ])
+            );
+            $adGroupResourceName = $adGroupResp->getResults()[0]->getResourceName();
+
+            // 4) Shopping product ad
+            $adGroupAd = new AdGroupAd([
+                'ad_group' => $adGroupResourceName,
+                'status' => AdGroupAdStatus::ENABLED,
+                'ad' => new Ad([
+                    'shopping_product_ad' => new ShoppingProductAdInfo(),
+                ]),
+            ]);
+            $adGroupAdOp = new AdGroupAdOperation();
+            $adGroupAdOp->setCreate($adGroupAd);
+            $this->getClient()->getAdGroupAdServiceClient()->mutateAdGroupAds(
+                new MutateAdGroupAdsRequest([
+                    'customer_id' => $customerId,
+                    'operations' => [$adGroupAdOp],
+                ])
+            );
+
+            // 5) Default listing group (All products) with CPC bid
+            $listingCriterion = new AdGroupCriterion([
+                'ad_group' => $adGroupResourceName,
+                'status' => AdGroupCriterionStatus::ENABLED,
+                'listing_group' => new ListingGroupInfo([
+                    'type' => ListingGroupType::UNIT,
+                ]),
+                'cpc_bid_micros' => $cpcBidMicros,
+            ]);
+            $listingOp = new AdGroupCriterionOperation();
+            $listingOp->setCreate($listingCriterion);
+            $this->getClient()->getAdGroupCriterionServiceClient()->mutateAdGroupCriteria(
+                new MutateAdGroupCriteriaRequest([
+                    'customer_id' => $customerId,
+                    'operations' => [$listingOp],
+                ])
+            );
+
+            $campaignId = preg_replace('/^.*\//', '', $campaignResourceName) ?: '';
+
+            Log::info('Created Google Shopping product campaign', [
+                'customer_id' => $customerId,
+                'campaign_name' => $campaignName,
+                'campaign_id' => $campaignId,
+                'budget_resource' => $budgetResourceName,
+                'ad_group_resource' => $adGroupResourceName,
+            ]);
+
+            return [
+                'campaign_id' => (string) $campaignId,
+                'campaign_resource_name' => $campaignResourceName,
+                'budget_resource_name' => $budgetResourceName,
+                'ad_group_resource_name' => $adGroupResourceName,
+                'campaign_name' => $campaignName,
+            ];
+        } catch (\Throwable $e) {
+            Log::error('Failed to create Google Shopping product campaign', [
+                'customer_id' => $customerId,
+                'campaign_name' => $campaignName,
+                'error' => $e->getMessage(),
+            ]);
+            throw $e;
         }
     }
 

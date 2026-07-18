@@ -5635,6 +5635,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/google/shopping/missing/campaigns', 'campaigns')->name('google.shopping.ads.missing.campaigns');
         Route::post('/google/shopping/missing/link', 'link')->name('google.shopping.ads.missing.link');
         Route::post('/google/shopping/missing/unlink', 'unlink')->name('google.shopping.ads.missing.unlink');
+        Route::post('/google/shopping/missing/create', 'create')->name('google.shopping.ads.missing.create');
+        Route::post('/google/shopping/missing/ai-negatives', 'aiNegativeKeywords')->name('google.shopping.ads.missing.ai-negatives');
     });
 
     Route::controller(GoogleShoppingCampaignsController::class)->group(function () {

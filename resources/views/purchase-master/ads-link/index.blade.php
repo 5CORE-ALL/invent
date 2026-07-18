@@ -360,6 +360,20 @@
         background-color: #dc2626;
     }
 
+    /* KW(-) red header — shared look with /google/shopping/missing */
+    .tabulator-header .tabulator-col.ads-link-kw-neg-col {
+        background-color: #dc2626 !important;
+        border-right-color: #b91c1c !important;
+    }
+    .tabulator-header .tabulator-col.ads-link-kw-neg-col .tabulator-col-content,
+    .tabulator-header .tabulator-col.ads-link-kw-neg-col .tabulator-col-title {
+        color: #fff !important;
+        font-weight: 700;
+    }
+    .tabulator-header .tabulator-col.ads-link-kw-neg-col .tabulator-col-sorter {
+        display: none !important;
+    }
+
     .ads-link-campaign-add-btn {
         padding: 0 4px !important;
         line-height: 1.1;
@@ -3020,6 +3034,7 @@ document.addEventListener('DOMContentLoaded', function () {
             {
                 title: 'KW(-)',
                 field: 'negative_count',
+                cssClass: 'ads-link-kw-neg-col',
                 hozAlign: 'center',
                 headerHozAlign: 'center',
                 width: 72,
@@ -3029,6 +3044,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 widthShrink: 0,
                 headerSort: true,
                 sorter: 'number',
+                headerTooltip: 'Amazon KW negatives — same count as /google/shopping/missing',
                 formatter: negativeCountFormatter,
                 cellClick: function (e, cell) {
                     const link = e.target.closest('.ads-link-neg-open');

@@ -1034,10 +1034,83 @@ class Shopifyb2cController extends Controller
                 }
             }
 
+            $processedItem['is_parent_summary'] = false;
             $processedItems[] = $processedItem;
         }
 
-        return $processedItems;
+        // Amazon-style parent summary rows: aggregate children by Parent group.
+        // PARENT product_master SKUs themselves have 0 Shopify INV, so we build
+        // synthetic "PARENT {group}" rows from child totals so they appear under
+        // the default INV > 0 / REQ filters.
+        $groupedByParent = collect($processedItems)->groupBy(function ($row) {
+            return trim((string) ($row['Parent'] ?? ''));
+        });
+
+        $finalItems = [];
+        foreach ($groupedByParent as $parent => $rows) {
+            foreach ($rows as $row) {
+                $finalItems[] = $row;
+            }
+
+            if ($parent === '') {
+                continue;
+            }
+
+            $inv = (float) $rows->sum(fn ($r) => floatval($r['INV'] ?? 0));
+            $ovL30 = (float) $rows->sum(fn ($r) => floatval($r['L30'] ?? 0));
+            $b2cL30 = (float) $rows->sum(fn ($r) => floatval($r['B2B L30'] ?? 0));
+            $views = (float) $rows->sum(fn ($r) => floatval($r['Views'] ?? 0));
+            $profit = (float) $rows->sum(fn ($r) => floatval($r['Profit'] ?? 0));
+            $sales = (float) $rows->sum(fn ($r) => floatval($r['Sales L30'] ?? 0));
+            $adSpend = (float) $rows->sum(fn ($r) => floatval($r['googleSpent'] ?? 0));
+
+            $childPrices = $rows->pluck('Price')->filter(fn ($p) => is_numeric($p) && $p > 0);
+            $childAmzPrices = $rows->pluck('A Price')->filter(fn ($p) => is_numeric($p) && $p > 0);
+            $gpftVals = $rows->pluck('GPFT%')->filter(fn ($v) => is_numeric($v));
+            $roiVals = $rows->pluck('ROI%')->filter(fn ($v) => is_numeric($v));
+            $nroiVals = $rows->pluck('NROI%')->filter(fn ($v) => is_numeric($v));
+
+            // REQ if any child is REQ (so parents of listed children stay visible
+            // under the default REQ filter); otherwise NR.
+            $hasReqChild = $rows->contains(fn ($r) => ($r['nr_req'] ?? '') === 'REQ');
+            $imageRow = $rows->first(fn ($r) => !empty($r['image_path']));
+            $imagePath = is_array($imageRow) ? ($imageRow['image_path'] ?? null) : null;
+
+            $finalItems[] = [
+                '(Child) sku' => 'PARENT ' . $parent,
+                'Parent' => $parent,
+                'is_parent_summary' => true,
+                'LP_productmaster' => '',
+                'Ship_productmaster' => '',
+                'INV' => $inv,
+                'L30' => $ovL30,
+                'B2B L30' => $b2cL30,
+                'Views' => $views,
+                'Price' => $childPrices->count() > 0 ? round($childPrices->avg(), 2) : 0,
+                'A Price' => $childAmzPrices->count() > 0 ? round($childAmzPrices->avg(), 2) : 0,
+                'image_path' => $imagePath,
+                'Missing' => '',
+                'nr_req' => $hasReqChild ? 'REQ' : 'NR',
+                'B Link' => '',
+                'S Link' => '',
+                'GPFT%' => $gpftVals->count() > 0 ? round($gpftVals->avg(), 2) : 0,
+                'ROI%' => $roiVals->count() > 0 ? round($roiVals->avg(), 2) : 0,
+                'NROI%' => $nroiVals->count() > 0 ? round($nroiVals->avg(), 2) : 0,
+                'Profit' => round($profit, 2),
+                'Sales L30' => round($sales, 2),
+                'DIL%' => $inv > 0 ? ($ovL30 / $inv) * 100 : 0,
+                'CVR%' => $views > 0 ? ($ovL30 / $views) * 100 : 0,
+                'googleSpent' => $adSpend,
+                'ADS%' => $sales > 0 ? ($adSpend / $sales) * 100 : 0,
+                'SPRICE' => 0,
+                'SGPFT' => 0,
+                'SNPFT' => 0,
+                'SROI' => 0,
+                'SNROI' => 0,
+            ];
+        }
+
+        return $finalItems;
     }
 
     public function updateShopifyB2cListedLive(Request $request)
@@ -1106,13 +1179,20 @@ class Shopifyb2cController extends Controller
             
             // No cache - always update when page loads
             
-            // Filter: INV > 0 && nr_req === 'REQ' && not parent (EXACT JavaScript logic)
-            $filteredData = collect($products)->filter(function($p) {
+            // Filter: INV > 0 && nr_req === 'REQ' && not parent summary (EXACT JS updateSummary)
+            $filteredData = collect($products)->filter(function ($p) {
+                if (!empty($p['is_parent_summary'])) {
+                    return false;
+                }
+                $sku = strtoupper(trim((string) ($p['(Child) sku'] ?? '')));
+                if ($sku !== '' && str_contains($sku, 'PARENT')) {
+                    return false;
+                }
+
                 $invCheck = floatval($p['INV'] ?? 0) > 0;
                 $reqCheck = ($p['nr_req'] ?? '') === 'REQ';
-                $notParent = !(isset($p['Parent']) && str_starts_with($p['Parent'], 'PARENT'));
-                
-                return $invCheck && $reqCheck && $notParent;
+
+                return $invCheck && $reqCheck;
             });
             
             if ($filteredData->isEmpty()) {

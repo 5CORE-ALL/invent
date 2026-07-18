@@ -11,6 +11,44 @@
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
+        /* Column visibility dropdown — same pattern as Amazon Analytics */
+        .column-dropdown-multicol {
+            min-width: 460px;
+            padding: 6px 4px;
+            column-count: 3;
+            column-gap: 4px;
+        }
+        .column-dropdown-multicol > li {
+            break-inside: avoid;
+            -webkit-column-break-inside: avoid;
+            page-break-inside: avoid;
+        }
+        .column-dropdown-multicol .dropdown-item {
+            padding: 3px 10px;
+            white-space: nowrap;
+        }
+        @media (max-width: 768px) {
+            .column-dropdown-multicol { min-width: 320px; column-count: 2; }
+        }
+
+        /* Badge chart modal — same full-width Rolling L30 UI as all-marketplace-master */
+        #gacRawBadgeChartModal.modal {
+            --tz-modal-width: 100%;
+            --tz-modal-margin: 0.5rem 0;
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+        }
+        #gacRawBadgeChartModal .modal-dialog {
+            width: 100% !important;
+            max-width: none !important;
+            margin: 0.5rem 0 0 0 !important;
+        }
+        #gacRawBadgeChartModal .modal-content {
+            border-radius: 0;
+            width: 100%;
+            max-width: 100%;
+        }
+
         #google-ads-campaigns-raw-wrap .tabulator {
             border: 1px solid #dee2e6; border-radius: 8px; font-size: 11px;
         }
@@ -376,6 +414,17 @@
                         <button type="button" id="gac-raw-export" class="btn btn-sm btn-success gac-raw-icon-btn" title="Export current page as CSV" aria-label="Export current page as CSV">
                             <i class="fas fa-file-csv"></i>
                         </button>
+                        <div class="dropdown d-inline-block">
+                            <button class="btn btn-sm btn-outline-primary dropdown-toggle" type="button"
+                                id="columnVisibilityDropdown" data-bs-toggle="dropdown" data-bs-auto-close="outside"
+                                aria-expanded="false" title="Show / hide columns">
+                                <i class="fas fa-columns"></i>
+                            </button>
+                            <ul class="dropdown-menu column-dropdown-multicol dropdown-menu-end"
+                                id="column-dropdown-menu" aria-labelledby="columnVisibilityDropdown">
+                                {{-- Populated dynamically after the grid builds --}}
+                            </ul>
+                        </div>
                         <button type="button" class="btn btn-sm btn-outline-primary" id="gac-raw-sbgt-rule-btn" data-bs-toggle="modal" data-bs-target="#gacRawSbgtRuleModal" title="Edit ACOS band thresholds and SBGT tier values">SBGT RULE</button>
                         <button type="button" class="btn btn-sm btn-outline-primary" id="gac-raw-sbid-rule-btn" data-bs-toggle="modal" data-bs-target="#gacRawSbidRuleModal" title="Edit 7UB/1UB% thresholds and CPC multipliers for suggested SBID">SBID RULE</button>
                         <span class="vr align-self-center d-none d-md-inline-block mx-1"></span>
@@ -621,42 +670,47 @@
         </div>
     </div>
 
-    <div class="modal fade" id="gacRawBadgeChartModal" tabindex="-1" aria-labelledby="gacRawBadgeChartModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-xl modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header py-2" style="background:#0d6efd;color:#fff;">
-                    <h6 class="modal-title fw-bold" id="gacRawBadgeChartModalLabel">
-                        <i class="fas fa-chart-line me-1"></i>
-                        <span id="gacRawBadgeChartTitle">Trend</span>
+    {{-- Badge metric trend — same full-width Rolling L30 UI as all-marketplace-master --}}
+    <div class="modal fade p-0" id="gacRawBadgeChartModal" tabindex="-1" aria-labelledby="gacRawBadgeChartModalLabel" aria-hidden="true">
+        <div class="modal-dialog shadow-none m-0 mx-0">
+            <div class="modal-content" style="overflow:hidden;">
+                <div class="modal-header bg-info text-white py-1 px-3">
+                    <h6 class="modal-title mb-0" style="font-size:13px;" id="gacRawBadgeChartModalLabel">
+                        <i class="fas fa-chart-area me-1"></i>
+                        <span id="gacRawBadgeChartTitle">Google Shopping - ACOS (Rolling L30)</span>
                     </h6>
-                    <div class="ms-auto d-flex align-items-center gap-2">
-                        <select id="gacRawBadgeChartRange" class="form-select form-select-sm" style="width:120px;">
+                    <div class="d-flex align-items-center gap-2">
+                        <select id="gacRawBadgeChartRange" class="form-select form-select-sm bg-white" style="width:110px;height:26px;font-size:11px;padding:1px 8px;" aria-label="Chart date range">
                             <option value="7">7 Days</option>
                             <option value="14">14 Days</option>
-                            <option value="32" selected>32 Days</option>
+                            <option value="30" selected>30 Days</option>
                             <option value="60">60 Days</option>
                             <option value="90">90 Days</option>
                         </select>
-                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                        <button type="button" class="btn-close btn-close-white" style="font-size:10px;" data-bs-dismiss="modal" aria-label="Close"></button>
                     </div>
                 </div>
-                <div class="modal-body p-0">
-                    <div class="d-flex">
-                        <div style="flex:1; min-height:320px; padding:10px;">
+                <div class="modal-body p-2">
+                    <div id="gacRawBadgeChartContainer" style="height:20vh;display:flex;align-items:stretch;">
+                        <div style="flex:1;min-width:0;position:relative;">
                             <canvas id="gacRawBadgeChartCanvas"></canvas>
-                            <p class="text-center text-muted small mb-0 d-none" id="gacRawBadgeChartEmpty">
+                            <p class="text-center text-muted small mb-0 py-4 d-none" id="gacRawBadgeChartEmpty">
                                 No history available for this metric in the selected window.
                             </p>
                         </div>
-                        <div style="width:120px; border-left:1px solid #dee2e6; padding:14px 10px; text-align:center;">
-                            <div class="small text-uppercase fw-bold" style="color:#dc3545;">Highest</div>
-                            <div class="fs-5 fw-bold" id="gacRawBadgeChartHighest">—</div>
-                            <hr class="my-2">
-                            <div class="small text-uppercase fw-bold" style="color:#6c757d;">Median</div>
-                            <div class="fs-5 fw-bold" id="gacRawBadgeChartMedian">—</div>
-                            <hr class="my-2">
-                            <div class="small text-uppercase fw-bold" style="color:#198754;">Lowest</div>
-                            <div class="fs-5 fw-bold" id="gacRawBadgeChartLowest">—</div>
+                        <div id="gacRawBadgeChartRefPanel" style="width:100px;display:flex;flex-direction:column;justify-content:center;gap:8px;padding:6px 8px;border-left:1px solid #e9ecef;background:#f8f9fa;border-radius:0 4px 4px 0;">
+                            <div style="text-align:center;">
+                                <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#dc3545;margin-bottom:1px;">Highest</div>
+                                <div id="gacRawBadgeChartHighest" style="font-size:13px;font-weight:700;color:#dc3545;">-</div>
+                            </div>
+                            <div style="text-align:center;border-top:1px dashed #adb5bd;border-bottom:1px dashed #adb5bd;padding:4px 0;">
+                                <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#6c757d;margin-bottom:1px;">Median</div>
+                                <div id="gacRawBadgeChartMedian" style="font-size:13px;font-weight:700;color:#6c757d;">-</div>
+                            </div>
+                            <div style="text-align:center;">
+                                <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#198754;margin-bottom:1px;">Lowest</div>
+                                <div id="gacRawBadgeChartLowest" style="font-size:13px;font-weight:700;color:#198754;">-</div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -716,8 +770,11 @@
             const gacRawU7PieDistribUrl = @json(route('google.shopping.campaigns.u7.distribution'));
             const gacRawU7PieHistoryUrl = @json(route('google.shopping.campaigns.u7.history'));
             const gacRawNegKwUrl = @json(route('google.shopping.campaigns.negatives'));
+            const TABULATOR_COLUMN_CHANNEL = 'google_shopping';
+            const TABULATOR_COLUMN_VISIBILITY_URL = @json(url('/tabulator-column-visibility'));
             window.gacRawRule = @json($googleShoppingRule);
             let table;
+            let gacColVisReady = false;
             let gacRawU7PieChart = null;
             let gacRawU7PieRefreshTimer = null;
             let gacRawBadgeChart = null;
@@ -1789,11 +1846,141 @@
                 });
             }
 
+            /*
+             * Column visibility — same shared /tabulator-column-visibility endpoint as
+             * Amazon Analytics (channel_tabulator_column_settings, channel = google_shopping).
+             * autoColumns only materializes fields after the first ajax payload, so we wait
+             * for dataLoaded before apply/build.
+             */
+            function gacCsrfToken() {
+                return (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+            }
+
+            function buildColumnDropdown() {
+                const menu = document.getElementById('column-dropdown-menu');
+                if (!menu || !table) return;
+                menu.innerHTML = '';
+
+                fetch(TABULATOR_COLUMN_VISIBILITY_URL + '?channel=' + encodeURIComponent(TABULATOR_COLUMN_CHANNEL), {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': gacCsrfToken(),
+                    },
+                })
+                    .then(function(res) { return res.json(); })
+                    .then(function(savedVisibility) {
+                        const map = (savedVisibility && typeof savedVisibility === 'object') ? savedVisibility : {};
+                        table.getColumns().forEach(function(col) {
+                            const def = col.getDefinition();
+                            const field = def.field;
+                            if (!field || field === '__gac_select') return;
+
+                            const isVisible = Object.prototype.hasOwnProperty.call(map, field)
+                                ? (map[field] !== false)
+                                : col.isVisible();
+                            const title = def.title || field;
+                            const li = document.createElement('li');
+                            li.innerHTML =
+                                '<label class="dropdown-item"><input type="checkbox" ' +
+                                (isVisible ? 'checked' : '') +
+                                ' data-field="' + String(field).replace(/"/g, '&quot;') + '"> ' +
+                                String(title).replace(/</g, '&lt;') + '</label>';
+                            menu.appendChild(li);
+                        });
+                    })
+                    .catch(function(err) { console.error('Error loading column visibility:', err); });
+            }
+
+            function saveColumnVisibilityToServer() {
+                if (!table) return;
+                const visibility = {};
+                table.getColumns().forEach(function(col) {
+                    const field = col.getDefinition().field;
+                    if (field && field !== '__gac_select') {
+                        visibility[field] = col.isVisible();
+                    }
+                });
+
+                fetch(TABULATOR_COLUMN_VISIBILITY_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': gacCsrfToken(),
+                    },
+                    body: JSON.stringify({
+                        channel: TABULATOR_COLUMN_CHANNEL,
+                        visibility: visibility,
+                    }),
+                }).catch(function(err) { console.error('Error saving column visibility:', err); });
+            }
+
+            function applyColumnVisibilityFromServer() {
+                if (!table) return Promise.resolve();
+                return fetch(TABULATOR_COLUMN_VISIBILITY_URL + '?channel=' + encodeURIComponent(TABULATOR_COLUMN_CHANNEL), {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': gacCsrfToken(),
+                    },
+                })
+                    .then(function(res) { return res.json(); })
+                    .then(function(savedVisibility) {
+                        if (!savedVisibility || typeof savedVisibility !== 'object') return;
+                        table.getColumns().forEach(function(col) {
+                            const field = col.getDefinition().field;
+                            if (!field || field === '__gac_select') return;
+                            if (!Object.prototype.hasOwnProperty.call(savedVisibility, field)) return;
+                            if (savedVisibility[field]) {
+                                col.show();
+                            } else {
+                                col.hide();
+                            }
+                        });
+                    })
+                    .catch(function(err) { console.error('Error applying column visibility:', err); });
+            }
+
+            function gacEnsureColumnVisibilityUi() {
+                if (!table || typeof table.getColumns !== 'function') return;
+                if (table.getColumns().filter(function(c) {
+                    var f = c.getDefinition().field;
+                    return f && f !== '__gac_select';
+                }).length === 0) {
+                    return;
+                }
+                if (gacColVisReady) return;
+                gacColVisReady = true;
+                applyColumnVisibilityFromServer().then(buildColumnDropdown);
+            }
+
+            var gacColMenu = document.getElementById('column-dropdown-menu');
+            if (gacColMenu) {
+                gacColMenu.addEventListener('click', function(e) {
+                    // Keep the menu open while toggling checkboxes.
+                    e.stopPropagation();
+                });
+                gacColMenu.addEventListener('change', function(e) {
+                    if (!table || e.target.type !== 'checkbox') return;
+                    var field = e.target.getAttribute('data-field');
+                    if (!field) return;
+                    var col = table.getColumn(field);
+                    if (!col) return;
+                    if (e.target.checked) {
+                        col.show();
+                    } else {
+                        col.hide();
+                    }
+                    saveColumnVisibilityToServer();
+                });
+            }
+
             table.on('pageLoaded', function() {
                 gacRawRefreshTableUiSoon();
             });
             table.on('dataLoaded', function() {
                 gacRawRefreshTableUiSoon();
+                gacEnsureColumnVisibilityUi();
             });
 
             table.on('dataLoadError', function(error) {
@@ -2389,10 +2576,12 @@
 
             function gacRawLoadBadgeChart(metric, label) {
                 var rangeEl = document.getElementById('gacRawBadgeChartRange');
-                var days = parseInt((rangeEl && rangeEl.value) || '32', 10) || 32;
+                var days = parseInt((rangeEl && rangeEl.value) || '30', 10) || 30;
                 var titleEl = document.getElementById('gacRawBadgeChartTitle');
                 if (titleEl) {
-                    titleEl.textContent = (label || metric.toUpperCase()) + ' (Daily L' + days + ')';
+                    // Same title pattern as all-marketplace-master: "… (Rolling L30)"
+                    var rangeLabel = days === 0 ? 'Lifetime' : ('L' + days);
+                    titleEl.textContent = 'Google Shopping - ' + (label || metric.toUpperCase()) + ' (Rolling ' + rangeLabel + ')';
                 }
 
                 var params = new URLSearchParams({ metric: metric, days: String(days) });
@@ -2424,9 +2613,16 @@
                     gacRawBadgeChart.destroy();
                     gacRawBadgeChart = null;
                 }
+
+                var refRed = '#dc3545';
+                var refGray = '#6c757d';
+                var refGreen = '#198754';
                 ['gacRawBadgeChartHighest', 'gacRawBadgeChartMedian', 'gacRawBadgeChartLowest'].forEach(function(id) {
                     var el = document.getElementById(id);
-                    if (el) el.textContent = '—';
+                    if (el) {
+                        el.textContent = '-';
+                        el.style.color = refGray;
+                    }
                 });
 
                 if (!data.length) {
@@ -2439,33 +2635,49 @@
 
                 var labels = data.map(function(row) { return row.date; });
                 var values = data.map(function(row) { return Number(row.value) || 0; });
-                var min = Math.min.apply(Math, values);
-                var max = Math.max.apply(Math, values);
+                var dataMin = Math.min.apply(Math, values);
+                var dataMax = Math.max.apply(Math, values);
                 var sorted = values.slice().sort(function(a, b) { return a - b; });
                 var mid = Math.floor(sorted.length / 2);
-                var median = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-                var range = (max - min) || 1;
-                var yMin = Math.max(0, min - range * 0.1);
-                var yMax = max + range * 0.1;
-                var red = '#dc3545';
-                var green = '#198754';
-                var gray = '#6c757d';
-                var inverted = metric === 'acos';
+                var median = sorted.length % 2
+                    ? sorted[mid]
+                    : (sorted[mid - 1] + sorted[mid]) / 2;
+                var range = (dataMax - dataMin) || 1;
+                var yMin = Math.max(0, dataMin - range * 0.1);
+                var yMax = dataMax + range * 0.1;
+                var inverted = (metric === 'acos');
 
-                function setStat(id, value) {
-                    var el = document.getElementById(id);
-                    if (!el) return;
-                    el.textContent = gacRawFormatBadgeChartValue(metric, value);
+                function fmtVal(v) {
+                    return gacRawFormatBadgeChartValue(metric, v);
                 }
-                setStat('gacRawBadgeChartHighest', max);
-                setStat('gacRawBadgeChartMedian', median);
-                setStat('gacRawBadgeChartLowest', min);
 
-                var pointColors = values.map(function(value, i) {
-                    if (i === 0) return gray;
-                    if (value === values[i - 1]) return gray;
-                    if (inverted) return value < values[i - 1] ? green : red;
-                    return value > values[i - 1] ? green : red;
+                // Right-side panel — same color rules as all-marketplace-master
+                var highestEl = document.getElementById('gacRawBadgeChartHighest');
+                var medianEl = document.getElementById('gacRawBadgeChartMedian');
+                var lowestEl = document.getElementById('gacRawBadgeChartLowest');
+                if (highestEl) {
+                    highestEl.textContent = fmtVal(dataMax);
+                    highestEl.style.color = dataMax === 0 ? refGreen : (dataMax > 0 ? refRed : refGray);
+                }
+                if (medianEl) {
+                    medianEl.textContent = fmtVal(median);
+                    medianEl.style.color = median === 0 ? refGreen : (median > 0 ? refRed : refGray);
+                }
+                if (lowestEl) {
+                    lowestEl.textContent = fmtVal(dataMin);
+                    lowestEl.style.color = dataMin === 0 ? refGreen : (dataMin > 0 ? refRed : refGray);
+                }
+
+                // Dot colors: green=UP red=DOWN; inverted for ACOS (lower is better)
+                var pointColors = values.map(function(v, i) {
+                    if (i === 0) return '#6c757d';
+                    if (inverted) {
+                        return v < values[i - 1] ? '#28a745' : (v > values[i - 1] ? '#dc3545' : '#6c757d');
+                    }
+                    return v > values[i - 1] ? '#28a745' : (v < values[i - 1] ? '#dc3545' : '#6c757d');
+                });
+                var labelColors = values.map(function(v) {
+                    return v === 0 ? '#198754' : (v > 0 ? '#dc3545' : '#6c757d');
                 });
 
                 var medianLinePlugin = {
@@ -2474,15 +2686,36 @@
                         var yScale = chart.scales.y;
                         var xScale = chart.scales.x;
                         var ctx = chart.ctx;
-                        var y = yScale.getPixelForValue(median);
+                        var yPixel = yScale.getPixelForValue(median);
                         ctx.save();
                         ctx.setLineDash([6, 4]);
-                        ctx.strokeStyle = gray;
+                        ctx.strokeStyle = '#6c757d';
                         ctx.lineWidth = 1.2;
                         ctx.beginPath();
-                        ctx.moveTo(xScale.left, y);
-                        ctx.lineTo(xScale.right, y);
+                        ctx.moveTo(xScale.left, yPixel);
+                        ctx.lineTo(xScale.right, yPixel);
                         ctx.stroke();
+                        ctx.restore();
+                    }
+                };
+
+                // Value labels above each point (same as all-marketplace-master)
+                var valueLabelsPlugin = {
+                    id: 'gacRawValueLabels',
+                    afterDatasetsDraw: function(chart) {
+                        var dataset = chart.data.datasets[0];
+                        var meta = chart.getDatasetMeta(0);
+                        var ctx = chart.ctx;
+                        ctx.save();
+                        ctx.font = 'bold 11px Inter, system-ui, sans-serif';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'bottom';
+                        meta.data.forEach(function(point, i) {
+                            var val = dataset.data[i];
+                            var offsetY = (i % 2 === 0) ? -10 : -20;
+                            ctx.fillStyle = labelColors[i];
+                            ctx.fillText(fmtVal(val), point.x, point.y + offsetY);
+                        });
                         ctx.restore();
                     }
                 };
@@ -2494,27 +2727,44 @@
                         datasets: [{
                             label: gacRawActiveBadgeLabel,
                             data: values,
-                            backgroundColor: 'rgba(13,110,253,0.08)',
-                            borderColor: '#0d6efd',
-                            borderWidth: 1.6,
+                            backgroundColor: 'rgba(108,117,125,0.08)',
+                            borderColor: '#adb5bd',
+                            borderWidth: 1.5,
                             fill: true,
                             tension: 0.3,
                             pointRadius: 3,
                             pointHoverRadius: 5,
                             pointBackgroundColor: pointColors,
-                            pointBorderColor: pointColors
+                            pointBorderColor: pointColors,
+                            pointBorderWidth: 1.5
                         }]
                     },
+                    plugins: [medianLinePlugin, valueLabelsPlugin],
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
-                        layout: { padding: { top: 20, right: 16, bottom: 10, left: 16 } },
+                        layout: { padding: { top: 26, left: 2, right: 2, bottom: 2 } },
                         plugins: {
                             legend: { display: false },
                             tooltip: {
+                                titleFont: { size: 10 },
+                                bodyFont: { size: 10 },
+                                padding: 6,
                                 callbacks: {
-                                    label: function(ctx) {
-                                        return gacRawFormatBadgeChartValue(metric, ctx.parsed.y);
+                                    label: function(context) {
+                                        var idx = context.dataIndex;
+                                        var parts = ['Value: ' + fmtVal(context.raw)];
+                                        if (idx > 0) {
+                                            var diff = context.raw - values[idx - 1];
+                                            var arrow = diff < 0 ? '▼' : (diff > 0 ? '▲' : '▬');
+                                            parts.push('vs Yesterday: ' + arrow + ' ' + fmtVal(Math.abs(diff)));
+                                        }
+                                        if (idx >= 7) {
+                                            var diff7 = context.raw - values[idx - 7];
+                                            var arrow7 = diff7 < 0 ? '▼' : (diff7 > 0 ? '▲' : '▬');
+                                            parts.push('vs 7d Ago: ' + arrow7 + ' ' + fmtVal(Math.abs(diff7)));
+                                        }
+                                        return parts;
                                     }
                                 }
                             }
@@ -2524,15 +2774,23 @@
                                 min: yMin,
                                 max: yMax,
                                 ticks: {
+                                    font: { size: 9 },
                                     callback: function(value) {
-                                        return gacRawFormatBadgeChartValue(metric, value);
+                                        return fmtVal(value);
                                     }
                                 }
                             },
-                            x: { ticks: { autoSkip: false, maxRotation: 60, minRotation: 45 } }
+                            x: {
+                                ticks: {
+                                    maxRotation: 45,
+                                    minRotation: 45,
+                                    autoSkip: false,
+                                    maxTicksLimit: Math.max(labels.length, 31),
+                                    font: { size: 8 }
+                                }
+                            }
                         }
-                    },
-                    plugins: [medianLinePlugin]
+                    }
                 });
             }
 
