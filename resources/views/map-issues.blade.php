@@ -13,84 +13,53 @@
             font-weight: 600;
         }
 
-        /* Reverb badge colors (purple) */
-        .badge.rv-off {
-            background-color: #6f42c1 !important;
+        .map-channel-dd .btn {
+            color: #fff !important;
+            font-weight: 700;
+            border: 0;
+            white-space: nowrap;
         }
 
-        .badge.rv-on {
-            background-color: #3d1f73 !important;
-        }
-
-        /* Macy's badge colors (red) */
-        .badge.mc-off {
-            background-color: #c8102e !important;
-        }
-
-        .badge.mc-on {
-            background-color: #7a0a1c !important;
-        }
-
-        /* Best Buy badge colors (blue) */
-        .badge.bb-off {
-            background-color: #0046be !important;
-        }
-
-        .badge.bb-on {
-            background-color: #00257a !important;
-        }
-
-        /* Tiendamia badge colors (teal) */
-        .badge.tm-off {
-            background-color: #009688 !important;
-        }
-
-        .badge.tm-on {
-            background-color: #00574d !important;
-        }
-
-        /* Temu badge colors (orange) */
-        .badge.tu-off {
-            background-color: #fb6c1e !important;
-        }
-
-        .badge.tu-on {
-            background-color: #a8430c !important;
-        }
-
-        /* Shein badge colors (black) */
-        .badge.sh-off {
-            background-color: #333333 !important;
-        }
-
-        .badge.sh-on {
-            background-color: #000000 !important;
-        }
-
-        /* Newegg badge colors (orange) */
-        .badge.ne-off {
-            background-color: #f59e0b !important;
-        }
-
-        .badge.ne-on {
-            background-color: #b45309 !important;
-        }
-
-        /* AliExpress badge colors (red) */
-        .badge.ali-off {
-            background-color: #e62e04 !important;
-        }
-
-        .badge.ali-on {
-            background-color: #a31f02 !important;
-        }
-
-        /* Active badge outline */
-        .badge.map-active {
+        .map-channel-dd .btn.map-active {
             box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.55);
             outline: 2px solid #fff;
             outline-offset: -1px;
         }
+
+        .map-channel-dd .dropdown-item.active,
+        .map-channel-dd .dropdown-item:active {
+            background-color: #343a40;
+        }
+
+        .map-channel-dd .dropdown-menu {
+            min-width: 9rem;
+        }
+
+        .map-ch-ebay { background-color: #6c757d !important; }
+        .map-ch-ebay2 { background-color: #0dcaf0 !important; color: #000 !important; }
+        .map-ch-ebay3 { background-color: #198754 !important; }
+        .map-ch-amazon { background-color: #ffc107 !important; color: #000 !important; }
+        .map-ch-reverb { background-color: #6f42c1 !important; }
+        .map-ch-macys { background-color: #c8102e !important; }
+        .map-ch-bestbuy { background-color: #0046be !important; }
+        .map-ch-tiendamia { background-color: #009688 !important; }
+        .map-ch-temu { background-color: #fb6c1e !important; }
+        .map-ch-shein { background-color: #333 !important; }
+        .map-ch-newegg { background-color: #f59e0b !important; color: #000 !important; }
+        .map-ch-aliexpress { background-color: #e62e04 !important; }
+
+        .map-ch-ebay.map-active { background-color: #dc3545 !important; color: #fff !important; }
+        .map-ch-ebay2.map-active { background-color: #0d6efd !important; color: #fff !important; }
+        .map-ch-ebay3.map-active { background-color: #212529 !important; color: #fff !important; }
+        .map-ch-amazon.map-active { background-color: #dc3545 !important; color: #fff !important; }
+        .map-ch-reverb.map-active { background-color: #3d1f73 !important; }
+        .map-ch-macys.map-active { background-color: #7a0a1c !important; }
+        .map-ch-bestbuy.map-active { background-color: #00257a !important; }
+        .map-ch-tiendamia.map-active { background-color: #00574d !important; }
+        .map-ch-temu.map-active { background-color: #a8430c !important; }
+        .map-ch-shein.map-active { background-color: #000 !important; }
+        .map-ch-newegg.map-active { background-color: #b45309 !important; color: #fff !important; }
+        .map-ch-aliexpress.map-active { background-color: #a31f02 !important; }
     </style>
 @endsection
 
@@ -101,115 +70,127 @@
         <div class="col-12">
             <div class="card">
                 <div class="card-body">
-                    <div class="mb-3 d-flex gap-2 flex-wrap">
-                        <span class="badge bg-secondary fs-6 p-2" id="not-map-count-badge"
-                            style="color: white; font-weight: bold; cursor: pointer;"
-                            title="eBay Not Mapped — listed on eBay but INV does not match eBay Inv">E NP: 0</span>
-                        <span class="badge bg-secondary fs-6 p-2" id="mismatch-count-badge"
-                            style="color: white; font-weight: bold; cursor: pointer;"
-                            title="eBay SKU Mismatch — eBay SKU does not exactly match the Product Master SKU">E SM: 0</span>
-                        <span class="badge bg-secondary fs-6 p-2" id="missing-listing-count-badge"
-                            style="color: white; font-weight: bold; cursor: pointer;"
-                            title="eBay Missing Listing — not listed on eBay, marked REQ, INV > 0">E NL: 0</span>
-                        <span class="badge bg-info fs-6 p-2" id="ebay2-not-map-count-badge"
-                            style="color: white; font-weight: bold; cursor: pointer;"
-                            title="eBay 2 Not Mapped — listed on eBay 2 but INV does not match eBay2 Inv">E2 NP: 0</span>
-                        <span class="badge bg-info fs-6 p-2" id="ebay2-mismatch-count-badge"
-                            style="color: white; font-weight: bold; cursor: pointer;"
-                            title="eBay 2 SKU Mismatch — eBay 2 SKU does not exactly match the Product Master SKU">E2 SM: 0</span>
-                        <span class="badge bg-info fs-6 p-2" id="ebay2-missing-listing-count-badge"
-                            style="color: white; font-weight: bold; cursor: pointer;"
-                            title="eBay 2 Missing Listing — not listed on eBay 2, marked REQ, INV > 0">E2 NL: 0</span>
-                        <span class="badge bg-success fs-6 p-2" id="ebay3-not-map-count-badge"
-                            style="color: white; font-weight: bold; cursor: pointer;"
-                            title="eBay 3 Not Mapped — listed on eBay 3 but INV does not match eBay3 Inv">E3 NP: 0</span>
-                        <span class="badge bg-success fs-6 p-2" id="ebay3-mismatch-count-badge"
-                            style="color: white; font-weight: bold; cursor: pointer;"
-                            title="eBay 3 SKU Mismatch — eBay 3 SKU does not exactly match the Product Master SKU">E3 SM: 0</span>
-                        <span class="badge bg-success fs-6 p-2" id="ebay3-missing-listing-count-badge"
-                            style="color: white; font-weight: bold; cursor: pointer;"
-                            title="eBay 3 Missing Listing — not listed on eBay 3, marked REQ, INV > 0">E3 NL: 0</span>
-                        <span class="badge bg-warning fs-6 p-2" id="amazon-not-map-count-badge"
-                            style="color: white; font-weight: bold; cursor: pointer;"
-                            title="Amazon Not Mapped — listed on Amazon but INV does not match Amazon Inv">A NP: 0</span>
-                        <span class="badge bg-warning fs-6 p-2" id="amazon-mismatch-count-badge"
-                            style="color: white; font-weight: bold; cursor: pointer;"
-                            title="Amazon SKU Mismatch — Amazon SKU does not exactly match the Product Master SKU">A SM: 0</span>
-                        <span class="badge bg-warning fs-6 p-2" id="amazon-missing-listing-count-badge"
-                            style="color: white; font-weight: bold; cursor: pointer;"
-                            title="Amazon Missing Listing — not listed on Amazon, marked REQ, INV > 0">A NL: 0</span>
-                        <span class="badge rv-off fs-6 p-2" id="reverb-not-map-count-badge"
-                            style="color: white; font-weight: bold; cursor: pointer;"
-                            title="Reverb Not Mapped — listed on Reverb but INV does not match Reverb Inv">R NP: 0</span>
-                        <span class="badge rv-off fs-6 p-2" id="reverb-mismatch-count-badge"
-                            style="color: white; font-weight: bold; cursor: pointer;"
-                            title="Reverb SKU Mismatch — Reverb SKU does not exactly match the Product Master SKU">R SM: 0</span>
-                        <span class="badge rv-off fs-6 p-2" id="reverb-missing-listing-count-badge"
-                            style="color: white; font-weight: bold; cursor: pointer;"
-                            title="Reverb Missing Listing — not listed on Reverb, marked REQ, INV > 0">R NL: 0</span>
-                        <span class="badge mc-off fs-6 p-2" id="macys-not-map-count-badge"
-                            style="color: white; font-weight: bold; cursor: pointer;"
-                            title="Macy's Not Mapped — listed on Macy's but INV does not match Macy's Inv">M NP: 0</span>
-                        <span class="badge mc-off fs-6 p-2" id="macys-mismatch-count-badge"
-                            style="color: white; font-weight: bold; cursor: pointer;"
-                            title="Macy's SKU Mismatch — Macy's SKU does not exactly match the Product Master SKU">M SM: 0</span>
-                        <span class="badge mc-off fs-6 p-2" id="macys-missing-listing-count-badge"
-                            style="color: white; font-weight: bold; cursor: pointer;"
-                            title="Macy's Missing Listing — not listed on Macy's, marked REQ, INV > 0">M NL: 0</span>
-                        <span class="badge bb-off fs-6 p-2" id="bestbuy-not-map-count-badge"
-                            style="color: white; font-weight: bold; cursor: pointer;"
-                            title="Best Buy Not Mapped — listed on Best Buy but INV does not match Best Buy Inv">BB NP: 0</span>
-                        <span class="badge bb-off fs-6 p-2" id="bestbuy-mismatch-count-badge"
-                            style="color: white; font-weight: bold; cursor: pointer;"
-                            title="Best Buy SKU Mismatch — Best Buy SKU does not exactly match the Product Master SKU">BB SM: 0</span>
-                        <span class="badge bb-off fs-6 p-2" id="bestbuy-missing-listing-count-badge"
-                            style="color: white; font-weight: bold; cursor: pointer;"
-                            title="Best Buy Missing Listing — not listed on Best Buy, marked REQ, INV > 0">BB NL: 0</span>
-                        <span class="badge tm-off fs-6 p-2" id="tiendamia-not-map-count-badge"
-                            style="color: white; font-weight: bold; cursor: pointer;"
-                            title="Tiendamia Not Mapped — listed on Tiendamia but INV does not match Tiendamia Inv">T NP: 0</span>
-                        <span class="badge tm-off fs-6 p-2" id="tiendamia-mismatch-count-badge"
-                            style="color: white; font-weight: bold; cursor: pointer;"
-                            title="Tiendamia SKU Mismatch — Tiendamia SKU does not exactly match the Product Master SKU">T SM: 0</span>
-                        <span class="badge tm-off fs-6 p-2" id="tiendamia-missing-listing-count-badge"
-                            style="color: white; font-weight: bold; cursor: pointer;"
-                            title="Tiendamia Missing Listing — not listed on Tiendamia, marked REQ, INV > 0">T NL: 0</span>
-                        <span class="badge tu-off fs-6 p-2" id="temu-not-map-count-badge"
-                            style="color: white; font-weight: bold; cursor: pointer;"
-                            title="Temu Not Mapped — listed on Temu but INV does not match Temu Inv">TU NP: 0</span>
-                        <span class="badge tu-off fs-6 p-2" id="temu-mismatch-count-badge"
-                            style="color: white; font-weight: bold; cursor: pointer;"
-                            title="Temu SKU Mismatch — Temu SKU does not exactly match the Product Master SKU">TU SM: 0</span>
-                        <span class="badge tu-off fs-6 p-2" id="temu-missing-listing-count-badge"
-                            style="color: white; font-weight: bold; cursor: pointer;"
-                            title="Temu Missing Listing — not listed on Temu, marked REQ, INV > 0">TU NL: 0</span>
-                        <span class="badge sh-off fs-6 p-2" id="shein-not-map-count-badge"
-                            style="color: white; font-weight: bold; cursor: pointer;"
-                            title="Shein Not Mapped — listed on Shein but INV does not match Shein Inv">SH NP: 0</span>
-                        <span class="badge sh-off fs-6 p-2" id="shein-mismatch-count-badge"
-                            style="color: white; font-weight: bold; cursor: pointer;"
-                            title="Shein SKU Mismatch — Shein SKU does not exactly match the Product Master SKU">SH SM: 0</span>
-                        <span class="badge sh-off fs-6 p-2" id="shein-missing-listing-count-badge"
-                            style="color: white; font-weight: bold; cursor: pointer;"
-                            title="Shein Missing Listing — not listed on Shein, INV > 0 (Shein has no NR status)">SH NL: 0</span>
-                        <span class="badge ne-off fs-6 p-2" id="newegg-not-map-count-badge"
-                            style="color: white; font-weight: bold; cursor: pointer;"
-                            title="Newegg Not Mapped — listed on Newegg but INV does not match Newegg Inv">NE NP: 0</span>
-                        <span class="badge ne-off fs-6 p-2" id="newegg-mismatch-count-badge"
-                            style="color: white; font-weight: bold; cursor: pointer;"
-                            title="Newegg SKU Mismatch — Newegg SKU does not exactly match the Product Master SKU">NE SM: 0</span>
-                        <span class="badge ne-off fs-6 p-2" id="newegg-missing-listing-count-badge"
-                            style="color: white; font-weight: bold; cursor: pointer;"
-                            title="Newegg Missing Listing — not listed on Newegg, marked REQ, INV > 0">NE NL: 0</span>
-                        <span class="badge ali-off fs-6 p-2" id="aliexpress-not-map-count-badge"
-                            style="color: white; font-weight: bold; cursor: pointer;"
-                            title="AliExpress Not Mapped — listed on AliExpress but INV does not match Ali Inv">ALI NP: 0</span>
-                        <span class="badge ali-off fs-6 p-2" id="aliexpress-mismatch-count-badge"
-                            style="color: white; font-weight: bold; cursor: pointer;"
-                            title="AliExpress SKU Mismatch — AliExpress SKU does not exactly match the Product Master SKU">ALI SM: 0</span>
-                        <span class="badge ali-off fs-6 p-2" id="aliexpress-missing-listing-count-badge"
-                            style="color: white; font-weight: bold; cursor: pointer;"
-                            title="AliExpress Missing Listing — not listed on AliExpress, marked REQ, INV > 0">ALI NL: 0</span>
+                    <div class="mb-3 d-flex gap-2 flex-wrap" id="map-channel-filters">
+                        <div class="dropdown map-channel-dd">
+                            <button class="btn btn-sm dropdown-toggle map-ch-ebay" type="button" data-bs-toggle="dropdown" data-channel="ebay" aria-expanded="false" title="eBay filters">
+                                <span class="map-ch-label">E</span>
+                            </button>
+                            <ul class="dropdown-menu">
+                                <li><button type="button" class="dropdown-item d-flex justify-content-between" data-filter="enp" title="Not Mapped — listed but INV does not match eBay Inv"><span>NM</span><span class="fw-bold ms-3" data-count="nm">0</span></button></li>
+                                <li><button type="button" class="dropdown-item d-flex justify-content-between" data-filter="esm" title="SKU Mismatch"><span>SM</span><span class="fw-bold ms-3" data-count="sm">0</span></button></li>
+                                <li><button type="button" class="dropdown-item d-flex justify-content-between" data-filter="eml" title="Missing Listing — not listed, REQ, INV &gt; 0"><span>NL</span><span class="fw-bold ms-3" data-count="nl">0</span></button></li>
+                            </ul>
+                        </div>
+                        <div class="dropdown map-channel-dd">
+                            <button class="btn btn-sm dropdown-toggle map-ch-ebay2" type="button" data-bs-toggle="dropdown" data-channel="ebay2" aria-expanded="false" title="eBay 2 filters">
+                                <span class="map-ch-label">E2</span>
+                            </button>
+                            <ul class="dropdown-menu">
+                                <li><button type="button" class="dropdown-item d-flex justify-content-between" data-filter="e2np" title="Not Mapped"><span>NM</span><span class="fw-bold ms-3" data-count="nm">0</span></button></li>
+                                <li><button type="button" class="dropdown-item d-flex justify-content-between" data-filter="e2sm" title="SKU Mismatch"><span>SM</span><span class="fw-bold ms-3" data-count="sm">0</span></button></li>
+                                <li><button type="button" class="dropdown-item d-flex justify-content-between" data-filter="e2ml" title="Missing Listing"><span>NL</span><span class="fw-bold ms-3" data-count="nl">0</span></button></li>
+                            </ul>
+                        </div>
+                        <div class="dropdown map-channel-dd">
+                            <button class="btn btn-sm dropdown-toggle map-ch-ebay3" type="button" data-bs-toggle="dropdown" data-channel="ebay3" aria-expanded="false" title="eBay 3 filters">
+                                <span class="map-ch-label">E3</span>
+                            </button>
+                            <ul class="dropdown-menu">
+                                <li><button type="button" class="dropdown-item d-flex justify-content-between" data-filter="e3np" title="Not Mapped"><span>NM</span><span class="fw-bold ms-3" data-count="nm">0</span></button></li>
+                                <li><button type="button" class="dropdown-item d-flex justify-content-between" data-filter="e3sm" title="SKU Mismatch"><span>SM</span><span class="fw-bold ms-3" data-count="sm">0</span></button></li>
+                                <li><button type="button" class="dropdown-item d-flex justify-content-between" data-filter="e3ml" title="Missing Listing"><span>NL</span><span class="fw-bold ms-3" data-count="nl">0</span></button></li>
+                            </ul>
+                        </div>
+                        <div class="dropdown map-channel-dd">
+                            <button class="btn btn-sm dropdown-toggle map-ch-amazon" type="button" data-bs-toggle="dropdown" data-channel="amazon" aria-expanded="false" title="Amazon filters">
+                                <span class="map-ch-label">Amz</span>
+                            </button>
+                            <ul class="dropdown-menu">
+                                <li><button type="button" class="dropdown-item d-flex justify-content-between" data-filter="anp" title="Not Mapped"><span>NM</span><span class="fw-bold ms-3" data-count="nm">0</span></button></li>
+                                <li><button type="button" class="dropdown-item d-flex justify-content-between" data-filter="asm" title="SKU Mismatch"><span>SM</span><span class="fw-bold ms-3" data-count="sm">0</span></button></li>
+                                <li><button type="button" class="dropdown-item d-flex justify-content-between" data-filter="aml" title="Missing Listing"><span>NL</span><span class="fw-bold ms-3" data-count="nl">0</span></button></li>
+                            </ul>
+                        </div>
+                        <div class="dropdown map-channel-dd">
+                            <button class="btn btn-sm dropdown-toggle map-ch-reverb" type="button" data-bs-toggle="dropdown" data-channel="reverb" aria-expanded="false" title="Reverb filters">
+                                <span class="map-ch-label">R</span>
+                            </button>
+                            <ul class="dropdown-menu">
+                                <li><button type="button" class="dropdown-item d-flex justify-content-between" data-filter="rnp" title="Not Mapped"><span>NM</span><span class="fw-bold ms-3" data-count="nm">0</span></button></li>
+                                <li><button type="button" class="dropdown-item d-flex justify-content-between" data-filter="rsm" title="SKU Mismatch"><span>SM</span><span class="fw-bold ms-3" data-count="sm">0</span></button></li>
+                                <li><button type="button" class="dropdown-item d-flex justify-content-between" data-filter="rml" title="Missing Listing"><span>NL</span><span class="fw-bold ms-3" data-count="nl">0</span></button></li>
+                            </ul>
+                        </div>
+                        <div class="dropdown map-channel-dd">
+                            <button class="btn btn-sm dropdown-toggle map-ch-macys" type="button" data-bs-toggle="dropdown" data-channel="macys" aria-expanded="false" title="Macy's filters">
+                                <span class="map-ch-label">M</span>
+                            </button>
+                            <ul class="dropdown-menu">
+                                <li><button type="button" class="dropdown-item d-flex justify-content-between" data-filter="mnp" title="Not Mapped"><span>NM</span><span class="fw-bold ms-3" data-count="nm">0</span></button></li>
+                                <li><button type="button" class="dropdown-item d-flex justify-content-between" data-filter="msm" title="SKU Mismatch"><span>SM</span><span class="fw-bold ms-3" data-count="sm">0</span></button></li>
+                                <li><button type="button" class="dropdown-item d-flex justify-content-between" data-filter="mml" title="Missing Listing"><span>NL</span><span class="fw-bold ms-3" data-count="nl">0</span></button></li>
+                            </ul>
+                        </div>
+                        <div class="dropdown map-channel-dd">
+                            <button class="btn btn-sm dropdown-toggle map-ch-bestbuy" type="button" data-bs-toggle="dropdown" data-channel="bestbuy" aria-expanded="false" title="Best Buy filters">
+                                <span class="map-ch-label">BB</span>
+                            </button>
+                            <ul class="dropdown-menu">
+                                <li><button type="button" class="dropdown-item d-flex justify-content-between" data-filter="bbnp" title="Not Mapped"><span>NM</span><span class="fw-bold ms-3" data-count="nm">0</span></button></li>
+                                <li><button type="button" class="dropdown-item d-flex justify-content-between" data-filter="bbsm" title="SKU Mismatch"><span>SM</span><span class="fw-bold ms-3" data-count="sm">0</span></button></li>
+                                <li><button type="button" class="dropdown-item d-flex justify-content-between" data-filter="bbml" title="Missing Listing"><span>NL</span><span class="fw-bold ms-3" data-count="nl">0</span></button></li>
+                            </ul>
+                        </div>
+                        <div class="dropdown map-channel-dd">
+                            <button class="btn btn-sm dropdown-toggle map-ch-tiendamia" type="button" data-bs-toggle="dropdown" data-channel="tiendamia" aria-expanded="false" title="Tiendamia filters">
+                                <span class="map-ch-label">TDM</span>
+                            </button>
+                            <ul class="dropdown-menu">
+                                <li><button type="button" class="dropdown-item d-flex justify-content-between" data-filter="tnp" title="Not Mapped"><span>NM</span><span class="fw-bold ms-3" data-count="nm">0</span></button></li>
+                                <li><button type="button" class="dropdown-item d-flex justify-content-between" data-filter="tsm" title="SKU Mismatch"><span>SM</span><span class="fw-bold ms-3" data-count="sm">0</span></button></li>
+                                <li><button type="button" class="dropdown-item d-flex justify-content-between" data-filter="tml" title="Missing Listing"><span>NL</span><span class="fw-bold ms-3" data-count="nl">0</span></button></li>
+                            </ul>
+                        </div>
+                        <div class="dropdown map-channel-dd">
+                            <button class="btn btn-sm dropdown-toggle map-ch-temu" type="button" data-bs-toggle="dropdown" data-channel="temu" aria-expanded="false" title="Temu filters">
+                                <span class="map-ch-label">TM1</span>
+                            </button>
+                            <ul class="dropdown-menu">
+                                <li><button type="button" class="dropdown-item d-flex justify-content-between" data-filter="tunp" title="Not Mapped"><span>NM</span><span class="fw-bold ms-3" data-count="nm">0</span></button></li>
+                                <li><button type="button" class="dropdown-item d-flex justify-content-between" data-filter="tusm" title="SKU Mismatch"><span>SM</span><span class="fw-bold ms-3" data-count="sm">0</span></button></li>
+                                <li><button type="button" class="dropdown-item d-flex justify-content-between" data-filter="tuml" title="Missing Listing"><span>NL</span><span class="fw-bold ms-3" data-count="nl">0</span></button></li>
+                            </ul>
+                        </div>
+                        <div class="dropdown map-channel-dd">
+                            <button class="btn btn-sm dropdown-toggle map-ch-shein" type="button" data-bs-toggle="dropdown" data-channel="shein" aria-expanded="false" title="Shein filters">
+                                <span class="map-ch-label">SHN</span>
+                            </button>
+                            <ul class="dropdown-menu">
+                                <li><button type="button" class="dropdown-item d-flex justify-content-between" data-filter="shnp" title="Not Mapped"><span>NM</span><span class="fw-bold ms-3" data-count="nm">0</span></button></li>
+                                <li><button type="button" class="dropdown-item d-flex justify-content-between" data-filter="shsm" title="SKU Mismatch"><span>SM</span><span class="fw-bold ms-3" data-count="sm">0</span></button></li>
+                                <li><button type="button" class="dropdown-item d-flex justify-content-between" data-filter="shml" title="Missing Listing"><span>NL</span><span class="fw-bold ms-3" data-count="nl">0</span></button></li>
+                            </ul>
+                        </div>
+                        <div class="dropdown map-channel-dd">
+                            <button class="btn btn-sm dropdown-toggle map-ch-newegg" type="button" data-bs-toggle="dropdown" data-channel="newegg" aria-expanded="false" title="Newegg filters">
+                                <span class="map-ch-label">NE</span>
+                            </button>
+                            <ul class="dropdown-menu">
+                                <li><button type="button" class="dropdown-item d-flex justify-content-between" data-filter="nenp" title="Not Mapped"><span>NM</span><span class="fw-bold ms-3" data-count="nm">0</span></button></li>
+                                <li><button type="button" class="dropdown-item d-flex justify-content-between" data-filter="nesm" title="SKU Mismatch"><span>SM</span><span class="fw-bold ms-3" data-count="sm">0</span></button></li>
+                                <li><button type="button" class="dropdown-item d-flex justify-content-between" data-filter="neml" title="Missing Listing"><span>NL</span><span class="fw-bold ms-3" data-count="nl">0</span></button></li>
+                            </ul>
+                        </div>
+                        <div class="dropdown map-channel-dd">
+                            <button class="btn btn-sm dropdown-toggle map-ch-aliexpress" type="button" data-bs-toggle="dropdown" data-channel="aliexpress" aria-expanded="false" title="AliExpress filters">
+                                <span class="map-ch-label">ALI</span>
+                            </button>
+                            <ul class="dropdown-menu">
+                                <li><button type="button" class="dropdown-item d-flex justify-content-between" data-filter="alinp" title="Not Mapped"><span>NM</span><span class="fw-bold ms-3" data-count="nm">0</span></button></li>
+                                <li><button type="button" class="dropdown-item d-flex justify-content-between" data-filter="alism" title="SKU Mismatch"><span>SM</span><span class="fw-bold ms-3" data-count="sm">0</span></button></li>
+                                <li><button type="button" class="dropdown-item d-flex justify-content-between" data-filter="aliml" title="Missing Listing"><span>NL</span><span class="fw-bold ms-3" data-count="nl">0</span></button></li>
+                            </ul>
+                        </div>
                     </div>
                     <div class="mb-3 d-flex gap-4">
                         <div class="form-check form-switch">
@@ -371,83 +352,137 @@
                 issueModal.show();
             }
 
+            // Per-channel filter keys + API count fields (one dropdown per channel).
+            var channelFilters = {
+                ebay: {
+                    code: 'E',
+                    filters: {
+                        enp: { field: 'is_not_map', countKey: 'not_map_count', type: 'NM' },
+                        esm: { field: 'has_issue', countKey: 'mismatch_count', type: 'SM' },
+                        eml: { field: 'missing_listing', countKey: 'missing_listing_count', type: 'NL' },
+                    },
+                },
+                ebay2: {
+                    code: 'E2',
+                    filters: {
+                        e2np: { field: 'ebay2_not_map', countKey: 'ebay2_not_map_count', type: 'NM' },
+                        e2sm: { field: 'ebay2_mismatch', countKey: 'ebay2_mismatch_count', type: 'SM' },
+                        e2ml: { field: 'ebay2_missing_listing', countKey: 'ebay2_missing_listing_count', type: 'NL' },
+                    },
+                },
+                ebay3: {
+                    code: 'E3',
+                    filters: {
+                        e3np: { field: 'ebay3_not_map', countKey: 'ebay3_not_map_count', type: 'NM' },
+                        e3sm: { field: 'ebay3_mismatch', countKey: 'ebay3_mismatch_count', type: 'SM' },
+                        e3ml: { field: 'ebay3_missing_listing', countKey: 'ebay3_missing_listing_count', type: 'NL' },
+                    },
+                },
+                amazon: {
+                    code: 'Amz',
+                    filters: {
+                        anp: { field: 'amazon_not_map', countKey: 'amazon_not_map_count', type: 'NM' },
+                        asm: { field: 'amazon_mismatch', countKey: 'amazon_mismatch_count', type: 'SM' },
+                        aml: { field: 'amazon_missing_listing', countKey: 'amazon_missing_listing_count', type: 'NL' },
+                    },
+                },
+                reverb: {
+                    code: 'R',
+                    filters: {
+                        rnp: { field: 'reverb_not_map', countKey: 'reverb_not_map_count', type: 'NM' },
+                        rsm: { field: 'reverb_mismatch', countKey: 'reverb_mismatch_count', type: 'SM' },
+                        rml: { field: 'reverb_missing_listing', countKey: 'reverb_missing_listing_count', type: 'NL' },
+                    },
+                },
+                macys: {
+                    code: 'M',
+                    filters: {
+                        mnp: { field: 'macys_not_map', countKey: 'macys_not_map_count', type: 'NM' },
+                        msm: { field: 'macys_mismatch', countKey: 'macys_mismatch_count', type: 'SM' },
+                        mml: { field: 'macys_missing_listing', countKey: 'macys_missing_listing_count', type: 'NL' },
+                    },
+                },
+                bestbuy: {
+                    code: 'BB',
+                    filters: {
+                        bbnp: { field: 'bestbuy_not_map', countKey: 'bestbuy_not_map_count', type: 'NM' },
+                        bbsm: { field: 'bestbuy_mismatch', countKey: 'bestbuy_mismatch_count', type: 'SM' },
+                        bbml: { field: 'bestbuy_missing_listing', countKey: 'bestbuy_missing_listing_count', type: 'NL' },
+                    },
+                },
+                tiendamia: {
+                    code: 'TDM',
+                    filters: {
+                        tnp: { field: 'tiendamia_not_map', countKey: 'tiendamia_not_map_count', type: 'NM' },
+                        tsm: { field: 'tiendamia_mismatch', countKey: 'tiendamia_mismatch_count', type: 'SM' },
+                        tml: { field: 'tiendamia_missing_listing', countKey: 'tiendamia_missing_listing_count', type: 'NL' },
+                    },
+                },
+                temu: {
+                    code: 'TM1',
+                    filters: {
+                        tunp: { field: 'temu_not_map', countKey: 'temu_not_map_count', type: 'NM' },
+                        tusm: { field: 'temu_mismatch', countKey: 'temu_mismatch_count', type: 'SM' },
+                        tuml: { field: 'temu_missing_listing', countKey: 'temu_missing_listing_count', type: 'NL' },
+                    },
+                },
+                shein: {
+                    code: 'SHN',
+                    filters: {
+                        shnp: { field: 'shein_not_map', countKey: 'shein_not_map_count', type: 'NM' },
+                        shsm: { field: 'shein_mismatch', countKey: 'shein_mismatch_count', type: 'SM' },
+                        shml: { field: 'shein_missing_listing', countKey: 'shein_missing_listing_count', type: 'NL' },
+                    },
+                },
+                newegg: {
+                    code: 'NE',
+                    filters: {
+                        nenp: { field: 'newegg_not_map', countKey: 'newegg_not_map_count', type: 'NM' },
+                        nesm: { field: 'newegg_mismatch', countKey: 'newegg_mismatch_count', type: 'SM' },
+                        neml: { field: 'newegg_missing_listing', countKey: 'newegg_missing_listing_count', type: 'NL' },
+                    },
+                },
+                aliexpress: {
+                    code: 'ALI',
+                    filters: {
+                        alinp: { field: 'aliexpress_not_map', countKey: 'aliexpress_not_map_count', type: 'NM' },
+                        alism: { field: 'aliexpress_mismatch', countKey: 'aliexpress_mismatch_count', type: 'SM' },
+                        aliml: { field: 'aliexpress_missing_listing', countKey: 'aliexpress_missing_listing_count', type: 'NL' },
+                    },
+                },
+            };
+
+            var filterMeta = {};
+            Object.keys(channelFilters).forEach(function (market) {
+                var ch = channelFilters[market];
+                Object.keys(ch.filters).forEach(function (fkey) {
+                    filterMeta[fkey] = Object.assign({ market: market, code: ch.code }, ch.filters[fkey]);
+                });
+            });
+
+            function updateChannelCounts(response) {
+                document.querySelectorAll('#map-channel-filters .map-channel-dd').forEach(function (dd) {
+                    var btn = dd.querySelector('[data-channel]');
+                    var market = btn.getAttribute('data-channel');
+                    var ch = channelFilters[market];
+                    if (!ch) return;
+                    Object.keys(ch.filters).forEach(function (fkey) {
+                        var meta = ch.filters[fkey];
+                        var n = response[meta.countKey] || 0;
+                        var el = dd.querySelector('[data-filter="' + fkey + '"] [data-count]');
+                        if (el) el.textContent = n.toLocaleString();
+                    });
+                    var label = dd.querySelector('.map-ch-label');
+                    if (label) label.textContent = ch.code;
+                });
+            }
+
             var table = new Tabulator('#map-issues-table', {
                 layout: 'fitColumns',
                 placeholder: 'No Data Available',
                 ajaxURL: "{{ route('map.issues.data') }}",
                 ajaxResponse: function (url, params, response) {
-                    document.getElementById('not-map-count-badge').textContent =
-                        'E NP: ' + (response.not_map_count || 0).toLocaleString();
-                    document.getElementById('mismatch-count-badge').textContent =
-                        'E SM: ' + (response.mismatch_count || 0).toLocaleString();
-                    document.getElementById('missing-listing-count-badge').textContent =
-                        'E NL: ' + (response.missing_listing_count || 0).toLocaleString();
-                    document.getElementById('ebay2-not-map-count-badge').textContent =
-                        'E2 NP: ' + (response.ebay2_not_map_count || 0).toLocaleString();
-                    document.getElementById('ebay2-mismatch-count-badge').textContent =
-                        'E2 SM: ' + (response.ebay2_mismatch_count || 0).toLocaleString();
-                    document.getElementById('ebay2-missing-listing-count-badge').textContent =
-                        'E2 NL: ' + (response.ebay2_missing_listing_count || 0).toLocaleString();
-                    document.getElementById('ebay3-not-map-count-badge').textContent =
-                        'E3 NP: ' + (response.ebay3_not_map_count || 0).toLocaleString();
-                    document.getElementById('ebay3-mismatch-count-badge').textContent =
-                        'E3 SM: ' + (response.ebay3_mismatch_count || 0).toLocaleString();
-                    document.getElementById('ebay3-missing-listing-count-badge').textContent =
-                        'E3 NL: ' + (response.ebay3_missing_listing_count || 0).toLocaleString();
-                    document.getElementById('amazon-not-map-count-badge').textContent =
-                        'A NP: ' + (response.amazon_not_map_count || 0).toLocaleString();
-                    document.getElementById('amazon-mismatch-count-badge').textContent =
-                        'A SM: ' + (response.amazon_mismatch_count || 0).toLocaleString();
-                    document.getElementById('amazon-missing-listing-count-badge').textContent =
-                        'A NL: ' + (response.amazon_missing_listing_count || 0).toLocaleString();
-                    document.getElementById('reverb-not-map-count-badge').textContent =
-                        'R NP: ' + (response.reverb_not_map_count || 0).toLocaleString();
-                    document.getElementById('reverb-mismatch-count-badge').textContent =
-                        'R SM: ' + (response.reverb_mismatch_count || 0).toLocaleString();
-                    document.getElementById('reverb-missing-listing-count-badge').textContent =
-                        'R NL: ' + (response.reverb_missing_listing_count || 0).toLocaleString();
-                    document.getElementById('macys-not-map-count-badge').textContent =
-                        'M NP: ' + (response.macys_not_map_count || 0).toLocaleString();
-                    document.getElementById('macys-mismatch-count-badge').textContent =
-                        'M SM: ' + (response.macys_mismatch_count || 0).toLocaleString();
-                    document.getElementById('macys-missing-listing-count-badge').textContent =
-                        'M NL: ' + (response.macys_missing_listing_count || 0).toLocaleString();
-                    document.getElementById('bestbuy-not-map-count-badge').textContent =
-                        'BB NP: ' + (response.bestbuy_not_map_count || 0).toLocaleString();
-                    document.getElementById('bestbuy-mismatch-count-badge').textContent =
-                        'BB SM: ' + (response.bestbuy_mismatch_count || 0).toLocaleString();
-                    document.getElementById('bestbuy-missing-listing-count-badge').textContent =
-                        'BB NL: ' + (response.bestbuy_missing_listing_count || 0).toLocaleString();
-                    document.getElementById('tiendamia-not-map-count-badge').textContent =
-                        'T NP: ' + (response.tiendamia_not_map_count || 0).toLocaleString();
-                    document.getElementById('tiendamia-mismatch-count-badge').textContent =
-                        'T SM: ' + (response.tiendamia_mismatch_count || 0).toLocaleString();
-                    document.getElementById('tiendamia-missing-listing-count-badge').textContent =
-                        'T NL: ' + (response.tiendamia_missing_listing_count || 0).toLocaleString();
-                    document.getElementById('temu-not-map-count-badge').textContent =
-                        'TU NP: ' + (response.temu_not_map_count || 0).toLocaleString();
-                    document.getElementById('temu-mismatch-count-badge').textContent =
-                        'TU SM: ' + (response.temu_mismatch_count || 0).toLocaleString();
-                    document.getElementById('temu-missing-listing-count-badge').textContent =
-                        'TU NL: ' + (response.temu_missing_listing_count || 0).toLocaleString();
-                    document.getElementById('shein-not-map-count-badge').textContent =
-                        'SH NP: ' + (response.shein_not_map_count || 0).toLocaleString();
-                    document.getElementById('shein-mismatch-count-badge').textContent =
-                        'SH SM: ' + (response.shein_mismatch_count || 0).toLocaleString();
-                    document.getElementById('shein-missing-listing-count-badge').textContent =
-                        'SH NL: ' + (response.shein_missing_listing_count || 0).toLocaleString();
-                    document.getElementById('newegg-not-map-count-badge').textContent =
-                        'NE NP: ' + (response.newegg_not_map_count || 0).toLocaleString();
-                    document.getElementById('newegg-mismatch-count-badge').textContent =
-                        'NE SM: ' + (response.newegg_mismatch_count || 0).toLocaleString();
-                    document.getElementById('newegg-missing-listing-count-badge').textContent =
-                        'NE NL: ' + (response.newegg_missing_listing_count || 0).toLocaleString();
-                    document.getElementById('aliexpress-not-map-count-badge').textContent =
-                        'ALI NP: ' + (response.aliexpress_not_map_count || 0).toLocaleString();
-                    document.getElementById('aliexpress-mismatch-count-badge').textContent =
-                        'ALI SM: ' + (response.aliexpress_mismatch_count || 0).toLocaleString();
-                    document.getElementById('aliexpress-missing-listing-count-badge').textContent =
-                        'ALI NL: ' + (response.aliexpress_missing_listing_count || 0).toLocaleString();
+                    updateChannelCounts(response || {});
                     document.getElementById('site-only-count').textContent =
                         response.pm_missing_count ? '(' + response.pm_missing_count.toLocaleString() + ')' : '';
                     return response.data || [];
@@ -607,58 +642,18 @@
                 ],
             });
 
-            // Each badge maps to a single boolean filter field. All are mutually exclusive.
-            // eBay badges use gray/red; eBay 2 badges use blue/dark-blue.
-            var badges = {
-                enp:  { el: document.getElementById('not-map-count-badge'),        field: 'is_not_map',    market: 'ebay',  off: 'bg-secondary', on: 'bg-danger' },
-                esm:  { el: document.getElementById('mismatch-count-badge'),       field: 'has_issue',     market: 'ebay',  off: 'bg-secondary', on: 'bg-danger' },
-                eml:  { el: document.getElementById('missing-listing-count-badge'), field: 'missing_listing', market: 'ebay', off: 'bg-secondary',  on: 'bg-danger' },
-                e2np: { el: document.getElementById('ebay2-not-map-count-badge'),  field: 'ebay2_not_map', market: 'ebay2', off: 'bg-info',      on: 'bg-primary' },
-                e2sm: { el: document.getElementById('ebay2-mismatch-count-badge'), field: 'ebay2_mismatch',market: 'ebay2', off: 'bg-info',      on: 'bg-primary' },
-                e2ml: { el: document.getElementById('ebay2-missing-listing-count-badge'), field: 'ebay2_missing_listing', market: 'ebay2', off: 'bg-info', on: 'bg-primary' },
-                e3np: { el: document.getElementById('ebay3-not-map-count-badge'),  field: 'ebay3_not_map', market: 'ebay3', off: 'bg-success',   on: 'bg-dark' },
-                e3sm: { el: document.getElementById('ebay3-mismatch-count-badge'), field: 'ebay3_mismatch',market: 'ebay3', off: 'bg-success',   on: 'bg-dark' },
-                e3ml: { el: document.getElementById('ebay3-missing-listing-count-badge'), field: 'ebay3_missing_listing', market: 'ebay3', off: 'bg-success', on: 'bg-dark' },
-                anp:  { el: document.getElementById('amazon-not-map-count-badge'),  field: 'amazon_not_map', market: 'amazon', off: 'bg-warning',  on: 'bg-danger' },
-                asm:  { el: document.getElementById('amazon-mismatch-count-badge'), field: 'amazon_mismatch',market: 'amazon', off: 'bg-warning',  on: 'bg-danger' },
-                aml:  { el: document.getElementById('amazon-missing-listing-count-badge'), field: 'amazon_missing_listing', market: 'amazon', off: 'bg-warning', on: 'bg-danger' },
-                rnp:  { el: document.getElementById('reverb-not-map-count-badge'),  field: 'reverb_not_map', market: 'reverb', off: 'rv-off',  on: 'rv-on' },
-                rsm:  { el: document.getElementById('reverb-mismatch-count-badge'), field: 'reverb_mismatch',market: 'reverb', off: 'rv-off',  on: 'rv-on' },
-                rml:  { el: document.getElementById('reverb-missing-listing-count-badge'), field: 'reverb_missing_listing', market: 'reverb', off: 'rv-off', on: 'rv-on' },
-                mnp:  { el: document.getElementById('macys-not-map-count-badge'),  field: 'macys_not_map', market: 'macys', off: 'mc-off',  on: 'mc-on' },
-                msm:  { el: document.getElementById('macys-mismatch-count-badge'), field: 'macys_mismatch',market: 'macys', off: 'mc-off',  on: 'mc-on' },
-                mml:  { el: document.getElementById('macys-missing-listing-count-badge'), field: 'macys_missing_listing', market: 'macys', off: 'mc-off', on: 'mc-on' },
-                bbnp: { el: document.getElementById('bestbuy-not-map-count-badge'),  field: 'bestbuy_not_map', market: 'bestbuy', off: 'bb-off',  on: 'bb-on' },
-                bbsm: { el: document.getElementById('bestbuy-mismatch-count-badge'), field: 'bestbuy_mismatch',market: 'bestbuy', off: 'bb-off',  on: 'bb-on' },
-                bbml: { el: document.getElementById('bestbuy-missing-listing-count-badge'), field: 'bestbuy_missing_listing', market: 'bestbuy', off: 'bb-off', on: 'bb-on' },
-                tnp:  { el: document.getElementById('tiendamia-not-map-count-badge'),  field: 'tiendamia_not_map', market: 'tiendamia', off: 'tm-off',  on: 'tm-on' },
-                tsm:  { el: document.getElementById('tiendamia-mismatch-count-badge'), field: 'tiendamia_mismatch',market: 'tiendamia', off: 'tm-off',  on: 'tm-on' },
-                tml:  { el: document.getElementById('tiendamia-missing-listing-count-badge'), field: 'tiendamia_missing_listing', market: 'tiendamia', off: 'tm-off', on: 'tm-on' },
-                tunp: { el: document.getElementById('temu-not-map-count-badge'),  field: 'temu_not_map', market: 'temu', off: 'tu-off',  on: 'tu-on' },
-                tusm: { el: document.getElementById('temu-mismatch-count-badge'), field: 'temu_mismatch',market: 'temu', off: 'tu-off',  on: 'tu-on' },
-                tuml: { el: document.getElementById('temu-missing-listing-count-badge'), field: 'temu_missing_listing', market: 'temu', off: 'tu-off', on: 'tu-on' },
-                shnp: { el: document.getElementById('shein-not-map-count-badge'),  field: 'shein_not_map', market: 'shein', off: 'sh-off',  on: 'sh-on' },
-                shsm: { el: document.getElementById('shein-mismatch-count-badge'), field: 'shein_mismatch',market: 'shein', off: 'sh-off',  on: 'sh-on' },
-                shml: { el: document.getElementById('shein-missing-listing-count-badge'), field: 'shein_missing_listing', market: 'shein', off: 'sh-off', on: 'sh-on' },
-                nenp: { el: document.getElementById('newegg-not-map-count-badge'),  field: 'newegg_not_map', market: 'newegg', off: 'ne-off',  on: 'ne-on' },
-                nesm: { el: document.getElementById('newegg-mismatch-count-badge'), field: 'newegg_mismatch',market: 'newegg', off: 'ne-off',  on: 'ne-on' },
-                neml: { el: document.getElementById('newegg-missing-listing-count-badge'), field: 'newegg_missing_listing', market: 'newegg', off: 'ne-off', on: 'ne-on' },
-                alinp: { el: document.getElementById('aliexpress-not-map-count-badge'),  field: 'aliexpress_not_map', market: 'aliexpress', off: 'ali-off',  on: 'ali-on' },
-                alism: { el: document.getElementById('aliexpress-mismatch-count-badge'), field: 'aliexpress_mismatch',market: 'aliexpress', off: 'ali-off',  on: 'ali-on' },
-                aliml: { el: document.getElementById('aliexpress-missing-listing-count-badge'), field: 'aliexpress_missing_listing', market: 'aliexpress', off: 'ali-off', on: 'ali-on' },
-            };
-
             function applyFilters() {
-                Object.keys(badges).forEach(function (k) {
-                    var b = badges[k];
-                    var on = (activeFilter === k);
-                    b.el.classList.toggle(b.off, !on);
-                    b.el.classList.toggle(b.on, on);
-                    b.el.classList.toggle('map-active', on);
+                document.querySelectorAll('#map-channel-filters [data-channel]').forEach(function (btn) {
+                    var market = btn.getAttribute('data-channel');
+                    var on = !!(activeFilter && filterMeta[activeFilter] && filterMeta[activeFilter].market === market);
+                    btn.classList.toggle('map-active', on);
+                });
+                document.querySelectorAll('#map-channel-filters [data-filter]').forEach(function (item) {
+                    item.classList.toggle('active', item.getAttribute('data-filter') === activeFilter);
                 });
 
-                if (activeFilter) {
-                    activeMarket = badges[activeFilter].market;
+                if (activeFilter && filterMeta[activeFilter]) {
+                    activeMarket = filterMeta[activeFilter].market;
                     table.showColumn('mp_sku');
                     table.showColumn('diff');
                     table.setSort('diff', 'asc');
@@ -690,14 +685,14 @@
                     table.hideColumn('listed_on');
                 }
 
-                // Combine the badge filter with the "Req only" filter, or show site-only rows.
+                // Combine the channel filter with the "Req only" filter, or show site-only rows.
                 var filters = [];
                 if (showSiteOnly) {
                     filters.push({ field: 'pm_missing', type: '=', value: true });
                 } else {
                     filters.push({ field: 'pm_missing', type: '!=', value: true });
-                    if (activeFilter) {
-                        filters.push({ field: badges[activeFilter].field, type: '=', value: true });
+                    if (activeFilter && filterMeta[activeFilter]) {
+                        filters.push({ field: filterMeta[activeFilter].field, type: '=', value: true });
                     }
                     if (reqOnly && activeMarket) {
                         filters.push({ field: nrFieldByMarket[activeMarket], type: '=', value: 'REQ' });
@@ -716,8 +711,9 @@
                     .then(applyFilters);
             }
 
-            Object.keys(badges).forEach(function (k) {
-                badges[k].el.addEventListener('click', function () {
+            document.querySelectorAll('#map-channel-filters [data-filter]').forEach(function (item) {
+                item.addEventListener('click', function () {
+                    var k = item.getAttribute('data-filter');
                     activeFilter = (activeFilter === k) ? null : k;
                     applyFilters();
                 });
