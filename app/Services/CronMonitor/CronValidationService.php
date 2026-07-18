@@ -18,6 +18,11 @@ class CronValidationService
             return ['passed' => true, 'messages' => []];
         }
 
+        // Dry-runs intentionally skip API updates
+        if (! empty($ctx->meta['dry_run'])) {
+            return ['passed' => true, 'messages' => ['Dry run — no API updates attempted.']];
+        }
+
         $allowZero = (bool) ($rules['allow_zero_when_expected_zero'] ?? true);
         $intentionallyEmpty = $allowZero && $ctx->expectedRecords === 0;
 

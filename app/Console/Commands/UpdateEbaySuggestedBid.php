@@ -2,29 +2,49 @@
 
 namespace App\Console\Commands;
 
-use Illuminate\Console\Command;
-use Illuminate\Support\Facades\DB;
-use GuzzleHttp\Client;
-use Illuminate\Support\Facades\Cache;
+use App\Console\Commands\Concerns\MonitorsCronExecution;
+use App\Console\Commands\Concerns\ProcessesUpdatesInChunks;
 use App\Models\EbayGeneralReport;
 use App\Models\EbayMetric;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
+use App\Services\CronMonitor\CronExecutionContext;
 use Exception;
+use GuzzleHttp\Client;
+use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 class UpdateEbaySuggestedBid extends Command
 {
-    protected $signature = 'ebay:update-suggestedbid {--dry-run : Run without making actual API calls}';
+    use MonitorsCronExecution;
+    use ProcessesUpdatesInChunks;
+
+    protected $signature = 'ebay:update-suggestedbid
+        {--dry-run : Run without making actual API calls}
+        {--chunk= : Override chunk size (default from cron-monitor config)}';
     protected $description = 'Bulk update eBay ad bids using suggested_bid percentages';
+
+    protected string $monitorJobName = 'eBay Suggested Bid';
 
     public function __construct()
     {
         parent::__construct();
     }
 
-    public function handle() {
+    public function handle(): int
+    {
+        return $this->runMonitored(
+            fn (CronExecutionContext $m) => $this->executeUpdate($m),
+            $this->monitorJobName
+        );
+    }
+
+    protected function executeUpdate(CronExecutionContext $monitor): int
+    {
         try {
             $dryRun = $this->option('dry-run');
+            $chunkSize = $this->monitoredChunkSize();
             
             if ($dryRun) {
                 $this->warn('=== DRY RUN MODE - No actual changes will be made ===');
@@ -37,18 +57,21 @@ class UpdateEbaySuggestedBid extends Command
                 $accessToken = $this->getEbayAccessToken();
                 if (!$accessToken) {
                     $this->error('Failed to obtain eBay access token.');
-                    return 1;
+                    return self::FAILURE;
                 }
+                $monitor->markApiConnected();
             }
 
             // Process ProductMaster records in chunks to prevent "Too many connections" error
-            $chunkSize = 1000;
             $totalRecords = ProductMaster::whereNull('deleted_at')->count();
             
             if ($totalRecords === 0) {
                 $this->info('No product masters found.');
-                return 0;
+                $monitor->setExpected(0);
+                return self::SUCCESS;
             }
+
+            $monitor->setExpected($totalRecords);
             
             $this->info("Processing {$totalRecords} product masters in chunks of {$chunkSize}...");
             
@@ -60,10 +83,12 @@ class UpdateEbaySuggestedBid extends Command
                 ->orderBy("parent", "asc")
                 ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
                 ->orderBy("sku", "asc")
-                ->chunk($chunkSize, function ($productMasters) use (&$allSkus, &$processedCount, $totalRecords) {
+                ->chunk($chunkSize, function ($productMasters) use (&$allSkus, &$processedCount, $totalRecords, $monitor) {
                     $chunkSkus = $productMasters->pluck("sku")->filter()->unique();
                     $allSkus = $allSkus->merge($chunkSkus);
                     $processedCount += $productMasters->count();
+                    $monitor->incrementProcessed($productMasters->count());
+                    $monitor->checkpoint(['phase' => 'product_masters', 'processed' => $processedCount], $processedCount);
                     $this->info("Processed {$processedCount}/{$totalRecords} product masters...");
                 });
             
@@ -71,7 +96,7 @@ class UpdateEbaySuggestedBid extends Command
             
             if (empty($skus)) {
                 $this->info('No valid SKUs found in product masters.');
-                return 0;
+                return self::SUCCESS;
             }
             
             // Check database connection
@@ -80,7 +105,8 @@ class UpdateEbaySuggestedBid extends Command
                 $this->info("✓ Database connection OK");
             } catch (\Exception $e) {
                 $this->error("✗ Database connection failed: " . $e->getMessage());
-                return 1;
+                $monitor->classifyAndRecord($e);
+                return self::FAILURE;
             }
 
             // SKU normalization function
@@ -110,8 +136,11 @@ class UpdateEbaySuggestedBid extends Command
             
             if ($ebayMetrics->isEmpty()) {
                 $this->info('No eBay metrics found for the SKUs.');
-                return 0;
+                $monitor->setFetched(0);
+                return self::SUCCESS;
             }
+
+            $monitor->setFetched($ebayMetrics->count());
         
         // Normalize eBay metrics data keys
         $ebayMetricsNormalized = collect();
@@ -140,7 +169,7 @@ class UpdateEbaySuggestedBid extends Command
 
             if ($campaignListings->isEmpty()) {
                 $this->info('No campaign listings found.');
-                return 0;
+                return self::SUCCESS;
             }
 
             // Get L30 data (clicks and sales) from ebaygeneral report for CVR calculation
@@ -178,6 +207,7 @@ class UpdateEbaySuggestedBid extends Command
         // Process ProductMaster data in chunks and update campaign listings
         $this->info('Processing bid updates based on Sbid Rule slabs...');
         $updatedListings = 0;
+        $bidProcessedCount = 0;
         
         ProductMaster::whereNull('deleted_at')
             ->orderBy("parent", "asc")
@@ -192,7 +222,9 @@ class UpdateEbaySuggestedBid extends Command
                 $avgL7Views,
                 $ebayGeneralL30, 
                 &$updatedListings,
-                $normalizeSku
+                &$bidProcessedCount,
+                $normalizeSku,
+                $monitor
             ) {
                 foreach ($productMasters as $pm) {
                     $normalizedSku = $normalizeSku($pm->sku);
@@ -237,6 +269,9 @@ class UpdateEbaySuggestedBid extends Command
                         }
                     }
                 }
+                $bidProcessedCount += $productMasters->count();
+                $monitor->incrementProcessed($productMasters->count());
+                $monitor->checkpoint(['phase' => 'bid_calculation', 'processed' => $bidProcessedCount], $bidProcessedCount);
             });
         
         $this->info("Updated bids for {$updatedListings} listings.");
@@ -245,7 +280,7 @@ class UpdateEbaySuggestedBid extends Command
 
         if ($groupedByCampaign->isEmpty()) {
             $this->info('No campaign listings to update.');
-            return 0;
+            return self::SUCCESS;
         }
 
         if ($dryRun) {
@@ -278,8 +313,17 @@ class UpdateEbaySuggestedBid extends Command
             }
             $this->info("\n[DRY RUN] Total: {$totalRequests} bid updates would be sent across " . $groupedByCampaign->count() . " campaign(s)");
             $this->warn("\n=== DRY RUN COMPLETE - No actual changes were made ===");
-            return 0;
+            $monitor->mergeMeta(['dry_run' => true]);
+            $monitor->markApiConnected();
+            $monitor->setExpected($totalRequests);
+            $monitor->setFetched($totalRequests);
+            $monitor->setSkipped($totalRequests);
+            return self::SUCCESS;
         }
+
+        $monitor->markApiConnected();
+        $monitor->setExpected($updatedListings);
+        $monitor->setFetched($updatedListings);
 
         $client = new Client([
             'base_uri' => config('services.ebay.base_url'),
@@ -288,6 +332,9 @@ class UpdateEbaySuggestedBid extends Command
                 'Content-Type' => 'application/json',
             ],
         ]);
+
+        $apiChunkSize = $this->monitoredChunkSize();
+        $apiProcessed = 0;
 
         foreach ($groupedByCampaign as $campaignId => $listings) {
             $requests = [];
@@ -315,45 +362,93 @@ class UpdateEbaySuggestedBid extends Command
                 continue;
             }
 
-            try {
-                $this->info("Campaign {$campaignId}: Sending " . count($requests) . " bid updates to eBay API...");
-                $response = $client->post(
-                    "sell/marketing/v1/ad_campaign/{$campaignId}/bulk_update_ads_bid_by_listing_id",
-                    ['json' => ['requests' => $requests]]
-                );
-                
-                $responseBody = $response->getBody()->getContents();
-                $statusCode = $response->getStatusCode();
-                
-                $this->info("Campaign {$campaignId}: API Response Status: {$statusCode}");
-                if ($statusCode === 200 || $statusCode === 207) {
-                    $this->info("Campaign {$campaignId}: Successfully updated " . count($requests) . " listings.");
-                } else {
-                    $this->warn("Campaign {$campaignId}: Response: " . substr($responseBody, 0, 200));
+            foreach (array_chunk($requests, $apiChunkSize) as $chunkIndex => $requestChunk) {
+                try {
+                    $this->info("Campaign {$campaignId}: Sending " . count($requestChunk) . " bid update(s) to eBay API (chunk " . ($chunkIndex + 1) . ")...");
+                    $apiStart = microtime(true);
+                    $monitor->incrementApiCalls();
+                    $response = $client->post(
+                        "sell/marketing/v1/ad_campaign/{$campaignId}/bulk_update_ads_bid_by_listing_id",
+                        ['json' => ['requests' => $requestChunk]]
+                    );
+                    $monitor->incrementApiLatency((int) ((microtime(true) - $apiStart) * 1000));
+
+                    $responseBody = $response->getBody()->getContents();
+                    $statusCode = $response->getStatusCode();
+
+                    $this->info("Campaign {$campaignId}: API Response Status: {$statusCode}");
+                    if ($statusCode === 200 || $statusCode === 207) {
+                        $this->info("Campaign {$campaignId}: Successfully updated " . count($requestChunk) . " listing(s).");
+                        $monitor->incrementUpdated(count($requestChunk));
+                    } else {
+                        $this->warn("Campaign {$campaignId}: Response: " . substr($responseBody, 0, 200));
+                        foreach ($requestChunk as $req) {
+                            $monitor->recordFailure(
+                                sku: (string) ($req['listingId'] ?? ''),
+                                marketplace: 'ebay',
+                                reason: 'Unexpected API status: ' . $statusCode,
+                                apiResponse: substr($responseBody, 0, 500),
+                                httpStatus: $statusCode
+                            );
+                        }
+                    }
+
+                    $apiProcessed += count($requestChunk);
+                    $monitor->checkpoint([
+                        'phase' => 'api_push',
+                        'campaign_id' => $campaignId,
+                        'chunk' => $chunkIndex,
+                        'processed' => $apiProcessed,
+                    ], $apiProcessed);
+
+                } catch (\GuzzleHttp\Exception\ClientException $e) {
+                    $statusCode = $e->getResponse() ? $e->getResponse()->getStatusCode() : null;
+                    $this->error("Campaign {$campaignId}: Client error (Status: {$statusCode}).");
+                    foreach ($requestChunk as $req) {
+                        $monitor->recordFailure(
+                            sku: (string) ($req['listingId'] ?? ''),
+                            marketplace: 'ebay',
+                            reason: $e->getMessage(),
+                            httpStatus: $statusCode
+                        );
+                    }
+
+                } catch (\GuzzleHttp\Exception\ServerException $e) {
+                    $statusCode = $e->getResponse() ? $e->getResponse()->getStatusCode() : null;
+                    $this->error("Campaign {$campaignId}: Server error (Status: {$statusCode}).");
+                    foreach ($requestChunk as $req) {
+                        $monitor->recordFailure(
+                            sku: (string) ($req['listingId'] ?? ''),
+                            marketplace: 'ebay',
+                            reason: $e->getMessage(),
+                            httpStatus: $statusCode
+                        );
+                    }
+
+                } catch (\Exception $e) {
+                    $this->error("Campaign {$campaignId}: General error - " . $e->getMessage());
+                    foreach ($requestChunk as $req) {
+                        $monitor->recordFailure(
+                            sku: (string) ($req['listingId'] ?? ''),
+                            marketplace: 'ebay',
+                            reason: $e->getMessage()
+                        );
+                    }
                 }
-                
-            } catch (\GuzzleHttp\Exception\ClientException $e) {
-                $statusCode = $e->getResponse() ? $e->getResponse()->getStatusCode() : 'unknown';
-                $this->error("Campaign {$campaignId}: Client error (Status: {$statusCode}).");
-                
-            } catch (\GuzzleHttp\Exception\ServerException $e) {
-                $statusCode = $e->getResponse() ? $e->getResponse()->getStatusCode() : 'unknown';
-                $this->error("Campaign {$campaignId}: Server error (Status: {$statusCode}).");
-                
-            } catch (\Exception $e) {
-                $this->error("Campaign {$campaignId}: General error - " . $e->getMessage());
             }
         }
 
             $this->info('eBay ad bid update finished.');
-            return 0;
+            return $monitor->failedRecords > 0 ? self::FAILURE : self::SUCCESS;
             
         } catch (Exception $e) {
             $this->error('Command failed: ' . $e->getMessage());
-            return 1;
+            $monitor->classifyAndRecord($e);
+            return self::FAILURE;
         } catch (\Throwable $e) {
             $this->error('Command failed with error: ' . $e->getMessage());
-            return 1;
+            $monitor->classifyAndRecord($e);
+            return self::FAILURE;
         } finally {
             DB::connection()->disconnect();
         }

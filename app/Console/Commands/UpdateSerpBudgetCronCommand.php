@@ -2,9 +2,12 @@
 
 namespace App\Console\Commands;
 
+use App\Console\Commands\Concerns\MonitorsCronExecution;
+use App\Console\Commands\Concerns\ProcessesUpdatesInChunks;
 use App\Models\GoogleAdsCampaign;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
+use App\Services\CronMonitor\CronExecutionContext;
 use App\Services\GoogleAdsSbidService;
 use App\Support\GoogleShoppingCampaignsRawRule;
 use Illuminate\Console\Command;
@@ -12,9 +15,16 @@ use Illuminate\Support\Facades\DB;
 
 class UpdateSerpBudgetCronCommand extends Command
 {
-    protected $signature = 'budget:update-serp';
+    use MonitorsCronExecution;
+    use ProcessesUpdatesInChunks;
+
+    protected $signature = 'budget:update-serp
+                            {--dry-run : Run without actually updating budgets}
+                            {--chunk= : Override chunk size for API updates (default from cron-monitor config)}';
 
     protected $description = 'Update budget for SERP (SEARCH) campaigns based on ACOS (L30 data)';
+
+    protected string $monitorJobName = 'Google Budget Sync (SERP)';
 
     protected $sbidService;
 
@@ -24,7 +34,15 @@ class UpdateSerpBudgetCronCommand extends Command
         $this->sbidService = $sbidService;
     }
 
-    public function handle()
+    public function handle(): int
+    {
+        return $this->runMonitored(
+            fn (CronExecutionContext $m) => $this->executeBudgetUpdate($m),
+            $this->monitorJobName
+        );
+    }
+
+    protected function executeBudgetUpdate(CronExecutionContext $monitor): int
     {
         try {
             // Check database connection (without creating persistent connection)
@@ -35,8 +53,14 @@ class UpdateSerpBudgetCronCommand extends Command
                 DB::connection()->disconnect();
             } catch (\Exception $e) {
                 $this->error('✗ Database connection failed: '.$e->getMessage());
+                $monitor->classifyAndRecord($e);
 
-                return 1;
+                return self::FAILURE;
+            }
+
+            $dryRun = $this->option('dry-run');
+            if ($dryRun) {
+                $this->warn('⚠️  DRY RUN MODE - No budgets will be updated');
             }
 
             $this->info('Starting budget update cron for SERP (SEARCH) campaigns (ACOS-based)...');
@@ -69,8 +93,9 @@ class UpdateSerpBudgetCronCommand extends Command
             if ($productMasters->isEmpty()) {
                 $this->warn('No product masters found!');
                 DB::connection()->disconnect();
+                $monitor->setExpected(0);
 
-                return 0;
+                return self::SUCCESS;
             }
 
             // Get all SKUs to fetch Shopify inventory data
@@ -79,8 +104,9 @@ class UpdateSerpBudgetCronCommand extends Command
             if (empty($skus)) {
                 $this->warn('No valid SKUs found!');
                 DB::connection()->disconnect();
+                $monitor->setExpected(0);
 
-                return 0;
+                return self::SUCCESS;
             }
 
             $shopifyData = [];
@@ -112,7 +138,8 @@ class UpdateSerpBudgetCronCommand extends Command
 
             $rawRule = GoogleShoppingCampaignsRawRule::resolvedRule();
 
-            $campaignUpdates = [];
+            $toPush = [];
+            $budgetDetails = [];
 
             foreach ($productMasters as $pm) {
                 $sku = strtoupper(trim($pm->sku));
@@ -211,27 +238,90 @@ class UpdateSerpBudgetCronCommand extends Command
 
                 $newBudget = GoogleShoppingCampaignsRawRule::sbgtFromAcos((float) $acos, $rawRule);
 
-                if (! isset($campaignUpdates[$budgetId])) {
-                    try {
-                        $budgetResourceName = "customers/{$customerId}/campaignBudgets/{$budgetId}";
-                        $this->sbidService->updateCampaignBudget($customerId, $budgetResourceName, $newBudget);
-                        $campaignUpdates[$budgetId] = true;
-                        $this->info("Updated SERP campaign {$campaignId} (SKU: {$pm->sku}): Budget=\${$currentBudget} → \${$newBudget} (ACOS={$acos}%)");
-                    } catch (\Exception $e) {
-                        $this->error("Failed to update SERP campaign budget {$campaignId}: ".$e->getMessage());
+                if (! isset($toPush[$budgetId])) {
+                    if ($dryRun) {
+                        $this->info("[DRY RUN] Would update SERP campaign {$campaignId} (SKU: {$pm->sku}): Budget=\${$currentBudget} → \${$newBudget} (ACOS={$acos}%)");
                     }
+                    $toPush[$budgetId] = $newBudget;
+                    $budgetDetails[$budgetId] = [
+                        'campaignId' => $campaignId,
+                        'sku' => $pm->sku,
+                        'currentBudget' => $currentBudget,
+                        'acos' => $acos,
+                    ];
                 }
             }
 
-            $processedCount = count($campaignUpdates);
+            $processedCount = count($toPush);
+
+            if ($processedCount === 0) {
+                $this->info('Done. No SERP campaign budgets to update.');
+                $monitor->setExpected(0);
+
+                return self::SUCCESS;
+            }
+
+            if ($dryRun) {
+                $this->info("Done. Would have processed: {$processedCount} unique SERP campaign budgets (dry run).");
+                $monitor->mergeMeta(['dry_run' => true]);
+                $monitor->markApiConnected();
+                $monitor->setExpected($processedCount);
+                $monitor->setFetched($processedCount);
+                $monitor->setSkipped($processedCount);
+
+                return self::SUCCESS;
+            }
+
+            $monitor->markApiConnected();
+            $stats = $this->updateIdMapInChunks(
+                $monitor,
+                $toPush,
+                function (array $chunkIds, array $chunkValues, int $chunkIndex) use ($customerId, $budgetDetails) {
+                    $updated = 0;
+                    $failed = 0;
+                    $failures = [];
+                    foreach ($chunkIds as $i => $budgetId) {
+                        $detail = $budgetDetails[$budgetId] ?? null;
+                        $campaignId = $detail['campaignId'] ?? $budgetId;
+                        $sku = $detail['sku'] ?? '';
+                        $currentBudget = $detail['currentBudget'] ?? 0;
+                        $acos = $detail['acos'] ?? 0;
+                        $newBudget = $chunkValues[$i];
+                        try {
+                            $budgetResourceName = "customers/{$customerId}/campaignBudgets/{$budgetId}";
+                            $this->sbidService->updateCampaignBudget($customerId, $budgetResourceName, $newBudget);
+                            $updated++;
+                            $this->info("Updated SERP campaign {$campaignId} (SKU: {$sku}): Budget=\${$currentBudget} → \${$newBudget} (ACOS={$acos}%)");
+                        } catch (\Exception $e) {
+                            $failed++;
+                            $failures[] = [
+                                'sku' => (string) $budgetId,
+                                'marketplace' => 'google',
+                                'reason' => $e->getMessage(),
+                                'http_status' => 500,
+                            ];
+                            $this->error("Failed to update SERP campaign budget {$campaignId}: ".$e->getMessage());
+                        }
+                    }
+
+                    return [
+                        'updated' => $updated,
+                        'failed' => $failed,
+                        'processed' => count($chunkIds),
+                        'failures' => $failures,
+                    ];
+                }
+            );
+
             $this->info("Done. Processed: {$processedCount} unique SERP campaign budgets.");
 
-            return 0;
+            return $stats['failed'] > 0 ? self::FAILURE : self::SUCCESS;
         } catch (\Exception $e) {
             $this->error('✗ Error occurred: '.$e->getMessage());
             $this->error('Stack trace: '.$e->getTraceAsString());
+            $monitor->classifyAndRecord($e);
 
-            return 1;
+            return self::FAILURE;
         } finally {
             DB::connection()->disconnect();
         }

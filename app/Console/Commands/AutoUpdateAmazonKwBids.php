@@ -2,6 +2,8 @@
 
 namespace App\Console\Commands;
 
+use App\Console\Commands\Concerns\MonitorsCronExecution;
+use App\Console\Commands\Concerns\PushesAmazonAdsUpdatesInChunks;
 use App\Http\Controllers\Campaigns\AmazonSpBudgetController;
 use App\Models\AmazonDatasheet;
 use App\Models\AmazonDataView;
@@ -10,6 +12,7 @@ use App\Models\AmazonSpCampaignReport;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Services\Amazon\AmazonBidUtilizationService;
+use App\Services\CronMonitor\CronExecutionContext;
 use App\Support\AmazonAdsSbidRule;
 use GuzzleHttp\Client;
 use Illuminate\Support\Facades\DB;
@@ -17,7 +20,12 @@ use Illuminate\Support\Facades\Log;
 
 class AutoUpdateAmazonKwBids extends Command
 {
-    protected $signature = 'amazon:auto-update-over-kw-bids {--dry-run : Show what would be updated without calling API}';
+    use MonitorsCronExecution;
+    use PushesAmazonAdsUpdatesInChunks;
+
+    protected $signature = 'amazon:auto-update-over-kw-bids
+        {--dry-run : Show what would be updated without calling API}
+        {--chunk= : Override chunk size for API updates (default from cron-monitor config)}';
     protected $description = 'Automatically update Amazon campaign keyword bids';
 
     /** Number of retry attempts for failed campaign updates (minimum 5 tries total for failures). */
@@ -26,6 +34,8 @@ class AutoUpdateAmazonKwBids extends Command
     /** Seconds to wait between retry rounds for failed campaigns (rate-limit precaution). */
     const RETRY_DELAY_SECONDS = 5;
 
+    protected string $monitorJobName = 'Amazon Bid Sync (KW Over)';
+
     protected $profileId;
 
     public function __construct()
@@ -33,7 +43,15 @@ class AutoUpdateAmazonKwBids extends Command
         parent::__construct();
     }
 
-    public function handle()
+    public function handle(): int
+    {
+        return $this->runMonitored(
+            fn (CronExecutionContext $m) => $this->executeBidUpdate($m),
+            $this->monitorJobName
+        );
+    }
+
+    protected function executeBidUpdate(CronExecutionContext $monitor): int
     {
         try {
             // Ensure enough time for full run including retries (up to 5 rounds of API calls)
@@ -50,7 +68,9 @@ class AutoUpdateAmazonKwBids extends Command
                 DB::connection()->disconnect();
             } catch (\Exception $e) {
                 $this->error("✗ Database connection failed: " . $e->getMessage());
-                return 1;
+                $monitor->classifyAndRecord($e);
+
+                return self::FAILURE;
             }
 
             $updateKwBids = new AmazonSpBudgetController;
@@ -60,7 +80,10 @@ class AutoUpdateAmazonKwBids extends Command
             if (empty($campaigns)) {
                 $this->warn("No campaigns matched filter conditions.");
                 $this->warn("No campaigns found - check filters and data availability");
-                return 0;
+                $monitor->markApiConnected();
+                $monitor->setExpected(0);
+
+                return self::SUCCESS;
             }
 
             $this->info("Found " . count($campaigns) . " campaigns to process.");
@@ -106,7 +129,9 @@ class AutoUpdateAmazonKwBids extends Command
 
             if (empty($campaignIds)) {
                 $this->warn("No valid campaign IDs found to update.");
-                return 0;
+                $monitor->setExpected(0);
+
+                return self::SUCCESS;
             }
 
             // Validate arrays are aligned
@@ -116,7 +141,8 @@ class AutoUpdateAmazonKwBids extends Command
                     'campaign_ids_count' => count($campaignIds),
                     'bids_count' => count($newBids)
                 ]);
-                return 1;
+
+                return self::FAILURE;
             }
 
             $this->info("Found " . count($campaignIds) . " unique campaigns to update.");
@@ -141,7 +167,13 @@ class AutoUpdateAmazonKwBids extends Command
                 $this->newLine();
                 $this->warn("DRY RUN: No API call made. Remove --dry-run to apply updates.");
                 $this->info("✓ Dry run completed. Total campaigns that would be updated: " . count($campaignIds));
-                return 0;
+                $monitor->mergeMeta(['dry_run' => true]);
+                $monitor->markApiConnected();
+                $monitor->setExpected(count($campaignIds));
+                $monitor->setFetched(count($campaignIds));
+                $monitor->setSkipped(count($campaignIds));
+
+                return self::SUCCESS;
             }
 
             // Validate all bids are valid before sending
@@ -159,150 +191,51 @@ class AutoUpdateAmazonKwBids extends Command
             if (!empty($invalidBids)) {
                 $this->error("Found " . count($invalidBids) . " invalid bids. Skipping update.");
                 $this->error("Invalid bids detected", ['invalid_bids' => $invalidBids]);
-                return 1;
+                foreach ($invalidBids as $invalid) {
+                    $monitor->recordFailure(
+                        sku: (string) ($invalid['campaign_id'] ?? ''),
+                        marketplace: 'amazon',
+                        reason: 'Invalid bid: ' . ($invalid['bid'] ?? ''),
+                        category: 'validation',
+                        recoverable: false
+                    );
+                }
+
+                return self::FAILURE;
             }
 
-            $campaignBudgetMapForRetry = $campaignBudgetMap; // keep for building retry lists
-            $allSkipped = [];
-            $result = null;
-            $attempt = 0;
-            $maxRetries = self::MAX_RETRY_ATTEMPTS;
-            $retryDelay = self::RETRY_DELAY_SECONDS;
-            $currentCampaignIds = $campaignIds;
-            $currentNewBids = $newBids;
+            $monitor->markApiConnected();
+            $stats = $this->pushAmazonAdsIdMapInChunks(
+                $monitor,
+                $campaignBudgetMap,
+                fn (array $ids, array $bids) => $updateKwBids->updateAutoCampaignKeywordsBid($ids, $bids)
+            );
 
-            while (true) {
-                $attempt++;
-                $this->info("Update attempt {$attempt} of {$maxRetries} (" . count($currentCampaignIds) . " campaigns).");
-
-                try {
-                    if ($attempt > 1) {
-                        $this->info("Waiting {$retryDelay} seconds before retry (rate-limit precaution)...");
-                        sleep($retryDelay);
-                    }
-
-                    $result = $updateKwBids->updateAutoCampaignKeywordsBid($currentCampaignIds, $currentNewBids);
-
-                    if (!is_array($result)) {
-                        $this->error("Unexpected result from update.");
-                        break;
-                    }
-
-                    $allSkipped = array_merge($allSkipped, $result['skipped'] ?? []);
-
-                    $failed = $result['failed'] ?? [];
-                    if (empty($failed)) {
-                        $this->info("All campaigns in this batch updated successfully.");
-                        break;
-                    }
-
-                    $this->warn("Attempt {$attempt}: " . count($failed) . " campaign(s) failed. Will retry failed only.");
-                    foreach ($failed as $f) {
-                        $this->warn("  - {$f['campaign_id']}: " . ($f['error'] ?? 'unknown'));
-                    }
-
-                    if ($attempt >= $maxRetries) {
-                        $this->error("Max retries ({$maxRetries}) reached. " . count($failed) . " campaign(s) still failed.");
-                        $result['failed'] = $failed;
-                        break;
-                    }
-
-                    // Build next batch: only failed campaign IDs with their bids
-                    $currentCampaignIds = [];
-                    $currentNewBids = [];
-                    foreach ($failed as $f) {
-                        $cid = $f['campaign_id'] ?? null;
-                        if ($cid !== null && isset($campaignBudgetMapForRetry[$cid])) {
-                            $currentCampaignIds[] = $cid;
-                            $currentNewBids[] = $campaignBudgetMapForRetry[$cid];
-                        }
-                    }
-                    if (empty($currentCampaignIds)) {
-                        $this->warn("No retriable campaign IDs left.");
-                        break;
-                    }
-                } catch (\Exception $e) {
-                    $this->error("Attempt {$attempt} exception: " . $e->getMessage());
-                    $result = ['status' => 500, 'error' => $e->getMessage(), 'failed' => []];
-                    if ($attempt >= $maxRetries) {
-                        break;
-                    }
-                    $this->info("Will retry full batch on next attempt.");
+            $persistedRows = 0;
+            foreach ($stats['updated_map'] as $cid => $bid) {
+                if ($bid !== null) {
+                    $persistedRows += AmazonBidUtilizationService::persistSpSbidM((string) $cid, (float) $bid);
                 }
             }
-
-            if (is_array($result) && empty($result['failed'] ?? [])) {
-                $persistedRows = 0;
-                foreach ($campaignBudgetMapForRetry as $cid => $bid) {
-                    $persistedRows += AmazonBidUtilizationService::persistSpSbidM($cid, (float) $bid);
-                }
-                Log::info('amazon:auto-update-over-kw-bids persisted sbid_m to L30', [
-                    'campaigns' => count($campaignBudgetMapForRetry),
-                    'l30_rows_updated' => $persistedRows,
-                ]);
-            }
-
-            // Log results
-            if ($result) {
-                $this->info("Update Result Status: " . (is_array($result) && isset($result['status']) ? $result['status'] : 'unknown'));
-                if (is_array($result) && isset($result['message'])) {
-                    $this->info("Update Message: " . $result['message']);
-                }
-                if (!empty($allSkipped)) {
-                    $this->warn("Skipped campaigns (total): " . count($allSkipped));
-                    foreach (array_slice($allSkipped, 0, 20) as $s) {
-                        $this->warn("  - {$s['campaign_id']}: {$s['reason']}");
-                    }
-                    if (count($allSkipped) > 20) {
-                        $this->warn("  ... and " . (count($allSkipped) - 20) . " more.");
-                    }
-                }
-                if (is_array($result) && !empty($result['failed'])) {
-                    $this->error("Failed campaigns after all retries: " . count($result['failed']));
-                    foreach ($result['failed'] as $f) {
-                        $this->error("  - {$f['campaign_id']}: " . ($f['error'] ?? 'unknown'));
-                    }
-                }
-                if (is_array($result) && isset($result['error']) && empty($result['failed'])) {
-                    $this->error("Update Error: " . $result['error']);
-                }
-            } else {
-                $this->error("Update failed (no result).");
-            }
-
-            $total = count($campaignIds);
-            $skippedCount = count($allSkipped);
-            $failedCount = isset($result['failed']) ? count($result['failed']) : 0;
-            $updatedCount = $total - $skippedCount - $failedCount;
-            $this->info("========================================");
-            $this->info("FINAL: Total={$total} | Updated={$updatedCount} | Skipped={$skippedCount} | Failed={$failedCount}");
-            $this->info("========================================");
-
-            Log::info('amazon:auto-update-over-kw-bids completed', [
-                'total' => $total,
-                'updated' => $updatedCount,
-                'skipped' => $skippedCount,
-                'failed' => $failedCount,
-                'attempts' => $attempt,
+            Log::info('amazon:auto-update-over-kw-bids persisted sbid_m to L30', [
+                'campaigns' => count($stats['updated_map']),
+                'l30_rows_updated' => $persistedRows,
             ]);
-            
-            $this->info("Amazon KW Bids Update completed. Total campaigns: " . count($campaignIds));
 
-            if ($result && is_array($result) && empty($result['failed'] ?? [])) {
-                $this->info("✓ Command completed successfully. All retriable campaigns updated.");
-                return 0;
-            }
-            if ($result && is_array($result) && !empty($result['failed'])) {
-                $this->warn("⚠ Command completed with " . count($result['failed']) . " campaign(s) still failed after " . self::MAX_RETRY_ATTEMPTS . " attempts.");
-                return 1;
-            }
-            $this->warn("⚠ Command completed with warnings or errors.");
-            return 1;
+            $this->info("========================================");
+            $this->info("FINAL: Total={$stats['total']} | Updated={$stats['updated']} | Skipped={$stats['skipped']} | Failed={$stats['failed']} | Chunks={$stats['chunks']}");
+            $this->info("========================================");
+
+            Log::info('amazon:auto-update-over-kw-bids completed', $stats);
+
+            return $stats['failed'] > 0 ? self::FAILURE : self::SUCCESS;
 
         } catch (\Exception $e) {
             $this->error("✗ Error occurred: " . $e->getMessage());
             $this->error("Stack trace: " . $e->getTraceAsString());
-            return 1;
+            $monitor->classifyAndRecord($e);
+
+            return self::FAILURE;
         } finally {
             DB::connection()->disconnect();
         }

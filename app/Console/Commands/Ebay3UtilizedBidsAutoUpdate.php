@@ -2,21 +2,47 @@
 
 namespace App\Console\Commands;
 
+use App\Console\Commands\Concerns\MonitorsCronExecution;
+use App\Console\Commands\Concerns\PushesAmazonAdsUpdatesInChunks;
 use App\Http\Controllers\Campaigns\Ebay3UtilizedAdsController;
 use App\Models\Ebay3Metric;
 use App\Models\Ebay3PriorityReport;
 use App\Models\EbayThreeDataView;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
+use App\Services\CronMonitor\CronExecutionContext;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class Ebay3UtilizedBidsAutoUpdate extends Command
 {
-    protected $signature = 'ebay3:auto-update-utilized-bids {--dry-run : Run without actually updating bids}';
+    use MonitorsCronExecution;
+    use PushesAmazonAdsUpdatesInChunks;
+
+    protected $signature = 'ebay3:auto-update-utilized-bids
+        {--dry-run : Run without actually updating bids}
+        {--chunk= : Override chunk size for API updates (default from cron-monitor config)}';
+
     protected $description = 'Automatically update eBay3 campaign keyword bids for over and under-utilized campaigns';
 
-    public function handle()
+    /** Number of retry attempts for failed campaign updates (minimum 5 tries total for failures). */
+    const MAX_RETRY_ATTEMPTS = 5;
+
+    /** Seconds to wait between retry rounds for failed campaigns (rate-limit precaution). */
+    const RETRY_DELAY_SECONDS = 5;
+
+    protected string $monitorJobName = 'eBay3 Bid Sync (Utilized)';
+
+    public function handle(): int
+    {
+        return $this->runMonitored(
+            fn (CronExecutionContext $m) => $this->executeBidUpdate($m),
+            $this->monitorJobName
+        );
+    }
+
+    protected function executeBidUpdate(CronExecutionContext $monitor): int
     {
         try {
             set_time_limit(0);
@@ -25,227 +51,166 @@ class Ebay3UtilizedBidsAutoUpdate extends Command
 
             try {
                 DB::connection()->getPdo();
-                $this->info("✓ Database connection OK");
+                $this->info('✓ Database connection OK');
                 DB::connection()->disconnect();
             } catch (\Exception $e) {
-                $this->error("✗ Database connection failed: " . $e->getMessage());
-                return 1;
+                $this->error('✗ Database connection failed: '.$e->getMessage());
+                $monitor->classifyAndRecord($e);
+
+                return self::FAILURE;
             }
 
             $isDryRun = $this->option('dry-run');
-            
-            $this->info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-            $this->info("🚀 Starting eBay3 Utilized Bids Auto-Update");
-            if ($isDryRun) {
-                $this->warn("⚠️  DRY-RUN MODE: No bids will be updated on eBay");
-            }
-            $this->info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
-            $updateUtilizedBids = $isDryRun ? null : new Ebay3UtilizedAdsController;
+            $this->info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+            $this->info('🚀 Starting eBay3 Utilized Bids Auto-Update'.($isDryRun ? ' [DRY RUN - no API calls]' : ''));
+            $this->info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+            $updateUtilizedBids = new Ebay3UtilizedAdsController;
 
             $campaigns = $this->getEbay3UtilizedCampaigns();
 
             if (empty($campaigns)) {
-                $this->warn("⚠️  No campaigns matched filter conditions.");
-                return 0;
+                $this->warn('⚠️  No campaigns matched filter conditions.');
+                $monitor->markApiConnected();
+                $monitor->setExpected(0);
+
+                return self::SUCCESS;
             }
 
-            $validCampaigns = array_filter($campaigns, fn($campaign) => !empty($campaign->campaign_id) && !empty($campaign->sbid) && floatval($campaign->sbid) > 0);
-            
+            $validCampaigns = array_filter($campaigns, fn ($campaign) => ! empty($campaign->campaign_id) && ! empty($campaign->sbid) && floatval($campaign->sbid) > 0);
+
             if (empty($validCampaigns)) {
-                $this->warn("⚠️  No valid campaigns found (all have empty campaign_id or zero/blank sbid).");
-                return 0;
-            }
-            
-            $overCount = count(array_filter($validCampaigns, fn($c) => $c->isOverUtilized ?? false));
-            $underCount = count($validCampaigns) - $overCount;
-            
-            $this->info("📊 Found " . count($validCampaigns) . " campaigns to update (Over: {$overCount}, Under: {$underCount})");
-            $this->info("");
+                $this->warn('⚠️  No valid campaigns found (all have empty campaign_id or zero/blank sbid).');
+                $monitor->markApiConnected();
+                $monitor->setExpected(0);
 
-            $this->info("📋 Campaigns to be updated:");
+                return self::SUCCESS;
+            }
+
+            $overCount = count(array_filter($validCampaigns, fn ($c) => $c->isOverUtilized ?? false));
+            $underCount = count($validCampaigns) - $overCount;
+
+            $this->info('📊 Found '.count($validCampaigns)." campaigns to update (Over: {$overCount}, Under: {$underCount})");
+            $this->info('');
+
+            $this->info('📋 Campaigns to be updated:');
             foreach ($validCampaigns as $index => $campaign) {
                 $campaignName = $campaign->campaignName ?? 'Unknown';
                 $campaignId = $campaign->campaign_id ?? 'N/A';
                 $newBid = $campaign->sbid ?? 0;
-                $lastSbid = !empty($campaign->last_sbid) && $campaign->last_sbid !== '0' ? (float)$campaign->last_sbid : 0;
+                $lastSbid = ! empty($campaign->last_sbid) && $campaign->last_sbid !== '0' ? (float) $campaign->last_sbid : 0;
                 $type = ($campaign->isOverUtilized ?? false) ? 'Over' : 'Under';
-                
-                $this->line("   " . ($index + 1) . ". [{$type}] Campaign: {$campaignName} | ID: {$campaignId} | Last SBID: \${$lastSbid} | New SBID: \${$newBid}");
-            }
-            
-            $this->info("");
 
-            $campaignNames = collect($validCampaigns)->pluck('campaignName', 'campaign_id')->toArray();
+                $this->line('   '.($index + 1).". [{$type}] Campaign: {$campaignName} | ID: {$campaignId} | Last SBID: \${$lastSbid} | New SBID: \${$newBid}");
+            }
+
+            $this->info('');
+
             $campaignBidMap = collect($validCampaigns)->pluck('sbid', 'campaign_id')->toArray();
 
-            $batchSize = 5;
-            $campaignBatches = array_chunk($validCampaigns, $batchSize);
-            $totalBatches = count($campaignBatches);
-            
             if ($isDryRun) {
-                $this->info("🔍 DRY-RUN: Would update bids for {$totalBatches} batch(es)");
-                $this->info("");
-                
-                $allResults = [];
-                $totalSuccess = 0;
-                $totalFailed = 0;
-                $hasError = false;
-                
-                foreach ($campaignBatches as $batchIndex => $batch) {
-                    $batchNumber = $batchIndex + 1;
-                    $this->info("📦 [DRY-RUN] Batch {$batchNumber}/{$totalBatches}:");
-                    
-                    foreach ($batch as $index => $campaign) {
-                        $campaignId = $campaign->campaign_id ?? 'unknown';
-                        $sbid = $campaign->sbid ?? 0;
-                        $campaignName = $campaign->campaignName ?? 'Unknown';
-                        $lastSbid = !empty($campaign->last_sbid) && $campaign->last_sbid !== '0' ? (float)$campaign->last_sbid : 0;
-                        
-                        $this->line("   " . ($index + 1) . ". Campaign: {$campaignName}");
-                        $this->line("      ID: {$campaignId} | Last SBID: \${$lastSbid} | New SBID: \${$sbid}");
-                        
-                        $allResults[] = [
-                            "campaign_id" => $campaignId,
-                            "campaign_name" => $campaignName,
-                            "status" => "success",
-                            "message" => "DRY-RUN: Would update bid from \${$lastSbid} to \${$sbid}"
-                        ];
-                        $totalSuccess++;
-                    }
-                    $this->info("");
-                }
-            } else {
-                $this->info("🔄 Updating bids via eBay3 API (processing in {$totalBatches} batches of {$batchSize} campaigns each)...");
-                $this->info("");
+                $this->newLine();
+                $this->warn('DRY RUN: No API call made. Remove --dry-run to apply updates.');
+                $this->info('✓ Dry run completed. Total campaigns that would be updated: '.count($campaignBidMap));
+                $monitor->mergeMeta(['dry_run' => true]);
+                $monitor->markApiConnected();
+                $monitor->setExpected(count($campaignBidMap));
+                $monitor->setFetched(count($campaignBidMap));
+                $monitor->setSkipped(count($campaignBidMap));
 
-                $allResults = [];
-                $totalSuccess = 0;
-                $totalFailed = 0;
-                $hasError = false;
-
-                foreach ($campaignBatches as $batchIndex => $batch) {
-                    $batchNumber = $batchIndex + 1;
-                    $this->info("📦 Processing batch {$batchNumber}/{$totalBatches}:");
-                    
-                    foreach ($batch as $index => $campaign) {
-                        $campaignId = $campaign->campaign_id ?? 'unknown';
-                        $sbid = $campaign->sbid ?? 0;
-                        $campaignName = $campaign->campaignName ?? 'Unknown';
-                        $lastSbid = !empty($campaign->last_sbid) && $campaign->last_sbid !== '0' ? (float)$campaign->last_sbid : 0;
-                        
-                        $this->line("   " . ($index + 1) . ". Campaign: {$campaignName} | ID: {$campaignId} | Last SBID: \${$lastSbid} | New SBID: \${$sbid}");
-                    }
-                    $this->info("");
-                    
-                    $campaignIds = collect($batch)->pluck('campaign_id')->toArray();
-                    $newBids = collect($batch)->pluck('sbid')->toArray();
-                    
-                    try {
-                        $result = $updateUtilizedBids->updateAutoKeywordsBidDynamic($campaignIds, $newBids);
-                        
-                        $resultData = $result->getData(true);
-                        $status = $resultData['status'] ?? 'unknown';
-                        $data = $resultData['data'] ?? [];
-                        
-                        if ($status != 200) {
-                            $hasError = true;
-                        }
-                        
-                        $allResults = array_merge($allResults, $data);
-                        
-                        foreach ($data as $item) {
-                            if (($item['status'] ?? '') === 'error') {
-                                $totalFailed++;
-                            } else {
-                                $totalSuccess++;
-                            }
-                        }
-                        
-                        $this->info("   ✅ Batch {$batchNumber} completed");
-                        
-                    } catch (\Exception $e) {
-                        $hasError = true;
-                        $this->error("   ❌ Batch {$batchNumber} failed: " . $e->getMessage());
-                        
-                        foreach ($batch as $campaign) {
-                            $allResults[] = [
-                                "campaign_id" => $campaign->campaign_id ?? 'unknown',
-                                "status" => "error",
-                                "message" => $e->getMessage(),
-                            ];
-                            $totalFailed++;
-                        }
-                    }
-                    
-                    if ($batchIndex < $totalBatches - 1) {
-                        sleep(2);
-                    }
-                }
+                return self::SUCCESS;
             }
 
-            $this->info("");
-            $this->info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-            $this->info("📊 Update Results");
-            $this->info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-            $this->info("Status: " . (!$hasError ? "✅ Success" : ($totalSuccess > 0 ? "⚠️  Partial Success" : "❌ Failed")));
-            $this->info("");
+            $monitor->markApiConnected();
+            $stats = $this->pushAmazonAdsIdMapInChunks(
+                $monitor,
+                $campaignBidMap,
+                fn (array $ids, array $bids) => $this->normalizeEbayAdsPushResult(
+                    $updateUtilizedBids->updateAutoKeywordsBidDynamic($ids, $bids),
+                    $ids
+                ),
+                'ebay3'
+            );
 
-            $campaignResults = [];
-            foreach ($allResults as $item) {
-                $campId = $item['campaign_id'] ?? 'unknown';
-                if (!isset($campaignResults[$campId])) {
-                    $campaignResults[$campId] = [
-                        'campaign_name' => $campaignNames[$campId] ?? 'Unknown',
-                        'success' => 0,
-                        'failed' => 0,
-                        'errors' => []
-                    ];
-                }
-                
-                if (($item['status'] ?? '') === 'error') {
-                    $campaignResults[$campId]['failed']++;
-                    $campaignResults[$campId]['errors'][] = $item['message'] ?? 'Unknown error';
-                } else {
-                    $campaignResults[$campId]['success']++;
-                }
-            }
+            $this->info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+            $this->info("FINAL: Total={$stats['total']} | Updated={$stats['updated']} | Skipped={$stats['skipped']} | Failed={$stats['failed']} | Chunks={$stats['chunks']}");
+            $this->info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
-            foreach ($campaignResults as $campId => $result) {
-                $campaignName = $result['campaign_name'];
-                $success = $result['success'];
-                $failed = $result['failed'];
-                $newBid = $campaignBidMap[$campId] ?? 'N/A';
-                
-                if ($failed > 0) {
-                    $this->warn("   ❌ Campaign: {$campaignName}");
-                    $this->warn("      ID: {$campId} | SBID: \${$newBid} | Success: {$success} keywords | Failed: {$failed} keywords");
-                    foreach (array_unique($result['errors']) as $error) {
-                        $this->error("      Error: {$error}");
-                    }
-                } else {
-                    $this->info("   ✅ Campaign: {$campaignName}");
-                    $this->info("      ID: {$campId} | SBID: \${$newBid} | Updated: {$success} keywords");
-                }
-            }
+            Log::info('ebay3:auto-update-utilized-bids completed', $stats);
 
-            $this->info("");
-            $this->info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-            if ($isDryRun) {
-                $this->info("📈 DRY-RUN Summary: {$totalSuccess} keywords would be updated, {$totalFailed} would fail");
-            } else {
-                $this->info("📈 Summary: {$totalSuccess} keywords updated successfully, {$totalFailed} failed");
-            }
-            $this->info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-
-            return 0;
+            return $stats['failed'] > 0 ? self::FAILURE : self::SUCCESS;
         } catch (\Exception $e) {
-            $this->error("✗ Error occurred: " . $e->getMessage());
-            $this->error("Stack trace: " . $e->getTraceAsString());
-            return 1;
+            $this->error('✗ Error occurred: '.$e->getMessage());
+            $this->error('Stack trace: '.$e->getTraceAsString());
+            $monitor->classifyAndRecord($e);
+
+            return self::FAILURE;
         } finally {
             DB::connection()->disconnect();
         }
+    }
+
+    /**
+     * Normalize eBay JsonResponse into Amazon-style chunk result for retries.
+     *
+     * @param  list<string>  $ids
+     * @return array{status: int, failed: list<array>, skipped: list<array>}
+     */
+    private function normalizeEbayAdsPushResult($result, array $ids): array
+    {
+        if (is_object($result) && method_exists($result, 'getData')) {
+            $result = $result->getData(true);
+        }
+
+        if (! is_array($result)) {
+            return [
+                'status' => 500,
+                'failed' => array_map(
+                    fn ($id) => ['campaign_id' => (string) $id, 'error' => 'Unexpected API result', 'status' => 500],
+                    $ids
+                ),
+                'skipped' => [],
+            ];
+        }
+
+        $httpStatus = (int) ($result['status'] ?? 500);
+        $data = $result['data'] ?? [];
+        $failedById = [];
+        $seenIds = [];
+
+        foreach ($data as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $campId = $item['campaign_id'] ?? null;
+            if ($campId !== null) {
+                $seenIds[(string) $campId] = true;
+            }
+            if (($item['status'] ?? '') === 'error') {
+                $key = (string) ($campId ?? 'unknown');
+                $failedById[$key] = [
+                    'campaign_id' => $key,
+                    'error' => $item['message'] ?? 'Unknown error',
+                    'status' => $httpStatus > 0 ? $httpStatus : 500,
+                ];
+            }
+        }
+
+        $skipped = [];
+        foreach ($ids as $id) {
+            if (! isset($seenIds[(string) $id])) {
+                $skipped[] = ['campaign_id' => (string) $id, 'reason' => 'No response row'];
+            }
+        }
+
+        $failed = array_values($failedById);
+
+        return [
+            'status' => empty($failed) ? 200 : 207,
+            'failed' => $failed,
+            'skipped' => $skipped,
+        ];
     }
 
     public function getEbay3UtilizedCampaigns()
@@ -283,7 +248,7 @@ class Ebay3UtilizedBidsAutoUpdate extends Command
                     $shopifyData[$nk] = $row;
                 }
             }
-            $ebayMetricData = Ebay3Metric::whereIn('sku', $skus)->get()->keyBy(fn($item) => $normalizeSku($item->sku));
+            $ebayMetricData = Ebay3Metric::whereIn('sku', $skus)->get()->keyBy(fn ($item) => $normalizeSku($item->sku));
             $nrValues = EbayThreeDataView::whereIn('sku', $skus)->pluck('value', 'sku');
 
             $reports = Ebay3PriorityReport::whereIn('report_range', ['L7', 'L1', 'L30'])
@@ -302,7 +267,7 @@ class Ebay3UtilizedBidsAutoUpdate extends Command
                 ->where('campaign_name', 'NOT LIKE', 'Default%')
                 ->pluck('last_sbid', 'campaign_id')
                 ->filter();
-            
+
             $result = [];
             $campaignMap = [];
 
@@ -344,7 +309,7 @@ class Ebay3UtilizedBidsAutoUpdate extends Command
 
                 foreach ($matchedReports as $campaign) {
                     $campaignId = $campaign->campaign_id ?? '';
-                    
+
                     if (empty($campaignId)) {
                         continue;
                     }
@@ -403,14 +368,14 @@ class Ebay3UtilizedBidsAutoUpdate extends Command
 
                 $ub7 = $budget > 0 ? ($l7_spend / ($budget * 7)) * 100 : 0;
                 $ub1 = $budget > 0 ? ($l1_spend / $budget) * 100 : 0;
-                
+
                 // Over-utilized: both UB7 and UB1 > 99%
                 $isOverUtilized = ($ub7 > 99 && $ub1 > 99);
-                
-                // Under-utilized: both UB7 and UB1 < 66%
-                $isUnderUtilized = !$isOverUtilized && $ub7 < 66 && $ub1 < 66;
 
-                if (!$isOverUtilized && !$isUnderUtilized) {
+                // Under-utilized: both UB7 and UB1 < 66%
+                $isUnderUtilized = ! $isOverUtilized && $ub7 < 66 && $ub1 < 66;
+
+                if (! $isOverUtilized && ! $isUnderUtilized) {
                     continue;
                 }
 
@@ -447,10 +412,10 @@ class Ebay3UtilizedBidsAutoUpdate extends Command
 
             DB::connection()->disconnect();
             return $result;
-        
+
         } catch (\Exception $e) {
-            $this->error("Error in getEbay3UtilizedCampaigns: " . $e->getMessage());
-            $this->error("Stack trace: " . $e->getTraceAsString());
+            $this->error("Error in getEbay3UtilizedCampaigns: ".$e->getMessage());
+            $this->error("Stack trace: ".$e->getTraceAsString());
             return [];
         } finally {
             DB::connection()->disconnect();

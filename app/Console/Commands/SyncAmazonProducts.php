@@ -2,19 +2,24 @@
 
 namespace App\Console\Commands;
 
+use App\Console\Commands\Concerns\ProcessesUpdatesInChunks;
 use App\Models\AmazonListingRaw;
 use App\Models\AmazonSyncHistory;
 use App\Services\AmazonSpApiService;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class SyncAmazonProducts extends Command
 {
+    use ProcessesUpdatesInChunks;
+
     protected $signature = 'amazon:sync-products
                             {--enrich : Enrich listings with Catalog and Listings API data}
                             {--enrich-limit=100 : Max SKUs to enrich per run (0 = no limit)}
                             {--skip-report : Skip report fetch, only enrich existing records}
                             {--batch-size=100 : Records per batch before delay}
+                            {--chunk= : Override DB write chunk size (default from cron-monitor config)}
                             {--sku= : Enrich single SKU only (e.g. "3501 USB") for testing}';
 
     protected $description = 'Sync Amazon product listings from GET_MERCHANT_LISTINGS_ALL_DATA report, enrich with Catalog + Listings APIs (26 fields)';
@@ -102,103 +107,133 @@ class SyncAmazonProducts extends Command
 
     private function enrichListings(AmazonSpApiService $service, int $limit, int $batchSize, AmazonSyncHistory $history): int
     {
-        $query = AmazonListingRaw::query()
+        $baseQuery = AmazonListingRaw::query()
             ->whereNotNull('asin1')
             ->where('asin1', '!=', '')
             ->where(function ($q) {
                 $q->whereNull('model_number')
                     ->orWhereNull('color')
                     ->orWhereNull('manufacturer');
-            })
-            ->orderBy('id');
+            });
 
-        if ($limit > 0) {
-            $query->limit($limit);
-        }
-
-        $listings = $query->get();
-        $total = $listings->count();
-        if ($total === 0) {
+        $eligibleTotal = (clone $baseQuery)->count();
+        if ($eligibleTotal === 0) {
             $this->info('No listings to enrich.');
             return 0;
         }
 
+        $total = $limit > 0 ? min($limit, $eligibleTotal) : $eligibleTotal;
+        $chunkSize = $this->monitoredChunkSize();
         $enriched = 0;
         $apiCalls = 0;
         $skipped = 0;
+        $processed = 0;
+        $stop = false;
         $bar = $this->output->createProgressBar($total);
         $bar->setFormat(' %current%/%max% [%bar%] %percent:3s%% %message%');
         $bar->setMessage('Starting...');
         $bar->start();
 
-        foreach ($listings as $index => $listing) {
-            $context = [];
-            try {
-                $updates = $service->enrichListingData($listing->asin1, $listing->seller_sku, $context);
-                $apiCalls += 2; // Catalog + Listings API per SKU
+        $baseQuery->orderBy('id')->chunkById($chunkSize, function ($listings) use (
+            $service,
+            $batchSize,
+            $total,
+            $limit,
+            &$enriched,
+            &$apiCalls,
+            &$skipped,
+            &$processed,
+            &$stop,
+            $bar
+        ) {
+            if ($stop) {
+                return false;
+            }
 
-                if (! empty($updates)) {
-                    $fillable = (new AmazonListingRaw)->getFillable();
-                    $imageUrlsForRaw = $updates['_image_urls_for_raw_data'] ?? null;
-                    unset($updates['_image_urls_for_raw_data']);
-                    $filtered = array_intersect_key($updates, array_flip($fillable));
-                    if ($imageUrlsForRaw !== null && is_array($imageUrlsForRaw)) {
-                        $rawData = $listing->raw_data;
-                        if (! is_array($rawData)) {
-                            $rawData = is_string($rawData) ? (json_decode($rawData, true) ?? []) : [];
-                        }
-                        foreach ($imageUrlsForRaw as $k => $v) {
-                            if (is_string($v) && $v !== '') {
-                                $rawData[$k] = $v;
+            $pendingUpdates = [];
+
+            foreach ($listings as $listing) {
+                if ($limit > 0 && $processed >= $limit) {
+                    $stop = true;
+                    break;
+                }
+
+                $processed++;
+                $context = [];
+                try {
+                    $updates = $service->enrichListingData($listing->asin1, $listing->seller_sku, $context);
+                    $apiCalls += 2; // Catalog + Listings API per SKU
+
+                    if (! empty($updates)) {
+                        $fillable = (new AmazonListingRaw)->getFillable();
+                        $imageUrlsForRaw = $updates['_image_urls_for_raw_data'] ?? null;
+                        unset($updates['_image_urls_for_raw_data']);
+                        $filtered = array_intersect_key($updates, array_flip($fillable));
+                        if ($imageUrlsForRaw !== null && is_array($imageUrlsForRaw)) {
+                            $rawData = $listing->raw_data;
+                            if (! is_array($rawData)) {
+                                $rawData = is_string($rawData) ? (json_decode($rawData, true) ?? []) : [];
                             }
+                            foreach ($imageUrlsForRaw as $k => $v) {
+                                if (is_string($v) && $v !== '') {
+                                    $rawData[$k] = $v;
+                                }
+                            }
+                            $filtered['raw_data'] = $rawData;
                         }
-                        $filtered['raw_data'] = $rawData;
+                        $pendingUpdates[] = ['listing' => $listing, 'filtered' => $filtered, 'updates' => $updates, 'imageUrlsForRaw' => $imageUrlsForRaw];
+                    } else {
+                        $skipped++;
                     }
-                    $listing->update($filtered);
-                    $enriched++;
-                    $fieldCount = count($updates);
-                    Log::debug('SyncAmazonProducts: SKU enriched', [
+
+                    if (! empty($context['warnings'])) {
+                        foreach ($context['warnings'] as $w) {
+                            Log::warning('SyncAmazonProducts: '.$w);
+                        }
+                    }
+                } catch (\Throwable $e) {
+                    $skipped++;
+                    Log::warning('SyncAmazonProducts: Enrich failed for SKU', [
                         'sku' => $listing->seller_sku,
                         'asin' => $listing->asin1,
-                        'fields_populated' => array_keys($updates),
-                        'count' => $fieldCount,
-                        'images_merged' => $imageUrlsForRaw !== null ? count($imageUrlsForRaw) : 0,
-                        'your_price' => $filtered['your_price'] ?? null,
-                        'thumbnail_set' => isset($filtered['thumbnail_image']),
+                        'error' => $e->getMessage(),
                     ]);
-                } else {
-                    $skipped++;
                 }
 
-                if (! empty($context['warnings'])) {
-                    foreach ($context['warnings'] as $w) {
-                        Log::warning('SyncAmazonProducts: ' . $w);
+                $pct = $total > 0 ? round(($processed / $total) * 100, 1) : 0;
+                $bar->setMessage("{$enriched} enriched | {$pct}%");
+                $bar->advance();
+
+                if ($processed % $batchSize === 0 && $processed < $total) {
+                    Log::info('SyncAmazonProducts: Batch pause', [
+                        'processed' => $processed,
+                        'enriched' => $enriched,
+                        'api_calls' => $apiCalls,
+                    ]);
+                    sleep(self::BATCH_DELAY_SEC);
+                }
+            }
+
+            if ($pendingUpdates !== []) {
+                DB::transaction(function () use ($pendingUpdates, &$enriched) {
+                    foreach ($pendingUpdates as $entry) {
+                        $entry['listing']->update($entry['filtered']);
+                        $enriched++;
+                        Log::debug('SyncAmazonProducts: SKU enriched', [
+                            'sku' => $entry['listing']->seller_sku,
+                            'asin' => $entry['listing']->asin1,
+                            'fields_populated' => array_keys($entry['updates']),
+                            'count' => count($entry['updates']),
+                            'images_merged' => $entry['imageUrlsForRaw'] !== null ? count($entry['imageUrlsForRaw']) : 0,
+                            'your_price' => $entry['filtered']['your_price'] ?? null,
+                            'thumbnail_set' => isset($entry['filtered']['thumbnail_image']),
+                        ]);
                     }
-                }
-            } catch (\Throwable $e) {
-                $skipped++;
-                Log::warning('SyncAmazonProducts: Enrich failed for SKU', [
-                    'sku' => $listing->seller_sku,
-                    'asin' => $listing->asin1,
-                    'error' => $e->getMessage(),
-                ]);
+                });
             }
 
-            $pct = $total > 0 ? round((($index + 1) / $total) * 100, 1) : 0;
-            $bar->setMessage("{$enriched} enriched | {$pct}%");
-            $bar->advance();
-
-            // Delay between Catalog (1s) and Listings (200ms) is inside enrichListingData
-            // Add batch delay: every batchSize records, pause
-            if (($index + 1) % $batchSize === 0 && $index + 1 < $total) {
-                Log::info('SyncAmazonProducts: Batch pause', [
-                    'processed' => $index + 1,
-                    'enriched' => $enriched,
-                    'api_calls' => $apiCalls,
-                ]);
-                sleep(self::BATCH_DELAY_SEC);
-            }
-        }
+            return $stop ? false : null;
+        });
 
         $bar->finish();
         $this->newLine();

@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Console\Commands\Concerns\ProcessesUpdatesInChunks;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\DB;
@@ -15,6 +16,8 @@ use Carbon\Carbon;
 
 class FetchAmazonOrders extends Command
 {
+    use ProcessesUpdatesInChunks;
+
     /** Default rolling window (Pacific) for --last-days and --auto-sync-within-days */
     private const DEFAULT_RECENT_DAYS = 35;
 
@@ -55,7 +58,8 @@ class FetchAmazonOrders extends Command
         {--incremental-only : Only run LastUpdated-based order refresh}
         {--no-incremental-refresh : Skip LastUpdated refresh after sync}
         {--incremental-lookback-hours=840 : LastUpdated scan window (default 35 days)}
-        {--incremental-chunk-hours=24 : Hours per LastUpdated API chunk}';
+        {--incremental-chunk-hours=24 : Hours per LastUpdated API chunk}
+        {--chunk= : Override DB write chunk size (default from cron-monitor config)}';
 
     /**
      * The console command description.
@@ -242,32 +246,17 @@ class FetchAmazonOrders extends Command
         $updatedCount = 0;
         $skippedCount = 0;
         $totalItemsFetchedThisPage = 0;
+        $withItems = (bool) $this->option('with-items');
+        $chunkSize = $this->monitoredChunkSize();
 
-        foreach ($orders as $order) {
-            $orderId = $order['AmazonOrderId'] ?? null;
-            if (!$orderId) {
-                $skippedCount++;
-                continue;
-            }
-
-            $orderRecord = AmazonOrder::updateOrCreate(
-                ['amazon_order_id' => $orderId],
-                [
-                    'order_date' => Carbon::parse($order['PurchaseDate']),
-                    'status' => $order['OrderStatus'] ?? null,
-                    'total_amount' => $order['OrderTotal']['Amount'] ?? 0,
-                    'currency' => $order['OrderTotal']['CurrencyCode'] ?? 'USD',
-                    'raw_data' => json_encode($order),
-                ]
-            );
-
-            if ($orderRecord->wasRecentlyCreated) {
-                $insertedCount++;
-            } else {
-                $updatedCount++;
-            }
-
-            if ($this->option('with-items')) {
+        // Prefetch items outside DB transactions (API stays page-sized; only writes are chunked).
+        $itemsByOrderId = [];
+        if ($withItems) {
+            foreach ($orders as $order) {
+                $orderId = $order['AmazonOrderId'] ?? null;
+                if (!$orderId) {
+                    continue;
+                }
                 try {
                     $items = $this->fetchOrderItemsWithRetry($accessToken, $orderId);
                 } catch (\Exception $e) {
@@ -275,49 +264,92 @@ class FetchAmazonOrders extends Command
                     Log::warning("Skipping items for order {$orderId}: " . $e->getMessage());
                     $items = [];
                 }
-
-                foreach ($items as $item) {
-                    $itemPrice = 0;
-                    $itemCurrency = 'USD';
-
-                    if (isset($item['ItemPrice']) && is_array($item['ItemPrice'])) {
-                        $itemPrice += floatval($item['ItemPrice']['Amount'] ?? 0);
-                        $itemCurrency = $item['ItemPrice']['CurrencyCode'] ?? 'USD';
-                    }
-
-                    if (isset($item['ShippingPrice']) && is_array($item['ShippingPrice'])) {
-                        $itemPrice += floatval($item['ShippingPrice']['Amount'] ?? 0);
-                    }
-
-                    if (isset($item['GiftWrapPrice']) && is_array($item['GiftWrapPrice'])) {
-                        $itemPrice += floatval($item['GiftWrapPrice']['Amount'] ?? 0);
-                    }
-
-                    if (isset($item['PromotionDiscount']) && is_array($item['PromotionDiscount'])) {
-                        $itemPrice -= floatval($item['PromotionDiscount']['Amount'] ?? 0);
-                    }
-
-                    AmazonOrderItem::updateOrCreate(
-                        [
-                            'amazon_order_id' => $orderRecord->id,
-                            'asin' => $item['ASIN'] ?? null,
-                            'sku' => $item['SellerSKU'] ?? null,
-                        ],
-                        [
-                            'quantity' => $item['QuantityOrdered'] ?? 1,
-                            'price' => $itemPrice,
-                            'currency' => $itemCurrency,
-                            'title' => $item['Title'] ?? null,
-                            'raw_data' => json_encode($item),
-                        ]
-                    );
-                    $totalItemsFetchedThisPage++;
-                }
-
+                $itemsByOrderId[$orderId] = $items;
                 if (count($items) > 0) {
                     usleep(500000);
                 }
             }
+        }
+
+        foreach (array_chunk(array_values($orders), $chunkSize) as $orderChunk) {
+            $chunkStats = DB::transaction(function () use ($orderChunk, $withItems, $itemsByOrderId) {
+                $inserted = 0;
+                $updated = 0;
+                $skipped = 0;
+                $itemsWritten = 0;
+
+                foreach ($orderChunk as $order) {
+                    $orderId = $order['AmazonOrderId'] ?? null;
+                    if (!$orderId) {
+                        $skipped++;
+                        continue;
+                    }
+
+                    $orderRecord = AmazonOrder::updateOrCreate(
+                        ['amazon_order_id' => $orderId],
+                        [
+                            'order_date' => Carbon::parse($order['PurchaseDate']),
+                            'status' => $order['OrderStatus'] ?? null,
+                            'total_amount' => $order['OrderTotal']['Amount'] ?? 0,
+                            'currency' => $order['OrderTotal']['CurrencyCode'] ?? 'USD',
+                            'raw_data' => json_encode($order),
+                        ]
+                    );
+
+                    if ($orderRecord->wasRecentlyCreated) {
+                        $inserted++;
+                    } else {
+                        $updated++;
+                    }
+
+                    if ($withItems) {
+                        foreach ($itemsByOrderId[$orderId] ?? [] as $item) {
+                            $itemPrice = 0;
+                            $itemCurrency = 'USD';
+
+                            if (isset($item['ItemPrice']) && is_array($item['ItemPrice'])) {
+                                $itemPrice += floatval($item['ItemPrice']['Amount'] ?? 0);
+                                $itemCurrency = $item['ItemPrice']['CurrencyCode'] ?? 'USD';
+                            }
+
+                            if (isset($item['ShippingPrice']) && is_array($item['ShippingPrice'])) {
+                                $itemPrice += floatval($item['ShippingPrice']['Amount'] ?? 0);
+                            }
+
+                            if (isset($item['GiftWrapPrice']) && is_array($item['GiftWrapPrice'])) {
+                                $itemPrice += floatval($item['GiftWrapPrice']['Amount'] ?? 0);
+                            }
+
+                            if (isset($item['PromotionDiscount']) && is_array($item['PromotionDiscount'])) {
+                                $itemPrice -= floatval($item['PromotionDiscount']['Amount'] ?? 0);
+                            }
+
+                            AmazonOrderItem::updateOrCreate(
+                                [
+                                    'amazon_order_id' => $orderRecord->id,
+                                    'asin' => $item['ASIN'] ?? null,
+                                    'sku' => $item['SellerSKU'] ?? null,
+                                ],
+                                [
+                                    'quantity' => $item['QuantityOrdered'] ?? 1,
+                                    'price' => $itemPrice,
+                                    'currency' => $itemCurrency,
+                                    'title' => $item['Title'] ?? null,
+                                    'raw_data' => json_encode($item),
+                                ]
+                            );
+                            $itemsWritten++;
+                        }
+                    }
+                }
+
+                return compact('inserted', 'updated', 'skipped', 'itemsWritten');
+            });
+
+            $insertedCount += $chunkStats['inserted'];
+            $updatedCount += $chunkStats['updated'];
+            $skippedCount += $chunkStats['skipped'];
+            $totalItemsFetchedThisPage += $chunkStats['itemsWritten'];
         }
 
         return [
@@ -1011,85 +1043,95 @@ class FetchAmazonOrders extends Command
             return;
         }
 
-        $ordersWithoutItems = AmazonOrder::whereDoesntHave('items')->get();
-        $total = $ordersWithoutItems->count();
-        
+        $chunkSize = $this->monitoredChunkSize();
+        $total = AmazonOrder::whereDoesntHave('items')->count();
+
         if ($total === 0) {
             $this->info('No orders with missing items found.');
             return;
         }
 
-        $this->info("Found {$total} orders without items. Fetching items...");
-        
+        $this->info("Found {$total} orders without items. Fetching items in DB chunks of {$chunkSize}...");
+
         $success = 0;
         $failed = 0;
+        $processed = 0;
 
-        foreach ($ordersWithoutItems as $index => $order) {
-            try {
-                $items = $this->fetchOrderItemsWithRetry($accessToken, $order->amazon_order_id);
-            } catch (\Exception $e) {
-                $this->warn("   ⚠️ Skipping order {$order->amazon_order_id}: " . $e->getMessage());
-                Log::warning("fetchMissingItems: skipping order {$order->amazon_order_id}: " . $e->getMessage());
-                $failed++;
-                usleep(500000);
-                continue;
-            }
-            
-            if (count($items) > 0) {
-                foreach ($items as $item) {
-                    // Calculate total price including all components (matches Amazon Seller Central "Ordered product sales")
-                    $itemPrice = 0;
-                    $itemCurrency = 'USD';
-                    
-                    // ItemPrice (base product price × quantity)
-                    if (isset($item['ItemPrice']) && is_array($item['ItemPrice'])) {
-                        $itemPrice += floatval($item['ItemPrice']['Amount'] ?? 0);
-                        $itemCurrency = $item['ItemPrice']['CurrencyCode'] ?? 'USD';
+        AmazonOrder::whereDoesntHave('items')
+            ->orderBy('id')
+            ->chunkById($chunkSize, function ($orders) use ($accessToken, $total, &$success, &$failed, &$processed) {
+                $pendingWrites = [];
+
+                foreach ($orders as $order) {
+                    $processed++;
+                    try {
+                        $items = $this->fetchOrderItemsWithRetry($accessToken, $order->amazon_order_id);
+                    } catch (\Exception $e) {
+                        $this->warn("   ⚠️ Skipping order {$order->amazon_order_id}: " . $e->getMessage());
+                        Log::warning("fetchMissingItems: skipping order {$order->amazon_order_id}: " . $e->getMessage());
+                        $failed++;
+                        usleep(500000);
+                        continue;
                     }
-                    
-                    // ShippingPrice (shipping charged to customer)
-                    if (isset($item['ShippingPrice']) && is_array($item['ShippingPrice'])) {
-                        $itemPrice += floatval($item['ShippingPrice']['Amount'] ?? 0);
+
+                    if (count($items) > 0) {
+                        $pendingWrites[] = ['order' => $order, 'items' => $items];
+                        $success++;
+                    } else {
+                        $failed++;
                     }
-                    
-                    // GiftWrapPrice (gift wrap fees)
-                    if (isset($item['GiftWrapPrice']) && is_array($item['GiftWrapPrice'])) {
-                        $itemPrice += floatval($item['GiftWrapPrice']['Amount'] ?? 0);
+
+                    if ($processed % 50 === 0) {
+                        $this->info("  Progress: {$processed}/{$total} - Success: {$success}, Failed: {$failed}");
                     }
-                    
-                    // Subtract PromotionDiscount (discounts reduce the total)
-                    if (isset($item['PromotionDiscount']) && is_array($item['PromotionDiscount'])) {
-                        $itemPrice -= floatval($item['PromotionDiscount']['Amount'] ?? 0);
-                    }
-                    
-                    AmazonOrderItem::updateOrCreate(
-                        [
-                            'amazon_order_id' => $order->id, 
-                            'asin' => $item['ASIN'] ?? null,
-                            'sku' => $item['SellerSKU'] ?? null,
-                        ],
-                        [
-                            'quantity' => $item['QuantityOrdered'] ?? 1,
-                            'price' => $itemPrice,
-                            'currency' => $itemCurrency,
-                            'title' => $item['Title'] ?? null,
-                            'raw_data' => json_encode($item),
-                        ]
-                    );
+
+                    usleep(500000);
                 }
-                $success++;
-            } else {
-                $failed++;
-            }
 
-            // Progress update every 50 orders
-            if (($index + 1) % 50 === 0) {
-                $this->info("  Progress: " . ($index + 1) . "/{$total} - Success: {$success}, Failed: {$failed}");
-            }
+                if ($pendingWrites !== []) {
+                    DB::transaction(function () use ($pendingWrites) {
+                        foreach ($pendingWrites as $entry) {
+                            $order = $entry['order'];
+                            foreach ($entry['items'] as $item) {
+                                $itemPrice = 0;
+                                $itemCurrency = 'USD';
 
-            // Rate limiting - 500ms between requests
-            usleep(500000);
-        }
+                                if (isset($item['ItemPrice']) && is_array($item['ItemPrice'])) {
+                                    $itemPrice += floatval($item['ItemPrice']['Amount'] ?? 0);
+                                    $itemCurrency = $item['ItemPrice']['CurrencyCode'] ?? 'USD';
+                                }
+
+                                if (isset($item['ShippingPrice']) && is_array($item['ShippingPrice'])) {
+                                    $itemPrice += floatval($item['ShippingPrice']['Amount'] ?? 0);
+                                }
+
+                                if (isset($item['GiftWrapPrice']) && is_array($item['GiftWrapPrice'])) {
+                                    $itemPrice += floatval($item['GiftWrapPrice']['Amount'] ?? 0);
+                                }
+
+                                if (isset($item['PromotionDiscount']) && is_array($item['PromotionDiscount'])) {
+                                    $itemPrice -= floatval($item['PromotionDiscount']['Amount'] ?? 0);
+                                }
+
+                                AmazonOrderItem::updateOrCreate(
+                                    [
+                                        'amazon_order_id' => $order->id,
+                                        'asin' => $item['ASIN'] ?? null,
+                                        'sku' => $item['SellerSKU'] ?? null,
+                                    ],
+                                    [
+                                        'quantity' => $item['QuantityOrdered'] ?? 1,
+                                        'price' => $itemPrice,
+                                        'currency' => $itemCurrency,
+                                        'title' => $item['Title'] ?? null,
+                                        'raw_data' => json_encode($item),
+                                    ]
+                                );
+                            }
+                        }
+                    });
+                }
+            });
 
         $this->info("✅ Missing items fetch complete. Success: {$success}, Failed: {$failed}");
     }
@@ -1108,131 +1150,159 @@ class FetchAmazonOrders extends Command
             return;
         }
 
-        // Get all items with $0 price
-        $zeroPriceItems = AmazonOrderItem::where('price', 0)
-            ->orWhereNull('price')
-            ->with('order')
-            ->get();
-        
-        $total = $zeroPriceItems->count();
-        
+        $chunkSize = $this->monitoredChunkSize();
+        $total = AmazonOrderItem::where(function ($q) {
+            $q->where('price', 0)->orWhereNull('price');
+        })->count();
+
         if ($total === 0) {
             $this->info('No items with $0 price found.');
             return;
         }
 
-        $this->info("Found {$total} items with \$0 price. Fixing...");
-        
-        // Load product_master prices into memory for fast lookup
-        $skus = $zeroPriceItems->pluck('sku')->filter()->unique()->values()->toArray();
+        $this->info("Found {$total} items with \$0 price. Fixing in DB chunks of {$chunkSize}...");
+
+        // Prefetch product_master prices for SKUs that need fixing (chunked whereIn).
         $productPrices = [];
-        
-        if (!empty($skus)) {
-            $products = ProductMaster::whereIn('sku', $skus)->get();
-            foreach ($products as $pm) {
-                $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-                // Try to get Amazon price from product_master
-                $amzPrice = 0;
-                foreach ($values as $k => $v) {
-                    $keyLower = strtolower($k);
-                    if (in_array($keyLower, ['amz', 'amazon', 'amz_price', 'amazon_price', 'price'])) {
-                        $amzPrice = floatval($v);
-                        break;
+        AmazonOrderItem::where(function ($q) {
+            $q->where('price', 0)->orWhereNull('price');
+        })
+            ->whereNotNull('sku')
+            ->select('sku')
+            ->distinct()
+            ->orderBy('sku')
+            ->chunk(200, function ($skuRows) use (&$productPrices) {
+                $skus = $skuRows->pluck('sku')->filter()->unique()->values()->all();
+                if ($skus === []) {
+                    return;
+                }
+                ProductMaster::whereIn('sku', $skus)->orderBy('id')->chunkById(50, function ($products) use (&$productPrices) {
+                    foreach ($products as $pm) {
+                        $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                        $amzPrice = 0;
+                        foreach ($values as $k => $v) {
+                            $keyLower = strtolower($k);
+                            if (in_array($keyLower, ['amz', 'amazon', 'amz_price', 'amazon_price', 'price'])) {
+                                $amzPrice = floatval($v);
+                                break;
+                            }
+                        }
+                        if ($amzPrice > 0) {
+                            $productPrices[$pm->sku] = $amzPrice;
+                        }
                     }
-                }
-                if ($amzPrice > 0) {
-                    $productPrices[$pm->sku] = $amzPrice;
-                }
-            }
-        }
-        
+                });
+            });
+
         $this->info("  Loaded prices for " . count($productPrices) . " SKUs from product_master");
-        
+
         $fixedFromApi = 0;
         $fixedFromProductMaster = 0;
         $fixedFromOrderTotal = 0;
         $stillZero = 0;
+        $processed = 0;
 
-        foreach ($zeroPriceItems as $index => $item) {
-            $newPrice = 0;
-            $source = '';
-            
-            // Method 1: Try to re-fetch from API with all price components
-            $order = $item->order;
-            if ($order) {
-                $apiItems = $this->fetchOrderItemsWithRetry($accessToken, $order->amazon_order_id);
-                foreach ($apiItems as $apiItem) {
-                    if (($apiItem['ASIN'] ?? '') === $item->asin && ($apiItem['SellerSKU'] ?? '') === $item->sku) {
-                        // Calculate total price including all components
-                        $totalPrice = 0;
-                        
-                        // ItemPrice
-                        if (isset($apiItem['ItemPrice']['Amount'])) {
-                            $totalPrice += floatval($apiItem['ItemPrice']['Amount']);
-                        }
-                        
-                        // ShippingPrice
-                        if (isset($apiItem['ShippingPrice']['Amount'])) {
-                            $totalPrice += floatval($apiItem['ShippingPrice']['Amount']);
-                        }
-                        
-                        // GiftWrapPrice
-                        if (isset($apiItem['GiftWrapPrice']['Amount'])) {
-                            $totalPrice += floatval($apiItem['GiftWrapPrice']['Amount']);
-                        }
-                        
-                        // Subtract PromotionDiscount
-                        if (isset($apiItem['PromotionDiscount']['Amount'])) {
-                            $totalPrice -= floatval($apiItem['PromotionDiscount']['Amount']);
-                        }
-                        
-                        if ($totalPrice > 0) {
-                            $newPrice = $totalPrice;
-                            $source = 'API';
-                            break;
+        AmazonOrderItem::where(function ($q) {
+            $q->where('price', 0)->orWhereNull('price');
+        })
+            ->with('order')
+            ->orderBy('id')
+            ->chunkById($chunkSize, function ($zeroPriceItems) use (
+                $accessToken,
+                $productPrices,
+                $total,
+                &$fixedFromApi,
+                &$fixedFromProductMaster,
+                &$fixedFromOrderTotal,
+                &$stillZero,
+                &$processed
+            ) {
+                $pendingSaves = [];
+
+                foreach ($zeroPriceItems as $item) {
+                    $processed++;
+                    $newPrice = 0;
+                    $source = '';
+
+                    $order = $item->order;
+                    if ($order) {
+                        $apiItems = $this->fetchOrderItemsWithRetry($accessToken, $order->amazon_order_id);
+                        foreach ($apiItems as $apiItem) {
+                            if (($apiItem['ASIN'] ?? '') === $item->asin && ($apiItem['SellerSKU'] ?? '') === $item->sku) {
+                                $totalPrice = 0;
+
+                                if (isset($apiItem['ItemPrice']['Amount'])) {
+                                    $totalPrice += floatval($apiItem['ItemPrice']['Amount']);
+                                }
+
+                                if (isset($apiItem['ShippingPrice']['Amount'])) {
+                                    $totalPrice += floatval($apiItem['ShippingPrice']['Amount']);
+                                }
+
+                                if (isset($apiItem['GiftWrapPrice']['Amount'])) {
+                                    $totalPrice += floatval($apiItem['GiftWrapPrice']['Amount']);
+                                }
+
+                                if (isset($apiItem['PromotionDiscount']['Amount'])) {
+                                    $totalPrice -= floatval($apiItem['PromotionDiscount']['Amount']);
+                                }
+
+                                if ($totalPrice > 0) {
+                                    $newPrice = $totalPrice;
+                                    $source = 'API';
+                                    break;
+                                }
+                            }
                         }
                     }
-                }
-            }
-            
-            // Method 2: Look up from product_master (if API didn't work)
-            if ($newPrice == 0 && $item->sku && isset($productPrices[$item->sku])) {
-                $quantity = $item->quantity ?: 1;
-                $newPrice = $productPrices[$item->sku] * $quantity;
-                $source = 'ProductMaster';
-            }
-            
-            // Method 3: Use order total if single item order
-            if ($newPrice == 0 && $order) {
-                $itemsInOrder = AmazonOrderItem::where('amazon_order_id', $order->id)->count();
-                if ($itemsInOrder == 1 && $order->total_amount > 0) {
-                    $newPrice = floatval($order->total_amount);
-                    $source = 'OrderTotal';
-                }
-            }
-            
-            // Update if we found a price
-            if ($newPrice > 0) {
-                $item->price = round($newPrice, 2);
-                $item->save();
-                
-                switch ($source) {
-                    case 'API': $fixedFromApi++; break;
-                    case 'ProductMaster': $fixedFromProductMaster++; break;
-                    case 'OrderTotal': $fixedFromOrderTotal++; break;
-                }
-            } else {
-                $stillZero++;
-            }
 
-            // Progress update every 50 items
-            if (($index + 1) % 50 === 0) {
-                $this->info("  Progress: " . ($index + 1) . "/{$total}");
-            }
+                    if ($newPrice == 0 && $item->sku && isset($productPrices[$item->sku])) {
+                        $quantity = $item->quantity ?: 1;
+                        $newPrice = $productPrices[$item->sku] * $quantity;
+                        $source = 'ProductMaster';
+                    }
 
-            // Rate limiting for API calls
-            usleep(300000); // 300ms
-        }
+                    if ($newPrice == 0 && $order) {
+                        $itemsInOrder = AmazonOrderItem::where('amazon_order_id', $order->id)->count();
+                        if ($itemsInOrder == 1 && $order->total_amount > 0) {
+                            $newPrice = floatval($order->total_amount);
+                            $source = 'OrderTotal';
+                        }
+                    }
+
+                    if ($newPrice > 0) {
+                        $pendingSaves[] = ['item' => $item, 'price' => round($newPrice, 2), 'source' => $source];
+                    } else {
+                        $stillZero++;
+                        Log::warning("Could not fix price for item", [
+                            'item_id' => $item->id,
+                            'asin' => $item->asin,
+                            'sku' => $item->sku,
+                            'order_id' => $order->amazon_order_id ?? null,
+                        ]);
+                    }
+
+                    if ($processed % 50 === 0) {
+                        $this->info("  Progress: {$processed}/{$total}");
+                    }
+
+                    usleep(300000);
+                }
+
+                if ($pendingSaves !== []) {
+                    DB::transaction(function () use ($pendingSaves, &$fixedFromApi, &$fixedFromProductMaster, &$fixedFromOrderTotal) {
+                        foreach ($pendingSaves as $entry) {
+                            $entry['item']->price = $entry['price'];
+                            $entry['item']->save();
+                            switch ($entry['source']) {
+                                case 'API': $fixedFromApi++; break;
+                                case 'ProductMaster': $fixedFromProductMaster++; break;
+                                case 'OrderTotal': $fixedFromOrderTotal++; break;
+                            }
+                        }
+                    });
+                }
+            });
 
         $this->info("✅ Zero price fix complete:");
         $this->info("   Fixed from API: {$fixedFromApi}");

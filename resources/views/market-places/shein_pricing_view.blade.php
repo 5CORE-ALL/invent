@@ -476,14 +476,15 @@
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <!-- Add New Competitor LMP -->
-                    <div class="card mb-3 border-success">
-                        <div class="card-header bg-success text-white py-2">
-                            <strong><i class="fa fa-plus-circle"></i> Add Competitor LMP</strong>
-                            <span class="float-end small">Max 4 per SKU</span>
+                    <!-- Add / Edit Competitor LMP -->
+                    <div class="card mb-3 border-success" id="sheinLmpFormCard">
+                        <div class="card-header bg-success text-white py-2" id="sheinLmpFormHeader">
+                            <strong><i class="fa fa-plus-circle" id="sheinLmpFormHeaderIcon"></i> <span id="sheinLmpFormHeaderText">Add Competitor LMP</span></strong>
+                            <span class="float-end small" id="sheinLmpFormHeaderHint">Max 4 per SKU</span>
                         </div>
                         <div class="card-body py-2">
                             <form id="sheinAddLmpForm" class="row g-2 align-items-end">
+                                <input type="hidden" id="sheinEditLmpSlot" value="">
                                 <div class="col-md-3">
                                     <label class="form-label mb-1 small"><strong>SKU</strong></label>
                                     <input type="text" class="form-control form-control-sm" id="sheinAddLmpSku" readonly>
@@ -492,13 +493,16 @@
                                     <label class="form-label mb-1 small"><strong>Price</strong> <span class="text-danger">*</span></label>
                                     <input type="number" class="form-control form-control-sm" id="sheinAddLmpPrice" placeholder="9.99" step="0.01" min="0.01" required>
                                 </div>
-                                <div class="col-md-4">
+                                <div class="col-md-3">
                                     <label class="form-label mb-1 small"><strong>Product Link</strong></label>
                                     <input type="url" class="form-control form-control-sm" id="sheinAddLmpLink" placeholder="https://us.shein.com/...">
                                 </div>
-                                <div class="col-md-2">
-                                    <button type="submit" class="btn btn-success btn-sm w-100" id="sheinAddLmpBtn">
-                                        <i class="fa fa-plus"></i> Add
+                                <div class="col-md-3 d-flex gap-1">
+                                    <button type="submit" class="btn btn-success btn-sm flex-grow-1" id="sheinAddLmpBtn">
+                                        <i class="fa fa-plus"></i> <span id="sheinAddLmpBtnText">Add</span>
+                                    </button>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm d-none" id="sheinCancelEditLmpBtn" title="Cancel edit">
+                                        <i class="fa fa-times"></i>
                                     </button>
                                 </div>
                             </form>
@@ -2479,6 +2483,44 @@
 
         // ── LMP competitors modal (same as Amazon page) ──────────────────
         let sheinLmpCurrentSku = '';
+        let sheinEditLmpSlot = null;
+
+        function sheinResetLmpForm(keepSku) {
+            sheinEditLmpSlot = null;
+            document.getElementById('sheinEditLmpSlot').value = '';
+            document.getElementById('sheinAddLmpSku').value = keepSku || sheinLmpCurrentSku || '';
+            document.getElementById('sheinAddLmpPrice').value = '';
+            document.getElementById('sheinAddLmpLink').value = '';
+            $('#sheinLmpFormCard').removeClass('border-warning').addClass('border-success');
+            $('#sheinLmpFormHeader').removeClass('bg-warning text-dark').addClass('bg-success text-white');
+            $('#sheinLmpFormHeaderIcon').attr('class', 'fa fa-plus-circle');
+            $('#sheinLmpFormHeaderText').text('Add Competitor LMP');
+            $('#sheinLmpFormHeaderHint').text('Max 4 per SKU');
+            $('#sheinAddLmpBtn').removeClass('btn-warning').addClass('btn-success');
+            $('#sheinAddLmpBtn').find('i').attr('class', 'fa fa-plus');
+            $('#sheinAddLmpBtnText').text('Add');
+            $('#sheinCancelEditLmpBtn').addClass('d-none');
+        }
+
+        function sheinEnterEditLmpMode(item) {
+            if (!item || !item.slot) return;
+            sheinEditLmpSlot = item.slot;
+            document.getElementById('sheinEditLmpSlot').value = item.slot;
+            document.getElementById('sheinAddLmpSku').value = item.sku || sheinLmpCurrentSku || '';
+            document.getElementById('sheinAddLmpPrice').value = item.price != null ? parseFloat(item.price) : '';
+            document.getElementById('sheinAddLmpLink').value = item.link || '';
+            $('#sheinLmpFormCard').removeClass('border-success').addClass('border-warning');
+            $('#sheinLmpFormHeader').removeClass('bg-success text-white').addClass('bg-warning text-dark');
+            $('#sheinLmpFormHeaderIcon').attr('class', 'fa fa-edit');
+            $('#sheinLmpFormHeaderText').text('Edit Competitor LMP');
+            $('#sheinLmpFormHeaderHint').text('Slot #' + item.slot);
+            $('#sheinAddLmpBtn').removeClass('btn-success').addClass('btn-warning');
+            $('#sheinAddLmpBtn').find('i').attr('class', 'fa fa-save');
+            $('#sheinAddLmpBtnText').text('Update');
+            $('#sheinCancelEditLmpBtn').removeClass('d-none');
+            const formCard = document.getElementById('sheinLmpFormCard');
+            if (formCard) formCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
 
         function renderSheinLmpList(entries) {
             entries = Array.isArray(entries) ? entries.filter(e => (parseFloat(e.price) || 0) > 0) : [];
@@ -2494,7 +2536,7 @@
                 '<th style="width:120px;">Price</th>' +
                 '<th>Product Link</th>' +
                 '<th style="width:60px;">Open</th>' +
-                '<th style="width:60px;">Del</th>' +
+                '<th style="width:100px;">Actions</th>' +
                 '</tr></thead><tbody>';
 
             entries.forEach(function(e, i) {
@@ -2505,19 +2547,22 @@
                     ? '<span class="badge bg-success">' + money(price) + ' <i class="fa fa-trophy"></i></span>'
                     : '<strong>' + money(price) + '</strong>';
                 const link = e.link || '';
+                const sourceSku = String(e.source_sku || sheinLmpCurrentSku || '').replace(/"/g, '&quot;');
+                const slot = e.slot || (i + 1);
                 const linkText = link
                     ? '<a href="' + String(link).replace(/"/g, '&quot;') + '" target="_blank" rel="noopener noreferrer" style="font-size:11px;word-break:break-all;">' + String(link).substring(0, 90) + (String(link).length > 90 ? '…' : '') + '</a>'
                     : '<span style="color:#999;">—</span>';
                 const openBtn = link
                     ? '<a href="' + String(link).replace(/"/g, '&quot;') + '" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-info" title="Open competitor"><i class="fa fa-external-link"></i></a>'
                     : '<span style="color:#999;">—</span>';
-                const delBtn = '<button class="btn btn-sm btn-danger shein-del-lmp" data-slot="' + (e.slot || (i + 1)) + '" data-source-sku="' + String(e.source_sku || sheinLmpCurrentSku || '').replace(/"/g, '&quot;') + '" title="Remove this LMP"><i class="fa fa-trash"></i></button>';
+                const editBtn = '<button class="btn btn-sm btn-warning shein-edit-lmp" data-slot="' + slot + '" data-source-sku="' + sourceSku + '" data-price="' + String(price).replace(/"/g, '&quot;') + '" data-link="' + String(link).replace(/"/g, '&quot;') + '" title="Edit this LMP"><i class="fa fa-edit"></i></button>';
+                const delBtn = '<button class="btn btn-sm btn-danger shein-del-lmp" data-slot="' + slot + '" data-source-sku="' + sourceSku + '" title="Remove this LMP"><i class="fa fa-trash"></i></button>';
                 html += '<tr class="' + rowClass + '">' +
                     '<td class="text-center"><strong>' + (i + 1) + '</strong></td>' +
                     '<td>' + priceBadge + '</td>' +
                     '<td>' + linkText + '</td>' +
                     '<td class="text-center">' + openBtn + '</td>' +
-                    '<td class="text-center">' + delBtn + '</td>' +
+                    '<td class="text-center text-nowrap">' + editBtn + ' ' + delBtn + '</td>' +
                     '</tr>';
             });
             html += '</tbody></table></div>';
@@ -2558,48 +2603,70 @@
             }
             sheinLmpCurrentSku = sku || '';
             document.getElementById('sheinLmpSku').textContent = sku || '';
-            document.getElementById('sheinAddLmpSku').value = sku || '';
-            document.getElementById('sheinAddLmpPrice').value = '';
-            document.getElementById('sheinAddLmpLink').value = '';
+            sheinResetLmpForm(sku || '');
             renderSheinLmpList(entries);
             bootstrap.Modal.getOrCreateInstance(document.getElementById('sheinLmpModal')).show();
         });
 
-        // Add a new competitor LMP.
+        // Add or update a competitor LMP.
         $(document).on('submit', '#sheinAddLmpForm', function(e) {
             e.preventDefault();
             const sku = document.getElementById('sheinAddLmpSku').value.trim();
             const price = document.getElementById('sheinAddLmpPrice').value;
             const link = document.getElementById('sheinAddLmpLink').value.trim();
+            const editSlot = sheinEditLmpSlot || document.getElementById('sheinEditLmpSlot').value;
+            const isEdit = !!editSlot;
             if (!sku) { sheinLinksNotify('SKU is missing', 'error'); return; }
             if (!(parseFloat(price) > 0)) { sheinLinksNotify('Enter a valid price', 'error'); return; }
 
             const $btn = $('#sheinAddLmpBtn');
-            $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Adding...');
+            $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> ' + (isEdit ? 'Updating...' : 'Adding...'));
+
+            const payload = { sku: sku, price: price, link: link };
+            if (isEdit) payload.slot = editSlot;
 
             $.ajax({
-                url: '/shein/lmp/add',
+                url: isEdit ? '/shein/lmp/update' : '/shein/lmp/add',
                 method: 'POST',
-                data: { sku: sku, price: price, link: link },
+                data: payload,
                 headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
                 success: function(res) {
                     if (res && res.success) {
-                        document.getElementById('sheinAddLmpPrice').value = '';
-                        document.getElementById('sheinAddLmpLink').value = '';
-                        sheinRefreshLmpAfterChange(sku);
-                        sheinLinksNotify('LMP added', 'success');
+                        sheinResetLmpForm(sheinLmpCurrentSku);
+                        sheinRefreshLmpAfterChange(sheinLmpCurrentSku);
+                        sheinLinksNotify(isEdit ? 'LMP updated' : 'LMP added', 'success');
                     } else {
-                        sheinLinksNotify((res && res.message) || 'Error adding LMP', 'error');
+                        sheinLinksNotify((res && res.message) || (isEdit ? 'Error updating LMP' : 'Error adding LMP'), 'error');
                     }
                 },
                 error: function(xhr) {
-                    const msg = (xhr.responseJSON && xhr.responseJSON.message) || 'Error adding LMP';
+                    const msg = (xhr.responseJSON && xhr.responseJSON.message) || (isEdit ? 'Error updating LMP' : 'Error adding LMP');
                     sheinLinksNotify(msg, 'error');
                 },
                 complete: function() {
-                    $btn.prop('disabled', false).html('<i class="fa fa-plus"></i> Add');
+                    $btn.prop('disabled', false);
+                    if (sheinEditLmpSlot) {
+                        $btn.html('<i class="fa fa-save"></i> <span id="sheinAddLmpBtnText">Update</span>');
+                    } else {
+                        $btn.html('<i class="fa fa-plus"></i> <span id="sheinAddLmpBtnText">Add</span>');
+                    }
                 }
             });
+        });
+
+        // Edit a competitor LMP — load into the form above.
+        $(document).on('click', '.shein-edit-lmp', function() {
+            const $btn = $(this);
+            sheinEnterEditLmpMode({
+                slot: $btn.data('slot'),
+                sku: $btn.attr('data-source-sku') || $btn.data('source-sku') || sheinLmpCurrentSku,
+                price: $btn.data('price'),
+                link: $btn.attr('data-link') || '',
+            });
+        });
+
+        $(document).on('click', '#sheinCancelEditLmpBtn', function() {
+            sheinResetLmpForm(sheinLmpCurrentSku);
         });
 
         // Delete a competitor LMP slot.
@@ -2619,6 +2686,7 @@
                 headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
                 success: function(res) {
                     if (res && res.success) {
+                        sheinResetLmpForm(sheinLmpCurrentSku);
                         sheinRefreshLmpAfterChange(sheinLmpCurrentSku);
                         sheinLinksNotify('LMP removed', 'success');
                     } else {

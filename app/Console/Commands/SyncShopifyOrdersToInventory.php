@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Console\Commands\Concerns\ProcessesUpdatesInChunks;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -19,15 +20,18 @@ use Illuminate\Support\Facades\Log;
  *   php artisan shopify:sync-orders               # last 30 days (default)
  *   php artisan shopify:sync-orders --days=365    # last year
  *   php artisan shopify:sync-orders --from=2025-01-01 --to=2025-12-31
- *   php artisan shopify:sync-orders --batch=50    # DB upsert batch size
+ *   php artisan shopify:sync-orders --chunk=50    # DB upsert batch size
  */
 class SyncShopifyOrdersToInventory extends Command
 {
+    use ProcessesUpdatesInChunks;
+
     protected $signature = 'shopify:sync-orders
                             {--days=30          : Number of days back to fetch when no --from is given}
                             {--from=            : Start date YYYY-MM-DD (overrides --days)}
                             {--to=              : End date YYYY-MM-DD   (default: today)}
-                            {--batch=100        : Number of rows per DB upsert batch}';
+                            {--batch=           : Deprecated alias for --chunk}
+                            {--chunk=           : Number of rows per DB upsert batch (default from cron-monitor config)}';
 
     protected $description = 'Sync Shopify orders (with discounts, tags, tracking) into inventory_db.shopify_raw_orders';
 
@@ -70,7 +74,8 @@ class SyncShopifyOrdersToInventory extends Command
             return self::FAILURE;
         }
 
-        $batchSize = max(1, (int) $this->option('batch'));
+        $batchOpt = (int) ($this->option('chunk') ?: $this->option('batch') ?: 0);
+        $batchSize = $this->monitoredChunkSize($batchOpt > 0 ? $batchOpt : null);
 
         try {
             $this->fetchAndStore($fromDate, $toDate, $batchSize);
@@ -387,9 +392,11 @@ class SyncShopifyOrdersToInventory extends Command
             'updated_at',
         ];
 
-        // Insert into inventory_db (default connection)
-        DB::table('shopify_raw_orders')
-            ->upsert($batch, ['order_id', 'line_item_id'], $updateCols);
+        // Insert into inventory_db (default connection) inside a per-chunk transaction
+        DB::transaction(function () use ($batch, $updateCols) {
+            DB::table('shopify_raw_orders')
+                ->upsert($batch, ['order_id', 'line_item_id'], $updateCols);
+        });
 
         $this->inserted += count($batch);
         $this->line(sprintf('    ↳ Upserted batch of %d rows (running total: %d)', count($batch), $this->inserted));

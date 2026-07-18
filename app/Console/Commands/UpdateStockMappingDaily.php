@@ -50,9 +50,16 @@ class UpdateStockMappingDaily extends Command
                 return 1;
             }
 
-            $data = ProductStockMapping::all()->groupBy('sku')->map(function ($items) {
-                return $items->first();
-            });
+            $data = collect();
+            ProductStockMapping::query()
+                ->orderBy('id')
+                ->chunkById(50, function ($rows) use (&$data) {
+                    foreach ($rows->groupBy('sku') as $sku => $items) {
+                        if (! $data->has($sku)) {
+                            $data[$sku] = $items->first();
+                        }
+                    }
+                });
 
             $skusforNR = array_values(array_filter(array_map(function ($item) {
                 return $item['sku'] ?? null;

@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Console\Commands\Concerns\ProcessesUpdatesInChunks;
 use App\Models\Ebay3Metric;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -21,7 +22,9 @@ use Illuminate\Support\Facades\Cache;
  */
 class SyncEbay3CampaignListings extends Command
 {
-    protected $signature   = 'ebay3:sync-campaign-listings {--dry-run : Show what would be inserted without writing}';
+    use ProcessesUpdatesInChunks;
+
+    protected $signature   = 'ebay3:sync-campaign-listings {--dry-run : Show what would be inserted without writing} {--chunk= : Override DB write chunk size (default from cron-monitor config)}';
     protected $description = 'Sync ALL eBay 3 campaign ad listings into ebay3_campaign_ads (no product_master filter)';
 
     public function handle()
@@ -72,49 +75,70 @@ class SyncEbay3CampaignListings extends Command
 
             $this->line('   → ' . count($ads) . ' ads');
 
-            foreach ($ads as $ad) {
-                $listingId     = (string)($ad['listingId']     ?? '');
-                $adId          = (string)($ad['adId']          ?? '');
-                $bidPercentage = $ad['bidPercentage'] ?? $campaignBid;
-
-                if (!$listingId) continue;
-
-                $this->line("      listing_id={$listingId} | adId={$adId} | bid={$bidPercentage}%");
-
-                if ($dryRun) continue;
-
-                try {
-                    $exists = DB::table('ebay3_campaign_ads')
-                        ->where('listing_id', $listingId)
-                        ->where('campaign_id', (string)$campaignId)
-                        ->exists();
-
-                    $row = [
-                        'campaign_id'      => (string)$campaignId,
-                        'campaign_name'    => $campaignName,
-                        'funding_strategy' => $funding,
-                        'campaign_status'  => $campaignStatus,
-                        'ad_id'            => $adId ?: null,
-                        'listing_id'       => $listingId,
-                        'bid_percentage'   => $bidPercentage !== null ? round((float)$bidPercentage, 2) : null,
-                        'updated_at'       => now(),
-                    ];
-
-                    if ($exists) {
-                        DB::table('ebay3_campaign_ads')
-                            ->where('listing_id', $listingId)
-                            ->where('campaign_id', (string)$campaignId)
-                            ->update($row);
-                        $updated++;
-                    } else {
-                        $row['created_at'] = now();
-                        DB::table('ebay3_campaign_ads')->insert($row);
-                        $inserted++;
+            $dbChunkSize = $this->monitoredChunkSize();
+            foreach (array_chunk($ads, $dbChunkSize) as $adChunk) {
+                if ($dryRun) {
+                    foreach ($adChunk as $ad) {
+                        $listingId = (string) ($ad['listingId'] ?? '');
+                        if (!$listingId) {
+                            continue;
+                        }
+                        $adId = (string) ($ad['adId'] ?? '');
+                        $bidPercentage = $ad['bidPercentage'] ?? $campaignBid;
+                        $this->line("      listing_id={$listingId} | adId={$adId} | bid={$bidPercentage}%");
                     }
-                } catch (\Exception $e) {
-                    $this->error("      ❌ DB: " . $e->getMessage());
-                    $skipped++;
+                    continue;
                 }
+
+                $chunkStats = DB::transaction(function () use ($adChunk, $campaignId, $campaignName, $funding, $campaignStatus, $campaignBid) {
+                    $ins = 0;
+                    $upd = 0;
+                    $skip = 0;
+                    foreach ($adChunk as $ad) {
+                        $listingId = (string) ($ad['listingId'] ?? '');
+                        $adId = (string) ($ad['adId'] ?? '');
+                        $bidPercentage = $ad['bidPercentage'] ?? $campaignBid;
+                        if (!$listingId) {
+                            continue;
+                        }
+                        $this->line("      listing_id={$listingId} | adId={$adId} | bid={$bidPercentage}%");
+                        try {
+                            $exists = DB::table('ebay3_campaign_ads')
+                                ->where('listing_id', $listingId)
+                                ->where('campaign_id', (string) $campaignId)
+                                ->exists();
+                            $row = [
+                                'campaign_id' => (string) $campaignId,
+                                'campaign_name' => $campaignName,
+                                'funding_strategy' => $funding,
+                                'campaign_status' => $campaignStatus,
+                                'ad_id' => $adId ?: null,
+                                'listing_id' => $listingId,
+                                'bid_percentage' => $bidPercentage !== null ? round((float) $bidPercentage, 2) : null,
+                                'updated_at' => now(),
+                            ];
+                            if ($exists) {
+                                DB::table('ebay3_campaign_ads')
+                                    ->where('listing_id', $listingId)
+                                    ->where('campaign_id', (string) $campaignId)
+                                    ->update($row);
+                                $upd++;
+                            } else {
+                                $row['created_at'] = now();
+                                DB::table('ebay3_campaign_ads')->insert($row);
+                                $ins++;
+                            }
+                        } catch (\Exception $e) {
+                            $this->error('      ❌ DB: '.$e->getMessage());
+                            $skip++;
+                        }
+                    }
+
+                    return compact('ins', 'upd', 'skip');
+                });
+                $inserted += $chunkStats['ins'];
+                $updated += $chunkStats['upd'];
+                $skipped += $chunkStats['skip'];
             }
         }
 
@@ -129,84 +153,111 @@ class SyncEbay3CampaignListings extends Command
                     ->map(fn($id) => (string)$id)
                     ->toArray();
 
-                // Default-connection ebay_3_metrics (App\Models\Ebay3Metric).
-                $metricsRaw = Ebay3Metric::query()
-                    ->whereNotNull('item_id')
-                    ->select('item_id', 'sku', 'ebay_price')
-                    ->get();
-
-                $notInCampaign = $metricsRaw->filter(fn($m) => !in_array((string)$m->item_id, $existingIds, true))->values();
-                $this->info('Found ' . $notInCampaign->count() . ' listings not in any eBay 3 campaign.');
-
-                $eligibleChunks   = $notInCampaign->chunk(20);
+                $existingLookup = array_fill_keys($existingIds, true);
+                $dbChunkSize = $this->monitoredChunkSize();
                 $eligibleInserted = 0;
+                $eligibleFound = 0;
+                $pendingDbRows = [];
 
-                foreach ($eligibleChunks as $chunk) {
-                    $ids = $chunk->pluck('item_id')->map(fn($id) => (string)$id)->values()->toArray();
-
-                    try {
-                        $resp = Http::withToken($token)
-                            ->withHeaders([
-                                'X-EBAY-C-MARKETPLACE-ID' => 'EBAY-US',
-                                'Content-Type'             => 'application/json',
-                            ])
-                            ->post('https://api.ebay.com/sell/recommendation/v1/find?filter=recommendationTypes:{AD}&limit=20',
-                                ['listingIds' => $ids]);
-
-                        foreach ($resp->json()['listingRecommendations'] ?? [] as $rec) {
-                            $lid           = (string)($rec['listingId'] ?? '');
-                            $promoteStatus = $rec['marketing']['ad']['promoteWithAd'] ?? null;
-                            $bidPercs      = $rec['marketing']['ad']['bidPercentages'] ?? [];
-
-                            if (!$lid) continue;
-
-                            // Get suggested_bid (ITEM basis preferred, then TRENDING)
-                            $suggestedBid = null;
-                            foreach ($bidPercs as $b) {
-                                if (($b['basis'] ?? '') === 'ITEM' && isset($b['value'])) {
-                                    $suggestedBid = (float)$b['value']; break;
-                                }
-                            }
-                            if ($suggestedBid === null) {
-                                foreach ($bidPercs as $b) {
-                                    if (($b['basis'] ?? '') === 'TRENDING' && isset($b['value'])) {
-                                        $suggestedBid = (float)$b['value']; break;
-                                    }
-                                }
-                            }
-
-                            $metric = $chunk->first(fn($m) => (string)$m->item_id === $lid);
-                            $sku    = $metric ? $metric->sku : null;
-                            $price  = $metric ? $metric->ebay_price : null;
-
-                            $this->line("  → listing_id={$lid} | sku={$sku} | promote={$promoteStatus} | es_bid={$suggestedBid}%");
-
+                $flushEligible = function () use (&$pendingDbRows, &$eligibleInserted) {
+                    if ($pendingDbRows === []) {
+                        return;
+                    }
+                    DB::transaction(function () use (&$pendingDbRows, &$eligibleInserted) {
+                        foreach ($pendingDbRows as $row) {
                             DB::table('ebay3_campaign_ads')->updateOrInsert(
-                                ['listing_id' => $lid, 'campaign_id' => null],
-                                [
-                                    'campaign_id'      => null,
-                                    'campaign_name'    => null,
-                                    'funding_strategy' => null,
-                                    'campaign_status'  => null,
-                                    'ad_id'            => null,
-                                    'listing_id'       => $lid,
-                                    'sku'              => $sku,
-                                    'bid_percentage'   => null,
-                                    'suggested_bid'    => $suggestedBid,
-                                    'price'            => $price,
-                                    'promote_with_ad'  => $promoteStatus,
-                                    'updated_at'       => now(),
-                                    'created_at'       => now(),
-                                ]
+                                ['listing_id' => $row['listing_id'], 'campaign_id' => null],
+                                $row
                             );
                             $eligibleInserted++;
                         }
-                    } catch (\Exception $e) {
-                        $this->warn('  ⚠ Eligible fetch error: ' . $e->getMessage());
-                    }
-                    usleep(200000);
-                }
+                    });
+                    $pendingDbRows = [];
+                };
 
+                // Default-connection ebay_3_metrics — stream; API batches stay at 20
+                Ebay3Metric::query()
+                    ->whereNotNull('item_id')
+                    ->select('id', 'item_id', 'sku', 'ebay_price')
+                    ->orderBy('id')
+                    ->chunkById($dbChunkSize, function ($metrics) use (
+                        $existingLookup,
+                        $token,
+                        $dbChunkSize,
+                        &$pendingDbRows,
+                        &$eligibleFound,
+                        $flushEligible
+                    ) {
+                        $notInCampaign = $metrics->filter(
+                            fn ($m) => ! isset($existingLookup[(string) $m->item_id])
+                        )->values();
+                        $eligibleFound += $notInCampaign->count();
+
+                        foreach ($notInCampaign->chunk(20) as $chunk) {
+                            $ids = $chunk->pluck('item_id')->map(fn ($id) => (string) $id)->values()->toArray();
+                            try {
+                                $resp = Http::withToken($token)
+                                    ->withHeaders([
+                                        'X-EBAY-C-MARKETPLACE-ID' => 'EBAY-US',
+                                        'Content-Type' => 'application/json',
+                                    ])
+                                    ->post('https://api.ebay.com/sell/recommendation/v1/find?filter=recommendationTypes:{AD}&limit=20',
+                                        ['listingIds' => $ids]);
+
+                                foreach ($resp->json()['listingRecommendations'] ?? [] as $rec) {
+                                    $lid = (string) ($rec['listingId'] ?? '');
+                                    $promoteStatus = $rec['marketing']['ad']['promoteWithAd'] ?? null;
+                                    $bidPercs = $rec['marketing']['ad']['bidPercentages'] ?? [];
+                                    if (!$lid) {
+                                        continue;
+                                    }
+                                    $suggestedBid = null;
+                                    foreach ($bidPercs as $b) {
+                                        if (($b['basis'] ?? '') === 'ITEM' && isset($b['value'])) {
+                                            $suggestedBid = (float) $b['value'];
+                                            break;
+                                        }
+                                    }
+                                    if ($suggestedBid === null) {
+                                        foreach ($bidPercs as $b) {
+                                            if (($b['basis'] ?? '') === 'TRENDING' && isset($b['value'])) {
+                                                $suggestedBid = (float) $b['value'];
+                                                break;
+                                            }
+                                        }
+                                    }
+                                    $metric = $chunk->first(fn ($m) => (string) $m->item_id === $lid);
+                                    $sku = $metric ? $metric->sku : null;
+                                    $price = $metric ? $metric->ebay_price : null;
+                                    $this->line("  → listing_id={$lid} | sku={$sku} | promote={$promoteStatus} | es_bid={$suggestedBid}%");
+                                    $pendingDbRows[] = [
+                                        'campaign_id' => null,
+                                        'campaign_name' => null,
+                                        'funding_strategy' => null,
+                                        'campaign_status' => null,
+                                        'ad_id' => null,
+                                        'listing_id' => $lid,
+                                        'sku' => $sku,
+                                        'bid_percentage' => null,
+                                        'suggested_bid' => $suggestedBid,
+                                        'price' => $price,
+                                        'promote_with_ad' => $promoteStatus,
+                                        'updated_at' => now(),
+                                        'created_at' => now(),
+                                    ];
+                                    if (count($pendingDbRows) >= $dbChunkSize) {
+                                        $flushEligible();
+                                    }
+                                }
+                            } catch (\Exception $e) {
+                                $this->warn('  ⚠ Eligible fetch error: '.$e->getMessage());
+                            }
+                            usleep(200000);
+                        }
+                    });
+
+                $flushEligible();
+                $this->info("Found {$eligibleFound} listings not in any eBay 3 campaign.");
                 $this->info("✅ Eligible listings inserted/updated: {$eligibleInserted}");
             } catch (\Exception $e) {
                 $this->warn('⚠ Skipping eligible-listings step (ebay_3_metrics not accessible): ' . $e->getMessage());
@@ -225,15 +276,32 @@ class SyncEbay3CampaignListings extends Command
                 ->values()
                 ->toArray();
 
-            $chunks   = array_chunk($allListingIds, 20);
+            $chunks = array_chunk($allListingIds, 20); // API page size unchanged
+            $dbChunkSize = $this->monitoredChunkSize();
             $bidCount = 0;
+            $pendingBidUpdates = [];
+
+            $flushBids = function () use (&$pendingBidUpdates, &$bidCount) {
+                if ($pendingBidUpdates === []) {
+                    return;
+                }
+                DB::transaction(function () use (&$pendingBidUpdates, &$bidCount) {
+                    foreach ($pendingBidUpdates as $upd) {
+                        DB::table('ebay3_campaign_ads')
+                            ->where('listing_id', $upd['listing_id'])
+                            ->update($upd['update']);
+                        $bidCount++;
+                    }
+                });
+                $pendingBidUpdates = [];
+            };
 
             foreach ($chunks as $chunk) {
                 try {
                     $resp = Http::withToken($token)
                         ->withHeaders([
                             'X-EBAY-C-MARKETPLACE-ID' => 'EBAY-US',
-                            'Content-Type'             => 'application/json',
+                            'Content-Type' => 'application/json',
                         ])
                         ->post('https://api.ebay.com/sell/recommendation/v1/find?filter=recommendationTypes:{AD}&limit=20',
                             ['listingIds' => $chunk]);
@@ -241,52 +309,57 @@ class SyncEbay3CampaignListings extends Command
                     $recommendations = $resp->json()['listingRecommendations'] ?? [];
 
                     foreach ($recommendations as $rec) {
-                        $lid           = $rec['listingId'] ?? null;
+                        $lid = $rec['listingId'] ?? null;
                         $promoteStatus = $rec['marketing']['ad']['promoteWithAd'] ?? null;
-                        $bidPercs      = $rec['marketing']['ad']['bidPercentages'] ?? [];
-                        $suggestedBid  = null;
+                        $bidPercs = $rec['marketing']['ad']['bidPercentages'] ?? [];
+                        $suggestedBid = null;
 
-                        // Priority 1: ITEM basis
                         foreach ($bidPercs as $b) {
                             if (($b['basis'] ?? '') === 'ITEM' && isset($b['value'])) {
-                                $suggestedBid = (float)$b['value'];
+                                $suggestedBid = (float) $b['value'];
                                 break;
                             }
                         }
-                        // Priority 2: TRENDING
                         if ($suggestedBid === null) {
                             foreach ($bidPercs as $b) {
                                 if (($b['basis'] ?? '') === 'TRENDING' && isset($b['value'])) {
-                                    $suggestedBid = (float)$b['value'];
+                                    $suggestedBid = (float) $b['value'];
                                     break;
                                 }
                             }
                         }
-                        // Fallback: first available
                         if ($suggestedBid === null && isset($bidPercs[0]['value'])) {
-                            $suggestedBid = (float)$bidPercs[0]['value'];
+                            $suggestedBid = (float) $bidPercs[0]['value'];
                         }
 
                         if ($lid) {
                             $update = ['updated_at' => now()];
-                            if ($suggestedBid !== null) $update['suggested_bid']   = $suggestedBid;
-                            if ($promoteStatus)         $update['promote_with_ad'] = $promoteStatus;
+                            if ($suggestedBid !== null) {
+                                $update['suggested_bid'] = $suggestedBid;
+                            }
+                            if ($promoteStatus) {
+                                $update['promote_with_ad'] = $promoteStatus;
+                            }
 
                             if (count($update) > 1) {
-                                DB::table('ebay3_campaign_ads')
-                                    ->where('listing_id', (string)$lid)
-                                    ->update($update);
-                                $bidCount++;
+                                $pendingBidUpdates[] = [
+                                    'listing_id' => (string) $lid,
+                                    'update' => $update,
+                                ];
+                                if (count($pendingBidUpdates) >= $dbChunkSize) {
+                                    $flushBids();
+                                }
                             }
                         }
                     }
                 } catch (\Exception $e) {
-                    $this->warn('  ⚠ Recommendation batch error: ' . $e->getMessage());
+                    $this->warn('  ⚠ Recommendation batch error: '.$e->getMessage());
                 }
 
                 usleep(200000); // 0.2 seconds — rate-limit friendly
             }
 
+            $flushBids();
             $this->info("✅ Suggested bids / promote status updated: {$bidCount} listings");
         }
 

@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Console\Commands\Concerns\ProcessesUpdatesInChunks;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\DB;
@@ -10,7 +11,9 @@ use App\Models\AmazonKwLastSbidDaily;
 
 class AmazonSpCampaignReports extends Command
 {
-    protected $signature = 'app:amazon-sp-campaign-reports';
+    use ProcessesUpdatesInChunks;
+
+    protected $signature = 'app:amazon-sp-campaign-reports {--chunk= : Override DB write chunk size (default from cron-monitor config)}';
     protected $description = 'Fetch and store Sponsored Products campaign reports (daily + L30/L15/L7)';
 
     public function handle()
@@ -329,10 +332,20 @@ class AmazonSpCampaignReports extends Command
             $finalRangeKey = $isDailyChart ? $startDate : $rangeKey;
 
             // Process in chunks to prevent memory and connection issues
-            $chunks = array_chunk($rows, 100);
+            $chunkSize = $this->monitoredChunkSize();
             $totalStored = 0;
 
-            foreach ($chunks as $chunkIndex => $chunk) {
+            $this->writeItemsInChunks($rows, function (array $chunk) use (
+                $reportName,
+                $profileId,
+                $adType,
+                $startDate,
+                $finalRangeKey,
+                $isDailyChart,
+                $syncL1,
+                &$totalStored
+            ) {
+                $updated = 0;
                 foreach ($chunk as $row) {
                     if (empty($row['campaignId'])) {
                         continue; // Skip rows without campaign ID
@@ -420,6 +433,7 @@ class AmazonSpCampaignReports extends Command
                                 ])
                             );
                         }
+                        $updated++;
                         $totalStored++;
                     } catch (\Exception $e) {
                         $this->info("Error storing row in {$reportName}: " . $e->getMessage());
@@ -427,9 +441,11 @@ class AmazonSpCampaignReports extends Command
                     }
                 }
 
-                // Close connection after each chunk to prevent buildup
-                DB::connection()->disconnect();
-            }
+                return ['updated' => $updated, 'failed' => 0];
+            }, $chunkSize);
+
+            // Close connection after write chunks to prevent buildup
+            DB::connection()->disconnect();
 
             $this->info("[SPONSORED_PRODUCTS - $finalRangeKey] Stored " . $totalStored . " rows to DB.");
             $this->info("[$reportName] Report saved successfully.");

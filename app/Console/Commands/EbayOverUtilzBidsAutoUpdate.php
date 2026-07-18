@@ -2,19 +2,37 @@
 
 namespace App\Console\Commands;
 
+use App\Console\Commands\Concerns\MonitorsCronExecution;
+use App\Console\Commands\Concerns\PushesAmazonAdsUpdatesInChunks;
 use App\Http\Controllers\Campaigns\EbayOverUtilizedBgtController;
 use App\Models\EbayDataView;
 use App\Models\EbayMetric;
 use App\Models\EbayPriorityReport;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
+use App\Services\CronMonitor\CronExecutionContext;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class EbayOverUtilzBidsAutoUpdate extends Command
 {
-    protected $signature = 'ebay:auto-update-over-bids';
+    use MonitorsCronExecution;
+    use PushesAmazonAdsUpdatesInChunks;
+
+    protected $signature = 'ebay:auto-update-over-bids
+        {--dry-run : Show what would be updated without calling API}
+        {--chunk= : Override chunk size for API updates (default from cron-monitor config)}';
+
     protected $description = 'Automatically update Ebay campaign keyword bids';
+
+    /** Number of retry attempts for failed campaign updates (minimum 5 tries total for failures). */
+    const MAX_RETRY_ATTEMPTS = 5;
+
+    /** Seconds to wait between retry rounds for failed campaigns (rate-limit precaution). */
+    const RETRY_DELAY_SECONDS = 5;
+
+    protected string $monitorJobName = 'eBay Bid Sync (Over)';
 
     protected $profileId;
 
@@ -23,144 +41,182 @@ class EbayOverUtilzBidsAutoUpdate extends Command
         parent::__construct();
     }
 
-    public function handle()
+    public function handle(): int
+    {
+        return $this->runMonitored(
+            fn (CronExecutionContext $m) => $this->executeBidUpdate($m),
+            $this->monitorJobName
+        );
+    }
+
+    protected function executeBidUpdate(CronExecutionContext $monitor): int
     {
         try {
-            // Check database connection (without creating persistent connection)
+            @ini_set('max_execution_time', 900);
+
+            $dryRun = $this->option('dry-run');
+
             try {
                 DB::connection()->getPdo();
-                $this->info("✓ Database connection OK");
-                // Immediately disconnect after check to prevent connection buildup
+                $this->info('✓ Database connection OK');
                 DB::connection()->disconnect();
             } catch (\Exception $e) {
-                $this->error("✗ Database connection failed: " . $e->getMessage());
-                return 1;
+                $this->error('✗ Database connection failed: '.$e->getMessage());
+                $monitor->classifyAndRecord($e);
+
+                return self::FAILURE;
             }
 
-            $this->info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-            $this->info("🚀 Starting eBay Over-Utilized Bids Auto-Update");
-            $this->info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            $this->info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+            $this->info('🚀 Starting eBay Over-Utilized Bids Auto-Update'.($dryRun ? ' [DRY RUN - no API calls]' : ''));
+            $this->info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
-        $updateOverUtilizedBids = new EbayOverUtilizedBgtController;
+            $updateOverUtilizedBids = new EbayOverUtilizedBgtController;
 
-        $campaigns = $this->getEbayOverUtilizCampaign();
+            $campaigns = $this->getEbayOverUtilizCampaign();
 
-        if (empty($campaigns)) {
-            $this->warn("⚠️  No campaigns matched filter conditions.");
-            return 0;
-        }
+            if (empty($campaigns)) {
+                $this->warn('⚠️  No campaigns matched filter conditions.');
+                $monitor->markApiConnected();
+                $monitor->setExpected(0);
 
-        // Filter out campaigns with empty campaign_id or zero/blank sbid
-        $validCampaigns = array_filter($campaigns, function($campaign) {
-            return !empty($campaign->campaign_id) && !empty($campaign->sbid) && floatval($campaign->sbid) > 0;
-        });
-        
-        if (empty($validCampaigns)) {
-            $this->warn("⚠️  No valid campaigns found (all have empty campaign_id or zero/blank sbid).");
-            return 0;
-        }
-        
-        $this->info("📊 Found " . count($validCampaigns) . " campaigns to update");
-        $this->info("");
-
-        // Log all campaigns before update
-        $this->info("📋 Campaigns to be updated:");
-        foreach ($validCampaigns as $index => $campaign) {
-            $campaignName = $campaign->campaign_name ?? 'Unknown';
-            $campaignId = $campaign->campaign_id ?? 'N/A';
-            $newBid = $campaign->sbid ?? 0;
-            $oldCpc = $campaign->l7_cpc ?? 0;
-            
-            $this->line("   " . ($index + 1) . ". Campaign: {$campaignName} | ID: {$campaignId} | Old CPC: \${$oldCpc} | New Bid: \${$newBid}");
-        }
-        
-        $this->info("");
-
-        $campaignIds = collect($validCampaigns)->pluck('campaign_id')->toArray();
-        $newBids = collect($validCampaigns)->pluck('sbid')->toArray();
-        $campaignNames = collect($validCampaigns)->pluck('campaign_name', 'campaign_id')->toArray();
-        
-        // Create mapping of campaign_id to bid for easy lookup
-        $campaignBidMap = [];
-        foreach ($validCampaigns as $campaign) {
-            $campaignBidMap[$campaign->campaign_id] = $campaign->sbid ?? 0;
-        }
-
-        $this->info("🔄 Updating bids via eBay API...");
-        $result = $updateOverUtilizedBids->updateAutoKeywordsBidDynamic($campaignIds, $newBids);
-        
-        // Parse the result
-        $resultData = $result->getData(true);
-        $status = $resultData['status'] ?? 'unknown';
-        $message = $resultData['message'] ?? 'No message';
-        $data = $resultData['data'] ?? [];
-
-        $this->info("");
-        $this->info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        $this->info("📊 Update Results");
-        $this->info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        $this->info("Status: " . ($status == 200 ? "✅ Success" : ($status == 207 ? "⚠️  Partial Success" : "❌ Failed")));
-        $this->info("Message: {$message}");
-        $this->info("");
-
-        // Group results by campaign_id
-        $campaignResults = [];
-        foreach ($data as $item) {
-            $campId = $item['campaign_id'] ?? 'unknown';
-            if (!isset($campaignResults[$campId])) {
-                $campaignResults[$campId] = [
-                    'campaign_name' => $campaignNames[$campId] ?? 'Unknown',
-                    'success' => 0,
-                    'failed' => 0,
-                    'errors' => []
-                ];
+                return self::SUCCESS;
             }
-            
-            if (($item['status'] ?? '') === 'error') {
-                $campaignResults[$campId]['failed']++;
-                $campaignResults[$campId]['errors'][] = $item['message'] ?? 'Unknown error';
-            } else {
-                $campaignResults[$campId]['success']++;
+
+            $validCampaigns = array_filter($campaigns, function ($campaign) {
+                return ! empty($campaign->campaign_id) && ! empty($campaign->sbid) && floatval($campaign->sbid) > 0;
+            });
+
+            if (empty($validCampaigns)) {
+                $this->warn('⚠️  No valid campaigns found (all have empty campaign_id or zero/blank sbid).');
+                $monitor->markApiConnected();
+                $monitor->setExpected(0);
+
+                return self::SUCCESS;
             }
-        }
 
-        // Display results per campaign
-        $totalSuccess = 0;
-        $totalFailed = 0;
-        
-        foreach ($campaignResults as $campId => $result) {
-            $campaignName = $result['campaign_name'];
-            $success = $result['success'];
-            $failed = $result['failed'];
-            $newBid = $campaignBidMap[$campId] ?? 'N/A';
-            
-            $totalSuccess += $success;
-            $totalFailed += $failed;
-            
-            if ($failed > 0) {
-                $this->warn("   ❌ Campaign: {$campaignName} (ID: {$campId}) | Bid: \${$newBid}");
-                $this->warn("      Success: {$success} keywords | Failed: {$failed} keywords");
-                foreach (array_unique($result['errors']) as $error) {
-                    $this->error("      Error: {$error}");
-                }
-            } else {
-                $this->info("   ✅ Campaign: {$campaignName} (ID: {$campId}) | Bid: \${$newBid} | Updated: {$success} keywords");
+            $this->info('📊 Found '.count($validCampaigns).' campaigns to update');
+            $this->info('');
+
+            $this->info('📋 Campaigns to be updated:');
+            foreach ($validCampaigns as $index => $campaign) {
+                $campaignName = $campaign->campaign_name ?? 'Unknown';
+                $campaignId = $campaign->campaign_id ?? 'N/A';
+                $newBid = $campaign->sbid ?? 0;
+                $oldCpc = $campaign->l7_cpc ?? 0;
+
+                $this->line('   '.($index + 1).". Campaign: {$campaignName} | ID: {$campaignId} | Old CPC: \${$oldCpc} | New Bid: \${$newBid}");
             }
-        }
 
-        $this->info("");
-            $this->info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-            $this->info("📈 Summary: {$totalSuccess} keywords updated successfully, {$totalFailed} failed");
-            $this->info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            $this->info('');
 
-            return 0;
+            $campaignBidMap = [];
+            foreach ($validCampaigns as $campaign) {
+                $campaignBidMap[$campaign->campaign_id] = $campaign->sbid ?? 0;
+            }
+
+            if ($dryRun) {
+                $this->newLine();
+                $this->warn('DRY RUN: No API call made. Remove --dry-run to apply updates.');
+                $this->info('✓ Dry run completed. Total campaigns that would be updated: '.count($campaignBidMap));
+                $monitor->mergeMeta(['dry_run' => true]);
+                $monitor->markApiConnected();
+                $monitor->setExpected(count($campaignBidMap));
+                $monitor->setFetched(count($campaignBidMap));
+                $monitor->setSkipped(count($campaignBidMap));
+
+                return self::SUCCESS;
+            }
+
+            $monitor->markApiConnected();
+            $stats = $this->pushAmazonAdsIdMapInChunks(
+                $monitor,
+                $campaignBidMap,
+                fn (array $ids, array $bids) => $this->normalizeEbayAdsPushResult(
+                    $updateOverUtilizedBids->updateAutoKeywordsBidDynamic($ids, $bids),
+                    $ids
+                ),
+                'ebay'
+            );
+
+            $this->info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+            $this->info("FINAL: Total={$stats['total']} | Updated={$stats['updated']} | Skipped={$stats['skipped']} | Failed={$stats['failed']} | Chunks={$stats['chunks']}");
+            $this->info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+            Log::info('ebay:auto-update-over-bids completed', $stats);
+
+            return $stats['failed'] > 0 ? self::FAILURE : self::SUCCESS;
         } catch (\Exception $e) {
-            $this->error("✗ Error occurred: " . $e->getMessage());
-            $this->error("Stack trace: " . $e->getTraceAsString());
-            return 1;
+            $this->error('✗ Error occurred: '.$e->getMessage());
+            $this->error('Stack trace: '.$e->getTraceAsString());
+            $monitor->classifyAndRecord($e);
+
+            return self::FAILURE;
         } finally {
             DB::connection()->disconnect();
         }
+    }
+
+    /**
+     * Normalize eBay JsonResponse into Amazon-style chunk result for retries.
+     *
+     * @param  list<string>  $ids
+     * @return array{status: int, failed: list<array>, skipped: list<array>}
+     */
+    private function normalizeEbayAdsPushResult($result, array $ids): array
+    {
+        if (is_object($result) && method_exists($result, 'getData')) {
+            $result = $result->getData(true);
+        }
+
+        if (! is_array($result)) {
+            return [
+                'status' => 500,
+                'failed' => array_map(
+                    fn ($id) => ['campaign_id' => (string) $id, 'error' => 'Unexpected API result', 'status' => 500],
+                    $ids
+                ),
+                'skipped' => [],
+            ];
+        }
+
+        $httpStatus = (int) ($result['status'] ?? 500);
+        $data = $result['data'] ?? [];
+        $failedById = [];
+        $seenIds = [];
+
+        foreach ($data as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $campId = $item['campaign_id'] ?? null;
+            if ($campId !== null) {
+                $seenIds[(string) $campId] = true;
+            }
+            if (($item['status'] ?? '') === 'error') {
+                $key = (string) ($campId ?? 'unknown');
+                $failedById[$key] = [
+                    'campaign_id' => $key,
+                    'error' => $item['message'] ?? 'Unknown error',
+                    'status' => $httpStatus > 0 ? $httpStatus : 500,
+                ];
+            }
+        }
+
+        $skipped = [];
+        foreach ($ids as $id) {
+            if (! isset($seenIds[(string) $id])) {
+                $skipped[] = ['campaign_id' => (string) $id, 'reason' => 'No response row'];
+            }
+        }
+
+        $failed = array_values($failedById);
+
+        return [
+            'status' => empty($failed) ? 200 : 207,
+            'failed' => $failed,
+            'skipped' => $skipped,
+        ];
     }
 
     public function getEbayOverUtilizCampaign(){

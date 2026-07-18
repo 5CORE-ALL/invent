@@ -2,9 +2,12 @@
 
 namespace App\Console\Commands;
 
+use App\Console\Commands\Concerns\MonitorsCronExecution;
+use App\Console\Commands\Concerns\ProcessesUpdatesInChunks;
 use App\Models\GoogleAdsCampaign;
 use App\Models\GoogleDataView;
 use App\Models\ProductMaster;
+use App\Services\CronMonitor\CronExecutionContext;
 use App\Services\GoogleAdsSbidService;
 use App\Support\GoogleShoppingCampaignNameMatcher;
 use App\Support\GoogleShoppingCampaignsRawRule;
@@ -13,11 +16,17 @@ use Illuminate\Support\Facades\DB;
 
 class UpdateShoppingBudgetCronCommand extends Command
 {
+    use MonitorsCronExecution;
+    use ProcessesUpdatesInChunks;
+
     protected $signature = 'budget:update-shopping
                             {--dry-run : Run without actually updating budgets}
-                            {--campaign-ids= : Comma-separated Google Ads campaign IDs (SHOPPING only; limits which campaigns are updated)}';
+                            {--campaign-ids= : Comma-separated Google Ads campaign IDs (SHOPPING only; limits which campaigns are updated)}
+                            {--chunk= : Override chunk size for API updates (default from cron-monitor config)}';
 
     protected $description = 'Update budget for SHOPPING campaigns based on ACOS (L30 data)';
+
+    protected string $monitorJobName = 'Google Budget Sync (Shopping)';
 
     protected $sbidService;
 
@@ -27,7 +36,15 @@ class UpdateShoppingBudgetCronCommand extends Command
         $this->sbidService = $sbidService;
     }
 
-    public function handle()
+    public function handle(): int
+    {
+        return $this->runMonitored(
+            fn (CronExecutionContext $m) => $this->executeBudgetUpdate($m),
+            $this->monitorJobName
+        );
+    }
+
+    protected function executeBudgetUpdate(CronExecutionContext $monitor): int
     {
         try {
             @ini_set('memory_limit', '512M');
@@ -40,8 +57,9 @@ class UpdateShoppingBudgetCronCommand extends Command
                 DB::connection()->disconnect();
             } catch (\Exception $e) {
                 $this->error('✗ Database connection failed: '.$e->getMessage());
+                $monitor->classifyAndRecord($e);
 
-                return 1;
+                return self::FAILURE;
             }
 
             $dryRun = $this->option('dry-run');
@@ -86,8 +104,9 @@ class UpdateShoppingBudgetCronCommand extends Command
             if ($productMasters->isEmpty()) {
                 $this->warn('No product masters found!');
                 DB::connection()->disconnect();
+                $monitor->setExpected(0);
 
-                return 0;
+                return self::SUCCESS;
             }
 
             // Get all SKUs to fetch Shopify inventory data
@@ -96,8 +115,9 @@ class UpdateShoppingBudgetCronCommand extends Command
             if (empty($skus)) {
                 $this->warn('No valid SKUs found!');
                 DB::connection()->disconnect();
+                $monitor->setExpected(0);
 
-                return 0;
+                return self::SUCCESS;
             }
 
             // Get NRA values from GoogleDataView (matching frontend logic)
@@ -133,7 +153,8 @@ class UpdateShoppingBudgetCronCommand extends Command
 
             $rawRule = GoogleShoppingCampaignsRawRule::resolvedRule();
 
-            $campaignUpdates = [];
+            $toPush = [];
+            $budgetDetails = [];
             $skipCounters = [
                 'zero_inventory' => 0,
                 'nra_skip' => 0,
@@ -264,54 +285,118 @@ class UpdateShoppingBudgetCronCommand extends Command
                 // Track individual campaigns (for statistics)
                 $skipCounters['total_campaigns_processed']++;
 
-                if (! isset($campaignUpdates[$budgetId])) {
+                if (! isset($toPush[$budgetId])) {
                     if ($dryRun) {
-                        $campaignUpdates[$budgetId] = true;
-                        $skipCounters['total_processed']++;
                         $this->info("[DRY RUN] [PARENT] Would update SHOPPING campaign {$campaignId} (SKU: {$pm->sku}): Budget=\${$currentBudget} → \${$newBudget} (ACOS={$acos}%)");
-                    } else {
-                        try {
-                            $budgetResourceName = "customers/{$customerId}/campaignBudgets/{$budgetId}";
-                            $this->sbidService->updateCampaignBudget($customerId, $budgetResourceName, $newBudget);
-                            $campaignUpdates[$budgetId] = true;
-                            $skipCounters['total_processed']++;
-                            $this->info("[PARENT] Updated SHOPPING campaign {$campaignId} (SKU: {$pm->sku}): Budget=\${$currentBudget} → \${$newBudget} (ACOS={$acos}%)");
-                        } catch (\Exception $e) {
-                            $this->error("Failed to update SHOPPING campaign budget {$campaignId}: ".$e->getMessage());
-                        }
+                        $skipCounters['total_processed']++;
                     }
+                    $toPush[$budgetId] = $newBudget;
+                    $budgetDetails[$budgetId] = [
+                        'campaignId' => $campaignId,
+                        'sku' => $pm->sku,
+                        'currentBudget' => $currentBudget,
+                        'acos' => $acos,
+                    ];
                 } else {
                     $skipCounters['duplicate_budget']++;
                 }
             }
 
-            $processedCount = count($campaignUpdates);
-            $action = $dryRun ? 'Would process' : 'Processed';
-            $this->info("Done. {$action}: {$processedCount} unique SHOPPING campaign budgets.");
-            $this->info('Skip Statistics:');
-            $this->info("  - Zero Inventory: {$skipCounters['zero_inventory']}");
-            $this->info("  - NRA (Not Running Ads): {$skipCounters['nra_skip']}");
-            $this->info("  - No Matching Campaign: {$skipCounters['no_matching_campaign']}");
-            $this->info("  - Campaign Not ENABLED: {$skipCounters['campaign_not_enabled']}");
-            $this->info("  - No Budget ID: {$skipCounters['no_budget_id']}");
-            $this->info("  - Duplicate Budget (already processed): {$skipCounters['duplicate_budget']}");
-            $this->info("  - Total Individual Campaigns {$action}: {$skipCounters['total_campaigns_processed']}");
-            $this->info("  - Total Unique Budgets {$action}: {$skipCounters['total_processed']}");
+            $processedCount = count($toPush);
 
-            if ($dryRun) {
-                $this->warn("\n⚠️  This was a DRY RUN. No budgets were actually updated.");
-                $this->info('Run without --dry-run to perform actual updates.');
+            if ($processedCount === 0) {
+                $this->info('Done. Would process: 0 unique SHOPPING campaign budgets.');
+                $this->printShoppingSkipStats($skipCounters, $dryRun ? 'Would process' : 'Processed');
+                $monitor->setExpected(0);
+
+                return self::SUCCESS;
             }
 
-            return 0;
+            if ($dryRun) {
+                $this->info("Done. Would process: {$processedCount} unique SHOPPING campaign budgets.");
+                $this->printShoppingSkipStats($skipCounters, 'Would process');
+                $this->warn("\n⚠️  This was a DRY RUN. No budgets were actually updated.");
+                $this->info('Run without --dry-run to perform actual updates.');
+                $monitor->mergeMeta(['dry_run' => true]);
+                $monitor->markApiConnected();
+                $monitor->setExpected($processedCount);
+                $monitor->setFetched($processedCount);
+                $monitor->setSkipped($processedCount);
+
+                return self::SUCCESS;
+            }
+
+            $monitor->markApiConnected();
+            $stats = $this->updateIdMapInChunks(
+                $monitor,
+                $toPush,
+                function (array $chunkIds, array $chunkValues, int $chunkIndex) use ($customerId, $budgetDetails, &$skipCounters) {
+                    $updated = 0;
+                    $failed = 0;
+                    $failures = [];
+                    foreach ($chunkIds as $i => $budgetId) {
+                        $detail = $budgetDetails[$budgetId] ?? null;
+                        $campaignId = $detail['campaignId'] ?? $budgetId;
+                        $sku = $detail['sku'] ?? '';
+                        $currentBudget = $detail['currentBudget'] ?? 0;
+                        $acos = $detail['acos'] ?? 0;
+                        $newBudget = $chunkValues[$i];
+                        try {
+                            $budgetResourceName = "customers/{$customerId}/campaignBudgets/{$budgetId}";
+                            $this->sbidService->updateCampaignBudget($customerId, $budgetResourceName, $newBudget);
+                            $updated++;
+                            $skipCounters['total_processed']++;
+                            $this->info("[PARENT] Updated SHOPPING campaign {$campaignId} (SKU: {$sku}): Budget=\${$currentBudget} → \${$newBudget} (ACOS={$acos}%)");
+                        } catch (\Exception $e) {
+                            $failed++;
+                            $failures[] = [
+                                'sku' => (string) $budgetId,
+                                'marketplace' => 'google',
+                                'reason' => $e->getMessage(),
+                                'http_status' => 500,
+                            ];
+                            $this->error("Failed to update SHOPPING campaign budget {$campaignId}: ".$e->getMessage());
+                        }
+                    }
+
+                    return [
+                        'updated' => $updated,
+                        'failed' => $failed,
+                        'processed' => count($chunkIds),
+                        'failures' => $failures,
+                    ];
+                }
+            );
+
+            $this->info("Done. Processed: {$processedCount} unique SHOPPING campaign budgets.");
+            $this->printShoppingSkipStats($skipCounters, 'Processed');
+
+            return $stats['failed'] > 0 ? self::FAILURE : self::SUCCESS;
         } catch (\Exception $e) {
             $this->error('✗ Error occurred: '.$e->getMessage());
             $this->error('Stack trace: '.$e->getTraceAsString());
+            $monitor->classifyAndRecord($e);
 
-            return 1;
+            return self::FAILURE;
         } finally {
             DB::connection()->disconnect();
         }
+    }
+
+    /**
+     * @param  array<string, int>  $skipCounters
+     */
+    private function printShoppingSkipStats(array $skipCounters, string $action): void
+    {
+        $this->info('Skip Statistics:');
+        $this->info("  - Zero Inventory: {$skipCounters['zero_inventory']}");
+        $this->info("  - NRA (Not Running Ads): {$skipCounters['nra_skip']}");
+        $this->info("  - No Matching Campaign: {$skipCounters['no_matching_campaign']}");
+        $this->info("  - Campaign Not ENABLED: {$skipCounters['campaign_not_enabled']}");
+        $this->info("  - No Budget ID: {$skipCounters['no_budget_id']}");
+        $this->info("  - Duplicate Budget (already processed): {$skipCounters['duplicate_budget']}");
+        $this->info("  - Total Individual Campaigns {$action}: {$skipCounters['total_campaigns_processed']}");
+        $this->info("  - Total Unique Budgets {$action}: {$skipCounters['total_processed']}");
     }
 
     /**

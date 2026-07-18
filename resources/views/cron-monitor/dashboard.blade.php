@@ -1,283 +1,327 @@
 @extends('layouts.vertical', ['title' => $title ?? 'Cron Monitor'])
 
 @section('css')
+<link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
+<link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
 <style>
-    .cm-stat { border-radius: 10px; border: 1px solid rgba(0,0,0,.06); }
-    .cm-badge-success { background: #198754; }
-    .cm-badge-warning { background: #ffc107; color: #212529; }
-    .cm-badge-danger { background: #dc3545; }
-    .cm-badge-info { background: #0dcaf0; color: #212529; }
-    .cm-job-row:hover { background: rgba(0,0,0,.02); }
-    .cm-health-bar { height: 8px; border-radius: 4px; background: #e9ecef; overflow: hidden; }
-    .cm-health-bar > span { display: block; height: 100%; }
-    #cmTrendChart { min-height: 320px; }
+    .cm-card { border: 1px solid #e5e7eb; box-shadow: none; }
+    .cm-card .card-header { background: #f8fafc; border-bottom: 1px solid #e5e7eb; }
+    #cmJobsTable, #cmLogsTable, #cmAlertsTable { font-size: .85rem; }
+    .tabulator { border: 1px solid #e5e7eb; border-radius: 0 0 .35rem .35rem; }
+    .tabulator .tabulator-header { background: #eef2f7; border-bottom: 1px solid #e5e7eb; }
+    .tabulator .tabulator-col { background: #eef2f7 !important; }
+    .tabulator .tabulator-col .tabulator-col-content { padding: 8px 10px; }
+    .tabulator .tabulator-cell { padding: 8px 10px; }
+    .cm-pill {
+        display: inline-flex; align-items: center; gap: .3rem;
+        padding: .15rem .5rem; border-radius: 999px; font-size: .72rem; font-weight: 650;
+        text-transform: capitalize; border: 1px solid transparent; white-space: nowrap;
+    }
+    .cm-pill-ok { background: #ecfdf5; color: #059669; border-color: #a7f3d0; }
+    .cm-pill-warn { background: #fffbeb; color: #d97706; border-color: #fde68a; }
+    .cm-pill-bad { background: #fef2f2; color: #dc2626; border-color: #fecaca; }
+    .cm-pill-run { background: #eff6ff; color: #2563eb; border-color: #bfdbfe; }
+    #cmTrendChart { min-height: 260px; }
 </style>
 @endsection
 
 @section('content')
-@include('layouts.shared.page-title', ['page_title' => 'Cron Monitor', 'sub_title' => 'Health & Execution'])
+@include('layouts.shared.page-title', [
+    'page_title' => 'Cron Monitor',
+    'sub_title' => 'Health, chunks, retries & execution history',
+])
 
 @if(session('success'))
-    <div class="alert alert-success">{{ session('success') }}</div>
+    <div class="alert alert-success py-2">{{ session('success') }}</div>
 @endif
 @if(session('error'))
-    <div class="alert alert-danger">{{ session('error') }}</div>
+    <div class="alert alert-danger py-2">{{ session('error') }}</div>
 @endif
 
-<div class="row g-3 mb-3">
-    <div class="col-6 col-md-3">
-        <div class="card cm-stat shadow-sm h-100">
-            <div class="card-body">
-                <div class="text-muted text-uppercase small">Jobs tracked</div>
-                <div class="fs-3 fw-semibold">{{ $overview['total_jobs'] }}</div>
-            </div>
+<div class="mb-3 p-2 bg-light rounded d-flex flex-nowrap align-items-center gap-2 overflow-auto">
+    <span class="badge bg-secondary fs-6 p-2 flex-shrink-0" style="color: white; font-weight: bold;">Jobs: {{ number_format($overview['total_jobs']) }}</span>
+    <span class="badge bg-success fs-6 p-2 flex-shrink-0" style="color: black; font-weight: bold;">Healthy: {{ number_format($overview['healthy']) }}</span>
+    <span class="badge bg-warning fs-6 p-2 flex-shrink-0" style="color: black; font-weight: bold;">Partial: {{ number_format($overview['partial']) }}</span>
+    <span class="badge bg-danger fs-6 p-2 flex-shrink-0" style="color: white; font-weight: bold;">Failed: {{ number_format($overview['failed']) }}</span>
+    <span class="badge bg-info fs-6 p-2 flex-shrink-0" style="color: black; font-weight: bold;">Running: {{ number_format($overview['running'] ?? 0) }}</span>
+    <span class="badge {{ ($overview['stuck'] ?? 0) > 0 ? 'bg-danger' : 'bg-secondary' }} fs-6 p-2 flex-shrink-0" style="color: white; font-weight: bold;">Stuck: {{ number_format($overview['stuck'] ?? 0) }}</span>
+    <form id="cmFilterForm" method="get" action="{{ route('cron-monitor.index') }}" class="d-flex flex-nowrap align-items-center gap-2 ms-auto flex-shrink-0">
+        <select name="job" class="form-select form-select-sm cm-auto-filter" style="width:160px">
+            <option value="">All jobs</option>
+            @foreach($jobNames as $name)
+                <option value="{{ $name }}" @selected(($filters['job'] ?? '') === $name)>{{ $name }}</option>
+            @endforeach
+        </select>
+        <select name="status" class="form-select form-select-sm cm-auto-filter" style="width:120px">
+            <option value="">All statuses</option>
+            @foreach(['success','recovered','partial_success','failed','running','stuck','timed_out','missed','cancelled'] as $st)
+                <option value="{{ $st }}" @selected(($filters['status'] ?? '') === $st)>{{ str_replace('_',' ',$st) }}</option>
+            @endforeach
+        </select>
+        <select name="category" class="form-select form-select-sm cm-auto-filter" style="width:120px">
+            <option value="">All categories</option>
+            @foreach($categories as $cat)
+                <option value="{{ $cat }}" @selected(($filters['category'] ?? '') === $cat)>{{ $cat }}</option>
+            @endforeach
+        </select>
+        <a class="btn btn-sm btn-outline-secondary" href="{{ route('cron-monitor.index') }}">Reset</a>
+    </form>
+</div>
+
+<div class="card cm-card mb-3">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <div>
+            <h5 class="mb-0">Current status by job</h5>
+            <small class="text-muted">Tabulator · sortable · filterable · paginated</small>
         </div>
+        <input type="text" id="cmJobsSearch" class="form-control form-control-sm" placeholder="Search jobs…" style="max-width:220px">
     </div>
-    <div class="col-6 col-md-3">
-        <div class="card cm-stat shadow-sm h-100 border-success">
-            <div class="card-body">
-                <div class="text-muted text-uppercase small">Healthy</div>
-                <div class="fs-3 fw-semibold text-success">{{ $overview['healthy'] }}</div>
-            </div>
-        </div>
-    </div>
-    <div class="col-6 col-md-3">
-        <div class="card cm-stat shadow-sm h-100 border-warning">
-            <div class="card-body">
-                <div class="text-muted text-uppercase small">Partial</div>
-                <div class="fs-3 fw-semibold text-warning">{{ $overview['partial'] }}</div>
-            </div>
-        </div>
-    </div>
-    <div class="col-6 col-md-3">
-        <div class="card cm-stat shadow-sm h-100 border-danger">
-            <div class="card-body">
-                <div class="text-muted text-uppercase small">Failed / Missed</div>
-                <div class="fs-3 fw-semibold text-danger">{{ $overview['failed'] }}</div>
-            </div>
-        </div>
+    <div class="card-body p-0">
+        <div id="cmJobsTable"></div>
     </div>
 </div>
 
 <div class="row g-3 mb-3">
-    <div class="col-lg-8">
-        <div class="card shadow-sm h-100">
+    <div class="col-lg-7">
+        <div class="card cm-card h-100 mb-0">
             <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
-                <h5 class="mb-0">Trend — last 30 runs</h5>
+                <div>
+                    <h5 class="mb-0">Trend — last 30 runs</h5>
+                    <small class="text-muted">
+                        @if($selectedJob)
+                            {{ $selectedJob }}
+                            @if($avgRuntime !== null) · avg {{ $avgRuntime }}s @endif
+                            @if($lastSuccess) · last success {{ $lastSuccess->finished_at?->diffForHumans() }} @endif
+                        @else
+                            Pick a job to chart
+                        @endif
+                    </small>
+                </div>
                 <form method="get" class="d-flex gap-2">
-                    <select name="job" class="form-select form-select-sm" onchange="this.form.submit()">
-                        <option value="">All jobs (pick one for trend)</option>
+                    <select name="job" class="form-select form-select-sm" style="min-width:220px" onchange="this.form.submit()">
+                        <option value="">Pick job for trend</option>
                         @foreach($jobNames as $name)
                             <option value="{{ $name }}" @selected($selectedJob === $name)>{{ $name }}</option>
                         @endforeach
                     </select>
-                    @if($filters['status'])
-                        <input type="hidden" name="status" value="{{ $filters['status'] }}">
-                    @endif
+                    @if(!empty($filters['status']))<input type="hidden" name="status" value="{{ $filters['status'] }}">@endif
+                    @if(!empty($filters['category']))<input type="hidden" name="category" value="{{ $filters['category'] }}">@endif
                 </form>
             </div>
             <div class="card-body">
-                @if($selectedJob)
-                    <div class="small text-muted mb-2">
-                        {{ $selectedJob }}
-                        @if($avgRuntime !== null)
-                            · Avg runtime {{ $avgRuntime }}s
-                        @endif
-                        @if($lastSuccess)
-                            · Last success {{ $lastSuccess->finished_at?->diffForHumans() }}
-                        @endif
-                    </div>
+                @if($selectedJob && $trend->isNotEmpty())
                     <div id="cmTrendChart"></div>
+                @elseif($selectedJob)
+                    <p class="text-muted text-center mb-0 py-4">No finished runs yet for this job.</p>
                 @else
-                    <p class="text-muted mb-0">Select a job to view trends.</p>
+                    <p class="text-muted text-center mb-0 py-4">Select a job to view success %, health, and record trends.</p>
                 @endif
             </div>
         </div>
     </div>
-    <div class="col-lg-4">
-        <div class="card shadow-sm h-100">
-            <div class="card-header"><h5 class="mb-0">Recent alerts</h5></div>
+    <div class="col-lg-5">
+        <div class="card cm-card h-100 mb-0">
+            <div class="card-header">
+                <h5 class="mb-0">Recent alerts</h5>
+                <small class="text-muted">Latest notifications</small>
+            </div>
             <div class="card-body p-0">
-                <div class="list-group list-group-flush">
-                    @forelse($alerts as $alert)
-                        <div class="list-group-item">
-                            <div class="d-flex justify-content-between">
-                                <span class="badge cm-badge-{{ $alert->severity === 'critical' ? 'danger' : 'warning' }}">
-                                    {{ $alert->alert_type }}
-                                </span>
-                                <small class="text-muted">{{ $alert->created_at?->diffForHumans() }}</small>
-                            </div>
-                            <div class="fw-semibold mt-1">{{ $alert->title }}</div>
-                            <div class="small text-muted text-truncate">{{ $alert->message }}</div>
-                        </div>
-                    @empty
-                        <div class="p-3 text-muted">No alerts yet.</div>
-                    @endforelse
-                </div>
+                <div id="cmAlertsTable"></div>
             </div>
         </div>
     </div>
 </div>
 
-<div class="card shadow-sm mb-3">
-    <div class="card-header"><h5 class="mb-0">Current status by job</h5></div>
-    <div class="table-responsive">
-        <table class="table table-hover mb-0 align-middle">
-            <thead>
-                <tr>
-                    <th>Job</th>
-                    <th>Status</th>
-                    <th>Recovery</th>
-                    <th>Root cause</th>
-                    <th>Retries</th>
-                    <th>Consecutive fails</th>
-                    <th>Last success</th>
-                    <th>Success %</th>
-                    <th>Health</th>
-                    <th>Updated</th>
-                    <th>Failed</th>
-                    <th></th>
-                </tr>
-            </thead>
-            <tbody>
-                @forelse($latest as $row)
-                    @php
-                        $badge = match($row->status) {
-                            'success', 'recovered' => 'success',
-                            'partial_success', 'stuck' => 'warning',
-                            'running' => 'info',
-                            default => 'danger',
-                        };
-                    @endphp
-                    <tr class="cm-job-row">
-                        <td class="fw-semibold">{{ $row->job_name }}</td>
-                        <td><span class="badge cm-badge-{{ $badge }}">{{ str_replace('_', ' ', $row->status) }}</span></td>
-                        <td class="small">{{ $row->recovery_status && $row->recovery_status !== 'none' ? $row->recovery_status : '—' }}</td>
-                        <td class="small text-truncate" style="max-width:160px" title="{{ $row->root_cause }}">{{ $row->root_cause ?: '—' }}</td>
-                        <td>{{ $row->retry_count }}@if($row->last_retry_at)<div class="text-muted small">{{ $row->last_retry_at->diffForHumans() }}</div>@endif</td>
-                        <td>{{ $row->consecutive_failures }}</td>
-                        <td class="small">{{ $row->last_success_at?->format('Y-m-d H:i') ?? '—' }}</td>
-                        <td>{{ $row->success_percentage !== null ? $row->success_percentage.'%' : '—' }}</td>
-                        <td style="min-width:100px">
-                            <div class="small mb-1">{{ $row->health_score ?? '—' }}/100</div>
-                            <div class="cm-health-bar">
-                                <span style="width: {{ min(100, (int)($row->health_score ?? 0)) }}%; background: {{ $badge === 'success' ? '#198754' : ($badge === 'warning' ? '#ffc107' : '#dc3545') }}"></span>
-                            </div>
-                        </td>
-                        <td>{{ number_format((int)$row->updated_records) }}</td>
-                        <td class="{{ $row->failed_records > 0 ? 'text-danger' : '' }}">{{ number_format((int)$row->failed_records) }}</td>
-                        <td><a href="{{ route('cron-monitor.show', $row->id) }}" class="btn btn-sm btn-outline-primary">Details</a></td>
-                    </tr>
-                @empty
-                    <tr><td colspan="12" class="text-muted p-4">No monitored cron runs yet. Try <code>php artisan cron-monitor:demo</code>.</td></tr>
-                @endforelse
-            </tbody>
-        </table>
+<div class="card cm-card mb-3">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <div>
+            <h5 class="mb-0">Execution log</h5>
+            <small class="text-muted">Recent runs (up to 300) · Tabulator</small>
+        </div>
+        <input type="text" id="cmLogsSearch" class="form-control form-control-sm" placeholder="Search logs…" style="max-width:220px">
     </div>
-</div>
-
-<div class="card shadow-sm">
-    <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
-        <h5 class="mb-0">Execution log</h5>
-        <form method="get" class="d-flex gap-2 flex-wrap">
-            <select name="job" class="form-select form-select-sm">
-                <option value="">All jobs</option>
-                @foreach($jobNames as $name)
-                    <option value="{{ $name }}" @selected(($filters['job'] ?? '') === $name)>{{ $name }}</option>
-                @endforeach
-            </select>
-            <select name="status" class="form-select form-select-sm">
-                <option value="">All statuses</option>
-                @foreach(['success','recovered','partial_success','failed','running','stuck','timed_out','missed','cancelled'] as $st)
-                    <option value="{{ $st }}" @selected(($filters['status'] ?? '') === $st)>{{ str_replace('_',' ',$st) }}</option>
-                @endforeach
-            </select>
-            <select name="category" class="form-select form-select-sm">
-                <option value="">All categories</option>
-                @foreach($categories as $cat)
-                    <option value="{{ $cat }}" @selected(($filters['category'] ?? '') === $cat)>{{ $cat }}</option>
-                @endforeach
-            </select>
-            <button class="btn btn-sm btn-primary">Filter</button>
-        </form>
+    <div class="card-body p-0">
+        <div id="cmLogsTable"></div>
     </div>
-    <div class="table-responsive">
-        <table class="table table-sm table-striped mb-0">
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>Job</th>
-                    <th>Status</th>
-                    <th>Category</th>
-                    <th>Started</th>
-                    <th>Duration</th>
-                    <th>Retries</th>
-                    <th>Updated</th>
-                    <th>Failed</th>
-                    <th>Success %</th>
-                    <th>Health</th>
-                    <th>API latency</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach($recent as $log)
-                    <tr>
-                        <td><a href="{{ route('cron-monitor.show', $log->id) }}">#{{ $log->id }}</a></td>
-                        <td>{{ $log->job_name }}</td>
-                        <td>{{ str_replace('_', ' ', $log->status) }}</td>
-                        <td>{{ $log->failure_category ?: '—' }}</td>
-                        <td>{{ $log->started_at?->format('Y-m-d H:i:s') }}</td>
-                        <td>{{ $log->duration_seconds }}s</td>
-                        <td>{{ $log->retry_count }}</td>
-                        <td>{{ number_format((int)$log->updated_records) }}</td>
-                        <td>{{ number_format((int)$log->failed_records) }}</td>
-                        <td>{{ $log->success_percentage }}%</td>
-                        <td>{{ $log->health_score }}</td>
-                        <td>{{ $log->api_latency_ms_avg ? $log->api_latency_ms_avg.'ms' : '—' }}</td>
-                    </tr>
-                @endforeach
-            </tbody>
-        </table>
-    </div>
-    @if($recent->hasPages())
-        <div class="card-footer">{{ $recent->withQueryString()->links() }}</div>
-    @endif
 </div>
 @endsection
 
 @section('script')
-@if($selectedJob && $trend->isNotEmpty())
+<script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    const labels = @json($trend->map(fn ($r) => optional($r->started_at)->format('m/d H:i'))->values());
-    const success = @json($trend->pluck('success_percentage')->values());
-    const health = @json($trend->pluck('health_score')->values());
-    const updated = @json($trend->pluck('updated_records')->values());
-    const failed = @json($trend->pluck('failed_records')->values());
-
-    if (typeof Highcharts === 'undefined') return;
-
-    Highcharts.chart('cmTrendChart', {
-        chart: { zoomType: 'x' },
-        title: { text: null },
-        xAxis: { categories: labels, labels: { rotation: -35 } },
-        yAxis: [{
-            title: { text: 'Success % / Health' },
-            max: 100
-        }, {
-            title: { text: 'Records' },
-            opposite: true
-        }],
-        tooltip: { shared: true },
-        series: [
-            { name: 'Success %', data: success.map(Number), color: '#198754' },
-            { name: 'Health score', data: health.map(Number), color: '#0d6efd' },
-            { name: 'Updated', data: updated.map(Number), yAxis: 1, color: '#6f42c1', type: 'column' },
-            { name: 'Failed', data: failed.map(Number), yAxis: 1, color: '#dc3545', type: 'column' }
-        ],
-        credits: { enabled: false }
+    const filterForm = document.getElementById('cmFilterForm');
+    filterForm?.querySelectorAll('.cm-auto-filter').forEach(function (el) {
+        el.addEventListener('change', function () { filterForm.submit(); });
     });
+
+    const jobsData = @json($jobsTableData);
+    const logsData = @json($logsTableData);
+    const alertsData = @json($alertsTableData);
+
+    function statusPill(status) {
+        const s = String(status || '');
+        let cls = 'cm-pill-bad';
+        if (['success', 'recovered'].includes(s)) cls = 'cm-pill-ok';
+        else if (['partial_success', 'stuck'].includes(s)) cls = 'cm-pill-warn';
+        else if (s === 'running') cls = 'cm-pill-run';
+        return `<span class="cm-pill ${cls}">${s.replace(/_/g, ' ')}</span>`;
+    }
+
+    function statusFormatter(cell) {
+        return statusPill(cell.getValue());
+    }
+
+    function linkFormatter(cell) {
+        const row = cell.getRow().getData();
+        const label = cell.getValue();
+        return `<a href="${row.details_url}" class="fw-semibold text-decoration-none">${label}</a>`;
+    }
+
+    const jobsTable = new Tabulator('#cmJobsTable', {
+        data: jobsData,
+        layout: 'fitDataStretch',
+        height: '520px',
+        pagination: 'local',
+        paginationSize: 25,
+        paginationSizeSelector: [25, 50, 100],
+        movableColumns: true,
+        placeholder: 'No monitored jobs found.',
+        initialSort: [{ column: 'job_name', dir: 'asc' }],
+        columns: [
+            { title: 'Job', field: 'job_name', width: 220, formatter: linkFormatter, headerFilter: 'input' },
+            { title: 'Command', field: 'command', width: 200, formatter: (c) => `<span class="text-muted small">${c.getValue() || '—'}</span>` },
+            { title: 'Status', field: 'status', width: 130, hozAlign: 'center', formatter: statusFormatter, headerFilter: 'list', headerFilterParams: { valuesLookup: true, clearable: true } },
+            { title: 'Health', field: 'health_score', width: 90, hozAlign: 'right', sorter: 'number' },
+            { title: 'Success %', field: 'success_percentage', width: 100, hozAlign: 'right', formatter: (c) => c.getValue() == null ? '—' : Number(c.getValue()).toFixed(1) + '%' },
+            { title: 'Updated', field: 'updated_records', width: 100, hozAlign: 'right', sorter: 'number', formatter: 'money', formatterParams: { precision: 0, thousand: ',', symbol: '' } },
+            { title: 'Failed', field: 'failed_records', width: 90, hozAlign: 'right', sorter: 'number', formatter: (c) => {
+                const v = Number(c.getValue() || 0);
+                return v > 0 ? `<span class="text-danger fw-semibold">${v.toLocaleString()}</span>` : '0';
+            }},
+            { title: 'Chunks', field: 'chunks', width: 100, hozAlign: 'right' },
+            { title: 'Duration', field: 'duration_seconds', width: 100, hozAlign: 'right', formatter: (c) => c.getValue() == null ? '—' : Number(c.getValue()).toLocaleString() + 's' },
+            { title: 'Last success', field: 'last_success_at', width: 140 },
+            { title: 'Retries', field: 'retry_count', width: 90, hozAlign: 'right', sorter: 'number' },
+            { title: 'Memory', field: 'memory', width: 100 },
+            { title: '', field: 'details_url', width: 90, hozAlign: 'center', headerSort: false, formatter: (c) => `<a class="btn btn-sm btn-outline-primary" href="${c.getValue()}">Details</a>` },
+        ],
+        rowFormatter: function (row) {
+            const s = row.getData().status;
+            if (s === 'running') row.getElement().style.background = '#eff6ff';
+            else if (['failed', 'timed_out', 'missed', 'cancelled'].includes(s)) row.getElement().style.background = '#fef2f2';
+            else if (['partial_success', 'stuck'].includes(s)) row.getElement().style.background = '#fffbeb';
+        },
+    });
+
+    document.getElementById('cmJobsSearch')?.addEventListener('keyup', function () {
+        const q = this.value.trim();
+        if (!q) { jobsTable.clearFilter(); return; }
+        jobsTable.setFilter([
+            [
+                { field: 'job_name', type: 'like', value: q },
+                { field: 'command', type: 'like', value: q },
+                { field: 'root_cause', type: 'like', value: q },
+            ],
+        ]);
+    });
+
+    new Tabulator('#cmAlertsTable', {
+        data: alertsData,
+        layout: 'fitColumns',
+        height: '360px',
+        pagination: 'local',
+        paginationSize: 10,
+        placeholder: 'No alerts yet.',
+        columns: [
+            { title: 'Type', field: 'alert_type', width: 120, formatter: (c) => {
+                const sev = c.getRow().getData().severity === 'critical' ? 'cm-pill-bad' : 'cm-pill-warn';
+                return `<span class="cm-pill ${sev}">${c.getValue() || '—'}</span>`;
+            }},
+            { title: 'Alert', field: 'title', formatter: (c) => {
+                const d = c.getRow().getData();
+                return `<div class="fw-semibold">${d.title || ''}</div><div class="text-muted small text-truncate" title="${(d.message || '').replace(/"/g, '&quot;')}">${d.message || ''}</div>`;
+            }},
+            { title: 'When', field: 'when', width: 110 },
+        ],
+    });
+
+    const logsTable = new Tabulator('#cmLogsTable', {
+        data: logsData,
+        layout: 'fitDataStretch',
+        height: '480px',
+        pagination: 'local',
+        paginationSize: 25,
+        paginationSizeSelector: [25, 50, 100],
+        movableColumns: true,
+        placeholder: 'No execution logs match these filters.',
+        initialSort: [{ column: 'id', dir: 'desc' }],
+        columns: [
+            { title: 'ID', field: 'id', width: 80, hozAlign: 'right', formatter: linkFormatter },
+            { title: 'Job', field: 'job_name', width: 200, headerFilter: 'input' },
+            { title: 'Status', field: 'status', width: 130, hozAlign: 'center', formatter: statusFormatter, headerFilter: 'list', headerFilterParams: { valuesLookup: true, clearable: true } },
+            { title: 'Category', field: 'failure_category', width: 120, formatter: (c) => c.getValue() || '—' },
+            { title: 'Started', field: 'started_at', width: 160 },
+            { title: 'Duration', field: 'duration_seconds', width: 100, hozAlign: 'right', formatter: (c) => c.getValue() == null ? '—' : Number(c.getValue()).toLocaleString() + 's' },
+            { title: 'Retries', field: 'retry_count', width: 90, hozAlign: 'right' },
+            { title: 'Updated', field: 'updated_records', width: 100, hozAlign: 'right' },
+            { title: 'Failed', field: 'failed_records', width: 90, hozAlign: 'right', formatter: (c) => {
+                const v = Number(c.getValue() || 0);
+                return v > 0 ? `<span class="text-danger fw-semibold">${v.toLocaleString()}</span>` : '0';
+            }},
+            { title: 'Success %', field: 'success_percentage', width: 100, hozAlign: 'right', formatter: (c) => c.getValue() == null ? '—' : Number(c.getValue()).toFixed(1) + '%' },
+            { title: 'Health', field: 'health_score', width: 90, hozAlign: 'right' },
+            { title: 'API latency', field: 'api_latency_ms_avg', width: 110, hozAlign: 'right', formatter: (c) => c.getValue() ? Number(c.getValue()).toLocaleString() + 'ms' : '—' },
+        ],
+        rowFormatter: function (row) {
+            const s = row.getData().status;
+            if (s === 'running') row.getElement().style.background = '#eff6ff';
+            else if (['failed', 'timed_out', 'missed', 'cancelled'].includes(s)) row.getElement().style.background = '#fef2f2';
+            else if (['partial_success', 'stuck'].includes(s)) row.getElement().style.background = '#fffbeb';
+        },
+    });
+
+    document.getElementById('cmLogsSearch')?.addEventListener('keyup', function () {
+        if (!this.value) { logsTable.clearFilter(); return; }
+        logsTable.setFilter([
+            [
+                { field: 'job_name', type: 'like', value: this.value },
+                { field: 'failure_category', type: 'like', value: this.value },
+                { field: 'status', type: 'like', value: this.value },
+            ],
+        ]);
+    });
+
+    @if($selectedJob && $trend->isNotEmpty())
+    if (typeof Highcharts !== 'undefined') {
+        const trendLabels = @json($trend->map(fn ($r) => optional($r->started_at)->format('m/d H:i'))->values());
+        const trendSuccess = @json($trend->pluck('success_percentage')->map(fn ($v) => (float) $v)->values());
+        const trendHealth = @json($trend->pluck('health_score')->map(fn ($v) => (float) $v)->values());
+        const trendUpdated = @json($trend->pluck('updated_records')->map(fn ($v) => (int) $v)->values());
+        const trendFailed = @json($trend->pluck('failed_records')->map(fn ($v) => (int) $v)->values());
+
+        Highcharts.chart('cmTrendChart', {
+            chart: { zoomType: 'x', backgroundColor: 'transparent', height: 280 },
+            title: { text: null },
+            xAxis: {
+                categories: trendLabels,
+                labels: { rotation: -35, style: { fontSize: '10px', color: '#6b7280' } }
+            },
+            yAxis: [
+                { title: { text: 'Success % / Health' }, max: 100, gridLineColor: '#f3f4f6' },
+                { title: { text: 'Records' }, opposite: true, gridLineWidth: 0 }
+            ],
+            tooltip: { shared: true },
+            series: [
+                { name: 'Success %', data: trendSuccess, color: '#059669' },
+                { name: 'Health', data: trendHealth, color: '#2563eb' },
+                { name: 'Updated', data: trendUpdated, yAxis: 1, color: '#7c3aed', type: 'column' },
+                { name: 'Failed', data: trendFailed, yAxis: 1, color: '#dc2626', type: 'column' }
+            ],
+            credits: { enabled: false }
+        });
+    }
+    @endif
 });
 </script>
-@endif
 @endsection

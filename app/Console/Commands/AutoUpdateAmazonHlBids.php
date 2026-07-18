@@ -2,6 +2,8 @@
 
 namespace App\Console\Commands;
 
+use App\Console\Commands\Concerns\MonitorsCronExecution;
+use App\Console\Commands\Concerns\PushesAmazonAdsUpdatesInChunks;
 use App\Http\Controllers\Campaigns\AmazonSbBudgetController;
 use App\Http\Controllers\Campaigns\AmazonSpBudgetController;
 use App\Models\AmazonDataView;
@@ -11,6 +13,7 @@ use App\Models\AmazonSpCampaignReport;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Services\Amazon\AmazonBidUtilizationService;
+use App\Services\CronMonitor\CronExecutionContext;
 use App\Support\AmazonAdsSbidRule;
 use GuzzleHttp\Client;
 use Illuminate\Support\Facades\DB;
@@ -18,8 +21,18 @@ use Illuminate\Support\Facades\Log;
 
 class AutoUpdateAmazonHlBids extends Command
 {
-    protected $signature = 'amazon:auto-update-over-hl-bids';
+    use MonitorsCronExecution;
+    use PushesAmazonAdsUpdatesInChunks;
+
+    protected $signature = 'amazon:auto-update-over-hl-bids
+        {--dry-run : Show what would be updated without calling API}
+        {--chunk= : Override chunk size for API updates (default from cron-monitor config)}';
     protected $description = 'Automatically update Amazon campaign keyword bids';
+
+    const MAX_RETRY_ATTEMPTS = 5;
+    const RETRY_DELAY_SECONDS = 5;
+
+    protected string $monitorJobName = 'Amazon Bid Sync (HL Over)';
 
     protected $profileId;
 
@@ -28,35 +41,47 @@ class AutoUpdateAmazonHlBids extends Command
         parent::__construct();
     }
 
-    public function handle()
+    public function handle(): int
+    {
+        return $this->runMonitored(
+            fn (CronExecutionContext $m) => $this->executeBidUpdate($m),
+            $this->monitorJobName
+        );
+    }
+
+    protected function executeBidUpdate(CronExecutionContext $monitor): int
     {
         try {
-            $this->info("Starting Amazon HL bids auto-update...");
+            @ini_set('max_execution_time', 900);
 
-            // Check database connection (without creating persistent connection)
+            $dryRun = $this->option('dry-run');
+            $this->info("Starting Amazon HL bids auto-update..." . ($dryRun ? " [DRY RUN - no API calls]" : ""));
+
             try {
                 DB::connection()->getPdo();
                 $this->info("✓ Database connection OK");
-                // Immediately disconnect after check to prevent connection buildup
                 DB::connection()->disconnect();
             } catch (\Exception $e) {
                 $this->error("✗ Database connection failed: " . $e->getMessage());
-                return 1;
+                $monitor->classifyAndRecord($e);
+
+                return self::FAILURE;
             }
 
             $updateKwBids = new AmazonSbBudgetController;
-
             $campaigns = $this->getAutomateAmzUtilizedBgtHl();
 
             if (empty($campaigns)) {
                 $this->warn("No campaigns matched filter conditions.");
                 $this->warn("No campaigns found - check filters and data availability");
-                return 0;
+                $monitor->markApiConnected();
+                $monitor->setExpected(0);
+
+                return self::SUCCESS;
             }
 
             $this->info("Found " . count($campaigns) . " campaigns to process.");
 
-            // Build a map to handle duplicate campaign IDs properly
             $campaignBudgetMap = [];
             $campaignDetails = [];
             $sbidRuleLog = AmazonAdsSbidRule::resolvedRule();
@@ -65,9 +90,8 @@ class AutoUpdateAmazonHlBids extends Command
                 $campaignId = $campaign->campaign_id ?? '';
                 $sbid = $campaign->sbid ?? 0;
                 $campaignName = $campaign->campaignName ?? '';
-                
+
                 if (!empty($campaignId) && $sbid > 0) {
-                    // Only add if we haven't seen this campaign ID before
                     if (!isset($campaignBudgetMap[$campaignId])) {
                         $budget = floatval($campaign->campaignBudgetAmount ?? 0);
                         $l7_spend = floatval($campaign->l7_spend ?? 0);
@@ -89,7 +113,6 @@ class AutoUpdateAmazonHlBids extends Command
                             'inv' => (int)($campaign->INV ?? 0)
                         ];
                     } else {
-                        // Log duplicate but keep first one
                         $this->warn("Duplicate campaign ID skipped: {$campaignId} ({$campaignName}). Already using bid: {$campaignBudgetMap[$campaignId]}");
                     }
                 }
@@ -100,22 +123,23 @@ class AutoUpdateAmazonHlBids extends Command
 
             if (empty($campaignIds)) {
                 $this->warn("No valid campaign IDs found to update.");
-                return 0;
+                $monitor->setExpected(0);
+
+                return self::SUCCESS;
             }
 
-            // Validate arrays are aligned
             if (count($campaignIds) !== count($newBids)) {
                 $this->error("Mismatch: " . count($campaignIds) . " campaign IDs but " . count($newBids) . " bids!");
                 $this->error("Campaign ID and bid array mismatch", [
                     'campaign_ids_count' => count($campaignIds),
                     'bids_count' => count($newBids)
                 ]);
-                return 1;
+
+                return self::FAILURE;
             }
 
             $this->info("Found " . count($campaignIds) . " unique campaigns to update.");
-            
-            // Log campaigns with names
+
             $this->info("========================================");
             $this->info("CAMPAIGNS TO UPDATE:");
             $this->info("========================================");
@@ -130,7 +154,19 @@ class AutoUpdateAmazonHlBids extends Command
             }
             $this->info("========================================");
 
-            // Validate all bids are valid before sending
+            if ($dryRun) {
+                $this->newLine();
+                $this->warn("DRY RUN: No API call made. Remove --dry-run to apply updates.");
+                $this->info("✓ Dry run completed. Total campaigns that would be updated: " . count($campaignIds));
+                $monitor->mergeMeta(['dry_run' => true]);
+                $monitor->markApiConnected();
+                $monitor->setExpected(count($campaignIds));
+                $monitor->setFetched(count($campaignIds));
+                $monitor->setSkipped(count($campaignIds));
+
+                return self::SUCCESS;
+            }
+
             $invalidBids = [];
             foreach ($newBids as $index => $bid) {
                 if (!is_numeric($bid) || $bid <= 0 || $bid > 1000) {
@@ -141,104 +177,55 @@ class AutoUpdateAmazonHlBids extends Command
                     ];
                 }
             }
-            
+
             if (!empty($invalidBids)) {
                 $this->error("Found " . count($invalidBids) . " invalid bids. Skipping update.");
                 $this->error("Invalid bids detected", ['invalid_bids' => $invalidBids]);
-                return 1;
+                foreach ($invalidBids as $invalid) {
+                    $monitor->recordFailure(
+                        sku: (string) ($invalid['campaign_id'] ?? ''),
+                        marketplace: 'amazon',
+                        reason: 'Invalid bid: ' . ($invalid['bid'] ?? ''),
+                        category: 'validation',
+                        recoverable: false
+                    );
+                }
+
+                return self::FAILURE;
             }
 
-            // Retry logic for API calls
-            $maxRetries = 3;
-            $result = null;
-            $lastError = null;
-            
-            for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
-                try {
-                    if ($attempt > 1) {
-                        $this->info("Retry attempt {$attempt} of {$maxRetries}...");
-                        sleep(2); // Wait 2 seconds before retry
-                    }
-                    
-                    $result = $updateKwBids->updateAutoCampaignSbKeywordsBid($campaignIds, $newBids);
-                    
-                    // Check if result indicates success
-                    if (is_array($result)) {
-                        $status = $result['status'] ?? null;
-                        if ($status == 200 || (isset($result['message']) && stripos($result['message'], 'success') !== false)) {
-                            break; // Success, exit retry loop
-                        }
-                        
-                        // Check for retryable errors
-                        $error = $result['error'] ?? '';
-                        if (stripos($error, 'timeout') !== false || 
-                            stripos($error, 'connection') !== false ||
-                            stripos($error, '500') !== false ||
-                            stripos($error, '503') !== false) {
-                            $lastError = $result;
-                            if ($attempt < $maxRetries) {
-                                continue; // Retry
-                            }
-                        }
-                    }
-                    
-                    break; // Exit loop if we got a result (success or non-retryable error)
-                    
-                } catch (\GuzzleHttp\Exception\ServerException $e) {
-                    $lastError = ['error' => $e->getMessage(), 'type' => 'ServerException'];
-                    if ($attempt < $maxRetries) {
-                        continue; // Retry server errors
-                    }
-                } catch (\GuzzleHttp\Exception\ClientException $e) {
-                    $lastError = ['error' => $e->getMessage(), 'type' => 'ClientException'];
-                    // Don't retry client errors (4xx), they're usually permanent
-                    break;
-                } catch (\Exception $e) {
-                    $lastError = ['error' => $e->getMessage(), 'type' => 'Exception'];
-                    if ($attempt < $maxRetries) {
-                        continue; // Retry other exceptions
-                    }
-                }
-            }
-            
-            // Log results
-            if ($result) {
-                $this->info("Update Result Status: " . (is_array($result) && isset($result['status']) ? $result['status'] : 'unknown'));
-                if (is_array($result) && isset($result['message'])) {
-                    $this->info("Update Message: " . $result['message']);
-                }
-                if (is_array($result) && isset($result['error'])) {
-                    $this->error("Update Error: " . $result['error']);
-                }
-            } else {
-                $this->error("Update failed after {$maxRetries} attempts");
-                if ($lastError) {
-                    $this->error("Last Error: " . ($lastError['error'] ?? json_encode($lastError)));
-                }
-            }
-            
-            $this->info("Amazon HL Bids Update completed. Total campaigns: " . count($campaignIds));
+            $monitor->markApiConnected();
+            $stats = $this->pushAmazonAdsIdMapInChunks(
+                $monitor,
+                $campaignBudgetMap,
+                fn (array $ids, array $bids) => $updateKwBids->updateAutoCampaignSbKeywordsBid($ids, $bids)
+            );
 
-            if ($result && is_array($result) && ($result['status'] ?? 0) == 200) {
-                $persistedRows = 0;
-                foreach ($campaignBudgetMap as $cid => $bid) {
+            $persistedRows = 0;
+            foreach ($stats['updated_map'] as $cid => $bid) {
+                if ($bid !== null) {
                     $persistedRows += AmazonBidUtilizationService::persistSbSbidM((string) $cid, (float) $bid);
                 }
-                Log::info('amazon:auto-update-over-hl-bids persisted sbid_m to L30', [
-                    'campaigns' => count($campaignBudgetMap),
-                    'l30_rows_updated' => $persistedRows,
-                ]);
-                $this->info("✓ Command completed successfully");
-                return 0;
-            } else {
-                $this->warn("⚠ Command completed with warnings or errors");
-                return 1;
             }
+            Log::info('amazon:auto-update-over-hl-bids persisted sbid_m to L30', [
+                'campaigns' => count($stats['updated_map']),
+                'l30_rows_updated' => $persistedRows,
+            ]);
+
+            $this->info("========================================");
+            $this->info("FINAL: Total={$stats['total']} | Updated={$stats['updated']} | Skipped={$stats['skipped']} | Failed={$stats['failed']} | Chunks={$stats['chunks']}");
+            $this->info("========================================");
+
+            Log::info('amazon:auto-update-over-hl-bids completed', $stats);
+
+            return $stats['failed'] > 0 ? self::FAILURE : self::SUCCESS;
 
         } catch (\Exception $e) {
             $this->error("✗ Error occurred: " . $e->getMessage());
             $this->error("Stack trace: " . $e->getTraceAsString());
-            return 1;
+            $monitor->classifyAndRecord($e);
+
+            return self::FAILURE;
         } finally {
             DB::connection()->disconnect();
         }

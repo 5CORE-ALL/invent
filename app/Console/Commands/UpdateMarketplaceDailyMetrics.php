@@ -43,6 +43,46 @@ class UpdateMarketplaceDailyMetrics extends Command
     protected $signature = 'app:update-marketplace-daily-metrics {--date= : Specific date to update (YYYY-MM-DD)}';
     protected $description = 'Update daily metrics for all marketplace channels';
 
+
+    /**
+     * Load ProductMaster in chunks of 50 (never Model::all()).
+     */
+    protected function productMastersChunked(): \Illuminate\Support\Collection
+    {
+        $all = collect();
+        \App\Models\ProductMaster::query()
+            ->orderBy('id')
+            ->chunkById(50, function ($rows) use (&$all) {
+                foreach ($rows as $row) {
+                    $all->push($row);
+                }
+            });
+
+        return $all;
+    }
+
+    /**
+     * Load any Eloquent model in chunks of 50 (never Model::all()).
+     *
+     * @param  class-string<\Illuminate\Database\Eloquent\Model>  $model
+     */
+    protected function modelsChunked(string $model): \Illuminate\Support\Collection
+    {
+        $all = collect();
+        $model::query()
+            ->orderBy('id')
+            ->chunkById(50, function ($rows) use (&$all) {
+                foreach ($rows as $row) {
+                    $all->push($row);
+                }
+            });
+
+        return $all;
+    }
+
+
+
+
     public function handle()
     {
         $date = $this->option('date') ? Carbon::parse($this->option('date')) : Carbon::today();
@@ -141,7 +181,7 @@ class UpdateMarketplaceDailyMetrics extends Command
         // Key by exact SKU (case-sensitive), EXACTLY like AmazonSalesController::getData()
         // (ProductMaster::whereIn('sku', …)->keyBy('sku')). Uppercasing here matched extra
         // rows the daily-sales page does not, skewing PFT/COGS away from that page.
-        $productMasters = ProductMaster::all()->keyBy('sku');
+        $productMasters = $this->productMastersChunked()->keyBy('sku');
 
         $totalOrders = $orderRows->pluck('amazon_order_id')->unique()->count();
         $totalQuantity = 0;
@@ -705,13 +745,13 @@ class UpdateMarketplaceDailyMetrics extends Command
             }
         }
 
-        $data = Temu2DailyData::all();
+        $data = $this->modelsChunked(Temu2DailyData::class);
 
         if ($data->isEmpty()) {
             return null;
         }
 
-        $allPms = ProductMaster::all();
+        $allPms = $this->productMastersChunked();
         $productMastersBySku = $allPms->keyBy('sku');
         $productMastersByNormalized = $allPms->keyBy(function ($pm) use ($normalizeSku) {
             return $normalizeSku($pm->sku ?? '');
@@ -835,13 +875,13 @@ class UpdateMarketplaceDailyMetrics extends Command
             return null;
         }
 
-        $data = TopDawgOrderMetric::all();
+        $data = $this->modelsChunked(TopDawgOrderMetric::class);
         if ($data->isEmpty()) {
             return null;
         }
 
-        $productMastersBySku = ProductMaster::all()->keyBy('sku');
-        $productMastersByNormalized = ProductMaster::all()->keyBy(function ($pm) {
+        $productMastersBySku = $this->productMastersChunked()->keyBy('sku');
+        $productMastersByNormalized = $this->productMastersChunked()->keyBy(function ($pm) {
             $sku = strtoupper(trim((string) ($pm->sku ?? '')));
             $sku = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $sku);
             $sku = preg_replace('/\s+/', ' ', $sku);
@@ -982,7 +1022,7 @@ class UpdateMarketplaceDailyMetrics extends Command
         }
 
         // Fetch all ProductMaster records and create lookup maps
-        $productMastersBySku = ProductMaster::all()->mapWithKeys(function($pm) {
+        $productMastersBySku = $this->productMastersChunked()->mapWithKeys(function($pm) {
             $sku = strtoupper(trim($pm->sku));
             $skuNoSpaces = str_replace([' ', '-', '_'], '', $sku);
             return [
@@ -1113,7 +1153,7 @@ class UpdateMarketplaceDailyMetrics extends Command
         }
 
         // Fetch all ProductMaster records and create lookup maps
-        $productMastersBySku = ProductMaster::all()->mapWithKeys(function($pm) {
+        $productMastersBySku = $this->productMastersChunked()->mapWithKeys(function($pm) {
             $sku = strtoupper(trim($pm->sku));
             $skuNoSpaces = str_replace([' ', '-', '_'], '', $sku);
             return [
@@ -1359,13 +1399,13 @@ class UpdateMarketplaceDailyMetrics extends Command
     private function calculateAliexpressMetrics($date)
     {
         // Get AliExpress daily data
-        $data = AliexpressDailyData::all();
+        $data = $this->modelsChunked(AliexpressDailyData::class);
 
         if ($data->isEmpty()) {
             return null;
         }
 
-        $productMasters = ProductMaster::all()->keyBy(function ($item) {
+        $productMasters = $this->productMastersChunked()->keyBy(function ($item) {
             return strtoupper($item->sku);
         });
 
@@ -1492,7 +1532,7 @@ class UpdateMarketplaceDailyMetrics extends Command
             return null;
         }
 
-        $productMasters = ProductMaster::all()->keyBy(function ($item) {
+        $productMasters = $this->productMastersChunked()->keyBy(function ($item) {
             return strtoupper($item->sku);
         });
 
@@ -1669,7 +1709,7 @@ class UpdateMarketplaceDailyMetrics extends Command
             return null;
         }
 
-        $productMasters = ProductMaster::all()->keyBy(function ($item) {
+        $productMasters = $this->productMastersChunked()->keyBy(function ($item) {
             return strtoupper($item->sku);
         });
 
@@ -1828,7 +1868,7 @@ class UpdateMarketplaceDailyMetrics extends Command
             return null;
         }
 
-        $productMasters = ProductMaster::all()->keyBy(function ($item) {
+        $productMasters = $this->productMastersChunked()->keyBy(function ($item) {
             return strtoupper($item->sku);
         });
 
@@ -1976,7 +2016,7 @@ class UpdateMarketplaceDailyMetrics extends Command
             return null;
         }
 
-        $productMasters = ProductMaster::all()->keyBy(function ($item) {
+        $productMasters = $this->productMastersChunked()->keyBy(function ($item) {
             return strtoupper($item->sku);
         });
 
@@ -2137,7 +2177,7 @@ class UpdateMarketplaceDailyMetrics extends Command
             return null;
         }
 
-        $productMasters = ProductMaster::all()->keyBy(function ($item) {
+        $productMasters = $this->productMastersChunked()->keyBy(function ($item) {
             return strtoupper($item->sku);
         });
 
@@ -2271,7 +2311,7 @@ class UpdateMarketplaceDailyMetrics extends Command
             return null;
         }
 
-        $productMasters = ProductMaster::all()->keyBy(function ($item) {
+        $productMasters = $this->productMastersChunked()->keyBy(function ($item) {
             return strtoupper($item->sku);
         });
 
@@ -2389,7 +2429,7 @@ class UpdateMarketplaceDailyMetrics extends Command
     {
         // Calculate from ALL products in catalog (matching tiendamia-pricing page frontend logic)
         // Get all product master records (excluding parent rows)
-        $productMasters = ProductMaster::all()
+        $productMasters = $this->productMastersChunked()
             ->filter(function ($item) {
                 return stripos($item->sku, 'PARENT') === false;
             })
@@ -2660,7 +2700,7 @@ class UpdateMarketplaceDailyMetrics extends Command
             return null;
         }
 
-        $productMasters = ProductMaster::all()->keyBy(function ($item) {
+        $productMasters = $this->productMastersChunked()->keyBy(function ($item) {
             return strtoupper($item->sku);
         });
 
@@ -3029,7 +3069,7 @@ class UpdateMarketplaceDailyMetrics extends Command
         $marketplaceData = MarketplacePercentage::where('marketplace', 'Purchase')->first();
         $pct = (($marketplaceData ? (float) ($marketplaceData->percentage ?? 65) : 65) / 100);
 
-        $productMasters = ProductMaster::all()->keyBy(fn ($pm) => strtoupper(trim((string) ($pm->sku ?? ''))));
+        $productMasters = $this->productMastersChunked()->keyBy(fn ($pm) => strtoupper(trim((string) ($pm->sku ?? ''))));
 
         $yesterday = now()->subDay()->startOfDay();
         $yesterdayEnd = now()->subDay()->endOfDay();

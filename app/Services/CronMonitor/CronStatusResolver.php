@@ -26,6 +26,21 @@ class CronStatusResolver
             ];
         }
 
+        if (! empty($ctx->meta['dry_run']) && ! $hadException) {
+            return [
+                'status' => CronExecutionLog::STATUS_SUCCESS,
+                'success_percentage' => 100.0,
+            ];
+        }
+
+        // Intentionally empty run (nothing to update)
+        if ($ctx->expectedRecords === 0 && ! $hadException) {
+            return [
+                'status' => CronExecutionLog::STATUS_SUCCESS,
+                'success_percentage' => 100.0,
+            ];
+        }
+
         $denominator = $ctx->successDenominator();
         $effective = $ctx->effectiveUpdated();
         $percentage = round(($effective / max(1, $denominator)) * 100, 2);

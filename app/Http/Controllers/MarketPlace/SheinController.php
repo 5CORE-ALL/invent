@@ -1678,6 +1678,57 @@ class SheinController extends Controller
         ]);
     }
 
+    /**
+     * Update an existing competitor LMP slot (price + link) for a SKU.
+     */
+    public function updateLmpEntry(Request $request)
+    {
+        $sku   = trim((string) $request->input('sku'));
+        $slot  = (int) $request->input('slot');
+        $price = $request->input('price');
+        $link  = trim((string) $request->input('link', ''));
+
+        if ($sku === '') {
+            return response()->json(['success' => false, 'message' => 'SKU is required'], 422);
+        }
+        if ($slot < 1 || $slot > 4) {
+            return response()->json(['success' => false, 'message' => 'Invalid slot'], 422);
+        }
+        if (! is_numeric($price) || (float) $price <= 0) {
+            return response()->json(['success' => false, 'message' => 'A valid price greater than 0 is required'], 422);
+        }
+        if ($link !== '' && ! filter_var($link, FILTER_VALIDATE_URL)) {
+            return response()->json(['success' => false, 'message' => 'Invalid product link URL'], 422);
+        }
+        if (! Schema::hasTable('shein_lmp')) {
+            return response()->json(['success' => false, 'message' => 'shein_lmp table does not exist'], 500);
+        }
+
+        $normalized = $this->normalizeSheinSkuExact($sku);
+        $row = $this->findSheinLmpRow($normalized);
+        if (! $row) {
+            return response()->json(['success' => false, 'message' => 'No LMP data found for this SKU'], 404);
+        }
+        if ($row->{'price_' . $slot} === null) {
+            return response()->json(['success' => false, 'message' => 'LMP slot is empty'], 404);
+        }
+
+        $row->{'price_' . $slot} = round((float) $price, 2);
+        $row->{'url_' . $slot}   = $link !== '' ? $link : null;
+        $row->is_not_found       = false;
+        $row->save();
+
+        $entries = $this->sheinLmpEntriesFrom($row->fresh());
+        $lowest  = collect($entries)->min('price');
+
+        return response()->json([
+            'success'   => true,
+            'message'   => 'LMP updated',
+            'entries'   => $entries,
+            'lmp_price' => $lowest,
+        ]);
+    }
+
     /** Remove a single competitor LMP slot for a SKU. */
     public function deleteLmpEntry(Request $request)
     {

@@ -11,6 +11,7 @@ use App\Listeners\CronMonitor\SendCronWatchdogAlert;
 use App\Repositories\CronExecutionLogRepository;
 use App\Services\CronMonitor\AlertGroupingService;
 use App\Services\CronMonitor\CheckpointService;
+use App\Services\CronMonitor\ChunkedProcessor;
 use App\Services\CronMonitor\CronAnomalyDetector;
 use App\Services\CronMonitor\CronHealthScoreCalculator;
 use App\Services\CronMonitor\CronMonitorService;
@@ -46,6 +47,7 @@ class CronMonitorServiceProvider extends ServiceProvider
         $this->app->singleton(FailureClassifier::class);
         $this->app->singleton(RootCauseAnalyzer::class);
         $this->app->singleton(CheckpointService::class);
+        $this->app->singleton(ChunkedProcessor::class);
         $this->app->singleton(DuplicateLockService::class);
         $this->app->singleton(SelfHealingService::class);
         $this->app->singleton(HistoricalAnalysisService::class);

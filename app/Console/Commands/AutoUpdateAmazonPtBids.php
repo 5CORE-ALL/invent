@@ -2,6 +2,8 @@
 
 namespace App\Console\Commands;
 
+use App\Console\Commands\Concerns\MonitorsCronExecution;
+use App\Console\Commands\Concerns\PushesAmazonAdsUpdatesInChunks;
 use App\Http\Controllers\Campaigns\AmazonSpBudgetController;
 use App\Models\AmazonDatasheet;
 use App\Models\AmazonDataView;
@@ -10,14 +12,25 @@ use App\Models\AmazonSpCampaignReport;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Services\Amazon\AmazonBidUtilizationService;
+use App\Services\CronMonitor\CronExecutionContext;
 use App\Support\AmazonAdsSbidRule;
 use GuzzleHttp\Client;
 use Illuminate\Support\Facades\DB;
 
 class AutoUpdateAmazonPtBids extends Command
 {
-    protected $signature = 'amazon:auto-update-over-pt-bids {--dry-run : Show what would be updated without calling API}';
-    protected $description = 'Automatically update Amazon campaign keyword bids';
+    use MonitorsCronExecution;
+    use PushesAmazonAdsUpdatesInChunks;
+
+    protected $signature = 'amazon:auto-update-over-pt-bids
+        {--dry-run : Show what would be updated without calling API}
+        {--chunk= : Override chunk size for API updates (default from cron-monitor config)}';
+    protected $description = 'Automatically update Amazon campaign product-target bids';
+
+    const MAX_RETRY_ATTEMPTS = 5;
+    const RETRY_DELAY_SECONDS = 5;
+
+    protected string $monitorJobName = 'Amazon Bid Sync (PT Over)';
 
     protected $profileId;
 
@@ -26,293 +39,114 @@ class AutoUpdateAmazonPtBids extends Command
         parent::__construct();
     }
 
-    public function handle()
+    public function handle(): int
+    {
+        return $this->runMonitored(
+            fn (CronExecutionContext $m) => $this->executeBidUpdate($m),
+            $this->monitorJobName
+        );
+    }
+
+    protected function executeBidUpdate(CronExecutionContext $monitor): int
     {
         try {
             $dryRun = $this->option('dry-run');
             $this->info("Starting Amazon PT bids auto-update..." . ($dryRun ? " [DRY RUN - no API calls]" : ""));
 
-            // Check database connection (without creating persistent connection)
             try {
                 DB::connection()->getPdo();
                 $this->info("✓ Database connection OK");
-                // Immediately disconnect after check to prevent connection buildup
                 DB::connection()->disconnect();
             } catch (\Exception $e) {
                 $this->error("✗ Database connection failed: " . $e->getMessage());
-                return 1;
+                $monitor->classifyAndRecord($e);
+                return self::FAILURE;
             }
 
-            $updateKwBids = new AmazonSpBudgetController;
-
+            $controller = new AmazonSpBudgetController;
             $campaigns = $this->getAutomateAmzUtilizedBgtPt();
 
             if (empty($campaigns)) {
                 $this->warn("No campaigns matched filter conditions.");
-                $this->warn("No campaigns found - check filters and data availability");
-                return 0;
+                $monitor->markApiConnected();
+                $monitor->setExpected(0);
+                return self::SUCCESS;
             }
 
-            $this->info("Found " . count($campaigns) . " campaigns to process.");
-
-            // Build a map to handle duplicate campaign IDs properly
             $campaignBudgetMap = [];
-            $campaignDetails = [];
-            $sbidRule = AmazonAdsSbidRule::resolvedRule();
             $skippedCampaigns = [];
 
             foreach ($campaigns as $index => $campaign) {
                 $campaignId = $campaign->campaign_id ?? '';
                 $sbid = $campaign->sbid ?? 0;
                 $campaignName = $campaign->campaignName ?? '';
-                
-                // Check for empty campaign ID
-                if (empty($campaignId)) {
+
+                if (empty($campaignId) || $sbid <= 0) {
                     $skippedCampaigns[] = [
-                        'index' => $index,
                         'campaign_id' => $campaignId,
                         'campaign_name' => $campaignName,
-                        'bid' => $sbid,
-                        'reason' => 'Missing or empty campaign_id',
+                        'reason' => empty($campaignId) ? 'Missing campaign_id' : 'Invalid bid',
                     ];
                     continue;
                 }
-                
-                // Check for invalid bid
-                if ($sbid <= 0) {
+
+                if (!isset($campaignBudgetMap[$campaignId])) {
+                    $campaignBudgetMap[$campaignId] = $sbid;
+                } else {
                     $skippedCampaigns[] = [
-                        'index' => $index,
                         'campaign_id' => $campaignId,
                         'campaign_name' => $campaignName,
-                        'bid' => $sbid,
-                        'reason' => 'Invalid bid (must be positive number > 0)',
+                        'reason' => 'Duplicate campaign_id',
                     ];
-                    continue;
-                }
-                
-                if (!empty($campaignId) && $sbid > 0) {
-                    // Only add if we haven't seen this campaign ID before
-                    if (!isset($campaignBudgetMap[$campaignId])) {
-                        $budget = floatval($campaign->campaignBudgetAmount ?? 0);
-                        $l7_spend = floatval($campaign->l7_spend ?? 0);
-                        $l1_spend = floatval($campaign->l1_spend ?? 0);
-                        $ub7 = $budget > 0 ? ($l7_spend / ($budget * 7)) * 100 : 0;
-                        $ub1 = $budget > 0 ? ($l1_spend / $budget) * 100 : 0;
-                        $ub2 = floatval($campaign->ub2 ?? 0);
-                        $pinkPink = AmazonAdsSbidRule::isBothAboveUtilHigh($ub7, $ub1, $sbidRule);
-                        $redRed = AmazonAdsSbidRule::isBothBelowUtilLow($ub7, $ub1, $sbidRule);
-                        $campaignBudgetMap[$campaignId] = $sbid;
-                        $campaignDetails[$campaignId] = [
-                            'name' => $campaignName,
-                            'bid' => $sbid,
-                            'ub7' => round($ub7, 2),
-                            'ub2' => round($ub2, 2),
-                            'ub1' => round($ub1, 2),
-                            'pink_pink' => $pinkPink,
-                            'red_red' => $redRed,
-                            'inv' => (int)($campaign->INV ?? 0)
-                        ];
-                    } else {
-                        // Log duplicate but keep first one
-                        $this->warn("Duplicate campaign ID skipped: {$campaignId} ({$campaignName}). Already using bid: {$campaignBudgetMap[$campaignId]}");
-                        $skippedCampaigns[] = [
-                            'index' => $index,
-                            'campaign_id' => $campaignId,
-                            'campaign_name' => $campaignName,
-                            'bid' => $sbid,
-                            'reason' => 'Duplicate campaign_id (using first occurrence)',
-                        ];
-                    }
                 }
             }
 
-            $campaignIds = array_keys($campaignBudgetMap);
-            $newBids = array_values($campaignBudgetMap);
-
-            if (empty($campaignIds)) {
+            if ($campaignBudgetMap === []) {
                 $this->warn("No valid campaign IDs found to update.");
-                
-                // Display detailed skip report
-                if (!empty($skippedCampaigns)) {
-                    $this->newLine();
-                    $this->warn("========================================");
-                    $this->warn("SKIPPED CAMPAIGNS REPORT (PT BIDS)");
-                    $this->warn("========================================");
-                    $this->info("Total Submitted: " . count($campaigns));
-                    $this->info("Total Processed: 0");
-                    $this->warn("Total Skipped: " . count($skippedCampaigns));
-                    $this->newLine();
-                    
-                    foreach ($skippedCampaigns as $skipped) {
-                        $this->warn("Campaign: " . ($skipped['campaign_name'] ?? 'N/A'));
-                        $this->warn("  - Campaign ID: " . ($skipped['campaign_id'] ?: '(empty)'));
-                        $this->warn("  - Bid: " . ($skipped['bid'] ?? 'N/A'));
-                        $this->warn("  - Reason: " . $skipped['reason']);
-                        $this->warn("---");
-                    }
-                    $this->warn("========================================");
-                }
-                
-                return 0;
+                $monitor->setExpected(0);
+                return self::SUCCESS;
             }
 
-            // Validate arrays are aligned
-            if (count($campaignIds) !== count($newBids)) {
-                $this->error("Mismatch: " . count($campaignIds) . " campaign IDs but " . count($newBids) . " bids!");
-                $this->error("Campaign ID and bid array mismatch", [
-                    'campaign_ids_count' => count($campaignIds),
-                    'bids_count' => count($newBids)
-                ]);
-                return 1;
+            $this->info("Found " . count($campaignBudgetMap) . " unique campaigns to update.");
+            foreach ($campaignBudgetMap as $cid => $bid) {
+                $this->line("  {$cid} => {$bid}");
             }
-
-            $this->info("Found " . count($campaignIds) . " unique campaigns to update.");
-            
-            // Log campaigns with names
-            $this->info("========================================");
-            $this->info("CAMPAIGNS TO UPDATE:");
-            $this->info("========================================");
-            foreach ($campaignDetails as $campaignId => $details) {
-                $this->info("Campaign Name: {$details['name']}");
-                $this->info("  - Campaign ID: {$campaignId}");
-                $this->info("  - Bid: {$details['bid']}");
-                $this->info("  - 7UB: " . ($details['ub7'] ?? 0) . "% | 2UB: " . ($details['ub2'] ?? 0) . "% | 1UB: " . ($details['ub1'] ?? 0) . "%");
-                $this->info("  - Pink+Pink (Over U2/U1): " . (!empty($details['pink_pink']) ? 'Yes' : 'No'));
-                $this->info("  - Red+Red (Under U2/U1): " . (!empty($details['red_red']) ? 'Yes' : 'No'));
-                $this->info("  - INV: " . ($details['inv'] ?? 0));
-                $this->info("---");
-            }
-            $this->info("========================================");
 
             if ($dryRun) {
-                $this->newLine();
                 $this->warn("DRY RUN: No API call made. Remove --dry-run to apply updates.");
-                $this->info("✓ Dry run completed. Total campaigns that would be updated: " . count($campaignIds));
-                return 0;
+                $monitor->mergeMeta(['dry_run' => true]);
+                $monitor->markApiConnected();
+                $n = count($campaignBudgetMap);
+                $monitor->setExpected($n);
+                $monitor->setFetched($n);
+                $monitor->setSkipped($n);
+                return self::SUCCESS;
             }
 
-            // Validate all bids are valid before sending
-            $invalidBids = [];
-            foreach ($newBids as $index => $bid) {
-                if (!is_numeric($bid) || $bid <= 0 || $bid > 1000) {
-                    $invalidBids[] = [
-                        'index' => $index,
-                        'campaign_id' => $campaignIds[$index] ?? 'unknown',
-                        'bid' => $bid
-                    ];
+            $monitor->markApiConnected();
+            $stats = $this->pushAmazonAdsIdMapInChunks(
+                $monitor,
+                $campaignBudgetMap,
+                fn (array $ids, array $bids) => $controller->updateAutoCampaignTargetsBid($ids, $bids)
+            );
+
+            foreach ($stats['updated_map'] as $cid => $bid) {
+                if ($bid !== null) {
+                    AmazonBidUtilizationService::persistSpSbidM((string) $cid, (float) $bid);
                 }
-            }
-            
-            if (!empty($invalidBids)) {
-                $this->error("Found " . count($invalidBids) . " invalid bids. Skipping update.");
-                $this->error("Invalid bids detected", ['invalid_bids' => $invalidBids]);
-                return 1;
             }
 
-            // Retry logic for API calls
-            $maxRetries = 3;
-            $result = null;
-            $lastError = null;
-            
-            for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
-                try {
-                    if ($attempt > 1) {
-                        $this->info("Retry attempt {$attempt} of {$maxRetries}...");
-                        sleep(2); // Wait 2 seconds before retry
-                    }
-                    
-                    $result = $updateKwBids->updateAutoCampaignTargetsBid($campaignIds, $newBids);
-                    
-                    // Check if result indicates success
-                    if (is_array($result)) {
-                        $status = $result['status'] ?? null;
-                        if ($status == 200 || (isset($result['message']) && stripos($result['message'], 'success') !== false)) {
-                            break; // Success, exit retry loop
-                        }
-                        
-                        // Check for retryable errors
-                        $error = $result['error'] ?? '';
-                        if (stripos($error, 'timeout') !== false || 
-                            stripos($error, 'connection') !== false ||
-                            stripos($error, '500') !== false ||
-                            stripos($error, '503') !== false) {
-                            $lastError = $result;
-                            if ($attempt < $maxRetries) {
-                                continue; // Retry
-                            }
-                        }
-                    }
-                    
-                    break; // Exit loop if we got a result (success or non-retryable error)
-                    
-                } catch (\GuzzleHttp\Exception\ServerException $e) {
-                    $lastError = ['error' => $e->getMessage(), 'type' => 'ServerException'];
-                    if ($attempt < $maxRetries) {
-                        continue; // Retry server errors
-                    }
-                } catch (\GuzzleHttp\Exception\ClientException $e) {
-                    $lastError = ['error' => $e->getMessage(), 'type' => 'ClientException'];
-                    // Don't retry client errors (4xx), they're usually permanent
-                    break;
-                } catch (\Exception $e) {
-                    $lastError = ['error' => $e->getMessage(), 'type' => 'Exception'];
-                    if ($attempt < $maxRetries) {
-                        continue; // Retry other exceptions
-                    }
-                }
-            }
-            
-            // Log results
-            if ($result) {
-                $this->info("Update Result Status: " . (is_array($result) && isset($result['status']) ? $result['status'] : 'unknown'));
-                if (is_array($result) && isset($result['message'])) {
-                    $this->info("Update Message: " . $result['message']);
-                }
-                if (is_array($result) && isset($result['error'])) {
-                    $this->error("Update Error: " . $result['error']);
-                }
-            } else {
-                $this->error("Update failed after {$maxRetries} attempts");
-                if ($lastError) {
-                    $this->error("Last Error: " . ($lastError['error'] ?? json_encode($lastError)));
-                }
-            }
-            
-            // Display final summary with skip report
-            $this->newLine();
-            $this->info("========================================");
-            $this->info("FINAL UPDATE SUMMARY (PT BIDS)");
-            $this->info("========================================");
-            $this->info("Total Submitted: " . count($campaigns));
-            $this->info("Total Processed: " . count($campaignIds));
-            $this->warn("Total Skipped: " . count($skippedCampaigns));
-            
             if (!empty($skippedCampaigns)) {
-                $this->newLine();
-                $this->warn("SKIPPED CAMPAIGNS:");
-                foreach (array_slice($skippedCampaigns, 0, 10) as $skipped) {
-                    $this->warn("  - {$skipped['campaign_name']}: {$skipped['reason']}");
-                }
-                if (count($skippedCampaigns) > 10) {
-                    $this->warn("  ... and " . (count($skippedCampaigns) - 10) . " more.");
-                }
-            }
-            $this->info("========================================");
-            
-            $this->info("Amazon PT Bids Update completed. Total campaigns: " . count($campaignIds));
-
-            if ($result && is_array($result) && ($result['status'] ?? 0) == 200) {
-                $this->info("✓ Command completed successfully");
-                return 0;
-            } else {
-                $this->warn("⚠ Command completed with warnings or errors");
-                return 1;
+                $this->warn("Pre-filter skipped: " . count($skippedCampaigns));
             }
 
+            $this->info("FINAL PT: Total={$stats['total']} | Updated={$stats['updated']} | Skipped={$stats['skipped']} | Failed={$stats['failed']} | Chunks={$stats['chunks']}");
+
+            return $stats['failed'] > 0 ? self::FAILURE : self::SUCCESS;
         } catch (\Exception $e) {
             $this->error("✗ Error occurred: " . $e->getMessage());
-            $this->error("Stack trace: " . $e->getTraceAsString());
-            return 1;
+            $monitor->classifyAndRecord($e);
+            return self::FAILURE;
         } finally {
             DB::connection()->disconnect();
         }

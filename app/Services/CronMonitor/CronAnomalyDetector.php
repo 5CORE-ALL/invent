@@ -132,6 +132,10 @@ class CronAnomalyDetector
             return [];
         }
 
+        if (! empty($ctx->meta['dry_run'])) {
+            return [];
+        }
+
         $anomalies = [];
 
         if ($ctx->fetchedRecords === 0 && ($ctx->expectedRecords === null || $ctx->expectedRecords > 0)) {

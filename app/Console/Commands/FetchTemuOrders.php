@@ -2,21 +2,25 @@
 
 namespace App\Console\Commands;
 
+use App\Console\Commands\Concerns\ProcessesUpdatesInChunks;
 use App\Models\TemuOrder;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 class FetchTemuOrders extends Command
 {
+    use ProcessesUpdatesInChunks;
+
     /**
      * Always fetches the last 60 days of Temu orders and keeps the table pruned
      * to a rolling 60-day window.
      *
      *   php artisan app:fetch-temu-orders
      */
-    protected $signature = 'app:fetch-temu-orders';
+    protected $signature = 'app:fetch-temu-orders {--chunk= : Override DB write chunk size (default from cron-monitor config)}';
 
     protected $description = 'Fetch the last 60 days of order-wise raw data from Temu (bg.order.list.v2.get) into temu_orders (rolling 60-day window)';
 
@@ -108,6 +112,7 @@ class FetchTemuOrders extends Command
                     break;
                 }
 
+                $pendingRecords = [];
                 foreach ($pageItems as $parent) {
                     $totalParents++;
                     $parentMap = $parent['parentOrderMap'] ?? [];
@@ -124,47 +129,57 @@ class FetchTemuOrders extends Command
                         $orderStatus = $sub['orderStatus'] ?? null;
                         $parentStatus = $parentMap['parentOrderStatus'] ?? null;
 
-                        $record = [
-                            'parent_order_sn' => $parentMap['parentOrderSn'] ?? null,
-                            'parent_order_status' => $parentStatus,
-                            'parent_order_status_text' => $this->statusText($parentStatus),
-                            'parent_order_time' => $this->tsToDateTime($parentMap['parentOrderTime'] ?? null),
-                            'expect_ship_latest_time' => $this->tsToDateTime($parentMap['expectShipLatestTime'] ?? null),
-                            'parent_shipping_time' => $this->tsToDateTime($parentMap['parentShippingTime'] ?? null),
-                            'latest_delivery_time' => $this->tsToDateTime($parentMap['latestDeliveryTime'] ?? null),
-                            'order_update_time' => $this->tsToDateTime($parentMap['updateTime'] ?? null),
-                            'region_id' => $parentMap['regionId'] ?? null,
-                            'site_id' => $parentMap['siteId'] ?? null,
-
+                        $pendingRecords[] = [
                             'order_sn' => $orderSn,
-                            'sku_id' => isset($sub['skuId']) ? (string) $sub['skuId'] : null,
-                            'goods_id' => isset($sub['goodsId']) ? (string) $sub['goodsId'] : null,
-                            'ext_code' => $product['extCode'] ?? null,
-                            'product_sku_id' => isset($product['productSkuId']) ? (string) $product['productSkuId'] : null,
-                            'goods_name' => $sub['goodsName'] ?? null,
-                            'spec' => $sub['spec'] ?? null,
-                            'quantity' => isset($sub['quantity']) ? (int) $sub['quantity'] : null,
-                            'original_order_quantity' => isset($sub['originalOrderQuantity']) ? (int) $sub['originalOrderQuantity'] : null,
-                            'canceled_quantity_before_shipment' => isset($sub['canceledQuantityBeforeShipment']) ? (int) $sub['canceledQuantityBeforeShipment'] : null,
-                            'order_status' => $orderStatus,
-                            'order_status_text' => $this->statusText($orderStatus),
-                            'fulfillment_type' => $sub['fulfillmentType'] ?? null,
-                            'order_payment_type' => $sub['orderPaymentType'] ?? null,
-                            'thumb_url' => $sub['thumbUrl'] ?? null,
-                            'order_shipping_time' => $this->tsToDateTime($sub['orderShippingTime'] ?? null),
+                            'record' => [
+                                'parent_order_sn' => $parentMap['parentOrderSn'] ?? null,
+                                'parent_order_status' => $parentStatus,
+                                'parent_order_status_text' => $this->statusText($parentStatus),
+                                'parent_order_time' => $this->tsToDateTime($parentMap['parentOrderTime'] ?? null),
+                                'expect_ship_latest_time' => $this->tsToDateTime($parentMap['expectShipLatestTime'] ?? null),
+                                'parent_shipping_time' => $this->tsToDateTime($parentMap['parentShippingTime'] ?? null),
+                                'latest_delivery_time' => $this->tsToDateTime($parentMap['latestDeliveryTime'] ?? null),
+                                'order_update_time' => $this->tsToDateTime($parentMap['updateTime'] ?? null),
+                                'region_id' => $parentMap['regionId'] ?? null,
+                                'site_id' => $parentMap['siteId'] ?? null,
 
-                            'raw_json' => json_encode([
-                                'parentOrderMap' => $parentMap,
-                                'order' => $sub,
-                            ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
-                            'fetch_window' => $window,
-                            'fetched_at' => now(),
+                                'order_sn' => $orderSn,
+                                'sku_id' => isset($sub['skuId']) ? (string) $sub['skuId'] : null,
+                                'goods_id' => isset($sub['goodsId']) ? (string) $sub['goodsId'] : null,
+                                'ext_code' => $product['extCode'] ?? null,
+                                'product_sku_id' => isset($product['productSkuId']) ? (string) $product['productSkuId'] : null,
+                                'goods_name' => $sub['goodsName'] ?? null,
+                                'spec' => $sub['spec'] ?? null,
+                                'quantity' => isset($sub['quantity']) ? (int) $sub['quantity'] : null,
+                                'original_order_quantity' => isset($sub['originalOrderQuantity']) ? (int) $sub['originalOrderQuantity'] : null,
+                                'canceled_quantity_before_shipment' => isset($sub['canceledQuantityBeforeShipment']) ? (int) $sub['canceledQuantityBeforeShipment'] : null,
+                                'order_status' => $orderStatus,
+                                'order_status_text' => $this->statusText($orderStatus),
+                                'fulfillment_type' => $sub['fulfillmentType'] ?? null,
+                                'order_payment_type' => $sub['orderPaymentType'] ?? null,
+                                'thumb_url' => $sub['thumbUrl'] ?? null,
+                                'order_shipping_time' => $this->tsToDateTime($sub['orderShippingTime'] ?? null),
+
+                                'raw_json' => json_encode([
+                                    'parentOrderMap' => $parentMap,
+                                    'order' => $sub,
+                                ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+                                'fetch_window' => $window,
+                                'fetched_at' => now(),
+                            ],
                         ];
-
-                        TemuOrder::updateOrCreate(['order_sn' => $orderSn], $record);
-                        $totalUpserted++;
                     }
                 }
+
+                // API pageSize stays 100; persist in config-sized write chunks.
+                $this->writeItemsInChunks($pendingRecords, function (array $chunk) use (&$totalUpserted) {
+                    foreach ($chunk as $entry) {
+                        TemuOrder::updateOrCreate(['order_sn' => $entry['order_sn']], $entry['record']);
+                        $totalUpserted++;
+                    }
+
+                    return ['updated' => count($chunk), 'failed' => 0];
+                });
 
                 $processedSoFar = $pageNumber * 100;
                 $hasMorePages = $processedSoFar < $totalCount && count($pageItems) >= 100;
@@ -267,21 +282,26 @@ class FetchTemuOrders extends Command
             $amountsByOrderSn = $this->parseAmountResult($result);
 
             $subOrders = TemuOrder::where('parent_order_sn', $parentOrderSn)->get();
-            foreach ($subOrders as $row) {
-                $amt = $amountsByOrderSn[$row->order_sn] ?? null;
+            $chunkSize = $this->monitoredChunkSize();
+            foreach ($subOrders->chunk($chunkSize) as $subChunk) {
+                DB::transaction(function () use ($subChunk, $amountsByOrderSn, $rawJson, &$rowsUpdated) {
+                    foreach ($subChunk as $row) {
+                        $amt = $amountsByOrderSn[$row->order_sn] ?? null;
 
-                $row->amount_raw_json = $rawJson;
-                $row->amount_fetched_at = now();
-                if ($amt !== null) {
-                    if ($amt['base'] !== null) {
-                        $row->order_base_amount = $amt['base'];
+                        $row->amount_raw_json = $rawJson;
+                        $row->amount_fetched_at = now();
+                        if ($amt !== null) {
+                            if ($amt['base'] !== null) {
+                                $row->order_base_amount = $amt['base'];
+                            }
+                            if ($amt['total'] !== null) {
+                                $row->order_total_amount = $amt['total'];
+                            }
+                        }
+                        $row->save();
+                        $rowsUpdated++;
                     }
-                    if ($amt['total'] !== null) {
-                        $row->order_total_amount = $amt['total'];
-                    }
-                }
-                $row->save();
-                $rowsUpdated++;
+                });
             }
 
             $parentsDone++;

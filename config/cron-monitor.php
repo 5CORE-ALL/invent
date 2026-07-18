@@ -132,6 +132,22 @@ return [
         'queue_watchdog' => env('CRON_MONITOR_HEAL_QUEUE', true),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Chunked updates (large bid/price/inventory syncs)
+    |--------------------------------------------------------------------------
+    */
+    'chunks' => [
+        'size' => (int) env('CRON_MONITOR_CHUNK_SIZE', 50),
+        'checkpoint_every' => (int) env('CRON_MONITOR_CHECKPOINT_EVERY', 1),
+        // Per-chunk DB::transaction for processQueryById (API path stays false)
+        'use_db_transaction' => (bool) env('CRON_MONITOR_CHUNK_DB_TX', true),
+    ],
+
+    'dashboard' => [
+        'jobs_per_page' => (int) env('CRON_MONITOR_DASHBOARD_JOBS_PER_PAGE', 50),
+    ],
+
     'alerts' => [
         'group_window_minutes' => (int) env('CRON_MONITOR_ALERT_GROUP_MINUTES', 15),
         'flush_on_critical' => env('CRON_MONITOR_ALERT_FLUSH_CRITICAL', false),

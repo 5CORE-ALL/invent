@@ -2,10 +2,13 @@
 
 namespace App\Console\Commands;
 
+use App\Console\Commands\Concerns\MonitorsCronExecution;
+use App\Console\Commands\Concerns\ProcessesUpdatesInChunks;
 use App\Http\Controllers\Campaigns\GoogleAdsDateRangeTrait;
 use App\Models\GoogleDataView;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
+use App\Services\CronMonitor\CronExecutionContext;
 use App\Support\GoogleShoppingCampaignsRawRule;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -14,33 +17,55 @@ use Illuminate\Support\Facades\Log;
 class StoreGoogleShoppingUtilizationCounts extends Command
 {
     use GoogleAdsDateRangeTrait;
+    use MonitorsCronExecution;
+    use ProcessesUpdatesInChunks;
 
-    protected $signature = 'google:store-shopping-utilization-counts';
+    protected $signature = 'google:store-shopping-utilization-counts
+        {--chunk= : Override chunk size (default from cron-monitor config)}';
 
     protected $description = 'Store daily counts of over/under utilized Google Shopping campaigns';
 
-    public function handle()
+    protected string $monitorJobName = 'Google Shopping Store Utilization Counts';
+
+    public function handle(): int
+    {
+        return $this->runMonitored(
+            fn (CronExecutionContext $m) => $this->executeStore($m),
+            $this->monitorJobName
+        );
+    }
+
+    protected function executeStore(CronExecutionContext $monitor): int
     {
         $this->info('Starting to store Google Shopping utilization counts...');
+        $chunkSize = $this->monitoredChunkSize();
 
         try {
-            // Get data using the same method as the controller
-            $productMasters = ProductMaster::orderBy('parent', 'asc')
-                ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
-                ->orderBy('sku', 'asc')
-                ->get();
+            $productMasters = collect();
+            ProductMaster::query()
+                ->orderBy('id')
+                ->chunkById($chunkSize, function ($rows) use (&$productMasters) {
+                    foreach ($rows as $row) {
+                        $productMasters->push($row);
+                    }
+                });
+            $productMasters = $productMasters->sortBy(function ($pm) {
+                $parent = (string) ($pm->parent ?? '');
+                $isParentSku = str_starts_with(strtoupper(trim($pm->sku ?? '')), 'PARENT ') ? '1' : '0';
+                $sku = (string) ($pm->sku ?? '');
+
+                return $parent."\0".$isParentSku."\0".$sku;
+            })->values();
 
             $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
             $shopifyData = ShopifySku::mapByProductSkus($skus);
 
-            // Calculate date ranges (same as controller)
             $dateRanges = $this->calculateDateRanges();
 
             $rawRule = GoogleShoppingCampaignsRawRule::resolvedRule();
             $ubOver = (float) $rawRule['sbid']['util_high'];
             $ubUnder = (float) $rawRule['sbid']['util_low'];
 
-            // Fetch SHOPPING campaigns data within L30 range
             $googleCampaigns = DB::table('google_ads_campaigns')
                 ->select(
                     'campaign_id',
@@ -61,90 +86,85 @@ class StoreGoogleShoppingUtilizationCounts extends Command
                 return $campaigns->first();
             });
 
-            foreach ($uniqueCampaignIds as $campaignId) {
-                $campaign = $campaignMap[$campaignId];
-                $campaignName = $campaign->campaign_name;
+            $monitor->setFetched($uniqueCampaignIds->count());
+            $monitor->setExpected($uniqueCampaignIds->count());
 
-                // Try to find matching SKU from ProductMaster
-                $matchedSku = null;
-                $matchedPm = null;
+            foreach ($uniqueCampaignIds->chunk($chunkSize) as $idChunk) {
+                foreach ($idChunk as $campaignId) {
+                    $campaign = $campaignMap[$campaignId];
+                    $campaignName = $campaign->campaign_name;
 
-                foreach ($productMasters as $pm) {
-                    $sku = strtoupper(trim($pm->sku));
-                    $campaignUpper = strtoupper(trim($campaignName));
-                    // Remove trailing period from campaign name for matching
-                    $campaignUpperCleaned = rtrim($campaignUpper, '.');
+                    $matchedSku = null;
+                    $matchedPm = null;
 
-                    $parts = array_map(function ($part) {
-                        return rtrim(trim($part), '.');
-                    }, explode(',', $campaignUpperCleaned));
-                    $skuTrimmed = strtoupper(trim($sku));
-                    $exactMatch = in_array($skuTrimmed, $parts);
+                    foreach ($productMasters as $pm) {
+                        $sku = strtoupper(trim($pm->sku));
+                        $campaignUpper = strtoupper(trim($campaignName));
+                        $campaignUpperCleaned = rtrim($campaignUpper, '.');
 
-                    if (! $exactMatch) {
-                        $exactMatch = $campaignUpperCleaned === $skuTrimmed;
+                        $parts = array_map(function ($part) {
+                            return rtrim(trim($part), '.');
+                        }, explode(',', $campaignUpperCleaned));
+                        $skuTrimmed = strtoupper(trim($sku));
+                        $exactMatch = in_array($skuTrimmed, $parts);
+
+                        if (! $exactMatch) {
+                            $exactMatch = $campaignUpperCleaned === $skuTrimmed;
+                        }
+
+                        if ($exactMatch) {
+                            $matchedSku = $pm->sku;
+                            $matchedPm = $pm;
+                            break;
+                        }
                     }
 
-                    if ($exactMatch) {
-                        $matchedSku = $pm->sku;
-                        $matchedPm = $pm;
-                        break;
+                    $inv = 0;
+                    if ($matchedPm) {
+                        $shopify = $shopifyData[$matchedPm->sku] ?? null;
+                        $inv = $shopify->inv ?? 0;
+                    }
+
+                    if (floatval($inv) <= 0) {
+                        continue;
+                    }
+
+                    $latestCampaign = $googleCampaigns->where('campaign_id', $campaignId)
+                        ->sortByDesc('date')
+                        ->first();
+                    $budget = $latestCampaign && $latestCampaign->budget_amount_micros
+                        ? $latestCampaign->budget_amount_micros / 1000000
+                        : 0;
+
+                    $spend_L7 = $googleCampaigns
+                        ->where('campaign_id', $campaignId)
+                        ->whereBetween('date', [$dateRanges['L7']['start'], $dateRanges['L7']['end']])
+                        ->where('campaign_status', 'ENABLED')
+                        ->sum('metrics_cost_micros') / 1000000;
+
+                    $spend_L1 = $googleCampaigns
+                        ->where('campaign_id', $campaignId)
+                        ->whereBetween('date', [$dateRanges['L1']['start'], $dateRanges['L1']['end']])
+                        ->where('campaign_status', 'ENABLED')
+                        ->sum('metrics_cost_micros') / 1000000;
+
+                    $ub7 = $budget > 0 ? ($spend_L7 / ($budget * 7)) * 100 : 0;
+                    $ub1 = $budget > 0 ? ($spend_L1 / ($budget * 1)) * 100 : 0;
+
+                    if (! isset($result[$campaignId])) {
+                        $result[$campaignId] = [
+                            'campaign_id' => $campaignId,
+                            'ub7' => $ub7,
+                            'ub1' => $ub1,
+                        ];
                     }
                 }
-
-                // Get INV for matched SKU
-                $inv = 0;
-                if ($matchedPm) {
-                    $shopify = $shopifyData[$matchedPm->sku] ?? null;
-                    $inv = $shopify->inv ?? 0;
-                }
-
-                // Skip campaigns with INV = 0 (same as controller default filter)
-                if (floatval($inv) <= 0) {
-                    continue;
-                }
-
-                // Get latest campaign budget
-                $latestCampaign = $googleCampaigns->where('campaign_id', $campaignId)
-                    ->sortByDesc('date')
-                    ->first();
-                $budget = $latestCampaign && $latestCampaign->budget_amount_micros
-                    ? $latestCampaign->budget_amount_micros / 1000000
-                    : 0;
-
-                // Aggregate L7 and L1 spend
-                $spend_L7 = $googleCampaigns
-                    ->where('campaign_id', $campaignId)
-                    ->whereBetween('date', [$dateRanges['L7']['start'], $dateRanges['L7']['end']])
-                    ->where('campaign_status', 'ENABLED')
-                    ->sum('metrics_cost_micros') / 1000000;
-
-                $spend_L1 = $googleCampaigns
-                    ->where('campaign_id', $campaignId)
-                    ->whereBetween('date', [$dateRanges['L1']['start'], $dateRanges['L1']['end']])
-                    ->where('campaign_status', 'ENABLED')
-                    ->sum('metrics_cost_micros') / 1000000;
-
-                // Calculate UB7 and UB1
-                $ub7 = $budget > 0 ? ($spend_L7 / ($budget * 7)) * 100 : 0;
-                $ub1 = $budget > 0 ? ($spend_L1 / ($budget * 1)) * 100 : 0;
-
-                // Store campaign data (only once per campaign_id)
-                if (! isset($result[$campaignId])) {
-                    $result[$campaignId] = [
-                        'campaign_id' => $campaignId,
-                        'ub7' => $ub7,
-                        'ub1' => $ub1,
-                    ];
-                }
+                $monitor->incrementProcessed($idChunk->count());
             }
 
-            // Count campaigns by utilization type
-            // 7UB only condition
             $overUtilizedCount7ub = 0;
             $underUtilizedCount7ub = 0;
 
-            // 7UB + 1UB condition
             $overUtilizedCount7ub1ub = 0;
             $underUtilizedCount7ub1ub = 0;
 
@@ -152,14 +172,12 @@ class StoreGoogleShoppingUtilizationCounts extends Command
                 $ub7 = $campaignData['ub7'];
                 $ub1 = $campaignData['ub1'];
 
-                // Categorize based on 7UB only (thresholds from persisted SBID rule)
                 if ($ub7 > $ubOver) {
                     $overUtilizedCount7ub++;
                 } elseif ($ub7 < $ubUnder) {
                     $underUtilizedCount7ub++;
                 }
 
-                // Categorize based on 7UB + 1UB (same thresholds as SBID cron / raw grid)
                 if ($ub7 > $ubOver && $ub1 > $ubOver) {
                     $overUtilizedCount7ub1ub++;
                 } elseif ($ub7 < $ubUnder && $ub1 < $ubUnder) {
@@ -167,37 +185,28 @@ class StoreGoogleShoppingUtilizationCounts extends Command
                 }
             }
 
-            // Store in google_data_view table with date as SKU
             $today = now()->format('Y-m-d');
             $tomorrow = now()->copy()->addDay()->format('Y-m-d');
 
-            // Data for today (with actual counts)
             $data = [
-                // 7UB only condition
                 'over_utilized_7ub' => $overUtilizedCount7ub,
                 'under_utilized_7ub' => $underUtilizedCount7ub,
-                // 7UB + 1UB condition
                 'over_utilized_7ub_1ub' => $overUtilizedCount7ub1ub,
                 'under_utilized_7ub_1ub' => $underUtilizedCount7ub1ub,
                 'date' => $today,
             ];
 
-            // Blank data for tomorrow (all counts as 0)
             $blankData = [
-                // 7UB only condition
                 'over_utilized_7ub' => 0,
                 'under_utilized_7ub' => 0,
-                // 7UB + 1UB condition
                 'over_utilized_7ub_1ub' => 0,
                 'under_utilized_7ub_1ub' => 0,
                 'date' => $tomorrow,
             ];
 
-            // Use date as SKU identifier for this data
             $skuKeyToday = 'GOOGLE_SHOPPING_UTILIZATION_'.$today;
             $skuKeyTomorrow = 'GOOGLE_SHOPPING_UTILIZATION_'.$tomorrow;
 
-            // Insert/Update today's data
             $existingToday = GoogleDataView::where('sku', $skuKeyToday)->first();
 
             if ($existingToday) {
@@ -210,8 +219,8 @@ class StoreGoogleShoppingUtilizationCounts extends Command
                 ]);
                 $this->info("Created Google Shopping utilization counts for {$today}");
             }
+            $monitor->incrementUpdated(1);
 
-            // Insert/Update tomorrow's blank data (only if it doesn't exist)
             $existingTomorrow = GoogleDataView::where('sku', $skuKeyTomorrow)->first();
 
             if (! $existingTomorrow) {
@@ -240,15 +249,16 @@ class StoreGoogleShoppingUtilizationCounts extends Command
                 'under_utilized_7ub_1ub' => $underUtilizedCount7ub1ub,
             ]);
 
-            return Command::SUCCESS;
+            return self::SUCCESS;
         } catch (\Exception $e) {
             $this->error('Error storing Google Shopping utilization counts: '.$e->getMessage());
             Log::error('Error storing Google Shopping utilization counts', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
+            $monitor->classifyAndRecord($e);
 
-            return Command::FAILURE;
+            return self::FAILURE;
         }
     }
 }

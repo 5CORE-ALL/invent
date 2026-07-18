@@ -2,6 +2,8 @@
 
 namespace App\Console\Commands;
 
+use App\Console\Commands\Concerns\MonitorsCronExecution;
+use App\Console\Commands\Concerns\PushesAmazonAdsUpdatesInChunks;
 use App\Http\Controllers\Campaigns\AmazonSpBudgetController;
 use App\Models\AmazonDatasheet;
 use App\Models\AmazonDataView;
@@ -11,14 +13,25 @@ use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use GuzzleHttp\Client;
 use App\Services\Amazon\AmazonBidUtilizationService;
+use App\Services\CronMonitor\CronExecutionContext;
 use App\Support\AmazonAdsSbidRule;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class AutoUpdateAmzUnderKwBids extends Command
 {
-    protected $signature = 'amazon:auto-update-under-kw-bids {--dry-run : Show what would be updated without calling API}';
+    use MonitorsCronExecution;
+    use PushesAmazonAdsUpdatesInChunks;
+
+    protected $signature = 'amazon:auto-update-under-kw-bids
+        {--dry-run : Show what would be updated without calling API}
+        {--chunk= : Override chunk size for API updates (default from cron-monitor config)}';
     protected $description = 'Automatically update Amazon campaign keyword bids';
+
+    const MAX_RETRY_ATTEMPTS = 5;
+    const RETRY_DELAY_SECONDS = 5;
+
+    protected string $monitorJobName = 'Amazon Bid Sync (KW Under)';
 
     protected $profileId;
 
@@ -27,146 +40,113 @@ class AutoUpdateAmzUnderKwBids extends Command
         parent::__construct();
     }
 
-    public function handle()
+    public function handle(): int
+    {
+        return $this->runMonitored(
+            fn (CronExecutionContext $m) => $this->executeBidUpdate($m),
+            $this->monitorJobName
+        );
+    }
+
+    protected function executeBidUpdate(CronExecutionContext $monitor): int
     {
         try {
             $dryRun = $this->option('dry-run');
             $this->info("Starting Amazon Under-Utilized KW bids auto-update..." . ($dryRun ? " [DRY RUN - no API calls]" : ""));
 
-            // Check database connection (without creating persistent connection)
             try {
                 DB::connection()->getPdo();
                 $this->info("✓ Database connection OK");
-                // Immediately disconnect after check to prevent connection buildup
                 DB::connection()->disconnect();
             } catch (\Exception $e) {
                 $this->error("✗ Database connection failed: " . $e->getMessage());
-                return 1;
+                $monitor->classifyAndRecord($e);
+
+                return self::FAILURE;
             }
 
             $updateKwBids = new AmazonSpBudgetController;
-
             $campaigns = $this->getAutomateAmzUtilizedBgtKw();
 
             if (empty($campaigns)) {
-            $this->warn("No campaigns matched filter conditions.");
-            return 0;
-        }
+                $this->warn("No campaigns matched filter conditions.");
+                $monitor->markApiConnected();
+                $monitor->setExpected(0);
 
-            // Filter out campaigns with invalid data
-            $validCampaigns = collect($campaigns)->filter(function ($campaign) {
-                return !empty($campaign->campaign_id) && 
-                       isset($campaign->sbid) && 
-                       is_numeric($campaign->sbid) && 
-                       $campaign->sbid > 0;
-            })->values();
-
-            if ($validCampaigns->isEmpty()) {
-                $this->warn("No valid campaigns found (missing campaign_id or invalid bid).");
-                return 0;
+                return self::SUCCESS;
             }
 
-            $this->info("Found " . $validCampaigns->count() . " valid campaigns to update.");
-            $this->line("");
+            $campaignBudgetMap = [];
+            foreach ($campaigns as $campaign) {
+                $cid = $campaign->campaign_id ?? '';
+                $sbid = $campaign->sbid ?? 0;
+                if (! empty($cid) && is_numeric($sbid) && $sbid > 0 && ! isset($campaignBudgetMap[$cid])) {
+                    $campaignBudgetMap[$cid] = $sbid;
+                }
+            }
 
-            // Log campaigns before update
+            if ($campaignBudgetMap === []) {
+                $this->warn("No valid campaigns found (missing campaign_id or invalid bid).");
+                $monitor->setExpected(0);
+
+                return self::SUCCESS;
+            }
+
+            $this->info("Found " . count($campaignBudgetMap) . " valid campaigns to update.");
             $this->info("========================================");
             $this->info("CAMPAIGNS TO UPDATE (UNDER-UTILIZED):");
             $this->info("========================================");
-            foreach ($validCampaigns as $campaign) {
-                $campaignName = $campaign->campaignName ?? 'N/A';
-                $newBid = $campaign->sbid ?? 0;
+            foreach ($campaigns as $campaign) {
                 $campaignId = $campaign->campaign_id ?? '';
-                $ub7 = floatval($campaign->ub7 ?? 0);
-                $ub1 = floatval($campaign->ub1 ?? 0);
-                $inv = (int)($campaign->INV ?? 0);
-                
-                $this->info("Campaign Name: {$campaignName}");
+                if (! isset($campaignBudgetMap[$campaignId])) {
+                    continue;
+                }
+                $this->info("Campaign Name: " . ($campaign->campaignName ?? 'N/A'));
                 $this->info("  - Campaign ID: {$campaignId}");
-                $this->info("  - Bid: {$newBid}");
-                $this->info("  - 7UB: " . round($ub7, 2) . "% | 1UB: " . round($ub1, 2) . "%");
-                $this->info("  - INV: {$inv}");
+                $this->info("  - Bid: " . ($campaign->sbid ?? 0));
+                $this->info("  - 7UB: " . round(floatval($campaign->ub7 ?? 0), 2) . "% | 1UB: " . round(floatval($campaign->ub1 ?? 0), 2) . "%");
+                $this->info("  - INV: " . (int) ($campaign->INV ?? 0));
                 $this->info("---");
             }
             $this->info("========================================");
-            $this->line("");
 
             if ($dryRun) {
-                $this->newLine();
                 $this->warn("DRY RUN: No API call made. Remove --dry-run to apply updates.");
-                $this->info("✓ Dry run completed. Total campaigns that would be updated: " . $validCampaigns->count());
-                return 0;
+                $monitor->mergeMeta(['dry_run' => true]);
+                $monitor->markApiConnected();
+                $monitor->setExpected(count($campaignBudgetMap));
+                $monitor->setFetched(count($campaignBudgetMap));
+                $monitor->setSkipped(count($campaignBudgetMap));
+
+                return self::SUCCESS;
             }
 
-            $campaignIds = $validCampaigns->pluck('campaign_id')->toArray();
-            $newBids = $validCampaigns->pluck('sbid')->toArray();
+            $monitor->markApiConnected();
+            $stats = $this->pushAmazonAdsIdMapInChunks(
+                $monitor,
+                $campaignBudgetMap,
+                fn (array $ids, array $bids) => $updateKwBids->updateAutoCampaignKeywordsBid($ids, $bids)
+            );
 
-            // Validate arrays are aligned
-            if (count($campaignIds) !== count($newBids)) {
-                $this->error("✗ Array mismatch: campaign IDs and bids count don't match!");
-                return 1;
-            }
-
-            try {
-                $result = $updateKwBids->updateAutoCampaignKeywordsBid($campaignIds, $newBids);
-
-                //Handle Response object (when no keywords found)
-                if (is_object($result) && method_exists($result, 'getData')) {
-                    $result = $result->getData(true);
+            $persistedRows = 0;
+            foreach ($stats['updated_map'] as $cid => $bid) {
+                if ($bid !== null) {
+                    $persistedRows += AmazonBidUtilizationService::persistSpSbidM((string) $cid, (float) $bid);
                 }
-
-                // Check for errors
-                if (is_array($result) && isset($result['status'])) {
-                    if ($result['status'] == 200) {
-                        $this->info("✓ Bid update completed successfully!");
-                        $this->line("");
-                        $this->info("Updated campaigns:");
-                        $persistedRows = 0;
-                        foreach ($validCampaigns as $campaign) {
-                            $campaignName = $campaign->campaignName ?? 'N/A';
-                            $newBid = $campaign->sbid ?? 0;
-                            $this->line("  Campaign: {$campaignName} | New Bid: {$newBid}");
-                            $persistedRows += AmazonBidUtilizationService::persistSpSbidM((string) ($campaign->campaign_id ?? ''), (float) $newBid);
-                        }
-                        Log::info('amazon:auto-update-under-kw-bids persisted sbid_m to L30', [
-                            'campaigns' => $validCampaigns->count(),
-                            'l30_rows_updated' => $persistedRows,
-                        ]);
-                    } else {
-                        $this->error("✗ Bid update failed!");
-                        $this->error("Status: " . $result['status']);
-                        if (isset($result['message'])) {
-                            $this->error("Message: " . $result['message']);
-                        }
-                        if (isset($result['error'])) {
-                            $this->error("Error: " . $result['error']);
-                        }
-                        return 1;
-                    }
-                } else {
-                    // Handle unexpected response format
-                    $this->warn("Unexpected response format from update method.");
-                    if (is_array($result) || is_object($result)) {
-                        $this->line("Response: " . json_encode($result));
-                    } else {
-                        $this->line("Response type: " . gettype($result));
-                    }
-                }
-
-                $this->info('Campaigns to be updated: ' . count($campaigns));
-
-            } catch (\Exception $e) {
-                $this->error("✗ Exception occurred during bid update:");
-                $this->error($e->getMessage());
-                $this->error("Stack trace: " . $e->getTraceAsString());
-                return 1;
             }
+            Log::info('amazon:auto-update-under-kw-bids persisted sbid_m to L30', [
+                'campaigns' => count($stats['updated_map']),
+                'l30_rows_updated' => $persistedRows,
+            ]);
 
-            return 0;
+            $this->info("FINAL: Total={$stats['total']} | Updated={$stats['updated']} | Skipped={$stats['skipped']} | Failed={$stats['failed']} | Chunks={$stats['chunks']}");
+
+            return $stats['failed'] > 0 ? self::FAILURE : self::SUCCESS;
         } catch (\Exception $e) {
             $this->error("✗ Error in handle: " . $e->getMessage());
-            $this->error("Stack trace: " . $e->getTraceAsString());
-            return 1;
+            $monitor->classifyAndRecord($e);
+
+            return self::FAILURE;
         } finally {
             DB::connection()->disconnect();
         }

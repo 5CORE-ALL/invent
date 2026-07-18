@@ -2,12 +2,15 @@
 
 namespace App\Console\Commands;
 
+use App\Console\Commands\Concerns\MonitorsCronExecution;
+use App\Console\Commands\Concerns\PushesAmazonAdsUpdatesInChunks;
 use App\Console\Concerns\CalculatesAmazonFbaBidUpdates;
 use App\Http\Controllers\Campaigns\AmazonSpBudgetController;
 use Illuminate\Console\Command;
 use App\Models\AmazonSpCampaignReport;
 use App\Models\FbaTable;
 use App\Models\ShopifySku;
+use App\Services\CronMonitor\CronExecutionContext;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -15,9 +18,19 @@ use Illuminate\Support\Facades\Schema;
 class AutoUpdateAmazonFbaUnderPtBids extends Command
 {
     use CalculatesAmazonFbaBidUpdates;
+    use MonitorsCronExecution;
+    use PushesAmazonAdsUpdatesInChunks;
 
-    protected $signature = 'amazon-fba:auto-update-under-pt-bids {--dry-run : Run without updating Amazon} {--campaign-id= : Only update this campaign ID}';
+    protected $signature = 'amazon-fba:auto-update-under-pt-bids
+        {--dry-run : Run without updating Amazon}
+        {--campaign-id= : Only update this campaign ID}
+        {--chunk= : Override chunk size for API updates (default from cron-monitor config)}';
     protected $description = 'Auto-update Amazon FBA under-utilized product targeting bids';
+
+    const MAX_RETRY_ATTEMPTS = 5;
+    const RETRY_DELAY_SECONDS = 5;
+
+    protected string $monitorJobName = 'Amazon FBA Bid Sync (PT Under)';
 
     public function __construct()
     {
@@ -25,6 +38,14 @@ class AutoUpdateAmazonFbaUnderPtBids extends Command
     }
 
     public function handle(): int
+    {
+        return $this->runMonitored(
+            fn (CronExecutionContext $m) => $this->executeBidUpdate($m),
+            $this->monitorJobName
+        );
+    }
+
+    protected function executeBidUpdate(CronExecutionContext $monitor): int
     {
         $startTs = microtime(true);
         $startedAtIso = now()->toIso8601String();
@@ -47,7 +68,8 @@ class AutoUpdateAmazonFbaUnderPtBids extends Command
                 'skipped_count' => 0,
                 'failed_count' => 0,
             ]);
-            return 1;
+
+            return self::FAILURE;
         }
 
         try {
@@ -57,6 +79,7 @@ class AutoUpdateAmazonFbaUnderPtBids extends Command
             }
         } catch (\Throwable $e) {
             $this->error('✗ Database connection failed: ' . $e->getMessage());
+            $monitor->classifyAndRecord($e);
             $this->writeHealth([
                 'command' => $commandName,
                 'status' => 'ERROR',
@@ -69,7 +92,8 @@ class AutoUpdateAmazonFbaUnderPtBids extends Command
                 'failed_count' => 0,
                 'error' => $e->getMessage(),
             ]);
-            return 1;
+
+            return self::FAILURE;
         }
 
         $amazon = new AmazonSpBudgetController();
@@ -84,6 +108,7 @@ class AutoUpdateAmazonFbaUnderPtBids extends Command
             }
         } catch (\Throwable $e) {
             $this->error('✗ Failed to acquire Amazon access token: ' . $e->getMessage());
+            $monitor->classifyAndRecord($e);
             $this->writeHealth([
                 'command' => $commandName,
                 'status' => 'ERROR',
@@ -96,7 +121,8 @@ class AutoUpdateAmazonFbaUnderPtBids extends Command
                 'failed_count' => 0,
                 'error' => $e->getMessage(),
             ]);
-            return 1;
+
+            return self::FAILURE;
         }
 
         $candidates = $this->getAutomateAmzFbaUnderUtilizedBgtKw();
@@ -130,13 +156,15 @@ class AutoUpdateAmazonFbaUnderPtBids extends Command
                     'campaign_id' => $specificCampaignId,
                 ]);
 
-                return 1;
+                return self::FAILURE;
             }
             $this->info("Testing only campaign: {$specificCampaignId}");
         }
 
         if (empty($candidates)) {
             $this->warn('No eligible campaigns found.');
+            $monitor->markApiConnected();
+            $monitor->setExpected(0);
             $this->writeHealth([
                 'command' => $commandName,
                 'status' => 'NO_OP',
@@ -148,10 +176,19 @@ class AutoUpdateAmazonFbaUnderPtBids extends Command
                 'skipped_count' => 0,
                 'failed_count' => 0,
             ]);
-            return 0;
+
+            return self::SUCCESS;
         }
 
-        $this->info('Eligible campaigns (with bid change): ' . count($candidates));
+        $campaignBudgetMap = [];
+        foreach ($candidates as $c) {
+            $cid = (string) ($c->campaign_id ?? '');
+            if ($cid !== '' && ! isset($campaignBudgetMap[$cid])) {
+                $campaignBudgetMap[$cid] = (float) $c->sbid;
+            }
+        }
+
+        $this->info('Eligible campaigns (with bid change): ' . count($campaignBudgetMap));
         if ($dryRun) {
             foreach ($candidates as $c) {
                 $calc = is_array($c->bid_calc ?? null) ? $c->bid_calc : [];
@@ -183,35 +220,58 @@ class AutoUpdateAmazonFbaUnderPtBids extends Command
         }
 
         try {
-            $durationMs = (int) ((microtime(true) - $startTs) * 1000);
-
             if ($dryRun) {
-                $status = 'DRY_RUN';
-                $summary = [
-                    'updated_count' => count($candidates),
+                $monitor->mergeMeta(['dry_run' => true]);
+                $monitor->markApiConnected();
+                $n = count($campaignBudgetMap);
+                $monitor->setExpected($n);
+                $monitor->setFetched($n);
+                $monitor->setSkipped($n);
+                $this->writeHealth([
+                    'command' => $commandName,
+                    'status' => 'DRY_RUN',
+                    'dry_run' => true,
+                    'started_at' => $startedAtIso,
+                    'ended_at' => now()->toIso8601String(),
+                    'duration_ms' => (int) ((microtime(true) - $startTs) * 1000),
+                    'updated_count' => $n,
                     'skipped_count' => 0,
                     'failed_count' => 0,
                     'attempts' => 0,
-                ];
-            } else {
-                $summary = $this->applyTargetsBidUpdates($amazon, $candidates, $dryRun, $verbose);
-                $status = ($summary['failed_count'] ?? 0) > 0 ? 'PARTIAL_FAILURE' : 'SUCCESS';
+                ]);
+
+                return self::SUCCESS;
             }
 
+            $monitor->markApiConnected();
+            $stats = $this->pushAmazonAdsIdMapInChunks(
+                $monitor,
+                $campaignBudgetMap,
+                fn (array $ids, array $bids) => $amazon->updateAutoCampaignTargetsBid($ids, $bids)
+            );
+
+            $status = ($stats['failed'] ?? 0) > 0 ? 'PARTIAL_FAILURE' : 'SUCCESS';
             $this->writeHealth([
                 'command' => $commandName,
                 'status' => $status,
-                'dry_run' => $dryRun,
+                'dry_run' => false,
                 'started_at' => $startedAtIso,
                 'ended_at' => now()->toIso8601String(),
-                'duration_ms' => $durationMs,
-                'updated_count' => (int) ($summary['updated_count'] ?? 0),
-                'skipped_count' => (int) ($summary['skipped_count'] ?? 0),
-                'failed_count' => (int) ($summary['failed_count'] ?? 0),
-                'attempts' => (int) ($summary['attempts'] ?? 0),
+                'duration_ms' => (int) ((microtime(true) - $startTs) * 1000),
+                'updated_count' => (int) ($stats['updated'] ?? 0),
+                'skipped_count' => (int) ($stats['skipped'] ?? 0),
+                'failed_count' => (int) ($stats['failed'] ?? 0),
+                'chunks' => (int) ($stats['chunks'] ?? 0),
             ]);
 
-            return ($summary['failed_count'] ?? 0) > 0 ? 1 : 0;
+            $this->info("FINAL: Total={$stats['total']} | Updated={$stats['updated']} | Skipped={$stats['skipped']} | Failed={$stats['failed']} | Chunks={$stats['chunks']}");
+
+            return $stats['failed'] > 0 ? self::FAILURE : self::SUCCESS;
+        } catch (\Exception $e) {
+            $this->error('✗ Error: ' . $e->getMessage());
+            $monitor->classifyAndRecord($e);
+
+            return self::FAILURE;
         } finally {
             DB::connection()->disconnect();
         }
@@ -414,157 +474,6 @@ class AutoUpdateAmazonFbaUnderPtBids extends Command
             Log::error('Error in getAutomateAmzFbaUnderUtilizedBgtKw (FBA Under PT): ' . $e->getMessage());
             return [];
         }
-    }
-
-    /**
-     * Apply bid updates for product targeting campaigns with retry/backoff.
-     *
-     * @param array<int, object> $candidates
-     * @return array{updated_count:int, skipped_count:int, failed_count:int, attempts:int}
-     */
-    private function applyTargetsBidUpdates(
-        AmazonSpBudgetController $controller,
-        array $candidates,
-        bool $dryRun,
-        bool $verbose
-    ): array {
-        $chunkSize = 25;
-        $maxRetries = 3;
-        $baseDelaySeconds = 3;
-        $jitterMaxSeconds = 2;
-
-        $total = count($candidates);
-        $skippedCampaignIds = [];
-        $failedCampaignIds = [];
-        $attempts = 0;
-
-        foreach (array_chunk($candidates, $chunkSize) as $chunkIndex => $chunk) {
-            $bidByCampaignId = [];
-            $currentBidByCampaignId = [];
-            $ub1ByCampaignId = [];
-            $invByCampaignId = [];
-            $bidCalcByCampaignId = [];
-            $campaignIds = [];
-            $bids = [];
-            foreach ($chunk as $c) {
-                $cid = (string) $c->campaign_id;
-                $bid = (float) $c->sbid;
-                $bidByCampaignId[$cid] = $bid;
-                $currentBidByCampaignId[$cid] = (float) ($c->current_bid ?? 0);
-                $ub1ByCampaignId[$cid] = (float) ($c->ub1 ?? 0);
-                $invByCampaignId[$cid] = (int) ($c->inv ?? 0);
-                $bidCalcByCampaignId[$cid] = is_array($c->bid_calc ?? null) ? $c->bid_calc : [];
-                $campaignIds[] = $cid;
-                $bids[] = $bid;
-            }
-
-            if ($verbose) {
-                $this->info("API chunk #{$chunkIndex}: candidates=" . count($campaignIds));
-            }
-
-            if ($dryRun) {
-                $this->warn('DRY RUN: Skipping API update for chunk #' . $chunkIndex);
-                continue;
-            }
-
-            $currentCampaignIds = $campaignIds;
-            $currentBids = $bids;
-
-            for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
-                $attempts++;
-
-                if ($attempt > 1) {
-                    $delay = ($baseDelaySeconds * (2 ** ($attempt - 1))) + random_int(0, $jitterMaxSeconds);
-                    if ($verbose) {
-                        $this->info("Retrying chunk #{$chunkIndex} attempt {$attempt}/{$maxRetries} after {$delay}s...");
-                    }
-                    sleep($delay);
-                }
-
-                $result = null;
-                try {
-                    $result = $controller->updateAutoCampaignTargetsBid($currentCampaignIds, $currentBids);
-                } catch (\Throwable $e) {
-                    $this->error("Chunk #{$chunkIndex} attempt {$attempt}: exception calling update API: " . $e->getMessage());
-                    $result = ['status' => 500, 'error' => $e->getMessage(), 'failed' => []];
-                }
-
-                if (is_object($result) && method_exists($result, 'getData')) {
-                    $result = $result->getData(true);
-                }
-
-                $status = is_array($result) ? (int) ($result['status'] ?? 0) : 0;
-                $errMsg = is_array($result) ? (string) ($result['message'] ?? $result['error'] ?? '') : '';
-
-                if ($status !== 200) {
-                    foreach ($currentCampaignIds as $cid) {
-                        $failedCampaignIds[$cid] = true;
-                    }
-                    $this->error("Chunk #{$chunkIndex} attempt {$attempt}: targets API status {$status}" . ($errMsg !== '' ? " — {$errMsg}" : ''));
-                    $retryable = $this->hasRateLimitOrServerFailure([['error' => $errMsg]]);
-                    if (!$retryable || $attempt >= $maxRetries) {
-                        break;
-                    }
-
-                    continue;
-                }
-
-                foreach ($currentCampaignIds as $cid) {
-                    $old = $currentBidByCampaignId[$cid] ?? null;
-                    $new = $bidByCampaignId[$cid] ?? null;
-                    $bc = $bidCalcByCampaignId[$cid] ?? [];
-                    Log::info('FBA Bid Update', [
-                        'campaign_id' => $cid,
-                        'current_bid' => $old,
-                        'utilization_1d' => $ub1ByCampaignId[$cid] ?? null,
-                        'inventory' => $invByCampaignId[$cid] ?? null,
-                        'new_bid' => $new,
-                        'bid_cpc_source' => $bc['source'] ?? null,
-                        'base_cpc' => $bc['base_cpc'] ?? null,
-                        'cpc_multiplier' => $bc['multiplier'] ?? null,
-                        'action' => ($old !== null && $new !== null && abs((float) $old - (float) $new) >= 0.005) ? 'UPDATED' : 'NO_CHANGE',
-                    ]);
-                    if ($verbose) {
-                        $this->info("✓ Updated campaign {$cid} bid {$old} → {$new} (" . $this->describeBidCpcSource($bc) . ')');
-                    }
-                }
-
-                if ($verbose) {
-                    $this->info("Chunk #{$chunkIndex} succeeded (HTTP {$status}).");
-                }
-                break;
-            }
-        }
-
-        $skippedCount = count($skippedCampaignIds);
-        $failedCount = count($failedCampaignIds);
-        $updatedCount = max(0, $total - $skippedCount - $failedCount);
-
-        return [
-            'updated_count' => $updatedCount,
-            'skipped_count' => $skippedCount,
-            'failed_count' => $failedCount,
-            'attempts' => $attempts,
-        ];
-    }
-
-    /**
-     * Decide whether retrying failures is likely useful.
-     *
-     * @param array<int, array<string, mixed>> $failed
-     */
-    private function hasRateLimitOrServerFailure(array $failed): bool
-    {
-        foreach ($failed as $f) {
-            $err = (string) ($f['error'] ?? '');
-            if (preg_match('/429|Too Many Requests|rate limit/i', $err)) {
-                return true;
-            }
-            if (preg_match('/timeout|temporarily unavailable|server error|\\b5\\d\\d\\b|ECONN|ETIMEDOUT/i', $err)) {
-                return true;
-            }
-        }
-        return false;
     }
 
     /**

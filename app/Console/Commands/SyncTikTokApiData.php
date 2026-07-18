@@ -2,20 +2,24 @@
 
 namespace App\Console\Commands;
 
+use App\Console\Commands\Concerns\ProcessesUpdatesInChunks;
 use App\Models\TikTokProduct;
 use App\Models\TiktokSheet;
 use App\Services\TikTokShopService;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class SyncTikTokApiData extends Command
 {
+    use ProcessesUpdatesInChunks;
+
     /**
      * The name and signature of the console command.
      *
      * @var string
      */
-    protected $signature = 'sync:tiktok-api-data';
+    protected $signature = 'sync:tiktok-api-data {--chunk= : Override DB write chunk size (default from cron-monitor config)}';
 
     /**
      * The console command description.
@@ -216,43 +220,47 @@ class SyncTikTokApiData extends Command
         $this->info('Processing ' . count($products) . ' products...');
         $updated = 0;
         $created = 0;
+        $chunkSize = $this->monitoredChunkSize();
 
-        foreach ($products as $product) {
-            try {
-                $productId = $product['id'] ?? null;
-                $sku = $this->extractSku($product);
-                
-                if (!$sku) {
-                    continue;
+        $this->writeItemsInChunks($products, function (array $chunk) use (&$created, &$updated) {
+            $chunkUpdated = 0;
+            foreach ($chunk as $product) {
+                try {
+                    $productId = $product['id'] ?? null;
+                    $sku = $this->extractSku($product);
+
+                    if (!$sku) {
+                        continue;
+                    }
+
+                    $price = $this->extractPrice($product);
+                    $normalizedSku = strtoupper(trim($sku));
+
+                    $tiktokProduct = TikTokProduct::updateOrCreate(
+                        ['sku' => $normalizedSku],
+                        [
+                            'product_id' => $productId,
+                            'price' => $price,
+                        ]
+                    );
+
+                    if ($tiktokProduct->wasRecentlyCreated) {
+                        $created++;
+                    } else {
+                        $updated++;
+                    }
+                    $chunkUpdated++;
+                } catch (\Exception $e) {
+                    $this->error('Error processing product: '.($product['id'] ?? 'unknown').' - '.$e->getMessage());
+                    Log::error('TikTok product processing error', [
+                        'product' => $product,
+                        'error' => $e->getMessage(),
+                    ]);
                 }
-
-                // Extract price from product
-                $price = $this->extractPrice($product);
-                $normalizedSku = strtoupper(trim($sku));
-
-                // Update or create product using SKU as unique key (table has unique constraint on SKU)
-                $tiktokProduct = TikTokProduct::updateOrCreate(
-                    ['sku' => $normalizedSku],
-                    [
-                        'product_id' => $productId,
-                        'price' => $price,
-                    ]
-                );
-
-                if ($tiktokProduct->wasRecentlyCreated) {
-                    $created++;
-                } else {
-                    $updated++;
-                }
-
-            } catch (\Exception $e) {
-                $this->error('Error processing product: ' . ($product['id'] ?? 'unknown') . ' - ' . $e->getMessage());
-                Log::error('TikTok product processing error', [
-                    'product' => $product,
-                    'error' => $e->getMessage()
-                ]);
             }
-        }
+
+            return ['updated' => $chunkUpdated, 'failed' => 0];
+        }, $chunkSize);
 
         $this->info("Products: {$created} created, {$updated} updated");
     }
@@ -269,35 +277,39 @@ class SyncTikTokApiData extends Command
 
         $this->info('Processing ' . count($inventory) . ' inventory records...');
         $updated = 0;
+        $chunkSize = $this->monitoredChunkSize();
 
-        foreach ($inventory as $item) {
-            try {
-                $productId = $item['product_id'] ?? null;
-                if (!$productId) {
-                    continue;
+        $this->writeItemsInChunks($inventory, function (array $chunk) use (&$updated) {
+            $chunkUpdated = 0;
+            foreach ($chunk as $item) {
+                try {
+                    $productId = $item['product_id'] ?? null;
+                    if (!$productId) {
+                        continue;
+                    }
+
+                    $tiktokProduct = TikTokProduct::where('product_id', $productId)->first();
+                    if (!$tiktokProduct) {
+                        continue;
+                    }
+
+                    $stock = $this->extractStock($item);
+
+                    $tiktokProduct->stock = $stock;
+                    $tiktokProduct->save();
+                    $updated++;
+                    $chunkUpdated++;
+                } catch (\Exception $e) {
+                    $this->error('Error processing inventory: '.($item['product_id'] ?? 'unknown').' - '.$e->getMessage());
+                    Log::error('TikTok inventory processing error', [
+                        'item' => $item,
+                        'error' => $e->getMessage(),
+                    ]);
                 }
-
-                // Find product by product_id
-                $tiktokProduct = TikTokProduct::where('product_id', $productId)->first();
-                if (!$tiktokProduct) {
-                    continue;
-                }
-
-                // Extract stock quantity
-                $stock = $this->extractStock($item);
-
-                $tiktokProduct->stock = $stock;
-                $tiktokProduct->save();
-                $updated++;
-
-            } catch (\Exception $e) {
-                $this->error('Error processing inventory: ' . ($item['product_id'] ?? 'unknown') . ' - ' . $e->getMessage());
-                Log::error('TikTok inventory processing error', [
-                    'item' => $item,
-                    'error' => $e->getMessage()
-                ]);
             }
-        }
+
+            return ['updated' => $chunkUpdated, 'failed' => 0];
+        }, $chunkSize);
 
         $this->info("Inventory: {$updated} records updated");
     }
@@ -453,52 +465,67 @@ class SyncTikTokApiData extends Command
         $this->info('Syncing views from tiktok_sheet_data table...');
         
         try {
-            // Get all TikTok products that have SKUs
-            $tiktokProducts = TikTokProduct::whereNotNull('sku')
-                ->where('sku', '!=', '')
-                ->get();
-            
-            if ($tiktokProducts->isEmpty()) {
-                $this->warn('No TikTok products with SKUs found');
-                return;
-            }
-            
+            $chunkSize = $this->monitoredChunkSize();
             $updated = 0;
-            $skus = $tiktokProducts->pluck('sku')->map(function($sku) {
-                return strtoupper(trim($sku));
-            })->toArray();
-            
-            // Get views from tiktok_sheet_data table
-            $sheetData = TiktokSheet::whereIn('sku', $skus)
-                ->whereNotNull('views')
-                ->get()
-                ->keyBy(function($item) {
-                    return strtoupper(trim($item->sku));
+            $hasAny = false;
+
+            TikTokProduct::whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->orderBy('id')
+                ->chunkById($chunkSize, function ($tiktokProducts) use (&$updated, &$hasAny) {
+                    $hasAny = true;
+                    $skus = $tiktokProducts->pluck('sku')->map(function ($sku) {
+                        return strtoupper(trim($sku));
+                    })->toArray();
+
+                    $sheetData = TiktokSheet::whereIn('sku', $skus)
+                        ->whereNotNull('views')
+                        ->get()
+                        ->keyBy(function ($item) {
+                            return strtoupper(trim($item->sku));
+                        });
+
+                    if ($sheetData->isEmpty()) {
+                        return;
+                    }
+
+                    $pending = [];
+                    foreach ($tiktokProducts as $tiktokProduct) {
+                        $normalizedSku = strtoupper(trim($tiktokProduct->sku));
+                        $sheetItem = $sheetData->get($normalizedSku);
+
+                        if ($sheetItem && $sheetItem->views !== null) {
+                            $views = (float) $sheetItem->views;
+                            if ($tiktokProduct->views != $views) {
+                                $pending[] = ['product' => $tiktokProduct, 'views' => $views];
+                            }
+                        }
+                    }
+
+                    if ($pending !== []) {
+                        DB::transaction(function () use ($pending, &$updated) {
+                            foreach ($pending as $entry) {
+                                $entry['product']->views = $entry['views'];
+                                $entry['product']->save();
+                                $updated++;
+                            }
+                        });
+                    }
                 });
-            
-            if ($sheetData->isEmpty()) {
-                $this->warn('No view data found in tiktok_sheet_data table');
-                $this->info('Note: Run "php artisan sync:tiktok-sheet-data" to import views from Google Sheet');
+
+            if (! $hasAny) {
+                $this->warn('No TikTok products with SKUs found');
+
                 return;
             }
-            
-            // Update TikTok products with views from sheet data
-            foreach ($tiktokProducts as $tiktokProduct) {
-                $normalizedSku = strtoupper(trim($tiktokProduct->sku));
-                $sheetItem = $sheetData->get($normalizedSku);
-                
-                if ($sheetItem && $sheetItem->views !== null) {
-                    $views = (float)$sheetItem->views;
-                    if ($tiktokProduct->views != $views) {
-                        $tiktokProduct->views = $views;
-                        $tiktokProduct->save();
-                        $updated++;
-                    }
-                }
+
+            if ($updated === 0) {
+                $this->warn('No view data found in tiktok_sheet_data table (or already in sync)');
+                $this->info('Note: Run "php artisan sync:tiktok-sheet-data" to import views from Google Sheet');
             }
-            
+
             $this->info("Views: {$updated} records updated from sheet data");
-            
+
         } catch (\Exception $e) {
             $this->error('Error syncing views from sheet data: ' . $e->getMessage());
             Log::error('TikTok views sync from sheet error', [

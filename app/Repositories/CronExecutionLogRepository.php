@@ -39,6 +39,56 @@ class CronExecutionLogRepository
             ->get();
     }
 
+    /**
+     * Paginate "latest row per job" for the dashboard (avoids loading 100+ jobs at once).
+     */
+    public function latestByJobPaginated(
+        int $perPage = 50,
+        ?string $jobName = null,
+        ?string $status = null,
+        string $pageName = 'jobs_page'
+    ): LengthAwarePaginator {
+        $latestIds = CronExecutionLog::query()
+            ->select(DB::raw('MAX(id) as id'))
+            ->when($jobName, fn ($q) => $q->where('job_name', $jobName))
+            ->groupBy('job_name')
+            ->pluck('id');
+
+        return CronExecutionLog::query()
+            ->whereIn('id', $latestIds)
+            ->when($status, fn ($q) => $q->where('status', $status))
+            ->orderBy('job_name')
+            ->paginate($perPage, ['*'], $pageName);
+    }
+
+    /**
+     * Batch-load last success timestamps for many jobs (no N+1).
+     *
+     * @param  list<string>  $jobNames
+     * @return Collection<string, \Carbon\Carbon|string|null>  keyed by job_name
+     */
+    public function lastSuccessAtByJobs(array $jobNames): Collection
+    {
+        $jobNames = array_values(array_unique(array_filter($jobNames)));
+        if ($jobNames === []) {
+            return collect();
+        }
+
+        $successStatuses = [
+            CronExecutionLog::STATUS_SUCCESS,
+            CronExecutionLog::STATUS_RECOVERED,
+        ];
+
+        $rows = CronExecutionLog::query()
+            ->select('job_name', DB::raw('MAX(finished_at) as last_success_at'))
+            ->whereIn('job_name', $jobNames)
+            ->whereIn('status', $successStatuses)
+            ->groupBy('job_name')
+            ->get();
+
+        return $rows->pluck('last_success_at', 'job_name');
+    }
+
     public function recentForJob(string $jobName, int $limit = 30): Collection
     {
         return CronExecutionLog::query()
@@ -52,14 +102,15 @@ class CronExecutionLogRepository
         int $perPage = 25,
         ?string $jobName = null,
         ?string $status = null,
-        ?string $category = null
+        ?string $category = null,
+        string $pageName = 'logs_page'
     ): LengthAwarePaginator {
         return CronExecutionLog::query()
             ->when($jobName, fn ($q) => $q->where('job_name', $jobName))
             ->when($status, fn ($q) => $q->where('status', $status))
             ->when($category, fn ($q) => $q->where('failure_category', $category))
             ->orderByDesc('started_at')
-            ->paginate($perPage);
+            ->paginate($perPage, ['*'], $pageName);
     }
 
     public function lastSuccess(string $jobName): ?CronExecutionLog

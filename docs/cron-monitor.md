@@ -116,9 +116,63 @@ app(\App\Services\CronMonitor\SelfHealingService::class)
     ->register(new AmazonTokenRefreshHealer());
 ```
 
+## Chunked updates (large bid / budget / DB syncs)
+
+Default chunk size is **50**. After every chunk: commit (DB path), checkpoint, sync dashboard meta (`chunk_progress`).
+
+```bash
+php artisan amazon:auto-update-over-kw-bids --dry-run --chunk=25
+php artisan amazon:auto-update-under-kw-bids --chunk=50
+```
+
+Env / config:
+
+- `CRON_MONITOR_CHUNK_SIZE=50`
+- `CRON_MONITOR_CHECKPOINT_EVERY=1`
+- `CRON_MONITOR_CHUNK_DB_TX=true` (per-chunk `DB::transaction` for `processQueryById`)
+- `CRON_MONITOR_DASHBOARD_JOBS_PER_PAGE=50`
+
+### API id→value maps
+
+```php
+use App\Console\Commands\Concerns\PushesAmazonAdsUpdatesInChunks;
+
+$stats = $this->pushAmazonAdsIdMapInChunks(
+    $monitor,
+    $idToBidMap,
+    fn (array $ids, array $bids) => $controller->updateAutoCampaignKeywordsBid($ids, $bids)
+);
+```
+
+### DB updates (`chunkById`)
+
+```php
+use App\Console\Commands\Concerns\ProcessesUpdatesInChunks;
+
+$this->processQueryInChunks(
+    $monitor,
+    ProductMaster::query()->orderBy('id'),
+    function ($rows, int $chunkIndex, $lastId) {
+        // mutate $rows — same business rules as before
+        return ['updated' => $rows->count(), 'failed' => 0, 'processed' => $rows->count()];
+    }
+);
+```
+
+Resume uses checkpoint `last_id` (DB) or offset (API maps). Failed chunks are listed in `meta.failed_chunks` for failed-only retry.
+
+Dashboard/show display: Total/Completed/Failed/Current chunks, Resume Point, Avg Chunk Time, ETA, Retry Count, Memory.
+
+### Skip chunking when
+- Utility/control-plane commands (`cron-monitor:*`, queue watchdog, logout, token generators)
+- Tiny one-shot auth/test commands
+- Filter phases that require full in-memory parent/child aggregation (chunk the **write/API** phase instead)
+
 ## Dashboard
 
 URL: `/cron-monitor`
+
+Job status table is **paginated** (batched last-success query — no N+1).
 
 Actions per run: Retry Job, Resume, Retry Failed Records, Cancel, Unlock, Download Log.
 

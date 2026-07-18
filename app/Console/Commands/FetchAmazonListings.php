@@ -2,7 +2,9 @@
 
 namespace App\Console\Commands;
 
+use App\Console\Commands\Concerns\ProcessesUpdatesInChunks;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use App\Models\AmazonDatasheet;
 use App\Models\AmazonSpCampaignReport;
@@ -12,12 +14,14 @@ use Carbon\Carbon;
 
 class FetchAmazonListings extends Command
 {
+    use ProcessesUpdatesInChunks;
+
     /**
      * The name and signature of the console command.
      *
      * @var string
      */
-    protected $signature = 'app:fetch-amazon-listings';
+    protected $signature = 'app:fetch-amazon-listings {--chunk= : Override DB write chunk size (default from cron-monitor config)}';
 
     /**
      * The console command description.
@@ -92,6 +96,24 @@ class FetchAmazonListings extends Command
         $processedCount = 0;
         $skippedCount = 0;
         $defaultChannelCount = 0;
+        $pendingWrites = [];
+        $chunkSize = $this->monitoredChunkSize();
+
+        $flushWrites = function () use (&$pendingWrites, &$processedCount) {
+            if ($pendingWrites === []) {
+                return;
+            }
+            DB::transaction(function () use (&$pendingWrites, &$processedCount) {
+                foreach ($pendingWrites as $payload) {
+                    AmazonDatasheet::updateOrCreate(
+                        ['sku' => $payload['sku']],
+                        $payload['data']
+                    );
+                    $processedCount++;
+                }
+            });
+            $pendingWrites = [];
+        };
 
         foreach ($lines as $index => $line) {
             if (empty(trim($line))) continue;
@@ -126,18 +148,22 @@ class FetchAmazonListings extends Command
             // made the second SKU overwrite the first, leaving product_master SKUs
             // unmatched ("not synced"). This matches the amazon_datsheets_sku_unique migration.
             if ($sku) {
-                AmazonDatasheet::updateOrCreate(
-                    ['sku' => $sku],
-                    [
+                $pendingWrites[] = [
+                    'sku' => $sku,
+                    'data' => [
                         'asin' => $asin,
                         'price' => $price,
                         'amazon_title' => $amazonTitle,
                         'amazon_link' => $amazonLink,
-                    ]
-                );
-                $processedCount++;
+                    ],
+                ];
+                if (count($pendingWrites) >= $chunkSize) {
+                    $flushWrites();
+                }
             }
         }
+
+        $flushWrites();
 
         $this->info("Processed: $processedCount | DEFAULT channel: $defaultChannelCount | Skipped: $skippedCount");
         $this->info('ASIN, SKU, price, Amazon title, and product link imported successfully.');

@@ -2,6 +2,7 @@
 
 namespace App\Console\Concerns;
 
+use App\Console\Commands\Concerns\PushesAmazonAdsUpdatesInChunks;
 use App\Models\AmazonAdsPushLog;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -14,6 +15,8 @@ use Illuminate\Support\Facades\Schema;
  */
 trait AppliesAmazonBudgetCronUpdates
 {
+    use PushesAmazonAdsUpdatesInChunks;
+
     /**
      * @param  Collection<int, object>  $validCampaigns  rows with campaign_id, campaignName, sbgt, optional current_bgt
      * @param  callable(list<string>, list<float>): array  $updater
@@ -82,22 +85,19 @@ trait AppliesAmazonBudgetCronUpdates
             return ['exit_code' => 0, 'pushed' => 0, 'unchanged' => $unchanged, 'failed' => 0];
         }
 
-        $ids = array_map(static fn ($c) => (string) $c->campaign_id, $toPush);
-        $bgts = array_map(static fn ($c) => (float) $c->sbgt, $toPush);
         $byId = [];
+        $idToBgt = [];
         foreach ($toPush as $c) {
-            $byId[(string) $c->campaign_id] = $c;
+            $cid = (string) $c->campaign_id;
+            $byId[$cid] = $c;
+            $idToBgt[$cid] = (float) $c->sbgt;
         }
 
-        $result = $updater($ids, $bgts);
-        $status = (int) ($result['status'] ?? 500);
-        $successIds = array_map('strval', $result['success_ids'] ?? []);
-        $failedRows = is_array($result['failed'] ?? null) ? $result['failed'] : [];
-
-        // Legacy callers: HTTP 200 with no parsed lists → treat all as success
-        if ($successIds === [] && $failedRows === [] && $status === 200) {
-            $successIds = $ids;
-        }
+        // Push in chunks so large SBGT syncs do not overwhelm Amazon Ads APIs
+        $chunked = $this->pushAmazonAdsIdMapInChunksPlain($idToBgt, $updater);
+        $successIds = array_map('strval', $chunked['updated_ids'] ?? []);
+        $failedRows = is_array($chunked['failed'] ?? null) ? $chunked['failed'] : [];
+        $status = $failedRows === [] ? 200 : 500;
 
         if ($successIds !== []) {
             $this->persistLocalCampaignBudgets($reportTable, $successIds, $byId);
@@ -119,7 +119,7 @@ trait AppliesAmazonBudgetCronUpdates
         foreach ($failedRows as $f) {
             $cid = (string) ($f['campaign_id'] ?? '');
             $c = $byId[$cid] ?? null;
-            $reason = (string) ($f['reason'] ?? 'Unknown Amazon error');
+            $reason = (string) ($f['reason'] ?? $f['error'] ?? 'Unknown Amazon error');
             $pushLogs[] = [
                 'campaign_id' => $cid,
                 'campaign_name' => $c->campaignName ?? null,

@@ -1,245 +1,334 @@
 @extends('layouts.vertical', ['title' => $title ?? 'Cron Run'])
 
 @section('css')
+<link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
+<link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
 <style>
-    .cm-step { padding: .5rem .75rem; border-left: 3px solid #dee2e6; margin-bottom: .35rem; }
-    .cm-step.ok { border-color: #198754; background: rgba(25,135,84,.06); }
-    .cm-step.warn { border-color: #ffc107; background: rgba(255,193,7,.08); }
-    .cm-step.bad { border-color: #dc3545; background: rgba(220,53,69,.06); }
+    .cm-stat-card { border: 1px solid #e5e7eb; box-shadow: none; }
+    .cm-stat-card .card-body { padding: .85rem 1rem; }
+    .cm-stat-label { font-size: .7rem; text-transform: uppercase; letter-spacing: .04em; color: #6b7280; }
+    .cm-stat-value { font-size: 1.25rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .cm-stat-value.ok { color: #059669; }
+    .cm-stat-value.warn { color: #d97706; }
+    .cm-stat-value.bad { color: #dc2626; }
+    .cm-card { border: 1px solid #e5e7eb; box-shadow: none; }
+    .cm-card .card-header { background: #f8fafc; border-bottom: 1px solid #e5e7eb; }
+    .cm-meta-table { width: 100%; margin: 0; font-size: .84rem; }
+    .cm-meta-table th { width: 38%; color: #6b7280; font-weight: 600; padding: .4rem 0; border: 0; vertical-align: top; }
+    .cm-meta-table td { padding: .4rem 0; border: 0; font-variant-numeric: tabular-nums; word-break: break-word; }
+    .cm-cmd { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .78rem; color: #4b5563; }
+    .cm-step {
+        display: flex; align-items: center; gap: .5rem; padding: .45rem .65rem; border-radius: 6px;
+        border: 1px solid #e5e7eb; margin-bottom: .4rem; font-size: .84rem; background: #fff;
+    }
+    .cm-step.ok { border-color: #a7f3d0; background: #ecfdf5; color: #065f46; }
+    .cm-step.warn { border-color: #fde68a; background: #fffbeb; color: #92400e; }
+    .cm-step.bad { border-color: #fecaca; background: #fef2f2; color: #991b1b; }
+    .cm-pill {
+        display: inline-flex; align-items: center; gap: .3rem; padding: .2rem .55rem; border-radius: 999px;
+        font-size: .75rem; font-weight: 650; text-transform: capitalize; border: 1px solid transparent;
+    }
+    .cm-pill-ok { background: #ecfdf5; color: #059669; border-color: #a7f3d0; }
+    .cm-pill-warn { background: #fffbeb; color: #d97706; border-color: #fde68a; }
+    .cm-pill-bad { background: #fef2f2; color: #dc2626; border-color: #fecaca; }
+    .cm-pill-run { background: #eff6ff; color: #2563eb; border-color: #bfdbfe; }
+    .cm-chunk-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .75rem; }
+    @media (max-width: 767px) { .cm-chunk-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    .cm-chunk-cell { border: 1px solid #e5e7eb; border-radius: 8px; padding: .75rem .85rem; background: #fff; }
+    .cm-chunk-cell .label { font-size: .7rem; text-transform: uppercase; letter-spacing: .04em; color: #6b7280; }
+    .cm-chunk-cell .value { font-size: 1.05rem; font-weight: 700; margin-top: .2rem; font-variant-numeric: tabular-nums; }
+    .tabulator { border: 1px solid #e5e7eb; }
+    .tabulator .tabulator-header { background: #eef2f7; }
+    .tabulator .tabulator-col { background: #eef2f7 !important; }
 </style>
 @endsection
 
 @section('content')
-@include('layouts.shared.page-title', [
-    'page_title' => $log->job_name,
-    'sub_title' => 'Run #'.$log->id
-])
-
-@if(session('success'))
-    <div class="alert alert-success">{{ session('success') }}</div>
-@endif
-
-<div class="mb-3 d-flex flex-wrap gap-2 align-items-center">
-    <a href="{{ route('cron-monitor.index') }}" class="btn btn-sm btn-outline-secondary">&larr; Back to dashboard</a>
-    <form method="post" action="{{ route('cron-monitor.retry', $log->id) }}">@csrf<button class="btn btn-sm btn-primary">Retry Job</button></form>
-    <form method="post" action="{{ route('cron-monitor.resume', $log->id) }}">@csrf<button class="btn btn-sm btn-outline-primary">Resume</button></form>
-    <form method="post" action="{{ route('cron-monitor.retry-failures', $log->id) }}">@csrf<button class="btn btn-sm btn-warning">Retry Failed Records</button></form>
-    @if($log->isCancellable())
-        <form method="post" action="{{ route('cron-monitor.cancel', $log->id) }}">@csrf<button class="btn btn-sm btn-danger" onclick="return confirm('Cancel this run?')">Cancel Running</button></form>
-    @endif
-    @if($log->command)
-        <form method="post" action="{{ route('cron-monitor.unlock') }}">@csrf<input type="hidden" name="command" value="{{ $log->command }}"><button class="btn btn-sm btn-outline-danger">Unlock</button></form>
-    @endif
-    <a href="{{ route('cron-monitor.download', $log->id) }}" class="btn btn-sm btn-outline-secondary">Download Log</a>
-</div>
-
 @php
-    $badge = match($log->status) {
-        'success', 'recovered' => 'success',
-        'partial_success', 'stuck' => 'warning',
-        'running' => 'info',
-        default => 'danger',
+    $pill = match ($log->status) {
+        'success', 'recovered' => 'ok',
+        'partial_success', 'stuck' => 'warn',
+        'running' => 'run',
+        default => 'bad',
+    };
+    $pillLabel = str_replace('_', ' ', (string) $log->status);
+    $chunkProgress = is_array($log->meta) ? ($log->meta['chunk_progress'] ?? null) : null;
+    $fmtEta = function ($seconds): string {
+        if ($seconds === null || $seconds === '') return '—';
+        $seconds = (int) $seconds;
+        if ($seconds < 60) return $seconds . 's';
+        return gmdate($seconds >= 3600 ? 'H:i:s' : 'i:s', $seconds);
     };
 @endphp
 
+@include('layouts.shared.page-title', [
+    'page_title' => $log->job_name,
+    'sub_title' => 'Run #'.$log->id.($log->command ? ' · '.$log->command : ''),
+])
+
+@if(session('success'))
+    <div class="alert alert-success py-2">{{ session('success') }}</div>
+@endif
+@if(session('error'))
+    <div class="alert alert-danger py-2">{{ session('error') }}</div>
+@endif
+
+<div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+    <a href="{{ route('cron-monitor.index') }}" class="btn btn-sm btn-outline-secondary">&larr; Dashboard</a>
+    <form method="post" action="{{ route('cron-monitor.retry', $log->id) }}">@csrf<button class="btn btn-sm btn-primary" type="submit">Retry Job</button></form>
+    <form method="post" action="{{ route('cron-monitor.resume', $log->id) }}">@csrf<button class="btn btn-sm btn-outline-primary" type="submit">Resume</button></form>
+    <form method="post" action="{{ route('cron-monitor.retry-failures', $log->id) }}">@csrf<button class="btn btn-sm btn-warning" type="submit">Retry Failed Records</button></form>
+    @if($log->isCancellable())
+        <form method="post" action="{{ route('cron-monitor.cancel', $log->id) }}">@csrf<button class="btn btn-sm btn-danger" type="submit" onclick="return confirm('Cancel this run?')">Cancel Running</button></form>
+    @endif
+    @if($log->command)
+        <form method="post" action="{{ route('cron-monitor.unlock') }}">@csrf<input type="hidden" name="command" value="{{ $log->command }}"><button class="btn btn-sm btn-outline-danger" type="submit">Unlock</button></form>
+    @endif
+    <a href="{{ route('cron-monitor.download', $log->id) }}" class="btn btn-sm btn-outline-secondary">Download Log</a>
+    <span class="cm-pill cm-pill-{{ $pill }}">{{ $pillLabel }}</span>
+</div>
+
+<div class="row g-2 mb-3">
+    <div class="col-6 col-md-3">
+        <div class="card cm-stat-card h-100"><div class="card-body">
+            <div class="cm-stat-label">Health</div>
+            <div class="cm-stat-value">{{ $log->health_score ?? '—' }} <span class="fs-6 fw-normal text-muted">/ 100</span></div>
+            <div class="text-muted small">{{ $log->health_label ?: '—' }}</div>
+        </div></div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card cm-stat-card h-100"><div class="card-body">
+            <div class="cm-stat-label">Success %</div>
+            <div class="cm-stat-value {{ ($log->success_percentage ?? 0) >= 95 ? 'ok' : (($log->success_percentage ?? 0) >= 60 ? 'warn' : 'bad') }}">
+                {{ $log->success_percentage !== null ? number_format((float) $log->success_percentage, 1).'%' : '—' }}
+            </div>
+        </div></div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card cm-stat-card h-100"><div class="card-body">
+            <div class="cm-stat-label">Updated / Failed</div>
+            <div class="cm-stat-value">
+                {{ number_format((int) $log->updated_records) }}
+                <span class="fs-6 fw-normal {{ $log->failed_records > 0 ? 'text-danger' : 'text-muted' }}">/ {{ number_format((int) $log->failed_records) }}</span>
+            </div>
+        </div></div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card cm-stat-card h-100"><div class="card-body">
+            <div class="cm-stat-label">Duration</div>
+            <div class="cm-stat-value">{{ $log->duration_seconds !== null ? number_format((int) $log->duration_seconds).'s' : '—' }}</div>
+            @if($avgRuntime)<div class="text-muted small">avg {{ $avgRuntime }}s</div>@endif
+        </div></div>
+    </div>
+</div>
+
 <div class="row g-3 mb-3">
     <div class="col-lg-4">
-        <div class="card shadow-sm h-100">
+        <div class="card cm-card h-100">
+            <div class="card-header"><h6 class="mb-0">Run details</h6></div>
             <div class="card-body">
-                <div class="d-flex justify-content-between align-items-start mb-3">
-                    <div>
-                        <div class="text-muted small text-uppercase">Overall status</div>
-                        <span class="badge bg-{{ $badge }} fs-6">{{ strtoupper(str_replace('_', ' ', $log->status)) }}</span>
-                    </div>
-                    <div class="text-end">
-                        <div class="text-muted small">Health</div>
-                        <div class="fs-4 fw-semibold">{{ $log->health_score ?? '—' }}</div>
-                        <div class="small text-muted">{{ $log->health_label }}</div>
-                    </div>
-                </div>
-                <dl class="row mb-0 small">
-                    <dt class="col-5">Command</dt><dd class="col-7">{{ $log->command ?: '—' }}</dd>
-                    <dt class="col-5">Started</dt><dd class="col-7">{{ $log->started_at }}</dd>
-                    <dt class="col-5">Finished</dt><dd class="col-7">{{ $log->finished_at ?: '—' }}</dd>
-                    <dt class="col-5">Duration</dt><dd class="col-7">{{ $log->duration_seconds }}s @if($avgRuntime) <span class="text-muted">(avg {{ $avgRuntime }}s)</span>@endif</dd>
-                    <dt class="col-5">Success %</dt><dd class="col-7">{{ $log->success_percentage }}%</dd>
-                    <dt class="col-5">Retries</dt><dd class="col-7">{{ $log->retry_count }} @if($log->last_retry_at)<span class="text-muted">(last {{ $log->last_retry_at->diffForHumans() }})</span>@endif</dd>
-                    <dt class="col-5">Recovery</dt><dd class="col-7">{{ $log->recovery_status }}</dd>
-                    <dt class="col-5">Category</dt><dd class="col-7">{{ $log->failure_category ?: '—' }}</dd>
-                    <dt class="col-5">Resume from</dt><dd class="col-7">{{ $log->resume_from ?? '—' }}</dd>
-                    <dt class="col-5">Consecutive fails</dt><dd class="col-7">{{ $log->consecutive_failures }}</dd>
-                    <dt class="col-5">Last success</dt><dd class="col-7">{{ $lastSuccess?->finished_at ?: '—' }}</dd>
-                    <dt class="col-5">Server</dt><dd class="col-7">{{ $log->execution_server }}</dd>
-                    <dt class="col-5">Memory</dt><dd class="col-7">{{ $log->memory_usage }}</dd>
-                    <dt class="col-5">CPU</dt><dd class="col-7">{{ $log->cpu_time_ms ? $log->cpu_time_ms.'ms' : '—' }}</dd>
-                    <dt class="col-5">API calls</dt><dd class="col-7">{{ $log->api_calls }} @if($log->api_latency_ms_avg) <span class="text-muted">(avg {{ $log->api_latency_ms_avg }}ms)</span>@endif</dd>
-                </dl>
+                <table class="cm-meta-table">
+                    <tr><th>Command</th><td class="cm-cmd">{{ $log->command ?: '—' }}</td></tr>
+                    <tr><th>Started</th><td>{{ $log->started_at ?: '—' }}</td></tr>
+                    <tr><th>Finished</th><td>{{ $log->finished_at ?: '—' }}</td></tr>
+                    <tr><th>Retries</th><td>{{ (int) $log->retry_count }}</td></tr>
+                    <tr><th>Recovery</th><td>{{ $log->recovery_status ?: '—' }}</td></tr>
+                    <tr><th>Category</th><td>{{ $log->failure_category ?: '—' }}</td></tr>
+                    <tr><th>Resume from</th><td>{{ $log->resume_from ?? '—' }}</td></tr>
+                    <tr><th>Consecutive fails</th><td>{{ (int) $log->consecutive_failures }}</td></tr>
+                    <tr><th>Last success</th><td>{{ $lastSuccess?->finished_at ?: '—' }}</td></tr>
+                    <tr><th>Server</th><td>{{ $log->execution_server ?: '—' }}</td></tr>
+                    <tr><th>Memory</th><td>{{ $log->memory_usage ?: '—' }}</td></tr>
+                    <tr><th>API calls</th><td>{{ (int) $log->api_calls }}@if($log->api_latency_ms_avg) <span class="text-muted">(avg {{ $log->api_latency_ms_avg }}ms)</span>@endif</td></tr>
+                </table>
             </div>
         </div>
     </div>
     <div class="col-lg-4">
-        <div class="card shadow-sm h-100">
+        <div class="card cm-card h-100">
             <div class="card-header"><h6 class="mb-0">Execution checklist</h6></div>
             <div class="card-body">
-                <div class="cm-step ok">✅ Cron Started</div>
-                <div class="cm-step {{ $log->api_connected ? 'ok' : 'bad' }}">{{ $log->api_connected ? '✅' : '❌' }} API Connected</div>
-                <div class="cm-step {{ $log->fetched_records > 0 ? 'ok' : 'warn' }}">{{ $log->fetched_records > 0 ? '✅' : '⚠' }} {{ number_format($log->fetched_records) }} Records Fetched</div>
-                <div class="cm-step {{ $log->processed_records > 0 ? 'ok' : 'warn' }}">{{ $log->processed_records > 0 ? '✅' : '⚠' }} {{ number_format($log->processed_records) }} Records Processed</div>
-                <div class="cm-step {{ $log->updated_records > 0 ? 'ok' : 'warn' }}">{{ $log->updated_records > 0 ? '✅' : '⚠' }} {{ number_format($log->updated_records) }} Records Updated</div>
-                @if($log->inserted_records > 0)
-                    <div class="cm-step ok">✅ {{ number_format($log->inserted_records) }} Inserted</div>
-                @endif
-                @if($log->skipped_records > 0)
-                    <div class="cm-step warn">⏭ {{ number_format($log->skipped_records) }} Skipped</div>
-                @endif
-                @if($log->failed_records > 0)
-                    <div class="cm-step bad">⚠ {{ number_format($log->failed_records) }} Failed</div>
-                @endif
+                <div class="cm-step ok">Cron started</div>
+                <div class="cm-step {{ $log->api_connected ? 'ok' : 'bad' }}">{{ $log->api_connected ? 'API connected' : 'API not connected' }}</div>
+                <div class="cm-step {{ $log->fetched_records > 0 ? 'ok' : 'warn' }}">{{ number_format((int) $log->fetched_records) }} records fetched</div>
+                <div class="cm-step {{ $log->processed_records > 0 ? 'ok' : 'warn' }}">{{ number_format((int) $log->processed_records) }} records processed</div>
+                <div class="cm-step {{ $log->updated_records > 0 ? 'ok' : 'warn' }}">{{ number_format((int) $log->updated_records) }} records updated</div>
+                @if($log->skipped_records > 0)<div class="cm-step warn">{{ number_format((int) $log->skipped_records) }} skipped</div>@endif
+                @if($log->failed_records > 0)<div class="cm-step bad">{{ number_format((int) $log->failed_records) }} failed</div>@endif
                 <div class="cm-step {{ ($log->success_percentage ?? 0) >= 95 ? 'ok' : (($log->success_percentage ?? 0) >= 60 ? 'warn' : 'bad') }}">
-                    Success Rate = {{ $log->success_percentage }}%
+                    Success rate {{ $log->success_percentage !== null ? number_format((float) $log->success_percentage, 1).'%' : '—' }}
                 </div>
             </div>
         </div>
     </div>
     <div class="col-lg-4">
-        <div class="card shadow-sm h-100">
+        <div class="card cm-card h-100">
             <div class="card-header"><h6 class="mb-0">Root cause & anomalies</h6></div>
             <div class="card-body">
-                @if($log->root_cause)
-                    <div class="alert alert-secondary small"><strong>Root Cause:</strong> {{ $log->root_cause }}</div>
-                @endif
+                @if($log->root_cause)<div class="alert alert-secondary small py-2">{{ $log->root_cause }}</div>@endif
                 @if($log->validation_message)
-                    <div class="alert alert-warning small">{{ $log->validation_message }}</div>
+                    <div class="alert alert-warning small py-2">{{ $log->validation_message }}</div>
                 @else
-                    <div class="alert alert-success small mb-2">Validation passed</div>
+                    <div class="alert alert-success small py-2 mb-2">Validation passed</div>
                 @endif
-                @if($log->error_message)
-                    <div class="alert alert-danger small">{{ $log->error_message }}</div>
-                @endif
+                @if($log->error_message)<div class="alert alert-danger small py-2">{{ $log->error_message }}</div>@endif
                 @forelse(($log->anomalies ?? []) as $anomaly)
-                    <div class="alert alert-{{ ($anomaly['severity'] ?? '') === 'critical' ? 'danger' : 'warning' }} small">
-                        {{ $anomaly['message'] ?? 'Anomaly' }}
-                    </div>
+                    <div class="alert alert-{{ ($anomaly['severity'] ?? '') === 'critical' ? 'danger' : 'warning' }} small py-2 mb-2">{{ $anomaly['message'] ?? 'Anomaly' }}</div>
                 @empty
                     <p class="text-muted small mb-0">No anomalies detected.</p>
                 @endforelse
                 @if($log->checkpoint)
-                    <p class="small text-muted mb-0 mt-2">Checkpoint: <code>{{ json_encode($log->checkpoint) }}</code></p>
-                @endif
-                @if($log->expected_records !== null)
-                    <p class="small text-muted mb-0 mt-2">Expected records: {{ number_format($log->expected_records) }}</p>
+                    <p class="small text-muted mb-0 mt-2">Checkpoint: <code class="cm-cmd">{{ json_encode($log->checkpoint) }}</code></p>
                 @endif
             </div>
         </div>
     </div>
 </div>
 
-<div class="card shadow-sm mb-3">
-    <div class="card-header d-flex justify-content-between"><h6 class="mb-0">Retry queue (unresolved)</h6><span class="small text-muted">{{ $retryQueue->count() }} items</span></div>
-    <div class="table-responsive">
-        <table class="table table-sm mb-0">
-            <thead>
-                <tr>
-                    <th>SKU</th>
-                    <th>Category</th>
-                    <th>Recoverable</th>
-                    <th>Root cause</th>
-                    <th>Retries</th>
-                    <th>HTTP</th>
-                </tr>
-            </thead>
-            <tbody>
-                @forelse($retryQueue as $f)
-                    <tr>
-                        <td>{{ $f->sku ?: '—' }}</td>
-                        <td>{{ $f->failure_category ?: '—' }}</td>
-                        <td>{{ $f->recoverable ? 'Yes' : 'No' }}</td>
-                        <td class="small">{{ \Illuminate\Support\Str::limit($f->root_cause ?: $f->failure_reason, 80) }}</td>
-                        <td>{{ $f->retry_count }}</td>
-                        <td>{{ $f->http_status ?: '—' }}</td>
-                    </tr>
-                @empty
-                    <tr><td colspan="6" class="text-muted p-3">No unresolved failures.</td></tr>
-                @endforelse
-            </tbody>
-        </table>
+@if(is_array($chunkProgress))
+<div class="card cm-card mb-3">
+    <div class="card-header"><h6 class="mb-0">Chunk progress</h6></div>
+    <div class="card-body">
+        <div class="cm-chunk-grid">
+            <div class="cm-chunk-cell"><div class="label">Total chunks</div><div class="value">{{ $chunkProgress['total_chunks'] ?? '—' }}</div></div>
+            <div class="cm-chunk-cell"><div class="label">Completed</div><div class="value">{{ $chunkProgress['completed'] ?? '—' }}</div></div>
+            <div class="cm-chunk-cell"><div class="label">Failed chunks</div><div class="value {{ ($chunkProgress['failed'] ?? 0) > 0 ? 'text-danger' : '' }}">{{ $chunkProgress['failed'] ?? '—' }}</div></div>
+            <div class="cm-chunk-cell"><div class="label">Current chunk</div><div class="value">{{ $chunkProgress['current'] ?? '—' }}</div></div>
+            <div class="cm-chunk-cell"><div class="label">Resume point</div><div class="value" style="font-size:.95rem">{{ $chunkProgress['resume_point'] ?? ($log->resume_from ?? '—') }}</div></div>
+            <div class="cm-chunk-cell"><div class="label">Avg chunk time</div><div class="value">@if(isset($chunkProgress['avg_chunk_ms'])){{ number_format((int) $chunkProgress['avg_chunk_ms']) }} ms@else — @endif</div></div>
+            <div class="cm-chunk-cell"><div class="label">ETA</div><div class="value">{{ isset($chunkProgress['eta_seconds']) ? $fmtEta($chunkProgress['eta_seconds']) : '—' }}</div></div>
+            <div class="cm-chunk-cell"><div class="label">Retries</div><div class="value">{{ (int) $log->retry_count }}</div></div>
+            <div class="cm-chunk-cell"><div class="label">Memory</div><div class="value" style="font-size:.95rem">{{ $chunkProgress['memory_usage'] ?? $log->memory_usage ?? '—' }}</div></div>
+        </div>
+    </div>
+</div>
+@endif
+
+<div class="card cm-card mb-3">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <div>
+            <h6 class="mb-0">Retry queue (unresolved)</h6>
+            <small class="text-muted">Tabulator</small>
+        </div>
+        <span class="text-muted small">{{ count($retryTableData) }} items</span>
+    </div>
+    <div class="card-body p-0">
+        <div id="cmRetryTable"></div>
     </div>
 </div>
 
-<div class="card shadow-sm mb-3">
-    <div class="card-header"><h6 class="mb-0">Failed records</h6></div>
-    <div class="table-responsive">
-        <table class="table table-sm mb-0">
-            <thead>
-                <tr>
-                    <th>SKU</th>
-                    <th>Marketplace</th>
-                    <th>Category</th>
-                    <th>Reason</th>
-                    <th>Retries</th>
-                    <th>Resolved</th>
-                    <th>When</th>
-                </tr>
-            </thead>
-            <tbody>
-                @forelse($log->failures as $f)
-                    <tr>
-                        <td>{{ $f->sku ?: '—' }}</td>
-                        <td>{{ $f->marketplace ?: '—' }}</td>
-                        <td>{{ $f->failure_category ?: '—' }}</td>
-                        <td class="small">{{ \Illuminate\Support\Str::limit($f->failure_reason, 120) }}</td>
-                        <td>{{ $f->retry_count }}</td>
-                        <td>{{ $f->resolved ? 'Yes' : 'No' }}</td>
-                        <td class="small">{{ $f->created_at }}</td>
-                    </tr>
-                @empty
-                    <tr><td colspan="7" class="text-muted p-3">No per-record failures logged.</td></tr>
-                @endforelse
-            </tbody>
-        </table>
+<div class="card cm-card mb-3">
+    <div class="card-header">
+        <h6 class="mb-0">Failed records</h6>
+        <small class="text-muted">Tabulator · per-record failures</small>
+    </div>
+    <div class="card-body p-0">
+        <div id="cmFailuresTable"></div>
     </div>
 </div>
 
-<div class="card shadow-sm">
-    <div class="card-header"><h6 class="mb-0">Last 30 runs — {{ $log->job_name }}</h6></div>
-    <div class="table-responsive">
-        <table class="table table-sm table-hover mb-0">
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>Status</th>
-                    <th>Started</th>
-                    <th>Duration</th>
-                    <th>Updated</th>
-                    <th>Failed</th>
-                    <th>Success %</th>
-                    <th>Health</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach($history as $h)
-                    <tr class="{{ $h->id === $log->id ? 'table-active' : '' }}">
-                        <td><a href="{{ route('cron-monitor.show', $h->id) }}">#{{ $h->id }}</a></td>
-                        <td>{{ str_replace('_', ' ', $h->status) }}</td>
-                        <td>{{ $h->started_at }}</td>
-                        <td>{{ $h->duration_seconds }}s</td>
-                        <td>{{ number_format($h->updated_records) }}</td>
-                        <td>{{ number_format($h->failed_records) }}</td>
-                        <td>{{ $h->success_percentage }}%</td>
-                        <td>{{ $h->health_score }}</td>
-                    </tr>
-                @endforeach
-            </tbody>
-        </table>
+<div class="card cm-card mb-3">
+    <div class="card-header">
+        <h6 class="mb-0">Last 30 runs — {{ $log->job_name }}</h6>
+        <small class="text-muted">Tabulator · history</small>
+    </div>
+    <div class="card-body p-0">
+        <div id="cmHistoryTable"></div>
     </div>
 </div>
 
 @if($log->exception)
-<div class="card shadow-sm mt-3 border-danger">
-    <div class="card-header text-danger"><h6 class="mb-0">Exception</h6></div>
+<div class="card cm-card border-danger mb-3">
+    <div class="card-header"><h6 class="mb-0 text-danger">Exception</h6></div>
     <div class="card-body">
-        <pre class="small mb-0" style="white-space: pre-wrap">{{ $log->exception }}</pre>
+        <pre class="small mb-0 cm-cmd" style="white-space:pre-wrap;max-height:360px;overflow:auto;">{{ $log->exception }}</pre>
     </div>
 </div>
 @endif
+@endsection
+
+@section('script')
+<script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const retryData = @json($retryTableData);
+    const failuresData = @json($failuresTableData);
+    const historyData = @json($historyTableData);
+
+    function statusPill(status) {
+        const s = String(status || '');
+        let cls = 'cm-pill-bad';
+        if (['success', 'recovered'].includes(s)) cls = 'cm-pill-ok';
+        else if (['partial_success', 'stuck'].includes(s)) cls = 'cm-pill-warn';
+        else if (s === 'running') cls = 'cm-pill-run';
+        return `<span class="cm-pill ${cls}">${s.replace(/_/g, ' ')}</span>`;
+    }
+
+    new Tabulator('#cmRetryTable', {
+        data: retryData,
+        layout: 'fitDataStretch',
+        height: retryData.length ? '320px' : '120px',
+        pagination: 'local',
+        paginationSize: 25,
+        placeholder: 'No unresolved failures.',
+        columns: [
+            { title: 'SKU', field: 'sku', width: 160, formatter: (c) => `<span class="cm-cmd">${c.getValue() || '—'}</span>` },
+            { title: 'Category', field: 'failure_category', width: 120, formatter: (c) => c.getValue() || '—' },
+            { title: 'Recoverable', field: 'recoverable', width: 110, hozAlign: 'center' },
+            { title: 'Root cause', field: 'root_cause', minWidth: 220 },
+            { title: 'Retries', field: 'retry_count', width: 90, hozAlign: 'right' },
+            { title: 'HTTP', field: 'http_status', width: 90, hozAlign: 'right', formatter: (c) => c.getValue() || '—' },
+        ],
+    });
+
+    new Tabulator('#cmFailuresTable', {
+        data: failuresData,
+        layout: 'fitDataStretch',
+        height: failuresData.length ? '360px' : '120px',
+        pagination: 'local',
+        paginationSize: 25,
+        placeholder: 'No per-record failures logged.',
+        columns: [
+            { title: 'SKU', field: 'sku', width: 150, formatter: (c) => `<span class="cm-cmd">${c.getValue() || '—'}</span>` },
+            { title: 'Marketplace', field: 'marketplace', width: 120, formatter: (c) => c.getValue() || '—' },
+            { title: 'Category', field: 'failure_category', width: 120, formatter: (c) => c.getValue() || '—' },
+            { title: 'Reason', field: 'failure_reason', minWidth: 240 },
+            { title: 'Retries', field: 'retry_count', width: 90, hozAlign: 'right' },
+            { title: 'Resolved', field: 'resolved', width: 100, hozAlign: 'center' },
+            { title: 'When', field: 'created_at', width: 160 },
+        ],
+        rowFormatter: function (row) {
+            if (row.getData().resolved === 'No') row.getElement().style.background = '#fef2f2';
+        },
+    });
+
+    new Tabulator('#cmHistoryTable', {
+        data: historyData,
+        layout: 'fitDataStretch',
+        height: '360px',
+        pagination: 'local',
+        paginationSize: 30,
+        placeholder: 'No history for this job.',
+        columns: [
+            { title: 'ID', field: 'id', width: 80, hozAlign: 'right', formatter: (c) => {
+                const d = c.getRow().getData();
+                return `<a class="fw-semibold text-decoration-none" href="${d.details_url}">#${c.getValue()}</a>`;
+            }},
+            { title: 'Status', field: 'status', width: 130, hozAlign: 'center', formatter: (c) => statusPill(c.getValue()) },
+            { title: 'Started', field: 'started_at', width: 160 },
+            { title: 'Duration', field: 'duration_seconds', width: 100, hozAlign: 'right', formatter: (c) => c.getValue() == null ? '—' : Number(c.getValue()).toLocaleString() + 's' },
+            { title: 'Updated', field: 'updated_records', width: 100, hozAlign: 'right' },
+            { title: 'Failed', field: 'failed_records', width: 90, hozAlign: 'right', formatter: (c) => {
+                const v = Number(c.getValue() || 0);
+                return v > 0 ? `<span class="text-danger fw-semibold">${v.toLocaleString()}</span>` : '0';
+            }},
+            { title: 'Success %', field: 'success_percentage', width: 100, hozAlign: 'right', formatter: (c) => c.getValue() == null ? '—' : Number(c.getValue()).toFixed(1) + '%' },
+            { title: 'Health', field: 'health_score', width: 90, hozAlign: 'right' },
+        ],
+        rowFormatter: function (row) {
+            if (row.getData().is_current) row.getElement().style.background = '#eff6ff';
+        },
+    });
+});
+</script>
 @endsection

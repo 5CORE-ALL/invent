@@ -21,11 +21,12 @@ class ExtractAmazonItemNamesToTitleMaster extends Command
             $this->warn('Dry run mode – no database updates will be made.');
         }
 
-        $listings = AmazonListingRaw::all();
         $count = 0;
         $skipped = 0;
         $skippedSkus = [];
+        $chunkSize = max(1, (int) config('cron-monitor.chunks.size', 50));
 
+        AmazonListingRaw::query()->orderBy('id')->chunkById($chunkSize, function ($listings) use (&$count, &$skipped, &$skippedSkus, $dryRun) {
         foreach ($listings as $listing) {
             if (empty($listing->seller_sku)) {
                 $skipped++;
@@ -69,6 +70,8 @@ class ExtractAmazonItemNamesToTitleMaster extends Command
             }
             $count++;
         }
+
+        });
 
         $this->info('Extraction complete.');
         $this->info("Updated (or would update): {$count} title(s).");

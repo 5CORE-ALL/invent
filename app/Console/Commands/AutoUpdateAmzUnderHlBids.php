@@ -2,6 +2,8 @@
 
 namespace App\Console\Commands;
 
+use App\Console\Commands\Concerns\MonitorsCronExecution;
+use App\Console\Commands\Concerns\PushesAmazonAdsUpdatesInChunks;
 use App\Http\Controllers\Campaigns\AmazonSbBudgetController;
 use App\Http\Controllers\Campaigns\AmazonSpBudgetController;
 use App\Models\AmazonDataView;
@@ -12,47 +14,68 @@ use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use GuzzleHttp\Client;
 use App\Services\Amazon\AmazonBidUtilizationService;
+use App\Services\CronMonitor\CronExecutionContext;
 use App\Support\AmazonAdsSbidRule;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class AutoUpdateAmzUnderHlBids extends Command
 {
-    protected $signature = 'amazon:auto-update-under-hl-bids {--dry-run : Show what would be updated without calling API}';
+    use MonitorsCronExecution;
+    use PushesAmazonAdsUpdatesInChunks;
+
+    protected $signature = 'amazon:auto-update-under-hl-bids
+        {--dry-run : Show what would be updated without calling API}
+        {--chunk= : Override chunk size for API updates (default from cron-monitor config)}';
     protected $description = 'Automatically update Amazon campaign hl bids';
+
+    const MAX_RETRY_ATTEMPTS = 5;
+    const RETRY_DELAY_SECONDS = 5;
+
+    protected string $monitorJobName = 'Amazon Bid Sync (HL Under)';
 
     public function __construct()
     {
         parent::__construct();
     }
 
-    public function handle()
+    public function handle(): int
+    {
+        return $this->runMonitored(
+            fn (CronExecutionContext $m) => $this->executeBidUpdate($m),
+            $this->monitorJobName
+        );
+    }
+
+    protected function executeBidUpdate(CronExecutionContext $monitor): int
     {
         try {
             $dryRun = $this->option('dry-run');
             $this->info("Starting Amazon Under-Utilized HL bids auto-update..." . ($dryRun ? " [DRY RUN - no API calls]" : ""));
 
-            // Check database connection (without creating persistent connection)
             try {
                 DB::connection()->getPdo();
                 $this->info("✓ Database connection OK");
-                // Immediately disconnect after check to prevent connection buildup
                 DB::connection()->disconnect();
             } catch (\Exception $e) {
                 $this->error("✗ Database connection failed: " . $e->getMessage());
-                return 1;
+                $monitor->classifyAndRecord($e);
+
+                return self::FAILURE;
             }
 
             $updateKwBids = new AmazonSbBudgetController;
-
             $campaigns = $this->getAutomateAmzUtilizedBgtHl();
 
             if (empty($campaigns)) {
                 $this->warn("No campaigns matched filter conditions.");
-                return 0;
+                $monitor->markApiConnected();
+                $monitor->setExpected(0);
+
+                return self::SUCCESS;
             }
 
-            // Require campaign id + numeric proposed bid (same shape as over HL job; do not require sbid > 0 beyond being a valid number)
+            // Require campaign id + numeric proposed bid (same shape as over HL job)
             $validCampaigns = collect($campaigns)->filter(function ($campaign) {
                 return ! empty($campaign->campaign_id)
                     && isset($campaign->sbid)
@@ -62,7 +85,9 @@ class AutoUpdateAmzUnderHlBids extends Command
 
             if ($validCampaigns->isEmpty()) {
                 $this->warn("No valid campaigns found (missing campaign_id or invalid bid).");
-                return 0;
+                $monitor->setExpected(0);
+
+                return self::SUCCESS;
             }
 
             $apiCampaigns = $validCampaigns->filter(function ($campaign) {
@@ -72,7 +97,6 @@ class AutoUpdateAmzUnderHlBids extends Command
             $this->info("Found " . $validCampaigns->count() . " under-utilized HL campaign(s) (" . $apiCampaigns->count() . " eligible for Amazon API; " . ($validCampaigns->count() - $apiCampaigns->count()) . " INV=0 — persist sbid_m only).");
             $this->line("");
 
-            // Log campaigns before update (same format as Under KW/PT)
             $this->info("========================================");
             $this->info("CAMPAIGNS TO UPDATE (UNDER-UTILIZED HL):");
             $this->info("========================================");
@@ -100,7 +124,24 @@ class AutoUpdateAmzUnderHlBids extends Command
                 $this->newLine();
                 $this->warn("DRY RUN: No API call made. Remove --dry-run to apply updates.");
                 $this->info("✓ Dry run completed. Total campaigns that would be updated: " . $validCampaigns->count());
-                return 0;
+                $monitor->mergeMeta(['dry_run' => true]);
+                $monitor->markApiConnected();
+                $monitor->setExpected($validCampaigns->count());
+                $monitor->setFetched($validCampaigns->count());
+                $monitor->setSkipped($validCampaigns->count());
+
+                return self::SUCCESS;
+            }
+
+            // INV=0 rows: persist sbid_m only (no Amazon API)
+            $invZeroMap = [];
+            foreach ($validCampaigns as $campaign) {
+                if ((int) ($campaign->INV ?? 0) <= 0) {
+                    $cid = (string) ($campaign->campaign_id ?? '');
+                    if ($cid !== '' && ! isset($invZeroMap[$cid])) {
+                        $invZeroMap[$cid] = (float) ($campaign->sbid ?? 0);
+                    }
+                }
             }
 
             if ($apiCampaigns->isEmpty()) {
@@ -114,115 +155,63 @@ class AutoUpdateAmzUnderHlBids extends Command
                     'l30_rows_updated' => $persistedRows,
                 ]);
                 $this->info("✓ sbid_m persisted ({$persistedRows} L30 row updates).");
-                return 0;
+                $monitor->markApiConnected();
+                $monitor->setExpected($validCampaigns->count());
+                $monitor->setFetched($validCampaigns->count());
+                $monitor->setSkipped($validCampaigns->count());
+
+                return self::SUCCESS;
             }
 
-            $campaignIds = $apiCampaigns->pluck('campaign_id')->toArray();
-            $newBids = $apiCampaigns->pluck('sbid')->toArray();
-
-            // Validate arrays are aligned
-            if (count($campaignIds) !== count($newBids)) {
-                $this->error("✗ Array mismatch: campaign IDs and bids count don't match!");
-                return 1;
+            $campaignBudgetMap = [];
+            foreach ($apiCampaigns as $campaign) {
+                $cid = $campaign->campaign_id ?? '';
+                $sbid = $campaign->sbid ?? 0;
+                if (! empty($cid) && is_numeric($sbid) && $sbid > 0 && ! isset($campaignBudgetMap[$cid])) {
+                    $campaignBudgetMap[$cid] = $sbid;
+                }
             }
 
-            try {
-                $result = $updateKwBids->updateAutoCampaignSbKeywordsBid($campaignIds, $newBids);
+            if ($campaignBudgetMap === []) {
+                $this->warn("No valid campaigns found for Amazon API.");
+                $monitor->setExpected(0);
 
-                // Handle Response object (when no keywords found)
-                if (is_object($result) && method_exists($result, 'getData')) {
-                    $result = $result->getData(true);
-                }
-
-                $isSuccess = false;
-                $successCount = 0;
-
-                if (is_array($result)) {
-                    $status = $result['status'] ?? null;
-                    $message = $result['message'] ?? '';
-                    $successCount = $result['success_count'] ?? 0;
-
-                    // Format 1: Explicit status 200
-                    if ($status == 200) {
-                        $isSuccess = true;
-                    }
-                    // Format 2: Partial success (207) — still consider job completed
-                    elseif ($status == 207) {
-                        $isSuccess = true;
-                        if (!empty($result['failed_batches'])) {
-                            $this->warn("Some chunks failed after retries; successful updates: " . ($successCount ?: 'see logs'));
-                        }
-                    }
-                    // Format 3: No status key but data has code SUCCESS (chunked API response)
-                    elseif (!isset($result['status']) && isset($result['data'])) {
-                        $successCount = \App\Http\Controllers\Campaigns\AmazonSbBudgetController::countSuccessfulKeywords($result['data']);
-                        if ($successCount > 0 || !empty($result['data'])) {
-                            $isSuccess = true;
-                        }
-                    }
-                    // Format 4: Raw chunked array (array of arrays with code:SUCCESS)
-                    elseif (!isset($result['status']) && isset($result[0]) && is_array($result[0])) {
-                        $successCount = \App\Http\Controllers\Campaigns\AmazonSbBudgetController::countSuccessfulKeywords($result);
-                        if ($successCount > 0) {
-                            $isSuccess = true;
-                        }
-                    }
-                    // Format 5: Object with success key
-                    elseif (isset($result['success']) && $result['success']) {
-                        $isSuccess = true;
-                    }
-                }
-
-                if ($isSuccess) {
-                    $this->info("✓ HL bids updated successfully!");
-                    $this->line("");
-                    $this->info("Updated campaigns (persist sbid_m for all under-utilized rows, including INV=0):");
-                    $persistedRows = 0;
-                    foreach ($validCampaigns as $campaign) {
-                        $campaignName = $campaign->campaignName ?? 'N/A';
-                        $newBid = $campaign->sbid ?? 0;
-                        $this->line("  Campaign: {$campaignName} | New Bid: {$newBid}");
-                        $persistedRows += AmazonBidUtilizationService::persistSbSbidM((string) ($campaign->campaign_id ?? ''), (float) $newBid);
-                    }
-                    Log::info('amazon:auto-update-under-hl-bids persisted sbid_m to L30', [
-                        'campaigns' => $validCampaigns->count(),
-                        'api_campaigns' => $apiCampaigns->count(),
-                        'l30_rows_updated' => $persistedRows,
-                    ]);
-                    if ($successCount > 0) {
-                        $this->info("Keywords updated: {$successCount}");
-                    }
-                } else {
-                    $this->error("✗ Bid update failed!");
-                    if (is_array($result)) {
-                        if (isset($result['status'])) {
-                            $this->error("Status: " . $result['status']);
-                        }
-                        if (isset($result['message'])) {
-                            $this->error("Message: " . $result['message']);
-                        }
-                        if (isset($result['error'])) {
-                            $this->error("Error: " . $result['error']);
-                        }
-                    }
-                    if (is_array($result) || is_object($result)) {
-                        \Illuminate\Support\Facades\Log::debug('HL under-utilized bid update response', ['result' => $result]);
-                    }
-                    return 1;
-                }
-
-            } catch (\Exception $e) {
-                $this->error("✗ Exception occurred during bid update:");
-                $this->error($e->getMessage());
-                $this->error("Stack trace: " . $e->getTraceAsString());
-                return 1;
+                return self::SUCCESS;
             }
 
-            return 0;
+            $monitor->markApiConnected();
+            $stats = $this->pushAmazonAdsIdMapInChunks(
+                $monitor,
+                $campaignBudgetMap,
+                fn (array $ids, array $bids) => $updateKwBids->updateAutoCampaignSbKeywordsBid($ids, $bids)
+            );
+
+            $persistedRows = 0;
+            foreach ($stats['updated_map'] as $cid => $bid) {
+                if ($bid !== null) {
+                    $persistedRows += AmazonBidUtilizationService::persistSbSbidM((string) $cid, (float) $bid);
+                }
+            }
+            // Preserve INV=0 persist-only path for rows not sent to the API
+            foreach ($invZeroMap as $cid => $bid) {
+                $persistedRows += AmazonBidUtilizationService::persistSbSbidM((string) $cid, (float) $bid);
+            }
+
+            Log::info('amazon:auto-update-under-hl-bids persisted sbid_m to L30', [
+                'api_success' => count($stats['updated_map']),
+                'inv_zero' => count($invZeroMap),
+                'l30_rows_updated' => $persistedRows,
+            ]);
+
+            $this->info("FINAL: Total={$stats['total']} | Updated={$stats['updated']} | Skipped={$stats['skipped']} | Failed={$stats['failed']} | Chunks={$stats['chunks']}");
+
+            return $stats['failed'] > 0 ? self::FAILURE : self::SUCCESS;
         } catch (\Exception $e) {
             $this->error("✗ Error in handle: " . $e->getMessage());
             $this->error("Stack trace: " . $e->getTraceAsString());
-            return 1;
+            $monitor->classifyAndRecord($e);
+
+            return self::FAILURE;
         } finally {
             DB::connection()->disconnect();
         }

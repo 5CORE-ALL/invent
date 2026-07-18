@@ -2,7 +2,10 @@
 
 namespace App\Console\Commands;
 
+use App\Console\Commands\Concerns\MonitorsCronExecution;
+use App\Console\Commands\Concerns\ProcessesUpdatesInChunks;
 use App\Models\ProductMaster;
+use App\Services\CronMonitor\CronExecutionContext;
 use App\Services\GoogleAdsSbidService;
 use App\Support\GoogleShoppingCampaignNameMatcher;
 use App\Support\GoogleShoppingCampaignsRawRule;
@@ -11,11 +14,17 @@ use Illuminate\Support\Facades\DB;
 
 class UpdateSBIDCronCommand extends Command
 {
+    use MonitorsCronExecution;
+    use ProcessesUpdatesInChunks;
+
     protected $signature = 'sbid:update
                             {--dry-run : Run without applying changes (test only)}
-                            {--campaign-ids= : Comma-separated Google Ads campaign IDs (SHOPPING only; limits which campaigns are considered)}';
+                            {--campaign-ids= : Comma-separated Google Ads campaign IDs (SHOPPING only; limits which campaigns are considered)}
+                            {--chunk= : Override chunk size for API updates (default from cron-monitor config)}';
 
     protected $description = 'Update SBID for AdGroups and Product Groups using L1 range only';
+
+    protected string $monitorJobName = 'Google SBID Sync (Shopping)';
 
     protected $sbidService;
 
@@ -25,7 +34,15 @@ class UpdateSBIDCronCommand extends Command
         $this->sbidService = $sbidService;
     }
 
-    public function handle()
+    public function handle(): int
+    {
+        return $this->runMonitored(
+            fn (CronExecutionContext $m) => $this->executeSbidUpdate($m),
+            $this->monitorJobName
+        );
+    }
+
+    protected function executeSbidUpdate(CronExecutionContext $monitor): int
     {
         try {
             @ini_set('memory_limit', '512M');
@@ -38,8 +55,9 @@ class UpdateSBIDCronCommand extends Command
                 DB::connection()->disconnect();
             } catch (\Exception $e) {
                 $this->error('✗ Database connection failed: '.$e->getMessage());
+                $monitor->classifyAndRecord($e);
 
-                return 1;
+                return self::FAILURE;
             }
 
             $dryRun = $this->option('dry-run');
@@ -90,8 +108,9 @@ class UpdateSBIDCronCommand extends Command
             if ($productMasters->isEmpty()) {
                 $this->warn('No product masters found!');
                 DB::connection()->disconnect();
+                $monitor->setExpected(0);
 
-                return 0;
+                return self::SUCCESS;
             }
 
             // Filter to only PARENT SKUs early (since we only process parents now)
@@ -102,8 +121,9 @@ class UpdateSBIDCronCommand extends Command
             if ($parentMasters->isEmpty()) {
                 $this->warn('No PARENT product masters found!');
                 DB::connection()->disconnect();
+                $monitor->setExpected(0);
 
-                return 0;
+                return self::SUCCESS;
             }
 
             DB::connection()->disconnect();
@@ -169,7 +189,8 @@ class UpdateSBIDCronCommand extends Command
             $ubHigh = (float) $rawRule['sbid']['util_high'];
             $ubLow = (float) $rawRule['sbid']['util_low'];
 
-            $campaignUpdates = [];
+            $toPush = [];
+            $pushDetails = [];
 
             foreach ($parentMasters as $pm) {
                 $sku = strtoupper(trim($pm->sku));
@@ -251,7 +272,7 @@ class UpdateSBIDCronCommand extends Command
                     continue;
                 }
 
-                if ($sbid > 0 && ! isset($campaignUpdates[$campaignId])) {
+                if ($sbid > 0 && ! isset($toPush[$campaignId])) {
                     // Determine action type for logging
                     if ($ub7 > $ubHigh && $ub1 > $ubHigh) {
                         $action = 'PINK+PINK (decreased)';
@@ -262,32 +283,85 @@ class UpdateSBIDCronCommand extends Command
                     $campaignLabel = $matched['campaign_name'];
                     if ($dryRun) {
                         $this->info("[DRY RUN] [PARENT] Would update campaign {$campaignId} ({$campaignLabel}, SKU: {$pm->sku}): L1CPC=\${$cpc_L1}, L7CPC=\${$cpc_L7}, SBID=\${$sbid}, UB7={$ub7}%, UB1={$ub1}%, Action: {$action}");
-                        $campaignUpdates[$campaignId] = true;
-                    } else {
-                        try {
-                            $this->sbidService->updateCampaignSbids($customerId, $campaignId, $sbid);
-                            $campaignUpdates[$campaignId] = true;
-                            $this->info("[PARENT] Updated campaign {$campaignId} ({$campaignLabel}, SKU: {$pm->sku}): L1CPC=\${$cpc_L1}, L7CPC=\${$cpc_L7}, SBID=\${$sbid}, UB7={$ub7}%, UB1={$ub1}%, Action: {$action}");
-                        } catch (\Exception $e) {
-                            $this->error("Failed to update campaign {$campaignId}: ".$e->getMessage());
-                        }
                     }
+                    $toPush[$campaignId] = $sbid;
+                    $pushDetails[$campaignId] = [
+                        'label' => $campaignLabel,
+                        'sku' => $pm->sku,
+                        'cpc_L1' => $cpc_L1,
+                        'cpc_L7' => $cpc_L7,
+                        'ub7' => $ub7,
+                        'ub1' => $ub1,
+                        'action' => $action,
+                    ];
                 }
             }
 
-            $processedCount = count($campaignUpdates);
-            if ($dryRun) {
-                $this->info("Done. Would have processed: {$processedCount} unique campaigns (dry run).");
-            } else {
-                $this->info("Done. Processed: {$processedCount} unique campaigns.");
+            $processedCount = count($toPush);
+
+            if ($processedCount === 0) {
+                $this->info('Done. No campaigns to update.');
+                $monitor->setExpected(0);
+
+                return self::SUCCESS;
             }
 
-            return 0;
+            if ($dryRun) {
+                $this->info("Done. Would have processed: {$processedCount} unique campaigns (dry run).");
+                $monitor->mergeMeta(['dry_run' => true]);
+                $monitor->markApiConnected();
+                $monitor->setExpected($processedCount);
+                $monitor->setFetched($processedCount);
+                $monitor->setSkipped($processedCount);
+
+                return self::SUCCESS;
+            }
+
+            $monitor->markApiConnected();
+            $stats = $this->updateIdMapInChunks(
+                $monitor,
+                $toPush,
+                function (array $chunkIds, array $chunkValues, int $chunkIndex) use ($customerId, $pushDetails) {
+                    $updated = 0;
+                    $failed = 0;
+                    $failures = [];
+                    foreach ($chunkIds as $i => $id) {
+                        $d = $pushDetails[$id] ?? [];
+                        $sbid = $chunkValues[$i];
+                        try {
+                            $this->sbidService->updateCampaignSbids($customerId, $id, $sbid);
+                            $updated++;
+                            $this->info('[PARENT] Updated campaign '.$id.' ('.($d['label'] ?? '').', SKU: '.($d['sku'] ?? '').'): L1CPC=$'.($d['cpc_L1'] ?? 0).', L7CPC=$'.($d['cpc_L7'] ?? 0).', SBID=$'.$sbid.', UB7='.($d['ub7'] ?? 0).'%, UB1='.($d['ub1'] ?? 0).'%, Action: '.($d['action'] ?? ''));
+                        } catch (\Exception $e) {
+                            $failed++;
+                            $failures[] = [
+                                'sku' => (string) $id,
+                                'marketplace' => 'google',
+                                'reason' => $e->getMessage(),
+                                'http_status' => 500,
+                            ];
+                            $this->error("Failed to update campaign {$id}: ".$e->getMessage());
+                        }
+                    }
+
+                    return [
+                        'updated' => $updated,
+                        'failed' => $failed,
+                        'processed' => count($chunkIds),
+                        'failures' => $failures,
+                    ];
+                }
+            );
+
+            $this->info("Done. Processed: {$processedCount} unique campaigns.");
+
+            return $stats['failed'] > 0 ? self::FAILURE : self::SUCCESS;
         } catch (\Exception $e) {
             $this->error('✗ Error occurred: '.$e->getMessage());
             $this->error('Stack trace: '.$e->getTraceAsString());
+            $monitor->classifyAndRecord($e);
 
-            return 1;
+            return self::FAILURE;
         } finally {
             DB::connection()->disconnect();
         }

@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Console\Commands\Concerns\ProcessesUpdatesInChunks;
 use App\Http\Controllers\Campaigns\AmazonSbBudgetController;
 use App\Models\AmazonSbCampaignReport;
 use Illuminate\Console\Command;
@@ -10,7 +11,9 @@ use Illuminate\Support\Facades\DB;
 
 class AmazonSbCampaignReports extends Command
 {
-    protected $signature = 'app:amazon-sb-campaign-reports';
+    use ProcessesUpdatesInChunks;
+
+    protected $signature = 'app:amazon-sb-campaign-reports {--chunk= : Override DB write chunk size (default from cron-monitor config)}';
     protected $description = 'Fetch and store Sponsored Brands campaign reports';
 
     public function handle()
@@ -242,10 +245,19 @@ class AmazonSbCampaignReports extends Command
             $finalRangeKey = $isDailyChart ? $startDate : $rangeKey;
 
             // Process in chunks to prevent memory and connection issues
-            $chunks = array_chunk($rows, 100);
+            $chunkSize = $this->monitoredChunkSize();
             $totalStored = 0;
 
-            foreach ($chunks as $chunkIndex => $chunk) {
+            $this->writeItemsInChunks($rows, function (array $chunk) use (
+                $reportName,
+                $profileId,
+                $adType,
+                $startDate,
+                $finalRangeKey,
+                $isDailyChart,
+                &$totalStored
+            ) {
+                $updated = 0;
                 foreach ($chunk as $row) {
                     if (empty($row['campaignId'])) {
                         continue; // Skip rows without campaign ID
@@ -285,6 +297,7 @@ class AmazonSbCampaignReports extends Command
                                 ])
                             );
                         }
+                        $updated++;
                         $totalStored++;
                     } catch (\Exception $e) {
                         $this->info("Error storing row in {$reportName}: " . $e->getMessage());
@@ -292,9 +305,10 @@ class AmazonSbCampaignReports extends Command
                     }
                 }
 
-                // Close connection after each chunk to prevent buildup
-                DB::connection()->disconnect();
-            }
+                return ['updated' => $updated, 'failed' => 0];
+            }, $chunkSize);
+
+            DB::connection()->disconnect();
 
             $this->syncSbidFromSbKeywordsApi($reportName, $rows, $profileId, $adType);
 

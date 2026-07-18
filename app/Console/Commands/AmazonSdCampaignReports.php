@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Console\Commands\Concerns\ProcessesUpdatesInChunks;
 use App\Models\AmazonSdCampaignReport;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
@@ -9,7 +10,9 @@ use Illuminate\Support\Facades\Log;
 
 class AmazonSdCampaignReports extends Command
 {
-    protected $signature = 'app:amazon-sd-campaign-reports';
+    use ProcessesUpdatesInChunks;
+
+    protected $signature = 'app:amazon-sd-campaign-reports {--chunk= : Override DB write chunk size (default from cron-monitor config)}';
     protected $description = 'Fetch and store Sponsored Display campaign reports';
 
     public function handle()
@@ -169,22 +172,32 @@ class AmazonSdCampaignReports extends Command
 
         $this->info("[$reportName] Total rows: " . count($rows));
 
-        foreach ($rows as $row) {
-            AmazonSdCampaignReport::updateOrCreate(
-                [
-                    'campaign_id' => $row['campaignId'] ?? null,
-                    'profile_id' => $profileId,
-                    'report_date_range' => $rangeKey,
-                ],
-                array_merge($row, [
-                    'profile_id' => $profileId,
-                    'report_date_range' => $rangeKey,
-                    'ad_type' => $adType,
-                ])
-            );
-        }
+        $chunkSize = $this->monitoredChunkSize();
+        $totalStored = 0;
 
-        $this->info("[SPONSORED_DISPLAY - $rangeKey] Stored " . count($rows) . " rows to DB.");
+        $this->writeItemsInChunks($rows, function (array $chunk) use ($profileId, $rangeKey, $adType, &$totalStored) {
+            $updated = 0;
+            foreach ($chunk as $row) {
+                AmazonSdCampaignReport::updateOrCreate(
+                    [
+                        'campaign_id' => $row['campaignId'] ?? null,
+                        'profile_id' => $profileId,
+                        'report_date_range' => $rangeKey,
+                    ],
+                    array_merge($row, [
+                        'profile_id' => $profileId,
+                        'report_date_range' => $rangeKey,
+                        'ad_type' => $adType,
+                    ])
+                );
+                $updated++;
+                $totalStored++;
+            }
+
+            return ['updated' => $updated, 'failed' => 0];
+        }, $chunkSize);
+
+        $this->info("[SPONSORED_DISPLAY - $rangeKey] Stored {$totalStored} rows to DB.");
         $this->info("[$reportName] Report saved successfully.");
     }
 

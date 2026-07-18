@@ -20,7 +20,9 @@ class AutoUpdateAmazonBgtPt extends Command
 {
     use AppliesAmazonBudgetCronUpdates;
 
-    protected $signature = 'amazon:auto-update-amz-bgt-pt {--dry-run : Run without updating Amazon (test only)}';
+    protected $signature = 'amazon:auto-update-amz-bgt-pt
+        {--dry-run : Run without updating Amazon (test only)}
+        {--chunk= : Override chunk size for API updates}';
     protected $description = 'Automatically update Amazon campaign bgt price';
 
     protected $profileId;
@@ -60,7 +62,12 @@ class AutoUpdateAmazonBgtPt extends Command
             }
 
             // Load bid caps from database
-            $bidCapsData = \App\Models\AmazonBidCap::all()->keyBy('sku');
+            $bidCapsData = collect();
+            \App\Models\AmazonBidCap::query()->orderBy('id')->chunkById(50, function ($rows) use (&$bidCapsData) {
+                foreach ($rows as $row) {
+                    $bidCapsData[$row->sku] = $row;
+                }
+            });
 
             // Track campaigns skipped due to bid cap
             $skippedDueToCap = [];

@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Console\Commands\Concerns\ProcessesUpdatesInChunks;
 use App\Models\TiktokSheet;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
@@ -10,12 +11,14 @@ use Illuminate\Support\Facades\Log;
 
 class TiktokSheetData extends Command
 {
+    use ProcessesUpdatesInChunks;
+
     /**
      * The name and signature of the console command.
      *
      * @var string
      */
-    protected $signature = 'sync:tiktok-sheet-data';
+    protected $signature = 'sync:tiktok-sheet-data {--chunk= : Override DB write chunk size (default from cron-monitor config)}';
 
     /**
      * The console command description.
@@ -49,23 +52,37 @@ class TiktokSheetData extends Command
             return;
         }
 
+        $chunkSize = $this->monitoredChunkSize();
+        $writeRows = [];
         foreach ($rows as $row) {
-
             $sku = trim($row['childSku'] ?? '');
             if (! $sku) {
                 continue;
             }
-
-            TiktokSheet::updateOrCreate(
-                ['sku' => $sku],
-                [
-                    'price' => $this->toDecimalOrNull($row['price'] ?? null),
-                    'l30' => $this->toIntOrNull($row['l30'] ?? null),
-                    'l60' => $this->toIntOrNull($row['l60'] ?? null),
-                    'views' => $this->toDecimalOrNull($row['views'] ?? null),
-                ]
-            );
+            $writeRows[] = [
+                'sku' => $sku,
+                'price' => $this->toDecimalOrNull($row['price'] ?? null),
+                'l30' => $this->toIntOrNull($row['l30'] ?? null),
+                'l60' => $this->toIntOrNull($row['l60'] ?? null),
+                'views' => $this->toDecimalOrNull($row['views'] ?? null),
+            ];
         }
+
+        $this->writeItemsInChunks($writeRows, function (array $chunk) {
+            foreach ($chunk as $payload) {
+                TiktokSheet::updateOrCreate(
+                    ['sku' => $payload['sku']],
+                    [
+                        'price' => $payload['price'],
+                        'l30' => $payload['l30'],
+                        'l60' => $payload['l60'],
+                        'views' => $payload['views'],
+                    ]
+                );
+            }
+
+            return ['updated' => count($chunk), 'failed' => 0];
+        }, $chunkSize);
 
         $this->info('✅ TikTok sheet synced successfully!');
 
@@ -317,38 +334,43 @@ class TiktokSheetData extends Command
         
         $updatedCount = 0;
         $notFoundSkus = [];
-        
+        $pendingSkuUpdates = [];
+        $chunkSize = $this->monitoredChunkSize();
+
         foreach ($allSkusToUpdate as $sku) {
             $updateData = [];
-            
-            // Update price if available
+
             if (isset($skuPrices[$sku])) {
                 $updateData['shopify_tiktok_price'] = $skuPrices[$sku]['price'];
             }
-            
-            // Update L60 count (always set, even if 0)
+
             $updateData['shopify_tiktokl60'] = $skuCountsL60[$sku] ?? 0;
-            
-            // Update L30 count (always set, even if 0)
             $updateData['shopify_tiktokl30'] = $skuCountsL30[$sku] ?? 0;
-            
-            // Normalize SKU for matching (already normalized in processing, but ensure consistency)
+
             $normalizedSku = strtoupper(preg_replace('/\s+/', ' ', trim($sku)));
-            
-            // Find matching DB SKU using normalized map
+
             if (isset($skuNormalizedMap[$normalizedSku])) {
-                // Use exact DB SKU for update
-                $dbSku = $skuNormalizedMap[$normalizedSku];
-                $affected = TiktokSheet::where('sku', $dbSku)->update($updateData);
-                
-                if ($affected > 0) {
-                    $updatedCount++;
-                }
+                $pendingSkuUpdates[] = [
+                    'db_sku' => $skuNormalizedMap[$normalizedSku],
+                    'data' => $updateData,
+                ];
             } else {
-                // SKU not found in database - log for debugging
                 $notFoundSkus[] = $sku;
             }
         }
+
+        $this->writeItemsInChunks($pendingSkuUpdates, function (array $chunk) use (&$updatedCount) {
+            $n = 0;
+            foreach ($chunk as $entry) {
+                $affected = TiktokSheet::where('sku', $entry['db_sku'])->update($entry['data']);
+                if ($affected > 0) {
+                    $updatedCount++;
+                    $n++;
+                }
+            }
+
+            return ['updated' => $n, 'failed' => 0];
+        }, $chunkSize);
         
         if (!empty($notFoundSkus)) {
             $this->warn('SKUs not found in database (may need to be added first): '.implode(', ', array_slice($notFoundSkus, 0, 10)));

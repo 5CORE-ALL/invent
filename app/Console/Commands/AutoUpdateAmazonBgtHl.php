@@ -20,7 +20,9 @@ class AutoUpdateAmazonBgtHl extends Command
 {
     use AppliesAmazonBudgetCronUpdates;
 
-    protected $signature = 'amazon:auto-update-amz-bgt-hl {--dry-run : Run without updating Amazon (test only)}';
+    protected $signature = 'amazon:auto-update-amz-bgt-hl
+        {--dry-run : Run without updating Amazon (test only)}
+        {--chunk= : Override chunk size for API updates}';
 
     protected $description = 'Automatically update Amazon Sponsored Brands (HL) campaign daily budgets from ACOS-based SBGT';
 
@@ -57,7 +59,12 @@ class AutoUpdateAmazonBgtHl extends Command
                 return 0;
             }
 
-            $bidCapsData = \App\Models\AmazonBidCap::all()->keyBy('sku');
+            $bidCapsData = collect();
+            \App\Models\AmazonBidCap::query()->orderBy('id')->chunkById(50, function ($rows) use (&$bidCapsData) {
+                foreach ($rows as $row) {
+                    $bidCapsData[$row->sku] = $row;
+                }
+            });
             $skippedDueToCap = [];
             $skippedCampaigns = [];
 

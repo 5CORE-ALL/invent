@@ -2,9 +2,12 @@
 
 namespace App\Console\Commands;
 
+use App\Console\Commands\Concerns\MonitorsCronExecution;
+use App\Console\Commands\Concerns\ProcessesUpdatesInChunks;
 use App\Models\GoogleAdsCampaign;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
+use App\Services\CronMonitor\CronExecutionContext;
 use App\Services\GoogleAdsSbidService;
 use App\Support\GoogleShoppingCampaignsRawRule;
 use Illuminate\Console\Command;
@@ -12,9 +15,16 @@ use Illuminate\Support\Facades\DB;
 
 class UpdateSerpSBIDCronCommand extends Command
 {
-    protected $signature = 'sbid:update-serp';
+    use MonitorsCronExecution;
+    use ProcessesUpdatesInChunks;
+
+    protected $signature = 'sbid:update-serp
+                            {--dry-run : Run without applying changes (test only)}
+                            {--chunk= : Override chunk size for API updates (default from cron-monitor config)}';
 
     protected $description = 'Update SBID for SERP (SEARCH) campaigns using L1/L7; 7UB+1UB from persisted Google Shopping raw SBID rule';
+
+    protected string $monitorJobName = 'Google SBID Sync (SERP)';
 
     protected $sbidService;
 
@@ -24,7 +34,15 @@ class UpdateSerpSBIDCronCommand extends Command
         $this->sbidService = $sbidService;
     }
 
-    public function handle()
+    public function handle(): int
+    {
+        return $this->runMonitored(
+            fn (CronExecutionContext $m) => $this->executeSbidUpdate($m),
+            $this->monitorJobName
+        );
+    }
+
+    protected function executeSbidUpdate(CronExecutionContext $monitor): int
     {
         try {
             // Check database connection (without creating persistent connection)
@@ -35,8 +53,14 @@ class UpdateSerpSBIDCronCommand extends Command
                 DB::connection()->disconnect();
             } catch (\Exception $e) {
                 $this->error('✗ Database connection failed: '.$e->getMessage());
+                $monitor->classifyAndRecord($e);
 
-                return 1;
+                return self::FAILURE;
+            }
+
+            $dryRun = $this->option('dry-run');
+            if ($dryRun) {
+                $this->warn('DRY RUN — no actual updates will be made.');
             }
 
             $this->info('Starting SBID update cron for SERP (SEARCH) campaigns (L1/L7 with SKU matching)...');
@@ -77,8 +101,9 @@ class UpdateSerpSBIDCronCommand extends Command
             if ($productMasters->isEmpty()) {
                 $this->warn('No product masters found!');
                 DB::connection()->disconnect();
+                $monitor->setExpected(0);
 
-                return 0;
+                return self::SUCCESS;
             }
 
             // Get all SKUs to fetch Shopify inventory data
@@ -87,8 +112,9 @@ class UpdateSerpSBIDCronCommand extends Command
             if (empty($skus)) {
                 $this->warn('No valid SKUs found!');
                 DB::connection()->disconnect();
+                $monitor->setExpected(0);
 
-                return 0;
+                return self::SUCCESS;
             }
 
             $shopifyData = [];
@@ -123,7 +149,8 @@ class UpdateSerpSBIDCronCommand extends Command
             $ubHigh = (float) $rawRule['sbid']['util_high'];
             $ubLow = (float) $rawRule['sbid']['util_low'];
 
-            $campaignUpdates = [];
+            $toPush = [];
+            $pushDetails = [];
 
             foreach ($productMasters as $pm) {
                 $sku = strtoupper(trim($pm->sku));
@@ -221,26 +248,84 @@ class UpdateSerpSBIDCronCommand extends Command
                     continue;
                 }
 
-                if ($sbid > 0 && ! isset($campaignUpdates[$campaignId])) {
-                    try {
-                        $this->sbidService->updateCampaignSbids($customerId, $campaignId, $sbid);
-                        $campaignUpdates[$campaignId] = true;
-                        $this->info("Updated SERP campaign {$campaignId} (SKU: {$pm->sku}): SBID=\${$sbid}, UB7={$ub7}%, UB1={$ub1}% (rule UB>{$ubHigh}% / UB<{$ubLow}%)");
-                    } catch (\Exception $e) {
-                        $this->error("Failed to update SERP campaign {$campaignId}: ".$e->getMessage());
+                if ($sbid > 0 && ! isset($toPush[$campaignId])) {
+                    if ($dryRun) {
+                        $this->info("[DRY RUN] Would update SERP campaign {$campaignId} (SKU: {$pm->sku}): SBID=\${$sbid}, UB7={$ub7}%, UB1={$ub1}% (rule UB>{$ubHigh}% / UB<{$ubLow}%)");
                     }
+                    $toPush[$campaignId] = $sbid;
+                    $pushDetails[$campaignId] = [
+                        'sku' => $pm->sku,
+                        'ub7' => $ub7,
+                        'ub1' => $ub1,
+                    ];
                 }
             }
 
-            $processedCount = count($campaignUpdates);
+            $processedCount = count($toPush);
+
+            if ($processedCount === 0) {
+                $this->info('Done. No SERP campaigns to update.');
+                $monitor->setExpected(0);
+
+                return self::SUCCESS;
+            }
+
+            if ($dryRun) {
+                $this->info("Done. Would have processed: {$processedCount} unique SERP campaigns (dry run).");
+                $monitor->mergeMeta(['dry_run' => true]);
+                $monitor->markApiConnected();
+                $monitor->setExpected($processedCount);
+                $monitor->setFetched($processedCount);
+                $monitor->setSkipped($processedCount);
+
+                return self::SUCCESS;
+            }
+
+            $monitor->markApiConnected();
+            $stats = $this->updateIdMapInChunks(
+                $monitor,
+                $toPush,
+                function (array $chunkIds, array $chunkValues, int $chunkIndex) use ($customerId, $ubHigh, $ubLow, $pushDetails) {
+                    $updated = 0;
+                    $failed = 0;
+                    $failures = [];
+                    foreach ($chunkIds as $i => $id) {
+                        $d = $pushDetails[$id] ?? [];
+                        $sbid = $chunkValues[$i];
+                        try {
+                            $this->sbidService->updateCampaignSbids($customerId, $id, $sbid);
+                            $updated++;
+                            $this->info('Updated SERP campaign '.$id.' (SKU: '.($d['sku'] ?? '').'): SBID=$'.$sbid.', UB7='.($d['ub7'] ?? 0).'%, UB1='.($d['ub1'] ?? 0).'% (rule UB>'.$ubHigh.'% / UB<'.$ubLow.'%)');
+                        } catch (\Exception $e) {
+                            $failed++;
+                            $failures[] = [
+                                'sku' => (string) $id,
+                                'marketplace' => 'google',
+                                'reason' => $e->getMessage(),
+                                'http_status' => 500,
+                            ];
+                            $this->error("Failed to update SERP campaign {$id}: ".$e->getMessage());
+                        }
+                    }
+
+                    return [
+                        'updated' => $updated,
+                        'failed' => $failed,
+                        'processed' => count($chunkIds),
+                        'failures' => $failures,
+                    ];
+                }
+            );
+
             $this->info("Done. Processed: {$processedCount} unique SERP campaigns.");
 
-            return 0;
+            return $stats['failed'] > 0 ? self::FAILURE : self::SUCCESS;
         } catch (\Exception $e) {
             $this->error('✗ Error occurred: '.$e->getMessage());
             $this->error('Stack trace: '.$e->getTraceAsString());
+            $monitor->classifyAndRecord($e);
 
-            return 1;
+            return self::FAILURE;
         } finally {
             DB::connection()->disconnect();
         }
