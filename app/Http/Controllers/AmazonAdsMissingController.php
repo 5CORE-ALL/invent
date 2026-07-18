@@ -266,6 +266,8 @@ class AmazonAdsMissingController extends Controller
         $campaignName = $this->ensureUniqueCampaignName($campaignName);
         $budget = (float) ($validated['budget_amount'] ?? 10);
         $defaultBid = (float) ($validated['default_bid'] ?? 0.50);
+        // Amazon rule: positive keywords require MANUAL; AUTO is for PT-style product ads.
+        $targetingType = $type === 'KW' ? 'MANUAL' : 'AUTO';
 
         $created = null;
         $lastError = '';
@@ -278,7 +280,8 @@ class AmazonAdsMissingController extends Controller
                 $tryName,
                 $sellerSkus,
                 $budget,
-                $defaultBid
+                $defaultBid,
+                $targetingType
             );
 
             if (! empty($created['success'])) {
@@ -325,6 +328,7 @@ class AmazonAdsMissingController extends Controller
         self::forgetMissingTotalCache();
 
         $adsCreated = (int) ($created['product_ads_created'] ?? 0);
+        $adGroupId = (string) ($created['ad_group_id'] ?? '');
         $extra = '';
         if (! empty($created['errors']) && is_array($created['errors'])) {
             $extra = ' Warnings: '.implode(' | ', array_slice($created['errors'], 0, 2));
@@ -332,13 +336,15 @@ class AmazonAdsMissingController extends Controller
 
         return response()->json([
             'ok' => true,
-            'message' => 'AUTO SP campaign created (PAUSED): '.$campaignName
+            'message' => $targetingType.' SP campaign created (PAUSED): '.$campaignName
                 .' with '.$adsCreated.' product ad(s).'.$extra,
             'parent' => $parent,
             'sku' => $sku,
             'type' => $type,
+            'targeting_type' => $targetingType,
             'campaign_name' => $campaignName,
             'campaign_id' => $campaignId,
+            'ad_group_id' => $adGroupId,
             'children' => $resolvedChildren,
             'campaign' => $created,
             'pt' => $this->linksResponseForSku($sku)['pt'],
@@ -550,14 +556,27 @@ PROMPT;
         $keywords = collect($validated['keywords'] ?? [])
             ->map(fn ($t) => trim((string) $t))
             ->filter()
+            ->unique(fn ($t) => strtolower($t))
             ->values()
             ->all();
 
         if (! empty($validated['include_existing'])) {
-            $keywords = array_values(array_unique(array_merge(
+            $existing = $this->existingAmazonNegativesForParent($parent);
+            $existingLookup = [];
+            foreach ($existing as $ex) {
+                $existingLookup[strtolower(trim((string) $ex))] = true;
+            }
+            // Drop request keywords that already appear in Amazon KW(-) — they are merged once below.
+            $keywords = array_values(array_filter(
                 $keywords,
-                $this->existingAmazonNegativesForParent($parent)
-            )));
+                static fn ($t) => ! isset($existingLookup[strtolower($t)])
+            ));
+            $keywords = collect(array_merge($keywords, $existing))
+                ->map(fn ($t) => trim((string) $t))
+                ->filter()
+                ->unique(fn ($t) => strtolower($t))
+                ->values()
+                ->all();
         }
 
         if ($keywords === []) {
@@ -611,6 +630,318 @@ PROMPT;
             'campaign_id' => $campaignId,
             'campaign_name' => $campaignName,
             'match_type' => $amazonMatch,
+            'added' => (int) ($result['added'] ?? 0),
+            'failed' => (int) ($result['failed'] ?? 0),
+            'duplicates' => (int) ($result['duplicates'] ?? 0),
+        ], ! empty($result['success']) ? 200 : 422);
+    }
+
+    /**
+     * AI-suggested positive keywords for an Amazon MANUAL/KW campaign.
+     */
+    public function aiPositiveKeywords(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'parent' => ['required', 'string', 'max:255'],
+            'target_sku' => ['nullable', 'string', 'max:255'],
+            'campaign_name' => ['nullable', 'string', 'max:255'],
+            'ideas' => ['nullable', 'string', 'max:2000'],
+            'mode' => ['nullable', 'string', 'in:generate,add_more'],
+            'already_suggested' => ['nullable', 'array'],
+            'already_suggested.*' => ['string', 'max:255'],
+        ]);
+
+        $parent = preg_replace('/\s+/', ' ', trim($validated['parent']));
+        $targetSku = trim((string) ($validated['target_sku'] ?? ''));
+        $campaignName = trim((string) ($validated['campaign_name'] ?? ('PARENT '.$parent)));
+        $ideas = trim((string) ($validated['ideas'] ?? ''));
+        $mode = ($validated['mode'] ?? 'generate') === 'add_more' ? 'add_more' : 'generate';
+        $alreadySuggested = collect($validated['already_suggested'] ?? [])
+            ->map(fn ($t) => trim((string) $t))
+            ->filter()
+            ->unique(fn ($t) => strtolower($t))
+            ->values()
+            ->all();
+
+        if ($mode === 'add_more' && $ideas === '') {
+            return response()->json([
+                'ok' => false,
+                'message' => 'Enter ideas to add more positive keywords.',
+            ], 422);
+        }
+
+        $productTitle = $this->resolveProductTitleForAi($parent, $targetSku);
+        $existing = $this->existingAmazonPositivesForParent($parent);
+
+        $apiKey = (string) (config('services.anthropic.key') ?: config('services.claude.key') ?: '');
+        if ($apiKey === '') {
+            return response()->json([
+                'ok' => false,
+                'message' => 'CLAUDE_API_KEY / ANTHROPIC_API_KEY is not configured.',
+            ], 503);
+        }
+
+        $existingList = $existing === [] ? '(none)' : implode(', ', array_slice($existing, 0, 80));
+        $alreadyList = $alreadySuggested === [] ? '(none)' : implode(', ', array_slice($alreadySuggested, 0, 120));
+        $ideasBlock = $ideas !== ''
+            ? "Media buyer ideas / themes to expand into positive keywords:\n{$ideas}"
+            : 'Media buyer ideas: (none provided)';
+
+        if ($mode === 'add_more') {
+            $task = <<<TASK
+Task: Expand the media buyer ideas into ADDITIONAL positive (bid-on) keywords for this Amazon Sponsored Products MANUAL campaign.
+Return 15–30 NEW high-intent search keywords inspired by those ideas.
+Do NOT repeat Existing Amazon KW positives or Already suggested keywords.
+TASK;
+        } else {
+            $task = <<<TASK
+Task: Suggest positive keywords shoppers would use to find this product on Amazon (core product terms, use-cases, relevant accessories that still convert for this SKU).
+If media buyer ideas are provided, prioritize and expand those themes, then fill with other strong positives.
+Return 25–40 short, high-intent keyword phrases (1–4 words). Avoid irrelevant/competitor-only terms.
+TASK;
+        }
+
+        $prompt = <<<PROMPT
+You are an Amazon Advertising Sponsored Products keyword strategist for an e-commerce brand (5 Core / musical gear & accessories).
+
+Product parent: {$parent}
+Target SKU: {$targetSku}
+Campaign name: {$campaignName}
+Product title/context: {$productTitle}
+Existing Amazon KW positive keywords already linked for this parent: {$existingList}
+Already suggested positives (do not repeat): {$alreadyList}
+{$ideasBlock}
+
+{$task}
+
+Amazon rules to respect in suggestions:
+- Prefer 1–4 word phrases suitable for BROAD / PHRASE / EXACT match types.
+- Do NOT repeat items already listed above (case-insensitive).
+- Do NOT include obvious negative/irrelevant terms (free, diy, cheap knockoffs, wrong product types).
+- Output ONLY valid JSON (no markdown fences): {"positives":["keyword one","keyword two"]}
+PROMPT;
+
+        try {
+            $model = (string) config('services.anthropic.model', 'claude-haiku-4-5-20251001');
+            $version = (string) config('services.anthropic.version', '2023-06-01');
+            $response = Http::timeout(90)
+                ->withHeaders([
+                    'x-api-key' => $apiKey,
+                    'anthropic-version' => $version,
+                    'content-type' => 'application/json',
+                ])
+                ->post('https://api.anthropic.com/v1/messages', [
+                    'model' => $model,
+                    'max_tokens' => 2000,
+                    'temperature' => 0.4,
+                    'messages' => [
+                        [
+                            'role' => 'user',
+                            'content' => $prompt,
+                        ],
+                    ],
+                ]);
+
+            if (! $response->successful()) {
+                $errorType = (string) data_get($response->json(), 'error.type', '');
+                $errorMessage = (string) data_get($response->json(), 'error.message', '');
+                Log::warning('Amazon AI positives Claude failed', [
+                    'status' => $response->status(),
+                    'body' => Str::limit($response->body(), 500),
+                    'model' => $model,
+                ]);
+
+                $message = $errorType === 'not_found_error'
+                    ? "Claude model '{$model}' is not available. Update ANTHROPIC_MODEL in .env."
+                    : ($errorMessage !== '' ? $errorMessage : 'Claude request failed (HTTP '.$response->status().').');
+
+                return response()->json([
+                    'ok' => false,
+                    'message' => $message,
+                ], 502);
+            }
+
+            $content = (string) data_get($response->json(), 'content.0.text', '');
+            $content = trim($content);
+            if (preg_match('/\{.*\}/s', $content, $m)) {
+                $content = $m[0];
+            }
+            $parsed = json_decode($content, true);
+            $suggested = [];
+            $rawList = [];
+            if (is_array($parsed)) {
+                if (isset($parsed['positives']) && is_array($parsed['positives'])) {
+                    $rawList = $parsed['positives'];
+                } elseif (isset($parsed['keywords']) && is_array($parsed['keywords'])) {
+                    $rawList = $parsed['keywords'];
+                } elseif (isset($parsed['negatives']) && is_array($parsed['negatives'])) {
+                    // tolerate model mix-up
+                    $rawList = $parsed['negatives'];
+                }
+            }
+            $skipLookup = [];
+            foreach (array_merge($existing, $alreadySuggested) as $ex) {
+                $skipLookup[strtolower(trim((string) $ex))] = true;
+            }
+            foreach ($rawList as $kw) {
+                $kw = trim((string) $kw);
+                if ($kw === '') {
+                    continue;
+                }
+                $key = strtolower($kw);
+                if (isset($skipLookup[$key])) {
+                    continue;
+                }
+                $skipLookup[$key] = true;
+                $suggested[] = $kw;
+            }
+
+            return response()->json([
+                'ok' => true,
+                'parent' => $parent,
+                'target_sku' => $targetSku,
+                'product_title' => $productTitle,
+                'existing' => $existing,
+                'existing_count' => count($existing),
+                'suggested' => $suggested,
+                'suggested_count' => count($suggested),
+                'mode' => $mode,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Amazon AI positives generation error', ['error' => $e->getMessage()]);
+
+            return response()->json([
+                'ok' => false,
+                'message' => 'AI generation failed: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Push positive keywords to the parent's Amazon MANUAL/KW campaign ad group.
+     * Match types: BROAD / PHRASE / EXACT.
+     */
+    public function pushPositiveKeywords(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'parent' => ['required', 'string', 'max:255'],
+            'campaign_name' => ['nullable', 'string', 'max:255'],
+            'campaign_id' => ['nullable', 'string', 'max:64'],
+            'ad_group_id' => ['nullable', 'string', 'max:64'],
+            'keywords' => ['nullable', 'array'],
+            'keywords.*' => ['string', 'max:255'],
+            'include_existing' => ['nullable', 'boolean'],
+            'match_type' => ['nullable', 'string', 'in:BROAD,PHRASE,EXACT'],
+            'bid' => ['nullable', 'numeric', 'min:0.02'],
+        ]);
+
+        $parent = preg_replace('/\s+/', ' ', trim($validated['parent']));
+        $sku = 'PARENT '.$parent;
+        $campaignName = trim((string) ($validated['campaign_name'] ?? ''));
+        if ($campaignName === '') {
+            $campaignName = $sku;
+        }
+
+        $matchType = strtoupper(trim((string) ($validated['match_type'] ?? 'PHRASE')));
+        if (! in_array($matchType, ['BROAD', 'PHRASE', 'EXACT'], true)) {
+            $matchType = 'PHRASE';
+        }
+        $bid = (float) ($validated['bid'] ?? 0.50);
+
+        $keywords = collect($validated['keywords'] ?? [])
+            ->map(fn ($t) => trim((string) $t))
+            ->filter()
+            ->unique(fn ($t) => strtolower($t))
+            ->values()
+            ->all();
+
+        if (! empty($validated['include_existing'])) {
+            $existing = $this->existingAmazonPositivesForParent($parent);
+            $existingLookup = [];
+            foreach ($existing as $ex) {
+                $existingLookup[strtolower(trim((string) $ex))] = true;
+            }
+            $keywords = array_values(array_filter(
+                $keywords,
+                static fn ($t) => ! isset($existingLookup[strtolower($t)])
+            ));
+            $keywords = collect(array_merge($keywords, $existing))
+                ->map(fn ($t) => trim((string) $t))
+                ->filter()
+                ->unique(fn ($t) => strtolower($t))
+                ->values()
+                ->all();
+        }
+
+        if ($keywords === []) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'No positive keywords to push. Generate AI suggestions first (or include existing KW positives).',
+            ], 422);
+        }
+
+        $campaignId = preg_replace('/\D+/', '', trim((string) ($validated['campaign_id'] ?? ''))) ?: '';
+        if ($campaignId === '') {
+            $resolved = $this->resolveCampaignIdForParent($sku, $campaignName, 'KW');
+            if (($resolved['campaign_id'] ?? '') === '') {
+                $resolved = $this->resolveCampaignIdForParent($sku, $campaignName, null);
+            }
+            $campaignId = $resolved['campaign_id'] ?? '';
+            if (($resolved['campaign_name'] ?? '') !== '') {
+                $campaignName = $resolved['campaign_name'];
+            }
+        }
+
+        if ($campaignId === '') {
+            return response()->json([
+                'ok' => false,
+                'message' => 'No Amazon SP campaign found for this parent. Create a KW (MANUAL) campaign first, then push positive keywords.',
+            ], 422);
+        }
+
+        $adGroupId = preg_replace('/\D+/', '', trim((string) ($validated['ad_group_id'] ?? ''))) ?: '';
+        $service = app(AmazonAdsService::class);
+        if ($adGroupId === '') {
+            $adGroupId = $service->resolvePrimaryAdGroupId($campaignId);
+        }
+        if ($adGroupId === '') {
+            return response()->json([
+                'ok' => false,
+                'message' => 'Could not resolve an ad group for this campaign. Create the campaign again, then push positives.',
+            ], 422);
+        }
+
+        try {
+            $result = $service->pushAdGroupPositiveKeywords(
+                $campaignId,
+                $adGroupId,
+                $keywords,
+                $matchType,
+                $bid
+            );
+        } catch (\Throwable $e) {
+            Log::error('Amazon Ads push positives failed', [
+                'parent' => $parent,
+                'campaign_id' => $campaignId,
+                'ad_group_id' => $adGroupId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'ok' => false,
+                'message' => 'Amazon Ads push failed: '.$e->getMessage(),
+            ], 500);
+        }
+
+        return response()->json([
+            'ok' => (bool) ($result['success'] ?? false),
+            'message' => (string) ($result['message'] ?? 'Done.'),
+            'parent' => $parent,
+            'sku' => $sku,
+            'campaign_id' => $campaignId,
+            'ad_group_id' => $adGroupId,
+            'campaign_name' => $campaignName,
+            'match_type' => $matchType,
             'added' => (int) ($result['added'] ?? 0),
             'failed' => (int) ($result['failed'] ?? 0),
             'duplicates' => (int) ($result['duplicates'] ?? 0),
@@ -1087,6 +1418,51 @@ PROMPT;
             ->orderBy('keywordText')
             ->limit(200)
             ->pluck('keywordText')
+            ->map(fn ($t) => trim((string) $t))
+            ->filter()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Existing positive keywords from linked KW campaigns (amazon_sp_keyword_reports).
+     *
+     * @return list<string>
+     */
+    private function existingAmazonPositivesForParent(string $parent): array
+    {
+        $linkSku = 'PARENT '.$parent;
+        if (! Schema::hasTable('amazon_ads_missing_links') || ! Schema::hasTable('amazon_sp_keyword_reports')) {
+            return [];
+        }
+
+        $campaignNames = AmazonAdsMissingLink::query()
+            ->where('sku', $linkSku)
+            ->where('type', 'KW')
+            ->pluck('campaign_name')
+            ->map(fn ($n) => trim((string) $n))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($campaignNames === []) {
+            return [];
+        }
+
+        $q = DB::table('amazon_sp_keyword_reports')
+            ->whereIn('campaignName', $campaignNames)
+            ->whereNotNull('keyword')
+            ->where('keyword', '!=', '');
+
+        if (Schema::hasColumn('amazon_sp_keyword_reports', 'matchType')) {
+            $q->whereIn(DB::raw('UPPER(matchType)'), ['BROAD', 'PHRASE', 'EXACT']);
+        }
+
+        return $q->distinct()
+            ->orderBy('keyword')
+            ->limit(200)
+            ->pluck('keyword')
             ->map(fn ($t) => trim((string) $t))
             ->filter()
             ->values()

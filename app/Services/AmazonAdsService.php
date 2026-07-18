@@ -394,19 +394,53 @@ class AmazonAdsService
     }
 
     /**
-     * Create one PAUSED AUTO Sponsored Products campaign + ad group + seller product ads.
-     * Amazon equivalent of a parent-level Shopping campaign targeting specific child listings.
+     * Create Sponsored Products positive keywords (v3) on an ad group.
+     * Match types: BROAD, PHRASE, EXACT (MANUAL campaigns only).
+     *
+     * @param  list<array{campaignId: string, adGroupId: string, keywordText: string, matchType: string, state?: string, bid?: float}>  $keywords
+     * @return array<string, mixed>
+     */
+    public function createKeywords(array $keywords): array
+    {
+        $items = [];
+        foreach ($keywords as $kw) {
+            $item = [
+                'campaignId' => (string) ($kw['campaignId'] ?? ''),
+                'adGroupId' => (string) ($kw['adGroupId'] ?? ''),
+                'keywordText' => (string) ($kw['keywordText'] ?? ''),
+                'matchType' => (string) ($kw['matchType'] ?? 'PHRASE'),
+                'state' => (string) ($kw['state'] ?? 'ENABLED'),
+            ];
+            if (isset($kw['bid']) && is_numeric($kw['bid'])) {
+                $item['bid'] = round((float) $kw['bid'], 2);
+            }
+            $items[] = $item;
+        }
+
+        return $this->post('/sp/keywords', [
+            'keywords' => $items,
+        ], [
+            'Content-Type' => 'application/vnd.spKeyword.v3+json',
+            'Accept' => 'application/vnd.spKeyword.v3+json',
+        ]);
+    }
+
+    /**
+     * Create one PAUSED Sponsored Products campaign + ad group + seller product ads.
+     * AUTO = PT-style; MANUAL = KW-style (required for positive keywords).
      *
      * @param  list<string>  $sellerSkus  Seller SKUs (not ASINs) for product ads
-     * @return array{success: bool, message?: string, campaign_id?: string, ad_group_id?: string, campaign_name?: string, product_ads_created?: int, errors?: list<string>}
+     * @return array{success: bool, message?: string, campaign_id?: string, ad_group_id?: string, campaign_name?: string, targeting_type?: string, product_ads_created?: int, errors?: list<string>}
      */
     public function createPausedAutoCampaignWithProductAds(
         string $campaignName,
         array $sellerSkus,
         float $dailyBudget = 10.0,
-        float $defaultBid = 0.50
+        float $defaultBid = 0.50,
+        string $targetingType = 'AUTO'
     ): array {
         $campaignName = trim($campaignName);
+        $targetingType = strtoupper(trim($targetingType)) === 'MANUAL' ? 'MANUAL' : 'AUTO';
         $sellerSkus = array_values(array_unique(array_filter(array_map(
             static fn ($s) => trim((string) $s),
             $sellerSkus
@@ -431,7 +465,7 @@ class AmazonAdsService
             $campaignResp = $this->createCampaigns([
                 [
                     'name' => $campaignName,
-                    'targetingType' => 'AUTO',
+                    'targetingType' => $targetingType,
                     'state' => 'PAUSED',
                     'budget' => [
                         'budget' => round($dailyBudget, 2),
@@ -544,8 +578,161 @@ class AmazonAdsService
             'campaign_id' => $campaignId,
             'ad_group_id' => $adGroupId,
             'campaign_name' => $campaignName,
+            'targeting_type' => $targetingType,
             'product_ads_created' => $createdAds,
             'errors' => $errors,
+        ];
+    }
+
+    /**
+     * First non-archived ad group id for a campaign (for positive keyword push).
+     */
+    public function resolvePrimaryAdGroupId(string $campaignId): string
+    {
+        $campaignId = trim($campaignId);
+        if ($campaignId === '') {
+            return '';
+        }
+
+        try {
+            $resp = $this->getAdGroups($campaignId);
+        } catch (\Throwable $e) {
+            return '';
+        }
+
+        $list = $resp['adGroups'] ?? $resp['adGroupList'] ?? [];
+        if (! is_array($list)) {
+            return '';
+        }
+
+        foreach ($list as $ag) {
+            if (! is_array($ag)) {
+                continue;
+            }
+            $state = strtoupper(trim((string) ($ag['state'] ?? '')));
+            if ($state === 'ARCHIVED') {
+                continue;
+            }
+            $id = trim((string) ($ag['adGroupId'] ?? ''));
+            if ($id !== '') {
+                return $id;
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * Push ad-group positive keywords in batches of 100 (MANUAL SP campaigns).
+     *
+     * @param  list<string>  $keywords
+     * @return array{success: bool, added: int, failed: int, duplicates: int, message: string, errors: list<string>, ad_group_id: string}
+     */
+    public function pushAdGroupPositiveKeywords(
+        string $campaignId,
+        string $adGroupId,
+        array $keywords,
+        string $matchType = 'PHRASE',
+        float $bid = 0.50
+    ): array {
+        $campaignId = trim($campaignId);
+        $adGroupId = trim($adGroupId);
+        $matchType = strtoupper(trim($matchType));
+        if (! in_array($matchType, ['BROAD', 'PHRASE', 'EXACT'], true)) {
+            $matchType = 'PHRASE';
+        }
+        if ($bid < 0.02) {
+            $bid = 0.02;
+        }
+
+        $texts = collect($keywords)
+            ->map(fn ($t) => trim((string) $t))
+            ->filter()
+            ->unique(fn ($t) => strtolower($t))
+            ->values()
+            ->all();
+
+        if ($campaignId === '' || $adGroupId === '' || $texts === []) {
+            return [
+                'success' => false,
+                'added' => 0,
+                'failed' => 0,
+                'duplicates' => 0,
+                'message' => 'Campaign ID, ad group ID, and at least one keyword are required.',
+                'errors' => [],
+                'ad_group_id' => $adGroupId,
+            ];
+        }
+
+        $added = 0;
+        $failed = 0;
+        $duplicates = 0;
+        $errors = [];
+
+        foreach (array_chunk($texts, 100) as $chunk) {
+            $payload = [];
+            foreach ($chunk as $text) {
+                $payload[] = [
+                    'campaignId' => $campaignId,
+                    'adGroupId' => $adGroupId,
+                    'keywordText' => $text,
+                    'matchType' => $matchType,
+                    'state' => 'ENABLED',
+                    'bid' => round($bid, 2),
+                ];
+            }
+
+            try {
+                $resp = $this->createKeywords($payload);
+            } catch (\Throwable $e) {
+                $failed += count($chunk);
+                $errors[] = $this->formatAmazonException($e);
+
+                continue;
+            }
+
+            $successList = data_get($resp, 'keywords.success', []);
+            if (is_array($successList)) {
+                $added += count($successList);
+            }
+
+            $errorList = data_get($resp, 'keywords.error', []);
+            if (is_array($errorList)) {
+                foreach ($errorList as $e) {
+                    $msg = $this->extractAmazonErrorMessage($e);
+                    if (stripos($msg, 'duplicate') !== false) {
+                        $duplicates++;
+                    } else {
+                        $failed++;
+                        if ($msg !== '') {
+                            $errors[] = $msg;
+                        }
+                    }
+                }
+            }
+        }
+
+        $errors = array_values(array_unique(array_filter($errors)));
+        $ok = $added > 0 || ($failed === 0 && $duplicates > 0);
+        $msg = "Added {$added} positive keyword(s).";
+        if ($duplicates > 0) {
+            $msg .= " ({$duplicates} already existed.)";
+        }
+        if ($failed > 0) {
+            $msg .= " ({$failed} rejected.)";
+            if ($errors !== []) {
+                $msg .= ' '.implode(' | ', array_slice($errors, 0, 3));
+            }
+        }
+
+        return [
+            'success' => $ok,
+            'added' => $added,
+            'failed' => $failed,
+            'duplicates' => $duplicates,
+            'message' => $msg,
+            'errors' => $errors,
+            'ad_group_id' => $adGroupId,
         ];
     }
 
@@ -711,6 +898,7 @@ class AmazonAdsService
                     ?? data_get($decoded, 'adGroups.error')
                     ?? data_get($decoded, 'productAds.error')
                     ?? data_get($decoded, 'campaignNegativeKeywords.error')
+                    ?? data_get($decoded, 'keywords.error')
                     ?? []
                 );
                 if ($fromMulti !== '') {

@@ -284,8 +284,8 @@ class MapIssuesController extends Controller
             }
 
             // Missing Listing: not listed on the marketplace, INV > 0 (NRL rows are kept, just labelled).
-            $ebayNotListed = ! ($ebayItemId && $ebayItemId !== null && $ebayItemId !== '');
-            $ebayMissingListing = $ebayNotListed && $inv > 0;
+            $ebayListed = (bool) ($ebayItemId && $ebayItemId !== null && $ebayItemId !== '');
+            $ebayMissingListing = ! $ebayListed && $inv > 0;
             if ($ebayMissingListing && $ebayNrReq === 'REQ') {
                 $missingListingCount++;
             }
@@ -316,8 +316,8 @@ class MapIssuesController extends Controller
                 }
                 $ebay2Within3 = ! $ebay2IsNotMap;
             }
-            $ebay2NotListed = ! ($ebay2ItemId && $ebay2ItemId !== null && $ebay2ItemId !== '');
-            $ebay2MissingListing = $ebay2NotListed && $inv > 0;
+            $ebay2Listed = (bool) ($ebay2ItemId && $ebay2ItemId !== null && $ebay2ItemId !== '');
+            $ebay2MissingListing = ! $ebay2Listed && $inv > 0;
             if ($ebay2MissingListing && $ebay2NrReq === 'REQ') {
                 $ebay2MissingListingCount++;
             }
@@ -349,8 +349,8 @@ class MapIssuesController extends Controller
                 }
                 $ebay3Within3 = ! $ebay3IsNotMap;
             }
-            $ebay3NotListed = ! ($ebay3ItemId && $ebay3ItemId !== null && $ebay3ItemId !== '');
-            $ebay3MissingListing = $ebay3NotListed && $inv > 0;
+            $ebay3Listed = (bool) ($ebay3ItemId && $ebay3ItemId !== null && $ebay3ItemId !== '');
+            $ebay3MissingListing = ! $ebay3Listed && $inv > 0;
             if ($ebay3MissingListing && $ebay3NrReq === 'REQ') {
                 $ebay3MissingListingCount++;
             }
@@ -380,8 +380,8 @@ class MapIssuesController extends Controller
                 }
                 $amazonWithin3 = ! $amazonIsNotMap;
             }
-            $amazonNotListed = ! ($amazonAsin && $amazonAsin !== null && $amazonAsin !== '');
-            $amazonMissingListing = $amazonNotListed && $inv > 0;
+            $amazonListed = (bool) ($amazonAsin && $amazonAsin !== null && $amazonAsin !== '');
+            $amazonMissingListing = ! $amazonListed && $inv > 0;
             if ($amazonMissingListing && $amazonNrReq === 'REQ') {
                 $amazonMissingListingCount++;
             }
@@ -499,9 +499,9 @@ class MapIssuesController extends Controller
             $tiendamiaNrReq = $this->isReqStatus($nrStatusTiendamia, $pm->sku) ? 'REQ' : 'NR';
             $tiendamiaIsNotMap = false;
             $tiendamiaWithin3 = false;
-            // Map / N Map — same gate as tiendamia-pricing: listed (sheet or product price), REQ, INV > 0;
+            // Map / N Map — listed, REQ, INV > 0, marketplace stock > 0 (0 stock / NL not counted as NM).
             // Map when |INV − Tiendamia Stock| ≤ 3, else N Map.
-            if ($tiendamiaListed && $tiendamiaNrReq === 'REQ' && $inv > 0) {
+            if ($tiendamiaListed && $tiendamiaNrReq === 'REQ' && $inv > 0 && $tiendamiaStock > 0) {
                 $tiendamiaDiffUnits = abs($inv - $tiendamiaStock);
                 $tiendamiaIsNotMap = $tiendamiaDiffUnits > 3;
                 if ($tiendamiaIsNotMap) {
@@ -562,9 +562,9 @@ class MapIssuesController extends Controller
             $sheinNrReq = $this->resolveSheinNrReq($sheinListingByNorm, $sheinMetaByNorm, $sheinKey, $inv);
             $sheinIsNotMap = false;
             $sheinWithin3 = false;
-            // N Map — same gate/tolerance as the shein-pricing page: listed, REQ, INV > 0,
-            // Map when diff ≤ 3 units OR diff ≤ 3% of INV (no Shein-stock > 0 gate).
-            if ($sheinListed && $sheinNrReq === 'REQ' && $inv > 0) {
+            // N Map — listed, REQ, INV > 0, Shein stock > 0 (0 stock / NL not counted as NM).
+            // Map when diff ≤ 3 units OR diff ≤ 3% of INV.
+            if ($sheinListed && $sheinNrReq === 'REQ' && $inv > 0 && $sheinStock > 0) {
                 $sheinDiffUnits = abs($inv - $sheinStock);
                 $sheinWithin3 = ($sheinDiffUnits <= 3.0) || ($sheinDiffUnits <= $inv * 0.03);
                 $sheinIsNotMap = ! $sheinWithin3;
@@ -627,9 +627,9 @@ class MapIssuesController extends Controller
             $aliexpressNrReq = $this->resolveAliexpressNrReq($aliexpressNrByNorm, $aliexpressKey);
             $aliexpressIsNotMap = false;
             $aliexpressWithin3 = false;
-            // N Map — same gate/tolerance as the aliexpress-pricing page: listed, REQ, INV > 0,
-            // Map when diff ≤ 3 units OR diff ≤ 3% of INV (no AE-stock > 0 gate).
-            if ($aliexpressListed && $aliexpressNrReq === 'REQ' && $inv > 0) {
+            // N Map — listed, REQ, INV > 0, AE stock > 0 (0 stock / NL not counted as NM).
+            // Map when diff ≤ 3 units OR diff ≤ 3% of INV.
+            if ($aliexpressListed && $aliexpressNrReq === 'REQ' && $inv > 0 && $aliexpressStock > 0) {
                 $aliexpressDiffUnits = abs($inv - $aliexpressStock);
                 $aliexpressWithin3 = ($aliexpressDiffUnits <= 3.0) || ($aliexpressDiffUnits <= $inv * 0.03);
                 $aliexpressIsNotMap = ! $aliexpressWithin3;
@@ -650,6 +650,7 @@ class MapIssuesController extends Controller
 
                 'Ebay Inv'        => $ebay->ebay_stock ?? 0,
                 'ebay_sku'        => $ebaySku,
+                'ebay_listed'     => $ebayListed,
                 'ebay_mismatch'   => $ebayHasIssue,
                 'issue'           => $ebayReason,
                 'has_issue'       => $ebayHasIssue,
@@ -660,6 +661,7 @@ class MapIssuesController extends Controller
 
                 'Ebay2 Inv'             => $ebay2->ebay_stock ?? 0,
                 'ebay2_sku'             => $ebay2Sku,
+                'ebay2_listed'          => $ebay2Listed,
                 'ebay2_mismatch'        => $ebay2HasIssue,
                 'ebay2_issue'           => $ebay2Reason,
                 'ebay2_not_map'         => $ebay2IsNotMap,
@@ -669,6 +671,7 @@ class MapIssuesController extends Controller
 
                 'Ebay3 Inv'             => $ebay3->ebay_stock ?? 0,
                 'ebay3_sku'             => $ebay3Sku,
+                'ebay3_listed'          => $ebay3Listed,
                 'ebay3_mismatch'        => $ebay3HasIssue,
                 'ebay3_issue'           => $ebay3Reason,
                 'ebay3_not_map'         => $ebay3IsNotMap,
@@ -678,6 +681,7 @@ class MapIssuesController extends Controller
 
                 'Amazon Inv'             => $amazonStock,
                 'amazon_sku'             => $amazonSku,
+                'amazon_listed'          => $amazonListed,
                 'amazon_mismatch'        => $amazonHasIssue,
                 'amazon_issue'           => $amazonReason,
                 'amazon_not_map'         => $amazonIsNotMap,
@@ -687,6 +691,7 @@ class MapIssuesController extends Controller
 
                 'Reverb Inv'             => $reverbStock,
                 'reverb_sku'             => $reverbSku,
+                'reverb_listed'          => $reverbListed,
                 'reverb_mismatch'        => $reverbHasIssue,
                 'reverb_issue'           => $reverbReason,
                 'reverb_not_map'         => $reverbIsNotMap,
@@ -696,6 +701,7 @@ class MapIssuesController extends Controller
 
                 'Macys Inv'             => $macyStock,
                 'macys_sku'             => $macySku,
+                'macys_listed'          => $macyListed,
                 'macys_mismatch'        => $macyHasIssue,
                 'macys_issue'           => $macyReason,
                 'macys_not_map'         => $macyIsNotMap,
@@ -705,6 +711,7 @@ class MapIssuesController extends Controller
 
                 'Bestbuy Inv'            => $bestbuyStock,
                 'bestbuy_sku'            => $bestbuySku,
+                'bestbuy_listed'         => $bestbuyListed,
                 'bestbuy_mismatch'       => $bestbuyHasIssue,
                 'bestbuy_issue'          => $bestbuyReason,
                 'bestbuy_not_map'        => $bestbuyIsNotMap,
@@ -714,6 +721,7 @@ class MapIssuesController extends Controller
 
                 'Tiendamia Inv'            => $tiendamiaStock,
                 'tiendamia_sku'            => $tiendamiaSku,
+                'tiendamia_listed'         => $tiendamiaListed,
                 'tiendamia_mismatch'       => $tiendamiaHasIssue,
                 'tiendamia_issue'          => $tiendamiaReason,
                 'tiendamia_not_map'        => $tiendamiaIsNotMap,
@@ -723,6 +731,7 @@ class MapIssuesController extends Controller
 
                 'Temu Inv'              => $temuStock,
                 'temu_sku'              => $temuSku,
+                'temu_listed'           => $temuListed,
                 'temu_mismatch'         => $temuHasIssue,
                 'temu_issue'            => $temuReason,
                 'temu_not_map'          => $temuIsNotMap,
@@ -732,6 +741,7 @@ class MapIssuesController extends Controller
 
                 'Shein Inv'             => $sheinStock,
                 'shein_sku'             => $sheinSku,
+                'shein_listed'          => $sheinListed,
                 'shein_mismatch'        => $sheinHasIssue,
                 'shein_issue'           => $sheinReason,
                 'shein_not_map'         => $sheinIsNotMap,
@@ -741,6 +751,7 @@ class MapIssuesController extends Controller
 
                 'Newegg Inv'            => $neweggStock,
                 'newegg_sku'            => $neweggSku,
+                'newegg_listed'         => $neweggListed,
                 'newegg_mismatch'       => $neweggHasIssue,
                 'newegg_issue'          => $neweggReason,
                 'newegg_not_map'        => $neweggIsNotMap,
@@ -750,6 +761,7 @@ class MapIssuesController extends Controller
 
                 'Ali Inv'                  => $aliexpressStock,
                 'aliexpress_sku'           => $aliexpressSku,
+                'aliexpress_listed'        => $aliexpressListed,
                 'aliexpress_mismatch'      => $aliexpressHasIssue,
                 'aliexpress_issue'         => $aliexpressReason,
                 'aliexpress_not_map'       => $aliexpressIsNotMap,
@@ -1100,6 +1112,7 @@ class MapIssuesController extends Controller
 
                 'Ebay Inv'        => $m['ebay'] ?? 0,
                 'ebay_sku'        => $m['ebay'] !== null ? $m['sku'] : null,
+                'ebay_listed'     => $m['ebay'] !== null,
                 'ebay_mismatch'   => false,
                 'issue'           => '',
                 'has_issue'       => false,
@@ -1110,6 +1123,7 @@ class MapIssuesController extends Controller
 
                 'Ebay2 Inv'             => $m['ebay2'] ?? 0,
                 'ebay2_sku'             => $m['ebay2'] !== null ? $m['sku'] : null,
+                'ebay2_listed'          => $m['ebay2'] !== null,
                 'ebay2_mismatch'        => false,
                 'ebay2_issue'           => '',
                 'ebay2_not_map'         => false,
@@ -1119,6 +1133,7 @@ class MapIssuesController extends Controller
 
                 'Ebay3 Inv'             => $m['ebay3'] ?? 0,
                 'ebay3_sku'             => $m['ebay3'] !== null ? $m['sku'] : null,
+                'ebay3_listed'          => $m['ebay3'] !== null,
                 'ebay3_mismatch'        => false,
                 'ebay3_issue'           => '',
                 'ebay3_not_map'         => false,
@@ -1128,6 +1143,7 @@ class MapIssuesController extends Controller
 
                 'Amazon Inv'             => $m['amazon'] ?? 0,
                 'amazon_sku'             => $m['amazon'] !== null ? $m['sku'] : null,
+                'amazon_listed'          => $m['amazon'] !== null,
                 'amazon_mismatch'        => false,
                 'amazon_issue'           => '',
                 'amazon_not_map'         => false,
@@ -1137,6 +1153,7 @@ class MapIssuesController extends Controller
 
                 'Reverb Inv'             => $m['reverb'] ?? 0,
                 'reverb_sku'             => $m['reverb'] !== null ? $m['sku'] : null,
+                'reverb_listed'          => $m['reverb'] !== null,
                 'reverb_mismatch'        => false,
                 'reverb_issue'           => '',
                 'reverb_not_map'         => false,
@@ -1146,6 +1163,7 @@ class MapIssuesController extends Controller
 
                 'Macys Inv'             => $m['macys'] ?? 0,
                 'macys_sku'             => $m['macys'] !== null ? $m['sku'] : null,
+                'macys_listed'          => $m['macys'] !== null,
                 'macys_mismatch'        => false,
                 'macys_issue'           => '',
                 'macys_not_map'         => false,
@@ -1155,6 +1173,7 @@ class MapIssuesController extends Controller
 
                 'Bestbuy Inv'            => $m['bestbuy'] ?? 0,
                 'bestbuy_sku'            => $m['bestbuy'] !== null ? $m['sku'] : null,
+                'bestbuy_listed'         => $m['bestbuy'] !== null,
                 'bestbuy_mismatch'       => false,
                 'bestbuy_issue'          => '',
                 'bestbuy_not_map'        => false,
@@ -1164,6 +1183,7 @@ class MapIssuesController extends Controller
 
                 'Tiendamia Inv'            => $m['tiendamia'] ?? 0,
                 'tiendamia_sku'            => $m['tiendamia'] !== null ? $m['sku'] : null,
+                'tiendamia_listed'         => $m['tiendamia'] !== null,
                 'tiendamia_mismatch'       => false,
                 'tiendamia_issue'          => '',
                 'tiendamia_not_map'        => false,
@@ -1173,6 +1193,7 @@ class MapIssuesController extends Controller
 
                 'Temu Inv'              => $m['temu'] ?? 0,
                 'temu_sku'              => $m['temu'] !== null ? $m['sku'] : null,
+                'temu_listed'           => $m['temu'] !== null,
                 'temu_mismatch'         => false,
                 'temu_issue'            => '',
                 'temu_not_map'          => false,
@@ -1182,6 +1203,7 @@ class MapIssuesController extends Controller
 
                 'Shein Inv'             => $m['shein'] ?? 0,
                 'shein_sku'             => $m['shein'] !== null ? $m['sku'] : null,
+                'shein_listed'          => $m['shein'] !== null,
                 'shein_mismatch'        => false,
                 'shein_issue'           => '',
                 'shein_not_map'         => false,
@@ -1191,6 +1213,7 @@ class MapIssuesController extends Controller
 
                 'Newegg Inv'            => $m['newegg'] ?? 0,
                 'newegg_sku'            => $m['newegg'] !== null ? $m['sku'] : null,
+                'newegg_listed'         => $m['newegg'] !== null,
                 'newegg_mismatch'       => false,
                 'newegg_issue'          => '',
                 'newegg_not_map'        => false,
@@ -1200,6 +1223,7 @@ class MapIssuesController extends Controller
 
                 'Ali Inv'                  => $m['aliexpress'] ?? 0,
                 'aliexpress_sku'           => $m['aliexpress'] !== null ? $m['sku'] : null,
+                'aliexpress_listed'        => $m['aliexpress'] !== null,
                 'aliexpress_mismatch'      => false,
                 'aliexpress_issue'         => '',
                 'aliexpress_not_map'       => false,

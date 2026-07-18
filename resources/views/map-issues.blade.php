@@ -28,7 +28,13 @@
 
         .map-channel-dd .dropdown-item.active,
         .map-channel-dd .dropdown-item:active {
-            background-color: #343a40;
+            background-color: #343a40 !important;
+            color: #fff !important;
+        }
+
+        .map-channel-dd .dropdown-item.active span,
+        .map-channel-dd .dropdown-item:active span {
+            color: #fff !important;
         }
 
         .map-channel-dd .dropdown-menu {
@@ -325,14 +331,16 @@
             }
 
             // Info-icon cell formatter: shows an icon when `mismatchField` is true on the row.
-            // Renders "NL" (not listed) instead of 0 / empty values.
-            function invFormatter(mismatchField) {
+            // "NL" only when the SKU is not listed — listed rows with 0 stock show 0 (not NL).
+            function invFormatter(mismatchField, listedField) {
                 return function (cell) {
                     var d = cell.getRow().getData();
                     var v = cell.getValue();
                     var num = parseFloat(v);
-                    var isNL = (v === null || v === undefined || v === '' || isNaN(num) || num === 0);
-                    var display = isNL ? '<span style="color:#a00211;font-weight:600;">NL</span>' : v;
+                    var listed = listedField ? !!d[listedField] : false;
+                    var display = !listed
+                        ? '<span style="color:#a00211;font-weight:600;">NL</span>'
+                        : ((v === null || v === undefined || v === '' || isNaN(num)) ? '0' : v);
                     if (d[mismatchField]) {
                         return display + ' <i class="fas fa-info-circle map-info-icon" title="View issue" ' +
                             'style="cursor:pointer;color:#a00211;margin-left:6px;"></i>';
@@ -520,7 +528,7 @@
                     { title: 'INV', field: 'INV', hozAlign: 'right', sorter: 'number' },
                     {
                         title: 'Ebay Inv', field: 'Ebay Inv', hozAlign: 'right', sorter: 'number',
-                        formatter: invFormatter('ebay_mismatch'),
+                        formatter: invFormatter('ebay_mismatch', 'ebay_listed'),
                         cellClick: function (e, cell) {
                             if (e.target.classList.contains('map-info-icon')) {
                                 var d = cell.getRow().getData();
@@ -530,7 +538,7 @@
                     },
                     {
                         title: 'Ebay2 Inv', field: 'Ebay2 Inv', hozAlign: 'right', sorter: 'number',
-                        formatter: invFormatter('ebay2_mismatch'),
+                        formatter: invFormatter('ebay2_mismatch', 'ebay2_listed'),
                         cellClick: function (e, cell) {
                             if (e.target.classList.contains('map-info-icon')) {
                                 var d = cell.getRow().getData();
@@ -540,7 +548,7 @@
                     },
                     {
                         title: 'Ebay3 Inv', field: 'Ebay3 Inv', hozAlign: 'right', sorter: 'number',
-                        formatter: invFormatter('ebay3_mismatch'),
+                        formatter: invFormatter('ebay3_mismatch', 'ebay3_listed'),
                         cellClick: function (e, cell) {
                             if (e.target.classList.contains('map-info-icon')) {
                                 var d = cell.getRow().getData();
@@ -550,7 +558,7 @@
                     },
                     {
                         title: 'Amazon Inv', field: 'Amazon Inv', hozAlign: 'right', sorter: 'number',
-                        formatter: invFormatter('amazon_mismatch'),
+                        formatter: invFormatter('amazon_mismatch', 'amazon_listed'),
                         cellClick: function (e, cell) {
                             if (e.target.classList.contains('map-info-icon')) {
                                 var d = cell.getRow().getData();
@@ -560,7 +568,7 @@
                     },
                     {
                         title: 'Reverb Inv', field: 'Reverb Inv', hozAlign: 'right', sorter: 'number',
-                        formatter: invFormatter('reverb_mismatch'),
+                        formatter: invFormatter('reverb_mismatch', 'reverb_listed'),
                         cellClick: function (e, cell) {
                             if (e.target.classList.contains('map-info-icon')) {
                                 var d = cell.getRow().getData();
@@ -570,7 +578,7 @@
                     },
                     {
                         title: 'Macys Inv', field: 'Macys Inv', hozAlign: 'right', sorter: 'number',
-                        formatter: invFormatter('macys_mismatch'),
+                        formatter: invFormatter('macys_mismatch', 'macys_listed'),
                         cellClick: function (e, cell) {
                             if (e.target.classList.contains('map-info-icon')) {
                                 var d = cell.getRow().getData();
@@ -580,7 +588,7 @@
                     },
                     {
                         title: 'Bestbuy Inv', field: 'Bestbuy Inv', hozAlign: 'right', sorter: 'number',
-                        formatter: invFormatter('bestbuy_mismatch'),
+                        formatter: invFormatter('bestbuy_mismatch', 'bestbuy_listed'),
                         cellClick: function (e, cell) {
                             if (e.target.classList.contains('map-info-icon')) {
                                 var d = cell.getRow().getData();
@@ -590,7 +598,7 @@
                     },
                     {
                         title: 'Tiendamia Inv', field: 'Tiendamia Inv', hozAlign: 'right', sorter: 'number',
-                        formatter: invFormatter('tiendamia_mismatch'),
+                        formatter: invFormatter('tiendamia_mismatch', 'tiendamia_listed'),
                         cellClick: function (e, cell) {
                             if (e.target.classList.contains('map-info-icon')) {
                                 var d = cell.getRow().getData();
@@ -600,7 +608,7 @@
                     },
                     {
                         title: 'Temu Inv', field: 'Temu Inv', hozAlign: 'right', sorter: 'number',
-                        formatter: invFormatter('temu_mismatch'),
+                        formatter: invFormatter('temu_mismatch', 'temu_listed'),
                         cellClick: function (e, cell) {
                             if (e.target.classList.contains('map-info-icon')) {
                                 var d = cell.getRow().getData();
@@ -610,7 +618,7 @@
                     },
                     {
                         title: 'Shein Inv', field: 'Shein Inv', hozAlign: 'right', sorter: 'number',
-                        formatter: invFormatter('shein_mismatch'),
+                        formatter: invFormatter('shein_mismatch', 'shein_listed'),
                         cellClick: function (e, cell) {
                             if (e.target.classList.contains('map-info-icon')) {
                                 var d = cell.getRow().getData();
@@ -620,7 +628,7 @@
                     },
                     {
                         title: 'Newegg Inv', field: 'Newegg Inv', hozAlign: 'right', sorter: 'number',
-                        formatter: invFormatter('newegg_mismatch'),
+                        formatter: invFormatter('newegg_mismatch', 'newegg_listed'),
                         cellClick: function (e, cell) {
                             if (e.target.classList.contains('map-info-icon')) {
                                 var d = cell.getRow().getData();
@@ -630,7 +638,7 @@
                     },
                     {
                         title: 'Ali Inv', field: 'Ali Inv', hozAlign: 'right', sorter: 'number',
-                        formatter: invFormatter('aliexpress_mismatch'),
+                        formatter: invFormatter('aliexpress_mismatch', 'aliexpress_listed'),
                         cellClick: function (e, cell) {
                             if (e.target.classList.contains('map-info-icon')) {
                                 var d = cell.getRow().getData();

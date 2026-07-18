@@ -3064,6 +3064,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/amazon-ads/missing/delete', [\App\Http\Controllers\AmazonAdsMissingController::class, 'delete'])->name('amazon.ads.missing.delete');
     Route::post('/amazon-ads/missing/ai-negatives', [\App\Http\Controllers\AmazonAdsMissingController::class, 'aiNegativeKeywords'])->name('amazon.ads.missing.ai-negatives');
     Route::post('/amazon-ads/missing/push-negatives', [\App\Http\Controllers\AmazonAdsMissingController::class, 'pushNegativeKeywords'])->name('amazon.ads.missing.push-negatives');
+    Route::post('/amazon-ads/missing/ai-positives', [\App\Http\Controllers\AmazonAdsMissingController::class, 'aiPositiveKeywords'])->name('amazon.ads.missing.ai-positives');
+    Route::post('/amazon-ads/missing/push-positives', [\App\Http\Controllers\AmazonAdsMissingController::class, 'pushPositiveKeywords'])->name('amazon.ads.missing.push-positives');
 
     // Ads Categories page (tabulator scaffold)
     Route::get('/amazon-ads/categories', [\App\Http\Controllers\AdsCategoriesController::class, 'index'])->name('amazon.ads.categories');
