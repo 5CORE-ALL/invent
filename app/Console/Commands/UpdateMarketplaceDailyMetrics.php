@@ -18,7 +18,9 @@ use App\Models\ShopifyB2BDailyData;
 use App\Models\TikTokDailyData;
 use App\Models\TiktokSalesTwo;
 use App\Models\DepopSheetData;
+use App\Http\Controllers\MarketPlace\VintedController;
 use App\Models\DepopSalesData;
+use App\Models\VintedSalesData;
 use App\Models\MiraklDailyData;
 use App\Models\DobaDailyData;
 use App\Models\WayfairDailyData;
@@ -113,6 +115,7 @@ class UpdateMarketplaceDailyMetrics extends Command
             'Wayfair' => fn() => $this->calculateWayfairMetrics($date),
             'TopDawg' => fn() => $this->calculateTopDawgMetrics($date),
             'Depop' => fn() => $this->calculateDepopMetrics($date),
+            'Vinted' => fn() => $this->calculateVintedMetrics($date),
             'Faire' => fn() => $this->calculateFaireMetrics($date),
         ];
 
@@ -2122,6 +2125,61 @@ class UpdateMarketplaceDailyMetrics extends Command
         }
 
         $margin = 0.87; // 87% margin for Depop — no SKU / Product Master, sales only
+        $totalOrders = 0;
+        $totalQuantity = 0;
+        $totalRevenue = 0;
+        $totalWeightedPrice = 0;
+        $totalQuantityForPrice = 0;
+
+        foreach ($rows as $row) {
+            $quantity = (int) ($row->quantity ?: 1);
+            $unitPrice = (float) $row->item_price;
+            $saleAmount = $unitPrice * $quantity;
+
+            $totalOrders++;
+            $totalQuantity += $quantity;
+            $totalRevenue += $saleAmount;
+
+            if ($quantity > 0 && $unitPrice > 0) {
+                $totalWeightedPrice += $unitPrice * $quantity;
+                $totalQuantityForPrice += $quantity;
+            }
+        }
+
+        $totalPft = $totalRevenue * $margin;
+        $avgPrice = $totalQuantityForPrice > 0 ? $totalWeightedPrice / $totalQuantityForPrice : 0;
+        $pftPercentage = $totalRevenue > 0 ? ($totalPft / $totalRevenue) * 100 : 0;
+
+        return [
+            'total_orders' => $totalOrders,
+            'total_quantity' => $totalQuantity,
+            'total_revenue' => $totalRevenue,
+            'total_sales' => $totalRevenue,
+            'total_cogs' => 0,
+            'total_pft' => $totalPft,
+            'pft_percentage' => $pftPercentage,
+            'roi_percentage' => 0,
+            'avg_price' => $avgPrice,
+            'l30_sales' => $totalRevenue,
+            'kw_spent' => 0,
+            'pmt_spent' => 0,
+            'n_pft' => $totalPft,
+            'n_roi' => 0,
+        ];
+    }
+
+    private function calculateVintedMetrics($date)
+    {
+        $endDate = Carbon::parse($date)->endOfDay();
+        $startDate = Carbon::parse($date)->subDays(29)->startOfDay();
+
+        $rows = VintedSalesData::whereBetween('sale_date', [$startDate->format('Y-m-d'), $endDate->format('Y-m-d')])->get();
+        if ($rows->isEmpty()) {
+            return null;
+        }
+
+        // Margin from marketplace_percentages where marketplace = Vinted
+        $margin = VintedController::marginFactor();
         $totalOrders = 0;
         $totalQuantity = 0;
         $totalRevenue = 0;

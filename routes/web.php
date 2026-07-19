@@ -3138,6 +3138,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/newegg-pricing-push', [\App\Http\Controllers\MarketPlace\NeweggPricingController::class, 'pushPriceToNewegg'])->name('newegg.pricing.push');
     Route::post('/newegg-pricing-save-nr', [\App\Http\Controllers\MarketPlace\NeweggPricingController::class, 'saveNr'])->name('newegg.pricing.save.nr');
     Route::post('/newegg-pricing-save-links', [\App\Http\Controllers\MarketPlace\NeweggPricingController::class, 'saveLinks'])->name('newegg.pricing.save.links');
+    // LMP modal endpoints for /newegg-pricing-view — talks to newegg_sku_competitors
+    Route::get('/newegg/competitors', [\App\Http\Controllers\MarketPlace\NeweggPricingController::class, 'getCompetitors'])->name('newegg.competitors.get');
+    Route::post('/newegg/competitors', [\App\Http\Controllers\MarketPlace\NeweggPricingController::class, 'addCompetitor'])->name('newegg.competitors.add');
+    Route::post('/newegg/competitors/update', [\App\Http\Controllers\MarketPlace\NeweggPricingController::class, 'updateCompetitor'])->name('newegg.competitors.update');
+    Route::post('/newegg/competitors/delete', [\App\Http\Controllers\MarketPlace\NeweggPricingController::class, 'deleteCompetitor'])->name('newegg.competitors.delete');
 
     // Wayfair Sales Routes
     Route::get('/wayfair/daily-sales-data', [WayfairSalesController::class, 'getData'])->name('wayfair.daily.sales.data');
@@ -3339,12 +3344,31 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/depop/sheet-data', [\App\Http\Controllers\Sales\DepopSalesController::class, 'getData'])->name('depop.sheet.data');
     Route::post('/depop/upload', [\App\Http\Controllers\Sales\DepopSalesController::class, 'upload'])->name('depop.upload');
 
+    // Vinted Sheet Routes (margin 0.87)
+    Route::get('/vinted/sheet', [\App\Http\Controllers\Sales\VintedSalesController::class, 'index'])->name('vinted.sheet');
+    Route::get('/vinted/sheet-data', [\App\Http\Controllers\Sales\VintedSalesController::class, 'getData'])->name('vinted.sheet.data');
+    Route::post('/vinted/upload', [\App\Http\Controllers\Sales\VintedSalesController::class, 'upload'])->name('vinted.upload');
+
     // Depop Pricing — editable Price / L30 per SKU, with CSV export/import round-trip
     Route::get('/depop/pricing',         [\App\Http\Controllers\MarketPlace\DepopController::class, 'pricingView'])->name('depop.pricing');
     Route::get('/depop/pricing/data',    [\App\Http\Controllers\MarketPlace\DepopController::class, 'getPricingData'])->name('depop.pricing.data');
     Route::get('/depop/pricing/export',  [\App\Http\Controllers\MarketPlace\DepopController::class, 'exportCsv'])->name('depop.pricing.export');
     Route::post('/depop/pricing/import', [\App\Http\Controllers\MarketPlace\DepopController::class, 'importCsv'])->name('depop.pricing.import');
     Route::post('/depop/pricing/save-sprice', [\App\Http\Controllers\MarketPlace\DepopController::class, 'saveSprice'])->name('depop.pricing.save.sprice');
+
+    // Vinted Analytics — full pricing grid (GPFT/ROI/SPRICE filters) + CSV price import
+    Route::get('/vinted/pricing',         [\App\Http\Controllers\MarketPlace\VintedController::class, 'pricingView'])->name('vinted.pricing');
+    Route::get('/vinted/pricing/data',    [\App\Http\Controllers\MarketPlace\VintedController::class, 'getPricingData'])->name('vinted.pricing.data');
+    Route::get('/vinted/pricing/export',  [\App\Http\Controllers\MarketPlace\VintedController::class, 'exportCsv'])->name('vinted.pricing.export');
+    Route::get('/vinted/pricing/sample',  [\App\Http\Controllers\MarketPlace\VintedController::class, 'downloadPriceSample'])->name('vinted.pricing.sample');
+    Route::post('/vinted/pricing/import', [\App\Http\Controllers\MarketPlace\VintedController::class, 'importCsv'])->name('vinted.pricing.import');
+    Route::post('/vinted/pricing/save-sprice', [\App\Http\Controllers\MarketPlace\VintedController::class, 'saveSprice'])->name('vinted.pricing.save.sprice');
+    Route::post('/vinted/pricing/save-sprice-tabulator', [\App\Http\Controllers\MarketPlace\VintedController::class, 'saveSpriceTabulator'])->name('vinted.pricing.save.sprice.tabulator');
+    Route::post('/vinted/pricing/save-sprice-batch', [\App\Http\Controllers\MarketPlace\VintedController::class, 'saveSpriceUpdates'])->name('vinted.pricing.save.sprice.batch');
+    Route::post('/vinted/pricing/update-nr', [\App\Http\Controllers\MarketPlace\VintedController::class, 'updateNrReq'])->name('vinted.pricing.update.nr');
+    Route::post('/vinted/pricing/update-links', [\App\Http\Controllers\MarketPlace\VintedController::class, 'updateLinks'])->name('vinted.pricing.update.links');
+    Route::get('/vinted/pricing/column-visibility', [\App\Http\Controllers\MarketPlace\VintedController::class, 'getColumnVisibility'])->name('vinted.pricing.column.get');
+    Route::post('/vinted/pricing/column-visibility', [\App\Http\Controllers\MarketPlace\VintedController::class, 'setColumnVisibility'])->name('vinted.pricing.column.set');
 
     // Missing Listing — channel_master rows (image + channel) plus DAR submissions
     Route::get('/missing-listing',              [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'index'])->name('missing.listing');
@@ -3514,6 +3538,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::put('/video-ads-master/{id}/ad-check',         [\App\Http\Controllers\VideoAdsMasterController::class, 'toggleAdCheck'])->whereNumber('id')->name('video.ads.master.ad.check');
     Route::get('/video-ads-master/{id}/check-history',    [\App\Http\Controllers\VideoAdsMasterController::class, 'checkHistory'])->whereNumber('id')->name('video.ads.master.check.history');
     Route::post('/video-ads-master/hook-options',         [\App\Http\Controllers\VideoAdsMasterController::class, 'storeHookOption'])->name('video.ads.master.hook.options.store');
+    Route::put('/video-ads-master/hook-options/{id}',    [\App\Http\Controllers\VideoAdsMasterController::class, 'updateHookOption'])->whereNumber('id')->name('video.ads.master.hook.options.update');
+    Route::delete('/video-ads-master/hook-options/{id}', [\App\Http\Controllers\VideoAdsMasterController::class, 'destroyHookOption'])->whereNumber('id')->name('video.ads.master.hook.options.destroy');
+    Route::post('/video-ads-master/audience-options',     [\App\Http\Controllers\VideoAdsMasterController::class, 'storeAudienceOption'])->name('video.ads.master.audience.options.store');
+    Route::put('/video-ads-master/audience-options/{id}', [\App\Http\Controllers\VideoAdsMasterController::class, 'updateAudienceOption'])->whereNumber('id')->name('video.ads.master.audience.options.update');
+    Route::delete('/video-ads-master/audience-options/{id}', [\App\Http\Controllers\VideoAdsMasterController::class, 'destroyAudienceOption'])->whereNumber('id')->name('video.ads.master.audience.options.destroy');
     Route::get('/video-ads-master/sample-csv',            [\App\Http\Controllers\VideoAdsMasterController::class, 'sampleCsv'])->name('video.ads.master.sample.csv');
     Route::get('/video-ads-master/export',                [\App\Http\Controllers\VideoAdsMasterController::class, 'export'])->name('video.ads.master.export');
     Route::post('/video-ads-master/import',               [\App\Http\Controllers\VideoAdsMasterController::class, 'import'])->name('video.ads.master.import');
@@ -5656,6 +5685,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/google/shopping/google-shopping/push-sbgt', 'pushSbgtShoppingBudgets')->name('google.shopping.campaigns.push.sbgt');
         Route::post('/google/shopping/google-shopping/push-sbid', 'pushSbidShopping')->name('google.shopping.campaigns.push.sbid');
         Route::post('/google/shopping/google-shopping/pull-data', 'pullData')->name('google.shopping.campaigns.pull.data');
+        Route::post('/google/shopping/google-shopping/sync-pause-by-inventory', 'syncPauseByInventory')->name('google.shopping.campaigns.sync.pause.inventory');
+        Route::post('/google/shopping/google-shopping/sync-enable-by-inventory', 'syncEnableByInventory')->name('google.shopping.campaigns.sync.enable.inventory');
         Route::get('/google/shopping/google-shopping/badge-history', 'badgeHistory')->name('google.shopping.campaigns.badge.history');
         Route::get('/google/shopping/google-shopping/sbgt-history', 'sbgtHistory')->name('google.shopping.campaigns.sbgt.history');
         Route::post('/google/shopping/google-shopping/u7-distribution', 'u7Distribution')->name('google.shopping.campaigns.u7.distribution');

@@ -1810,13 +1810,15 @@ class TaskController extends Controller
             $this->applyTaskDoneEffects($task, (int) $validated['atc']);
             $task->save();
         } else {
+            // No checklist on the linked automated task — report is not required
             $validated = $request->validate([
-                'report' => 'required|string|min:1',
+                'report' => 'nullable|string',
                 'reference_link' => 'nullable|url|max:2048',
                 'atc' => 'required|integer|min:1|digits_between:1,10',
             ]);
 
-            $task->report = $validated['report'];
+            $report = trim((string) ($validated['report'] ?? ''));
+            $task->report = $report !== '' ? $report : null;
             $task->reference_link = $validated['reference_link'] ?? null;
             $task->status = 'Done';
             $this->applyTaskDoneEffects($task, (int) $validated['atc']);
@@ -1975,19 +1977,35 @@ class TaskController extends Controller
             'status' => 'required|in:Todo,Working,Archived,Done,Need Help,Need Approval,Dependent,Approved,Hold,Rework',
             'atc' => 'nullable|integer|min:1|digits_between:1,10',
             'rework_reason' => 'nullable|string',
-            'report' => [
-                Rule::requiredIf(fn () => $request->input('status') === 'Done' && ! $task->is_automate_task),
-                'nullable',
-                'string',
-            ],
+            // Report is optional when marking Done (checklist flow uses /complete instead)
+            'report' => 'nullable|string',
             'reference_link' => 'nullable|url|max:2048',
+            'assignee_id' => 'nullable|exists:users,id',
         ]);
+
+        if ($validated['status'] === 'Dependent') {
+            if (empty($validated['assignee_id'])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Assignee is required when status is Dependent.',
+                ], 422);
+            }
+            if (trim((string) ($validated['rework_reason'] ?? '')) === '') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Task Required is required when status is Dependent.',
+                ], 422);
+            }
+        }
 
         $task->status = $validated['status'];
 
         if ($validated['status'] === 'Done') {
-            if (! $task->is_automate_task) {
-                $task->report = trim((string) ($validated['report'] ?? ''));
+            $report = trim((string) ($validated['report'] ?? ''));
+            if ($report !== '') {
+                $task->report = $report;
+            }
+            if (array_key_exists('reference_link', $validated)) {
                 $task->reference_link = $validated['reference_link'] ?? null;
             }
             $atc = array_key_exists('atc', $validated) && $validated['atc'] !== null
@@ -1996,9 +2014,29 @@ class TaskController extends Controller
             $this->applyTaskDoneEffects($task, $atc);
         }
 
-        // If reason is provided (for any status change or rework)
+        // If reason / Task Required is provided (for any status change or rework)
         if (isset($validated['rework_reason']) && !empty($validated['rework_reason'])) {
             $task->rework_reason = $validated['rework_reason'];
+        }
+
+        // Dependent / Need Help / Need Approval: add selected assignee to existing (do not replace)
+        $statusesThatCanAddAssignee = ['Dependent', 'Need Help', 'Need Approval'];
+        if (in_array($validated['status'], $statusesThatCanAddAssignee, true) && ! empty($validated['assignee_id'])) {
+            $assigneeUser = User::find($validated['assignee_id']);
+            if ($assigneeUser && $assigneeUser->email) {
+                $existing = array_values(array_filter(array_map('trim', explode(',', (string) ($task->assign_to ?? '')))));
+                $alreadyAssigned = false;
+                foreach ($existing as $email) {
+                    if (strcasecmp($email, $assigneeUser->email) === 0) {
+                        $alreadyAssigned = true;
+                        break;
+                    }
+                }
+                if (! $alreadyAssigned) {
+                    $existing[] = $assigneeUser->email;
+                }
+                $task->assign_to = implode(', ', $existing);
+            }
         }
 
         $task->save();

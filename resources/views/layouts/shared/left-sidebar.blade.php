@@ -815,7 +815,7 @@
             <li class="side-nav-item">
                 <a href="{{ route('video.ads.master') }}" class="side-nav-link">
                     <i class="ri-video-add-line"></i>
-                    <span>Video Ads Master</span>
+                    <span>Video Request & Check</span>
                 </a>
             </li>
 
@@ -1033,7 +1033,7 @@
                         <li class="side-nav-item">
                             <a data-bs-toggle="collapse" href="#video-ads-master" aria-expanded="false"
                                 aria-controls="video-ads-master" class="side-nav-link">
-                                <span>Video Ads Master</span>
+                                <span>Video Request & Check</span>
                                 <span class="menu-arrow"></span>
                             </a>
                             <div class="collapse" id="video-ads-master">
@@ -1652,6 +1652,24 @@
                                     </li>
                                     <li>
                                         <a href="{{ route('depop.sheet') }}">Depop Sales Data</a>
+                                    </li>
+                                </ul>
+                            </div>
+                        </li>
+
+                        <li class="side-nav-item">
+                            <a data-bs-toggle="collapse" href="#sidebarVinted" aria-expanded="false"
+                                aria-controls="sidebarVinted">
+                                <span> Vinted </span>
+                                <span class="menu-arrow"></span>
+                            </a>
+                            <div class="collapse" id="sidebarVinted">
+                                <ul class="side-nav-third-level">
+                                    <li>
+                                        <a href="{{ route('vinted.pricing') }}">Vinted - Analytics</a>
+                                    </li>
+                                    <li>
+                                        <a href="{{ route('vinted.sheet') }}">Vinted Sales Data</a>
                                     </li>
                                 </ul>
                             </div>
@@ -3033,6 +3051,8 @@
                         <li><a href="{{ route('tiktok.two.daily.sales') }}">TikTok 2 Sales Data</a></li>
 
                         <li><a href="{{ route('depop.sheet') }}">Depop Sheet Data</a></li>
+
+                        <li><a href="{{ route('vinted.sheet') }}">Vinted Sheet Data</a></li>
 
                         <li><a href="{{ route('walmart.daily.sales') }}">Walmart Sales Data</a></li>
 

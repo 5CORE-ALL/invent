@@ -787,7 +787,7 @@
                         <li class="side-nav-item">
                             <a data-bs-toggle="collapse" href="#video-ads-master" aria-expanded="false"
                                 aria-controls="video-ads-master" class="side-nav-link">
-                                <span>Video Ads Master</span>
+                                <span>Video Request & Check</span>
                                 <span class="menu-arrow"></span>
                             </a>
                             <div class="collapse" id="video-ads-master">

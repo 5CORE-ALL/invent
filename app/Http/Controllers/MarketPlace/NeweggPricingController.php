@@ -8,8 +8,10 @@ use App\Models\MarketplacePercentage;
 use App\Models\NeweggDataView;
 use App\Models\NeweggItem;
 use App\Models\NeweggPricing;
+use App\Models\NeweggSkuCompetitor;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
+use App\Services\LmpSkuGroupService;
 use App\Services\NeweggApiService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -87,6 +89,29 @@ class NeweggPricingController extends Controller
             ->get()
             ->keyBy(fn ($r) => strtoupper((string) $r->sku));
 
+        // 8) LMP competitors (manual) — same pattern as /tiktok-pricing.
+        $lmpDetailsLookup = collect();
+        try {
+            $lmpLookups = NeweggSkuCompetitor::buildGroupedLookup('newegg');
+            $lmpDetailsLookup = $lmpLookups['details'];
+        } catch (\Throwable $e) {
+            Log::warning('Could not fetch LMP data from newegg_sku_competitors: '.$e->getMessage());
+        }
+
+        $lmpGroupService = new LmpSkuGroupService();
+        try {
+            $prepSkus = [];
+            foreach ($productMasterRows as $pm) {
+                $pmSku = trim((string) ($pm->sku ?? ''));
+                if ($pmSku !== '' && stripos($pmSku, 'PARENT') === false) {
+                    $prepSkus[] = $pmSku;
+                }
+            }
+            $lmpGroupService->prepareForSkus($prepSkus);
+        } catch (\Throwable $e) {
+            Log::warning('LmpSkuGroupService prepare failed (Newegg): '.$e->getMessage());
+        }
+
         $data = [];
         foreach ($productMasterRows as $pm) {
             $sku = $pm->sku;
@@ -134,6 +159,38 @@ class NeweggPricingController extends Controller
                 ? round((float) $amazon->price, 2)
                 : null;
 
+            // Attach LMP merged across Sku Link LMP group (same as TikTok / Shein).
+            $linkedLmpSkus = $this->neweggLinkedLmpSkusFor($lmpGroupService, (string) $sku);
+            $mergedLmpEntries = collect();
+            $seenLmp = [];
+            $skusForLmp = $linkedLmpSkus !== [] ? $linkedLmpSkus : [$sku];
+            foreach ($skusForLmp as $linkedSku) {
+                $linkedKey = NeweggSkuCompetitor::normalizeSkuKey($linkedSku);
+                $groupEntries = $lmpDetailsLookup->get($linkedKey);
+                if (! $groupEntries instanceof \Illuminate\Support\Collection) {
+                    continue;
+                }
+                foreach ($groupEntries as $entry) {
+                    $dedupeKey = ((string) ($entry->id ?? '')).'|'
+                        .((string) ($entry->product_id ?? '')).'|'
+                        .strtoupper(trim((string) ($entry->product_link ?? '')));
+                    if (isset($seenLmp[$dedupeKey])) {
+                        continue;
+                    }
+                    $seenLmp[$dedupeKey] = true;
+                    $mergedLmpEntries->push($entry);
+                }
+            }
+            $mergedLmpEntries = NeweggSkuCompetitor::sortCollectionByNumericPrice($mergedLmpEntries);
+            $lowestLmp = NeweggSkuCompetitor::lowestFromCollection($mergedLmpEntries);
+
+            $lmpBase = ($lowestLmp && is_numeric($lowestLmp->price ?? null))
+                ? (float) $lowestLmp->price
+                : null;
+            $lmpShip = ($lowestLmp && is_numeric($lowestLmp->shipping_cost ?? null))
+                ? (float) $lowestLmp->shipping_cost
+                : 0.0;
+
             $data[] = [
                 'sku'                => $sku,
                 'image'              => $image ?: null,
@@ -165,6 +222,32 @@ class NeweggPricingController extends Controller
                 // Used by client-side bulk SPRICE tools (Increase / Decrease / Same Price)
                 // to compute SPFT/SROI optimistically before the server response lands.
                 'factor'             => round($factor, 4),
+                'linked_lmp_skus'    => $linkedLmpSkus,
+                'lmp_price'          => $lmpBase !== null ? round($lmpBase + $lmpShip, 2) : null,
+                'lmp_base_price'     => $lmpBase,
+                'lmp_shipping'       => $lmpShip,
+                'lmp_link'           => $lowestLmp->product_link ?? null,
+                'lmp_product_id'     => $lowestLmp->product_id ?? null,
+                'lmp_title'          => $lowestLmp->product_title ?? null,
+                'lmp_seller'         => $lowestLmp->seller_name ?? null,
+                'lmp_entries'        => $mergedLmpEntries
+                    ->map(function ($entry) {
+                        return [
+                            'id' => $entry->id,
+                            'product_id' => $entry->product_id ?? null,
+                            'price' => is_numeric($entry->price) ? (float) $entry->price : null,
+                            'shipping_cost' => is_numeric($entry->shipping_cost ?? null) ? (float) $entry->shipping_cost : 0,
+                            'link' => $entry->product_link ?? null,
+                            'product_link' => $entry->product_link ?? null,
+                            'title' => $entry->product_title ?? null,
+                            'product_title' => $entry->product_title ?? null,
+                            'image' => $entry->image ?? null,
+                            'seller_name' => $entry->seller_name ?? null,
+                            'marketplace' => $entry->marketplace ?? 'newegg',
+                        ];
+                    })
+                    ->toArray(),
+                'lmp_entries_total'  => $mergedLmpEntries->count(),
             ];
         }
 
@@ -223,10 +306,13 @@ class NeweggPricingController extends Controller
 
     /**
      * Bulk-save SPRICE for many SKUs at once. Powers the "Increase / Decrease /
-     * Same Price" tools on the pricing page (one HTTP request per click instead
-     * of N). Re-uses saveSprice's per-SKU calc so SPFT/SROI stay authoritative.
+     * Same Price" tools and Target ROI% / Target GPFT% on the pricing page.
      *
-     * Request body: { updates: [ { sku: "...", sprice: 19.99 }, ... ] }
+     * Request body: { updates: [ { sku, sprice? , target_roi? , target_gpft? }, ... ] }
+     *
+     * When target_roi / target_gpft is sent, SPRICE is back-solved from ProductMaster
+     * costs and nudged by $0.01 so the stored SROI / SPFT matches the target after
+     * 2-decimal price rounding (avoids 25/26/27 drift across rows).
      */
     public function saveSpriceBulk(Request $request)
     {
@@ -246,8 +332,7 @@ class NeweggPricingController extends Controller
             $results    = [];
 
             foreach ($updates as $u) {
-                $sku    = $u['sku']    ?? null;
-                $sprice = $u['sprice'] ?? null;
+                $sku = $u['sku'] ?? null;
                 if (!$sku) {
                     $errors[] = ['sku' => null, 'error' => 'Missing SKU'];
                     continue;
@@ -260,6 +345,24 @@ class NeweggPricingController extends Controller
                     $dv     = NeweggDataView::firstOrNew(['sku' => $sku]);
                     $values = is_array($dv->value) ? $dv->value : [];
 
+                    $hasTargetRoi  = array_key_exists('target_roi', $u) && $u['target_roi'] !== null && $u['target_roi'] !== '';
+                    $hasTargetGpft = array_key_exists('target_gpft', $u) && $u['target_gpft'] !== null && $u['target_gpft'] !== '';
+                    $sprice        = $u['sprice'] ?? null;
+
+                    if ($hasTargetRoi) {
+                        $sprice = $this->spriceForTargetRoi($lp, $ship, $factor, (float) $u['target_roi']);
+                        if ($sprice === null) {
+                            $errors[] = ['sku' => $sku, 'error' => 'Cannot solve Target ROI (need LP > 0)'];
+                            continue;
+                        }
+                    } elseif ($hasTargetGpft) {
+                        $sprice = $this->spriceForTargetGpft($lp, $ship, $factor, (float) $u['target_gpft']);
+                        if ($sprice === null) {
+                            $errors[] = ['sku' => $sku, 'error' => 'Cannot solve Target GPFT (need LP > 0 and target < factor)'];
+                            continue;
+                        }
+                    }
+
                     if ($sprice === null || $sprice === '' || (float) $sprice === 0.0) {
                         unset($values['SPRICE'], $values['SPFT'], $values['SROI']);
                         $values['SPRICE'] = $sprice === null || $sprice === '' ? null : 0;
@@ -267,11 +370,21 @@ class NeweggPricingController extends Controller
                             unset($values['SPRICE']);
                         }
                     } else {
-                        $spriceF = (float) $sprice;
+                        $spriceF = round((float) $sprice, 2);
                         $profit  = ($spriceF * $factor) - $lp - $ship;
-                        $values['SPRICE'] = round($spriceF, 2);
+                        $values['SPRICE'] = $spriceF;
                         $values['SPFT']   = $spriceF > 0 ? round(($profit / $spriceF) * 100, 1) : 0;
-                        $values['SROI']   = $lp > 0 ? round(($profit / $lp) * 100, 0) : 0;
+                        $values['SROI']   = $lp > 0 ? (int) round(($profit / $lp) * 100, 0) : 0;
+
+                        // When targeting ROI, force the stored SROI to the requested
+                        // integer target so every selected row shows the same value
+                        // even if float remainder is 0.4% either side of .5.
+                        if ($hasTargetRoi && $lp > 0) {
+                            $values['SROI'] = (int) round((float) $u['target_roi']);
+                        }
+                        if ($hasTargetGpft && $spriceF > 0) {
+                            $values['SPFT'] = round((float) $u['target_gpft'], 1);
+                        }
                     }
 
                     $dv->value = $values;
@@ -299,6 +412,91 @@ class NeweggPricingController extends Controller
             Log::error('Error bulk-saving Newegg SPRICE: ' . $e->getMessage());
             return response()->json(['success' => false, 'error' => 'Failed to save'], 500);
         }
+    }
+
+    /**
+     * Back-solve SPRICE for a Target ROI%, then nudge by $0.01 so
+     * round((profit / LP) * 100) equals the integer target.
+     */
+    private function spriceForTargetRoi(float $lp, float $ship, float $factor, float $targetRoiPct): ?float
+    {
+        if ($lp <= 0 || $factor <= 0) {
+            return null;
+        }
+
+        $target = (int) round($targetRoiPct);
+        $sprice = round(($lp * (1 + ($targetRoiPct / 100)) + $ship) / $factor, 2);
+        if ($sprice <= 0) {
+            return null;
+        }
+
+        $achieved = function (float $p) use ($lp, $ship, $factor): int {
+            $profit = ($p * $factor) - $lp - $ship;
+
+            return (int) round(($profit / $lp) * 100);
+        };
+
+        $roi = $achieved($sprice);
+        $guard = 0;
+        while ($roi < $target && $guard < 5000) {
+            $sprice = round($sprice + 0.01, 2);
+            $roi = $achieved($sprice);
+            $guard++;
+        }
+        while ($roi > $target && $sprice > 0.01 && $guard < 5000) {
+            $sprice = round($sprice - 0.01, 2);
+            $roi = $achieved($sprice);
+            $guard++;
+        }
+
+        return $sprice;
+    }
+
+    /**
+     * Back-solve SPRICE for a Target GPFT%/SPFT, then nudge by $0.01 so
+     * round((profit / sprice) * 100, 1) matches the target to 1 decimal.
+     */
+    private function spriceForTargetGpft(float $lp, float $ship, float $factor, float $targetGpftPct): ?float
+    {
+        if ($lp <= 0 || $factor <= 0) {
+            return null;
+        }
+
+        $targetFraction = $targetGpftPct / 100;
+        $denom = $factor - $targetFraction;
+        if ($denom <= 0) {
+            return null;
+        }
+
+        $target = round($targetGpftPct, 1);
+        $sprice = round(($lp + $ship) / $denom, 2);
+        if ($sprice <= 0) {
+            return null;
+        }
+
+        $achieved = function (float $p) use ($lp, $ship, $factor): float {
+            if ($p <= 0) {
+                return 0.0;
+            }
+            $profit = ($p * $factor) - $lp - $ship;
+
+            return round(($profit / $p) * 100, 1);
+        };
+
+        $gpft = $achieved($sprice);
+        $guard = 0;
+        while ($gpft < $target - 0.05 && $guard < 5000) {
+            $sprice = round($sprice + 0.01, 2);
+            $gpft = $achieved($sprice);
+            $guard++;
+        }
+        while ($gpft > $target + 0.05 && $sprice > 0.01 && $guard < 5000) {
+            $sprice = round($sprice - 0.01, 2);
+            $gpft = $achieved($sprice);
+            $guard++;
+        }
+
+        return $sprice;
     }
 
     /**
@@ -502,6 +700,303 @@ class NeweggPricingController extends Controller
     }
 
     /**
+     * Sku Link LMP group for a Newegg row — same shared service as /tiktok-pricing.
+     *
+     * @return list<string>
+     */
+    private function neweggLinkedLmpSkusFor(LmpSkuGroupService $lmpGroupService, string $sku): array
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return [];
+        }
+
+        try {
+            $group = $lmpGroupService->groupContaining($sku);
+        } catch (\Throwable $e) {
+            $group = [];
+        }
+
+        $members = $group !== [] ? $group : [$sku];
+        $seen = [];
+        $out = [];
+        foreach ($members as $member) {
+            $display = trim((string) $member);
+            $norm = strtoupper($display);
+            if ($norm === '' || isset($seen[$norm])) {
+                continue;
+            }
+            $seen[$norm] = true;
+            $out[] = $display;
+        }
+
+        return $out;
+    }
+
+    /**
+     * GET /newegg/competitors
+     * Return competitors for a SKU (merged across Sku Link LMP group).
+     */
+    public function getCompetitors(Request $request)
+    {
+        try {
+            $sku = trim((string) $request->input('sku'));
+            $linkedSkus = $request->input('linked_lmp_skus', []);
+
+            if ($sku === '') {
+                return response()->json(['error' => 'SKU is required'], 400);
+            }
+
+            if (! is_array($linkedSkus)) {
+                $linkedSkus = $linkedSkus !== null && $linkedSkus !== ''
+                    ? [trim((string) $linkedSkus)]
+                    : [];
+            }
+
+            $groupSkus = [$sku];
+            try {
+                $lmpGroupService = new LmpSkuGroupService();
+                $seed = array_values(array_filter(array_map(
+                    fn ($value) => trim((string) $value),
+                    array_merge([$sku], $linkedSkus)
+                )));
+                $lmpGroupService->prepareForSkus($seed);
+                $resolved = $lmpGroupService->groupContaining($sku);
+                if (! empty($resolved)) {
+                    $groupSkus = $resolved;
+                }
+            } catch (\Throwable $e) {
+                Log::warning('LmpSkuGroupService in getNeweggCompetitors failed: '.$e->getMessage());
+            }
+
+            $groupSkus = array_values(array_unique(array_filter(array_map(
+                fn ($value) => trim((string) $value),
+                array_merge($groupSkus, $linkedSkus, [$sku])
+            ))));
+
+            $competitors = NeweggSkuCompetitor::getCompetitorsForSkus($groupSkus, 'newegg');
+            $lowest = $competitors->first();
+
+            return response()->json([
+                'success' => true,
+                'competitors' => $competitors->map(function ($comp) {
+                    return [
+                        'id' => $comp->id,
+                        'sku' => $comp->sku,
+                        'product_id' => $comp->product_id,
+                        'marketplace' => $comp->marketplace,
+                        'image' => $comp->image,
+                        'product_link' => $comp->product_link,
+                        'link' => $comp->product_link,
+                        'product_title' => $comp->product_title,
+                        'title' => $comp->product_title,
+                        'seller_name' => $comp->seller_name,
+                        'price' => (float) $comp->price,
+                        'shipping_cost' => (float) ($comp->shipping_cost ?? 0),
+                        'created_at' => $comp->created_at ? $comp->created_at->format('Y-m-d H:i:s') : null,
+                        'updated_at' => $comp->updated_at ? $comp->updated_at->format('Y-m-d H:i:s') : null,
+                    ];
+                }),
+                'lowest_price' => $lowest ? NeweggSkuCompetitor::landedPrice($lowest) : null,
+                'total_count' => $competitors->count(),
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Error fetching Newegg competitors', [
+                'sku' => $sku ?? 'unknown',
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'error' => 'Failed to fetch competitors: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * POST /newegg/competitors — add a manually entered competitor.
+     */
+    public function addCompetitor(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'sku' => 'required|string',
+                'product_id' => 'required|string',
+                'price' => 'required|numeric|min:0.01',
+                'shipping_cost' => 'nullable|numeric|min:0',
+                'product_link' => 'nullable|string',
+                'product_title' => 'nullable|string',
+                'image' => 'nullable|string',
+                'seller_name' => 'nullable|string',
+                'marketplace' => 'nullable|string',
+            ]);
+
+            $sku = trim($validated['sku']);
+            $productId = trim($validated['product_id']);
+            $marketplace = strtolower($validated['marketplace'] ?? 'newegg');
+
+            $existing = NeweggSkuCompetitor::where('sku', $sku)
+                ->where('product_id', $productId)
+                ->where('marketplace', $marketplace)
+                ->first();
+
+            if ($existing) {
+                return response()->json([
+                    'error' => 'This competitor is already saved for this SKU',
+                ], 409);
+            }
+
+            DB::beginTransaction();
+            $lmp = NeweggSkuCompetitor::create([
+                'sku' => $sku,
+                'product_id' => $productId,
+                'marketplace' => $marketplace,
+                'price' => $validated['price'],
+                'shipping_cost' => $validated['shipping_cost'] ?? 0,
+                'product_link' => $validated['product_link'] ?? null,
+                'product_title' => $validated['product_title'] ?? null,
+                'image' => $validated['image'] ?? null,
+                'seller_name' => $validated['seller_name'] ?? null,
+            ]);
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Newegg competitor added',
+                'data' => [
+                    'id' => $lmp->id,
+                    'sku' => $lmp->sku,
+                    'product_id' => $lmp->product_id,
+                    'price' => (float) $lmp->price,
+                    'shipping_cost' => (float) ($lmp->shipping_cost ?? 0),
+                    'product_link' => $lmp->product_link,
+                ],
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'error' => 'Validation failed',
+                'messages' => $e->errors(),
+            ], 422);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            Log::error('Error adding Newegg competitor', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'error' => 'Failed to add competitor: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * POST /newegg/competitors/update
+     */
+    public function updateCompetitor(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'id' => 'required|integer',
+                'product_id' => 'required|string',
+                'price' => 'required|numeric|min:0.01',
+                'shipping_cost' => 'nullable|numeric|min:0',
+                'product_link' => 'nullable|string',
+                'product_title' => 'nullable|string',
+                'image' => 'nullable|string',
+                'seller_name' => 'nullable|string',
+            ]);
+
+            $lmp = NeweggSkuCompetitor::find($validated['id']);
+            if (! $lmp) {
+                return response()->json(['error' => 'Competitor not found'], 404);
+            }
+
+            $productId = trim($validated['product_id']);
+            $marketplace = $lmp->marketplace ?: 'newegg';
+
+            $duplicate = NeweggSkuCompetitor::where('sku', $lmp->sku)
+                ->where('product_id', $productId)
+                ->where('marketplace', $marketplace)
+                ->where('id', '!=', $lmp->id)
+                ->first();
+
+            if ($duplicate) {
+                return response()->json([
+                    'error' => 'Another competitor with this Item # already exists for this SKU',
+                ], 409);
+            }
+
+            $lmp->update([
+                'product_id' => $productId,
+                'price' => $validated['price'],
+                'shipping_cost' => $validated['shipping_cost'] ?? 0,
+                'product_link' => $validated['product_link'] ?? null,
+                'product_title' => $validated['product_title'] ?? null,
+                'image' => array_key_exists('image', $validated) ? ($validated['image'] ?? null) : $lmp->image,
+                'seller_name' => array_key_exists('seller_name', $validated) ? ($validated['seller_name'] ?? null) : $lmp->seller_name,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Newegg competitor updated',
+                'data' => [
+                    'id' => $lmp->id,
+                    'sku' => $lmp->sku,
+                    'product_id' => $lmp->product_id,
+                    'price' => (float) $lmp->price,
+                    'shipping_cost' => (float) ($lmp->shipping_cost ?? 0),
+                    'product_link' => $lmp->product_link,
+                ],
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'error' => 'Validation failed',
+                'messages' => $e->errors(),
+            ], 422);
+        } catch (\Throwable $e) {
+            Log::error('Error updating Newegg competitor', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'error' => 'Failed to update competitor: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * POST /newegg/competitors/delete
+     */
+    public function deleteCompetitor(Request $request)
+    {
+        try {
+            $id = $request->input('id');
+            if (! $id || ! is_numeric($id)) {
+                return response()->json(['error' => 'Valid ID is required'], 400);
+            }
+            $lmp = NeweggSkuCompetitor::find($id);
+            if (! $lmp) {
+                return response()->json(['error' => 'Competitor not found'], 404);
+            }
+            $lmp->delete();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Competitor deleted',
+                'deleted_id' => $id,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Error deleting Newegg competitor', [
+                'id' => $id ?? 'unknown',
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'error' => 'Failed to delete competitor: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
      * Pull LP and Ship from a ProductMaster row (Values JSON or direct columns).
      *
      * @return array{0:float,1:float}
@@ -545,6 +1040,8 @@ class NeweggPricingController extends Controller
                 'dil' => true, 'price' => true, 'a_price' => true, 'l30' => true,
                 'lp' => false, 'ship' => false, 'pft' => true, 'pft_pct' => true, 'roi' => true,
                 'sprice' => true, 'spft' => true, 'sroi' => true, 'nr' => true, 'bs' => true,
+                'lmp_price' => true, 'lmp_diff_pct' => true,
+                'linked_lmp_skus' => true, 'linked_lmp_sku_add' => true,
                 'map' => true, 'missing_l' => true, 'map_status' => true, 'available_quantity' => true, 'currency' => false, 'status' => true,
             ];
 

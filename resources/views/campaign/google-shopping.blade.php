@@ -167,6 +167,10 @@
         #google-ads-campaigns-raw-wrap .tabulator .tabulator-cell.red-bg {
             color: #ff2727 !important;
         }
+        /* PARENT campaign rows — same tint as google shopping missing ads */
+        #google-ads-campaigns-raw-wrap .tabulator .tabulator-row.parent-row {
+            background-color: rgba(69, 233, 255, 0.10);
+        }
         /* CTR / CVR flag bands (relative to the filtered-set average):
            red   < avg*0.80, green avg*0.80–avg*1.20, magenta > avg*1.20 */
         #google-ads-campaigns-raw-wrap .tabulator .tabulator-cell.flag-red {
@@ -372,6 +376,10 @@
                                 class="faas-stat-badge faas-stat-badge--sales is-static"
                                 title="Active (ENABLED) campaigns matching current filters">ACTIVE:<span id="faasActiveValue">0</span></span>
 
+                            <span id="faasGreenUtilL7Badge" data-metric="green_util_l7" data-label="Green Util (L7)"
+                                class="faas-stat-badge faas-stat-badge--sales badge-chart-link"
+                                title="Campaigns with Green utilisation (L7) — U7% 66–99%. Click for recorded daily history.">GREEN UTIL (L7):<span id="faasGreenUtilL7Value">0</span></span>
+
                             <span id="faasL30SpendBadge" data-metric="spend" data-label="Spend"
                                 class="faas-stat-badge faas-stat-badge--spend badge-chart-link"
                                 title="Click for trend">SPEND:<span id="faasL30SpendValue">0</span></span>
@@ -417,7 +425,7 @@
                         <div class="dropdown d-inline-block">
                             <button class="btn btn-sm btn-outline-primary dropdown-toggle" type="button"
                                 id="columnVisibilityDropdown" data-bs-toggle="dropdown" data-bs-auto-close="outside"
-                                aria-expanded="false" title="Show / hide columns">
+                                aria-expanded="false" title="Show / hide columns (saved per user)">
                                 <i class="fas fa-columns"></i>
                             </button>
                             <ul class="dropdown-menu column-dropdown-multicol dropdown-menu-end"
@@ -433,6 +441,16 @@
                         </button>
                         <button type="button" class="btn btn-sm btn-warning text-dark" id="gac-raw-push-sbid" title="Pushes SBIDs in chunks of 10 using grid values (by campaign_id). Waits until complete; shows success or error.">
                             <i class="fa fa-cloud-upload-alt"></i> Push SBID
+                        </button>
+                        <span class="vr align-self-center d-none d-md-inline-block mx-1"></span>
+                        <button type="button" class="btn btn-sm btn-outline-danger" id="gac-raw-pause-inv" title="Auto-pause: ENABLED campaigns with INV ≤ 0 → PAUSED. Same as daily cron google-shopping:sync-status-by-inventory --mode=pause. Uses parent-total INV for PARENT campaigns.">
+                            <i class="fa fa-pause"></i> Pause (Inv=0)
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-success" id="gac-raw-enable-inv" title="Auto-enable: PAUSED campaigns with INV &gt; 0 → ENABLED. Same as daily cron google-shopping:sync-status-by-inventory --mode=enable. Uses parent-total INV for PARENT campaigns.">
+                            <i class="fa fa-play"></i> Active (Inv&gt;0)
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="gac-raw-verify-id" title="Filter L30 Spend = 0 and INV &gt; 0, then compare each campaign’s Google Ads Item ID to the live Merchant Center / Shopify product ID. Red triangle in the ID column = mismatch.">
+                            <i class="fa fa-id-card"></i> Verify ID
                         </button>
                     </div>
                     <div id="gac-raw-filter-bar" class="mb-3">
@@ -765,16 +783,76 @@
             const gacRawPushSbgtUrl = @json(route('google.shopping.campaigns.push.sbgt'));
             const gacRawPushSbidUrl = @json(route('google.shopping.campaigns.push.sbid'));
             const gacRawPullDataUrl = @json(route('google.shopping.campaigns.pull.data'));
+            const gacRawPauseInvUrl = @json(route('google.shopping.campaigns.sync.pause.inventory'));
+            const gacRawEnableInvUrl = @json(route('google.shopping.campaigns.sync.enable.inventory'));
             const gacRawBadgeHistoryUrl = @json(route('google.shopping.campaigns.badge.history'));
             const gacRawSbgtHistoryUrl = @json(route('google.shopping.campaigns.sbgt.history'));
             const gacRawU7PieDistribUrl = @json(route('google.shopping.campaigns.u7.distribution'));
             const gacRawU7PieHistoryUrl = @json(route('google.shopping.campaigns.u7.history'));
             const gacRawNegKwUrl = @json(route('google.shopping.campaigns.negatives'));
-            const TABULATOR_COLUMN_CHANNEL = 'google_shopping';
+            // Per-user column show/hide — same /tabulator-column-visibility endpoint as Amazon
+            // Analytics / all-marketplace-master (channel_tabulator_column_settings).
+            const TABULATOR_COLUMN_CHANNEL = 'google_shopping_user_{{ auth()->id() ?? 'guest' }}';
             const TABULATOR_COLUMN_VISIBILITY_URL = @json(url('/tabulator-column-visibility'));
             window.gacRawRule = @json($googleShoppingRule);
             let table;
-            let gacColVisReady = false;
+            /** Cached show/hide map from the server; applied inside autoColumnsDefinitions. */
+            let gacSavedColumnVisibility = {};
+            let gacSavedColumnVisibilityLoaded = false;
+            let gacColDropdownBuilt = false;
+            /** Always hidden (IDs / internal trend fields) — not offered in the Columns menu. */
+            const GAC_PERMANENTLY_HIDDEN_FIELDS = {
+                id: true,
+                campaign_id: true,
+                date: true,
+                sbgt_prev: true,
+                sbgt_prev_date: true,
+                sbgt_trend: true,
+                is_parent: true,
+                id_mismatch: true,
+                id_alert_title: true,
+            };
+            /** Toggle: L30 spend = 0 + INV &gt; 0 + Merchant Item ID check. */
+            let gacRawVerifyIdActive = false;
+            /** Hidden by default until the user opts in via Columns (and that choice is saved). */
+            const GAC_DEFAULT_HIDDEN_FIELDS = {
+                l7_spend: true,
+                l2_spend: true,
+                l1_spend: true,
+            };
+
+            function gacCsrfToken() {
+                return (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+            }
+
+            /** Prefetch saved column prefs so autoColumnsDefinitions can honor them on first paint. */
+            function gacFetchColumnVisibility() {
+                return fetch(TABULATOR_COLUMN_VISIBILITY_URL + '?channel=' + encodeURIComponent(TABULATOR_COLUMN_CHANNEL), {
+                    method: 'GET',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': gacCsrfToken(),
+                    },
+                })
+                    .then(function(res) { return res.json(); })
+                    .then(function(map) {
+                        gacSavedColumnVisibility = (map && typeof map === 'object' && !Array.isArray(map)) ? map : {};
+                        gacSavedColumnVisibilityLoaded = true;
+                        return gacSavedColumnVisibility;
+                    })
+                    .catch(function(err) {
+                        console.error('Error loading column visibility:', err);
+                        gacSavedColumnVisibility = {};
+                        gacSavedColumnVisibilityLoaded = true;
+                        return gacSavedColumnVisibility;
+                    });
+            }
+
+            // Kick off early so prefs are usually ready before the first ajax column build.
+            var gacColumnVisibilityReady = gacFetchColumnVisibility();
+
             let gacRawU7PieChart = null;
             let gacRawU7PieRefreshTimer = null;
             let gacRawBadgeChart = null;
@@ -805,6 +883,17 @@
                          + ' style="color:#dc2626;font-size:15px;"></i>';
                 }
                 return '';
+            }
+
+            // ID column: red triangle when Google Ads listing-group Item ID ≠ live Merchant Center ID.
+            function gacRawIdCheckFormatter(cell) {
+                var row = cell.getRow().getData() || {};
+                var mismatch = row.id_mismatch === true || row.id_mismatch === 1 || row.id_mismatch === '1';
+                if (!mismatch) return '';
+                var tip = String(row.id_alert_title || 'Item ID does not match Merchant Center');
+                tip = tip.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+                return '<i class="fas fa-exclamation-triangle" title="' + tip + '"'
+                     + ' style="color:#dc2626;font-size:15px;"></i>';
             }
 
             // Re-run the Action column formatter after the average ACOS changes
@@ -1038,11 +1127,13 @@
                 var acosEl = document.getElementById('gac-raw-summary-acos-val');
                 var campaignsEl = document.getElementById('faasCampaignsValue');
                 var activeEl = document.getElementById('faasActiveValue');
+                var greenUtilEl = document.getElementById('faasGreenUtilL7Value');
                 if (!response || typeof response !== 'object' || !response.summary) {
                     if (spiEl) spiEl.textContent = '—';
                     if (acosEl) acosEl.textContent = '—';
                     if (campaignsEl) campaignsEl.textContent = '0';
                     if (activeEl) activeEl.textContent = '0';
+                    if (greenUtilEl) greenUtilEl.textContent = '0';
                     gacRawAvgCtr = 0;
                     gacRawAvgCvr = 0;
                     return;
@@ -1072,6 +1163,10 @@
                     var a = Number(s.active_count);
                     activeEl.textContent = Number.isFinite(a) ? Math.round(a).toLocaleString() : '0';
                 }
+                if (greenUtilEl) {
+                    var g = Number(s.green_util_l7_count);
+                    greenUtilEl.textContent = Number.isFinite(g) ? Math.round(g).toLocaleString() : '0';
+                }
             }
 
             /** Read a numeric range box; returns '' when blank / negative / non-numeric. */
@@ -1095,8 +1190,23 @@
                     filter_ctr_max: gacRawRangeInputVal('gac-filter-ctr-max'),
                     filter_cvr_min: gacRawRangeInputVal('gac-filter-cvr-min'),
                     filter_cvr_max: gacRawRangeInputVal('gac-filter-cvr-max'),
+                    filter_verify_id: gacRawVerifyIdActive ? 1 : 0,
                     q: gacRawSearchQueryVal(),
                 };
+            }
+
+            function gacRawSyncVerifyIdButton() {
+                var btn = document.getElementById('gac-raw-verify-id');
+                if (!btn) return;
+                if (gacRawVerifyIdActive) {
+                    btn.classList.remove('btn-outline-secondary');
+                    btn.classList.add('btn-secondary');
+                    btn.setAttribute('aria-pressed', 'true');
+                } else {
+                    btn.classList.add('btn-outline-secondary');
+                    btn.classList.remove('btn-secondary');
+                    btn.setAttribute('aria-pressed', 'false');
+                }
             }
 
             function gacRawReloadGridForFilters() {
@@ -1462,6 +1572,20 @@
                 sortMode: 'remote',
                 placeholder: 'No rows in google_ads_campaigns.',
                 selectableRows: true,
+                rowFormatter: function(row) {
+                    var d = row.getData() || {};
+                    var el = row.getElement();
+                    if (!el) return;
+                    var isParent = d.is_parent === true || d.is_parent === 1 || d.is_parent === '1';
+                    if (!isParent && d.campaign_name) {
+                        isParent = String(d.campaign_name).toUpperCase().trim().indexOf('PARENT ') === 0;
+                    }
+                    if (isParent) {
+                        el.classList.add('parent-row');
+                    } else {
+                        el.classList.remove('parent-row');
+                    }
+                },
                 autoColumns: true,
                 autoColumnsDefinitions: function(defs) {
                     if (!defs.some(function(d) { return d.field === '__gac_select'; })) {
@@ -1662,17 +1786,27 @@
                         } else {
                             col.minWidth = 50;
                         }
-                        if (col.field === 'id' || col.field === 'campaign_id' || col.field === 'date'
-                            || col.field === 'sbgt_prev' || col.field === 'sbgt_prev_date' || col.field === 'sbgt_trend') {
+                        // Column visibility: permanent hide → saved user prefs → defaults (L7/L2/L1 Spend).
+                        if (Object.prototype.hasOwnProperty.call(GAC_PERMANENTLY_HIDDEN_FIELDS, col.field)) {
+                            col.visible = false;
+                        } else if (gacSavedColumnVisibilityLoaded
+                            && Object.prototype.hasOwnProperty.call(gacSavedColumnVisibility, col.field)) {
+                            col.visible = gacSavedColumnVisibility[col.field] !== false;
+                        } else if (Object.prototype.hasOwnProperty.call(GAC_DEFAULT_HIDDEN_FIELDS, col.field)) {
+                            // Still computed server-side for UB%/CPC/SBID; hidden until user shows them.
                             col.visible = false;
                         }
-                        // L7 / L2 Spend are still computed server-side (the SQL joins them so
-                        // utilized-style enrichments — UB%, CPC, suggested SBID — still work)
-                        // but the columns are hidden from the grid per product request.
-                        // Sorting by these fields is still allowed (server whitelist unchanged)
-                        // in case future UI surfaces them.
-                        if (col.field === 'l7_spend' || col.field === 'l2_spend') {
-                            col.visible = false;
+                        if (col.field === 'inventory') {
+                            col.title = 'INV';
+                            col.hozAlign = 'right';
+                            col.headerHozAlign = 'center';
+                            col.minWidth = 64;
+                            col.formatter = function(c) {
+                                var v = c.getValue();
+                                if (v === null || v === undefined || v === '') return '—';
+                                var n = Number(v);
+                                return Number.isFinite(n) ? Math.round(n).toLocaleString('en-US') : '—';
+                            };
                         }
                         if (Object.prototype.hasOwnProperty.call(moneySpendTitles, col.field)) {
                             col.title = moneySpendTitles[col.field];
@@ -1702,13 +1836,13 @@
                                 };
                                 col.minWidth = Math.max(col.minWidth || 0, 60);
                             } else if (col.field === 'ctr_l30') {
-                                // CTR = (Clicks / Impressions) * 100 — 2 decimals. Flag colour
+                                // CTR = (Clicks / Impressions) * 100 — 1 decimal. Flag colour
                                 // is relative to the filtered-set average CTR.
                                 col.formatter = function(c) {
                                     var v = parseFloat(c.getValue());
                                     if (!isFinite(v)) v = 0;
                                     gacRawApplyFlagColor(c.getElement(), v, gacRawAvgCtr);
-                                    return v.toFixed(2) + '%';
+                                    return v.toFixed(1) + '%';
                                 };
                                 col.minWidth = Math.max(col.minWidth || 0, 60);
                             } else if (col.field === 'ub7' || col.field === 'ub2' || col.field === 'ub1') {
@@ -1746,6 +1880,20 @@
                             width: 80,
                             minWidth: 70,
                             formatter: gacRawActionFormatter,
+                        });
+                    }
+                    // ID column: red triangle when Ads Item ID ≠ live Merchant Center ID
+                    // (populated when Verify ID filter is active).
+                    if (!defs.some(function(d) { return d.field === 'id_check'; })) {
+                        defs.push({
+                            title: 'ID',
+                            field: 'id_check',
+                            headerSort: false,
+                            hozAlign: 'center',
+                            headerHozAlign: 'center',
+                            width: 56,
+                            minWidth: 50,
+                            formatter: gacRawIdCheckFormatter,
                         });
                     }
                     return defs;
@@ -1846,65 +1994,55 @@
                 });
             }
 
-            /*
-             * Column visibility — same shared /tabulator-column-visibility endpoint as
-             * Amazon Analytics (channel_tabulator_column_settings, channel = google_shopping).
-             * autoColumns only materializes fields after the first ajax payload, so we wait
-             * for dataLoaded before apply/build.
+            /**
+             * Column visibility — Amazon-style persist via /tabulator-column-visibility
+             * (channel_tabulator_column_settings). Prefs are per-user and applied both in
+             * autoColumnsDefinitions (so rebuilds keep them) and after each dataLoaded.
              */
-            function gacCsrfToken() {
-                return (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
-            }
-
             function buildColumnDropdown() {
-                const menu = document.getElementById('column-dropdown-menu');
+                var menu = document.getElementById('column-dropdown-menu');
                 if (!menu || !table) return;
                 menu.innerHTML = '';
 
-                fetch(TABULATOR_COLUMN_VISIBILITY_URL + '?channel=' + encodeURIComponent(TABULATOR_COLUMN_CHANNEL), {
-                    method: 'GET',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': gacCsrfToken(),
-                    },
-                })
-                    .then(function(res) { return res.json(); })
-                    .then(function(savedVisibility) {
-                        const map = (savedVisibility && typeof savedVisibility === 'object') ? savedVisibility : {};
-                        table.getColumns().forEach(function(col) {
-                            const def = col.getDefinition();
-                            const field = def.field;
-                            if (!field || field === '__gac_select') return;
+                table.getColumns().forEach(function(col) {
+                    var def = col.getDefinition();
+                    var field = def.field;
+                    if (!field || field === '__gac_select') return;
+                    if (Object.prototype.hasOwnProperty.call(GAC_PERMANENTLY_HIDDEN_FIELDS, field)) return;
 
-                            const isVisible = Object.prototype.hasOwnProperty.call(map, field)
-                                ? (map[field] !== false)
-                                : col.isVisible();
-                            const title = def.title || field;
-                            const li = document.createElement('li');
-                            li.innerHTML =
-                                '<label class="dropdown-item"><input type="checkbox" ' +
-                                (isVisible ? 'checked' : '') +
-                                ' data-field="' + String(field).replace(/"/g, '&quot;') + '"> ' +
-                                String(title).replace(/</g, '&lt;') + '</label>';
-                            menu.appendChild(li);
-                        });
-                    })
-                    .catch(function(err) { console.error('Error loading column visibility:', err); });
+                    var isVisible = col.isVisible();
+                    var title = def.title || field;
+                    var li = document.createElement('li');
+                    li.innerHTML =
+                        '<label class="dropdown-item"><input type="checkbox" ' +
+                        (isVisible ? 'checked' : '') +
+                        ' data-field="' + String(field).replace(/"/g, '&quot;') + '"> ' +
+                        String(title).replace(/</g, '&lt;') + '</label>';
+                    menu.appendChild(li);
+                });
+                gacColDropdownBuilt = true;
             }
 
             function saveColumnVisibilityToServer() {
                 if (!table) return;
-                const visibility = {};
+                var visibility = {};
                 table.getColumns().forEach(function(col) {
-                    const field = col.getDefinition().field;
-                    if (field && field !== '__gac_select') {
-                        visibility[field] = col.isVisible();
+                    var field = col.getDefinition().field;
+                    if (!field || field === '__gac_select') return;
+                    if (Object.prototype.hasOwnProperty.call(GAC_PERMANENTLY_HIDDEN_FIELDS, field)) {
+                        visibility[field] = false;
+                        return;
                     }
+                    visibility[field] = col.isVisible();
                 });
+                gacSavedColumnVisibility = visibility;
+                gacSavedColumnVisibilityLoaded = true;
 
                 fetch(TABULATOR_COLUMN_VISIBILITY_URL, {
                     method: 'POST',
+                    credentials: 'same-origin',
                     headers: {
+                        'Accept': 'application/json',
                         'Content-Type': 'application/json',
                         'X-CSRF-TOKEN': gacCsrfToken(),
                     },
@@ -1915,30 +2053,22 @@
                 }).catch(function(err) { console.error('Error saving column visibility:', err); });
             }
 
-            function applyColumnVisibilityFromServer() {
-                if (!table) return Promise.resolve();
-                return fetch(TABULATOR_COLUMN_VISIBILITY_URL + '?channel=' + encodeURIComponent(TABULATOR_COLUMN_CHANNEL), {
-                    method: 'GET',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': gacCsrfToken(),
-                    },
-                })
-                    .then(function(res) { return res.json(); })
-                    .then(function(savedVisibility) {
-                        if (!savedVisibility || typeof savedVisibility !== 'object') return;
-                        table.getColumns().forEach(function(col) {
-                            const field = col.getDefinition().field;
-                            if (!field || field === '__gac_select') return;
-                            if (!Object.prototype.hasOwnProperty.call(savedVisibility, field)) return;
-                            if (savedVisibility[field]) {
-                                col.show();
-                            } else {
-                                col.hide();
-                            }
-                        });
-                    })
-                    .catch(function(err) { console.error('Error applying column visibility:', err); });
+            function applyColumnVisibilityFromCache() {
+                if (!table || !gacSavedColumnVisibilityLoaded) return;
+                table.getColumns().forEach(function(col) {
+                    var field = col.getDefinition().field;
+                    if (!field || field === '__gac_select') return;
+                    if (Object.prototype.hasOwnProperty.call(GAC_PERMANENTLY_HIDDEN_FIELDS, field)) {
+                        col.hide();
+                        return;
+                    }
+                    if (!Object.prototype.hasOwnProperty.call(gacSavedColumnVisibility, field)) return;
+                    if (gacSavedColumnVisibility[field]) {
+                        col.show();
+                    } else {
+                        col.hide();
+                    }
+                });
             }
 
             function gacEnsureColumnVisibilityUi() {
@@ -1949,9 +2079,17 @@
                 }).length === 0) {
                     return;
                 }
-                if (gacColVisReady) return;
-                gacColVisReady = true;
-                applyColumnVisibilityFromServer().then(buildColumnDropdown);
+                var finish = function() {
+                    applyColumnVisibilityFromCache();
+                    if (!gacColDropdownBuilt) {
+                        buildColumnDropdown();
+                    }
+                };
+                if (gacSavedColumnVisibilityLoaded) {
+                    finish();
+                } else {
+                    gacColumnVisibilityReady.then(finish);
+                }
             }
 
             var gacColMenu = document.getElementById('column-dropdown-menu');
@@ -1972,6 +2110,13 @@
                         col.hide();
                     }
                     saveColumnVisibilityToServer();
+                });
+            }
+
+            var gacColDropdownBtn = document.getElementById('columnVisibilityDropdown');
+            if (gacColDropdownBtn) {
+                gacColDropdownBtn.addEventListener('show.bs.dropdown', function() {
+                    buildColumnDropdown();
                 });
             }
 
@@ -2269,6 +2414,95 @@
                         loadingTitle: 'Pushing SBID (sbid:update)…',
                         loadingDetail: 'Updating SBIDs for ' + ids.length + ' campaign id(s) in chunks of 10.',
                     });
+                });
+            }
+
+            /** Run pause/enable-by-inventory artisan (same as daily cron). No campaign_ids — full channel scan. */
+            function gacRunInvStatusSync(opts) {
+                if (!window.confirm(opts.confirmMsg)) {
+                    return;
+                }
+                var btn = opts.btn;
+                var pauseB = document.getElementById('gac-raw-pause-inv');
+                var enableB = document.getElementById('gac-raw-enable-inv');
+                if (pauseB) pauseB.disabled = true;
+                if (enableB) enableB.disabled = true;
+                var origHtml = btn.innerHTML;
+                btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Running…';
+                gacShowPushLoading(opts.loadingTitle, opts.loadingDetail || 'Waiting for Google Ads API — do not close this tab.');
+
+                var token = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+                fetch(opts.url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Accept: 'application/json',
+                        'X-CSRF-TOKEN': token,
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({}),
+                })
+                    .then(function(res) {
+                        return res.json().then(function(body) {
+                            return { ok: res.ok, body: body };
+                        });
+                    })
+                    .then(function(out) {
+                        var b = out.body || {};
+                        var cmd = b.command || opts.commandLabel || 'sync-status-by-inventory';
+                        var success = out.ok && b.ok !== false;
+                        var title = cmd + ' — ' + (success ? 'finished' : 'failed');
+                        if (b.exit_code != null) title += ' (exit ' + b.exit_code + ')';
+                        var text = (b.message ? b.message + '\n\n' : '') + (b.output || '');
+                        gacShowPushResult(title, text, success ? 'success' : 'error');
+                        if (success && table) {
+                            Promise.resolve(table.setData(dataUrl)).finally(gacRawRefreshTableUiSoon);
+                        }
+                    })
+                    .catch(function(err) {
+                        gacShowPushResult('Request failed', String(err && err.message ? err.message : err), 'error');
+                    })
+                    .finally(function() {
+                        btn.innerHTML = origHtml;
+                        if (pauseB) pauseB.disabled = false;
+                        if (enableB) enableB.disabled = false;
+                    });
+            }
+
+            var pauseInvBtn = document.getElementById('gac-raw-pause-inv');
+            if (pauseInvBtn) {
+                pauseInvBtn.addEventListener('click', function() {
+                    gacRunInvStatusSync({
+                        url: gacRawPauseInvUrl,
+                        btn: pauseInvBtn,
+                        commandLabel: 'google-shopping:sync-status-by-inventory --mode=pause',
+                        confirmMsg: 'Pause all ENABLED Shopping campaigns with INV ≤ 0?\n\nUses parent-total INV for PARENT campaigns (same as the INV column). Same job as the daily 18:00 IST cron.',
+                        loadingTitle: 'Pausing campaigns with INV = 0…',
+                        loadingDetail: 'Running google-shopping:sync-status-by-inventory --mode=pause against Google Ads.',
+                    });
+                });
+            }
+            var enableInvBtn = document.getElementById('gac-raw-enable-inv');
+            if (enableInvBtn) {
+                enableInvBtn.addEventListener('click', function() {
+                    gacRunInvStatusSync({
+                        url: gacRawEnableInvUrl,
+                        btn: enableInvBtn,
+                        commandLabel: 'google-shopping:sync-status-by-inventory --mode=enable',
+                        confirmMsg: 'Enable all PAUSED Shopping campaigns with INV > 0?\n\nUses parent-total INV for PARENT campaigns (same as the INV column). Same job as the daily 18:00 IST cron.',
+                        loadingTitle: 'Enabling campaigns with INV > 0…',
+                        loadingDetail: 'Running google-shopping:sync-status-by-inventory --mode=enable against Google Ads.',
+                    });
+                });
+            }
+
+            var verifyIdBtn = document.getElementById('gac-raw-verify-id');
+            if (verifyIdBtn) {
+                verifyIdBtn.addEventListener('click', function() {
+                    gacRawVerifyIdActive = !gacRawVerifyIdActive;
+                    gacRawSyncVerifyIdButton();
+                    gacRawReloadGridForFilters();
                 });
             }
 
@@ -2578,16 +2812,25 @@
                 var rangeEl = document.getElementById('gacRawBadgeChartRange');
                 var days = parseInt((rangeEl && rangeEl.value) || '30', 10) || 30;
                 var titleEl = document.getElementById('gacRawBadgeChartTitle');
+                var isGreenUtil = metric === 'green_util_l7';
                 if (titleEl) {
-                    // Same title pattern as all-marketplace-master: "… (Rolling L30)"
                     var rangeLabel = days === 0 ? 'Lifetime' : ('L' + days);
-                    titleEl.textContent = 'Google Shopping - ' + (label || metric.toUpperCase()) + ' (Rolling ' + rangeLabel + ')';
+                    // Green util history is a daily count (re-anchored windows), not a rolling L30 average.
+                    if (isGreenUtil) {
+                        titleEl.textContent = 'Google Shopping - ' + (label || 'Green Util (L7)') + ' (Daily · ' + rangeLabel + ')';
+                    } else {
+                        // Same title pattern as all-marketplace-master: "… (Rolling L30)"
+                        titleEl.textContent = 'Google Shopping - ' + (label || metric.toUpperCase()) + ' (Rolling ' + rangeLabel + ')';
+                    }
                 }
 
                 var params = new URLSearchParams({ metric: metric, days: String(days) });
-                var ids = gacRawVisibleCampaignIds();
-                if (ids.length) {
-                    params.set('campaign_ids', ids.join(','));
+                // Green util history is a persisted channel-level daily count (not scoped to visible rows).
+                if (!isGreenUtil) {
+                    var ids = gacRawVisibleCampaignIds();
+                    if (ids.length) {
+                        params.set('campaign_ids', ids.join(','));
+                    }
                 }
 
                 fetch(gacRawBadgeHistoryUrl + '?' + params.toString(), {

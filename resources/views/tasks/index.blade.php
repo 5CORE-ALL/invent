@@ -2143,8 +2143,8 @@
                     <div id="done-checklist-questions" class="vstack gap-3"></div>
                 </div>
 
-                {{-- Normal report when no checklist --}}
-                <div id="done-report-pane">
+                {{-- Report only when a checklist exists (filled from checklist answers on submit) --}}
+                <div id="done-report-pane" class="d-none">
                     <div class="mb-3">
                         <label for="task-done-report" class="form-label">Report <span class="text-danger">*</span></label>
                         <textarea class="form-control" id="task-done-report" rows="5" placeholder="Describe what was completed, outcomes, or notes for the assignor."></textarea>
@@ -2251,6 +2251,49 @@
             <div class="modal-footer">
                 <button type="button" class="btn btn-primary" id="confirm-status-change-btn">
                     <i class="mdi mdi-check me-1"></i>Confirm Change
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add-assignee status modal — Dependent / Need Help / Need Approval -->
+<div class="modal fade" id="addAssigneeStatusModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header" id="add-assignee-status-header" style="background: linear-gradient(135deg, #d63384 0%, #ab296a 100%); color: white;">
+                <h5 class="modal-title">
+                    <i class="mdi mdi-account-arrow-right me-2"></i><span id="add-assignee-status-title">Mark as Dependent</span>
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-3 text-muted" id="add-assignee-status-help">Choose an assignee to add to this task.</p>
+                <div class="mb-3">
+                    <label for="add-assignee-status-assignee-id" class="form-label fw-bold">
+                        Assignee <span class="text-danger" id="add-assignee-required-mark">*</span>
+                    </label>
+                    <select class="form-select" id="add-assignee-status-assignee-id">
+                        <option value="">— Select assignee to add —</option>
+                        @foreach($users ?? [] as $u)
+                            <option value="{{ $u->id }}">{{ $u->name }}</option>
+                        @endforeach
+                    </select>
+                    <div class="form-text">Selected person will be added alongside existing assignees.</div>
+                </div>
+                <div class="mb-3" id="add-assignee-task-required-wrap">
+                    <label for="add-assignee-status-reason" class="form-label fw-bold">Task Required <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="add-assignee-status-reason" placeholder="What is required from this person?">
+                </div>
+                <div class="alert alert-info mb-0">
+                    <i class="mdi mdi-information me-2"></i>
+                    Changing to: <strong id="add-assignee-status-label">Dependent</strong>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="confirm-add-assignee-status-btn" style="background:#d63384;border-color:#d63384;">
+                    <i class="mdi mdi-check me-1"></i>Confirm
                 </button>
             </div>
         </div>
@@ -6335,7 +6378,7 @@
                 doneChecklistMode = false;
                 doneChecklistQuestions = [];
                 $('#done-checklist-pane').addClass('d-none');
-                $('#done-report-pane').removeClass('d-none');
+                $('#done-report-pane').addClass('d-none');
                 $('#done-checklist-questions').empty();
                 $('#done-checklist-form-meta').text('—');
                 $('#done-modal-loading').addClass('d-none');
@@ -6435,7 +6478,10 @@
                     var data = await res.json().catch(function() { return {}; });
                     $('#done-modal-loading').addClass('d-none');
                     if (!res.ok) {
-                        $('#done-report-pane').removeClass('d-none');
+                        // No checklist available — skip report; ATC/reference only
+                        doneChecklistMode = false;
+                        $('#done-checklist-pane').addClass('d-none');
+                        $('#done-report-pane').addClass('d-none');
                         return;
                     }
                     if (data.has_checklist && data.form && data.form.questions && data.form.questions.length) {
@@ -6450,14 +6496,16 @@
                         );
                         renderDoneChecklistQuestions(doneChecklistQuestions);
                     } else {
+                        // No checklist provided — do not ask for a completion report
                         doneChecklistMode = false;
                         $('#done-checklist-pane').addClass('d-none');
-                        $('#done-report-pane').removeClass('d-none');
+                        $('#done-report-pane').addClass('d-none');
                     }
                 } catch (e) {
                     $('#done-modal-loading').addClass('d-none');
                     doneChecklistMode = false;
-                    $('#done-report-pane').removeClass('d-none');
+                    $('#done-checklist-pane').addClass('d-none');
+                    $('#done-report-pane').addClass('d-none');
                 }
             }
 
@@ -6529,6 +6577,33 @@
                 'Rework': 'Rework'
             };
             
+            var addAssigneeStatusConfig = {
+                'Dependent': {
+                    title: 'Mark as Dependent',
+                    help: 'Choose an assignee to add to this task, then set status to Dependent.',
+                    headerBg: 'linear-gradient(135deg, #d63384 0%, #ab296a 100%)',
+                    btnBg: '#d63384',
+                    requireAssignee: true,
+                    requireTaskRequired: true
+                },
+                'Need Help': {
+                    title: 'Mark as Need Help',
+                    help: 'Optionally add an assignee who can help, then set status to Need Help.',
+                    headerBg: 'linear-gradient(135deg, #fd7e14 0%, #e8590c 100%)',
+                    btnBg: '#fd7e14',
+                    requireAssignee: false,
+                    requireTaskRequired: false
+                },
+                'Need Approval': {
+                    title: 'Mark as Need Approval',
+                    help: 'Optionally add an assignee for approval, then set status to Need Approval.',
+                    headerBg: 'linear-gradient(135deg, #6610f2 0%, #520dc2 100%)',
+                    btnBg: '#6610f2',
+                    requireAssignee: false,
+                    requireTaskRequired: false
+                }
+            };
+
             $(document).on('change', '.status-select', function() {
                 var select = $(this);
                 newStatusValue = select.val();
@@ -6538,13 +6613,74 @@
                 if (newStatusValue === 'Done') {
                     openDoneModalForTask(currentTaskId);
                     select.val(previousStatus);
-                } else {
-                    // Show Status Change Modal (ask for reason)
-                    var statusLabel = statusLabels[newStatusValue] || newStatusValue;
-                    $('#new-status-label').text(statusLabel);
-                    $('#statusChangeModal').modal('show');
+                } else if (addAssigneeStatusConfig[newStatusValue]) {
+                    // Dependent / Need Help / Need Approval — offer add-assignee modal
+                    openAddAssigneeStatusModal(currentTaskId, newStatusValue);
                     select.val(previousStatus);
+                } else if (newStatusValue === 'Rework') {
+                    // Rework specifically requires a reason
+                    openReworkModalForTask(currentTaskId);
+                    select.val(previousStatus);
+                } else {
+                    // All other statuses: apply immediately — no reason prompt
+                    updateTaskStatus(currentTaskId, newStatusValue);
                 }
+            });
+
+            function openAddAssigneeStatusModal(taskId, status) {
+                var cfg = addAssigneeStatusConfig[status];
+                if (!cfg) return;
+
+                currentTaskId = taskId;
+                newStatusValue = status;
+                var row = (typeof table !== 'undefined' && table) ? table.getRow(taskId) : null;
+                var rowData = row ? row.getData() : null;
+                previousStatus = rowData && rowData.status ? rowData.status : 'Todo';
+
+                $('#add-assignee-status-title').text(cfg.title);
+                $('#add-assignee-status-help').text(cfg.help);
+                $('#add-assignee-status-label').text(status);
+                $('#add-assignee-status-header').css('background', cfg.headerBg);
+                $('#confirm-add-assignee-status-btn').css({ background: cfg.btnBg, borderColor: cfg.btnBg });
+                $('#add-assignee-required-mark').toggle(!!cfg.requireAssignee);
+                $('#add-assignee-task-required-wrap').toggle(!!cfg.requireTaskRequired);
+                $('#add-assignee-status-assignee-id').val('');
+                $('#add-assignee-status-reason').val('');
+                $('#addAssigneeStatusModal').modal('show');
+                setTimeout(function() { $('#add-assignee-status-assignee-id').focus(); }, 300);
+            }
+
+            // Keep old name as alias (any leftover callers)
+            function openDependentStatusModal(taskId) {
+                openAddAssigneeStatusModal(taskId, 'Dependent');
+            }
+
+            $('#addAssigneeStatusModal').on('hidden.bs.modal', function () {
+                $('#add-assignee-status-assignee-id').val('');
+                $('#add-assignee-status-reason').val('');
+            });
+
+            $('#confirm-add-assignee-status-btn').on('click', function() {
+                var status = newStatusValue;
+                var cfg = addAssigneeStatusConfig[status] || {};
+                var assigneeId = $('#add-assignee-status-assignee-id').val();
+                var reason = $('#add-assignee-status-reason').val().trim();
+
+                if (cfg.requireAssignee && !assigneeId) {
+                    alert('Please select an assignee to add.');
+                    $('#add-assignee-status-assignee-id').focus();
+                    return;
+                }
+                if (cfg.requireTaskRequired && !reason) {
+                    alert('Please enter Task Required.');
+                    $('#add-assignee-status-reason').focus();
+                    return;
+                }
+
+                updateTaskStatus(currentTaskId, status, null, reason || null, assigneeId || null);
+                $('#addAssigneeStatusModal').modal('hide');
+                $('#add-assignee-status-assignee-id').val('');
+                $('#add-assignee-status-reason').val('');
             });
 
             // Confirm Done — checklist (if linked) or normal report + ATC
@@ -6568,15 +6704,8 @@
                         return;
                     }
                     payload.checklist_answers = collected.answers;
-                } else {
-                    var report = $('#task-done-report').val().trim();
-                    if (!report) {
-                        $('#task-done-report').addClass('is-invalid');
-                        $('#task-done-report-feedback').removeClass('d-none');
-                        return;
-                    }
-                    payload.report = report;
                 }
+                // No checklist → no report required; ATC + optional reference link only
 
                 var atcRaw = $('#task-done-atc').val();
                 var atcNum = parseInt(atcRaw, 10);
@@ -6672,7 +6801,7 @@
             });
 
             // Update Task Status Function
-            function updateTaskStatus(taskId, status, atc = null, reworkReason = null) {
+            function updateTaskStatus(taskId, status, atc = null, reworkReason = null, assigneeId = null) {
                 var data = {
                     _token: '{{ csrf_token() }}',
                     status: status
@@ -6684,6 +6813,10 @@
                 
                 if (reworkReason) {
                     data.rework_reason = reworkReason;
+                }
+
+                if (assigneeId) {
+                    data.assignee_id = assigneeId;
                 }
                 
                 $.ajax({

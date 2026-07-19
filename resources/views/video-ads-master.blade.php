@@ -1,10 +1,12 @@
-@extends('layouts.vertical', ['title' => 'Video Ads Master', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Video Request & Check', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
 
     {{-- Tabulator look-and-feel matched to resources/views/usage-images-master.blade.php
          (vertical column headers, no sort triangles, common spacing rules). --}}
@@ -13,12 +15,18 @@
             display: none !important;
         }
 
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-content {
+            text-align: center;
+        }
+
         .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
             white-space: nowrap;
             font-size: 12px;
             font-weight: 600;
             color: #1f2937;
             letter-spacing: 0.3px;
+            text-align: center;
+            width: 100%;
         }
 
         .tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
@@ -119,6 +127,12 @@
         .tabulator-edit-list { z-index: 10500 !important; }
         .tabulator-edit-list .tabulator-edit-list-item.active,
         .tabulator-edit-list .tabulator-edit-list-item:hover { background: #eef4ff !important; }
+        /* Multi-select list editor — selected tags stay highlighted so you can
+           click several before confirming (Enter / click outside). */
+        .tabulator-edit-list .tabulator-edit-list-item.tabulator-selected {
+            background: #2c6ed5 !important;
+            color: #fff !important;
+        }
 
         /* Subtle hint that data cells are click-to-edit. The action column
            and the # column are excluded so their buttons / numbers don't
@@ -128,7 +142,9 @@
         #video-ads-master-table .tabulator-cell[tabulator-field="_missing"],
         #video-ads-master-table .tabulator-cell[tabulator-field="_check"],
         #video-ads-master-table .tabulator-cell[tabulator-field="_adcheck"],
-        #video-ads-master-table .tabulator-cell[tabulator-field="_actions"] { cursor: default; }
+        #video-ads-master-table .tabulator-cell[tabulator-field="_actions"],
+        #video-ads-master-table .tabulator-cell[tabulator-field="audience"],
+        #video-ads-master-table .tabulator-cell[tabulator-field="hook_name"] { cursor: default; }
         #video-ads-master-table .tabulator-cell.tabulator-editing { background: #fff8d6 !important; }
 
         /* CHECK column — checkbox + who/when meta + history button. */
@@ -180,12 +196,112 @@
             background: #dc2626;
             box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.18);
         }
+
+        /* AUDIENCE / HOOK multi-select tags (table cells + Select2). */
+        .vam-tag {
+            display: inline-block;
+            font-size: 10px;
+            font-weight: 600;
+            padding: 2px 7px;
+            margin: 1px 3px 1px 0;
+            border-radius: 10px;
+            white-space: nowrap;
+            max-width: 220px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            vertical-align: middle;
+        }
+        .vam-tag--audience { background: #e0f2fe; color: #0369a1; }
+        .vam-tag--hook     { background: #f3e8ff; color: #7e22ce; }
+        .vam-tag-cell {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 4px;
+            min-height: 22px;
+        }
+        .vam-tag-add-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 22px;
+            height: 22px;
+            padding: 0;
+            border: 1px dashed #9ca3af;
+            border-radius: 50%;
+            background: #fff;
+            color: #4b5563;
+            font-size: 12px;
+            line-height: 1;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        .vam-tag-add-btn:hover {
+            border-color: #2c6ed5;
+            color: #2c6ed5;
+            background: #eff6ff;
+        }
+        .vam-pick-option {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 8px 10px;
+            border-bottom: 1px solid #eef2f7;
+            cursor: pointer;
+        }
+        .vam-pick-option:last-child { border-bottom: 0; }
+        .vam-pick-option:hover { background: #f8fafc; }
+        .vam-pick-option.is-checked { background: #eff6ff; }
+        .vam-pick-option input { margin-top: 3px; }
+        .vam-pick-option-label {
+            flex: 1;
+            min-width: 0;
+            font-size: 13px;
+            font-weight: 600;
+            color: #111827;
+        }
+        .vam-pick-option-meta {
+            font-size: 11px;
+            font-weight: 400;
+            color: #6b7280;
+            margin-top: 2px;
+        }
+        .vam-manage-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 0;
+            border-bottom: 1px solid #eef2f7;
+        }
+        .vam-manage-row:last-child { border-bottom: 0; }
+        .vam-manage-name {
+            flex: 1;
+            min-width: 0;
+            font-weight: 600;
+            font-size: 13px;
+        }
+        .vam-manage-meta {
+            font-size: 11px;
+            color: #6b7280;
+            max-width: 180px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .select2-container--bootstrap-5 .select2-selection--multiple .select2-selection__choice {
+            background: #e0f2fe;
+            border-color: #bae6fd;
+            color: #0369a1;
+            font-size: 12px;
+        }
+        /* Cell editor Select2 must sit above Tabulator layers. */
+        .select2-container--open { z-index: 10600 !important; }
     </style>
 @endsection
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Video Ads Master',
+        'page_title' => 'Video Request & Check',
         'sub_title'  => 'Manage video ads with SKU / Parent / Group targets',
     ])
 
@@ -286,19 +402,28 @@
 
                             <div class="col-md-8">
                                 <label class="form-label fw-semibold">Audience</label>
-                                <input type="text" id="vam_audience" class="form-control" placeholder="Target audience">
+                                <div class="d-flex gap-2 align-items-start">
+                                    <div class="flex-grow-1">
+                                        <select id="vam_audience" class="form-select" multiple></select>
+                                    </div>
+                                    <button type="button" class="btn btn-outline-secondary" id="vamAudienceManageBtn" title="Manage audience tags (add / edit / delete)">
+                                        <i class="fas fa-cog"></i>
+                                    </button>
+                                </div>
+                                <div class="form-text">Pick one or more tags. Type to add a new audience.</div>
                             </div>
 
                             <div class="col-md-6">
-                                <label class="form-label fw-semibold">Hook Name</label>
-                                <div class="input-group">
-                                    <select id="vam_hook_name" class="form-select">
-                                        <option value="">— Select hook name —</option>
-                                    </select>
-                                    <button type="button" class="btn btn-outline-primary" id="vamHookAddBtn" title="Add new hook name">
-                                        <i class="fas fa-plus"></i>
+                                <label class="form-label fw-semibold">Hook</label>
+                                <div class="d-flex gap-2 align-items-start">
+                                    <div class="flex-grow-1">
+                                        <select id="vam_hook_name" class="form-select" multiple></select>
+                                    </div>
+                                    <button type="button" class="btn btn-outline-secondary" id="vamHookManageBtn" title="Manage hook tags (add / edit / delete)">
+                                        <i class="fas fa-cog"></i>
                                     </button>
                                 </div>
+                                <div class="form-text">Pick one or more tags. Type to add a new hook.</div>
                             </div>
 
                             <div class="col-md-6">
@@ -324,18 +449,16 @@
         </div>
     </div>
 
-    {{-- Modal: add/edit a HOOK NAME option together with its default Hook
-         Message and Link. Whenever this hook is picked on a row (either via
-         the form modal or the inline cell), the Hook Message and Link cells
-         on that row will be auto-filled from these defaults. --}}
+    {{-- Modal: add/edit a single HOOK option (name + default message/link). --}}
     <div class="modal fade" id="vamAddHookModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title">Add / Edit Hook</h5>
+                    <h5 class="modal-title" id="vamAddHookModalTitle">Add Hook</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
+                    <input type="hidden" id="vamEditingHookId" value="">
                     <div class="row g-3">
                         <div class="col-md-4">
                             <label class="form-label fw-semibold">Hook name <span class="text-danger">*</span></label>
@@ -348,13 +471,97 @@
                         <div class="col-12">
                             <label class="form-label fw-semibold">Default Link</label>
                             <input type="url" id="vamNewHookLink" class="form-control" placeholder="https://…" autocomplete="off">
-                            <div class="form-text">Picking this hook on a row will auto-fill the row's Hook Message and Link with these defaults.</div>
+                            <div class="form-text">When a single hook tag is picked on a row, Hook Message and Link can auto-fill from these defaults.</div>
                         </div>
                     </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="button" class="btn btn-primary" id="vamSaveNewHookBtn">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- Modal: pick one or more AUDIENCE / HOOK tags for a single row. --}}
+    <div class="modal fade" id="vamPickTagsModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="vamPickTagsTitle">Select options</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="text" id="vamPickTagsSearch" class="form-control form-control-sm mb-3" placeholder="Search options…">
+                    <div id="vamPickTagsList" class="border rounded" style="max-height: 360px; overflow: auto;">
+                        <div class="text-muted text-center py-3">Loading…</div>
+                    </div>
+                    <div class="input-group mt-3">
+                        <input type="text" id="vamPickTagsNew" class="form-control form-control-sm" placeholder="Add a new option…" autocomplete="off">
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="vamPickTagsAddNewBtn">
+                            <i class="fas fa-plus me-1"></i>Add
+                        </button>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="vamPickTagsApplyBtn">
+                        <i class="fas fa-check me-1"></i>Apply
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- Modal: manage HOOK tag options (add / edit / delete). --}}
+    <div class="modal fade" id="vamHookManageModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-scrollable modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-anchor me-2"></i>Manage Hooks</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <div class="text-muted small">Hooks used on rows are listed here. Edit to set default message/link.</div>
+                        <button type="button" class="btn btn-sm btn-primary" id="vamHookManageAddBtn">
+                            <i class="fas fa-plus me-1"></i>Add Hook
+                        </button>
+                    </div>
+                    <div id="vamHookManageList" class="border rounded px-3">
+                        <div class="text-muted text-center py-3">Loading…</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- Modal: manage AUDIENCE tag options (add / edit / delete). Options
+         are shared via video_ad_audience_options and also seeded from any
+         audiences already used on rows. --}}
+    <div class="modal fade" id="vamAudienceManageModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-users me-2"></i>Manage Audiences</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="input-group mb-3">
+                        <input type="text" id="vamAudienceNewName" class="form-control" placeholder="New audience name…" autocomplete="off">
+                        <button type="button" class="btn btn-primary" id="vamAudienceAddBtn">
+                            <i class="fas fa-plus me-1"></i>Add
+                        </button>
+                    </div>
+                    <div id="vamAudienceManageList" class="border rounded px-3">
+                        <div class="text-muted text-center py-3">Loading…</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                 </div>
             </div>
         </div>
@@ -384,6 +591,7 @@
 
 @section('script')
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 
     <script>
         (function () {
@@ -392,11 +600,17 @@
             // ── State ──────────────────────────────────────────────────────────
             let table              = null;
             let channelOptions     = [];
-            let hookOptions        = [];
+            let hookOptions        = [];     // [{id, name, hook, link}, …]
+            let audienceOptions    = [];     // [{id, name}, …] from video_ad_audience_options
             let rowModal           = null;   // bootstrap.Modal — Add / Edit form
-            let addHookModal       = null;   // bootstrap.Modal — "+ Add hook" sub-modal
+            let addHookModal       = null;   // bootstrap.Modal — add / edit one hook
+            let hookManageModal    = null;   // bootstrap.Modal — manage hook tags
+            let audienceManageModal = null;  // bootstrap.Modal — manage audience tags
+            let pickTagsModal      = null;   // bootstrap.Modal — pick tags for a row cell
             let checkHistoryModal  = null;   // bootstrap.Modal — per-row check audit trail
             let editingId          = null;   // id of the row currently in the form (null = add mode)
+            let editingHookId      = null;   // id of hook option being edited in Add Hook modal
+            let pickTagsContext    = null;   // { row, field: 'audience'|'hook_name' }
 
             // ── Helpers ────────────────────────────────────────────────────────
             function escapeHtml(s) {
@@ -457,6 +671,237 @@
                 const v = cell.getValue();
                 if (v === null || v === undefined || v === '') return '<span class="vam-dash">—</span>';
                 return escapeHtml(v);
+            }
+
+            // Strip a trailing " Hook" from labels so choices read as
+            // "Content Creator" instead of "Content Creator Hook".
+            function displayHookName(name) {
+                const s = String(name || '').trim();
+                const stripped = s.replace(/\s+hook$/i, '').trim();
+                return stripped || s;
+            }
+
+            function normalizeHookName(name) {
+                return displayHookName(name);
+            }
+
+            // AUDIENCE / HOOK multi-tags are stored pipe-delimited ("A | B")
+            // so names can contain commas. Existing single-value cells stay
+            // as one tag.
+            function parseTags(value) {
+                if (value === null || value === undefined) return [];
+                if (Array.isArray(value)) {
+                    return value.map(v => String(v).trim()).filter(Boolean);
+                }
+                const s = String(value).trim();
+                if (!s) return [];
+                if (s.charAt(0) === '[') {
+                    try {
+                        const arr = JSON.parse(s);
+                        if (Array.isArray(arr)) {
+                            return arr.map(v => String(v).trim()).filter(Boolean);
+                        }
+                    } catch (_) { /* fall through */ }
+                }
+                if (s.indexOf('|') !== -1) {
+                    return s.split('|').map(v => v.trim()).filter(Boolean);
+                }
+                return [s];
+            }
+
+            function formatTags(tags) {
+                const list = (tags || []).map(v => String(v).trim()).filter(Boolean);
+                // De-dupe while preserving order.
+                const seen = new Set();
+                const unique = [];
+                list.forEach(t => {
+                    if (seen.has(t)) return;
+                    seen.add(t);
+                    unique.push(t);
+                });
+                return unique.length ? unique.join(' | ') : '';
+            }
+
+            function tagFormatter(modifier) {
+                return function (cell) {
+                    const tags = parseTags(cell.getValue());
+                    const pills = tags.length
+                        ? tags.map(t => {
+                            const label = modifier === 'hook' ? displayHookName(t) : t;
+                            return `<span class="vam-tag vam-tag--${modifier}" title="${escapeHtml(label)}">${escapeHtml(label)}</span>`;
+                        }).join('')
+                        : '<span class="vam-dash">—</span>';
+                    return `<div class="vam-tag-cell">${pills}<button type="button" class="vam-tag-add-btn" title="Choose options" data-tag-field="${modifier === 'hook' ? 'hook_name' : 'audience'}"><i class="fas fa-plus"></i></button></div>`;
+                };
+            }
+            const audienceFormatter = tagFormatter('audience');
+            const hookFormatter     = tagFormatter('hook');
+
+            // Open the pick-tags modal for a row's AUDIENCE or HOOK cell.
+            function openPickTagsModal(row, field) {
+                pickTagsContext = { row, field };
+                const isHook = field === 'hook_name';
+                document.getElementById('vamPickTagsTitle').textContent = isHook ? 'Select Hooks' : 'Select Audiences';
+                document.getElementById('vamPickTagsSearch').value = '';
+                document.getElementById('vamPickTagsNew').value = '';
+                document.getElementById('vamPickTagsNew').placeholder = isHook ? 'Add a new hook…' : 'Add a new audience…';
+                renderPickTagsList();
+                pickTagsModal.show();
+            }
+
+            // One entry per hook *type* ("Content Creator Hook" and
+            // "Content Creator" collapse to a single "Content Creator").
+            function uniqueHookOptions() {
+                const byKey = new Map();
+                (hookOptions || []).forEach(o => {
+                    const clean = displayHookName(o.name);
+                    const key = clean.toLowerCase();
+                    if (!key) return;
+                    const prev = byKey.get(key);
+                    if (!prev) {
+                        byKey.set(key, { ...o, name: clean });
+                        return;
+                    }
+                    byKey.set(key, {
+                        ...prev,
+                        name: clean,
+                        hook: prev.hook || o.hook || '',
+                        link: prev.link || o.link || '',
+                    });
+                });
+                return Array.from(byKey.values()).sort((a, b) =>
+                    a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+                );
+            }
+
+            function getPickTagOptions() {
+                if (!pickTagsContext) return [];
+                if (pickTagsContext.field === 'hook_name') {
+                    return uniqueHookOptions().map(o => ({ name: o.name }));
+                }
+                // Audiences: unique by case-insensitive name.
+                const byKey = new Map();
+                (audienceOptions || []).forEach(o => {
+                    const key = String(o.name || '').trim().toLowerCase();
+                    if (!key || byKey.has(key)) return;
+                    byKey.set(key, { name: o.name });
+                });
+                return Array.from(byKey.values()).sort((a, b) =>
+                    a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+                );
+            }
+
+            function renderPickTagsList() {
+                const wrap = document.getElementById('vamPickTagsList');
+                if (!wrap || !pickTagsContext) return;
+
+                const isHook = pickTagsContext.field === 'hook_name';
+                const selectedRaw = parseTags(pickTagsContext.row.getData()[pickTagsContext.field]);
+                const selected = new Set(
+                    selectedRaw.map(n => (isHook ? displayHookName(n) : n).toLowerCase())
+                );
+                const q = (document.getElementById('vamPickTagsSearch').value || '').trim().toLowerCase();
+                let options = getPickTagOptions();
+
+                // Include any currently-selected tags that aren't in the master list yet.
+                selectedRaw.forEach(name => {
+                    const clean = isHook ? displayHookName(name) : name;
+                    if (!options.some(o => o.name.toLowerCase() === clean.toLowerCase())) {
+                        options = options.concat([{ name: clean }]);
+                    }
+                });
+
+                if (q) {
+                    options = options.filter(o => o.name.toLowerCase().includes(q));
+                }
+
+                if (!options.length) {
+                    wrap.innerHTML = '<div class="text-muted text-center py-3">No options found.</div>';
+                    return;
+                }
+
+                wrap.innerHTML = options.map(o => {
+                    const checked = selected.has(o.name.toLowerCase()) ? 'checked' : '';
+                    const cls = selected.has(o.name.toLowerCase()) ? 'is-checked' : '';
+                    return `
+                        <label class="vam-pick-option ${cls}">
+                            <input type="checkbox" value="${escapeHtml(o.name)}" ${checked}>
+                            <span class="vam-pick-option-label">${escapeHtml(o.name)}</span>
+                        </label>`;
+                }).join('');
+            }
+
+            function applyPickTagsSelection() {
+                if (!pickTagsContext) return;
+                const wrap = document.getElementById('vamPickTagsList');
+                const checked = Array.from(wrap.querySelectorAll('input[type="checkbox"]:checked'))
+                    .map(el => el.value.trim())
+                    .filter(Boolean);
+                const { row, field } = pickTagsContext;
+                const tags = field === 'hook_name'
+                    ? parseTags(checked.map(normalizeHookName))
+                    : parseTags(checked);
+
+                row.update({ [field]: tags });
+
+                if (field === 'audience') {
+                    tags.forEach(t => {
+                        if (!audienceOptionNames().includes(t)) createAudienceOption(t);
+                    });
+                    const cell = row.getCell('audience');
+                    if (cell) persistCell(cell);
+                } else {
+                    tags.forEach(t => {
+                        if (!hookOptionNames().includes(t)) createHookOption(t);
+                    });
+                    if (tags.length === 1) {
+                        const known = findHook(tags[0]) || findHook(checked[0]);
+                        if (known) applyHookDefaultsToRow(row, known);
+                    }
+                    const cell = row.getCell('hook_name');
+                    if (cell) persistCell(cell);
+                }
+
+                pickTagsModal.hide();
+                pickTagsContext = null;
+                showToast('Selection saved', 'success');
+            }
+
+            function addNewOptionInPickModal() {
+                if (!pickTagsContext) return;
+                const input = document.getElementById('vamPickTagsNew');
+                const name = (input.value || '').trim();
+                if (!name) { showToast('Enter a name', 'warning'); return; }
+
+                const done = () => {
+                    // Re-render with the new option pre-checked on the working set.
+                    const current = parseTags(pickTagsContext.row.getData()[pickTagsContext.field]);
+                    if (!current.includes(name)) {
+                        pickTagsContext.row.update({
+                            [pickTagsContext.field]: current.concat([name]),
+                        });
+                    }
+                    input.value = '';
+                    renderPickTagsList();
+                    showToast('Option added', 'success');
+                };
+
+                if (pickTagsContext.field === 'hook_name') {
+                    const normalized = normalizeHookName(name);
+                    createHookOption(normalized).then(opt => {
+                        if (!opt) return;
+                        // Ensure the working selection uses the normalized name.
+                        const current = parseTags(pickTagsContext.row.getData().hook_name)
+                            .filter(t => t !== name);
+                        if (!current.includes(normalized)) current.push(normalized);
+                        pickTagsContext.row.update({ hook_name: current });
+                        input.value = '';
+                        renderPickTagsList();
+                        showToast('Option added', 'success');
+                    });
+                } else {
+                    createAudienceOption(name).then(opt => { if (opt) done(); });
+                }
             }
 
             function linkFormatter(cell) {
@@ -551,6 +996,218 @@
             ];
             function buildChannelLookup() { return (channelOptions || []).map(c => ({ value: c, label: c })); }
 
+            function audienceOptionNames() {
+                return (audienceOptions || []).map(o => o.name);
+            }
+
+            function setAudienceOptions(list) {
+                audienceOptions = Array.isArray(list) ? list : [];
+                // Keep the form Select2 in sync whenever the option list changes.
+                const sel = document.getElementById('vam_audience');
+                let selected = [];
+                if (sel) {
+                    selected = $(sel).hasClass('select2-hidden-accessible')
+                        ? ($(sel).val() || [])
+                        : Array.from(sel.selectedOptions).map(o => o.value);
+                }
+                rebuildAudienceSelect(selected);
+                renderAudienceManageList();
+            }
+
+            // Rebuild the form's multi-select Select2 from audienceOptions.
+            function rebuildAudienceSelect(selected) {
+                const sel = document.getElementById('vam_audience');
+                if (!sel) return;
+                const chosen = Array.isArray(selected) ? selected : parseTags(selected);
+
+                if ($(sel).hasClass('select2-hidden-accessible')) {
+                    $(sel).off('select2:select.vamAudience');
+                    $(sel).select2('destroy');
+                }
+
+                sel.innerHTML = '';
+                const names = audienceOptionNames();
+                // Include any currently-selected tags that aren't in the master
+                // list yet so Select2 can still show them.
+                chosen.forEach(name => {
+                    if (!names.includes(name)) names.push(name);
+                });
+                names.forEach(name => {
+                    const o = document.createElement('option');
+                    o.value = name;
+                    o.textContent = name;
+                    if (chosen.includes(name)) o.selected = true;
+                    sel.appendChild(o);
+                });
+
+                $(sel).select2({
+                    theme: 'bootstrap-5',
+                    placeholder: 'Select one or more audiences…',
+                    allowClear: true,
+                    tags: true,
+                    closeOnSelect: false,
+                    width: '100%',
+                    dropdownParent: $('#vamRowModal'),
+                    createTag: function (params) {
+                        const term = $.trim(params.term);
+                        if (!term) return null;
+                        if (audienceOptionNames().some(n => n.toLowerCase() === term.toLowerCase())) {
+                            return null;
+                        }
+                        return { id: term, text: '+ Add "' + term + '"', newTag: true };
+                    },
+                });
+
+                // Persist brand-new tags into video_ad_audience_options.
+                $(sel).on('select2:select.vamAudience', function (e) {
+                    if (!e.params.data.newTag) return;
+                    createAudienceOption(e.params.data.id);
+                });
+            }
+
+            function getFormAudienceValue() {
+                const sel = document.getElementById('vam_audience');
+                if (!sel) return null;
+                const tags = $(sel).hasClass('select2-hidden-accessible')
+                    ? ($(sel).val() || [])
+                    : Array.from(sel.selectedOptions).map(o => o.value);
+                const joined = formatTags(tags);
+                return joined === '' ? null : joined;
+            }
+
+            function createAudienceOption(name) {
+                const trimmed = String(name || '').trim();
+                if (!trimmed) return Promise.resolve(null);
+                return fetch('/video-ads-master/audience-options', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken,
+                    },
+                    body: JSON.stringify({ name: trimmed }),
+                })
+                .then(r => r.json().then(j => ({ ok: r.ok, j })))
+                .then(({ ok, j }) => {
+                    if (!ok || !j.success) {
+                        showToast((j && j.message) || 'Failed to add audience', 'error');
+                        return null;
+                    }
+                    if (j.options) setAudienceOptions(j.options);
+                    else if (j.option && !audienceOptions.some(o => o.id === j.option.id)) {
+                        setAudienceOptions(audienceOptions.concat([j.option]));
+                    }
+                    return j.option || null;
+                })
+                .catch(e => {
+                    console.warn('Failed to register audience option:', e);
+                    showToast('Network error adding audience', 'error');
+                    return null;
+                });
+            }
+
+            function renderAudienceManageList() {
+                const wrap = document.getElementById('vamAudienceManageList');
+                if (!wrap) return;
+                if (!audienceOptions.length) {
+                    wrap.innerHTML = '<div class="text-muted text-center py-3">No audiences yet. Add one above.</div>';
+                    return;
+                }
+                wrap.innerHTML = audienceOptions.map(opt => `
+                    <div class="vam-manage-row" data-id="${opt.id}">
+                        <span class="vam-manage-name">${escapeHtml(opt.name)}</span>
+                        <button type="button" class="btn btn-sm btn-outline-primary vam-aud-edit" title="Rename">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-danger vam-aud-del" title="Delete">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                `).join('');
+            }
+
+            function openAudienceManageModal() {
+                renderAudienceManageList();
+                document.getElementById('vamAudienceNewName').value = '';
+                audienceManageModal.show();
+            }
+
+            function addAudienceFromManageModal() {
+                const input = document.getElementById('vamAudienceNewName');
+                const name = (input.value || '').trim();
+                if (!name) { showToast('Enter an audience name', 'warning'); return; }
+                createAudienceOption(name).then(opt => {
+                    if (opt) {
+                        input.value = '';
+                        showToast('Audience added', 'success');
+                    }
+                });
+            }
+
+            function renameAudienceOption(id, currentName) {
+                const next = window.prompt('Rename audience:', currentName);
+                if (next === null) return;
+                const name = String(next).trim();
+                if (!name) { showToast('Name cannot be empty', 'warning'); return; }
+                if (name === currentName) return;
+
+                fetch(`/video-ads-master/audience-options/${id}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken,
+                    },
+                    body: JSON.stringify({ name }),
+                })
+                .then(r => r.json().then(j => ({ ok: r.ok, j })))
+                .then(({ ok, j }) => {
+                    if (!ok || !j.success) {
+                        showToast((j && j.message) || 'Failed to rename', 'error');
+                        return;
+                    }
+                    if (j.options) setAudienceOptions(j.options);
+                    // Refresh grid so renamed tags show on rows.
+                    refreshTableAudienceCells(currentName, name);
+                    showToast('Audience renamed', 'success');
+                })
+                .catch(e => { console.error(e); showToast('Network error renaming audience', 'error'); });
+            }
+
+            function deleteAudienceOption(id, name) {
+                if (!confirm(`Delete audience "${name}"? It will be removed from all rows.`)) return;
+                fetch(`/video-ads-master/audience-options/${id}`, {
+                    method: 'DELETE',
+                    headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': csrfToken },
+                })
+                .then(r => r.json().then(j => ({ ok: r.ok, j })))
+                .then(({ ok, j }) => {
+                    if (!ok || !j.success) {
+                        showToast((j && j.message) || 'Failed to delete', 'error');
+                        return;
+                    }
+                    if (j.options) setAudienceOptions(j.options);
+                    refreshTableAudienceCells(name, null);
+                    showToast('Audience deleted', 'success');
+                })
+                .catch(e => { console.error(e); showToast('Network error deleting audience', 'error'); });
+            }
+
+            // After rename/delete, rewrite the in-memory table cells so the
+            // UI matches the server without a full reload.
+            function refreshTableAudienceCells(oldName, newName) {
+                if (!table) return;
+                table.getRows().forEach(row => {
+                    const data = row.getData();
+                    const tags = parseTags(data.audience);
+                    if (!tags.includes(oldName)) return;
+                    const next = newName === null
+                        ? tags.filter(t => t !== oldName)
+                        : tags.map(t => t === oldName ? newName : t);
+                    row.update({ audience: next });
+                });
+            }
+
             // Native <select> editor for SKU / PARENT / GROUP — gives a true
             // dropdown experience (no text input, no autocomplete). Tabulator's
             // built-in `list` editor renders an input box that opens a panel
@@ -595,24 +1252,231 @@
                 return select;
             }
 
-            // HOOK NAME — list of known hooks. hookOptions is now an array of
-            // `{ name, hook, link }` objects; the dropdown still shows the
-            // name but the extra fields drive auto-fill on selection.
-            function buildHookLookup() {
-                return (hookOptions || []).map(o => ({ value: o.name, label: o.name }));
+            // Lookup lists for Tabulator's multi-select list editor.
+            function buildAudienceLookup() {
+                return audienceOptionNames().map(n => ({ value: n, label: n }));
             }
 
-            // Lookup helper: find a hook option by name (case-sensitive match
-            // on the canonical stored value).
+            // HOOK — multi-tag Select2 backed by video_ads_hook_options.
+            // Options carry optional default message/link for auto-fill when
+            // exactly one tag is selected.
+            function hookOptionNames() {
+                return uniqueHookOptions().map(o => o.name);
+            }
+
             function findHook(name) {
                 if (!name) return null;
-                return (hookOptions || []).find(o => o.name === name) || null;
+                const needle = displayHookName(name).toLowerCase();
+                return uniqueHookOptions().find(o =>
+                    o.name === name || displayHookName(o.name).toLowerCase() === needle
+                ) || null;
             }
 
-            // List of just-the-names for membership checks (used by
-            // hookNameEdited to detect brand-new hooks).
-            function hookOptionNames() {
-                return (hookOptions || []).map(o => o.name);
+            function setHookOptions(list) {
+                hookOptions = Array.isArray(list) ? list : [];
+                const sel = document.getElementById('vam_hook_name');
+                let selected = [];
+                if (sel) {
+                    selected = $(sel).hasClass('select2-hidden-accessible')
+                        ? ($(sel).val() || [])
+                        : Array.from(sel.selectedOptions).map(o => o.value);
+                }
+                rebuildHookSelect(selected);
+                renderHookManageList();
+            }
+
+            function rebuildHookSelect(selected) {
+                const sel = document.getElementById('vam_hook_name');
+                if (!sel) return;
+                const chosen = parseTags(selected).map(normalizeHookName);
+
+                if ($(sel).hasClass('select2-hidden-accessible')) {
+                    $(sel).off('select2:select.vamHook');
+                    $(sel).select2('destroy');
+                }
+
+                sel.innerHTML = '';
+                const names = hookOptionNames().slice();
+                chosen.forEach(name => {
+                    if (!names.some(n => n.toLowerCase() === name.toLowerCase())) names.push(name);
+                });
+                const chosenKeys = new Set(chosen.map(n => n.toLowerCase()));
+                names.forEach(name => {
+                    const o = document.createElement('option');
+                    o.value = name;
+                    o.textContent = name;
+                    if (chosenKeys.has(name.toLowerCase())) o.selected = true;
+                    sel.appendChild(o);
+                });
+
+                $(sel).select2({
+                    theme: 'bootstrap-5',
+                    placeholder: 'Select one or more hooks…',
+                    allowClear: true,
+                    tags: true,
+                    closeOnSelect: false,
+                    width: '100%',
+                    dropdownParent: $('#vamRowModal'),
+                    createTag: function (params) {
+                        const term = $.trim(params.term);
+                        if (!term) return null;
+                        if (hookOptionNames().some(n => n.toLowerCase() === term.toLowerCase())) {
+                            return null;
+                        }
+                        return { id: term, text: '+ Add "' + term + '"', newTag: true };
+                    },
+                });
+
+                $(sel).on('select2:select.vamHook', function (e) {
+                    if (e.params.data.newTag) createHookOption(e.params.data.id);
+                    // Auto-fill message/link when exactly one hook is selected.
+                    applyHookDefaultsToForm();
+                });
+                $(sel).on('select2:unselect.vamHook', applyHookDefaultsToForm);
+            }
+
+            function getFormHookValue() {
+                const sel = document.getElementById('vam_hook_name');
+                if (!sel) return null;
+                const tags = $(sel).hasClass('select2-hidden-accessible')
+                    ? ($(sel).val() || [])
+                    : Array.from(sel.selectedOptions).map(o => o.value);
+                const joined = formatTags(tags);
+                return joined === '' ? null : joined;
+            }
+
+            function createHookOption(name, extras) {
+                const trimmed = normalizeHookName(name);
+                if (!trimmed) return Promise.resolve(null);
+                const body = { name: trimmed };
+                if (extras && Object.prototype.hasOwnProperty.call(extras, 'hook')) body.hook = extras.hook;
+                if (extras && Object.prototype.hasOwnProperty.call(extras, 'link')) body.link = extras.link;
+
+                return fetch('/video-ads-master/hook-options', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken,
+                    },
+                    body: JSON.stringify(body),
+                })
+                .then(r => r.json().then(j => ({ ok: r.ok, j })))
+                .then(({ ok, j }) => {
+                    if (!ok || !j.success) {
+                        showToast((j && j.message) || 'Failed to add hook', 'error');
+                        return null;
+                    }
+                    if (j.options) setHookOptions(j.options);
+                    return j.option || null;
+                })
+                .catch(e => {
+                    console.warn('Failed to register hook option:', e);
+                    showToast('Network error adding hook', 'error');
+                    return null;
+                });
+            }
+
+            function renderHookManageList() {
+                const wrap = document.getElementById('vamHookManageList');
+                if (!wrap) return;
+                const unique = uniqueHookOptions();
+                if (!unique.length) {
+                    wrap.innerHTML = '<div class="text-muted text-center py-3">No hooks yet. Click Add Hook.</div>';
+                    return;
+                }
+                wrap.innerHTML = unique.map(opt => `
+                    <div class="vam-manage-row" data-id="${opt.id}">
+                        <div class="flex-grow-1 min-w-0">
+                            <div class="vam-manage-name">${escapeHtml(opt.name)}</div>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-primary vam-hook-edit" title="Edit">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-danger vam-hook-del" title="Delete">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                `).join('');
+            }
+
+            function openHookManageModal() {
+                renderHookManageList();
+                hookManageModal.show();
+            }
+
+            function openHookEditor(opt) {
+                editingHookId = opt && opt.id ? opt.id : null;
+                document.getElementById('vamEditingHookId').value = editingHookId || '';
+                document.getElementById('vamAddHookModalTitle').textContent = editingHookId ? 'Edit Hook' : 'Add Hook';
+                document.getElementById('vamNewHookName').value    = opt ? displayHookName(opt.name || '') : '';
+                document.getElementById('vamNewHookMessage').value = opt ? (opt.hook || '') : '';
+                document.getElementById('vamNewHookLink').value    = opt ? (opt.link || '') : '';
+                addHookModal.show();
+            }
+
+            function deleteHookOption(id, name) {
+                if (!confirm(`Delete hook "${name}"? It will be removed from all rows.`)) return;
+                fetch(`/video-ads-master/hook-options/${id}`, {
+                    method: 'DELETE',
+                    headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': csrfToken },
+                })
+                .then(r => r.json().then(j => ({ ok: r.ok, j })))
+                .then(({ ok, j }) => {
+                    if (!ok || !j.success) {
+                        showToast((j && j.message) || 'Failed to delete', 'error');
+                        return;
+                    }
+                    if (j.options) setHookOptions(j.options);
+                    refreshTableHookCells(name, null);
+                    showToast('Hook deleted', 'success');
+                })
+                .catch(e => { console.error(e); showToast('Network error deleting hook', 'error'); });
+            }
+
+            function refreshTableHookCells(oldName, newName) {
+                if (!table) return;
+                table.getRows().forEach(row => {
+                    const data = row.getData();
+                    const tags = parseTags(data.hook_name);
+                    if (!tags.includes(oldName)) return;
+                    const next = newName === null
+                        ? tags.filter(t => t !== oldName)
+                        : tags.map(t => t === oldName ? newName : t);
+                    row.update({ hook_name: next });
+                });
+            }
+
+            function buildHookLookup() {
+                return hookOptionNames().map(n => ({ value: n, label: displayHookName(n) }));
+            }
+
+            // After inline AUDIENCE multi-select: keep tags as an array in the
+            // table, register any brand-new values, then persist.
+            function audienceEdited(cell) {
+                const tags = parseTags(cell.getValue());
+                const row  = cell.getRow();
+                row.update({ audience: tags });
+                tags.forEach(t => {
+                    if (!audienceOptionNames().includes(t)) createAudienceOption(t);
+                });
+                persistCell(cell);
+            }
+
+            // After inline HOOK multi-select: same as audience, plus auto-fill
+            // Hook Message + Link when exactly one known hook is selected.
+            function hookNameEdited(cell) {
+                const tags = parseTags(cell.getValue());
+                const row  = cell.getRow();
+                row.update({ hook_name: tags });
+                tags.forEach(t => {
+                    if (!hookOptionNames().includes(t)) createHookOption(t);
+                });
+                if (tags.length === 1) {
+                    const known = findHook(tags[0]);
+                    if (known) applyHookDefaultsToRow(row, known);
+                }
+                persistCell(cell);
             }
 
             // ── Persistence (single-cell PUT) ──────────────────────────────────
@@ -634,6 +1498,12 @@
                     payload.target_type = (value === '' || value === null) ? null : value;
                     // Keep our local mirror in sync without re-triggering cellEdited.
                     row.update({ target_type: payload.target_type });
+                } else if (field === 'audience' || field === 'hook_name') {
+                    // Table keeps tags as arrays for multi-select; API gets a
+                    // pipe-delimited string.
+                    const tags = parseTags(value);
+                    payload[field] = formatTags(tags) || null;
+                    row.update({ [field]: tags });
                 } else {
                     payload[field] = (value === '' ? null : value);
                 }
@@ -664,55 +1534,6 @@
                     updateCount();
                 })
                 .catch(e => { console.error(e); showToast('Network error while saving', 'error'); });
-            }
-
-            // Special cellEdited for HOOK NAME — supports freetext entry. If
-            // the typed value isn't already in the global hook list, we save
-            // it to video_ads_hook_options first (so it shows up as a real
-            // dropdown option for future rows), then persist the row.
-            //
-            // Also: when the user picks a *known* hook, copy that hook's
-            // default Hook Message and Link onto the row so the three fields
-            // stay in sync. The hook entry acts as a small template.
-            function hookNameEdited(cell) {
-                const raw   = cell.getValue();
-                const value = (raw === null || raw === undefined) ? '' : String(raw).trim();
-                const row   = cell.getRow();
-
-                // Empty → just persist NULL on the row.
-                if (value === '') { persistCell(cell); return; }
-
-                // Already a known hook → push its defaults into the HOOK
-                // MESSAGE and LINK cells, then save those + this cell.
-                const known = findHook(value);
-                if (known) {
-                    applyHookDefaultsToRow(row, known);
-                    persistCell(cell);
-                    return;
-                }
-
-                // Brand-new hook → register it in the global list first, then
-                // persist the row. We don't block the row save on a network
-                // error here: even if the option write fails, the row's text
-                // is still useful and gets saved.
-                fetch('/video-ads-master/hook-options', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
-                        'X-CSRF-TOKEN': csrfToken,
-                    },
-                    body: JSON.stringify({ name: value }),
-                })
-                .then(r => r.json())
-                .then(j => {
-                    if (j && j.success) {
-                        hookOptions = j.options || hookOptions;
-                        refreshHookSelect(document.getElementById('vam_hook_name').value || '');
-                    }
-                })
-                .catch(e => console.warn('Failed to register new hook option:', e))
-                .finally(() => persistCell(cell));
             }
 
             // Apply a hook template's default Hook Message + Link onto a row
@@ -755,32 +1576,13 @@
 
             // ── Modal form helpers ─────────────────────────────────────────────
 
-            // Repopulates the HOOK NAME <select> in the form modal. Called on
-            // boot and whenever a new hook option is added/edited.
-            function refreshHookSelect(selected) {
-                const sel = document.getElementById('vam_hook_name');
-                sel.innerHTML = '';
-                const blank = document.createElement('option');
-                blank.value = '';
-                blank.textContent = '— Select hook name —';
-                sel.appendChild(blank);
-                (hookOptions || []).forEach(opt => {
-                    const o = document.createElement('option');
-                    o.value = opt.name;
-                    o.textContent = opt.name;
-                    if (selected && opt.name === selected) o.selected = true;
-                    sel.appendChild(o);
-                });
-            }
-
-            // When the user picks a hook in the form's <select>, copy the
-            // hook's default Hook Message + Link into the corresponding
-            // inputs. Always overwrites the fields so the form mirrors the
-            // hook template — same behaviour as inline cell editing below.
+            // When exactly one known hook tag is selected in the form, copy
+            // that hook's default Hook Message + Link into the inputs.
             function applyHookDefaultsToForm() {
-                const sel  = document.getElementById('vam_hook_name');
-                const hook = findHook(sel.value);
-                if (!hook) return; // unknown / blank — leave the existing inputs alone
+                const tags = parseTags(getFormHookValue());
+                if (tags.length !== 1) return;
+                const hook = findHook(tags[0]);
+                if (!hook) return;
                 document.getElementById('vam_hook').value = hook.hook || '';
                 document.getElementById('vam_link').value = hook.link || '';
             }
@@ -801,10 +1603,10 @@
                 document.getElementById('vam_target_type').value  = '';
                 document.getElementById('vam_name').value         = '';
                 document.getElementById('vam_channel').value      = '';
-                document.getElementById('vam_audience').value     = '';
                 document.getElementById('vam_hook').value         = '';
                 document.getElementById('vam_link').value         = '';
-                refreshHookSelect('');
+                rebuildAudienceSelect([]);
+                rebuildHookSelect([]);
             }
 
             function openAddForm() {
@@ -822,8 +1624,8 @@
                 document.getElementById('vam_target_type').value = data.target_type || '';
                 document.getElementById('vam_name').value        = data.name        || '';
                 document.getElementById('vam_channel').value     = data.channel     || '';
-                document.getElementById('vam_audience').value    = data.audience    || '';
-                refreshHookSelect(data.hook_name || '');
+                rebuildAudienceSelect(parseTags(data.audience));
+                rebuildHookSelect(parseTags(data.hook_name));
                 document.getElementById('vam_hook').value        = data.hook        || '';
                 document.getElementById('vam_link').value        = data.link        || '';
                 rowModal.show();
@@ -841,8 +1643,8 @@
                     target_type: v('vam_target_type'),
                     name:        v('vam_name'),
                     channel:     v('vam_channel'),
-                    audience:    v('vam_audience'),
-                    hook_name:   v('vam_hook_name'),
+                    audience:    getFormAudienceValue(),
+                    hook_name:   getFormHookValue(),
                     hook:        v('vam_hook'),
                     link:        v('vam_link'),
                 };
@@ -875,8 +1677,7 @@
                         showToast((j && j.message) || 'Failed to save', 'error');
                         return;
                     }
-                    const row = j.row;
-                    row._target = row.target_type || '';
+                    const row = normalizeRowTags(j.row);
 
                     if (isEdit) {
                         table.updateRow(row.id, row);
@@ -893,9 +1694,12 @@
 
             // ── Boot ───────────────────────────────────────────────────────────
             document.addEventListener('DOMContentLoaded', function () {
-                rowModal          = new bootstrap.Modal(document.getElementById('vamRowModal'));
-                addHookModal      = new bootstrap.Modal(document.getElementById('vamAddHookModal'));
-                checkHistoryModal = new bootstrap.Modal(document.getElementById('vamCheckHistoryModal'));
+                rowModal            = new bootstrap.Modal(document.getElementById('vamRowModal'));
+                addHookModal        = new bootstrap.Modal(document.getElementById('vamAddHookModal'));
+                hookManageModal     = new bootstrap.Modal(document.getElementById('vamHookManageModal'));
+                audienceManageModal = new bootstrap.Modal(document.getElementById('vamAudienceManageModal'));
+                pickTagsModal       = new bootstrap.Modal(document.getElementById('vamPickTagsModal'));
+                checkHistoryModal   = new bootstrap.Modal(document.getElementById('vamCheckHistoryModal'));
 
                 fetch('/video-ads-master/data', { headers: { 'Accept': 'application/json' } })
                     .then(r => r.json())
@@ -905,10 +1709,10 @@
                             return;
                         }
                         channelOptions = payload.channels       || [];
-                        hookOptions    = payload.hook_options   || [];
+                        setHookOptions(payload.hook_options || []);
+                        setAudienceOptions(payload.audience_options || []);
 
                         refreshChannelDatalist();
-                        refreshHookSelect('');
                         initTable(payload.rows || []);
                     })
                     .catch(e => {
@@ -920,6 +1724,25 @@
                 document.getElementById('vamRowSaveBtn').addEventListener('click', saveFormRow);
                 document.getElementById('vamSearch').addEventListener('input', applySearch);
 
+                document.getElementById('vamAudienceManageBtn').addEventListener('click', openAudienceManageModal);
+                document.getElementById('vamAudienceAddBtn').addEventListener('click', addAudienceFromManageModal);
+                document.getElementById('vamAudienceNewName').addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') { e.preventDefault(); addAudienceFromManageModal(); }
+                });
+                document.getElementById('vamAudienceManageList').addEventListener('click', (e) => {
+                    const row = e.target.closest('.vam-manage-row');
+                    if (!row) return;
+                    const id = Number(row.getAttribute('data-id'));
+                    const name = (audienceOptions.find(o => o.id === id) || {}).name || '';
+                    if (e.target.closest('.vam-aud-edit')) {
+                        renameAudienceOption(id, name);
+                        return;
+                    }
+                    if (e.target.closest('.vam-aud-del')) {
+                        deleteAudienceOption(id, name);
+                    }
+                });
+
                 // Import CSV flow: button proxies the hidden file input; the
                 // change handler kicks off the upload.
                 document.getElementById('vamImportBtn').addEventListener('click', () => {
@@ -927,38 +1750,53 @@
                 });
                 document.getElementById('vamImportFile').addEventListener('change', handleImportFile);
 
-                // "+" next to the HOOK NAME select inside the row form opens
-                // the nested "add new hook" modal.
-                document.getElementById('vamHookAddBtn').addEventListener('click', () => {
-                    // Pre-fill the modal with whatever the form already has
-                    // selected so the user can quickly edit an existing
-                    // hook's defaults too.
-                    const current = document.getElementById('vam_hook_name').value || '';
-                    const hook    = findHook(current);
-                    document.getElementById('vamNewHookName').value    = hook ? hook.name : current;
-                    document.getElementById('vamNewHookMessage').value = hook ? (hook.hook || '') : (document.getElementById('vam_hook').value || '');
-                    document.getElementById('vamNewHookLink').value    = hook ? (hook.link || '') : (document.getElementById('vam_link').value || '');
-                    addHookModal.show();
+                document.getElementById('vamHookManageBtn').addEventListener('click', openHookManageModal);
+                document.getElementById('vamHookManageAddBtn').addEventListener('click', () => openHookEditor(null));
+                document.getElementById('vamHookManageList').addEventListener('click', (e) => {
+                    const row = e.target.closest('.vam-manage-row');
+                    if (!row) return;
+                    const id = Number(row.getAttribute('data-id'));
+                    const opt = hookOptions.find(o => o.id === id) || null;
+                    if (e.target.closest('.vam-hook-edit')) {
+                        openHookEditor(opt);
+                        return;
+                    }
+                    if (e.target.closest('.vam-hook-del')) {
+                        deleteHookOption(id, (opt && opt.name) || '');
+                    }
                 });
-
-                // Picking a hook in the form auto-fills Hook Message + Link
-                // from the hook's stored defaults.
-                document.getElementById('vam_hook_name').addEventListener('change', applyHookDefaultsToForm);
 
                 document.getElementById('vamSaveNewHookBtn').addEventListener('click', saveNewHook);
                 document.getElementById('vamNewHookName').addEventListener('keydown', (e) => {
                     if (e.key === 'Enter') { e.preventDefault(); saveNewHook(); }
                 });
+
+                document.getElementById('vamPickTagsApplyBtn').addEventListener('click', applyPickTagsSelection);
+                document.getElementById('vamPickTagsAddNewBtn').addEventListener('click', addNewOptionInPickModal);
+                document.getElementById('vamPickTagsSearch').addEventListener('input', renderPickTagsList);
+                document.getElementById('vamPickTagsNew').addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') { e.preventDefault(); addNewOptionInPickModal(); }
+                });
+                document.getElementById('vamPickTagsList').addEventListener('change', (e) => {
+                    const opt = e.target.closest('.vam-pick-option');
+                    if (!opt || e.target.type !== 'checkbox') return;
+                    opt.classList.toggle('is-checked', e.target.checked);
+                });
             });
 
+            // Normalise a server row for the grid: mirror target_type and keep
+            // audience / hook_name as tag arrays so the multi-select list
+            // editor can pre-tick current choices.
+            function normalizeRowTags(r) {
+                const row = r || {};
+                row._target   = row.target_type || '';
+                row.audience  = parseTags(row.audience);
+                row.hook_name = parseTags(row.hook_name);
+                return row;
+            }
+
             function initTable(rows) {
-                // Display-only mirror field. The DB has just `target_type`;
-                // we copy it onto `_target` so the column's formatter has a
-                // stable field to read.
-                rows = rows.map(r => {
-                    r._target = r.target_type || '';
-                    return r;
-                });
+                rows = (rows || []).map(normalizeRowTags);
 
                 table = new Tabulator('#video-ads-master-table', {
                     data: rows,
@@ -969,29 +1807,24 @@
                     paginationSizeSelector: [25, 50, 100, 200, 500],
                     paginationCounter: 'rows',
                     index: 'id',
+                    columnDefaults: {
+                        headerHozAlign: 'center',
+                    },
                     columns: [
                         {
-                            title: '#',
-                            field: 'id',
-                            width: 60,
-                            hozAlign: 'center',
-                            headerSort: false,
-                            formatter: 'rownum',
-                        },
-                        {
-                            title: 'SKU / PARENT / GROUP', field: '_target', width: 200,
+                            title: 'S/P/G', field: '_target',
                             formatter: targetFormatter,
                             editor: targetTypeEditor,
                             cellEdited: persistCell,
                         },
                         {
-                            title: 'NAME', field: 'name', width: 180,
+                            title: 'Target Products', field: 'name',
                             formatter: plainFormatter,
                             editor: 'input',
                             cellEdited: persistCell,
                         },
                         {
-                            title: 'CHANNEL', field: 'channel', width: 160,
+                            title: 'Type', field: 'channel',
                             formatter: plainFormatter,
                             editor: 'list',
                             editorParams: {
@@ -1004,44 +1837,48 @@
                             cellEdited: persistCell,
                         },
                         {
-                            title: 'AUDIENCE', field: 'audience', width: 200,
-                            formatter: plainFormatter,
-                            editor: 'input',
-                            cellEdited: persistCell,
-                        },
-                        {
-                            title: 'HOOK NAME', field: 'hook_name', width: 200,
-                            formatter: plainFormatter,
-                            editor: 'list',
-                            editorParams: {
-                                values: buildHookLookup,
-                                autocomplete: true,
-                                freetext: true,            // accept newly-typed hook names
-                                listOnEmpty: true,
-                                clearable: true,
-                                placeholderEmpty: 'Type a new hook name…',
+                            title: 'Target Audience', field: 'audience',
+                            formatter: audienceFormatter,
+                            headerSort: false,
+                            editable: false,
+                            cellClick: (e, cell) => {
+                                if (e.target.closest('.vam-tag-add-btn')) {
+                                    e.stopPropagation();
+                                    openPickTagsModal(cell.getRow(), 'audience');
+                                }
                             },
-                            cellEdited: hookNameEdited,
                         },
                         {
-                            title: 'HOOK MESSAGE', field: 'hook', width: 240,
+                            title: 'HOOK', field: 'hook_name',
+                            formatter: hookFormatter,
+                            headerSort: false,
+                            editable: false,
+                            cellClick: (e, cell) => {
+                                if (e.target.closest('.vam-tag-add-btn')) {
+                                    e.stopPropagation();
+                                    openPickTagsModal(cell.getRow(), 'hook_name');
+                                }
+                            },
+                        },
+                        {
+                            title: 'HOOK MESSAGE', field: 'hook',
                             formatter: plainFormatter,
                             editor: 'input',
                             cellEdited: persistCell,
                         },
                         {
-                            title: 'LINK', field: 'link', width: 90, hozAlign: 'center',
+                            title: 'LINK', field: 'link', hozAlign: 'center',
                             formatter: linkFormatter,
                             editor: 'input',
                             cellEdited: persistCell,
                         },
                         {
-                            title: 'MISSING', field: '_missing', width: 90, hozAlign: 'center',
+                            title: 'MISSING', field: '_missing', hozAlign: 'center',
                             headerSort: false,
                             formatter: missingFormatter,
                         },
                         {
-                            title: 'CHECK', field: '_check', width: 130, hozAlign: 'center',
+                            title: 'CHECK', field: '_check', hozAlign: 'center',
                             headerSort: false,
                             formatter: checkFormatter,
                             cellClick: (e, cell) => {
@@ -1059,7 +1896,7 @@
                             },
                         },
                         {
-                            title: 'AD', field: '_adcheck', width: 130, hozAlign: 'center',
+                            title: 'AD', field: '_adcheck', hozAlign: 'center',
                             headerSort: false,
                             formatter: adCheckFormatter,
                             cellClick: (e, cell) => {
@@ -1074,7 +1911,6 @@
                         {
                             title: '',
                             field: '_actions',
-                            width: 150,
                             hozAlign: 'center',
                             headerSort: false,
                             formatter: () => `
@@ -1140,7 +1976,8 @@
                 table.setFilter((data) => {
                     const haystack = [
                         data._target, data.name, data.channel,
-                        data.audience, data.hook_name, data.hook, data.link,
+                        formatTags(data.audience), formatTags(data.hook_name),
+                        data.hook, data.link,
                     ].map(v => (v || '').toString().toLowerCase()).join(' | ');
                     return haystack.includes(q);
                 });
@@ -1240,14 +2077,10 @@
                     .then(payload => {
                         if (!payload.success) { showToast('Failed to reload data', 'error'); return; }
                         channelOptions = payload.channels     || [];
-                        hookOptions    = payload.hook_options || [];
+                        setHookOptions(payload.hook_options || []);
+                        setAudienceOptions(payload.audience_options || []);
                         refreshChannelDatalist();
-                        refreshHookSelect('');
-                        const rows = (payload.rows || []).map(r => {
-                            r._target = r.target_type || '';
-                            return r;
-                        });
-                        table.setData(rows);
+                        table.setData((payload.rows || []).map(normalizeRowTags));
                         updateCount();
                     })
                     .catch(e => { console.error(e); showToast('Network error reloading data', 'error'); });
@@ -1268,9 +2101,7 @@
                         showToast((j && j.message) || 'Failed to copy row', 'error');
                         return;
                     }
-                    const newRow = j.row;
-                    newRow._target = newRow.target_type || '';
-                    table.addRow(newRow, true); // prepend
+                    table.addRow(normalizeRowTags(j.row), true); // prepend
                     updateCount();
                     showToast('Row duplicated', 'success');
                 })
@@ -1390,23 +2221,23 @@
                     .catch(e => { console.error(e); body.innerHTML = '<div class="text-danger text-center py-3">Network error.</div>'; });
             }
 
-            // Save a brand-new HOOK NAME from the "+ Add hook" sub-modal
-            // (invoked from the form modal's "+" button). The new option is
-            // re-rendered in the form's <select> and pre-selected.
-            // Save a hook entry from the "Add / Edit Hook" modal — including
-            // its default Hook Message and Link. The endpoint up-serts by
-            // name, so this also lets the user edit an existing hook's
-            // defaults. After saving, the form's HOOK NAME select is
-            // re-rendered with the new option pre-selected and the form's
-            // Hook Message + Link inputs are populated from the new defaults.
+            // Save a hook entry from the Add / Edit Hook modal (name + default
+            // message/link). Creates via POST or updates via PUT when editing.
             function saveNewHook() {
-                const name    = document.getElementById('vamNewHookName').value.trim();
+                const name    = normalizeHookName(document.getElementById('vamNewHookName').value);
                 const hookMsg = document.getElementById('vamNewHookMessage').value.trim();
                 const link    = document.getElementById('vamNewHookLink').value.trim();
                 if (!name) { showToast('Enter a hook name', 'warning'); return; }
 
-                fetch('/video-ads-master/hook-options', {
-                    method: 'POST',
+                const id = editingHookId || document.getElementById('vamEditingHookId').value || null;
+                const oldName = id
+                    ? ((hookOptions.find(o => String(o.id) === String(id)) || {}).name || null)
+                    : null;
+                const url    = id ? `/video-ads-master/hook-options/${id}` : '/video-ads-master/hook-options';
+                const method = id ? 'PUT' : 'POST';
+
+                fetch(url, {
+                    method,
                     headers: {
                         'Content-Type': 'application/json',
                         'Accept': 'application/json',
@@ -1418,14 +2249,25 @@
                         link: link,
                     }),
                 })
-                .then(r => r.json())
-                .then(j => {
-                    if (!j.success) { showToast(j.message || 'Failed to save hook', 'error'); return; }
-                    hookOptions = j.options || hookOptions;
-                    addHookModal.hide();
-                    refreshHookSelect(j.name);
+                .then(r => r.json().then(j => ({ ok: r.ok, j })))
+                .then(({ ok, j }) => {
+                    if (!ok || !j.success) { showToast((j && j.message) || 'Failed to save hook', 'error'); return; }
+                    if (j.options) setHookOptions(j.options);
+                    if (oldName && oldName !== name) {
+                        refreshTableHookCells(oldName, name);
+                    }
+                    // Keep the new/renamed hook selected on the form if open.
+                    const current = parseTags(getFormHookValue());
+                    if (oldName && current.includes(oldName)) {
+                        rebuildHookSelect(current.map(t => t === oldName ? name : t));
+                    } else if (!current.includes(name)) {
+                        rebuildHookSelect(current.concat([name]));
+                    }
                     applyHookDefaultsToForm();
-                    showToast('Hook saved', 'success');
+                    editingHookId = null;
+                    document.getElementById('vamEditingHookId').value = '';
+                    addHookModal.hide();
+                    showToast(id ? 'Hook updated' : 'Hook saved', 'success');
                 })
                 .catch(e => { console.error(e); showToast('Network error', 'error'); });
             }

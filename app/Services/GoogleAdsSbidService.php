@@ -1185,4 +1185,86 @@ class GoogleAdsSbidService
         ];
     }
 
+    /**
+     * Fetch live Shopping product Item IDs (listing-group UNIT case values) for campaigns.
+     *
+     * @param  list<string|int>  $campaignIds
+     * @return array<string, list<string>> campaign_id => unique product_item_id values
+     */
+    public function fetchShoppingProductItemIdsByCampaignIds($customerId, array $campaignIds): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map(
+            static fn ($id) => preg_replace('/\D+/', '', (string) $id),
+            $campaignIds
+        ), static fn ($id) => $id !== '' && $id !== null)));
+
+        if ($ids === [] || empty($customerId)) {
+            return [];
+        }
+
+        $out = [];
+        foreach (array_chunk($ids, 50) as $chunk) {
+            $inList = implode(', ', $chunk);
+            $query = "
+                SELECT
+                    campaign.id,
+                    ad_group_criterion.listing_group.type,
+                    ad_group_criterion.listing_group.case_value.product_item_id.value,
+                    ad_group_criterion.negative
+                FROM ad_group_criterion
+                WHERE campaign.id IN ({$inList})
+                  AND ad_group_criterion.listing_group.type = 'UNIT'
+                  AND ad_group_criterion.negative = FALSE
+                  AND ad_group_criterion.listing_group.case_value.product_item_id.value IS NOT NULL
+            ";
+
+            try {
+                $rows = $this->runQuery($customerId, $query);
+            } catch (\Throwable $e) {
+                Log::error('Failed to fetch Shopping product item IDs', [
+                    'customer_id' => $customerId,
+                    'campaign_ids' => $chunk,
+                    'error' => $e->getMessage(),
+                ]);
+                throw $e;
+            }
+
+            foreach ($rows as $row) {
+                $cid = (string) ($row['campaign']['id'] ?? '');
+                if ($cid === '') {
+                    continue;
+                }
+                $itemId = $this->extractListingGroupProductItemId($row);
+                if ($itemId === '') {
+                    continue;
+                }
+                if (! isset($out[$cid])) {
+                    $out[$cid] = [];
+                }
+                $out[$cid][$itemId] = true;
+            }
+        }
+
+        $normalized = [];
+        foreach ($out as $cid => $set) {
+            $normalized[$cid] = array_keys($set);
+            sort($normalized[$cid]);
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function extractListingGroupProductItemId(array $row): string
+    {
+        $criterion = $row['adGroupCriterion'] ?? $row['ad_group_criterion'] ?? [];
+        $listing = $criterion['listingGroup'] ?? $criterion['listing_group'] ?? [];
+        $caseValue = $listing['caseValue'] ?? $listing['case_value'] ?? [];
+        $productItem = $caseValue['productItemId'] ?? $caseValue['product_item_id'] ?? [];
+
+        return trim((string) ($productItem['value'] ?? ''));
+    }
+
 }

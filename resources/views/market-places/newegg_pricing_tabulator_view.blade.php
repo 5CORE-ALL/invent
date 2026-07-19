@@ -37,59 +37,52 @@
             object-fit: contain;
         }
 
-        /* Colored status circles + Walmart-style manual dropdown (used by the DIL% filter). */
-        .status-circle {
-            display: inline-block;
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            margin-right: 8px;
-            border: 1px solid #ddd;
-            vertical-align: middle;
+        /* Sku Link LMP (same as TikTok / Shein) */
+        .linked-sku-badge-wrap { display: inline-flex; align-items: center; gap: 2px; }
+        .linked-sku-badge-wrap .sku-link-lmp-remove { font-size: 0.55rem; opacity: 0.65; padding: 0; margin-left: 2px; }
+        .linked-sku-badge-wrap .sku-link-lmp-remove:hover { opacity: 1; }
+        .sku-link-lmp-selected-chip {
+            display: inline-flex; align-items: center; gap: 4px;
+            padding: 2px 8px; border-radius: 999px; background: #f1f5f9;
+            border: 1px solid #e2e8f0; font-size: 12px; margin: 2px;
         }
-        .status-circle.default { background-color: #6c757d; }
-        .status-circle.red     { background-color: #a00211; }
-        .status-circle.yellow  { background-color: #ffc107; }
-        .status-circle.green   { background-color: #28a745; }
-        .status-circle.pink    { background-color: #e83e8c; }
+        .sku-link-lmp-selected-chip button {
+            border: 0; background: transparent; padding: 0; line-height: 1; font-size: 14px; color: #64748b;
+        }
 
-        .manual-dropdown-container {
-            position: relative;
-            display: inline-block;
+        /* Summary badges — equal-width slab (same as /tiktok-pricing / ebay2) */
+        #summary-stats {
+            order: -1;
+            padding: 0.5rem 0.7rem !important;
+            margin-top: 0 !important;
+            margin-bottom: 0.5rem !important;
         }
-        .manual-dropdown-container .dropdown-menu {
-            position: absolute;
-            top: 100%;
-            left: 0;
-            z-index: 1000;
-            display: none;
-            min-width: 200px;
-            padding: 0.5rem 0;
-            margin: 0;
-            background-color: #fff;
-            border: 1px solid #dee2e6;
-            border-radius: 0.375rem;
-            box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
-            list-style: none;
-        }
-        .manual-dropdown-container.show .dropdown-menu { display: block; }
-        .manual-dropdown-container .dropdown-item {
-            display: block;
+        #summary-stats .ebay2-summary-badge-row {
+            display: flex;
+            flex-wrap: nowrap;
+            align-items: stretch;
+            gap: clamp(0.2rem, 0.5vw, 0.45rem);
             width: 100%;
-            padding: 0.5rem 1rem;
-            clear: both;
-            font-weight: 400;
-            color: #212529;
-            text-align: inherit;
-            text-decoration: none;
-            white-space: nowrap;
-            background-color: transparent;
-            border: 0;
-            cursor: pointer;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: thin;
         }
-        .manual-dropdown-container .dropdown-item:hover {
-            color: #1e2125;
-            background-color: #e9ecef;
+        #summary-stats .ebay2-summary-badge-row > .badge {
+            flex: 1 1 0;
+            min-width: 0;
+            font-size: clamp(0.62rem, 0.35rem + 0.85vw, 1.05rem);
+            padding: clamp(0.28rem, 0.4vw, 0.5rem) clamp(0.2rem, 0.5vw, 0.5rem);
+            font-weight: bold;
+            box-sizing: border-box;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            white-space: nowrap;
+        }
+        .ne-toolbar-row {
+            position: relative;
+            z-index: 5;
         }
     </style>
 @endsection
@@ -107,148 +100,158 @@
     <div class="toast-container"></div>
     <div class="row">
         <div class="card shadow-sm">
-            <div class="card-body py-3">
-                <h4>Newegg Pricing & Inventory</h4>
-                <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
-                    <select id="inventory-filter" class="form-select form-select-sm" style="width: 130px;">
-                        <option value="all">All Inventory</option>
-                        <option value="zero">0 Inventory</option>
-                        <option value="more" selected>More than 0</option>
+            <div class="card-body py-3 d-flex flex-column">
+                {{-- Summary badges above filters (same slab layout as /tiktok-pricing) --}}
+                <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
+                    <div class="ebay2-summary-badge-row" role="group" aria-label="Summary metrics">
+                        <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-badge"
+                            style="color: black; font-weight: bold;" title="Σ (Price × L30)">Sales: $0</span>
+                        <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge"
+                            style="color: black; font-weight: bold;" title="Overall PFT% = Σ profit / Σ sales">GPFT: 0%</span>
+                        <span class="badge bg-success fs-6 p-2" id="total-l30-badge"
+                            style="color: black; font-weight: bold;">L30: 0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge"
+                            style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter 0 sold">0 Sold: 0</span>
+                        <span class="badge fs-6 p-2" id="more-sold-count-badge"
+                            style="background-color: #b6e0fe; color: #0f172a; font-weight: 700; cursor: pointer;" title="Click to filter sold items">&gt; 0 Sold: 0</span>
+                        <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge"
+                            style="color: black; font-weight: bold;" title="Overall ROI% = Σ profit / Σ COGS">ROI%: 0%</span>
+                        <span class="badge bg-danger fs-6 p-2" id="ne-missing-badge"
+                            style="color: white; font-weight: bold; cursor: pointer;" title="Not listed on Newegg, REQ, INV &gt; 0 — click to filter">Missing L: 0</span>
+                        <span class="badge fs-6 p-2" id="ne-map-badge"
+                            style="background-color: #198754; color: white; font-weight: bold; cursor: pointer;" title="Listed, REQ, INV ≈ Newegg stock — click to filter">Map: 0</span>
+                        <span class="badge fs-6 p-2" id="ne-nmap-badge"
+                            style="background-color: #a71d2a; color: white; font-weight: bold; cursor: pointer;" title="Listed, REQ, INV ≠ Newegg stock — click to filter">N Map: 0</span>
+                    </div>
+                </div>
+
+                <div class="d-flex align-items-center flex-wrap gap-2 ne-toolbar-row mb-1">
+                    <input type="text" id="sku-search" class="form-control form-control-sm flex-shrink-0"
+                        placeholder="Search SKU..." style="width: 150px;">
+
+                    <select id="inventory-filter" class="form-select form-select-sm flex-shrink-0" style="width: 110px;">
+                        <option value="all" selected>All INV</option>
+                        <option value="zero">0 INV</option>
+                        <option value="more">More than 0</option>
                     </select>
 
-                    <select id="n-stock-filter" class="form-select form-select-sm" style="width: 130px;"
+                    <select id="n-stock-filter" class="form-select form-select-sm flex-shrink-0" style="width: 110px;"
                         title="Newegg listing stock (N INV)">
                         <option value="all">N Stock</option>
                         <option value="zero">0 N Stock</option>
                         <option value="more">More than 0</option>
                     </select>
 
-                    <select id="nr-filter" class="form-select form-select-sm" style="width: 130px;">
-                        <option value="all">All Status</option>
+                    <select id="l30-filter" class="form-select form-select-sm flex-shrink-0" style="width: 90px;"
+                        title="Excludes 0 inventory items">
+                        <option value="all">N L30</option>
+                        <option value="0">0</option>
+                        <option value="0-10">0-10</option>
+                        <option value="10+">10+</option>
+                    </select>
+
+                    <select id="nr-filter" class="form-select form-select-sm flex-shrink-0" style="width: 110px;">
+                        <option value="all">Status</option>
                         <option value="REQ">REQ Only</option>
                         <option value="NR">NR Only</option>
                     </select>
 
-                    <select id="status-filter" class="form-select form-select-sm" style="width: 130px;"
+                    <select id="status-filter" class="form-select form-select-sm flex-shrink-0" style="width: 110px;"
                         title="Newegg listing status">
                         <option value="all">All Listings</option>
                         <option value="Active">Active</option>
                         <option value="Inactive">Inactive</option>
                     </select>
 
-                    <select id="pft-filter" class="form-select form-select-sm" style="width: 130px;">
-                        <option value="all">PFT%</option>
+                    {{-- GPFT/PFT slabs — same cutoffs as /ebay pricing --}}
+                    <select id="pft-filter" class="form-select form-select-sm flex-shrink-0" style="width: 110px;">
+                        <option value="all">GPFT%</option>
                         <option value="negative">Negative</option>
                         <option value="0-10">0-10%</option>
                         <option value="10-20">10-20%</option>
                         <option value="20-30">20-30%</option>
                         <option value="30-40">30-40%</option>
-                        <option value="40-50">40-50%</option>
-                        <option value="50plus">Above 50%</option>
+                        <option value="40plus">Above 40%</option>
                     </select>
 
-                    <select id="roi-filter" class="form-select form-select-sm" style="width: 130px;">
+                    {{-- ROI slabs — same cutoffs as /ebay pricing --}}
+                    <select id="roi-filter" class="form-select form-select-sm flex-shrink-0" style="width: 100px;">
                         <option value="all">ROI%</option>
-                        <option value="lt50">&lt; 50%</option>
-                        <option value="50-75">50–75%</option>
+                        <option value="lt40">&lt; 40%</option>
+                        <option value="40-75">40–75%</option>
                         <option value="75-125">75–125%</option>
                         <option value="gt125">125%+</option>
                     </select>
 
-                    <div class="dropdown manual-dropdown-container" id="dilFilterContainer">
-                        <button class="btn btn-sm btn-light dropdown-toggle" type="button" id="dilFilterDropdown">
-                            <span class="status-circle default"></span> DIL%
-                        </button>
-                        <ul class="dropdown-menu" aria-labelledby="dilFilterDropdown">
-                            <li><a class="dropdown-item dil-filter-item active" href="#" data-color="all">
-                                <span class="status-circle default"></span> All DIL</a></li>
-                            <li><a class="dropdown-item dil-filter-item" href="#" data-color="red">
-                                <span class="status-circle red"></span> Red (&lt;16.7%)</a></li>
-                            <li><a class="dropdown-item dil-filter-item" href="#" data-color="yellow">
-                                <span class="status-circle yellow"></span> Yellow (16.7–25%)</a></li>
-                            <li><a class="dropdown-item dil-filter-item" href="#" data-color="green">
-                                <span class="status-circle green"></span> Green (25–50%)</a></li>
-                            <li><a class="dropdown-item dil-filter-item" href="#" data-color="pink">
-                                <span class="status-circle pink"></span> Pink (50%+)</a></li>
-                        </ul>
-                    </div>
+                    {{-- DIL Filter (plain select — matches /ebay pricing) --}}
+                    <select id="dil-filter" class="form-select form-select-sm flex-shrink-0" style="width: 120px;">
+                        <option value="all">DIL%</option>
+                        <option value="red">Red &lt;25%</option>
+                        <option value="green">Green 25-50%</option>
+                        <option value="pink">Pink 50%+</option>
+                    </select>
 
-                    <div class="dropdown d-inline-block">
+                    <div class="dropdown d-inline-block flex-shrink-0">
                         <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
-                            id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="fa fa-eye"></i> Columns
+                            id="columnVisibilityDropdown" data-bs-toggle="dropdown" data-bs-auto-close="outside"
+                            aria-expanded="false" title="Columns">
+                            <i class="fa fa-eye"></i>
                         </button>
                         <ul class="dropdown-menu" aria-labelledby="columnVisibilityDropdown" id="column-dropdown-menu"
                             style="max-height: 400px; overflow-y: auto;">
                         </ul>
                     </div>
-                    <button id="show-all-columns-btn" class="btn btn-sm btn-outline-secondary">
-                        <i class="fa fa-eye"></i> Show All
+                    <button id="show-all-columns-btn" class="btn btn-sm btn-outline-secondary flex-shrink-0" title="Show All Columns">
+                        <i class="fa fa-eye"></i>
                     </button>
-                    <button type="button" class="btn btn-sm btn-success" id="export-btn">
-                        <i class="fa fa-file-excel"></i> Export
+                    <button type="button" class="btn btn-sm btn-success flex-shrink-0" id="export-btn" title="Export">
+                        <i class="fa fa-file-excel"></i>
                     </button>
 
-                    <button id="decrease-btn" class="btn btn-sm btn-warning">
-                        <i class="fas fa-arrow-down"></i> Decrease Mode
-                    </button>
-                    <button id="increase-btn" class="btn btn-sm btn-success">
-                        <i class="fas fa-arrow-up"></i> Increase Mode
-                    </button>
-                    <button id="same-price-btn" class="btn btn-sm btn-info"
-                        title="Apply ONE price (entered in the box) to every selected SKU">
-                        <i class="fas fa-equals"></i> Same Price Mode
-                    </button>
-                    <button id="push-all-sprice-btn" class="btn btn-sm btn-dark"
+                    <div class="dropdown d-inline-block flex-shrink-0" id="sprice-mode-dropdown">
+                        <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
+                            id="sprice-mode-btn" data-bs-toggle="dropdown" aria-expanded="false"
+                            title="SPRICE bulk mode: Decrease, Increase, or Same Price">
+                            <i class="fas fa-sliders-h"></i> Price Mode
+                        </button>
+                        <ul class="dropdown-menu" aria-labelledby="sprice-mode-btn">
+                            <li><a class="dropdown-item sprice-mode-item" href="#" data-mode="">
+                                <i class="fas fa-times text-muted me-1"></i> Off</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item sprice-mode-item" href="#" data-mode="decrease">
+                                <i class="fas fa-arrow-down text-warning me-1"></i> Decrease</a></li>
+                            <li><a class="dropdown-item sprice-mode-item" href="#" data-mode="increase">
+                                <i class="fas fa-arrow-up text-success me-1"></i> Increase</a></li>
+                            <li><a class="dropdown-item sprice-mode-item" href="#" data-mode="same"
+                                title="Apply ONE price to every selected SKU">
+                                <i class="fas fa-equals text-info me-1"></i> Same Price</a></li>
+                        </ul>
+                    </div>
+                    <button id="push-all-sprice-btn" class="btn btn-sm btn-dark flex-shrink-0"
                         title="Push every currently-visible row that has a SPRICE live to Newegg (chunked)">
-                        <i class="fas fa-cloud-upload-alt"></i> Push All SPRICE
+                        <i class="fas fa-cloud-upload-alt"></i> Push All
                     </button>
 
-                    {{-- Target ROI% bulk control — back-solves S PRC for selected rows so SROI = Target ROI%.
-                         Formula: sprice = (LP × (1 + ROI%/100) + Ship) / factor   (factor = per-row 'factor' field, default 0.80) --}}
-                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
+                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light flex-shrink-0"
                         id="target-roi-controls"
-                        title="Target ROI% — sets S PRC = (LP × (1 + Target ROI%/100) + Ship) / factor on every selected row (back-solves so SROI column equals the target)">
-                        <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
-                            Target ROI%:
-                        </label>
+                        title="Target ROI% — sets S PRC so SROI equals the target">
+                        <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">ROI%:</label>
                         <input type="number" id="target-roi-input" class="form-control form-control-sm text-end"
-                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
-                            title="Target ROI% applied to all selected rows when you click 'Apply S PRC'">
-                        <button id="apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
-                            title="Compute & save S PRC = (LP × (1 + Target ROI%/100) + Ship) / factor for every selected row">
-                            <i class="fas fa-calculator"></i> Apply S PRC
+                            placeholder="30" step="0.1" style="width: 56px;">
+                        <button id="apply-target-roi-btn" class="btn btn-sm btn-success" type="button" title="Apply Target ROI% to selected SKUs">
+                            <i class="fas fa-bullseye"></i>
                         </button>
                     </div>
 
-                    {{-- Target GPFT% bulk control — back-solves S PRC for selected rows so SGPFT = Target GPFT%.
-                         Formula: sprice = (LP + Ship) / (factor − GPFT%/100). Target GPFT% must be < factor*100. --}}
-                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
+                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light flex-shrink-0"
                         id="target-gpft-controls"
-                        title="Target GPFT% — sets S PRC = (LP + Ship) / (factor − Target GPFT%/100) on every selected row">
-                        <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
-                            Target GPFT%:
-                        </label>
+                        title="Target GPFT% — sets S PRC so SPFT equals the target">
+                        <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">GPFT%:</label>
                         <input type="number" id="target-gpft-input" class="form-control form-control-sm text-end"
-                            placeholder="e.g. 30" step="0.1" style="width: 80px;"
-                            title="Target GPFT% applied to all selected rows when you click 'Apply S PRC'. Must be less than the Newegg take-home factor (typically < 80%).">
-                        <button id="apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
-                            title="Compute & save S PRC = (LP + Ship) / (factor − Target GPFT%/100) for every selected row">
-                            <i class="fas fa-calculator"></i> Apply S PRC
+                            placeholder="30" step="0.1" style="width: 56px;">
+                        <button id="apply-target-gpft-btn" class="btn btn-sm btn-success" type="button" title="Apply Target GPFT% to selected SKUs">
+                            <i class="fas fa-bullseye"></i>
                         </button>
-                    </div>
-                </div>
-
-                <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
-                    <h6 class="mb-3">Summary Statistics</h6>
-                    <div class="d-flex flex-wrap gap-2">
-                        <span class="badge bg-dark fs-6 p-2" id="total-l30-badge" style="color: white; font-weight: bold;">Total L30: 0</span>
-                        <span class="badge fs-6 p-2" id="avg-price-badge" style="background-color: purple; color: white; font-weight: bold;">Avg Price: $0.00</span>
-                        <span class="badge bg-info fs-6 p-2" id="pft-badge" style="color: black; font-weight: bold;">PFT: 0%</span>
-                        <span class="badge fs-6 p-2" id="roi-badge" style="background-color: #e83e8c; color: white; font-weight: bold;">ROI: 0%</span>
-                        <span class="badge fs-6 p-2" id="ne-missing-badge" style="background-color: #c0392b; color: white; font-weight: bold; cursor: pointer;" title="Not listed on Newegg, REQ, INV > 0 — click to filter">Missing L: 0</span>
-                        <span class="badge fs-6 p-2" id="ne-map-badge" style="background-color: #198754; color: white; font-weight: bold; cursor: pointer;" title="Listed, REQ, INV ≈ Newegg stock — click to filter">Map: 0</span>
-                        <span class="badge fs-6 p-2" id="ne-nmap-badge" style="background-color: #a71d2a; color: white; font-weight: bold; cursor: pointer;" title="Listed, REQ, INV ≠ Newegg stock — click to filter">N Map: 0</span>
                     </div>
                 </div>
             </div>
@@ -278,10 +281,6 @@
                     </div>
                 </div>
                 <div id="newegg-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
-                    <div class="p-2 bg-light border-bottom">
-                        <input type="text" id="sku-search" class="form-control form-control-sm"
-                            placeholder="Search by SKU or Title...">
-                    </div>
                     <div id="newegg-pricing-table" style="flex: 1;"></div>
                 </div>
             </div>
@@ -318,6 +317,95 @@
             </div>
         </div>
     </div>
+
+    {{-- Manual LMP modal (mirrors TikTok competitors modal) --}}
+    <div class="modal fade" id="neLmpModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header" style="background:#F06C00;color:#fff;">
+                    <h5 class="modal-title">
+                        <i class="fa fa-shopping-cart"></i> Newegg Competitors for SKU: <span id="neLmpSku"></span>
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="card mb-3 border-success" id="neCompFormCard">
+                        <div class="card-header bg-success text-white" id="neCompFormHeader">
+                            <strong><i class="fa fa-plus-circle" id="neCompFormHeaderIcon"></i> <span id="neCompFormHeaderText">Add New Competitor</span></strong>
+                        </div>
+                        <div class="card-body">
+                            <form id="neAddCompetitorForm" class="row g-3">
+                                <input type="hidden" id="neEditCompId" value="">
+                                <div class="col-md-2">
+                                    <label class="form-label"><strong>SKU</strong></label>
+                                    <input type="text" class="form-control" id="neAddCompSku" readonly>
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label"><strong>Item #</strong> <span class="text-danger">*</span></label>
+                                    <input type="text" class="form-control" id="neAddCompProductId" placeholder="N82E168..." required>
+                                </div>
+                                <div class="col-md-1">
+                                    <label class="form-label"><strong>Price</strong> <span class="text-danger">*</span></label>
+                                    <input type="number" class="form-control" id="neAddCompPrice" placeholder="29.99" step="0.01" min="0.01" required>
+                                </div>
+                                <div class="col-md-1">
+                                    <label class="form-label"><strong>Ship</strong></label>
+                                    <input type="number" class="form-control" id="neAddCompShip" placeholder="0.00" step="0.01" min="0">
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label"><strong>Product Title</strong></label>
+                                    <input type="text" class="form-control" id="neAddCompTitle" placeholder="Optional">
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label"><strong>Product Link</strong></label>
+                                    <input type="url" class="form-control" id="neAddCompLink" placeholder="https://www.newegg.com/...">
+                                </div>
+                                <div class="col-md-1 d-flex align-items-end flex-wrap gap-1">
+                                    <button type="submit" class="btn btn-success" id="neCompSubmitBtn" style="background:#F06C00;border-color:#F06C00;">
+                                        <i class="fa fa-plus"></i> <span id="neCompSubmitBtnText">Add</span>
+                                    </button>
+                                    <button type="button" class="btn btn-secondary" id="neCompClearBtn">
+                                        <i class="fa fa-undo"></i> Clear
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                    <div id="neLmpDataList">
+                        <div class="text-center py-5 text-muted">Open a SKU to load competitors.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- Sku Link LMP Modal (shared sku.link.lmp.* routes) --}}
+    <div class="modal fade" id="skuLinkLmpModal" tabindex="-1" aria-labelledby="skuLinkLmpModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="skuLinkLmpModalLabel">Sku Link LMP</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small mb-2">Link one or more SKUs to <strong id="sku-link-lmp-source"></strong>. All linked SKUs will show each other's LMP.</p>
+                    <label for="sku-link-lmp-input" class="form-label mb-1">Search SKU to link</label>
+                    <input type="text" id="sku-link-lmp-input" class="form-control" placeholder="Search or enter SKU..." autocomplete="off">
+                    <div id="sku-link-lmp-suggestions" class="list-group mt-2 d-none" style="max-height: 220px; overflow-y: auto;"></div>
+                    <div id="sku-link-lmp-selected-wrap" class="mt-2 d-none">
+                        <div class="small text-muted mb-1">Selected to link (<span id="sku-link-lmp-selected-count">0</span>):</div>
+                        <div id="sku-link-lmp-selected-skus" class="d-flex flex-wrap"></div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="sku-link-lmp-save-btn">
+                        <i class="fas fa-link"></i> <span id="sku-link-lmp-save-btn-label">Link SKU(s)</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script-bottom')
@@ -328,21 +416,20 @@
         let samePriceModeActive = false;
         let selectedSkus        = new Set();
 
-        // Inventory filter (matches reverb-pricing): 'all' | 'zero' | 'more'. Default 'more'.
-        let inventoryFilter = 'more';
-
-        // Additional reverb-style filters.
+        // Filters — same slabs as /tiktok-pricing
+        let inventoryFilter = 'all';
         let nStockFilter = 'all';   // 'all' | 'zero' | 'more'  (Newegg listing stock)
+        let l30Filter    = 'all';   // 'all' | '0' | '0-10' | '10+'
         let nrFilter     = 'all';   // 'all' | 'REQ' | 'NR'
         let statusFilter = 'all';   // 'all' | 'Active' | 'Inactive'
-        let pftFilter    = 'all';   // 'all' | 'negative' | '0-10' | '10-20' | '20-30' | '30-40' | '40-50' | '50plus'
-        let roiFilter    = 'all';   // 'all' | 'lt50' | '50-75' | '75-125' | 'gt125'
-        let dilFilter    = 'all';   // 'all' | 'red' | 'yellow' | 'green' | 'pink'
+        let pftFilter    = 'all';   // 'all' | 'negative' | '0-10'…'30-40' | '40plus'
+        let roiFilter    = 'all';   // 'all' | 'lt40' | '40-75' | '75-125' | 'gt125'
+        let dilFilter    = 'all';   // 'all' | 'red' | 'green' | 'pink'
 
         // Range helper for numeric bucket filters.
         function inRange(n, lo, hi) { return n >= lo && n < hi; }
 
-        // PFT% bucket match — mirrors reverb's GPFT% filter.
+        // GPFT%/PFT% slabs — same as /ebay #gpft-filter
         function pftMatches(pct, bucket) {
             if (bucket === 'all') return true;
             const n = parseFloat(pct);
@@ -353,36 +440,48 @@
                 case '10-20':    return inRange(n, 10, 20);
                 case '20-30':    return inRange(n, 20, 30);
                 case '30-40':    return inRange(n, 30, 40);
-                case '40-50':    return inRange(n, 40, 50);
-                case '50plus':   return n >= 50;
+                case '40plus':   return n >= 40;
                 default:         return true;
             }
         }
 
-        // ROI% buckets follow the same color thresholds used by the ROI cell formatter.
+        // ROI% slabs — same as /ebay #roi-filter (125% lands in 125%+)
         function roiMatches(pct, bucket) {
             if (bucket === 'all') return true;
             const n = parseFloat(pct);
             if (isNaN(n)) return false;
             switch (bucket) {
-                case 'lt50':    return n < 50;
-                case '50-75':   return inRange(n, 50, 75);
-                case '75-125':  return n >= 75 && n <= 125;
-                case 'gt125':   return n > 125;
+                case 'lt40':    return n < 40;
+                case '40-75':   return inRange(n, 40, 75);
+                case '75-125':  return inRange(n, 75, 125);
+                case 'gt125':   return n >= 125;
                 default:        return true;
             }
         }
 
-        // DIL% color buckets — same thresholds as dilFormatter().
+        // N L30 slabs — same as /tiktok-pricing #tl30-filter (excludes 0 INV)
+        function l30Matches(l30, inv, bucket) {
+            if (bucket === 'all') return true;
+            const invVal = parseInt(inv) || 0;
+            if (invVal <= 0) return false;
+            const n = parseInt(l30) || 0;
+            switch (bucket) {
+                case '0':    return n === 0;
+                case '0-10': return n > 0 && n <= 10;
+                case '10+':  return n > 10;
+                default:     return true;
+            }
+        }
+
+        // DIL% color buckets — same thresholds as dilFormatter() / ebay (no yellow).
         function dilMatches(pct, color) {
             if (color === 'all') return true;
             const n = parseFloat(pct) || 0;
             switch (color) {
-                case 'red':    return n < 16.7;
-                case 'yellow': return n >= 16.7 && n < 25;
-                case 'green':  return n >= 25  && n < 50;
-                case 'pink':   return n >= 50;
-                default:       return true;
+                case 'red':   return n < 25;          // absorbs former yellow band
+                case 'green': return n >= 25 && n < 50;
+                case 'pink':  return n >= 50;
+                default:      return true;
             }
         }
 
@@ -422,14 +521,13 @@
             };
         }
 
-        // DIL% = sell-through (OVL30 / INV). Same color buckets as other marketplace pages.
+        // DIL% = sell-through (OVL30 / INV). Same buckets as ebay (red absorbs former yellow).
         function dilFormatter(cell) {
             const v = cell.getValue();
             if (v === null || v === undefined) return '<span style="color:#a00211;font-weight:bold;">0%</span>';
             const n = parseFloat(v);
             let color = '#a00211';
-            if (n < 16.7) color = '#a00211';
-            else if (n < 25) color = '#ffc107';
+            if (n < 25) color = '#a00211';
             else if (n < 50) color = '#28a745';
             else color = '#e83e8c';
             return `<span style="color:${color}; font-weight:bold;">${n.toFixed(0)}%</span>`;
@@ -437,6 +535,7 @@
 
         // ── Missing-listing / mapping state + helpers (same rules as map-issues) ──
         let neMissingActive = false, neMapActive = false, neNMapActive = false;
+        let neZeroSoldActive = false, neMoreSoldActive = false;
 
         function neNr(row) {
             return String((row && row.nr) || 'REQ').trim().toUpperCase();
@@ -468,8 +567,364 @@
             return neWithinMapTolerance(inv, neStock) ? 'map' : 'nmap';
         }
 
+        // ── Sku Link LMP (shared sku.link.lmp.* routes — same as TikTok / Shein) ──
+        const linkedSkuAddUrl = @json(route('sku.link.lmp.linked-skus.add'));
+        const linkedSkuBulkLinkUrl = @json(route('sku.link.lmp.linked-skus.bulk-link'));
+        const linkedSkuRemoveUrl = @json(route('sku.link.lmp.linked-skus.remove'));
+        const filteredSkusUrl = @json(route('sku.link.lmp.filtered-skus'));
+        const skuLinkLmpCsrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '{{ csrf_token() }}';
+
+        let linkedSkuModal = null;
+        let linkedSkuModalRow = null;
+        let linkedSkuModalSelectedSkus = new Set();
+        let linkedSkuSuggestionTimer = null;
+        let linkedSkuSuggestionRequestId = 0;
+
+        function rowSkuForLinkLmp(rowData) {
+            return String(rowData?.sku || '').trim();
+        }
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text == null ? '' : String(text);
+            return div.innerHTML;
+        }
+        function escapeHtmlAttr(text) {
+            return escapeHtml(text).replace(/"/g, '&quot;');
+        }
+        function neEscAttr(text) { return escapeHtmlAttr(text); }
+
+        function linkedLmpSkuFormatter(cell) {
+            const row = cell.getRow().getData();
+            const rowSku = rowSkuForLinkLmp(row);
+            let skus = row.linked_lmp_skus || [];
+            if (typeof skus === 'string') { try { skus = JSON.parse(skus) || []; } catch (e) { skus = []; } }
+            if (!Array.isArray(skus)) skus = [];
+            if (!skus.length && rowSku) skus = [rowSku];
+            const seen = new Set();
+            skus = skus.filter(function (sku) {
+                const norm = String(sku || '').trim().toUpperCase();
+                if (!norm || seen.has(norm)) return false;
+                seen.add(norm); return true;
+            });
+            const badges = skus.length ? skus.map(function (sku) {
+                const skuText = String(sku || '').trim();
+                const isSelf = skuText.toUpperCase() === rowSku.toUpperCase();
+                const removeBtn = isSelf ? '' : `<button type="button" class="btn-close sku-link-lmp-remove" data-linked-sku="${escapeHtmlAttr(skuText)}" aria-label="Remove"></button>`;
+                return `<span class="linked-sku-badge-wrap badge bg-info-subtle text-dark border me-1 mb-1"><span class="linked-sku-badge">${escapeHtml(skuText)}</span>${removeBtn}</span>`;
+            }).join('') : '<span class="text-muted fst-italic">No SKUs</span>';
+            return `<div class="d-flex flex-wrap align-items-start py-1" style="line-height:1.6;">${badges}</div>`;
+        }
+
+        function linkedLmpSkuAddFormatter(cell) {
+            const row = cell.getRow().getData();
+            const rowSku = rowSkuForLinkLmp(row);
+            if (!rowSku) return '';
+            return `<div class="d-flex align-items-center justify-content-center py-1">
+                <button type="button" class="btn btn-sm btn-outline-primary sku-link-lmp-add-btn" title="Link another SKU" style="padding:2px 8px;" data-sku="${escapeHtmlAttr(rowSku)}"><i class="fas fa-plus"></i></button>
+            </div>`;
+        }
+
+        function applyAffectedLinkedSkuRows() {
+            if (table) table.replaceData();
+        }
+
+        function removeLinkedSkuFromRow(rowData, linkedSku) {
+            const sku = rowSkuForLinkLmp(rowData);
+            const target = String(linkedSku || '').trim();
+            if (!sku || !target) return;
+            if (!confirm(`Remove LMP link between "${sku}" and "${target}"?`)) return;
+            fetch(linkedSkuRemoveUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': skuLinkLmpCsrfToken, 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+                body: JSON.stringify({ sku: sku, linked_sku: target }),
+            }).then(r => r.json()).then(function (response) {
+                if (!response.success) throw new Error(response.message || 'Could not remove linked SKU.');
+                applyAffectedLinkedSkuRows();
+            }).catch(function (err) { alert(err.message || 'Could not remove linked SKU.'); });
+        }
+
+        function updateLinkedSkuSelectedSummary() {
+            const wrap = document.getElementById('sku-link-lmp-selected-wrap');
+            const listEl = document.getElementById('sku-link-lmp-selected-skus');
+            const countEl = document.getElementById('sku-link-lmp-selected-count');
+            const saveLabel = document.getElementById('sku-link-lmp-save-btn-label');
+            const selected = Array.from(linkedSkuModalSelectedSkus);
+            if (countEl) countEl.textContent = String(selected.length);
+            if (saveLabel) saveLabel.textContent = selected.length > 1 ? 'Link ' + selected.length + ' SKUs' : 'Link SKU(s)';
+            if (!wrap || !listEl) return;
+            if (!selected.length) { wrap.classList.add('d-none'); listEl.innerHTML = ''; return; }
+            wrap.classList.remove('d-none');
+            listEl.innerHTML = selected.map(function (sku) {
+                return `<span class="sku-link-lmp-selected-chip">${escapeHtml(sku)}<button type="button" class="sku-link-lmp-selected-remove" data-sku="${escapeHtmlAttr(sku)}" title="Remove">&times;</button></span>`;
+            }).join('');
+        }
+
+        function renderLinkedSkuSuggestions(term) {
+            const wrap = document.getElementById('sku-link-lmp-suggestions');
+            if (!wrap) return;
+            const query = String(term || '').trim();
+            if (!query) { wrap.classList.add('d-none'); wrap.innerHTML = ''; return; }
+            clearTimeout(linkedSkuSuggestionTimer);
+            linkedSkuSuggestionTimer = setTimeout(function () {
+                const requestId = ++linkedSkuSuggestionRequestId;
+                fetch(`${filteredSkusUrl}?sku=${encodeURIComponent(query)}`, { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(r => r.json()).then(function (response) {
+                    if (requestId !== linkedSkuSuggestionRequestId) return;
+                    if (!response.success) throw new Error(response.message || 'Could not search SKUs.');
+                    const currentSku = rowSkuForLinkLmp(linkedSkuModalRow).toUpperCase();
+                    const existing = new Set((Array.isArray(linkedSkuModalRow?.linked_lmp_skus) ? linkedSkuModalRow.linked_lmp_skus : []).map(s => String(s || '').trim().toUpperCase()));
+                    const matches = (Array.isArray(response.skus) ? response.skus : []).map(s => String(s || '').trim())
+                        .filter(function (sku) { const norm = sku.toUpperCase(); return sku && norm !== currentSku && !existing.has(norm); }).slice(0, 12);
+                    if (!matches.length) { wrap.classList.add('d-none'); wrap.innerHTML = ''; return; }
+                    wrap.classList.remove('d-none');
+                    wrap.innerHTML = matches.map(function (sku) {
+                        const checked = linkedSkuModalSelectedSkus.has(sku);
+                        return `<label class="list-group-item list-group-item-action py-2 sku-link-lmp-suggestion-item d-flex align-items-center gap-2 mb-0"><input type="checkbox" class="form-check-input sku-link-lmp-suggestion-cb" value="${escapeHtmlAttr(sku)}" ${checked ? 'checked' : ''}><span class="flex-grow-1">${escapeHtml(sku)}</span></label>`;
+                    }).join('');
+                }).catch(function () { if (requestId !== linkedSkuSuggestionRequestId) return; wrap.classList.add('d-none'); wrap.innerHTML = ''; });
+            }, 200);
+        }
+
+        function getLinkedSkuModalSelections() {
+            const selected = Array.from(linkedSkuModalSelectedSkus);
+            const inputVal = String(document.getElementById('sku-link-lmp-input')?.value || '').trim();
+            const sourceNorm = rowSkuForLinkLmp(linkedSkuModalRow).toUpperCase();
+            if (inputVal && inputVal.toUpperCase() !== sourceNorm) {
+                if (!selected.some(s => s.toUpperCase() === inputVal.toUpperCase())) selected.push(inputVal);
+            }
+            return selected;
+        }
+
+        function openLinkedSkuModal(rowData) {
+            if (!linkedSkuModal || !rowSkuForLinkLmp(rowData)) return;
+            linkedSkuModalRow = rowData;
+            linkedSkuModalSelectedSkus = new Set();
+            document.getElementById('sku-link-lmp-source').textContent = rowSkuForLinkLmp(rowData);
+            const input = document.getElementById('sku-link-lmp-input');
+            input.value = '';
+            renderLinkedSkuSuggestions('');
+            updateLinkedSkuSelectedSummary();
+            linkedSkuModal.show();
+            setTimeout(function () { input?.focus(); }, 200);
+        }
+
+        function saveLinkedSkuFromModal() {
+            const sourceSku = rowSkuForLinkLmp(linkedSkuModalRow);
+            if (!sourceSku) return;
+            const toLink = getLinkedSkuModalSelections();
+            if (!toLink.length) { alert('Select one or more SKUs from the list, or enter a SKU to link.'); return; }
+            const allSkus = [sourceSku].concat(toLink);
+            const uniqueSkus = []; const seen = new Set();
+            allSkus.forEach(function (sku) { const norm = String(sku || '').trim().toUpperCase(); if (!norm || seen.has(norm)) return; seen.add(norm); uniqueSkus.push(String(sku).trim()); });
+            if (uniqueSkus.length < 2) { alert('Select at least one SKU to link.'); return; }
+            const btn = document.getElementById('sku-link-lmp-save-btn');
+            const original = btn?.innerHTML || '';
+            if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Linking...'; }
+            const isBulk = uniqueSkus.length > 2 || toLink.length > 1;
+            const fetchPromise = isBulk
+                ? fetch(linkedSkuBulkLinkUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': skuLinkLmpCsrfToken, 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }, body: JSON.stringify({ skus: uniqueSkus }) })
+                : fetch(linkedSkuAddUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': skuLinkLmpCsrfToken, 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }, body: JSON.stringify({ sku: sourceSku, linked_sku: toLink[0] }) });
+            fetchPromise.then(r => r.json()).then(function (response) {
+                if (!response.success) throw new Error(response.message || 'Could not link SKU(s).');
+                linkedSkuModalSelectedSkus = new Set();
+                linkedSkuModal?.hide();
+                applyAffectedLinkedSkuRows();
+            }).catch(function (err) { alert(err.message || 'Could not link SKU(s).'); })
+            .finally(function () { if (btn) { btn.disabled = false; btn.innerHTML = original; } });
+        }
+
+        function initSkuLinkLmpModal() {
+            const modalEl = document.getElementById('skuLinkLmpModal');
+            if (modalEl) linkedSkuModal = bootstrap.Modal.getOrCreateInstance(modalEl);
+            document.getElementById('sku-link-lmp-input')?.addEventListener('input', function () { renderLinkedSkuSuggestions(this.value); });
+            document.getElementById('sku-link-lmp-suggestions')?.addEventListener('click', function (e) {
+                const item = e.target.closest('.sku-link-lmp-suggestion-item'); if (!item) return;
+                const cb = item.querySelector('.sku-link-lmp-suggestion-cb'); if (!cb || e.target === cb) return;
+                cb.checked = !cb.checked; cb.dispatchEvent(new Event('change', { bubbles: true }));
+            });
+            document.getElementById('sku-link-lmp-suggestions')?.addEventListener('change', function (e) {
+                const cb = e.target.closest('.sku-link-lmp-suggestion-cb'); if (!cb) return;
+                const sku = String(cb.value || '').trim(); if (!sku) return;
+                if (cb.checked) linkedSkuModalSelectedSkus.add(sku); else linkedSkuModalSelectedSkus.delete(sku);
+                updateLinkedSkuSelectedSummary();
+            });
+            document.getElementById('sku-link-lmp-selected-skus')?.addEventListener('click', function (e) {
+                const btn = e.target.closest('.sku-link-lmp-selected-remove'); if (!btn) return;
+                linkedSkuModalSelectedSkus.delete(String(btn.dataset.sku || '').trim());
+                document.querySelectorAll('.sku-link-lmp-suggestion-cb').forEach(function (cb) {
+                    if (cb.value === btn.dataset.sku) cb.checked = false;
+                });
+                updateLinkedSkuSelectedSummary();
+            });
+            document.getElementById('sku-link-lmp-save-btn')?.addEventListener('click', function () { saveLinkedSkuFromModal(); });
+        }
+
+        // ── Manual LMP competitors modal ──
+        let neCurrentLmpSku = '';
+        let neCurrentLinkedLmpSkus = [];
+        let neEditCompetitorId = null;
+
+        function neResetCompetitorForm(keepSku) {
+            neEditCompetitorId = null;
+            $('#neEditCompId').val('');
+            $('#neAddCompSku').val(keepSku || neCurrentLmpSku || '');
+            $('#neAddCompProductId').val('');
+            $('#neAddCompPrice').val('');
+            $('#neAddCompShip').val('');
+            $('#neAddCompTitle').val('');
+            $('#neAddCompLink').val('');
+            $('#neCompFormHeaderText').text('Add New Competitor');
+            $('#neCompFormHeaderIcon').attr('class', 'fa fa-plus-circle');
+            $('#neCompFormHeader').removeClass('bg-warning text-dark').addClass('bg-success text-white');
+            $('#neCompFormCard').removeClass('border-warning').addClass('border-success');
+            $('#neCompSubmitBtnText').text('Add');
+            $('#neCompSubmitBtn').find('i').attr('class', 'fa fa-plus');
+            $('#neCompSubmitBtn').css({ background: '#F06C00', borderColor: '#F06C00', color: '#fff' });
+        }
+
+        function neEnterEditCompetitorMode(item) {
+            if (!item || !item.id) return;
+            neEditCompetitorId = item.id;
+            $('#neEditCompId').val(item.id);
+            $('#neAddCompSku').val(item.sku || neCurrentLmpSku || '');
+            $('#neAddCompProductId').val(item.product_id || '');
+            $('#neAddCompPrice').val(item.price != null ? parseFloat(item.price) : '');
+            $('#neAddCompShip').val(item.shipping_cost != null ? parseFloat(item.shipping_cost) : 0);
+            $('#neAddCompTitle').val(item.product_title || item.title || '');
+            $('#neAddCompLink').val(item.product_link || item.link || '');
+            $('#neCompFormHeaderText').text('Edit Competitor');
+            $('#neCompFormHeaderIcon').attr('class', 'fa fa-edit');
+            $('#neCompFormHeader').removeClass('bg-success text-white').addClass('bg-warning text-dark');
+            $('#neCompFormCard').removeClass('border-success').addClass('border-warning');
+            $('#neCompSubmitBtnText').text('Update');
+            $('#neCompSubmitBtn').find('i').attr('class', 'fa fa-save');
+            $('#neCompSubmitBtn').css({ background: '#ffc107', borderColor: '#ffc107', color: '#212529' });
+            const formCard = document.getElementById('neCompFormCard');
+            if (formCard) formCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+
+        function neLoadCompetitorsModal(sku, linkedLmpSkus) {
+            neCurrentLmpSku = sku;
+            neCurrentLinkedLmpSkus = Array.isArray(linkedLmpSkus) ? linkedLmpSkus : [];
+            $('#neLmpSku').text(sku);
+            neResetCompetitorForm(sku);
+
+            const modalEl = document.getElementById('neLmpModal');
+            bootstrap.Modal.getOrCreateInstance(modalEl).show();
+
+            $('#neLmpDataList').html(`
+                <div class="text-center py-5">
+                    <div class="spinner-border" role="status" style="color:#F06C00;">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2">Loading competitors...</p>
+                </div>
+            `);
+
+            const query = { sku: sku };
+            (neCurrentLinkedLmpSkus || []).forEach(function (linkedSku, idx) {
+                query['linked_lmp_skus[' + idx + ']'] = linkedSku;
+            });
+            $.ajax({
+                url: '{{ route('newegg.competitors.get') }}',
+                method: 'GET',
+                data: query,
+                success: function(response) {
+                    neRenderCompetitorsList(response.success ? response.competitors : [], response.lowest_price || null);
+                },
+                error: function() {
+                    neRenderCompetitorsList([], null);
+                }
+            });
+        }
+
+        function neRenderCompetitorsList(competitors, lowestPrice) {
+            if (!competitors || competitors.length === 0) {
+                $('#neLmpDataList').html(`
+                    <div class="alert alert-info mb-0">
+                        <i class="fa fa-info-circle"></i> No competitors found for this SKU. Add your first one above.
+                    </div>
+                `);
+                return;
+            }
+
+            let html = '<div class="table-responsive"><table class="table table-hover table-bordered table-sm align-middle">';
+            html += `
+                <thead class="table-light">
+                    <tr>
+                        <th style="width:30px;">#</th>
+                        <th style="width:140px;">Item #</th>
+                        <th>Title</th>
+                        <th>Seller</th>
+                        <th style="width:80px;">Price</th>
+                        <th style="width:70px;">Ship</th>
+                        <th style="width:60px;">Link</th>
+                        <th style="width:90px;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+            `;
+
+            competitors.forEach(function(item, index) {
+                const basePrice = parseFloat(item.price) || 0;
+                const shipCost = parseFloat(item.shipping_cost) || 0;
+                const landedPrice = basePrice + shipCost;
+                const isLowest = lowestPrice && Math.abs(landedPrice - parseFloat(lowestPrice)) < 0.01;
+                const rowClass = isLowest ? 'table-success' : '';
+                const priceFormatted = '$' + basePrice.toFixed(2);
+                const priceBadge = isLowest
+                    ? `<span class="badge bg-success">${priceFormatted} <i class="fa fa-trophy"></i></span>`
+                    : `<strong>${priceFormatted}</strong>`;
+                const shipHtml = shipCost === 0
+                    ? '<span class="badge bg-info">FREE</span>'
+                    : '$' + shipCost.toFixed(2);
+
+                const productLink = item.link || item.product_link || '#';
+                const title = item.title || item.product_title || 'N/A';
+                const seller = item.seller_name || '—';
+
+                html += `
+                    <tr class="${rowClass}">
+                        <td class="text-center"><strong>${index + 1}</strong></td>
+                        <td><span class="text-primary" style="font-weight:600;font-size:11px;font-family:monospace;">${neEscAttr(item.product_id || 'N/A')}</span></td>
+                        <td style="font-size:11px;" title="${neEscAttr(title)}">${neEscAttr(String(title).substring(0, 80))}${String(title).length > 80 ? '…' : ''}</td>
+                        <td style="font-size:11px;">${neEscAttr(seller)}</td>
+                        <td>${priceBadge}</td>
+                        <td class="text-center">${shipHtml}</td>
+                        <td class="text-center">
+                            <a href="${neEscAttr(productLink)}" target="_blank" class="btn btn-sm btn-info" title="Open on Newegg">
+                                <i class="fa fa-external-link-alt"></i>
+                            </a>
+                        </td>
+                        <td class="text-center text-nowrap">
+                            <button type="button" class="btn btn-sm btn-warning ne-edit-lmp-btn"
+                                data-id="${item.id}"
+                                data-sku="${neEscAttr(item.sku || '')}"
+                                data-product-id="${neEscAttr(item.product_id || '')}"
+                                data-price="${neEscAttr(basePrice)}"
+                                data-shipping="${neEscAttr(shipCost)}"
+                                data-title="${neEscAttr(title === 'N/A' ? '' : title)}"
+                                data-link="${neEscAttr(productLink === '#' ? '' : productLink)}"
+                                title="Edit this competitor">
+                                <i class="fa fa-edit"></i>
+                            </button>
+                            <button type="button" class="btn btn-sm btn-danger ne-delete-lmp-btn"
+                                data-id="${item.id}"
+                                title="Delete this competitor">
+                                <i class="fa fa-trash"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+
+            html += '</tbody></table></div>';
+            $('#neLmpDataList').html(html);
+        }
+
         $(document).ready(function() {
             $.ajaxSetup({ headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' } });
+            initSkuLinkLmpModal();
 
             table = new Tabulator("#newegg-pricing-table", {
                 ajaxURL: "{{ route('newegg.pricing.data') }}",
@@ -553,6 +1008,112 @@
                             return `<span style="color:${color};font-weight:600;">$${n.toFixed(2)}</span>`;
                         }
                     },
+                    {
+                        title: "LMP",
+                        field: "lmp_price",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 100,
+                        tooltip: "Lowest Newegg competitor price (manual LMP)",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            const lmpPrice = parseFloat(cell.getValue() || 0);
+                            const totalCompetitors = parseInt(rowData.lmp_entries_total, 10) || 0;
+                            const sku = rowData.sku || '';
+                            const skuAttr = String(sku).replace(/"/g, '&quot;');
+                            const linkedSkus = Array.isArray(rowData.linked_lmp_skus) ? rowData.linked_lmp_skus : [];
+                            const linkedSkusAttr = escapeHtmlAttr(JSON.stringify(linkedSkus));
+
+                            if (!lmpPrice && totalCompetitors === 0) {
+                                return `<a href="#" class="view-ne-lmp-competitors" data-sku="${skuAttr}" data-linked-skus="${linkedSkusAttr}"
+                                    style="color:#6c757d;text-decoration:none;font-size:11px;cursor:pointer;"
+                                    title="No competitors — click to add one">
+                                    <i class="fa fa-plus-circle"></i> Add
+                                </a>`;
+                            }
+
+                            const currentPrice = parseFloat(rowData.price || 0);
+                            const priceColor = (lmpPrice > 0 && lmpPrice < currentPrice) ? '#dc3545' : '#28a745';
+                            const lmpBase = parseFloat(rowData.lmp_base_price || 0) || lmpPrice;
+                            const lmpShip = parseFloat(rowData.lmp_shipping || 0) || 0;
+                            const shipTip = lmpShip > 0
+                                ? ` title="$${lmpBase.toFixed(2)} + $${lmpShip.toFixed(2)} ship"`
+                                : '';
+
+                            let html = '<div style="display:flex;flex-direction:column;align-items:center;gap:2px;line-height:1.1;">';
+                            if (lmpPrice) {
+                                html += `<span style="color:${priceColor};font-weight:700;font-size:14px;"${shipTip}>$${lmpPrice.toFixed(2)}</span>`;
+                            }
+                            if (totalCompetitors > 0) {
+                                html += `<a href="#" class="view-ne-lmp-competitors" data-sku="${skuAttr}" data-linked-skus="${linkedSkusAttr}"
+                                    style="color:#F06C00;text-decoration:none;font-size:11px;cursor:pointer;">
+                                    <i class="fa fa-eye"></i> View ${totalCompetitors}
+                                </a>`;
+                            }
+                            html += '</div>';
+                            return html;
+                        }
+                    },
+                    {
+                        title: "Diff",
+                        field: "lmp_diff_pct",
+                        hozAlign: "center",
+                        width: 70,
+                        headerSortStartingDir: "desc",
+                        sorter: function(a, b, aRow, bRow) {
+                            const calc = function(rd) {
+                                const lmp = parseFloat(rd.lmp_price || 0);
+                                const price = parseFloat(rd.price || 0);
+                                if (!lmp || lmp <= 0) return -Infinity;
+                                return ((lmp - price) / lmp) * 100;
+                            };
+                            return calc(aRow.getData()) - calc(bRow.getData());
+                        },
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            const lmp = parseFloat(rowData.lmp_price || 0);
+                            const price = parseFloat(rowData.price || 0);
+                            if (!lmp || lmp <= 0) return '<span style="color:#999;">N/A</span>';
+                            const diff = ((lmp - price) / lmp) * 100;
+                            const color = diff < 0 ? '#dc3545' : '#28a745';
+                            return `<span style="color:${color};font-weight:600;">${diff.toFixed(1)}%</span>`;
+                        }
+                    },
+                    {
+                        title: "Sku Link LMP",
+                        field: "linked_lmp_skus",
+                        hozAlign: "left",
+                        headerHozAlign: "center",
+                        width: 200,
+                        headerSort: false,
+                        formatter: linkedLmpSkuFormatter,
+                        cellClick: function(e, cell) {
+                            if (e.target.closest('.sku-link-lmp-remove')) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                removeLinkedSkuFromRow(
+                                    cell.getRow().getData(),
+                                    e.target.closest('.sku-link-lmp-remove').dataset.linkedSku || ''
+                                );
+                            }
+                        },
+                    },
+                    {
+                        title: "+",
+                        field: "linked_lmp_sku_add",
+                        hozAlign: "center",
+                        headerHozAlign: "center",
+                        width: 52,
+                        headerSort: false,
+                        formatter: linkedLmpSkuAddFormatter,
+                        cellClick: function(e, cell) {
+                            if (e.target.closest('.sku-link-lmp-add-btn')) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                openLinkedSkuModal(cell.getRow().getData());
+                            }
+                        },
+                    },
                     { title: "L30", field: "l30", hozAlign: "center", sorter: "number",
                         formatter: function(cell) {
                             const v = parseInt(cell.getValue()) || 0;
@@ -565,7 +1126,12 @@
                             const v = cell.getValue();
                             if (v === null || v === undefined) return '';
                             const n = parseFloat(v) || 0;
-                            const color = n >= 0 ? '#28a745' : '#dc3545';
+                            // Same GPFT color bands as /ebay
+                            let color = '#e83e8c';
+                            if (n < 10) color = '#a00211';
+                            else if (n < 20) color = '#3591dc';
+                            else if (n < 30) color = '#ffc107';
+                            else if (n < 50) color = '#28a745';
                             return `<span style="color:${color};font-weight:bold;">${n.toFixed(1)}%</span>`;
                         }
                     },
@@ -575,11 +1141,11 @@
                             const v = cell.getValue();
                             if (v === null || v === undefined) return '';
                             const n = parseFloat(v) || 0;
-                            let color = '#6c757d';
-                            if (n < 50) color = '#dc3545';
+                            // Same ROI color bands as /ebay
+                            let color = '#d63384';
+                            if (n < 40) color = '#a00211';
                             else if (n < 75) color = '#ffc107';
-                            else if (n <= 125) color = '#28a745';
-                            else color = '#e83e8c';
+                            else if (n < 125) color = '#28a745';
                             return `<span style="color:${color};font-weight:bold;">${n.toFixed(0)}%</span>`;
                         }
                     },
@@ -616,7 +1182,12 @@
                             const v = cell.getValue();
                             if (v === null || v === undefined || v === '') return '';
                             const n = parseFloat(v) || 0;
-                            const color = n >= 0 ? '#28a745' : '#dc3545';
+                            // Same GPFT color bands as /ebay
+                            let color = '#e83e8c';
+                            if (n < 10) color = '#a00211';
+                            else if (n < 20) color = '#3591dc';
+                            else if (n < 30) color = '#ffc107';
+                            else if (n < 50) color = '#28a745';
                             return `<span style="color:${color};font-weight:bold;">${n.toFixed(1)}%</span>`;
                         }
                     },
@@ -626,11 +1197,11 @@
                             const v = cell.getValue();
                             if (v === null || v === undefined || v === '') return '';
                             const n = parseFloat(v) || 0;
-                            let color = '#6c757d';
-                            if (n < 50) color = '#dc3545';
+                            // Same ROI color bands as /ebay
+                            let color = '#d63384';
+                            if (n < 40) color = '#a00211';
                             else if (n < 75) color = '#ffc107';
-                            else if (n <= 125) color = '#28a745';
-                            else color = '#e83e8c';
+                            else if (n < 125) color = '#28a745';
                             return `<span style="color:${color};font-weight:bold;">${n.toFixed(0)}%</span>`;
                         }
                     },
@@ -790,6 +1361,9 @@
                     if (nStockFilter === 'zero' && nStock !== 0) return false;
                     if (nStockFilter === 'more' && nStock <= 0) return false;
 
+                    // N L30 slabs (same as TikTok T L30 — excludes 0 INV)
+                    if (!l30Matches(row.l30, row.inv, l30Filter)) return false;
+
                     // NR / REQ flag
                     if (nrFilter !== 'all') {
                         const nr = String(row.nr || 'REQ').toUpperCase();
@@ -803,10 +1377,15 @@
                         if (st !== statusFilter) return false;
                     }
 
-                    // PFT / ROI / DIL bucket filters
+                    // GPFT / ROI / DIL bucket filters
                     if (!pftMatches(row.pft_pct, pftFilter)) return false;
                     if (!roiMatches(row.roi,     roiFilter)) return false;
                     if (!dilMatches(row.dil,     dilFilter)) return false;
+
+                    // Sold badge filters
+                    const l30Val = parseInt(row.l30) || 0;
+                    if (neZeroSoldActive && l30Val !== 0) return false;
+                    if (neMoreSoldActive && l30Val <= 0) return false;
 
                     // Missing / Map / N Map badge filters
                     if (neMissingActive && !neRowMissingL(row)) return false;
@@ -819,71 +1398,84 @@
                 setTimeout(updateSummary, 100);
             }
 
+            function setNeBadgeActive($el, active) {
+                $el.toggleClass('border border-3 border-dark', !!active);
+                if (active) {
+                    $el.css('box-shadow', '0 0 0 2px rgba(0,0,0,0.25)');
+                } else {
+                    $el.css('box-shadow', '');
+                }
+            }
+
             function updateBadgeStyles() {
-                $('#ne-missing-badge').css('outline', neMissingActive ? '3px solid #000' : 'none');
-                $('#ne-map-badge').css('outline', neMapActive ? '3px solid #000' : 'none');
-                $('#ne-nmap-badge').css('outline', neNMapActive ? '3px solid #000' : 'none');
+                setNeBadgeActive($('#zero-sold-count-badge'), neZeroSoldActive);
+                setNeBadgeActive($('#more-sold-count-badge'), neMoreSoldActive);
+                setNeBadgeActive($('#ne-missing-badge'), neMissingActive);
+                setNeBadgeActive($('#ne-map-badge'), neMapActive);
+                setNeBadgeActive($('#ne-nmap-badge'), neNMapActive);
+            }
+
+            function neOnSummaryFilterBadgeClick(type) {
+                if (type === 'zero-sold') {
+                    neZeroSoldActive = !neZeroSoldActive;
+                    neMoreSoldActive = neMissingActive = neMapActive = neNMapActive = false;
+                } else if (type === 'more-sold') {
+                    neMoreSoldActive = !neMoreSoldActive;
+                    neZeroSoldActive = neMissingActive = neMapActive = neNMapActive = false;
+                } else if (type === 'missing') {
+                    neMissingActive = !neMissingActive;
+                    neZeroSoldActive = neMoreSoldActive = neMapActive = neNMapActive = false;
+                } else if (type === 'map') {
+                    neMapActive = !neMapActive;
+                    neZeroSoldActive = neMoreSoldActive = neMissingActive = neNMapActive = false;
+                } else if (type === 'nmap') {
+                    neNMapActive = !neNMapActive;
+                    neZeroSoldActive = neMoreSoldActive = neMissingActive = neMapActive = false;
+                }
+                applyNeFilters();
             }
 
             $('#sku-search').on('keyup', applyNeFilters);
 
-            $('#ne-missing-badge').on('click', function() {
-                neMissingActive = !neMissingActive;
-                neMapActive = neNMapActive = false;
-                applyNeFilters();
-            });
-            $('#ne-map-badge').on('click', function() {
-                neMapActive = !neMapActive;
-                neMissingActive = neNMapActive = false;
-                applyNeFilters();
-            });
-            $('#ne-nmap-badge').on('click', function() {
-                neNMapActive = !neNMapActive;
-                neMissingActive = neMapActive = false;
-                applyNeFilters();
-            });
+            $('#zero-sold-count-badge').on('click', function() { neOnSummaryFilterBadgeClick('zero-sold'); });
+            $('#more-sold-count-badge').on('click', function() { neOnSummaryFilterBadgeClick('more-sold'); });
+            $('#ne-missing-badge').on('click', function() { neOnSummaryFilterBadgeClick('missing'); });
+            $('#ne-map-badge').on('click', function() { neOnSummaryFilterBadgeClick('map'); });
+            $('#ne-nmap-badge').on('click', function() { neOnSummaryFilterBadgeClick('nmap'); });
 
             // ── Toolbar filter wiring ──────────────────────────────────────────
             $('#inventory-filter').on('change', function() { inventoryFilter = $(this).val(); applyNeFilters(); });
             $('#n-stock-filter')  .on('change', function() { nStockFilter    = $(this).val(); applyNeFilters(); });
+            $('#l30-filter')      .on('change', function() { l30Filter       = $(this).val(); applyNeFilters(); });
             $('#nr-filter')       .on('change', function() { nrFilter        = $(this).val(); applyNeFilters(); });
             $('#status-filter')   .on('change', function() { statusFilter    = $(this).val(); applyNeFilters(); });
             $('#pft-filter')      .on('change', function() { pftFilter       = $(this).val(); applyNeFilters(); });
             $('#roi-filter')      .on('change', function() { roiFilter       = $(this).val(); applyNeFilters(); });
+            $('#dil-filter')      .on('change', function() { dilFilter       = $(this).val(); applyNeFilters(); });
 
-            // DIL% manual dropdown (colored pill button + 5 color options).
-            $(document).on('click', '#dilFilterContainer .btn', function(e) {
-                e.stopPropagation();
-                $('.manual-dropdown-container').not('#dilFilterContainer').removeClass('show');
-                $('#dilFilterContainer').toggleClass('show');
-            });
-            $(document).on('click', '.dil-filter-item', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                const $item = $(this);
-                const color = $item.data('color');
-                $('#dilFilterContainer .dil-filter-item').removeClass('active');
-                $item.addClass('active');
-                const circle = $item.find('.status-circle').clone();
-                $('#dilFilterDropdown').html('').append(circle).append(' DIL%');
-                $('#dilFilterContainer').removeClass('show');
-                dilFilter = color;
-                applyNeFilters();
-            });
-            $(document).on('click', function() { $('.manual-dropdown-container').removeClass('show'); });
+            // ── SPRICE bulk tools (single Price Mode dropdown) ────────────────
+            function syncSpriceModeBtn() {
+                const $btn = $('#sprice-mode-btn');
+                $btn.removeClass('btn-secondary btn-warning btn-success btn-info btn-danger');
+                $('.sprice-mode-item').removeClass('active');
 
-            // ── SPRICE bulk tools (Increase / Decrease / Same Price) ──────────
-            function resetDecreaseBtn() {
-                $('#decrease-btn').removeClass('btn-danger').addClass('btn-warning')
-                    .html('<i class="fas fa-arrow-down"></i> Decrease Mode');
-            }
-            function resetIncreaseBtn() {
-                $('#increase-btn').removeClass('btn-danger').addClass('btn-success')
-                    .html('<i class="fas fa-arrow-up"></i> Increase Mode');
-            }
-            function resetSamePriceBtn() {
-                $('#same-price-btn').removeClass('btn-danger').addClass('btn-info')
-                    .html('<i class="fas fa-equals"></i> Same Price Mode');
+                if (decreaseModeActive) {
+                    $btn.addClass('btn-warning')
+                        .html('<i class="fas fa-arrow-down"></i> Decrease');
+                    $('.sprice-mode-item[data-mode="decrease"]').addClass('active');
+                } else if (increaseModeActive) {
+                    $btn.addClass('btn-success')
+                        .html('<i class="fas fa-arrow-up"></i> Increase');
+                    $('.sprice-mode-item[data-mode="increase"]').addClass('active');
+                } else if (samePriceModeActive) {
+                    $btn.addClass('btn-info')
+                        .html('<i class="fas fa-equals"></i> Same Price');
+                    $('.sprice-mode-item[data-mode="same"]').addClass('active');
+                } else {
+                    $btn.addClass('btn-secondary')
+                        .html('<i class="fas fa-sliders-h"></i> Price Mode');
+                    $('.sprice-mode-item[data-mode=""]').addClass('active');
+                }
             }
 
             // Swap the input panel between %/$ entry (Increase/Decrease) and a flat $ price (Same Price).
@@ -918,23 +1510,18 @@
             }
 
             function enterMode(which) {
-                decreaseModeActive  = (which === 'decrease') ? !decreaseModeActive  : false;
-                increaseModeActive  = (which === 'increase') ? !increaseModeActive  : false;
-                samePriceModeActive = (which === 'same')     ? !samePriceModeActive : false;
+                // Selecting the already-active mode (or Off) turns mode off.
+                const turningOff = !which
+                    || (which === 'decrease' && decreaseModeActive)
+                    || (which === 'increase' && increaseModeActive)
+                    || (which === 'same' && samePriceModeActive);
 
-                resetDecreaseBtn(); resetIncreaseBtn(); resetSamePriceBtn();
+                decreaseModeActive  = !turningOff && which === 'decrease';
+                increaseModeActive  = !turningOff && which === 'increase';
+                samePriceModeActive = !turningOff && which === 'same';
+
                 const anyOn = decreaseModeActive || increaseModeActive || samePriceModeActive;
-
-                if (decreaseModeActive) {
-                    $('#decrease-btn').removeClass('btn-warning').addClass('btn-danger')
-                        .html('<i class="fas fa-arrow-down"></i> Decrease ON');
-                } else if (increaseModeActive) {
-                    $('#increase-btn').removeClass('btn-success').addClass('btn-danger')
-                        .html('<i class="fas fa-arrow-up"></i> Increase ON');
-                } else if (samePriceModeActive) {
-                    $('#same-price-btn').removeClass('btn-info').addClass('btn-danger')
-                        .html('<i class="fas fa-equals"></i> Same Price ON');
-                }
+                syncSpriceModeBtn();
 
                 const selCol = table.getColumn('_select');
                 if (selCol) {
@@ -950,9 +1537,10 @@
                 table.redraw(true);
             }
 
-            $('#decrease-btn').on('click',  () => enterMode('decrease'));
-            $('#increase-btn').on('click',  () => enterMode('increase'));
-            $('#same-price-btn').on('click', () => enterMode('same'));
+            $(document).on('click', '.sprice-mode-item', function(e) {
+                e.preventDefault();
+                enterMode($(this).data('mode') || '');
+            });
             $('#push-all-sprice-btn').on('click', pushAllSpriceVisible);
             $('#discount-type-select').on('change', syncDiscountInputUi);
 
@@ -982,13 +1570,64 @@
             $('#push-newegg-btn').on('click', pushSelectedToNewegg);
 
             // --- Target ROI% / Target GPFT% bulk apply --------------------------------
-            // Back-solves SPRICE so the resulting SROI / SGPFT columns match the target.
-            // Uses each row's server-supplied take-home `factor` (≈ 0.80 by default).
-            // After the optimistic row update, the same /newegg-pricing-save-sprice-bulk
-            // endpoint that the regular Apply / Clear flow uses reconciles the values
-            // server-side. Rounding is plain 2-decimal — no .99 / .49 retail snapping —
-            // because retail snapping would shift the achieved SROI / SGPFT away from
-            // the target the user just typed.
+            // Back-solves SPRICE, then nudges ±$0.01 so SROI/SPFT match the target after
+            // 2-decimal rounding. Server recomputes from ProductMaster LP/Ship with the
+            // same nudge so every selected row lands on the same SROI (no 25/26/27 drift).
+
+            function neAchievedRoi(sprice, lp, ship, factor) {
+                const profit = (sprice * factor) - lp - ship;
+                return lp > 0 ? Math.round((profit / lp) * 100) : 0;
+            }
+            function neAchievedSpft(sprice, lp, ship, factor) {
+                if (!(sprice > 0)) return 0;
+                const profit = (sprice * factor) - lp - ship;
+                return Math.round((profit / sprice) * 100 * 10) / 10;
+            }
+
+            /** Back-solve + nudge SPRICE so integer SROI equals target. */
+            function neSpriceForTargetRoi(lp, ship, factor, targetRoiPct) {
+                if (!(lp > 0) || !(factor > 0)) return null;
+                const target = Math.round(targetRoiPct);
+                let sprice = +((lp * (1 + targetRoiPct / 100) + ship) / factor).toFixed(2);
+                if (!(sprice > 0)) return null;
+                let roi = neAchievedRoi(sprice, lp, ship, factor);
+                let guard = 0;
+                while (roi < target && guard < 5000) {
+                    sprice = +(sprice + 0.01).toFixed(2);
+                    roi = neAchievedRoi(sprice, lp, ship, factor);
+                    guard++;
+                }
+                while (roi > target && sprice > 0.01 && guard < 5000) {
+                    sprice = +(sprice - 0.01).toFixed(2);
+                    roi = neAchievedRoi(sprice, lp, ship, factor);
+                    guard++;
+                }
+                return sprice;
+            }
+
+            /** Back-solve + nudge SPRICE so SPFT (1 decimal) equals target. */
+            function neSpriceForTargetGpft(lp, ship, factor, targetGpftPct) {
+                if (!(lp > 0) || !(factor > 0)) return null;
+                const denom = factor - (targetGpftPct / 100);
+                if (!(denom > 0)) return null;
+                const target = Math.round(targetGpftPct * 10) / 10;
+                let sprice = +((lp + ship) / denom).toFixed(2);
+                if (!(sprice > 0)) return null;
+                let gpft = neAchievedSpft(sprice, lp, ship, factor);
+                let guard = 0;
+                while (gpft < target - 0.05 && guard < 5000) {
+                    sprice = +(sprice + 0.01).toFixed(2);
+                    gpft = neAchievedSpft(sprice, lp, ship, factor);
+                    guard++;
+                }
+                while (gpft > target + 0.05 && sprice > 0.01 && guard < 5000) {
+                    sprice = +(sprice - 0.01).toFixed(2);
+                    gpft = neAchievedSpft(sprice, lp, ship, factor);
+                    guard++;
+                }
+                return sprice;
+            }
+
             $('#apply-target-roi-btn').on('click', function () {
                 const rawInput = $('#target-roi-input').val();
                 const targetRoiPct = parseFloat(String(rawInput).replace(',', '.'));
@@ -1002,11 +1641,11 @@
                     return;
                 }
                 if (selectedSkus.size === 0) {
-                    showToast('Please select at least one SKU first (turn on Decrease / Increase / Same Price to reveal checkboxes)', 'error');
+                    showToast('Please select at least one SKU first (choose a Price Mode to reveal checkboxes)', 'error');
                     return;
                 }
 
-                const roiMultiplier = 1 + (targetRoiPct / 100);
+                const targetSroi = Math.round(targetRoiPct);
                 const updates = [];
                 let updatedCount = 0;
                 let skippedNoLp = 0;
@@ -1020,16 +1659,15 @@
                     if (lp <= 0) { skippedNoLp++; return; }
                     const ship   = parseFloat(d.ship)   || 0;
                     const factor = parseFloat(d.factor) || 0.80;
-                    const candidate = (lp * roiMultiplier + ship) / factor;
-                    const newSprice = +candidate.toFixed(2);
-                    if (!isFinite(newSprice) || newSprice <= 0) return;
+                    const newSprice = neSpriceForTargetRoi(lp, ship, factor, targetRoiPct);
+                    if (newSprice == null || !(newSprice > 0)) return;
 
                     const profit = (newSprice * factor) - lp - ship;
                     const spft = newSprice > 0 ? Math.round((profit / newSprice) * 100 * 10) / 10 : 0;
-                    const sroi = lp > 0 ? Math.round((profit / lp) * 100) : 0;
 
-                    row.update({ sprice: newSprice, spft: spft, sroi: sroi });
-                    updates.push({ sku: sku, sprice: newSprice });
+                    // Show the exact target SROI on every row (server will persist the same).
+                    row.update({ sprice: newSprice, spft: spft, sroi: targetSroi });
+                    updates.push({ sku: sku, target_roi: targetRoiPct });
                     updatedCount++;
                 });
 
@@ -1040,7 +1678,7 @@
 
                 saveSpriceUpdates(updates);
                 const note = skippedNoLp > 0 ? ` (${skippedNoLp} skipped — no LP)` : '';
-                showToast(`Target ROI ${targetRoiPct}% applied to ${updatedCount} SKU(s)${note}`, 'success');
+                showToast(`Target ROI ${targetSroi}% applied to ${updatedCount} SKU(s)${note}`, 'success');
             });
 
             $('#apply-target-gpft-btn').on('click', function () {
@@ -1056,11 +1694,11 @@
                     return;
                 }
                 if (selectedSkus.size === 0) {
-                    showToast('Please select at least one SKU first (turn on Decrease / Increase / Same Price to reveal checkboxes)', 'error');
+                    showToast('Please select at least one SKU first (choose a Price Mode to reveal checkboxes)', 'error');
                     return;
                 }
 
-                const targetFraction = targetGpftPct / 100;
+                const targetSpft = Math.round(targetGpftPct * 10) / 10;
                 const updates = [];
                 let updatedCount = 0;
                 let skippedNoLp = 0;
@@ -1075,18 +1713,15 @@
                     if (lp <= 0) { skippedNoLp++; return; }
                     const ship   = parseFloat(d.ship)   || 0;
                     const factor = parseFloat(d.factor) || 0.80;
-                    const denom  = factor - targetFraction;
-                    if (denom <= 0) { skippedHighGpft.push(sku); return; }
-                    const candidate = (lp + ship) / denom;
-                    const newSprice = +candidate.toFixed(2);
-                    if (!isFinite(newSprice) || newSprice <= 0) return;
+                    if (factor - (targetGpftPct / 100) <= 0) { skippedHighGpft.push(sku); return; }
+                    const newSprice = neSpriceForTargetGpft(lp, ship, factor, targetGpftPct);
+                    if (newSprice == null || !(newSprice > 0)) return;
 
                     const profit = (newSprice * factor) - lp - ship;
-                    const spft = newSprice > 0 ? Math.round((profit / newSprice) * 100 * 10) / 10 : 0;
                     const sroi = lp > 0 ? Math.round((profit / lp) * 100) : 0;
 
-                    row.update({ sprice: newSprice, spft: spft, sroi: sroi });
-                    updates.push({ sku: sku, sprice: newSprice });
+                    row.update({ sprice: newSprice, spft: targetSpft, sroi: sroi });
+                    updates.push({ sku: sku, target_gpft: targetGpftPct });
                     updatedCount++;
                 });
 
@@ -1103,7 +1738,7 @@
                 let note = '';
                 if (skippedNoLp > 0)        note += ` (${skippedNoLp} skipped — no LP)`;
                 if (skippedHighGpft.length) note += ` (${skippedHighGpft.length} skipped — target ≥ factor)`;
-                showToast(`Target GPFT ${targetGpftPct}% applied to ${updatedCount} SKU(s)${note}`, 'success');
+                showToast(`Target GPFT ${targetSpft}% applied to ${updatedCount} SKU(s)${note}`, 'success');
             });
 
             $('#target-roi-input').on('keypress', function(e) {
@@ -1116,7 +1751,7 @@
             // Compute and apply Increase / Decrease / Same Price to the selected SKUs.
             function applyDiscount() {
                 if (!decreaseModeActive && !increaseModeActive && !samePriceModeActive) {
-                    showToast('Turn on Decrease, Increase, or Same Price mode first', 'error');
+                    showToast('Choose a Price Mode first (Decrease / Increase / Same Price)', 'error');
                     return;
                 }
                 const discountType  = $('#discount-type-select').val();
@@ -1350,25 +1985,15 @@
 
             function updateSummary() {
                 const data = table.getData("active");
-                let totalSkus = 0, withPrice = 0, totalInv = 0, totalOvl30 = 0, totalL30 = 0;
-                let totalWeightedPrice = 0, priceCount = 0;
-                // Overall PFT/ROI accumulators (over L30), same approach as amazon-tabulator-view.
+                let totalL30 = 0;
                 let totalPftAmt = 0, totalSalesAmt = 0, totalCogsAmt = 0;
 
                 data.forEach(row => {
                     if (!row.sku) return;
-                    totalSkus++;
-                    totalInv += parseInt(row.inv) || 0;
-                    totalOvl30 += parseInt(row.ovl30) || 0;
                     const l30 = parseInt(row.l30) || 0;
                     totalL30 += l30;
                     const price = parseFloat(row.price);
                     if (!isNaN(price) && price > 0) {
-                        withPrice++;
-                        totalWeightedPrice += price;
-                        priceCount++;
-
-                        // PFT/ROI weighted by units sold (L30).
                         const pftEach = parseFloat(row.pft) || 0;
                         const lp = parseFloat(row.lp) || 0;
                         totalPftAmt += pftEach * l30;
@@ -1377,20 +2002,22 @@
                     }
                 });
 
-                const avgPrice = priceCount > 0 ? totalWeightedPrice / priceCount : 0;
-                // Overall PFT% = total profit / total sales; ROI% = total profit / total COGS.
                 const pftPct = totalSalesAmt > 0 ? (totalPftAmt / totalSalesAmt) * 100 : 0;
                 const roiPct = totalCogsAmt > 0 ? (totalPftAmt / totalCogsAmt) * 100 : 0;
 
-                $('#total-l30-badge').text('Total L30: ' + totalL30.toLocaleString());
-                $('#avg-price-badge').text('Avg Price: $' + avgPrice.toFixed(2));
-                $('#pft-badge').text('PFT: ' + Math.round(pftPct) + '%');
-                $('#roi-badge').text('ROI: ' + Math.round(roiPct) + '%');
+                $('#total-sales-amt-badge').text('Sales: $' + totalSalesAmt.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 }));
+                $('#avg-gpft-badge').text('GPFT: ' + Math.round(pftPct) + '%');
+                $('#total-l30-badge').text('L30: ' + totalL30.toLocaleString());
+                $('#roi-percent-badge').text('ROI%: ' + Math.round(roiPct) + '%');
 
-                // Missing L / Map / N Map counted over the full dataset (stable regardless of active filter).
-                let missingCount = 0, mapCount = 0, nmapCount = 0;
+                // Sold / Missing / Map counted over full dataset (stable regardless of active filter).
+                let zeroSold = 0, moreSold = 0, missingCount = 0, mapCount = 0, nmapCount = 0;
                 table.getData().forEach(row => {
                     if (!row.sku) return;
+                    const l30 = parseInt(row.l30) || 0;
+                    if (l30 === 0) zeroSold++;
+                    else moreSold++;
+
                     if (neRowMissingL(row)) {
                         missingCount++;
                     } else {
@@ -1399,6 +2026,8 @@
                         else if (st === 'nmap') nmapCount++;
                     }
                 });
+                $('#zero-sold-count-badge').text('0 Sold: ' + zeroSold.toLocaleString());
+                $('#more-sold-count-badge').text('> 0 Sold: ' + moreSold.toLocaleString());
                 $('#ne-missing-badge').text('Missing L: ' + missingCount.toLocaleString());
                 $('#ne-map-badge').text('Map: ' + mapCount.toLocaleString());
                 $('#ne-nmap-badge').text('N Map: ' + nmapCount.toLocaleString());
@@ -1464,7 +2093,6 @@
             table.on('tableBuilt', function() {
                 applyColumnVisibilityFromServer();
                 buildColumnDropdown();
-                // Make sure the initial INV filter ("More than 0") is applied.
                 applyNeFilters();
             });
             table.on('dataLoaded', updateSummary);
@@ -1492,6 +2120,106 @@
 
             $('#export-btn').on('click', function() {
                 table.download("csv", "newegg_pricing.csv");
+            });
+
+            // LMP column: View N / + Add
+            $(document).on('click', '.view-ne-lmp-competitors', function(e) {
+                e.preventDefault();
+                const sku = $(this).attr('data-sku') || $(this).data('sku');
+                if (!sku) return;
+                let linkedSkus = [];
+                const rawLinked = $(this).attr('data-linked-skus');
+                if (rawLinked) {
+                    try { linkedSkus = JSON.parse(rawLinked) || []; } catch (err) { linkedSkus = []; }
+                }
+                if (!Array.isArray(linkedSkus)) linkedSkus = [];
+                neLoadCompetitorsModal(sku, linkedSkus);
+            });
+
+            $('#neAddCompetitorForm').on('submit', function(e) {
+                e.preventDefault();
+                const editId = neEditCompetitorId || $('#neEditCompId').val();
+                const isEdit = !!editId;
+                const payload = {
+                    product_id: $('#neAddCompProductId').val().trim(),
+                    price: parseFloat($('#neAddCompPrice').val()) || 0,
+                    shipping_cost: parseFloat($('#neAddCompShip').val()) || 0,
+                    product_title: $('#neAddCompTitle').val().trim() || null,
+                    product_link: $('#neAddCompLink').val().trim() || null,
+                    marketplace: 'newegg',
+                    _token: '{{ csrf_token() }}',
+                };
+                if (!isEdit) {
+                    payload.sku = $('#neAddCompSku').val();
+                } else {
+                    payload.id = editId;
+                }
+                if (!payload.product_id || !payload.price) {
+                    alert('Item # and Price are required.');
+                    return;
+                }
+                $.ajax({
+                    url: isEdit
+                        ? '{{ route('newegg.competitors.update') }}'
+                        : '{{ route('newegg.competitors.add') }}',
+                    method: 'POST',
+                    data: payload,
+                    success: function(resp) {
+                        if (resp.success) {
+                            neResetCompetitorForm(neCurrentLmpSku);
+                            neLoadCompetitorsModal(neCurrentLmpSku, neCurrentLinkedLmpSkus);
+                            if (table) table.replaceData();
+                        } else {
+                            alert(resp.error || (isEdit ? 'Failed to update competitor' : 'Failed to add competitor'));
+                        }
+                    },
+                    error: function(xhr) {
+                        const msg = (xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message))
+                            || (isEdit ? 'Failed to update competitor' : 'Failed to add competitor');
+                        alert(msg);
+                    }
+                });
+            });
+
+            $('#neCompClearBtn').on('click', function() {
+                neResetCompetitorForm(neCurrentLmpSku);
+            });
+
+            $(document).on('click', '.ne-edit-lmp-btn', function() {
+                const $btn = $(this);
+                neEnterEditCompetitorMode({
+                    id: $btn.data('id'),
+                    sku: $btn.attr('data-sku') || $btn.data('sku') || neCurrentLmpSku,
+                    product_id: $btn.attr('data-product-id') || $btn.data('product-id') || '',
+                    price: $btn.data('price'),
+                    shipping_cost: $btn.data('shipping'),
+                    product_title: $btn.attr('data-title') || '',
+                    product_link: $btn.attr('data-link') || '',
+                });
+            });
+
+            $(document).on('click', '.ne-delete-lmp-btn', function() {
+                const id = $(this).data('id');
+                if (!id) return;
+                if (!confirm('Delete this competitor mapping?')) return;
+                $.ajax({
+                    url: '{{ route('newegg.competitors.delete') }}',
+                    method: 'POST',
+                    data: { id: id, _token: '{{ csrf_token() }}' },
+                    success: function(resp) {
+                        if (resp.success) {
+                            neResetCompetitorForm(neCurrentLmpSku);
+                            neLoadCompetitorsModal(neCurrentLmpSku, neCurrentLinkedLmpSkus);
+                            if (table) table.replaceData();
+                        } else {
+                            alert(resp.error || 'Failed to delete');
+                        }
+                    },
+                    error: function(xhr) {
+                        const msg = (xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message)) || 'Failed to delete';
+                        alert(msg);
+                    }
+                });
             });
         });
     </script>

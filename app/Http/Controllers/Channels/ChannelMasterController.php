@@ -118,6 +118,7 @@ use App\Models\TiktokSalesTwo;
 use App\Models\TiktokShopListingStatus;
 use App\Models\DepopSheetData;
 use App\Models\DepopSalesData;
+use App\Models\VintedSalesData;
 use App\Models\TopDawgSheetdata;
 use App\Models\WayfairDailyData;
 use App\Models\WayfairListingStatus;
@@ -4744,6 +4745,15 @@ class ChannelMasterController extends Controller
         }
 
         try {
+            $vintedY = $this->computeVintedYSalesLikeAmazon();
+            if ($vintedY !== null) {
+                $yesterdaySummaries['vinted'] = $vintedY;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Vinted Y Sales failed: ' . $e->getMessage());
+        }
+
+        try {
             $sheinY = $this->computeSheinYSalesLikeAmazon();
             if ($sheinY !== null) {
                 $yesterdaySummaries['shein'] = $sheinY;
@@ -4895,6 +4905,15 @@ class ChannelMasterController extends Controller
         }
 
         try {
+            $vintedL7 = $this->computeVintedL7SalesLikeAmazon();
+            if ($vintedL7 !== null) {
+                $l7Summaries['vinted'] = $vintedL7;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Vinted L7 Sales failed: ' . $e->getMessage());
+        }
+
+        try {
             $sheinL7 = $this->computeSheinL7SalesLikeAmazon();
             if ($sheinL7 !== null) {
                 $l7Summaries['shein'] = $sheinL7;
@@ -4955,6 +4974,7 @@ class ChannelMasterController extends Controller
             'tiktok2'       => 'getTikTokTwoChannelData',
             'tiktokshop2'   => 'getTikTokTwoChannelData',
             'depop'         => 'getDepopChannelData',
+            'vinted'        => 'getVintedChannelData',
             'instagramshop' => 'getInstagramChannelData',
             'aliexpress' => 'getAliexpressChannelData',
             'mercariwship' => 'getMercariWShipChannelData',
@@ -5568,6 +5588,27 @@ class ChannelMasterController extends Controller
         $yDate = Carbon::parse($latestRaw)->subDay()->toDateString();
 
         $sum = (float) DB::table('depop_sales_data')
+            ->whereDate('sale_date', $yDate)
+            ->selectRaw('COALESCE(SUM(item_price * GREATEST(COALESCE(NULLIF(quantity, 0), 1), 1)), 0) as revenue')
+            ->value('revenue');
+
+        return round($sum, 2);
+    }
+
+    private function computeVintedYSalesLikeAmazon(): ?float
+    {
+        if (! Schema::hasTable('vinted_sales_data')) {
+            return null;
+        }
+
+        $latestRaw = DB::table('vinted_sales_data')->whereNotNull('sale_date')->max('sale_date');
+        if (! $latestRaw) {
+            return null;
+        }
+
+        $yDate = Carbon::parse($latestRaw)->subDay()->toDateString();
+
+        $sum = (float) DB::table('vinted_sales_data')
             ->whereDate('sale_date', $yDate)
             ->selectRaw('COALESCE(SUM(item_price * GREATEST(COALESCE(NULLIF(quantity, 0), 1), 1)), 0) as revenue')
             ->value('revenue');
@@ -6352,6 +6393,30 @@ class ChannelMasterController extends Controller
         return round($sum, 2);
     }
 
+    private function computeVintedL7SalesLikeAmazon(): ?float
+    {
+        if (! Schema::hasTable('vinted_sales_data')) {
+            return null;
+        }
+
+        $latestRaw = DB::table('vinted_sales_data')->whereNotNull('sale_date')->max('sale_date');
+        if (! $latestRaw) {
+            return null;
+        }
+
+        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
+        $l7StartDate = $latestPacific->copy()->subDay()->subDays(6)->toDateString();
+        $l7EndDate = $latestPacific->copy()->subDay()->toDateString();
+
+        $sum = (float) DB::table('vinted_sales_data')
+            ->where('sale_date', '>=', $l7StartDate)
+            ->where('sale_date', '<=', $l7EndDate)
+            ->selectRaw('COALESCE(SUM(item_price * GREATEST(COALESCE(NULLIF(quantity, 0), 1), 1)), 0) as revenue')
+            ->value('revenue');
+
+        return round($sum, 2);
+    }
+
     private function computeSheinL7SalesLikeAmazon(): ?float
     {
         if (! Schema::hasTable('shein_daily_data')) {
@@ -6476,6 +6541,7 @@ class ChannelMasterController extends Controller
         'tiktok2'       => 'getTikTokTwoChannelData',
         'tiktokshop2'   => 'getTikTokTwoChannelData',
         'depop'         => 'getDepopChannelData',
+        'vinted'        => 'getVintedChannelData',
         'instagramshop' => 'getInstagramChannelData',
         'aliexpress' => 'getAliexpressChannelData',
         'mercariwship' => 'getMercariWShipChannelData',
@@ -11278,6 +11344,145 @@ class ChannelMasterController extends Controller
         ]);
     }
 
+    public function getVintedChannelData(Request $request)
+    {
+        $result = [];
+        $latestSaleDate = VintedSalesData::whereNotNull('sale_date')->max('sale_date');
+        $l60Orders = 0;
+        $l60Sales = 0;
+        $l30Orders = 0;
+        $l30Sales = 0;
+        $totalQuantity = 0;
+        $totalProfit = 0;
+        $totalCogs = 0;
+        $gProfitPct = 0;
+        $gRoi = 0;
+
+        if ($latestSaleDate) {
+            $latestCarbon = \Carbon\Carbon::parse($latestSaleDate);
+            $l30Start = $latestCarbon->copy()->subDays(29)->format('Y-m-d');
+            $l30End = $latestCarbon->format('Y-m-d');
+            $l60Start = $latestCarbon->copy()->subDays(59)->format('Y-m-d');
+            $l60End = $latestCarbon->copy()->subDays(30)->format('Y-m-d');
+
+            $l60Rows = VintedSalesData::whereBetween('sale_date', [$l60Start, $l60End])->get();
+            $l60Orders = $l60Rows->count();
+            $l60Sales = $l60Rows->sum(function ($r) {
+                return (float) $r->item_price * (int) ($r->quantity ?: 1);
+            });
+
+            $productMasters = \App\Models\ProductMaster::all()->keyBy(function ($item) {
+                return strtoupper($item->sku);
+            });
+
+            $rows = VintedSalesData::whereBetween('sale_date', [$l30Start, $l30End])->get();
+
+            foreach ($rows as $row) {
+                $quantity = (int) ($row->quantity ?: 1);
+                $unitPrice = (float) $row->item_price;
+                $revenue = $unitPrice * $quantity;
+                $l30Sales += $revenue;
+                $l30Orders++;
+                $totalQuantity += $quantity;
+
+                $sku = strtoupper($row->sku_code ?? '');
+                $lp = 0;
+                $ship = 0;
+
+                $pm = $productMasters->get($sku);
+                if ($sku && $pm) {
+                    $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                    if (is_array($values)) {
+                        foreach ($values as $k => $v) {
+                            if (strtolower($k) === 'lp') {
+                                $lp = floatval($v);
+                                break;
+                            }
+                        }
+                    }
+                    if ($lp === 0 && isset($pm->lp)) {
+                        $lp = floatval($pm->lp);
+                    }
+                    if (is_array($values) && isset($values['ship'])) {
+                        $ship = floatval($values['ship']);
+                    } elseif (isset($pm->ship)) {
+                        $ship = floatval($pm->ship);
+                    }
+                }
+
+                $vintedFee = (float) ($row->vinted_fee ?? 0);
+                $uspsCost = (float) ($row->usps_cost ?? 0);
+
+                if ($lp == 0) {
+                    $lp = $revenue * 0.13 / max($quantity, 1);
+                }
+
+                if ($ship == 0 && $uspsCost > 0) {
+                    $ship = $uspsCost;
+                }
+
+                $cogs = $lp * $quantity;
+                $totalShipping = $ship > 0 ? $ship : $uspsCost;
+                $profit = $revenue - $cogs - $totalShipping - $vintedFee;
+
+                $totalCogs += $cogs;
+                $totalProfit += $profit;
+            }
+
+            $gProfitPct = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
+            $gRoi = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
+        }
+
+        $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
+        $mapMissCounts = $this->getMapAndMissCounts('vinted');
+        $channelData = ChannelMaster::where('channel', 'Vinted')->first();
+
+        $nPft = $gProfitPct;
+        $nRoi = $gRoi;
+
+        $result[] = [
+            'Channel '   => 'Vinted',
+            'L-60 Sales' => intval($l60Sales),
+            'L30 Sales'  => intval($l30Sales),
+            'Growth'     => round($growth, 2) . '%',
+            'L60 Orders' => $l60Orders,
+            'L30 Orders' => $l30Orders,
+            'Qty'        => intval($totalQuantity),
+            'Gprofit%'   => round($gProfitPct, 2) . '%',
+            'gprofitL60' => 0,
+            'G Roi'      => round($gRoi, 2),
+            'G RoiL60'   => 0,
+            'Total PFT'  => round($totalProfit, 2),
+            'N PFT'      => round($nPft, 2) . '%',
+            'N ROI'      => round($nRoi, 2),
+            'Ads%'       => 0,
+            'TikTok Ad Spend' => 0,
+            'KW Spent'   => 0,
+            'PT Spent'   => 0,
+            'HL Spent'   => 0,
+            'PMT Spent'  => 0,
+            'Shopping Spent' => 0,
+            'SERP Spent' => 0,
+            'Total Ad Spend' => 0,
+            'type'       => optional($channelData)->type ?? 'B2C',
+            'W/Ads'      => optional($channelData)->w_ads ?? 0,
+            'NR'         => optional($channelData)->nr ?? 0,
+            'Update'     => optional($channelData)->update ?? 0,
+            'cogs'       => round($totalCogs, 2),
+            'Map' => $mapMissCounts['map'],
+            'Miss' => $mapMissCounts['miss'],
+            'base'       => optional($channelData)->base ?? 0,
+            'sheet_link' => optional($channelData)->sheet_link ?? '/vinted/sheet',
+            'ra'         => optional($channelData)->ra ?? 0,
+        ];
+
+        return response()->json([
+            'status' => 200,
+            'message' => 'Vinted channel data fetched successfully',
+            'data' => $result,
+        ]);
+    }
+
     private function getTiktokShopMissingListingCount()
     {
         $productMasters = ProductMaster::whereNull('deleted_at')->get();
@@ -14764,6 +14969,7 @@ class ChannelMasterController extends Controller
                 'tiktokshop' => 'TikTok Shop',
                 'tiktokshop2' => 'TikTok 2',
                 'depop' => 'Depop',
+                'vinted' => 'Vinted',
             ];
             $mdmChannel = $channelMap[$mdmKey] ?? null;
             $mdmCache[$mdmKey] = $mdmChannel
@@ -14959,6 +15165,7 @@ class ChannelMasterController extends Controller
             'tiktokshop' => 'TikTok',
             'tiktokshop2' => 'TikTok 2',
             'depop' => 'Depop',
+            'vinted' => 'Vinted',
             'instagramshop' => 'Instagram Shop',
             'aliexpress' => 'AliExpress',
             'mercariwship' => 'Mercari With Ship',

@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Campaigns;
 
 use App\Http\Controllers\Controller;
 use App\Models\GoogleAdsNegativeKeyword;
+use App\Models\ProductMaster;
+use App\Models\ShopifySku;
 use App\Services\GoogleAdsSbidService;
 use App\Support\GoogleShoppingCampaignsRawRule;
 use Carbon\Carbon;
@@ -315,6 +317,32 @@ class GoogleShoppingCampaignsController extends Controller
             'app:fetch-google-ads-campaigns',
             ['--days' => (string) $days],
             'app:fetch-google-ads-campaigns'
+        );
+    }
+
+    /**
+     * Run inventory auto-pause: ENABLED Shopping campaigns with INV ≤ 0 → PAUSED.
+     * Same command the daily cron uses ({@see SyncGoogleShoppingStatusByInventory}).
+     */
+    public function syncPauseByInventory(): JsonResponse
+    {
+        return $this->runArtisanPush(
+            'google-shopping:sync-status-by-inventory',
+            ['--mode' => 'pause'],
+            'google-shopping:sync-status-by-inventory --mode=pause'
+        );
+    }
+
+    /**
+     * Run inventory auto-enable: PAUSED Shopping campaigns with INV > 0 → ENABLED.
+     * Same command the daily cron uses ({@see SyncGoogleShoppingStatusByInventory}).
+     */
+    public function syncEnableByInventory(): JsonResponse
+    {
+        return $this->runArtisanPush(
+            'google-shopping:sync-status-by-inventory',
+            ['--mode' => 'enable'],
+            'google-shopping:sync-status-by-inventory --mode=enable'
         );
     }
 
@@ -642,14 +670,13 @@ class GoogleShoppingCampaignsController extends Controller
         $perPage = (int) $request->input('size', 100);
         $perPage = max(10, min(1000, $perPage));
         $page = max(1, (int) $request->input('page', 1));
+        $verifyId = $request->boolean('filter_verify_id');
 
         $query = $this->buildRawGridBaseQuery();
         $this->applyRawGridDataFilters($query, $request);
 
         $summaryQuery = clone $query;
         $this->applyRawGridSort($query, $request);
-        $paginator = $query->paginate($perPage, ['*'], 'page', $page);
-        $summary = $this->computeRawGridSummary($summaryQuery);
 
         $rawRule = GoogleShoppingCampaignsRawRule::resolvedRule();
 
@@ -662,6 +689,70 @@ class GoogleShoppingCampaignsController extends Controller
             report($e);
         }
 
+        // Persist today's channel-level Green util (L7) count for the badge history chart.
+        try {
+            $this->snapshotGreenUtilL7ForToday();
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        $invResolver = $this->buildInventoryResolver();
+
+        // Verify ID: L30 spend = 0 (SQL) + INV > 0 (PHP). Inventory is not in SQL, so
+        // load the spend=0 set, filter, then paginate + verify Merchant Item IDs.
+        if ($verifyId) {
+            @ini_set('max_execution_time', '120');
+            set_time_limit(120);
+            $collection = $query->get();
+            $allCampaignIds = $collection
+                ->pluck('campaign_id')
+                ->filter(fn ($v) => $v !== null && $v !== '')
+                ->map(fn ($v) => (string) $v)
+                ->unique()
+                ->values()
+                ->all();
+            $prevSbgtMap = $this->previousSbgtMap($allCampaignIds);
+
+            $enriched = $collection->map(function ($row) use ($rawRule, $prevSbgtMap, $invResolver) {
+                $arr = json_decode(json_encode($row), true);
+                if (isset($arr['spend_window_micros'])) {
+                    $arr['metrics_cost_micros'] = (int) $arr['spend_window_micros'];
+                    unset($arr['spend_window_micros']);
+                }
+
+                self::enrichRawRowGoogleShoppingStyle($arr, $rawRule);
+                $this->applyRowChannelOverrides($arr);
+                $this->attachSbgtTrend($arr, $prevSbgtMap);
+                $this->attachInventoryFields($arr, $invResolver);
+
+                return $arr;
+            })->filter(static function (array $arr) {
+                return (int) ($arr['inventory'] ?? 0) > 0;
+            })->values();
+
+            $total = $enriched->count();
+            $lastPage = max(1, (int) ceil($total / $perPage));
+            $page = min($page, $lastPage);
+            $pageRows = $enriched->slice(($page - 1) * $perPage, $perPage)->values();
+
+            $this->attachMerchantIdVerification($pageRows);
+
+            $rows = $pageRows->map(static fn (array $arr) => self::prepareRawRowForTabulator($arr))->values();
+            $summary = $this->computeRawGridSummary($summaryQuery);
+            $summary['filtered_row_count'] = $total;
+
+            return response()->json([
+                'last_page' => $lastPage,
+                'last_row' => $total,
+                'data' => $rows,
+                'total' => $total,
+                'summary' => $summary,
+            ]);
+        }
+
+        $paginator = $query->paginate($perPage, ['*'], 'page', $page);
+        $summary = $this->computeRawGridSummary($summaryQuery);
+
         $collection = $paginator->getCollection();
         $pageCampaignIds = $collection
             ->pluck('campaign_id')
@@ -672,7 +763,7 @@ class GoogleShoppingCampaignsController extends Controller
             ->all();
         $prevSbgtMap = $this->previousSbgtMap($pageCampaignIds);
 
-        $rows = $collection->map(function ($row) use ($rawRule, $prevSbgtMap) {
+        $rows = $collection->map(function ($row) use ($rawRule, $prevSbgtMap, $invResolver) {
             $arr = json_decode(json_encode($row), true);
             if (isset($arr['spend_window_micros'])) {
                 $arr['metrics_cost_micros'] = (int) $arr['spend_window_micros'];
@@ -682,6 +773,9 @@ class GoogleShoppingCampaignsController extends Controller
             self::enrichRawRowGoogleShoppingStyle($arr, $rawRule);
             $this->applyRowChannelOverrides($arr);
             $this->attachSbgtTrend($arr, $prevSbgtMap);
+            $this->attachInventoryFields($arr, $invResolver);
+            $arr['id_mismatch'] = false;
+            $arr['id_alert_title'] = '';
 
             return self::prepareRawRowForTabulator($arr);
         })->values();
@@ -1264,13 +1358,19 @@ class GoogleShoppingCampaignsController extends Controller
     {
         $metric = strtolower((string) $request->input('metric', ''));
         $days = max(1, min(180, (int) $request->input('days', 30)));
-        $allowed = ['spend', 'clicks', 'sold', 'sales', 'acos', 'cvr', 'bgt'];
+        $allowed = ['spend', 'clicks', 'sold', 'sales', 'acos', 'cvr', 'bgt', 'green_util_l7'];
         if (! in_array($metric, $allowed, true)) {
             return response()->json([
                 'success' => false,
                 'message' => 'Unknown metric.',
                 'data' => [],
             ], 422);
+        }
+
+        // Green util (L7) = campaigns with U7% in the green band (66–99%). Daily
+        // re-anchored counts — same model as u7DistributionHistory (U7 filter ignored).
+        if ($metric === 'green_util_l7') {
+            return $this->badgeHistoryGreenUtilL7($request, $days);
         }
 
         $campaignIds = [];
@@ -1393,6 +1493,179 @@ class GoogleShoppingCampaignsController extends Controller
     }
 
     /**
+     * Daily count of campaigns in Green utilisation (L7) — U7% band 66–99%.
+     * Reads persisted channel-level snapshots (recorded on grid load / first chart open);
+     * backfills any missing days with a lightweight L7-only query and stores them.
+     */
+    private function badgeHistoryGreenUtilL7(Request $request, int $days): JsonResponse
+    {
+        $end = $this->badgeChartCompletedEndDate();
+        $start = $end->copy()->subDays($days - 1);
+        $channel = $this->channelKey();
+
+        try {
+            $byDate = $this->ensureGreenUtilL7Snapshots($start, $end);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'query_error',
+                'data' => [],
+            ], 500);
+        }
+
+        $data = [];
+        for ($d = $start->copy(); $d->lte($end); $d->addDay()) {
+            $key = $d->format('Y-m-d');
+            $data[] = [
+                'date' => $d->format('M d'),
+                'value' => (int) ($byDate[$key] ?? 0),
+            ];
+        }
+
+        return response()->json([
+            'success' => true,
+            'metric' => 'green_util_l7',
+            'days' => $days,
+            'mode' => 'daily_count',
+            'end_date' => $end->toDateString(),
+            'timezone' => 'America/Los_Angeles',
+            'channel' => $channel,
+            'data' => $data,
+        ]);
+    }
+
+    /**
+     * Best-effort: record today's (completed US day) Green util (L7) count once per channel.
+     */
+    protected function snapshotGreenUtilL7ForToday(): void
+    {
+        if (! Schema::hasTable('google_ads_green_util_daily_counts')) {
+            return;
+        }
+
+        $anchor = $this->badgeChartCompletedEndDate()->toDateString();
+        $channel = $this->channelKey();
+        $lockKey = "gads_green_util_snap_v1:{$channel}:{$anchor}";
+
+        if (! Cache::add($lockKey, 1, now()->addDay())) {
+            return;
+        }
+
+        $this->persistGreenUtilL7ForDate($anchor);
+    }
+
+    /**
+     * Ensure every calendar day in [$start, $end] has a stored green util count.
+     * Missing days are computed with {@see countGreenUtilL7ForDate()} and persisted.
+     *
+     * @return array<string, int> snapshot_date (Y-m-d) => green_count
+     */
+    protected function ensureGreenUtilL7Snapshots(Carbon $start, Carbon $end): array
+    {
+        $channel = $this->channelKey();
+        $byDate = [];
+
+        if (Schema::hasTable('google_ads_green_util_daily_counts')) {
+            $rows = DB::table('google_ads_green_util_daily_counts')
+                ->where('channel', $channel)
+                ->whereBetween('snapshot_date', [$start->format('Y-m-d'), $end->format('Y-m-d')])
+                ->get(['snapshot_date', 'green_count']);
+
+            foreach ($rows as $row) {
+                $key = Carbon::parse((string) $row->snapshot_date)->format('Y-m-d');
+                $byDate[$key] = (int) $row->green_count;
+            }
+        }
+
+        for ($d = $start->copy(); $d->lte($end); $d->addDay()) {
+            $key = $d->format('Y-m-d');
+            if (array_key_exists($key, $byDate)) {
+                continue;
+            }
+            $count = $this->countGreenUtilL7ForDate($key);
+            $byDate[$key] = $count;
+            $this->persistGreenUtilL7ForDate($key, $count);
+        }
+
+        return $byDate;
+    }
+
+    /**
+     * Upsert one day's channel-level Green util (L7) count.
+     */
+    protected function persistGreenUtilL7ForDate(string $endYmd, ?int $count = null): int
+    {
+        if (! Schema::hasTable('google_ads_green_util_daily_counts')) {
+            return $count ?? $this->countGreenUtilL7ForDate($endYmd);
+        }
+
+        $endYmd = Carbon::parse($endYmd)->toDateString();
+        $channel = $this->channelKey();
+        $green = $count ?? $this->countGreenUtilL7ForDate($endYmd);
+        $now = now();
+
+        DB::table('google_ads_green_util_daily_counts')->updateOrInsert(
+            ['channel' => $channel, 'snapshot_date' => $endYmd],
+            [
+                'green_count' => $green,
+                'updated_at' => $now,
+                'created_at' => $now,
+            ]
+        );
+
+        return $green;
+    }
+
+    /**
+     * Lightweight count of campaigns with U7% in the green band (66–99%) as of $forcedEndYmd.
+     * Only joins L7 spend + latest budget — far cheaper than the full raw grid query.
+     */
+    protected function countGreenUtilL7ForDate(?string $forcedEndYmd = null): int
+    {
+        $bounds = $this->rawGridDateBoundaries($forcedEndYmd);
+        $l7Bounds = $this->rawTrailingInclusiveDayBounds($bounds, 7);
+        if ($bounds === null || $l7Bounds === null) {
+            return 0;
+        }
+
+        $latestSub = DB::table('google_ads_campaigns')
+            ->whereNotNull('date')
+            ->whereBetween('date', [$bounds['start'], $bounds['end']]);
+        $this->applyCampaignNameScope($latestSub);
+        $latestSub->whereNotNull('campaign_id')
+            ->selectRaw('campaign_id, MAX(`date`) as max_d')
+            ->groupBy('campaign_id');
+
+        $sumL7Sub = DB::table('google_ads_campaigns')
+            ->whereNotNull('date')
+            ->whereBetween('date', [$l7Bounds['start'], $l7Bounds['end']]);
+        $this->applyCampaignNameScope($sumL7Sub);
+        $sumL7Sub->whereNotNull('campaign_id')
+            ->selectRaw('campaign_id, SUM(metrics_cost_micros) as sum_micros_l7')
+            ->groupBy('campaign_id');
+
+        $ub7 = '(CASE WHEN COALESCE(g.budget_amount_micros, 0) > 0 THEN (COALESCE(cSpendL7.sum_micros_l7, 0) / 1000000.0) / ((g.budget_amount_micros / 1000000.0) * 7.0) * 100.0 ELSE 0 END)';
+
+        $query = DB::table('google_ads_campaigns as g')
+            ->joinSub($latestSub, 'latest', function ($join) {
+                $join->on('g.campaign_id', '=', 'latest.campaign_id')
+                    ->on('g.date', '=', 'latest.max_d');
+            })
+            ->leftJoinSub($sumL7Sub, 'cSpendL7', function ($join) {
+                $join->on('g.campaign_id', '=', 'cSpendL7.campaign_id');
+            });
+        $this->applyCampaignNameScope($query, 'g.campaign_name');
+
+        $row = $query->selectRaw(
+            'SUM(CASE WHEN COALESCE(g.budget_amount_micros, 0) > 0 AND ('.$ub7.') >= 66 AND ('.$ub7.') <= 99 THEN 1 ELSE 0 END) AS green_count'
+        )->first();
+
+        return (int) ($row->green_count ?? 0);
+    }
+
+    /**
      * One row per campaign for the raw grid (before U7/U2/U1/Sts filters). Optional $forcedEndYmd (Y-m-d) anchors windows for history.
      *
      * @return \Illuminate\Database\Query\Builder
@@ -1486,15 +1759,23 @@ class GoogleShoppingCampaignsController extends Controller
             ->selectRaw('campaign_id, SUM(ga4_actual_revenue) as sum_ga4_actual, SUM(ga4_ad_sales) as sum_ga4_ads, SUM(ga4_actual_sold_units) as sum_ga4_actual_sold')
             ->groupBy('campaign_id');
 
+        // Latest row per campaign in the 30d window, PLUS every PARENT campaign's
+        // latest row ever — so parent rows always appear even with no recent metrics.
         $latestSub = DB::table('google_ads_campaigns');
-        $applyBounds($latestSub);
         $this->applyCampaignNameScope($latestSub);
         $latestSub->whereNotNull('campaign_id')
+            ->whereNotNull('date')
+            ->where(function ($q) use ($bounds) {
+                if ($bounds !== null) {
+                    $q->whereBetween('date', [$bounds['start'], $bounds['end']])
+                        ->orWhereRaw('UPPER(campaign_name) LIKE ?', ['PARENT %']);
+                }
+            })
             ->selectRaw('campaign_id, MAX(`date`) as max_d')
             ->groupBy('campaign_id');
 
         $query = DB::table('google_ads_campaigns as g')
-            ->joinSub($sumSub, 'cSpend', function ($join) {
+            ->leftJoinSub($sumSub, 'cSpend', function ($join) {
                 $join->on('g.campaign_id', '=', 'cSpend.campaign_id');
             })
             ->leftJoinSub($sumL7Sub, 'cSpendL7', function ($join) {
@@ -1506,7 +1787,7 @@ class GoogleShoppingCampaignsController extends Controller
             ->leftJoinSub($sumL1Sub, 'cSpendL1', function ($join) {
                 $join->on('g.campaign_id', '=', 'cSpendL1.campaign_id');
             })
-            ->joinSub($clicks30Sub, 'cClicks30', function ($join) {
+            ->leftJoinSub($clicks30Sub, 'cClicks30', function ($join) {
                 $join->on('g.campaign_id', '=', 'cClicks30.campaign_id');
             })
             ->leftJoinSub($clicksL7Sub, 'cClicksL7', function ($join) {
@@ -1526,12 +1807,20 @@ class GoogleShoppingCampaignsController extends Controller
                     ->on('g.date', '=', 'cLatest.max_d');
             })
             ->whereNotNull('g.campaign_id');
-        $applyBounds($query);
+        // Non-parent rows stay in the 30d window; PARENT campaigns may use their latest row ever.
+        if ($bounds !== null) {
+            $query->where(function ($q) use ($bounds) {
+                $q->where(function ($q2) use ($bounds) {
+                    $q2->whereNotNull('g.date')
+                        ->whereBetween('g.date', [$bounds['start'], $bounds['end']]);
+                })->orWhereRaw('UPPER(g.campaign_name) LIKE ?', ['PARENT %']);
+            });
+        }
         $this->applyCampaignNameScope($query, 'g.campaign_name');
 
         $query->select('g.*')
-            ->addSelect(DB::raw('cSpend.sum_micros as spend_window_micros'))
-            ->addSelect(DB::raw('cSpend.sum_micros / 1000000 as spend'))
+            ->addSelect(DB::raw('COALESCE(cSpend.sum_micros, 0) as spend_window_micros'))
+            ->addSelect(DB::raw('COALESCE(cSpend.sum_micros, 0) / 1000000 as spend'))
             ->addSelect(DB::raw('COALESCE(cSpendL7.sum_micros_l7, 0) / 1000000 as l7_spend'))
             ->addSelect(DB::raw('COALESCE(cSpendL2.sum_micros_l2, 0) / 1000000 as l2_spend'))
             ->addSelect(DB::raw('COALESCE(cSpendL1.sum_micros_l1, 0) / 1000000 as l1_spend'))
@@ -1601,6 +1890,11 @@ class GoogleShoppingCampaignsController extends Controller
             $query->whereRaw('UPPER(TRIM(COALESCE(g.campaign_status, ""))) <> ?', ['ENABLED']);
         } elseif ($stat !== 'all' && $stat !== '') {
             $query->whereRaw('UPPER(TRIM(COALESCE(g.campaign_status, ""))) = ?', [strtoupper($stat)]);
+        }
+
+        // Verify ID: L30 spend = 0 (INV > 0 applied after inventory attach in data()).
+        if ($request->boolean('filter_verify_id')) {
+            $query->whereRaw('COALESCE(cSpend.sum_micros, 0) = 0');
         }
     }
 
@@ -1990,10 +2284,14 @@ class GoogleShoppingCampaignsController extends Controller
      * Weighted totals over the full filtered set (not just the current page).
      *
      * @param  \Illuminate\Database\Query\Builder|\Illuminate\Database\Eloquent\Builder  $summaryQuery
-     * @return array{spi30: float|null, acos_pct: int|null, filtered_row_count: int}
+     * @return array{spi30: float|null, acos_pct: int|null, filtered_row_count: int, active_count: int|null, green_util_l7_count: int|null, avg_ctr: float|null, avg_cvr: float|null}
      */
     private function computeRawGridSummary($summaryQuery): array
     {
+        // Green util (L7) = U7% in 66–99% with a positive budget — same band as the grid / U7% mix.
+        $ub7Pct = '(CASE WHEN COALESCE(subq.budget_amount_micros, 0) > 0 THEN subq.l7_spend / ((subq.budget_amount_micros / 1000000.0) * 7.0) * 100.0 ELSE 0 END)';
+        $greenUtilCase = 'SUM(CASE WHEN COALESCE(subq.budget_amount_micros, 0) > 0 AND ('.$ub7Pct.') >= 66 AND ('.$ub7Pct.') <= 99 THEN 1 ELSE 0 END) AS green_util_l7_count';
+
         try {
             $sql = $summaryQuery->toSql();
             $bindings = $summaryQuery->getBindings();
@@ -2001,7 +2299,8 @@ class GoogleShoppingCampaignsController extends Controller
                 'SELECT COUNT(*) AS row_count, COALESCE(SUM(subq.spend), 0) AS sum_spend, COALESCE(SUM(subq.sales_l30_agg), 0) AS sum_sales, '.
                 'COALESCE(SUM(subq.clicks_sum_30), 0) AS sum_clicks, COALESCE(SUM(subq.impr_sum_30), 0) AS sum_impr, '.
                 'COALESCE(SUM(subq.sum_ga4_actual_sold), 0) AS sum_sold, '.
-                'SUM(CASE WHEN UPPER(TRIM(COALESCE(subq.campaign_status, ""))) = "ENABLED" THEN 1 ELSE 0 END) AS active_count '.
+                'SUM(CASE WHEN UPPER(TRIM(COALESCE(subq.campaign_status, ""))) = "ENABLED" THEN 1 ELSE 0 END) AS active_count, '.
+                $greenUtilCase.' '.
                 'FROM ('.$sql.') AS subq',
                 $bindings
             );
@@ -2011,6 +2310,7 @@ class GoogleShoppingCampaignsController extends Controller
                 'acos_pct' => null,
                 'filtered_row_count' => 0,
                 'active_count' => null,
+                'green_util_l7_count' => null,
                 'avg_ctr' => null,
                 'avg_cvr' => null,
             ];
@@ -2039,6 +2339,7 @@ class GoogleShoppingCampaignsController extends Controller
             'acos_pct' => (int) round($acos),
             'filtered_row_count' => (int) ($row->row_count ?? 0),
             'active_count' => (int) ($row->active_count ?? 0),
+            'green_util_l7_count' => (int) ($row->green_util_l7_count ?? 0),
             'avg_ctr' => round($avgCtr, 2),
             'avg_cvr' => round($avgCvr, 2),
         ];
@@ -2230,6 +2531,8 @@ class GoogleShoppingCampaignsController extends Controller
             'campaign_id',
             'campaign_status',
             'campaign_name',
+            'is_parent',
+            'inventory',
             'spend',
             'l7_spend',
             'l2_spend',
@@ -2253,6 +2556,396 @@ class GoogleShoppingCampaignsController extends Controller
             'sbgt_prev_date',
             'sbgt_trend',
             'sbid',
+            'id_mismatch',
+            'id_alert_title',
         ];
+    }
+
+    /**
+     * Attach is_parent + inventory (parent total for PARENT campaigns; child SKU inv otherwise).
+     *
+     * @param  array<string, mixed>  $arr
+     * @param  \Closure(string): ?int  $invResolver
+     */
+    private function attachInventoryFields(array &$arr, \Closure $invResolver): void
+    {
+        $name = (string) ($arr['campaign_name'] ?? '');
+        $norm = preg_replace('/\s+/', ' ', strtoupper(rtrim(trim($name), '.')));
+        $isParent = $norm !== '' && str_starts_with($norm, 'PARENT ');
+        $arr['is_parent'] = $isParent;
+        $inv = $invResolver($name);
+        $arr['inventory'] = $inv !== null ? (int) $inv : 0;
+    }
+
+    /**
+     * Memoized campaign_name → Shopify INV resolver (Amazon SB / missing-ads style).
+     * PARENT … campaigns get SUM(child inv) by product_master.parent; other names match SKU inv.
+     *
+     * @return \Closure(string): ?int
+     */
+    private function buildInventoryResolver(): \Closure
+    {
+        $channel = $this->channelKey();
+        $payload = Cache::remember("gads_{$channel}_inv_resolver_v1", 300, function () {
+            $allPm = ProductMaster::query()
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->get(['sku', 'parent']);
+
+            $childSkus = [];
+            foreach ($allPm as $pm) {
+                $s = trim((string) ($pm->sku ?? ''));
+                if ($s === '' || str_starts_with(strtoupper($s), 'PARENT')) {
+                    continue;
+                }
+                $childSkus[] = $s;
+            }
+            $shopifyByPmSku = ShopifySku::mapByProductSkus(array_values(array_unique($childSkus)));
+
+            $inventoryByParent = [];
+            $skuToParentKey = [];
+            foreach ($allPm as $pm) {
+                $s = trim((string) ($pm->sku ?? ''));
+                if ($s === '' || str_starts_with(strtoupper($s), 'PARENT')) {
+                    continue;
+                }
+                $pKey = preg_replace('/\s+/', ' ', strtoupper(trim((string) ($pm->parent ?? ''))));
+                if ($pKey === '') {
+                    continue;
+                }
+                $normSku = preg_replace('/\s+/', ' ', strtoupper(rtrim($s, '.')));
+                $skuToParentKey[$normSku] = $pKey;
+                $rec = $shopifyByPmSku->get($s);
+                $inventoryByParent[$pKey] = ($inventoryByParent[$pKey] ?? 0) + (float) ($rec?->inv ?? 0);
+            }
+
+            $parentSkuToFamilyKey = [];
+            foreach ($allPm as $pm) {
+                $s = trim((string) ($pm->sku ?? ''));
+                if ($s === '' || ! str_starts_with(strtoupper($s), 'PARENT')) {
+                    continue;
+                }
+                $normSku = preg_replace('/\s+/', ' ', strtoupper(rtrim($s, '.')));
+                $parentCol = trim((string) ($pm->parent ?? ''));
+                if ($parentCol !== '') {
+                    $parentSkuToFamilyKey[$normSku] = preg_replace('/\s+/', ' ', strtoupper($parentCol));
+                } else {
+                    $rest = trim(preg_replace('/^PARENT\s+/i', '', $s) ?? '');
+                    $parentSkuToFamilyKey[$normSku] = $rest === ''
+                        ? $normSku
+                        : preg_replace('/\s+/', ' ', strtoupper(rtrim($rest, '.')));
+                }
+            }
+
+            $childInvBySku = [];
+            foreach ($shopifyByPmSku as $sku => $rec) {
+                $normSku = preg_replace('/\s+/', ' ', strtoupper(rtrim((string) $sku, '.')));
+                if ($normSku !== '') {
+                    $childInvBySku[$normSku] = (int) round((float) ($rec->inv ?? 0));
+                }
+            }
+
+            return [
+                'inventoryByParent' => $inventoryByParent,
+                'parentSkuToFamilyKey' => $parentSkuToFamilyKey,
+                'skuToParentKey' => $skuToParentKey,
+                'childInvBySku' => $childInvBySku,
+            ];
+        });
+
+        $inventoryByParent = $payload['inventoryByParent'];
+        $parentSkuToFamilyKey = $payload['parentSkuToFamilyKey'];
+        $skuToParentKey = $payload['skuToParentKey'];
+        $childInvBySku = $payload['childInvBySku'];
+        $memo = [];
+
+        return static function (string $campaignName) use (
+            $inventoryByParent,
+            $parentSkuToFamilyKey,
+            $skuToParentKey,
+            $childInvBySku,
+            &$memo
+        ): ?int {
+            $norm = preg_replace('/\s+/', ' ', strtoupper(rtrim(trim($campaignName), '.')));
+            if ($norm === '') {
+                return null;
+            }
+            if (array_key_exists($norm, $memo)) {
+                return $memo[$norm];
+            }
+
+            // PARENT {family} → sum of children's Shopify inv (parent total).
+            if (str_starts_with($norm, 'PARENT ')) {
+                $fam = $parentSkuToFamilyKey[$norm]
+                    ?? preg_replace('/\s+/', ' ', trim(substr($norm, strlen('PARENT '))));
+                $out = isset($inventoryByParent[$fam]) ? (int) round($inventoryByParent[$fam]) : 0;
+                $memo[$norm] = $out;
+
+                return $out;
+            }
+
+            // Child / other campaign name → that SKU's inv when matched; else parent total if linked.
+            if (isset($childInvBySku[$norm])) {
+                $memo[$norm] = $childInvBySku[$norm];
+
+                return $memo[$norm];
+            }
+            if (isset($skuToParentKey[$norm])) {
+                $fam = $skuToParentKey[$norm];
+                $out = isset($inventoryByParent[$fam]) ? (int) round($inventoryByParent[$fam]) : 0;
+                $memo[$norm] = $out;
+
+                return $out;
+            }
+
+            $memo[$norm] = null;
+
+            return null;
+        };
+    }
+
+    /**
+     * Compare Google Ads listing-group Item IDs vs expected Merchant Center IDs
+     * (shopify_us_{productId}_{variantId} from shopify_catalog_variants).
+     *
+     * @param  \Illuminate\Support\Collection<int, array<string, mixed>>  $rows
+     */
+    private function attachMerchantIdVerification($rows): void
+    {
+        if ($rows->isEmpty()) {
+            return;
+        }
+
+        $campaignIds = $rows
+            ->pluck('campaign_id')
+            ->filter(fn ($v) => $v !== null && $v !== '')
+            ->map(fn ($v) => (string) $v)
+            ->unique()
+            ->values()
+            ->all();
+
+        $liveByCampaign = [];
+        $apiError = null;
+        $customerId = config('services.google_ads.login_customer_id');
+        if ($customerId && $campaignIds !== []) {
+            try {
+                /** @var GoogleAdsSbidService $sbidService */
+                $sbidService = app(GoogleAdsSbidService::class);
+                $liveByCampaign = $sbidService->fetchShoppingProductItemIdsByCampaignIds($customerId, $campaignIds);
+            } catch (\Throwable $e) {
+                report($e);
+                $apiError = $e->getMessage();
+            }
+        } elseif (! $customerId) {
+            $apiError = 'Google Ads customer ID is not configured.';
+        }
+
+        $skusByCampaignName = [];
+        $allSkus = [];
+        foreach ($rows as $arr) {
+            $name = (string) ($arr['campaign_name'] ?? '');
+            $skus = $this->childSkusForCampaignName($name);
+            $skusByCampaignName[$name] = $skus;
+            foreach ($skus as $sku) {
+                $allSkus[$sku] = true;
+            }
+        }
+        $expectedBySku = $this->resolveMerchantCenterItemIds(array_keys($allSkus));
+
+        foreach ($rows as $i => $arr) {
+            $cid = (string) ($arr['campaign_id'] ?? '');
+            $name = (string) ($arr['campaign_name'] ?? '');
+            $skus = $skusByCampaignName[$name] ?? [];
+            $expected = [];
+            foreach ($skus as $sku) {
+                if (! empty($expectedBySku[$sku])) {
+                    $expected[] = $expectedBySku[$sku];
+                }
+            }
+            $expected = array_values(array_unique($expected));
+            sort($expected);
+
+            $live = $liveByCampaign[$cid] ?? [];
+            sort($live);
+
+            $mismatch = false;
+            $tip = '';
+
+            if ($apiError !== null) {
+                $mismatch = true;
+                $tip = 'Could not fetch live Ads Item IDs: '.$apiError;
+            } elseif ($expected === []) {
+                $mismatch = true;
+                $tip = 'No Merchant Center Item ID found in catalog for this campaign SKU(s).';
+            } elseif ($live === []) {
+                $mismatch = true;
+                $tip = 'No product Item ID on Google Ads listing groups. Expected: '.implode(', ', $expected);
+            } elseif ($expected !== $live) {
+                $mismatch = true;
+                $missing = array_values(array_diff($expected, $live));
+                $extra = array_values(array_diff($live, $expected));
+                $parts = [];
+                if ($missing !== []) {
+                    $parts[] = 'Missing on Ads: '.implode(', ', $missing);
+                }
+                if ($extra !== []) {
+                    $parts[] = 'Unexpected on Ads: '.implode(', ', $extra);
+                }
+                $tip = $parts !== []
+                    ? implode(' | ', $parts)
+                    : 'Item ID mismatch vs Merchant Center.';
+            }
+
+            $arr['id_mismatch'] = $mismatch;
+            $arr['id_alert_title'] = $tip;
+            $rows[$i] = $arr;
+        }
+    }
+
+    /**
+     * Child SKUs linked to a campaign name (PARENT → all children; else the name as SKU).
+     *
+     * @return list<string>
+     */
+    private function childSkusForCampaignName(string $campaignName): array
+    {
+        static $cache = null;
+        if ($cache === null) {
+            $cache = Cache::remember('gads_'.$this->channelKey().'_child_skus_by_campaign_v1', 300, function () {
+                $allPm = ProductMaster::query()
+                    ->whereNotNull('sku')
+                    ->where('sku', '!=', '')
+                    ->get(['sku', 'parent']);
+
+                $childrenByFamily = [];
+                $parentSkuToFamily = [];
+                $normToSku = [];
+                foreach ($allPm as $pm) {
+                    $s = trim((string) ($pm->sku ?? ''));
+                    if ($s === '') {
+                        continue;
+                    }
+                    $normSku = preg_replace('/\s+/', ' ', strtoupper(rtrim($s, '.')));
+                    if (str_starts_with(strtoupper($s), 'PARENT')) {
+                        $parentCol = trim((string) ($pm->parent ?? ''));
+                        if ($parentCol !== '') {
+                            $parentSkuToFamily[$normSku] = preg_replace('/\s+/', ' ', strtoupper($parentCol));
+                        } else {
+                            $rest = trim(preg_replace('/^PARENT\s+/i', '', $s) ?? '');
+                            $parentSkuToFamily[$normSku] = $rest === ''
+                                ? $normSku
+                                : preg_replace('/\s+/', ' ', strtoupper(rtrim($rest, '.')));
+                        }
+
+                        continue;
+                    }
+                    if ($normSku !== '' && ! isset($normToSku[$normSku])) {
+                        $normToSku[$normSku] = $s;
+                    }
+                    $fam = preg_replace('/\s+/', ' ', strtoupper(trim((string) ($pm->parent ?? ''))));
+                    if ($fam === '') {
+                        continue;
+                    }
+                    $childrenByFamily[$fam][] = $s;
+                }
+
+                return [
+                    'childrenByFamily' => $childrenByFamily,
+                    'parentSkuToFamily' => $parentSkuToFamily,
+                    'normToSku' => $normToSku,
+                ];
+            });
+        }
+
+        $norm = preg_replace('/\s+/', ' ', strtoupper(rtrim(trim($campaignName), '.')));
+        if ($norm === '') {
+            return [];
+        }
+
+        if (str_starts_with($norm, 'PARENT ')) {
+            $fam = $cache['parentSkuToFamily'][$norm]
+                ?? preg_replace('/\s+/', ' ', trim(substr($norm, strlen('PARENT '))));
+            $kids = $cache['childrenByFamily'][$fam] ?? [];
+
+            return array_values(array_unique($kids));
+        }
+
+        // Campaign name is typically the child SKU (normalize against product_master).
+        if (isset($cache['normToSku'][$norm])) {
+            return [$cache['normToSku'][$norm]];
+        }
+
+        return [trim($campaignName)];
+    }
+
+    /**
+     * @param  list<string>  $skus
+     * @return array<string, string> sku => shopify_us_{productId}_{variantId}
+     */
+    private function resolveMerchantCenterItemIds(array $skus): array
+    {
+        $skus = array_values(array_unique(array_filter(array_map(
+            static fn ($s) => trim((string) $s),
+            $skus
+        ))));
+        if ($skus === [] || ! Schema::hasTable('shopify_catalog_variants')) {
+            return [];
+        }
+
+        $out = [];
+
+        $rows = DB::table('shopify_catalog_variants')
+            ->whereIn('sku', $skus)
+            ->whereNotNull('shopify_product_id')
+            ->whereNotNull('shopify_variant_id')
+            ->where('shopify_product_id', '!=', '')
+            ->where('shopify_variant_id', '!=', '')
+            ->orderByRaw("CASE WHEN store = 'main' THEN 0 ELSE 1 END")
+            ->orderByDesc('synced_at')
+            ->get(['sku', 'shopify_product_id', 'shopify_variant_id']);
+
+        foreach ($rows as $row) {
+            $sku = (string) $row->sku;
+            if ($sku === '' || isset($out[$sku])) {
+                continue;
+            }
+            $out[$sku] = 'shopify_us_'.$row->shopify_product_id.'_'.$row->shopify_variant_id;
+        }
+
+        $missing = array_values(array_filter($skus, static fn ($s) => ! isset($out[$s])));
+        if ($missing === []) {
+            return $out;
+        }
+
+        $shopifyBySku = ShopifySku::mapByProductSkus($missing);
+        $variantToSku = [];
+        foreach ($missing as $sku) {
+            $variantId = trim((string) ($shopifyBySku->get($sku)?->variant_id ?? ''));
+            if ($variantId !== '') {
+                $variantToSku[$variantId] = $sku;
+            }
+        }
+
+        if ($variantToSku === []) {
+            return $out;
+        }
+
+        $byVariant = DB::table('shopify_catalog_variants')
+            ->whereIn('shopify_variant_id', array_keys($variantToSku))
+            ->whereNotNull('shopify_product_id')
+            ->where('shopify_product_id', '!=', '')
+            ->orderByRaw("CASE WHEN store = 'main' THEN 0 ELSE 1 END")
+            ->orderByDesc('synced_at')
+            ->get(['shopify_variant_id', 'shopify_product_id']);
+
+        foreach ($byVariant as $row) {
+            $sku = $variantToSku[(string) $row->shopify_variant_id] ?? null;
+            if ($sku === null || isset($out[$sku])) {
+                continue;
+            }
+            $out[$sku] = 'shopify_us_'.$row->shopify_product_id.'_'.$row->shopify_variant_id;
+        }
+
+        return $out;
     }
 }
