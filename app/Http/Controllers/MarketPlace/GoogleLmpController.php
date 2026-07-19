@@ -21,41 +21,47 @@ class GoogleLmpController extends Controller
             }
 
             $competitors = GoogleSkuCompetitor::getCompetitorsForSku($sku, 'google');
-            $fetcher = app(GoogleLivePriceFetcher::class);
 
-            foreach ($competitors as $competitor) {
-                $live = $fetcher->fetchByProductId(
-                    (string) $competitor->product_id,
-                    $competitor->source,
-                    $competitor->search_query
-                );
+            // Live SerpApi refresh is opt-in (?refresh=1). Default is DB-only so LMP modal
+            // opens quickly; background jobs keep prices fresh.
+            if ($request->boolean('refresh')) {
+                $fetcher = app(GoogleLivePriceFetcher::class);
 
-                if (!$live) {
-                    continue;
+                foreach ($competitors as $competitor) {
+                    $live = $fetcher->fetchByProductId(
+                        (string) $competitor->product_id,
+                        $competitor->source,
+                        $competitor->search_query
+                    );
+
+                    if (!$live) {
+                        continue;
+                    }
+
+                    $competitor->update([
+                        'price' => $live['price'],
+                        'product_title' => $live['title'] ?? $competitor->product_title,
+                        'product_link' => $live['link'] ?? $competitor->product_link,
+                        'image' => $live['image'] ?? $competitor->image,
+                        'rating' => $live['rating'] ?? $competitor->rating,
+                        'reviews' => $live['reviews'] ?? $competitor->reviews,
+                    ]);
+
+                    GoogleCompetitorItem::where('product_id', $competitor->product_id)
+                        ->when($competitor->source, fn ($q) => $q->where('source', $competitor->source))
+                        ->update([
+                            'price' => $live['price'],
+                            'title' => $live['title'],
+                            'link' => $live['link'],
+                            'image' => $live['image'],
+                            'rating' => $live['rating'],
+                            'reviews' => $live['reviews'],
+                        ]);
                 }
 
-                $competitor->update([
-                    'price' => $live['price'],
-                    'product_title' => $live['title'] ?? $competitor->product_title,
-                    'product_link' => $live['link'] ?? $competitor->product_link,
-                    'image' => $live['image'] ?? $competitor->image,
-                    'rating' => $live['rating'] ?? $competitor->rating,
-                    'reviews' => $live['reviews'] ?? $competitor->reviews,
-                ]);
-
-                GoogleCompetitorItem::where('product_id', $competitor->product_id)
-                    ->when($competitor->source, fn ($q) => $q->where('source', $competitor->source))
-                    ->update([
-                        'price' => $live['price'],
-                        'title' => $live['title'],
-                        'link' => $live['link'],
-                        'image' => $live['image'],
-                        'rating' => $live['rating'],
-                        'reviews' => $live['reviews'],
-                    ]);
+                $competitors = GoogleSkuCompetitor::getCompetitorsForSku($sku, 'google');
             }
 
-            $competitors = GoogleSkuCompetitor::getCompetitorsForSku($sku, 'google');
             $lowest = $competitors->first();
 
             return response()->json([

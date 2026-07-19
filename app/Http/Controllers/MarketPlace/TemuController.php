@@ -3701,12 +3701,30 @@ class TemuController extends Controller
                 }
                 $lmpEntries = $this->dedupeTemuLmpEntries($lmpEntries);
                 $temuLmpRow = $temuLmpByNormalizedSku[$normalizeSku($sku)] ?? null;
+                // L1 = lowest non-ignored entry (ignored competitors stay in the list)
+                $activeEntries = array_values(array_filter($lmpEntries, function ($e) {
+                    return empty($e['ignored']);
+                }));
                 $prices = array_values(array_filter(array_map(function ($e) {
                     $p = $e['price'] ?? null;
                     return $p !== null && $p !== '' ? (float) $p : null;
-                }, $lmpEntries)));
-                $lmp = count($prices) > 0 ? min($prices) : ($temuLmpRow ? $temuLmpRow->lmp : null);
-                $lmp_link = $lmpEntries[0]['link'] ?? ($temuLmpRow ? $temuLmpRow->lmp_link : null);
+                }, $activeEntries)));
+                $lmp = count($prices) > 0 ? min($prices) : null;
+                $lmp_link = null;
+                if ($lmp !== null) {
+                    foreach ($activeEntries as $e) {
+                        $p = $e['price'] ?? null;
+                        if ($p !== null && $p !== '' && (float) $p === (float) $lmp) {
+                            $lmp_link = $e['link'] ?? null;
+                            break;
+                        }
+                    }
+                }
+                // Legacy fallback only when there are no JSON entries at all
+                if ($lmp === null && empty($lmpEntries) && $temuLmpRow) {
+                    $lmp = $temuLmpRow->lmp;
+                    $lmp_link = $temuLmpRow->lmp_link;
+                }
 
                 return [
                     'sku' => $sku,
@@ -5169,7 +5187,7 @@ class TemuController extends Controller
 
     /**
      * Save LMP entries from Temu Decrease modal (match by normalized SKU, or create).
-     * lmp_entries = array of {price, link}; first entry sets lmp/lmp_link for backward compat.
+     * lmp_entries = array of {price, link, ignored}; L1 (lmp/lmp_link) ignores flagged rows.
      */
     public function saveTemuLmp(Request $request)
     {
@@ -5178,6 +5196,7 @@ class TemuController extends Controller
             'lmp_entries' => 'nullable|array',
             'lmp_entries.*.price' => 'nullable|numeric|min:0',
             'lmp_entries.*.link' => 'nullable|string|max:2000',
+            'lmp_entries.*.ignored' => 'nullable',
         ]);
 
         $sku = trim($request->sku);
@@ -5188,15 +5207,27 @@ class TemuController extends Controller
                 ? $this->sanitizePrice($e['price'])
                 : null;
             $link = isset($e['link']) && trim((string) $e['link']) !== '' ? trim($e['link']) : null;
+            $ignored = filter_var($e['ignored'] ?? false, FILTER_VALIDATE_BOOLEAN);
             if ($price !== null || $link !== null) {
-                $lmpEntries[] = ['price' => $price, 'link' => $link];
+                $lmpEntries[] = ['price' => $price, 'link' => $link, 'ignored' => $ignored];
             }
         }
+        $activeEntries = array_values(array_filter($lmpEntries, function ($e) {
+            return empty($e['ignored']);
+        }));
         $prices = array_values(array_filter(array_map(function ($e) {
             return $e['price'] ?? null;
-        }, $lmpEntries)));
+        }, $activeEntries)));
         $firstPrice = count($prices) > 0 ? min($prices) : null;
-        $firstLink = $lmpEntries[0]['link'] ?? null;
+        $firstLink = null;
+        if ($firstPrice !== null) {
+            foreach ($activeEntries as $e) {
+                if (($e['price'] ?? null) !== null && (float) $e['price'] === (float) $firstPrice) {
+                    $firstLink = $e['link'] ?? null;
+                    break;
+                }
+            }
+        }
 
         $normalizeSku = function ($s) {
             $s = strtoupper(trim($s));

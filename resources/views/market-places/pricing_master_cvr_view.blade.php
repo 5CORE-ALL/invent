@@ -44,7 +44,7 @@
         #ovl30DetailsModal .modal-header,
         #ovl30DetailsModal .table thead {
             background-color: #e2e8f0 !important;
-            color: #0f172a !important;
+            color: #000000 !important;
             border-color: #cbd5e1 !important;
         }
         #ovl30DetailsModal .modal-vertical-header th {
@@ -52,21 +52,145 @@
             text-orientation: mixed;
             white-space: nowrap;
             transform: rotate(180deg);
-            height: 80px;
+            height: calc(var(--ovl30-fs, 11px) * 5.2);
+            min-height: 48px;
             vertical-align: middle;
-            font-size: 11px;
-            font-weight: 600;
-            padding: 5px;
+            font-size: var(--ovl30-fs, 11px) !important;
+            font-weight: 700;
+            padding: 2px 2px;
             background-color: #e2e8f0 !important;
-            color: #0f172a !important;
+            color: #000000 !important;
             border-color: #cbd5e1 !important;
+        }
+        #ovl30DetailsModal .modal-vertical-header th span {
+            color: #000000 !important;
         }
         /* Exception for M column - keep it horizontal */
         #ovl30DetailsModal .modal-vertical-header th:nth-child(1) {
             writing-mode: horizontal-tb;
             transform: none;
             height: auto;
-            min-height: 80px;
+            min-height: 56px;
+        }
+        /* Auto Fill SPRICE button column – keep horizontal */
+        #ovl30DetailsModal .modal-vertical-header th.ovl30-sprice-suggest-th {
+            writing-mode: horizontal-tb;
+            transform: none;
+            height: auto;
+            min-height: 48px;
+            padding: 2px !important;
+            vertical-align: middle;
+        }
+        #ovl30DetailsModal .ovl30-sprice-suggest-btn {
+            padding: 2px 5px;
+            line-height: 1;
+            font-size: 11px;
+        }
+
+        /* Playback controls – default (teal/primary) + NPFT (violet) */
+        .cvr-play-group .btn.rounded-circle {
+            width: 32px;
+            height: 32px;
+            padding: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .cvr-play-group #play-auto,
+        .cvr-play-group #play-pause,
+        .cvr-play-group #play-npft-auto,
+        .cvr-play-group #play-npft-pause,
+        .cvr-play-group #play-dil-auto,
+        .cvr-play-group #play-dil-pause,
+        .cvr-play-group #play-cvr-auto,
+        .cvr-play-group #play-cvr-pause {
+            width: 38px;
+            height: 38px;
+        }
+        .cvr-play-npft-main {
+            background-color: #6f42c1 !important;
+            border-color: #5a32a3 !important;
+            color: #fff !important;
+        }
+        .cvr-play-npft-main:hover {
+            background-color: #5a32a3 !important;
+            border-color: #4b278a !important;
+            color: #fff !important;
+        }
+        .cvr-play-dil-main {
+            background-color: #fd7e14 !important;
+            border-color: #e96b05 !important;
+            color: #fff !important;
+        }
+        .cvr-play-dil-main:hover {
+            background-color: #e96b05 !important;
+            border-color: #d05f00 !important;
+            color: #fff !important;
+        }
+        .cvr-play-cvr-main {
+            background-color: #e83e8c !important;
+            border-color: #d63384 !important;
+            color: #fff !important;
+        }
+        .cvr-play-cvr-main:hover {
+            background-color: #d63384 !important;
+            border-color: #c22573 !important;
+            color: #fff !important;
+        }
+        #ovl30DetailsModal .ovl30-sprice-suggest-btn i {
+            font-size: 11px;
+        }
+        #spriceSuggestModal {
+            z-index: 1065;
+        }
+        #spriceSuggestModal .sprice-suggest-rule {
+            border-left: 3px solid #198754;
+            background: #f8fafc;
+            padding: 0.45rem 0.65rem;
+            margin-bottom: 0.4rem;
+            font-size: 12px;
+        }
+        #spriceSuggestModal .sprice-rule-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 0.5rem 0.75rem;
+        }
+        #spriceSuggestModal .sprice-rule-field label {
+            display: block;
+            font-size: 11px;
+            font-weight: 600;
+            margin-bottom: 2px;
+            color: #334155;
+        }
+        #spriceSuggestModal .sprice-rule-field input {
+            width: 100%;
+            max-width: 110px;
+            height: 28px;
+            font-size: 12px;
+            padding: 2px 6px;
+        }
+        #spriceSuggestModal .sprice-rule-card {
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            padding: 0.5rem 0.65rem;
+            background: #fff;
+            margin-bottom: 0.5rem;
+        }
+        #spriceSuggestModal .sprice-rule-card h6 {
+            font-size: 12px;
+            font-weight: 700;
+            margin: 0 0 0.35rem;
+            color: #0f172a;
+        }
+        #spriceSuggestModal .sprice-rule-card .rule-desc {
+            font-size: 11px;
+            color: #64748b;
+            margin-bottom: 0.4rem;
+        }
+        #spriceSuggestModal .table th,
+        #spriceSuggestModal .table td {
+            font-size: 12px;
+            vertical-align: middle;
         }
 
         /* ========== STATUS INDICATORS ========== */
@@ -102,35 +226,144 @@
         .status-circle.pink {
             background-color: #e83e8c;
         }
+        .status-circle.magenta-bg {
+            background-color: #e83e8c;
+            border: 1px solid #111;
+            box-shadow: inset 0 0 0 2px #e83e8c;
+        }
+
+        /* Columns dropdown – 3-column layout */
+        #column-dropdown-menu.column-visibility-menu {
+            column-count: 3;
+            column-gap: 12px;
+            min-width: 560px;
+            max-width: 720px;
+            max-height: 420px;
+            overflow-y: auto;
+            padding: 10px 12px;
+        }
+        #column-dropdown-menu.column-visibility-menu .dropdown-item {
+            break-inside: avoid;
+            -webkit-column-break-inside: avoid;
+            page-break-inside: avoid;
+            padding: 4px 8px;
+            white-space: nowrap;
+            font-size: 12px;
+        }
+        #column-dropdown-menu.column-visibility-menu .dropdown-item label {
+            margin-bottom: 0;
+            width: 100%;
+        }
+        @media (max-width: 768px) {
+            #column-dropdown-menu.column-visibility-menu {
+                column-count: 2;
+                min-width: 320px;
+            }
+        }
         
-        /* Totals row – light background, dark text */
+        /* Totals row – light background, dark text; same font size as body rows */
         #ovl30DetailsModal .modal-totals-row {
             background-color: #f1f5f9 !important;
-            font-weight: 600 !important;
+            font-weight: 700 !important;
+            font-size: var(--ovl30-fs, 11px) !important;
             color: #0f172a !important;
             border-top: 2px solid #cbd5e1 !important;
         }
         #ovl30DetailsModal .modal-totals-row th {
-            font-weight: 600 !important;
+            font-weight: 700 !important;
+            font-size: var(--ovl30-fs, 11px) !important;
+            line-height: 1.2;
+            padding: 2px 2px !important;
             color: #0f172a !important;
             border-color: #e2e8f0 !important;
+        }
+        #ovl30DetailsModal .modal-dialog {
+            max-width: 98vw !important;
+            width: 98vw;
+            height: 100vh;
+            max-height: 100vh;
+            margin: 0 auto;
+            display: flex;
+            align-items: stretch;
+        }
+        #ovl30DetailsModal .modal-content {
+            height: 100%;
+            max-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            border-radius: 0;
+        }
+        #ovl30DetailsModal .modal-header,
+        #ovl30DetailsModal .modal-footer {
+            flex-shrink: 0;
         }
         #ovl30DetailsModal .modal-body {
             background-color: #fff !important;
             color: #0f172a !important;
-            overflow: visible;
+            flex: 1 1 auto;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            padding-bottom: 0.5rem;
         }
         #ovl30DetailsModal .ovl30-table-wrap {
-            max-height: min(70vh, 520px);
+            --ovl30-fs: 11px;
+            --ovl30-header-h: 56px;
+            flex: 1 1 auto;
+            min-height: 0;
+            max-height: none;
             overflow-y: auto;
-            overflow-x: auto;
+            overflow-x: hidden;
         }
         #ovl30DetailsModal .table tbody {
             background-color: #fff !important;
             color: #0f172a !important;
         }
+        #ovl30DetailsModal #ovl30DetailsTable {
+            width: 100%;
+            max-width: 100%;
+            table-layout: fixed;
+        }
         #ovl30DetailsModal .table td {
             color: #334155 !important;
+            padding: 1px 2px !important;
+            font-size: var(--ovl30-fs) !important;
+            font-weight: 700 !important;
+            line-height: 1.2;
+            vertical-align: middle;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        /* Center all column data (headers, totals, body) */
+        #ovl30DetailsModal .ovl30-table-wrap .table th,
+        #ovl30DetailsModal .ovl30-table-wrap .table td {
+            text-align: center !important;
+        }
+        #ovl30DetailsModal #ovl30DetailsTable td:nth-child(12) .lmp-channel-price,
+        #ovl30DetailsModal #ovl30DetailsTable td:nth-child(12) .lmp-add-btn {
+            font-size: inherit;
+            white-space: nowrap;
+        }
+        #ovl30DetailsModal .table .editable-sprice {
+            width: 3.6em !important;
+            min-width: 0 !important;
+            max-width: 100% !important;
+            height: calc(var(--ovl30-fs) + 8px);
+            padding: 0 2px !important;
+            font-size: var(--ovl30-fs) !important;
+            font-weight: 700;
+            text-align: center;
+            margin: 0 auto;
+            display: inline-block;
+            -moz-appearance: textfield;
+            appearance: textfield;
+        }
+        #ovl30DetailsModal .table .editable-sprice::-webkit-outer-spin-button,
+        #ovl30DetailsModal .table .editable-sprice::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
         }
         /* Sticky table header + totals row in OV L30 Details modal */
         #ovl30DetailsModal .table thead .modal-vertical-header th {
@@ -142,13 +375,13 @@
         }
         #ovl30DetailsModal .table thead .modal-totals-row th {
             position: sticky;
-            top: 80px;
+            top: var(--ovl30-header-h, 56px);
             z-index: 10;
             background-color: #f1f5f9 !important;
             box-shadow: 0 1px 0 0 #e2e8f0;
         }
         #ovl30DetailsModal .table thead .modal-vertical-header th:nth-child(1) {
-            min-height: 80px;
+            min-height: var(--ovl30-header-h, 56px);
         }
         /* Sortable column headers – cursor and sort icon */
         #ovl30DetailsModal .table thead .modal-vertical-header th.ovl30-sortable {
@@ -168,13 +401,9 @@
             transform: scale(1.3);
             transition: transform 0.12s ease, box-shadow 0.12s ease;
         }
+        /* Sort icons hidden; click-to-sort on headers still works */
         #ovl30DetailsModal .ovl30-sort-icon {
-            font-size: 10px;
-            margin-left: 2px;
-            opacity: 0.7;
-        }
-        #ovl30DetailsModal .ovl30-sort-icon.active {
-            opacity: 1;
+            display: none !important;
         }
 
         /* ========== DROPDOWN STYLING ========== */
@@ -233,40 +462,191 @@
             font-weight: bold !important;
         }
 
-        /* Push price button styling */
+        /* Push price button styling — compact icon to save column space */
+        #ovl30DetailsModal .push-price-btn,
         .push-price-btn {
-            font-size: 14px;
-            padding: 4px 10px;
+            font-size: 10px;
+            padding: 1px 4px;
+            line-height: 1;
             white-space: nowrap;
-            min-width: 36px;
+            min-width: 0;
+            width: 22px;
+            height: 20px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
         }
         
+        #ovl30DetailsModal .push-price-btn i,
         .push-price-btn i {
-            font-size: 12px;
+            font-size: 10px;
+            line-height: 1;
         }
         
         .push-price-btn:disabled {
             cursor: not-allowed;
             opacity: 0.7;
         }
-        
-        /* Pushed By column styling */
-        .pushed-by-info {
-            font-size: 11px;
+
+        #ovl30DetailsModal .table td:has(.push-price-btn) {
+            width: 28px;
+            max-width: 32px;
+            padding: 1px 2px !important;
         }
-        
-        .pushed-by-info strong {
-            display: block;
+
+        #ovl30DetailsModal .lmp-add-btn {
             color: #28a745;
+            font-size: 14px;
+            line-height: 1;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        #ovl30DetailsModal .lmp-add-btn:hover {
+            color: #1e7e34;
+        }
+        #lmpModal .lmp-add-form-box {
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            background: #f8fafc;
+            padding: 8px 10px;
+            margin-bottom: 10px;
+        }
+        #lmpModal .lmp-add-form-box .form-control,
+        #lmpModal .lmp-add-form-box .form-select {
+            font-size: 12px;
+            height: 28px;
+            padding: 2px 8px;
+        }
+        #lmpModal .lmp-add-form-box .btn {
+            font-size: 12px;
+            padding: 3px 10px;
         }
         
-        .pushed-by-info .text-muted {
-            font-size: 10px;
+        /* Pushed By – green dot; full name + date on hover */
+        .pushed-by-dot {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background-color: #28a745;
+            cursor: default;
+            vertical-align: middle;
         }
 
         /* Modal width - 95% of screen */
         .modal-xxl {
             max-width: 90% !important;
+        }
+
+        /* LMP Competitors – right-side drawer (full height, 30% width) */
+        #lmpModal {
+            z-index: 1065;
+        }
+        #lmpModal .modal-dialog {
+            position: fixed;
+            top: 0;
+            right: 0;
+            left: auto;
+            margin: 0;
+            width: 30vw;
+            max-width: 30vw;
+            height: 100vh;
+            max-height: 100vh;
+            transform: none;
+        }
+        #lmpModal.fade .modal-dialog {
+            transform: translateX(100%);
+            transition: transform 0.25s ease-out;
+        }
+        #lmpModal.show .modal-dialog {
+            transform: translateX(0);
+        }
+        #lmpModal .modal-content {
+            height: 100%;
+            max-height: 100vh;
+            border-radius: 0;
+            border: none;
+            border-left: 1px solid #cbd5e1;
+            display: flex;
+            flex-direction: column;
+        }
+        #lmpModal .modal-header {
+            flex-shrink: 0;
+            padding: 0.6rem 0.85rem;
+        }
+        #lmpModal .modal-title {
+            font-size: 0.95rem;
+            line-height: 1.3;
+        }
+        #lmpModal .modal-body {
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow: auto;
+            padding: 0.6rem;
+        }
+        #lmpModal .table {
+            font-size: 11px;
+            margin-bottom: 0;
+        }
+        #lmpModal .table th,
+        #lmpModal .table td {
+            padding: 0.3rem 0.35rem;
+            vertical-align: middle;
+            white-space: nowrap;
+        }
+        #lmpModal .table img.lmp-thumb {
+            height: 28px !important;
+            width: 28px !important;
+        }
+        #lmpModal .lmp-channel-filters {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            margin-bottom: 0.5rem;
+        }
+        #lmpModal .lmp-channel-filters .btn {
+            font-size: 11px;
+            padding: 2px 8px;
+            line-height: 1.4;
+        }
+        #lmpModal .lmp-channel-filters .btn.active {
+            font-weight: 600;
+        }
+        #lmpModal .lmp-lowest-badges {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            margin-bottom: 0.5rem;
+        }
+        #lmpModal .lmp-channel-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 18px;
+            height: 18px;
+            border-radius: 3px;
+            font-size: 11px;
+            flex-shrink: 0;
+            margin-right: 4px;
+        }
+        #lmpModal .lmp-channel-icon.amazon {
+            background: #ff9900;
+            color: #111;
+        }
+        #lmpModal .lmp-channel-icon.ebay {
+            background: #0064d2;
+            color: #fff;
+        }
+        #lmpModal .lmp-channel-icon.google {
+            background: #fff;
+            color: #4285f4;
+            border: 1px solid #dadce0;
+        }
+        #lmpModal .lmp-channel-icon.temu {
+            background: #fb7701;
+            color: #fff;
         }
 
         /* Parent SKU dot - P column */
@@ -478,7 +858,7 @@
 
     <!-- OV L30 Details Modal -->
     <div class="modal fade" id="ovl30DetailsModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-xxl modal-dialog-centered">
+        <div class="modal-dialog modal-xxl">
             <div class="modal-content">
                 <div class="modal-header" style="background-color: #e2e8f0; color: #0f172a;">
                     <div class="modal-title d-flex align-items-center justify-content-between w-100" style="font-size: 2em; color: #0f172a;">
@@ -504,37 +884,6 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body" style="background-color: #fff;">
-                    <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
-                        <label class="text-nowrap mb-0" style="color: #0f172a; font-weight: 600;">Sort by:</label>
-                        <select id="ovl30ModalSortBy" class="form-select form-select-sm" style="width: auto; min-width: 180px;">
-                            <option value="l30_desc">L30 (High → Low)</option>
-                            <option value="l30_asc">L30 (Low → High)</option>
-                            <option value="marketplace_asc">Marketplace (A → Z)</option>
-                            <option value="marketplace_desc">Marketplace (Z → A)</option>
-                            <option value="price_desc">Price (High → Low)</option>
-                            <option value="price_asc">Price (Low → High)</option>
-                            <option value="views_desc">Views (High → Low)</option>
-                            <option value="views_asc">Views (Low → High)</option>
-                            <option value="cvr_desc">CVR% (High → Low)</option>
-                            <option value="cvr_asc">CVR% (Low → High)</option>
-                            <option value="gpft_desc">GPFT% (High → Low)</option>
-                            <option value="gpft_asc">GPFT% (Low → High)</option>
-                            <option value="ad_asc">AD% (Low → High)</option>
-                            <option value="ad_desc">AD% (High → Low)</option>
-                            <option value="tacos_asc">TACOS CH (Low → High)</option>
-                            <option value="tacos_desc">TACOS CH (High → Low)</option>
-                            <option value="npft_desc">NPFT% (High → Low)</option>
-                            <option value="npft_asc">NPFT% (Low → High)</option>
-                            <option value="sprice_desc">SPRICE (High → Low)</option>
-                            <option value="sprice_asc">SPRICE (Low → High)</option>
-                            <option value="sgpft_desc">SGPFT% (High → Low)</option>
-                            <option value="sgpft_asc">SGPFT% (Low → High)</option>
-                            <option value="spft_desc">SPFT% (High → Low)</option>
-                            <option value="spft_asc">SPFT% (Low → High)</option>
-                            <option value="sroi_desc">SROI% (High → Low)</option>
-                            <option value="sroi_asc">SROI% (Low → High)</option>
-                        </select>
-                    </div>
                     <div class="table-responsive ovl30-table-wrap">
                         <table class="table table-bordered table-hover mb-0" id="ovl30DetailsTable">
                             <thead style="background-color: #e2e8f0; color: #0f172a;">
@@ -545,21 +894,28 @@
                                     <th class="ovl30-sortable" data-sort="price" data-dir="desc" title="Sort by Price"><span>Price</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                     <th class="ovl30-sortable" data-sort="views" data-dir="desc" title="Sort by Views"><span>Views</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                     <th class="ovl30-sortable" data-sort="cvr" data-dir="desc" title="Sort by CVR%"><span>CVR%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-sortable" data-sort="groi" data-dir="desc" title="GROI% = (Price × Margin − LP − Ship) ÷ LP × 100"><span>GROI%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-sortable" data-sort="nroi" data-dir="desc" title="NROI% = (Gross Profit − Ads $) ÷ LP × 100"><span>NROI%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                     <th class="ovl30-sortable" data-sort="gpft" data-dir="desc" title="Sort by GPFT%"><span>GPFT%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
-                                    <th class="ovl30-sortable" data-sort="ad" data-dir="asc" title="Sort by AD%"><span>AD%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
-                                    <th class="ovl30-sortable" data-sort="tacos" data-dir="asc" title="Sort by TACOS CH"><span>TACOS CH</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-sortable" data-sort="ad" data-dir="asc" title="Sort by Ads% (channel Ads% from All Marketplace Master)"><span>Ads%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                     <th class="ovl30-sortable" data-sort="npft" data-dir="desc" title="Sort by NPFT%"><span>NPFT%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                     <th>LMP</th>
                                     <th>Links</th>
+                                    <th class="ovl30-sprice-suggest-th" title="Auto Fill SPRICE using Dil%, CVR%, LMP &amp; Price">
+                                        <button type="button" class="btn btn-sm btn-success ovl30-sprice-suggest-btn" title="Suggest SPRICE rules">
+                                            <i class="fas fa-magic"></i>
+                                        </button>
+                                    </th>
                                     <th class="ovl30-sortable" data-sort="sprice" data-dir="desc" title="Sort by SPRICE"><span>SPRICE</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-sortable" data-sort="sroi" data-dir="desc" title="Sort by SROI%"><span>SROI%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-sortable" data-sort="snroi" data-dir="desc" title="SNROI% = (SPRICE × Margin − LP − Ship − SPRICE × Ads%) ÷ LP × 100"><span>SNROI%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                     <th class="ovl30-sortable" data-sort="sgpft" data-dir="desc" title="Sort by SGPFT%"><span>SGPFT%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                     <th class="ovl30-sortable" data-sort="spft" data-dir="desc" title="Sort by SPFT%"><span>SPFT%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
-                                    <th class="ovl30-sortable" data-sort="sroi" data-dir="desc" title="Sort by SROI%"><span>SROI%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                     <th>Push</th>
                                     <th>Pushed By</th>
                                 </tr>
                                 <tr class="modal-totals-row">
-                                    <th><img id="modal-product-image" src="" alt="" style="width: 50px; height: 50px; object-fit: cover; display: none;"><span class="ms-1">Total</span></th>
+                                    <th><img id="modal-product-image" src="" alt="" style="width: 50px; height: 50px; object-fit: cover; display: none;"></th>
                                     <th class="text-end" id="modal-total-l30">0</th>
                                     <th class="text-center">
                                         <span class="missing-l-dot" data-sku=""
@@ -569,16 +925,19 @@
                                     <th class="text-end" id="modal-total-price">$0.00</th>
                                     <th class="text-end" id="modal-total-views">0</th>
                                     <th class="text-end" id="modal-avg-cvr">0%</th>
+                                    <th class="text-end" id="modal-avg-groi">0%</th>
+                                    <th class="text-end" id="modal-avg-nroi">0%</th>
                                     <th class="text-end" id="modal-avg-gpft">0%</th>
                                     <th class="text-end" id="modal-avg-ad">0%</th>
-                                    <th class="text-end" id="modal-avg-tacos">0%</th>
                                     <th class="text-end" id="modal-avg-npft">0%</th>
                                     <th></th>
                                     <th></th>
+                                    <th></th>
                                     <th class="text-end" id="modal-avg-sprice">$0.00</th>
+                                    <th class="text-end" id="modal-avg-sroi">0%</th>
+                                    <th class="text-end" id="modal-avg-snroi">0%</th>
                                     <th class="text-end" id="modal-avg-sgpft">0%</th>
                                     <th class="text-end" id="modal-avg-spft">0%</th>
-                                    <th class="text-end" id="modal-avg-sroi">0%</th>
                                     <th></th>
                                     <th></th>
                                 </tr>
@@ -586,7 +945,7 @@
                             <tbody id="ovl30DetailsTableBody">
                                 <!-- Table rows will be populated dynamically -->
                                 <tr>
-                                    <td colspan="18" class="text-center text-muted py-4">No data available</td>
+                                    <td colspan="21" class="text-center text-muted py-4">No data available</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -596,6 +955,71 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Auto Fill SPRICE – Suggest Rules Modal -->
+    <div class="modal fade" id="spriceSuggestModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header" style="background-color: #198754; color: #fff;">
+                    <h5 class="modal-title">
+                        <i class="fas fa-magic me-2"></i>Auto Fill SPRICE — <span id="spriceSuggestSku">SKU</span>
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-2 small">
+                        <strong>Goal:</strong> Increase PFT% without losing sale opportunity.
+                        Suggestions use <strong>Dil%</strong>, channel <strong>CVR%</strong>, <strong>LMP</strong>, and current <strong>Price</strong>.
+                        Prices stay at or below LMP (when available) to protect conversion.
+                    </p>
+                    <div class="d-flex flex-wrap gap-3 mb-3 small">
+                        <span><strong>Dil%:</strong> <span id="spriceSuggestDil">-</span></span>
+                        <span><strong>SKU CVR (avg):</strong> <span id="spriceSuggestAvgCvr">-</span></span>
+                    </div>
+                    <div class="mb-3">
+                        <div class="d-flex align-items-center justify-content-between mb-1">
+                            <div class="fw-semibold small">Editable rules <span class="text-muted fw-normal">(saved in this browser)</span></div>
+                            <div class="d-flex gap-1">
+                                <button type="button" class="btn btn-outline-secondary btn-sm" id="spriceSuggestResetRulesBtn" title="Reset to defaults">Reset</button>
+                                <button type="button" class="btn btn-outline-primary btn-sm" id="spriceSuggestRecalcBtn" title="Recalculate preview">
+                                    <i class="fas fa-sync-alt me-1"></i>Recalc
+                                </button>
+                            </div>
+                        </div>
+                        <div id="spriceSuggestRulesEditor"></div>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>M</th>
+                                    <th class="text-end">Price</th>
+                                    <th class="text-end">LMP</th>
+                                    <th class="text-end">CVR%</th>
+                                    <th class="text-end">Now</th>
+                                    <th class="text-end">Suggest</th>
+                                    <th>Rule</th>
+                                    <th class="text-center">
+                                        <input type="checkbox" id="spriceSuggestSelectAll" checked title="Select all">
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody id="spriceSuggestPreviewBody">
+                                <tr><td colspan="8" class="text-center text-muted py-3">Open from Details to preview.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <p class="small text-muted mt-2 mb-0" id="spriceSuggestStatus"></p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-success btn-sm" id="spriceSuggestApplyBtn">
+                        <i class="fas fa-fill me-1"></i>Apply &amp; Save SPRICE
+                    </button>
                 </div>
             </div>
         </div>
@@ -673,13 +1097,13 @@
         </div>
     </div>
 
-    <!-- LMP Competitors Modal (Amazon + eBay in single view) -->
-    <div class="modal fade" id="lmpModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <!-- LMP Competitors Modal – right-side drawer (Amazon + eBay) -->
+    <div class="modal fade" id="lmpModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="true">
+        <div class="modal-dialog modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header bg-primary text-white">
-                    <h5 class="modal-title">
-                        <i class="fa fa-shopping-cart"></i> LMP Competitors for SKU: <span id="lmpSku"></span>
+                    <h5 class="modal-title mb-0">
+                        <i class="fa fa-shopping-cart me-1"></i> LMP: <span id="lmpSku"></span>
                     </h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -867,20 +1291,33 @@
                         <ul class="dropdown-menu" aria-labelledby="gpftFilterDropdown">
                             <li><a class="dropdown-item column-filter active" href="#" data-column="avg_gpft" data-range="all">
                                     <span class="status-circle default"></span> All GPFT</a></li>
-                            <li><a class="dropdown-item column-filter" href="#" data-column="avg_gpft" data-range="negative">
-                                    <span class="status-circle red"></span> Negative</a></li>
-                            <li><a class="dropdown-item column-filter" href="#" data-column="avg_gpft" data-range="0-10">
-                                    <span class="status-circle yellow"></span> 0-10%</a></li>
-                            <li><a class="dropdown-item column-filter" href="#" data-column="avg_gpft" data-range="10-20">
-                                    <span class="status-circle blue"></span> 10-20%</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="avg_gpft" data-range="lt-20">
+                                    <span class="status-circle red"></span> &lt; 20%</a></li>
                             <li><a class="dropdown-item column-filter" href="#" data-column="avg_gpft" data-range="20-30">
-                                    <span class="status-circle green"></span> 20-30%</a></li>
+                                    <span class="status-circle yellow"></span> 20-30%</a></li>
                             <li><a class="dropdown-item column-filter" href="#" data-column="avg_gpft" data-range="30-40">
                                     <span class="status-circle green"></span> 30-40%</a></li>
-                            <li><a class="dropdown-item column-filter" href="#" data-column="avg_gpft" data-range="40-50">
+                            <li><a class="dropdown-item column-filter" href="#" data-column="avg_gpft" data-range="gt-40">
+                                    <span class="status-circle magenta-bg"></span> &gt; 40%</a></li>
+                        </ul>
+                    </div>
+
+                    <!-- NPFT% Filter -->
+                    <div class="dropdown manual-dropdown-container">
+                        <button class="btn btn-light dropdown-toggle" type="button" id="npftFilterDropdown">
+                            <span class="status-circle default"></span> NPFT%
+                        </button>
+                        <ul class="dropdown-menu" aria-labelledby="npftFilterDropdown">
+                            <li><a class="dropdown-item column-filter active" href="#" data-column="avg_pft" data-range="all">
+                                    <span class="status-circle default"></span> All NPFT</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="avg_pft" data-range="lt-30">
+                                    <span class="status-circle red"></span> &lt; 30%</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="avg_pft" data-range="30-40">
+                                    <span class="status-circle yellow"></span> 30-40%</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="avg_pft" data-range="40-50">
                                     <span class="status-circle green"></span> 40-50%</a></li>
-                            <li><a class="dropdown-item column-filter" href="#" data-column="avg_gpft" data-range="50+">
-                                    <span class="status-circle pink"></span> 50%+</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="avg_pft" data-range="gt-50">
+                                    <span class="status-circle magenta-bg"></span> &gt; 50%</a></li>
                         </ul>
                     </div>
 
@@ -903,29 +1340,92 @@
                     </button>
 
                     <!-- Play → shows Pause, enables Next/Prev; Pause → back to normal, disables Next/Prev -->
-                    <div class="btn-group align-items-center ms-2" role="group">
-                        <button type="button" id="play-backward" class="btn btn-sm btn-light rounded-circle shadow-sm" title="Previous parent" disabled>
+                    <div class="btn-group align-items-center ms-2 cvr-play-group" role="group" aria-label="Parent playback">
+                        <button type="button" id="play-backward" class="btn btn-sm btn-light rounded-circle shadow-sm"
+                            title="Previous parent" data-bs-toggle="tooltip" data-bs-placement="bottom" disabled>
                             <i class="fas fa-step-backward"></i>
                         </button>
-                        <button type="button" id="play-auto" class="btn btn-sm btn-primary rounded-circle shadow-sm me-1" title="Play">
+                        <button type="button" id="play-auto" class="btn btn-sm btn-primary rounded-circle shadow-sm me-1"
+                            title="Play: walk parents in default order" data-bs-toggle="tooltip" data-bs-placement="bottom">
                             <i class="fas fa-play"></i>
                         </button>
-                        <button type="button" id="play-pause" class="btn btn-sm btn-primary rounded-circle shadow-sm me-1" style="display: none;" title="Pause - click to reset Play">
+                        <button type="button" id="play-pause" class="btn btn-sm btn-primary rounded-circle shadow-sm me-1" style="display: none;"
+                            title="Pause: stop and show all rows" data-bs-toggle="tooltip" data-bs-placement="bottom">
                             <i class="fas fa-pause"></i>
                         </button>
-                        <button type="button" id="play-forward" class="btn btn-sm btn-light rounded-circle shadow-sm" title="Next parent" disabled>
+                        <button type="button" id="play-forward" class="btn btn-sm btn-light rounded-circle shadow-sm"
+                            title="Next parent" data-bs-toggle="tooltip" data-bs-placement="bottom" disabled>
                             <i class="fas fa-step-forward"></i>
                         </button>
                     </div>
 
-                    <!-- Column Visibility Dropdown -->
+                    <!-- NPFT Play: start from Lowest NPFT% (different color) -->
+                    <div class="btn-group align-items-center ms-2 cvr-play-group cvr-play-npft" role="group" aria-label="Lowest NPFT% playback">
+                        <button type="button" id="play-npft-backward" class="btn btn-sm btn-light rounded-circle shadow-sm"
+                            title="Previous: lower NPFT% parent" data-bs-toggle="tooltip" data-bs-placement="bottom" disabled>
+                            <i class="fas fa-step-backward"></i>
+                        </button>
+                        <button type="button" id="play-npft-auto" class="btn btn-sm rounded-circle shadow-sm me-1 cvr-play-npft-main"
+                            title="Play Lowest NPFT%: walk parents starting from lowest Avg NPFT%" data-bs-toggle="tooltip" data-bs-placement="bottom">
+                            <i class="fas fa-play"></i>
+                        </button>
+                        <button type="button" id="play-npft-pause" class="btn btn-sm rounded-circle shadow-sm me-1 cvr-play-npft-main" style="display: none;"
+                            title="Pause: stop NPFT playback and show all rows" data-bs-toggle="tooltip" data-bs-placement="bottom">
+                            <i class="fas fa-pause"></i>
+                        </button>
+                        <button type="button" id="play-npft-forward" class="btn btn-sm btn-light rounded-circle shadow-sm"
+                            title="Next: next higher NPFT% parent" data-bs-toggle="tooltip" data-bs-placement="bottom" disabled>
+                            <i class="fas fa-step-forward"></i>
+                        </button>
+                    </div>
+
+                    <!-- Dil Play: start from Lowest Dil% (orange) -->
+                    <div class="btn-group align-items-center ms-2 cvr-play-group cvr-play-dil" role="group" aria-label="Lowest Dil% playback">
+                        <button type="button" id="play-dil-backward" class="btn btn-sm btn-light rounded-circle shadow-sm"
+                            title="Previous: lower Dil% parent" data-bs-toggle="tooltip" data-bs-placement="bottom" disabled>
+                            <i class="fas fa-step-backward"></i>
+                        </button>
+                        <button type="button" id="play-dil-auto" class="btn btn-sm rounded-circle shadow-sm me-1 cvr-play-dil-main"
+                            title="Play Lowest Dil%: walk parents starting from lowest Dil%" data-bs-toggle="tooltip" data-bs-placement="bottom">
+                            <i class="fas fa-play"></i>
+                        </button>
+                        <button type="button" id="play-dil-pause" class="btn btn-sm rounded-circle shadow-sm me-1 cvr-play-dil-main" style="display: none;"
+                            title="Pause: stop Dil% playback and show all rows" data-bs-toggle="tooltip" data-bs-placement="bottom">
+                            <i class="fas fa-pause"></i>
+                        </button>
+                        <button type="button" id="play-dil-forward" class="btn btn-sm btn-light rounded-circle shadow-sm"
+                            title="Next: next higher Dil% parent" data-bs-toggle="tooltip" data-bs-placement="bottom" disabled>
+                            <i class="fas fa-step-forward"></i>
+                        </button>
+                    </div>
+
+                    <!-- CVR Play: start from Lowest CVR% (pink) -->
+                    <div class="btn-group align-items-center ms-2 cvr-play-group cvr-play-cvr" role="group" aria-label="Lowest CVR% playback">
+                        <button type="button" id="play-cvr-backward" class="btn btn-sm btn-light rounded-circle shadow-sm"
+                            title="Previous: lower CVR% parent" data-bs-toggle="tooltip" data-bs-placement="bottom" disabled>
+                            <i class="fas fa-step-backward"></i>
+                        </button>
+                        <button type="button" id="play-cvr-auto" class="btn btn-sm rounded-circle shadow-sm me-1 cvr-play-cvr-main"
+                            title="Play Lowest CVR%: walk parents starting from lowest Avg CVR%" data-bs-toggle="tooltip" data-bs-placement="bottom">
+                            <i class="fas fa-play"></i>
+                        </button>
+                        <button type="button" id="play-cvr-pause" class="btn btn-sm rounded-circle shadow-sm me-1 cvr-play-cvr-main" style="display: none;"
+                            title="Pause: stop CVR% playback and show all rows" data-bs-toggle="tooltip" data-bs-placement="bottom">
+                            <i class="fas fa-pause"></i>
+                        </button>
+                        <button type="button" id="play-cvr-forward" class="btn btn-sm btn-light rounded-circle shadow-sm"
+                            title="Next: next higher CVR% parent" data-bs-toggle="tooltip" data-bs-placement="bottom" disabled>
+                            <i class="fas fa-step-forward"></i>
+                        </button>
+                    </div>
+
+                    <!-- Column Visibility Dropdown (3-column layout) -->
                     <div class="dropdown d-inline-block">
                         <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
                             id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false">
                             <i class="fa fa-eye"></i> Columns
                         </button>
-                        <ul class="dropdown-menu" aria-labelledby="columnVisibilityDropdown" id="column-dropdown-menu"
-                            style="max-height: 400px; overflow-y: auto;">
+                        <ul class="dropdown-menu column-visibility-menu" aria-labelledby="columnVisibilityDropdown" id="column-dropdown-menu">
                             <!-- Columns will be populated by JavaScript -->
                         </ul>
                     </div>
@@ -1002,18 +1502,12 @@
         
         // ==================== MODAL FUNCTIONS ====================
         
-        // OVL30 Details modal sort dropdown – re-render table with current sort
-        $(document).on('change', '#ovl30ModalSortBy', function() {
-            if (ovl30ModalData.length) {
-                renderMarketplaceData();
-                updateOvl30SortIcons();
-            }
-        });
+        // OVL30 Details modal sort state (column header click)
+        let ovl30ModalSortBy = 'l30_desc';
 
-        // OVL30 Details modal – column header click to sort
         $(document).on('click', '#ovl30DetailsModal .modal-vertical-header th.ovl30-sortable', function() {
             const sortField = $(this).data('sort');
-            const currentVal = ($('#ovl30ModalSortBy').val() || 'l30_desc').toString();
+            const currentVal = (ovl30ModalSortBy || 'l30_desc').toString();
             const [currentField, currentDir] = currentVal.split('_');
             let newDir = currentDir;
             if (currentField === sortField) {
@@ -1021,13 +1515,7 @@
             } else {
                 newDir = (sortField === 'marketplace') ? 'asc' : 'desc';
             }
-            const newVal = sortField + '_' + newDir;
-            const $sel = $('#ovl30ModalSortBy');
-            if ($sel.find('option[value="' + newVal + '"]').length) {
-                $sel.val(newVal);
-            } else {
-                $sel.val(sortField + '_desc');
-            }
+            ovl30ModalSortBy = sortField + '_' + newDir;
             if (ovl30ModalData.length) {
                 renderMarketplaceData();
                 updateOvl30SortIcons();
@@ -1082,13 +1570,26 @@
             loadMarketplaceBreakdown(sku, imagePath, inv, l30, dil);
         });
         
-        // LMP Info Icon Click Handler (from modal breakdown)
-        $(document).on('click', '.lmp-info-icon', function(e) {
+        // LMP value click (from modal breakdown) – open channel-filtered LMP drawer
+        $(document).on('click', '.lmp-channel-price', function(e) {
             e.stopPropagation();
+            e.preventDefault();
             const sku = $(this).data('sku');
-            const marketplace = $(this).data('marketplace');
-            console.log('Opening LMP modal for:', sku, 'marketplace:', marketplace);
-            loadLmpCompetitorsModal(sku);
+            const marketplace = $(this).data('marketplace'); // amazon | ebay | google | temu
+            if (sku) {
+                loadLmpCompetitorsModal(sku, marketplace || null, false);
+            }
+        });
+
+        // No LMP → Add (+) opens drawer with add form for that channel
+        $(document).on('click', '.lmp-add-btn', function(e) {
+            e.stopPropagation();
+            e.preventDefault();
+            const sku = $(this).data('sku') || $('#modalSkuName').text();
+            const marketplace = $(this).data('marketplace') || 'amazon';
+            if (sku) {
+                loadLmpCompetitorsModal(sku, marketplace, true);
+            }
         });
         
         // LMP Header Link Click Handler (from modal header)
@@ -1128,7 +1629,7 @@
                         const price = parseFloat(item.price || 0);
                         if (price > 0) return false;
                         const mp = (item.marketplace || '').toLowerCase();
-                        if (mp === 'ebaytwo' && parseFloat(item.act_wt || 0) > 0.75) return false;
+                        if ((mp === 'ebaytwo' || mp === 'ebay2') && parseFloat(item.act_wt || 0) > 0.75) return false;
                         return true;
                     });
 
@@ -1172,7 +1673,7 @@
                 const price = parseFloat(item.price || 0);
                 if (price > 0) return false; // already listed – hide
                 const mp = (item.marketplace || '').toLowerCase();
-                if (mp === 'ebaytwo' && parseFloat(item.act_wt || 0) > 0.75) return false; // weight restriction
+                if ((mp === 'ebaytwo' || mp === 'ebay2') && parseFloat(item.act_wt || 0) > 0.75) return false; // weight restriction
                 return true; // missing listing – show
             });
 
@@ -1228,7 +1729,8 @@
             else if (dilValue >= 5 && dilValue < 10) dilColor = '#28a745'; // Green
             else dilColor = '#e83e8c'; // Pink
             
-            $('#modal-header-dil').html(`<span style="${styleForCellColor(dilColor)}">${dilValue.toFixed(1)}%</span>`);
+            $('#modal-header-dil').html(`<span style="${styleForCellColor(dilColor)}">${Math.round(dilValue)}%</span>`);
+            ovl30ModalDil = isFinite(dilValue) ? dilValue : 0;
             
             showModalLoading(sku);
             
@@ -1248,7 +1750,7 @@
         function showModalLoading(sku) {
             $('#ovl30DetailsTableBody').html(`
                 <tr>
-                    <td colspan="18" class="text-center text-muted py-4">
+                    <td colspan="21" class="text-center text-muted py-4">
                         <div class="spinner-border spinner-border-sm text-info me-2" role="status"></div>
                         Loading data for ${sku}...
                     </td>
@@ -1259,7 +1761,7 @@
         function showModalEmpty(sku) {
             $('#ovl30DetailsTableBody').html(`
                 <tr>
-                    <td colspan="18" class="text-center text-muted py-4">
+                    <td colspan="21" class="text-center text-muted py-4">
                         No marketplace data available for ${sku}
                     </td>
                 </tr>
@@ -1269,7 +1771,7 @@
         function showModalError(message) {
             $('#ovl30DetailsTableBody').html(`
                 <tr>
-                    <td colspan="18" class="text-center text-danger py-4">
+                    <td colspan="21" class="text-center text-danger py-4">
                         <i class="fas fa-exclamation-circle me-2"></i>${message}
                     </td>
                 </tr>
@@ -1277,9 +1779,11 @@
         }
 
         let ovl30ModalData = [];
+        let ovl30ModalDil = 0;
+        let ovl30SpriceSuggestions = [];
 
         function getOvl30SortCompare() {
-            const val = ($('#ovl30ModalSortBy').val() || 'l30_desc').toString();
+            const val = (ovl30ModalSortBy || 'l30_desc').toString();
             const [field, dir] = val.split('_');
             const asc = dir === 'asc' ? 1 : -1;
             return function(a, b) {
@@ -1298,16 +1802,37 @@
                     const cvrA = va > 0 ? (la / va) * 100 : 0;
                     const cvrB = vb > 0 ? (lb / vb) * 100 : 0;
                     cmp = cvrA - cvrB;
+                } else if (field === 'groi' || field === 'nroi') {
+                    const calcRoi = (row, net) => {
+                        const p = parseFloat(row.price || 0);
+                        const lpV = parseFloat(row.lp || 0);
+                        const shipV = parseFloat(row.ship || 0);
+                        const marginV = parseFloat(row.margin || 0.80);
+                        const adsPct = parseFloat(row.tacos_ch || 0);
+                        if (!(lpV > 0) || !(p > 0)) return 0;
+                        const gross = p * marginV - lpV - shipV;
+                        const profit = net ? (gross - p * (adsPct / 100)) : gross;
+                        return (profit / lpV) * 100;
+                    };
+                    cmp = calcRoi(a, field === 'nroi') - calcRoi(b, field === 'nroi');
                 } else if (field === 'gpft') {
                     cmp = parseFloat(a.gpft || 0) - parseFloat(b.gpft || 0);
                 } else if (field === 'ad') {
-                    cmp = parseFloat(a.ad || 0) - parseFloat(b.ad || 0);
-                } else if (field === 'tacos') {
+                    // Ads% column uses channel Ads% (tacos_ch)
                     cmp = parseFloat(a.tacos_ch || 0) - parseFloat(b.tacos_ch || 0);
                 } else if (field === 'npft') {
                     cmp = parseFloat(a.npft || 0) - parseFloat(b.npft || 0);
                 } else if (field === 'sprice') {
                     cmp = parseFloat(a.sprice || 0) - parseFloat(b.sprice || 0);
+                } else if (field === 'snroi') {
+                    const lpA = parseFloat(a.lp || 0), shipA = parseFloat(a.ship || 0), marginA = parseFloat(a.margin || 0.80);
+                    const lpB = parseFloat(b.lp || 0), shipB = parseFloat(b.ship || 0), marginB = parseFloat(b.margin || 0.80);
+                    const adsA = parseFloat(a.tacos_ch || 0), adsB = parseFloat(b.tacos_ch || 0);
+                    const sA = parseFloat(a.sprice || 0), sB = parseFloat(b.sprice || 0);
+                    let nA = 0, nB = 0;
+                    if (lpA > 0 && sA > 0) nA = ((sA * marginA - lpA - shipA - sA * (adsA / 100)) / lpA) * 100;
+                    if (lpB > 0 && sB > 0) nB = ((sB * marginB - lpB - shipB - sB * (adsB / 100)) / lpB) * 100;
+                    cmp = nA - nB;
                 } else if (field === 'sgpft') {
                     const lpA = parseFloat(a.lp || 0), shipA = parseFloat(a.ship || 0), marginA = parseFloat(a.margin || 0.80);
                     const lpB = parseFloat(b.lp || 0), shipB = parseFloat(b.ship || 0), marginB = parseFloat(b.margin || 0.80);
@@ -1340,7 +1865,7 @@
         }
 
         function updateOvl30SortIcons() {
-            const val = ($('#ovl30ModalSortBy').val() || 'l30_desc').toString();
+            const val = (ovl30ModalSortBy || 'l30_desc').toString();
             const [field, dir] = val.split('_');
             $('#ovl30DetailsModal .modal-vertical-header th.ovl30-sortable').each(function() {
                 const $th = $(this);
@@ -1352,6 +1877,55 @@
                 }
             });
         }
+
+        /** Largest font size that fits all columns in the modal width, then stretch table to 100%. */
+        function autoFitOvl30TableFont() {
+            const wrap = document.querySelector('#ovl30DetailsModal .ovl30-table-wrap');
+            const tableEl = document.getElementById('ovl30DetailsTable');
+            if (!wrap || !tableEl || !$('#ovl30DetailsModal').hasClass('show')) return;
+
+            const avail = wrap.clientWidth;
+            if (avail < 80) return;
+
+            const applyFs = (fs) => {
+                wrap.style.setProperty('--ovl30-fs', fs + 'px');
+                const headerH = Math.max(48, Math.round(fs * 5.2));
+                wrap.style.setProperty('--ovl30-header-h', headerH + 'px');
+            };
+
+            // Measure natural width at each font size; pick largest that fits screen
+            tableEl.style.width = 'max-content';
+            tableEl.style.tableLayout = 'auto';
+
+            let best = 8;
+            for (let fs = 8; fs <= 16; fs += 0.5) {
+                applyFs(fs);
+                void tableEl.offsetWidth;
+                if (tableEl.scrollWidth <= avail + 1) {
+                    best = fs;
+                } else if (fs > 8) {
+                    break;
+                }
+            }
+            applyFs(best);
+            tableEl.style.width = '100%';
+            tableEl.style.tableLayout = 'fixed';
+        }
+
+        let ovl30AutoFitTimer = null;
+        function scheduleAutoFitOvl30TableFont() {
+            clearTimeout(ovl30AutoFitTimer);
+            ovl30AutoFitTimer = setTimeout(autoFitOvl30TableFont, 50);
+        }
+
+        $(window).on('resize', function() {
+            if ($('#ovl30DetailsModal').hasClass('show')) {
+                scheduleAutoFitOvl30TableFont();
+            }
+        });
+        $('#ovl30DetailsModal').on('shown.bs.modal', function() {
+            scheduleAutoFitOvl30TableFont();
+        });
 
         function renderMarketplaceData(data) {
             if (data && data.length > 0) {
@@ -1376,48 +1950,67 @@
             let totalPftAmount = 0; // Sum of PFT amounts
             let totalNpftAmount = 0; // Sum of NPFT amounts
             let totalSalesAmount = 0; // Sum of sales amounts
-            let totalAD = 0;
-            let totalTACOS = 0;
+            let totalAdsAmount = 0; // Sum of implied ads $ = sales × Ads%
+            let totalCogsAmount = 0; // Sum of LP × L30 (for sales-weighted GROI/NROI)
             let totalSPRICE = 0;
             let totalSGPFT = 0;
             let totalSPFT = 0;
             let totalSROI = 0;
+            let totalSNROI = 0;
             let cvrCount = 0;
-            let adCount = 0;
-            let tacosCount = 0;
             let spriceCount = 0;
             let sgpftCount = 0;
             let spftCount = 0;
             let sroiCount = 0;
+            let snroiCount = 0;
             
             data.forEach(item => {
                 const isListed = item.is_listed !== false;
                 const rowClass = !isListed ? 'table-secondary' : '';
                 const textClass = !isListed ? 'text-muted fst-italic' : '';
                 
-                // Calculate CVR% (L30 / Views * 100)
-                const views = parseInt(item.views || 0);
+                // Calculate CVR% (L30 / Views * 100). null/undefined views → N/A (channel has no view data)
+                const viewsMissing = item.views === null || item.views === undefined || item.views === '';
+                const views = viewsMissing ? 0 : (parseInt(item.views, 10) || 0);
                 const l30 = parseInt(item.l30 || 0);
-                const cvr = views > 0 ? (l30 / views) * 100 : 0;
+                const cvr = (!viewsMissing && views > 0) ? (l30 / views) * 100 : 0;
                 const gpft = parseFloat(item.gpft || 0);
                 const ad = parseFloat(item.ad || 0);
                 const tacosCh = parseFloat(item.tacos_ch || 0);
-                const npft = parseFloat(item.npft || 0);
+                // NPFT% = GPFT% − Ads% (channel Ads%)
+                const npft = gpft - tacosCh;
                 
                 // SPRICE and calculated values
                 const sprice = parseFloat(item.sprice || 0);
+                const price = parseFloat(item.price || 0);
                 const lp = parseFloat(item.lp || 0);
                 const ship = parseFloat(item.ship || 0);
                 const margin = parseFloat(item.margin || 0.80);
+
+                // GROI% = (Price × Margin − LP − Ship) ÷ LP × 100
+                // NROI% = (Gross Profit − Ads $ per unit) ÷ LP × 100
+                let groi = 0, nroi = 0;
+                if (lp > 0 && price > 0) {
+                    const grossProfit = price * margin - lp - ship;
+                    const adsPerUnit = price * (tacosCh / 100);
+                    groi = (grossProfit / lp) * 100;
+                    nroi = ((grossProfit - adsPerUnit) / lp) * 100;
+                }
                 
-                let sgpft = 0, spft = 0, sroi = 0;
+                let sgpft = 0, spft = 0, sroi = 0, snroi = 0;
                 if (sprice > 0) {
                     sgpft = ((sprice * margin - ship - lp) / sprice) * 100;
                     spft = l30 == 0 ? sgpft : (sgpft - ad);
                     sroi = lp > 0 ? ((sprice * margin - lp - ship) / lp) * 100 : 0;
+                    // SNROI% = (SPRICE × Margin − LP − Ship − SPRICE × Ads%) ÷ LP × 100
+                    if (lp > 0) {
+                        const sGross = sprice * margin - lp - ship;
+                        const sAds = sprice * (tacosCh / 100);
+                        snroi = ((sGross - sAds) / lp) * 100;
+                    }
                 }
                 
-                const isEditable = ['amazon', 'doba', 'ebay', 'ebaytwo', 'ebaythree', 'temu', 'temu2', 'tiktok', 'bestbuy', 'macy', 'reverb', 'tiendamia', 'sb2c', 'shopifyb2c', 'sb2b', 'shopifyb2b', 'fba', 'shein', 'aliexpress', 'purchasingpower'].includes((item.marketplace || '').toLowerCase());
+                const isEditable = ['amazon', 'doba', 'ebay', 'ebay1', 'ebaytwo', 'ebay2', 'ebaythree', 'ebay3', 'temu', 'temu2', 'tiktok', 'bestbuy', 'macy', 'reverb', 'tiendamia', 'sb2c', 'shopify', 'shopifyb2c', 'sb2b', 'shopifyb2b', 'fba', 'shein', 'aliexpress', 'ppower', 'purchasingpower'].includes((item.marketplace || '').toLowerCase());
                 
                 // Color coding for CVR%
                 let cvrColor = '';
@@ -1426,39 +2019,28 @@
                 else if (cvr >= 3 && cvr < 5) cvrColor = '#28a745'; // Green
                 else cvrColor = '#e83e8c'; // Pink
                 
-                // Color coding for GPFT%, AD%, and NPFT%
+                // Color coding for GPFT% / NPFT%: <20 red, 20–30 yellow, 30–40 green, >40 black on magenta
                 let gpftColor = '';
+                let gpftStyle = '';
                 let adColor = '';
                 let npftColor = '';
+                let npftStyle = '';
                 
-                if (gpft < 0) gpftColor = '#a00211';
-                else if (gpft >= 0 && gpft < 10) gpftColor = '#ffc107';
-                else if (gpft >= 10 && gpft < 20) gpftColor = '#3591dc';
-                else if (gpft >= 20 && gpft <= 40) gpftColor = '#28a745';
-                else gpftColor = '#e83e8c';
+                if (gpft < 20) { gpftColor = '#dc3545'; gpftStyle = styleForCellColor(gpftColor); }
+                else if (gpft < 30) { gpftColor = '#ffc107'; gpftStyle = styleForCellColor(gpftColor); }
+                else if (gpft <= 40) { gpftColor = '#28a745'; gpftStyle = styleForCellColor(gpftColor); }
+                else { gpftStyle = 'color:#4e0dab;font-weight:700;'; }
                 
-                // AD% color: lower is better
-                if (ad >= 100) adColor = '#a00211'; // Dark red for 100%+
-                else if (ad >= 50) adColor = '#dc3545'; // Red
-                else if (ad >= 20) adColor = '#ffc107'; // Yellow
-                else if (ad >= 10) adColor = '#3591dc'; // Blue
-                else if (ad > 0) adColor = '#28a745'; // Green (low is good)
-                else adColor = '#6c757d'; // Gray for 0
+                // Ads% color — channel Ads% (same thresholds as /all-marketplace-master)
+                if (tacosCh < 5) adColor = '#e83e8c';
+                else if (tacosCh <= 10) adColor = '#28a745';
+                else adColor = '#a00211';
                 
-                // TACOS CH color: lower is better (same as AD%)
-                let tacosColor = '';
-                if (tacosCh >= 100) tacosColor = '#a00211';
-                else if (tacosCh >= 50) tacosColor = '#dc3545';
-                else if (tacosCh >= 20) tacosColor = '#ffc107';
-                else if (tacosCh >= 10) tacosColor = '#3591dc';
-                else if (tacosCh > 0) tacosColor = '#28a745';
-                else tacosColor = '#6c757d';
-                
-                if (npft < 0) npftColor = '#a00211';
-                else if (npft >= 0 && npft < 10) npftColor = '#ffc107';
-                else if (npft >= 10 && npft < 20) npftColor = '#3591dc';
-                else if (npft >= 20 && npft <= 40) npftColor = '#28a745';
-                else npftColor = '#e83e8c';
+                // NPFT: <30 red, 30–40 yellow, 40–50 green, >50 black on magenta
+                if (npft < 30) { npftColor = '#dc3545'; npftStyle = styleForCellColor(npftColor); }
+                else if (npft < 40) { npftColor = '#ffc107'; npftStyle = styleForCellColor(npftColor); }
+                else if (npft <= 50) { npftColor = '#28a745'; npftStyle = styleForCellColor(npftColor); }
+                else { npftStyle = 'color:#4e0dab;font-weight:700;'; }
                 
                 // Color coding for SGPFT%, SPFT%, SROI%
                 let sgpftColor = '';
@@ -1481,18 +2063,30 @@
                 else if (sroi >= 50 && sroi < 100) sroiColor = '#3591dc';
                 else if (sroi >= 100 && sroi <= 150) sroiColor = '#28a745';
                 else sroiColor = '#e83e8c';
+
+                // GROI / NROI color slabs (same as main-table Avg GROI%)
+                const roiColorFor = (pct) => {
+                    if (pct < 50) return '#a00211';
+                    if (pct < 100) return '#ffc107';
+                    if (pct <= 150) return '#28a745';
+                    return '#e83e8c';
+                };
+                const groiColor = roiColorFor(groi);
+                const nroiColor = roiColorFor(nroi);
+                const snroiColor = roiColorFor(snroi);
                 
                 // Add to totals only if listed
                 if (isListed) {
                     // Calculate sold amount = price × L30 qty
-                    const price = parseFloat(item.price || 0);
                     const soldAmount = price * l30;
                     totalPrice += soldAmount;
-                    totalViews += views;
+                    if (!viewsMissing) {
+                        totalViews += views;
+                    }
                     totalL30 += l30;
-                    // For avg CVR: exclude Reverb views and L30
+                    // For avg CVR: exclude Reverb views and L30; skip channels with no views data
                     const isReverb = (item.marketplace || '').toLowerCase() === 'reverb';
-                    if (!isReverb) {
+                    if (!isReverb && !viewsMissing) {
                         totalViewsForCVR += views;
                         totalL30ForCVR += l30;
                     }
@@ -1506,18 +2100,16 @@
                     totalNpftAmount += npftAmount;
                     
                     totalSalesAmount += soldAmount;
+                    // Implied ads $ for this channel = sales × channel Ads%
+                    totalAdsAmount += soldAmount * (tacosCh / 100);
+                    // COGS $ = LP × qty sold (for sales-weighted GROI/NROI)
+                    if (lp > 0 && l30 > 0) {
+                        totalCogsAmount += lp * l30;
+                    }
                     
                     if (cvr > 0) {
                         totalCVR += cvr;
                         cvrCount++;
-                    }
-                    // Always count AD% for average (even if 0)
-                    totalAD += ad;
-                    adCount++;
-                    // Count TACOS CH% if present
-                    if (tacosCh !== 0) {
-                        totalTACOS += tacosCh;
-                        tacosCount++;
                     }
                     if (sprice > 0) {
                         totalSPRICE += sprice;
@@ -1535,53 +2127,118 @@
                         totalSROI += sroi;
                         sroiCount++;
                     }
+                    if (snroi !== 0) {
+                        totalSNROI += snroi;
+                        snroiCount++;
+                    }
                 }
                 
-                // Determine if upload button should be shown (Amazon, Doba, Walmart, Shopify B2C, Shopify B2B)
-                const canPushPrice = ['amazon', 'doba', 'sb2c', 'sb2b', 'reverb', 'fba'].includes((item.marketplace || '').toLowerCase()) && isListed;
+                // Push button when channel has API price push available and row is listed
+                const pushableChannels = [
+                    'amazon', 'doba', 'walmart',
+                    'ebay', 'ebay1', 'ebay2', 'ebaytwo', 'ebay3', 'ebaythree',
+                    'sb2c', 'shopify', 'shopifyb2c', 'sb2b', 'shopifyb2b',
+                    'bestbuy', 'bestbuyusa', 'macy', 'macys',
+                    'reverb', 'fba'
+                ];
+                const canPushPrice = pushableChannels.includes((item.marketplace || '').toLowerCase()) && isListed;
+
+                // Price in red when LMP is available and LMP < Price
+                const lmpForPrice = parseFloat(item.lmp_price);
+                // Price vs LMP: ≤90% LMP → purple; 90%–LMP → dark green; > LMP → red
+                let priceColorStyle = '';
+                if (isListed && price > 0 && lmpForPrice > 0) {
+                    const lmp90 = lmpForPrice * 0.90;
+                    if (price > lmpForPrice) {
+                        priceColorStyle = 'color:#a00211;font-weight:700;';
+                    } else if (price <= lmp90) {
+                        priceColorStyle = 'color:#4e0dab;font-weight:700;';
+                    } else {
+                        // Between LMP×0.90 and LMP (inclusive of LMP)
+                        priceColorStyle = 'color:#006400;font-weight:700;';
+                    }
+                }
+                const priceCellHtml = !isListed
+                    ? '-'
+                    : '<span style="' + priceColorStyle + '">$' + price.toFixed(2) + '</span>';
+
+                const pushedByTip = item.pushed_by
+                    ? String(item.pushed_by + (item.pushed_at ? ' ' + item.pushed_at : '')).replace(/"/g, '&quot;')
+                    : '';
+                const pushedByCell = item.pushed_by
+                    ? '<span class="pushed-by-dot" title="' + pushedByTip + '" aria-label="' + pushedByTip + '"></span>'
+                    : '<span class="text-muted">-</span>';
                 
+                const lmpPriceAttr = parseFloat(item.lmp_price) || 0;
                 html += `
                     <tr class="${rowClass}" data-marketplace="${item.marketplace}" data-sku="${item.sku}" 
-                        data-lp="${lp}" data-ship="${ship}" data-ad="${ad}" data-margin="${margin}" data-l30="${l30}">
+                        data-lp="${lp}" data-ship="${ship}" data-ad="${ad}" data-tacos-ch="${tacosCh}" data-margin="${margin}" data-l30="${l30}"
+                        data-price="${price}" data-lmp="${lmpPriceAttr}" data-cvr="${cvr}" data-views="${views}" data-editable="${isEditable && isListed ? 1 : 0}">
                         <td class="${textClass}">${item.marketplace || '-'}</td>
                         <td class="text-end ${textClass}">${isListed ? l30.toLocaleString() : '-'}</td>
                         <td class="text-center">-</td>
-                        <td class="text-end ${textClass}">${isListed ? '$' + parseFloat(item.price || 0).toFixed(2) : '-'}</td>
-                        <td class="text-end ${textClass}">${isListed ? views.toLocaleString() : '-'}</td>
-                        <td class="text-end ${textClass}">${isListed && views > 0 ? '<span style="' + styleForCellColor(cvrColor) + '">' + cvr.toFixed(1) + '%</span>' : '-'}</td>
-                        <td class="text-end ${textClass}">${isListed && gpft !== 0 ? '<span style="' + styleForCellColor(gpftColor) + '">' + Math.round(gpft) + '%</span>' : '-'}</td>
-                        <td class="text-end ${textClass}">${isListed ? '<span style="' + styleForCellColor(adColor) + '">' + ad.toFixed(1) + '%</span>' : '-'}</td>
+                        <td class="text-end ${textClass}">${priceCellHtml}</td>
+                        <td class="text-end ${textClass}">${!isListed ? '-' : (viewsMissing ? 'N/A' : views.toLocaleString())}</td>
+                        <td class="text-end ${textClass}">${!isListed ? '-' : (viewsMissing ? 'N/A' : (views > 0 ? '<span style="' + styleForCellColor(cvrColor) + '">' + cvr.toFixed(1) + '%</span>' : '-'))}</td>
+                        <td class="text-end ${textClass}">${isListed && price > 0 && lp > 0 ? '<span style="' + styleForCellColor(groiColor) + '">' + Math.round(groi) + '%</span>' : '-'}</td>
+                        <td class="text-end ${textClass}">${isListed && price > 0 && lp > 0 ? '<span style="' + styleForCellColor(nroiColor) + '">' + Math.round(nroi) + '%</span>' : '-'}</td>
+                        <td class="text-end ${textClass}">${isListed && gpft !== 0 ? '<span style="' + gpftStyle + '">' + Math.round(gpft) + '%</span>' : '-'}</td>
+                        <td class="text-end ${textClass}">${isListed ? '<span style="' + styleForCellColor(adColor) + ';font-weight:600;">' + Math.round(tacosCh) + '%</span>' : '-'}</td>
+                        <td class="text-end ${textClass}">${isListed ? '<span style="' + npftStyle + '">' + Math.round(npft) + '%</span>' : '-'}</td>
                         <td class="text-end ${textClass}">
-                            ${isListed && tacosCh !== 0 ? '<span style="' + styleForCellColor(tacosColor) + '">' + tacosCh.toFixed(1) + '%</span>' : '-'}
-                        </td>
-                        <td class="text-end ${textClass}">${isListed && npft !== 0 ? '<span style="' + styleForCellColor(npftColor) + '">' + Math.round(npft) + '%</span>' : '-'}</td>
-                        <td class="text-center ${textClass}">
-                            ${isListed ? 
-                                '<i class="fas fa-circle lmp-info-icon" style="cursor: pointer; color: #17a2b8; font-size: 10px;" ' +
-                                'data-marketplace="' + item.marketplace + '" ' +
-                                'data-sku="' + item.sku + '" ' +
-                                'title="View LMP Data for ' + item.marketplace + '"></i>' 
-                                : '-'}
+                            ${(() => {
+                                if (!isListed) return '-';
+                                const lmpPrice = parseFloat(item.lmp_price);
+                                const lmpChannel = (item.lmp_channel || '').toLowerCase();
+                                const lmpSku = (item.sku && item.sku !== 'Not Listed')
+                                    ? item.sku
+                                    : ($('#modalSkuName').text() || '');
+                                const skuAttr = String(lmpSku).replace(/"/g, '&quot;');
+                                // No LMP for this channel → Add (+)
+                                if (lmpChannel && !(lmpPrice > 0)) {
+                                    return '<a href="#" class="lmp-add-btn" '
+                                        + 'data-sku="' + skuAttr + '" '
+                                        + 'data-marketplace="' + lmpChannel + '" '
+                                        + 'title="Add ' + lmpChannel + ' LMP">'
+                                        + '<i class="fas fa-plus-circle"></i></a>';
+                                }
+                                if (!lmpChannel || !(lmpPrice > 0)) {
+                                    return '<span class="text-muted">-</span>';
+                                }
+                                return '<a href="#" class="lmp-channel-price" '
+                                    + 'data-sku="' + skuAttr + '" '
+                                    + 'data-marketplace="' + lmpChannel + '" '
+                                    + 'title="View ' + lmpChannel + ' LMP" '
+                                    + 'style="color:#0d6efd;font-weight:600;text-decoration:underline;cursor:pointer;">'
+                                    + '$' + lmpPrice.toFixed(2)
+                                    + '</a>';
+                            })()}
                         </td>
                         <td class="text-center ${textClass}" style="white-space: nowrap;">
                             ${(item.buyer_link || item.seller_link) ? 
-                                (item.buyer_link ? '<a href="' + item.buyer_link + '" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary me-1" title="Buyer link">B</a>' : '') +
-                                (item.seller_link ? '<a href="' + item.seller_link + '" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary" title="Seller link">S</a>' : '')
+                                (item.buyer_link ? '<a href="' + item.buyer_link + '" target="_blank" rel="noopener" class="ovl30-link-bs" title="Buyer link" style="color:#0d6efd;font-weight:700;text-decoration:none;padding:0 2px;">B</a>' : '') +
+                                (item.seller_link ? '<a href="' + item.seller_link + '" target="_blank" rel="noopener" class="ovl30-link-bs" title="Seller link" style="color:#495057;font-weight:700;text-decoration:none;padding:0 2px;">S</a>' : '')
                                 : '-'}
                         </td>
+                        <td class="text-center ${textClass}">-</td>
                         <td class="text-end ${textClass}">
                             ${isEditable && isListed ? 
-                                '<input type="number" class="form-control form-control-sm editable-sprice" value="' + sprice.toFixed(2) + '" step="0.01" style="width:80px;">' 
+                                '<input type="number" class="form-control form-control-sm editable-sprice" value="' + sprice.toFixed(2) + '" step="0.01">' 
                                 : (sprice > 0 ? '$' + sprice.toFixed(2) : '-')}
+                        </td>
+                        <td class="text-end ${textClass}">
+                            <span class="calculated-sroi" style="${styleForCellColor(sroiColor)}">${Math.round(sroi)}%</span>
+                        </td>
+                        <td class="text-end ${textClass}">
+                            ${sprice > 0 && lp > 0
+                                ? '<span class="calculated-snroi" style="' + styleForCellColor(snroiColor) + '">' + Math.round(snroi) + '%</span>'
+                                : '<span class="calculated-snroi text-muted">-</span>'}
                         </td>
                         <td class="text-end ${textClass}">
                             <span class="calculated-sgpft" style="${styleForCellColor(sgpftColor)}">${Math.round(sgpft)}%</span>
                         </td>
                         <td class="text-end ${textClass}">
                             <span class="calculated-spft" style="${styleForCellColor(spftColor)}">${Math.round(spft)}%</span>
-                        </td>
-                        <td class="text-end ${textClass}">
-                            <span class="calculated-sroi" style="${styleForCellColor(sroiColor)}">${Math.round(sroi)}%</span>
                         </td>
                         <td class="text-center ${textClass}">
                             ${canPushPrice ? 
@@ -1592,12 +2249,7 @@
                                 '<i class="fas fa-upload"></i></button>' 
                                 : '-'}
                         </td>
-                        <td class="text-center ${textClass}">
-                            ${item.pushed_by ? 
-                                '<div class="pushed-by-info"><strong>' + item.pushed_by + '</strong>' +
-                                '<div class="text-muted">' + item.pushed_at + '</div></div>'
-                                : '<span class="text-muted">-</span>'}
-                        </td>
+                        <td class="text-center ${textClass}">${pushedByCell}</td>
                     </tr>
                 `;
             });
@@ -1609,13 +2261,18 @@
             const avgCVR = totalViewsForCVR > 0 ? (totalL30ForCVR / totalViewsForCVR) * 100 : 0;
             // Avg GPFT% = (Total PFT Amount / Total Sales Amount) × 100
             const avgGPFT = totalSalesAmount > 0 ? (totalPftAmount / totalSalesAmount) * 100 : 0;
-            const avgAD = adCount > 0 ? totalAD / adCount : 0;
-            const avgTACOS = tacosCount > 0 ? totalTACOS / tacosCount : 0;
+            // Avg Ads% = (Σ ads amount) ÷ (Σ sales amount) × 100
+            const avgAD = totalSalesAmount > 0 ? (totalAdsAmount / totalSalesAmount) * 100 : 0;
             // Avg NPFT% = (Total NPFT Amount / Total Sales Amount) × 100
             const avgNPFT = totalSalesAmount > 0 ? (totalNpftAmount / totalSalesAmount) * 100 : 0;
+            // Avg GROI% = (Σ Gross Profit $) ÷ (Σ COGS $) × 100
+            // Avg NROI% = (Σ Gross Profit $ − Σ Ads $) ÷ (Σ COGS $) × 100
+            const avgGROI = totalCogsAmount > 0 ? (totalPftAmount / totalCogsAmount) * 100 : 0;
+            const avgNROI = totalCogsAmount > 0 ? ((totalPftAmount - totalAdsAmount) / totalCogsAmount) * 100 : 0;
             const avgSGPFT = sgpftCount > 0 ? totalSGPFT / sgpftCount : 0;
             const avgSPFT = spftCount > 0 ? totalSPFT / spftCount : 0;
             const avgSROI = sroiCount > 0 ? totalSROI / sroiCount : 0;
+            const avgSNROI = snroiCount > 0 ? totalSNROI / snroiCount : 0;
             
             // Apply color formatting for totals row
             // CVR% color
@@ -1625,20 +2282,18 @@
             else if (avgCVR >= 3 && avgCVR < 5) cvrColorTotal = '#28a745';
             else cvrColorTotal = '#e83e8c';
             
-            // GPFT%, NPFT%, SGPFT%, SPFT% color
-            let gpftColorTotal = '';
-            if (avgGPFT < 0) gpftColorTotal = '#a00211';
-            else if (avgGPFT >= 0 && avgGPFT < 10) gpftColorTotal = '#ffc107';
-            else if (avgGPFT >= 10 && avgGPFT < 20) gpftColorTotal = '#3591dc';
-            else if (avgGPFT >= 20 && avgGPFT <= 40) gpftColorTotal = '#28a745';
-            else gpftColorTotal = '#e83e8c';
+            // GPFT% / NPFT% color: <20 red, 20–30 yellow, 30–40 green, >40 black on magenta
+            let gpftStyleTotal = '';
+            if (avgGPFT < 20) gpftStyleTotal = styleForCellColor('#dc3545');
+            else if (avgGPFT < 30) gpftStyleTotal = styleForCellColor('#ffc107');
+            else if (avgGPFT <= 40) gpftStyleTotal = styleForCellColor('#28a745');
+            else gpftStyleTotal = 'color:#4e0dab;font-weight:700;';
             
-            let npftColorTotal = '';
-            if (avgNPFT < 0) npftColorTotal = '#a00211';
-            else if (avgNPFT >= 0 && avgNPFT < 10) npftColorTotal = '#ffc107';
-            else if (avgNPFT >= 10 && avgNPFT < 20) npftColorTotal = '#3591dc';
-            else if (avgNPFT >= 20 && avgNPFT <= 40) npftColorTotal = '#28a745';
-            else npftColorTotal = '#e83e8c';
+            let npftStyleTotal = '';
+            if (avgNPFT < 30) npftStyleTotal = styleForCellColor('#dc3545');
+            else if (avgNPFT < 40) npftStyleTotal = styleForCellColor('#ffc107');
+            else if (avgNPFT <= 50) npftStyleTotal = styleForCellColor('#28a745');
+            else npftStyleTotal = 'color:#4e0dab;font-weight:700;';
             
             let sgpftColorTotal = '';
             if (avgSGPFT < 0) sgpftColorTotal = '#a00211';
@@ -1654,23 +2309,11 @@
             else if (avgSPFT >= 20 && avgSPFT <= 40) spftColorTotal = '#28a745';
             else spftColorTotal = '#e83e8c';
             
-            // AD% color (lower is better)
+            // Ads% color — same thresholds as /all-marketplace-master
             let adColorTotal = '';
-            if (avgAD >= 100) adColorTotal = '#a00211';
-            else if (avgAD >= 50) adColorTotal = '#dc3545';
-            else if (avgAD >= 20) adColorTotal = '#ffc107';
-            else if (avgAD >= 10) adColorTotal = '#3591dc';
-            else if (avgAD > 0) adColorTotal = '#28a745';
-            else adColorTotal = '#6c757d';
-            
-            // TACOS CH color (lower is better, same as AD%)
-            let tacosColorTotal = '';
-            if (avgTACOS >= 100) tacosColorTotal = '#a00211';
-            else if (avgTACOS >= 50) tacosColorTotal = '#dc3545';
-            else if (avgTACOS >= 20) tacosColorTotal = '#ffc107';
-            else if (avgTACOS >= 10) tacosColorTotal = '#3591dc';
-            else if (avgTACOS > 0) tacosColorTotal = '#28a745';
-            else tacosColorTotal = '#6c757d';
+            if (avgAD < 5) adColorTotal = '#e83e8c';
+            else if (avgAD <= 10) adColorTotal = '#28a745';
+            else adColorTotal = '#a00211';
             
             // SROI% color
             let sroiColorTotal = '';
@@ -1690,17 +2333,26 @@
             // Update header L30 to match the calculated total from breakdown (fixes L30 diff issue)
             $('#modal-header-l30').text(totalL30.toLocaleString());
             
-            $('#modal-avg-cvr').html(`<span style="${styleForCellColor(cvrColorTotal)}">${avgCVR.toFixed(1)}%</span>`);
-            $('#modal-avg-gpft').html(`<span style="${styleForCellColor(gpftColorTotal)}">${avgGPFT.toFixed(1)}%</span>`);
-            $('#modal-avg-ad').html(`<span style="${styleForCellColor(adColorTotal)}">${avgAD.toFixed(1)}%</span>`);
-            $('#modal-avg-tacos').html(`<span style="${styleForCellColor(tacosColorTotal)}">${avgTACOS.toFixed(1)}%</span>`);
-            $('#modal-avg-npft').html(`<span style="${styleForCellColor(npftColorTotal)}">${avgNPFT.toFixed(1)}%</span>`);
+            const roiColorTotal = (pct) => {
+                if (pct < 50) return '#a00211';
+                if (pct < 100) return '#ffc107';
+                if (pct <= 150) return '#28a745';
+                return '#e83e8c';
+            };
+            $('#modal-avg-cvr').html(`<span style="${styleForCellColor(cvrColorTotal)}">${Math.round(avgCVR)}%</span>`);
+            $('#modal-avg-groi').html(`<span style="${styleForCellColor(roiColorTotal(avgGROI))}">${Math.round(avgGROI)}%</span>`);
+            $('#modal-avg-nroi').html(`<span style="${styleForCellColor(roiColorTotal(avgNROI))}">${Math.round(avgNROI)}%</span>`);
+            $('#modal-avg-gpft').html(`<span style="${gpftStyleTotal}">${Math.round(avgGPFT)}%</span>`);
+            $('#modal-avg-ad').html(`<span style="${styleForCellColor(adColorTotal)};font-weight:600;">${Math.round(avgAD)}%</span>`);
+            $('#modal-avg-npft').html(`<span style="${npftStyleTotal}">${Math.round(avgNPFT)}%</span>`);
             
             $('#modal-avg-sprice').text('$' + (spriceCount > 0 ? totalSPRICE / spriceCount : 0).toFixed(2));
-            $('#modal-avg-sgpft').html(`<span style="${styleForCellColor(sgpftColorTotal)}">${avgSGPFT.toFixed(1)}%</span>`);
-            $('#modal-avg-spft').html(`<span style="${styleForCellColor(spftColorTotal)}">${avgSPFT.toFixed(1)}%</span>`);
-            $('#modal-avg-sroi').html(`<span style="${styleForCellColor(sroiColorTotal)}">${avgSROI.toFixed(1)}%</span>`);
+            $('#modal-avg-sgpft').html(`<span style="${styleForCellColor(sgpftColorTotal)}">${Math.round(avgSGPFT)}%</span>`);
+            $('#modal-avg-spft').html(`<span style="${styleForCellColor(spftColorTotal)}">${Math.round(avgSPFT)}%</span>`);
+            $('#modal-avg-sroi').html(`<span style="${styleForCellColor(sroiColorTotal)}">${Math.round(avgSROI)}%</span>`);
+            $('#modal-avg-snroi').html(`<span style="${styleForCellColor(roiColorTotal(avgSNROI))}">${Math.round(avgSNROI)}%</span>`);
             updateOvl30SortIcons();
+            scheduleAutoFitOvl30TableFont();
         }
 
         // ==================== TABULATOR INITIALIZATION ====================
@@ -1811,6 +2463,30 @@
                     }
                 },
                 {
+                    title: "Details",
+                    field: "details_dot",
+                    headerSort: false,
+                    hozAlign: "center",
+                    minWidth: 52,
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        if (rowData.is_parent_summary === true) return '';
+                        const sku = rowData.sku;
+                        const imagePath = rowData.image_path || '';
+                        const inv = rowData.inventory ?? rowData.inv ?? 0;
+                        const value = parseFloat(cell.getRow().getData().overall_l30 || 0);
+                        const dilPercent = rowData.dil_percent || 0;
+                        return `<i class="fas fa-search text-info ovl30-info-icon" 
+                               style="cursor: pointer; font-size: 12px;" 
+                               data-sku="${sku}"
+                               data-image="${imagePath}"
+                               data-inv="${inv}"
+                               data-l30="${value}"
+                               data-dil="${dilPercent}"
+                               title="View breakdown for ${sku}"></i>`;
+                    }
+                },
+                {
                     title: "INV",
                     field: "inventory",
                     hozAlign: "center",
@@ -1879,31 +2555,7 @@
                     }
                 },
                 {
-                    title: "Details",
-                    field: "details_dot",
-                    headerSort: false,
-                    hozAlign: "center",
-                    minWidth: 52,
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        if (rowData.is_parent_summary === true) return '';
-                        const sku = rowData.sku;
-                        const imagePath = rowData.image_path || '';
-                        const inv = rowData.inventory ?? rowData.inv ?? 0;
-                        const value = parseFloat(cell.getRow().getData().overall_l30 || 0);
-                        const dilPercent = rowData.dil_percent || 0;
-                        return `<i class="fas fa-info-circle text-info ovl30-info-icon" 
-                               style="cursor: pointer; font-size: 12px;" 
-                               data-sku="${sku}"
-                               data-image="${imagePath}"
-                               data-inv="${inv}"
-                               data-l30="${value}"
-                               data-dil="${dilPercent}"
-                               title="View breakdown for ${sku}"></i>`;
-                    }
-                },
-                {
-title: "Dil %",
+                    title: "Dil %",
                     field: "dil_percent",
                     hozAlign: "center",
                     sorter: "number",
@@ -1929,6 +2581,90 @@ title: "Dil %",
                         return html;
                     },
                     minWidth: 60
+                },
+                {
+                    title: "Avg Price",
+                    field: "avg_price",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const value = parseFloat(cell.getValue() || 0);
+                        let html = value === 0 ? '<span style="color: #6c757d;">-</span>' : `<span style="font-weight: 600;">$${value.toFixed(2)}</span>`;
+                        const parentEscPrice = (rowData.parent || '').replace(/"/g, '&quot;');
+                        const skuEscPrice = (rowData.sku || '').replace(/"/g, '&quot;');
+                        if (rowData.is_parent_summary === true) {
+                            html += ' <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="price" data-parent="' + parentEscPrice + '" data-sku="' + skuEscPrice + '" style="cursor:pointer;color:#e83e8c;font-size:8px;vertical-align:middle;" title="View Price graph (Parent, Rolling L30)"></i>';
+                        } else {
+                            html += ' <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="price" data-sku="' + skuEscPrice + '" style="cursor:pointer;color:#e83e8c;font-size:8px;vertical-align:middle;" title="View Price graph (Rolling L30)"></i>';
+                        }
+                        return html;
+                    },
+                    minWidth: 70
+                },
+                {
+                    title: "Avg GROI%",
+                    field: "avg_roi",
+                    hozAlign: "center",
+                    minWidth: 60,
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (value == null || value === '') return '-';
+                        const pct = parseFloat(value);
+                        if (!Number.isFinite(pct)) return '-';
+                        // Same slabs as Amz GROI%: <50 red, 50–100 yellow, 100–150 green, >150 magenta
+                        let color = '';
+                        if (pct < 50) color = '#a00211';
+                        else if (pct >= 50 && pct < 100) color = '#ffc107';
+                        else if (pct >= 100 && pct <= 150) color = '#28a745';
+                        else color = '#e83e8c';
+                        return `<span style="${styleForCellColor(color)}">${Math.round(pct)}%</span>`;
+                    }
+                },
+                {
+                    title: "Avg NROI%",
+                    field: "avg_nroi",
+                    hozAlign: "center",
+                    minWidth: 60,
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (value == null || value === '') return '-';
+                        const pct = parseFloat(value);
+                        if (!Number.isFinite(pct)) return '-';
+                        // Same slabs as GROI%: <50 red, 50–100 yellow, 100–150 green, >150 magenta
+                        let color = '';
+                        if (pct < 50) color = '#a00211';
+                        else if (pct >= 50 && pct < 100) color = '#ffc107';
+                        else if (pct >= 100 && pct <= 150) color = '#28a745';
+                        else color = '#e83e8c';
+                        return `<span style="${styleForCellColor(color)}">${Math.round(pct)}%</span>`;
+                    }
+                },
+                {
+                    title: "Avg GPFT%",
+                    field: "avg_gpft",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue() || 0);
+                        // <20 red, 20–30 yellow, 30–40 green, >40 black on magenta
+                        return `<span style="${styleForGpftValue(value)}">${Math.round(value)}%</span>`;
+                    },
+                    minWidth: 70
+                },
+                {
+                    title: "Avg NPFT%",
+                    field: "avg_pft",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue() || 0);
+                        // NPFT: <30 red, 30–40 yellow, 40–50 green, >50 black on magenta
+                        return `<span style="${styleForNpftValue(value)}">${Math.round(value)}%</span>`;
+                    },
+                    minWidth: 70
                 },
                 {
                     title: "Missing L",
@@ -1986,6 +2722,7 @@ title: "Dil %",
                 {
                     title: "Amz Price",
                     field: "amazon_price",
+                    visible: false,
                     hozAlign: "right",
                     minWidth: 70,
                     sorter: "number",
@@ -2012,6 +2749,7 @@ title: "Dil %",
                 {
                     title: "Amz GPFT%",
                     field: "amz_pft",
+                    visible: false,
                     hozAlign: "center",
                     minWidth: 60,
                     sorter: "number",
@@ -2019,17 +2757,13 @@ title: "Dil %",
                         const value = cell.getValue();
                         if (value == null || value === '') return '-';
                         const pct = parseFloat(value);
-                        let color = '';
-                        if (pct < 10) color = '#a00211';
-                        else if (pct >= 10 && pct < 20) color = '#ffc107';
-                        else if (pct >= 20 && pct < 50) color = '#28a745';
-                        else color = '#e83e8c';
-                        return `<span style="${styleForCellColor(color)}">${pct.toFixed(1)}%</span>`;
+                        return `<span style="${styleForGpftValue(pct)}">${Math.round(pct)}%</span>`;
                     }
                 },
                 {
                     title: "Amz GROI%",
                     field: "amz_roi",
+                    visible: false,
                     hozAlign: "center",
                     minWidth: 60,
                     sorter: "number",
@@ -2044,46 +2778,6 @@ title: "Dil %",
                         else color = '#e83e8c';
                         return `<span style="${styleForCellColor(color)}">${pct.toFixed(0)}%</span>`;
                     }
-                },
-                {
-                    title: "Avg Price",
-                    field: "avg_price",
-                    hozAlign: "center",
-                    sorter: "number",
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        const value = parseFloat(cell.getValue() || 0);
-                        let html = value === 0 ? '<span style="color: #6c757d;">-</span>' : `<span style="font-weight: 600;">$${value.toFixed(2)}</span>`;
-                        const parentEscPrice = (rowData.parent || '').replace(/"/g, '&quot;');
-                        const skuEscPrice = (rowData.sku || '').replace(/"/g, '&quot;');
-                        if (rowData.is_parent_summary === true) {
-                            html += ' <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="price" data-parent="' + parentEscPrice + '" data-sku="' + skuEscPrice + '" style="cursor:pointer;color:#e83e8c;font-size:8px;vertical-align:middle;" title="View Price graph (Parent, Rolling L30)"></i>';
-                        } else {
-                            html += ' <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="price" data-sku="' + skuEscPrice + '" style="cursor:pointer;color:#e83e8c;font-size:8px;vertical-align:middle;" title="View Price graph (Rolling L30)"></i>';
-                        }
-                        return html;
-                    },
-                    minWidth: 70
-                },
-                {
-                    title: "Avg PFT",
-                    field: "avg_pft",
-                    hozAlign: "center",
-                    sorter: "number",
-                    formatter: function(cell) {
-                        const value = parseFloat(cell.getValue() || 0);
-                        let color = '';
-                        
-                        // Color coding for PFT% (Net Profit)
-                        if (value < 0) color = '#a00211';
-                        else if (value >= 0 && value < 10) color = '#ffc107';
-                        else if (value >= 10 && value < 20) color = '#3591dc';
-                        else if (value >= 20 && value <= 40) color = '#28a745';
-                        else color = '#e83e8c';
-                        
-                        return `<span style="${styleForCellColor(color)}">${Math.round(value)}%</span>`;
-                    },
-                    minWidth: 70
                 },
                 {
                     title: "Sprice",
@@ -2203,9 +2897,9 @@ title: "Dil %",
                             else if (ratingVal >= 4 && ratingVal <= 4.5) ratingColor = '#28a745';
                             else ratingColor = '#e83e8c';
                             const reviewColor = reviews < 4 ? '#a00211' : '#6c757d';
-                            html = `<div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
+                            html = `<div class="d-flex align-items-center justify-content-center gap-1 flex-wrap">
                                 <span style="${styleForCellColor(ratingColor)}"><i class="fa fa-star"></i> ${parseFloat(rating).toFixed(1)}</span>
-                                <span style="font-size: 11px; ${styleForCellColor(reviewColor)}">${parseInt(reviews).toLocaleString()} reviews</span>
+                                <span style="font-size: 11px; ${styleForCellColor(reviewColor)}">(${parseInt(reviews).toLocaleString()})</span>
                             </div>`;
                         }
                         const parentEscRat = (rowData.parent || '').replace(/"/g, '&quot;');
@@ -2257,6 +2951,7 @@ title: "Dil %",
                 {
                     title: "Amz LMP",
                     field: "amazon_lmp_price",
+                    visible: false,
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
@@ -2282,6 +2977,7 @@ title: "Dil %",
                 {
                     title: "eBay LMP",
                     field: "ebay_lmp_price",
+                    visible: false,
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
@@ -2307,6 +3003,7 @@ title: "Dil %",
                 {
                     title: "Google LMP",
                     field: "google_lmp_price",
+                    visible: false,
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
@@ -2330,22 +3027,27 @@ title: "Dil %",
                     minWidth: 80
                 },
                 {
-                    title: "Avg GPFT",
-                    field: "avg_gpft",
+                    title: "Temu LMP",
+                    field: "temu_lmp_price",
+                    visible: false,
                     hozAlign: "center",
                     sorter: "number",
+                    headerTooltip: "Temu / Temu 2 LMP from temu_lmp (same as /temu-decrease)",
                     formatter: function(cell) {
-                        const value = parseFloat(cell.getValue() || 0);
-                        let color = '';
-                        
-                        // Color coding for GPFT%
-                        if (value < 0) color = '#a00211';
-                        else if (value >= 0 && value < 10) color = '#ffc107';
-                        else if (value >= 10 && value < 20) color = '#3591dc';
-                        else if (value >= 20 && value <= 40) color = '#28a745';
-                        else color = '#e83e8c';
-                        
-                        return `<span style="${styleForCellColor(color)}">${Math.round(value)}%</span>`;
+                        const rowData = cell.getRow().getData();
+                        const sku = (rowData.sku || '').replace(/"/g, '&quot;');
+                        if (rowData.is_parent_summary === true) {
+                            const v = cell.getValue();
+                            return v != null ? '<span style="font-weight: 600;">$' + parseFloat(v).toFixed(2) + '</span>' : '<span class="text-muted">-</span>';
+                        }
+                        const value = cell.getValue();
+                        const price = value != null && value !== '' ? parseFloat(value) : null;
+                        if (price == null || price <= 0) {
+                            return '<a href="#" class="lmp-price-link" data-sku="' + sku + '" data-marketplace="temu" title="No Temu LMP – open drawer"><i class="fas fa-circle" style="color: #ff9c00; font-size: 10px;"></i></a>';
+                        }
+                        const avgPrice = parseFloat(rowData.avg_price || 0);
+                        const color = (avgPrice > 0 && price < avgPrice) ? '#dc3545' : '#28a745';
+                        return `<a href="#" class="lmp-price-link" data-sku="${sku}" data-marketplace="temu" style="${styleForCellColor(color)} text-decoration: none; cursor: pointer;">$${price.toFixed(2)}</a>`;
                     },
                     minWidth: 70
                 },
@@ -2366,13 +3068,14 @@ title: "Dil %",
                         else if (value > 0) color = '#28a745';
                         else color = '#6c757d';
                         
-                        return `<span style="${styleForCellColor(color)}">${value.toFixed(1)}%</span>`;
+                        return `<span style="${styleForCellColor(color)}">${Math.round(value)}%</span>`;
                     },
                     minWidth: 70
                 },
                 {
                     title: "Sh L30",
                     field: "shein_l30",
+                    visible: false,
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
@@ -2386,6 +3089,7 @@ title: "Dil %",
                 {
                     title: "AE L30",
                     field: "ae_l30",
+                    visible: false,
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
@@ -2398,6 +3102,7 @@ title: "Dil %",
                 {
                     title: "PP L30",
                     field: "pp_l30",
+                    visible: false,
                     hozAlign: "center",
                     sorter: "number",
                     tooltip: "Purchasing Power last-30-days sales",
@@ -2600,6 +3305,22 @@ title: "Dil %",
             if (c === '#ffc107') return 'color:' + darkMustard + ';font-weight:600;';
             return 'color:' + c + ';font-weight:600;';
         }
+        // GPFT slabs: <20 red, 20–30 yellow, 30–40 green, >40 purple text (no bg)
+        function styleForGpftValue(value) {
+            const v = parseFloat(value) || 0;
+            if (v < 20) return styleForCellColor('#dc3545');
+            if (v < 30) return styleForCellColor('#ffc107');
+            if (v <= 40) return styleForCellColor('#28a745');
+            return 'color:#4e0dab;font-weight:700;';
+        }
+        // NPFT slabs: <30 red, 30–40 yellow, 40–50 green, >50 purple text (no bg)
+        function styleForNpftValue(value) {
+            const v = parseFloat(value) || 0;
+            if (v < 30) return styleForCellColor('#dc3545');
+            if (v < 40) return styleForCellColor('#ffc107');
+            if (v <= 50) return styleForCellColor('#28a745');
+            return 'color:#4e0dab;font-weight:700;';
+        }
         function applyCellColor($el, c) {
             if (c === '#ffc107') { $el.css({ backgroundColor: '', color: darkMustard }); }
             else { $el.css({ backgroundColor: '', color: c || '#6c757d' }); }
@@ -2687,17 +3408,22 @@ title: "Dil %",
             const lp = parseFloat(row.attr('data-lp')) || 0;
             const ship = parseFloat(row.attr('data-ship')) || 0;
             const ad = parseFloat(row.attr('data-ad')) || 0;
+            const tacosCh = parseFloat(row.attr('data-tacos-ch')) || 0;
             const margin = parseFloat(row.attr('data-margin')) || 0.80;
             const l30 = parseFloat(row.attr('data-l30')) || 0;
             
             const $sgpftSpan = row.find('.calculated-sgpft');
             const $spftSpan = row.find('.calculated-spft');
             const $roiSpan = row.find('.calculated-sroi');
+            const $snroiSpan = row.find('.calculated-snroi');
             
             if (sprice > 0) {
                 const sgpft = ((sprice * margin - ship - lp) / sprice) * 100;
                 const spft = l30 == 0 ? sgpft : (sgpft - ad);
                 const sroi = lp > 0 ? ((sprice * margin - lp - ship) / lp) * 100 : 0;
+                const snroi = lp > 0
+                    ? (((sprice * margin - lp - ship) - sprice * (tacosCh / 100)) / lp) * 100
+                    : 0;
                 
                 applyCellColor($sgpftSpan, getSgpftSpftColor(sgpft));
                 $sgpftSpan.text(Math.round(sgpft) + '%');
@@ -2705,6 +3431,8 @@ title: "Dil %",
                 $spftSpan.text(Math.round(spft) + '%');
                 applyCellColor($roiSpan, getSroiColor(sroi));
                 $roiSpan.text(Math.round(sroi) + '%');
+                applyCellColor($snroiSpan, getSroiColor(snroi));
+                $snroiSpan.text(Math.round(snroi) + '%');
             } else {
                 applyCellColor($sgpftSpan, '#6c757d');
                 $sgpftSpan.text('-');
@@ -2712,6 +3440,8 @@ title: "Dil %",
                 $spftSpan.text('-');
                 applyCellColor($roiSpan, '#6c757d');
                 $roiSpan.text('-');
+                applyCellColor($snroiSpan, '#6c757d');
+                $snroiSpan.text('-');
             }
         });
         
@@ -2762,6 +3492,490 @@ title: "Dil %",
             });
         });
         
+        // ==================== AUTO FILL SPRICE (Dil / CVR / LMP / Price) ====================
+
+        const SPRICE_RULES_STORAGE_KEY = 'cvr_master_sprice_suggest_rules_v1';
+        const SPRICE_RULES_DEFAULT = {
+            above_lmp_mult: 0.98,
+            strong_dil_min: 30,
+            strong_cvr_min: 3,
+            strong_lmp_cap: 0.99,
+            strong_raise_pct: 5,
+            strong_max_raise_pct: 8,
+            weak_cvr_max: 3,
+            volume_lmp_mult: 0.97,
+            slow_dil_max: 10,
+            slow_weak_lmp_mult: 0.95,
+            slow_weak_price_mult: 0.95,
+            slow_strong_cvr_min: 5,
+            slow_strong_raise_pct: 3,
+            slow_strong_lmp_cap: 0.98,
+            balanced_lmp_cap: 0.98,
+            no_lmp_raise_pct: 5,
+            no_lmp_cut_pct: 5,
+            gpft_floor_pct: 20
+        };
+
+        function getDefaultSpriceRules() {
+            return Object.assign({}, SPRICE_RULES_DEFAULT);
+        }
+
+        function loadSpriceRules() {
+            try {
+                const raw = localStorage.getItem(SPRICE_RULES_STORAGE_KEY);
+                if (!raw) return getDefaultSpriceRules();
+                const parsed = JSON.parse(raw);
+                return Object.assign(getDefaultSpriceRules(), parsed || {});
+            } catch (e) {
+                return getDefaultSpriceRules();
+            }
+        }
+
+        function saveSpriceRules(rules) {
+            try {
+                localStorage.setItem(SPRICE_RULES_STORAGE_KEY, JSON.stringify(rules));
+            } catch (e) { /* ignore */ }
+        }
+
+        let ovl30SpriceRules = loadSpriceRules();
+
+        function numRule(v, fallback) {
+            const n = parseFloat(v);
+            return isFinite(n) ? n : fallback;
+        }
+
+        function readSpriceRulesFromEditor() {
+            const $ed = $('#spriceSuggestRulesEditor');
+            if (!$ed.length) return ovl30SpriceRules;
+            const d = SPRICE_RULES_DEFAULT;
+            const r = {
+                above_lmp_mult: numRule($ed.find('[name="above_lmp_mult"]').val(), d.above_lmp_mult),
+                strong_dil_min: numRule($ed.find('[name="strong_dil_min"]').val(), d.strong_dil_min),
+                strong_cvr_min: numRule($ed.find('[name="strong_cvr_min"]').val(), d.strong_cvr_min),
+                strong_lmp_cap: numRule($ed.find('[name="strong_lmp_cap"]').val(), d.strong_lmp_cap),
+                strong_raise_pct: numRule($ed.find('[name="strong_raise_pct"]').val(), d.strong_raise_pct),
+                strong_max_raise_pct: numRule($ed.find('[name="strong_max_raise_pct"]').val(), d.strong_max_raise_pct),
+                weak_cvr_max: numRule($ed.find('[name="weak_cvr_max"]').val(), d.weak_cvr_max),
+                volume_lmp_mult: numRule($ed.find('[name="volume_lmp_mult"]').val(), d.volume_lmp_mult),
+                slow_dil_max: numRule($ed.find('[name="slow_dil_max"]').val(), d.slow_dil_max),
+                slow_weak_lmp_mult: numRule($ed.find('[name="slow_weak_lmp_mult"]').val(), d.slow_weak_lmp_mult),
+                slow_weak_price_mult: numRule($ed.find('[name="slow_weak_price_mult"]').val(), d.slow_weak_price_mult),
+                slow_strong_cvr_min: numRule($ed.find('[name="slow_strong_cvr_min"]').val(), d.slow_strong_cvr_min),
+                slow_strong_raise_pct: numRule($ed.find('[name="slow_strong_raise_pct"]').val(), d.slow_strong_raise_pct),
+                slow_strong_lmp_cap: numRule($ed.find('[name="slow_strong_lmp_cap"]').val(), d.slow_strong_lmp_cap),
+                balanced_lmp_cap: numRule($ed.find('[name="balanced_lmp_cap"]').val(), d.balanced_lmp_cap),
+                no_lmp_raise_pct: numRule($ed.find('[name="no_lmp_raise_pct"]').val(), d.no_lmp_raise_pct),
+                no_lmp_cut_pct: numRule($ed.find('[name="no_lmp_cut_pct"]').val(), d.no_lmp_cut_pct),
+                gpft_floor_pct: numRule($ed.find('[name="gpft_floor_pct"]').val(), d.gpft_floor_pct)
+            };
+            ovl30SpriceRules = r;
+            saveSpriceRules(r);
+            return r;
+        }
+
+        function ruleField(name, label, value, step) {
+            return '<div class="sprice-rule-field">'
+                + '<label>' + label + '</label>'
+                + '<input type="number" class="form-control form-control-sm sprice-rule-input" name="' + name + '" '
+                + 'value="' + value + '" step="' + (step || '0.01') + '">'
+                + '</div>';
+        }
+
+        function renderSpriceRulesEditor(rules) {
+            const r = rules || ovl30SpriceRules;
+            const html = ''
+                + '<div class="sprice-rule-card">'
+                + '<h6>above lmp</h6>'
+                + '<div class="rule-desc">Price &gt; LMP → SPRICE = LMP × multiplier</div>'
+                + '<div class="sprice-rule-grid">'
+                + ruleField('above_lmp_mult', 'LMP multiplier', r.above_lmp_mult, '0.01')
+                + '</div></div>'
+
+                + '<div class="sprice-rule-card">'
+                + '<h6>strong demand</h6>'
+                + '<div class="rule-desc">Dil ≥ min &amp; CVR ≥ min → raise under LMP cap (max raise %)</div>'
+                + '<div class="sprice-rule-grid">'
+                + ruleField('strong_dil_min', 'Dil% min', r.strong_dil_min, '1')
+                + ruleField('strong_cvr_min', 'CVR% min', r.strong_cvr_min, '0.1')
+                + ruleField('strong_lmp_cap', 'LMP cap mult', r.strong_lmp_cap, '0.01')
+                + ruleField('strong_raise_pct', 'Raise %', r.strong_raise_pct, '0.5')
+                + ruleField('strong_max_raise_pct', 'Max raise %', r.strong_max_raise_pct, '0.5')
+                + '</div></div>'
+
+                + '<div class="sprice-rule-card">'
+                + '<h6>volume weak cvr</h6>'
+                + '<div class="rule-desc">Dil ≥ strong Dil min &amp; CVR &lt; weak max → min(Price, LMP × mult)</div>'
+                + '<div class="sprice-rule-grid">'
+                + ruleField('weak_cvr_max', 'CVR% max', r.weak_cvr_max, '0.1')
+                + ruleField('volume_lmp_mult', 'LMP multiplier', r.volume_lmp_mult, '0.01')
+                + '</div></div>'
+
+                + '<div class="sprice-rule-card">'
+                + '<h6>slow weak</h6>'
+                + '<div class="rule-desc">Dil &lt; max &amp; CVR &lt; weak max → LMP × mult</div>'
+                + '<div class="sprice-rule-grid">'
+                + ruleField('slow_dil_max', 'Dil% max', r.slow_dil_max, '1')
+                + ruleField('slow_weak_lmp_mult', 'LMP multiplier', r.slow_weak_lmp_mult, '0.01')
+                + '</div></div>'
+
+                + '<div class="sprice-rule-card">'
+                + '<h6>slow strong cvr</h6>'
+                + '<div class="rule-desc">Dil &lt; slow Dil max &amp; CVR ≥ min → raise %, capped at LMP × mult</div>'
+                + '<div class="sprice-rule-grid">'
+                + ruleField('slow_strong_cvr_min', 'CVR% min', r.slow_strong_cvr_min, '0.1')
+                + ruleField('slow_strong_raise_pct', 'Raise %', r.slow_strong_raise_pct, '0.5')
+                + ruleField('slow_strong_lmp_cap', 'LMP cap mult', r.slow_strong_lmp_cap, '0.01')
+                + '</div></div>'
+
+                + '<div class="sprice-rule-card">'
+                + '<h6>balanced</h6>'
+                + '<div class="rule-desc">Mid Dil → keep Price, never above LMP × cap</div>'
+                + '<div class="sprice-rule-grid">'
+                + ruleField('balanced_lmp_cap', 'LMP cap mult', r.balanced_lmp_cap, '0.01')
+                + '</div></div>'
+
+                + '<div class="sprice-rule-card">'
+                + '<h6>no lmp + floor</h6>'
+                + '<div class="rule-desc">No LMP → Dil/CVR ±% on Price; GPFT floor when LP known</div>'
+                + '<div class="sprice-rule-grid">'
+                + ruleField('no_lmp_raise_pct', 'Raise % (strong)', r.no_lmp_raise_pct, '0.5')
+                + ruleField('no_lmp_cut_pct', 'Cut % (weak)', r.no_lmp_cut_pct, '0.5')
+                + ruleField('gpft_floor_pct', 'GPFT floor %', r.gpft_floor_pct, '1')
+                + '</div></div>';
+
+            $('#spriceSuggestRulesEditor').html(html);
+        }
+
+        function gpftFloorSprice(lp, ship, margin, targetGpft) {
+            const denom = margin - (targetGpft / 100);
+            if (!(lp > 0) || !(denom > 0)) return 0;
+            return (lp + ship) / denom;
+        }
+
+        function roundMoney(v) {
+            return Math.round((v + Number.EPSILON) * 100) / 100;
+        }
+
+        /** Suggest SPRICE using editable rule params. */
+        function suggestSpriceForChannel(ctx, rules) {
+            const R = rules || ovl30SpriceRules;
+            const price = parseFloat(ctx.price) || 0;
+            const lmp = parseFloat(ctx.lmp) || 0;
+            const dil = parseFloat(ctx.dil) || 0;
+            const cvr = parseFloat(ctx.cvr) || 0;
+            const lp = parseFloat(ctx.lp) || 0;
+            const ship = parseFloat(ctx.ship) || 0;
+            const margin = parseFloat(ctx.margin) || 0.80;
+            const floor = gpftFloorSprice(lp, ship, margin, R.gpft_floor_pct);
+
+            if (!(price > 0) && !(lmp > 0)) {
+                return { sprice: 0, ruleId: 'skip', rule: 'No Price / LMP', skip: true };
+            }
+
+            let suggested = price > 0 ? price : lmp;
+            let ruleId = 'balanced';
+            let rule = 'Hold current price';
+
+            if (lmp > 0 && price > lmp) {
+                suggested = lmp * R.above_lmp_mult;
+                ruleId = 'above_lmp';
+                rule = 'Above LMP → LMP×' + R.above_lmp_mult;
+            } else if (lmp > 0) {
+                const cap = lmp * R.strong_lmp_cap;
+                const softCap = lmp * R.balanced_lmp_cap;
+                if (dil >= R.strong_dil_min && cvr >= R.strong_cvr_min) {
+                    const raiseMult = 1 + (R.strong_raise_pct / 100);
+                    const maxRaiseMult = 1 + (R.strong_max_raise_pct / 100);
+                    suggested = Math.min(cap, Math.max(price, price * raiseMult, floor || 0));
+                    if (suggested > price * maxRaiseMult) suggested = Math.min(cap, price * maxRaiseMult);
+                    ruleId = 'strong_demand';
+                    rule = 'Strong Dil+CVR → raise under LMP×' + R.strong_lmp_cap;
+                } else if (dil >= R.strong_dil_min && cvr < R.weak_cvr_max) {
+                    suggested = Math.min(price, lmp * R.volume_lmp_mult);
+                    ruleId = 'volume_weak_cvr';
+                    rule = 'High Dil, weak CVR → LMP×' + R.volume_lmp_mult;
+                } else if (dil < R.slow_dil_max && cvr < R.weak_cvr_max) {
+                    suggested = lmp * R.slow_weak_lmp_mult;
+                    ruleId = 'slow_weak';
+                    rule = 'Slow + weak CVR → LMP×' + R.slow_weak_lmp_mult;
+                } else if (dil < R.slow_dil_max && cvr >= R.slow_strong_cvr_min) {
+                    const raiseMult = 1 + (R.slow_strong_raise_pct / 100);
+                    const slowCap = lmp * R.slow_strong_lmp_cap;
+                    suggested = Math.min(slowCap, price * raiseMult);
+                    ruleId = 'slow_strong_cvr';
+                    rule = 'Slow but converting → +' + R.slow_strong_raise_pct + '% under LMP';
+                } else {
+                    suggested = Math.min(softCap, Math.max(price, floor || price));
+                    ruleId = 'balanced';
+                    rule = 'Balanced → under LMP×' + R.balanced_lmp_cap;
+                }
+                if (suggested > softCap && ruleId !== 'strong_demand') suggested = softCap;
+                if (suggested > cap) suggested = cap;
+            } else {
+                if (dil >= R.strong_dil_min && cvr >= R.strong_cvr_min) {
+                    suggested = price * (1 + R.no_lmp_raise_pct / 100);
+                    ruleId = 'no_lmp';
+                    rule = 'No LMP, strong → +' + R.no_lmp_raise_pct + '%';
+                } else if (dil < R.slow_dil_max && cvr < R.weak_cvr_max) {
+                    suggested = price * (1 - R.no_lmp_cut_pct / 100);
+                    ruleId = 'no_lmp';
+                    rule = 'No LMP, weak → −' + R.no_lmp_cut_pct + '%';
+                } else {
+                    suggested = price;
+                    ruleId = 'no_lmp';
+                    rule = 'No LMP → keep Price';
+                }
+            }
+
+            const floorCap = lmp > 0 ? lmp * R.strong_lmp_cap : Infinity;
+            if (floor > 0 && suggested < floor && floor <= floorCap) {
+                suggested = Math.max(suggested, floor);
+                rule += ' (GPFT≥' + R.gpft_floor_pct + '% floor)';
+            }
+
+            suggested = roundMoney(Math.max(0, suggested));
+            if (!(suggested > 0)) {
+                return { sprice: 0, ruleId: 'skip', rule: 'Could not compute', skip: true };
+            }
+            return { sprice: suggested, ruleId, rule, skip: false };
+        }
+
+        function buildOvl30SpriceSuggestions(rules) {
+            const R = rules || ovl30SpriceRules;
+            const dil = ovl30ModalDil;
+            const rows = [];
+            let cvrSum = 0, cvrN = 0;
+
+            (ovl30ModalData || []).forEach(item => {
+                const isListed = item.is_listed !== false;
+                const price = parseFloat(item.price || 0);
+                if (!isListed || !(price > 0)) return;
+
+                const views = item.views == null ? null : parseFloat(item.views);
+                const l30 = parseInt(item.l30 || 0);
+                const cvr = (views != null && views > 0) ? (l30 / views) * 100 : 0;
+                if (views != null && views > 0) { cvrSum += cvr; cvrN++; }
+
+                const mp = (item.marketplace || '').toLowerCase();
+                const editableChannels = [
+                    'amazon', 'doba', 'walmart',
+                    'ebay', 'ebay1', 'ebay2', 'ebaytwo', 'ebay3', 'ebaythree',
+                    'temu', 'temu2', 'tiktok', 'bestbuy', 'bestbuyusa', 'macy', 'macys',
+                    'reverb', 'tiendamia', 'sb2c', 'shopify', 'shopifyb2c', 'sb2b', 'shopifyb2b',
+                    'fba', 'shein', 'aliexpress', 'ppower', 'purchasingpower'
+                ];
+                const editable = editableChannels.includes(mp);
+
+                const result = suggestSpriceForChannel({
+                    price,
+                    lmp: parseFloat(item.lmp_price) || 0,
+                    dil,
+                    cvr,
+                    lp: parseFloat(item.lp) || 0,
+                    ship: parseFloat(item.ship) || 0,
+                    margin: parseFloat(item.margin) || 0.80
+                }, R);
+
+                rows.push({
+                    marketplace: item.marketplace,
+                    sku: item.sku,
+                    price,
+                    lmp: parseFloat(item.lmp_price) || 0,
+                    cvr,
+                    viewsMissing: views == null,
+                    currentSprice: parseFloat(item.sprice) || 0,
+                    suggested: result.sprice,
+                    rule: result.rule,
+                    ruleId: result.ruleId,
+                    skip: result.skip || !editable,
+                    editable,
+                    selected: editable && !result.skip && result.sprice > 0
+                });
+            });
+
+            return {
+                dil,
+                avgCvr: cvrN > 0 ? cvrSum / cvrN : 0,
+                rows
+            };
+        }
+
+        function refreshSpriceSuggestPreview(keepEditor) {
+            const rules = keepEditor ? readSpriceRulesFromEditor() : ovl30SpriceRules;
+            if (!keepEditor) {
+                renderSpriceRulesEditor(rules);
+            }
+            const built = buildOvl30SpriceSuggestions(rules);
+            ovl30SpriceSuggestions = built.rows;
+
+            $('#spriceSuggestSku').text($('#modalSkuName').text() || '-');
+            $('#spriceSuggestDil').text(Math.round(built.dil) + '%');
+            $('#spriceSuggestAvgCvr').text(built.avgCvr > 0 ? built.avgCvr.toFixed(1) + '%' : 'N/A');
+
+            let html = '';
+            built.rows.forEach((r, idx) => {
+                const cvrTxt = r.viewsMissing ? 'N/A' : (r.cvr > 0 ? r.cvr.toFixed(1) + '%' : '-');
+                const disabled = r.skip || !r.editable;
+                const delta = r.suggested - (r.currentSprice || r.price);
+                const deltaCls = delta > 0.01 ? 'text-success' : (delta < -0.01 ? 'text-danger' : 'text-muted');
+                html += '<tr data-idx="' + idx + '">'
+                    + '<td><strong>' + (r.marketplace || '-') + '</strong></td>'
+                    + '<td class="text-end">$' + r.price.toFixed(2) + '</td>'
+                    + '<td class="text-end">' + (r.lmp > 0 ? '$' + r.lmp.toFixed(2) : '-') + '</td>'
+                    + '<td class="text-end">' + cvrTxt + '</td>'
+                    + '<td class="text-end">' + (r.currentSprice > 0 ? '$' + r.currentSprice.toFixed(2) : '-') + '</td>'
+                    + '<td class="text-end ' + deltaCls + '"><strong>$' + (r.suggested > 0 ? r.suggested.toFixed(2) : '-') + '</strong></td>'
+                    + '<td class="small">' + (disabled && !r.editable ? 'Not editable' : r.rule) + '</td>'
+                    + '<td class="text-center"><input type="checkbox" class="sprice-suggest-row-cb" data-idx="' + idx + '" '
+                    + (r.selected ? 'checked' : '') + (disabled ? ' disabled' : '') + '></td>'
+                    + '</tr>';
+            });
+            if (!html) {
+                html = '<tr><td colspan="8" class="text-center text-muted py-3">No listed channels with price to suggest.</td></tr>';
+            }
+            $('#spriceSuggestPreviewBody').html(html);
+            $('#spriceSuggestSelectAll').prop('checked', built.rows.some(r => r.selected));
+            $('#spriceSuggestStatus').text(built.rows.filter(r => r.selected).length + ' channel(s) ready to apply.');
+        }
+
+        function renderSpriceSuggestModal() {
+            ovl30SpriceRules = loadSpriceRules();
+            refreshSpriceSuggestPreview(false);
+        }
+
+        $(document).on('click', '.ovl30-sprice-suggest-btn', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (!ovl30ModalData.length) {
+                showToast('Load Details data first', 'error');
+                return;
+            }
+            renderSpriceSuggestModal();
+            const el = document.getElementById('spriceSuggestModal');
+            bootstrap.Modal.getOrCreateInstance(el).show();
+        });
+
+        $(document).on('click', '#spriceSuggestRecalcBtn', function(e) {
+            e.preventDefault();
+            refreshSpriceSuggestPreview(true);
+            showToast('Preview updated from your rules', 'success');
+        });
+
+        $(document).on('click', '#spriceSuggestResetRulesBtn', function(e) {
+            e.preventDefault();
+            ovl30SpriceRules = getDefaultSpriceRules();
+            saveSpriceRules(ovl30SpriceRules);
+            refreshSpriceSuggestPreview(false);
+            showToast('Rules reset to defaults', 'info');
+        });
+
+        let spriceRuleRecalcTimer = null;
+        $(document).on('input change', '#spriceSuggestRulesEditor .sprice-rule-input', function() {
+            clearTimeout(spriceRuleRecalcTimer);
+            spriceRuleRecalcTimer = setTimeout(function() {
+                refreshSpriceSuggestPreview(true);
+            }, 250);
+        });
+
+        $(document).on('change', '#spriceSuggestSelectAll', function() {
+            const on = $(this).is(':checked');
+            $('#spriceSuggestPreviewBody .sprice-suggest-row-cb:not(:disabled)').prop('checked', on);
+        });
+
+        $('#spriceSuggestApplyBtn').on('click', function() {
+            const btn = $(this);
+            // Ensure preview matches latest edited rules
+            const checkedIdx = [];
+            $('#spriceSuggestPreviewBody .sprice-suggest-row-cb:checked').each(function() {
+                checkedIdx.push(parseInt($(this).data('idx'), 10));
+            });
+            refreshSpriceSuggestPreview(true);
+            const selected = [];
+            ovl30SpriceSuggestions.forEach((row, idx) => {
+                if (checkedIdx.indexOf(idx) >= 0 && row && row.suggested > 0 && row.editable) {
+                    selected.push(row);
+                }
+            });
+            // Re-check boxes that were selected
+            $('#spriceSuggestPreviewBody .sprice-suggest-row-cb').each(function() {
+                const idx = parseInt($(this).data('idx'), 10);
+                if (checkedIdx.indexOf(idx) >= 0 && !$(this).prop('disabled')) {
+                    $(this).prop('checked', true);
+                }
+            });
+            if (!selected.length) {
+                showToast('Select at least one channel', 'error');
+                return;
+            }
+
+            btn.prop('disabled', true);
+            let done = 0, failed = 0;
+            const total = selected.length;
+
+            const finishOne = () => {
+                done++;
+                if (done >= total) {
+                    btn.prop('disabled', false);
+                    $('#spriceSuggestStatus').text('Applied ' + (total - failed) + '/' + total + (failed ? (' (' + failed + ' failed)') : ''));
+                    showToast('SPRICE filled for ' + (total - failed) + ' channel(s)', failed ? 'error' : 'success');
+                    const modalEl = document.getElementById('spriceSuggestModal');
+                    bootstrap.Modal.getInstance(modalEl)?.hide();
+                    scheduleAutoFitOvl30TableFont();
+                }
+            };
+
+            selected.forEach(s => {
+                // Update in-memory breakdown
+                const item = ovl30ModalData.find(x => (x.marketplace || '') === s.marketplace);
+                if (item) item.sprice = s.suggested;
+
+                const $tr = $('#ovl30DetailsTableBody tr').filter(function() {
+                    return $(this).attr('data-marketplace') === s.marketplace;
+                });
+                const $input = $tr.find('.editable-sprice');
+                if ($input.length) {
+                    $input.val(s.suggested.toFixed(2)).trigger('input');
+                }
+
+                const lp = parseFloat($tr.attr('data-lp')) || (item ? parseFloat(item.lp) || 0 : 0);
+                const ship = parseFloat($tr.attr('data-ship')) || (item ? parseFloat(item.ship) || 0 : 0);
+                const ad = parseFloat($tr.attr('data-ad')) || (item ? parseFloat(item.ad) || 0 : 0);
+                const margin = parseFloat($tr.attr('data-margin')) || (item ? parseFloat(item.margin) || 0.80 : 0.80);
+                const l30 = parseFloat($tr.attr('data-l30')) || (item ? parseInt(item.l30) || 0 : 0);
+                const sprice = s.suggested;
+                const sgpft = sprice > 0 ? ((sprice * margin - ship - lp) / sprice) * 100 : 0;
+                const spft = l30 == 0 ? sgpft : (sgpft - ad);
+                const sroi = lp > 0 ? ((sprice * margin - lp - ship) / lp) * 100 : 0;
+
+                $.ajax({
+                    url: '/cvr-master-save-suggested-data',
+                    method: 'POST',
+                    data: {
+                        sku: s.sku,
+                        marketplace: s.marketplace,
+                        sprice: sprice,
+                        sgpft: sgpft,
+                        spft: spft,
+                        sroi: sroi,
+                        amazon_margin: margin,
+                        _token: '{{ csrf_token() }}'
+                    },
+                    success: function() {
+                        if ($input.length) {
+                            $input.css('border-color', '#28a745');
+                            setTimeout(() => $input.css('border-color', ''), 1000);
+                        }
+                        finishOne();
+                    },
+                    error: function() {
+                        failed++;
+                        if ($input.length) $input.css('border-color', '#dc3545');
+                        finishOne();
+                    }
+                });
+            });
+        });
+
         // ==================== PRICE PUSH TO AMAZON ====================
         
         // Push price button click handler
@@ -2901,233 +4115,545 @@ title: "Dil %",
         });
 
         // ==================== LMP COMPETITORS MODAL ====================
-        
-        function loadLmpCompetitorsModal(sku, marketplace) {
+
+        let lmpModalCache = { sku: '', rows: [], filter: 'all', showAdd: false };
+
+        function loadLmpCompetitorsModal(sku, marketplace, showAddForm) {
             $('#lmpSku').text(sku);
+            const initialFilter = (marketplace === 'amazon' || marketplace === 'ebay' || marketplace === 'google' || marketplace === 'temu')
+                ? marketplace
+                : 'all';
+            const showAdd = !!showAddForm || initialFilter !== 'all';
             $('#lmpModal').data('lmp-marketplace', marketplace || null);
+            $('#lmpModal').data('lmp-filter', initialFilter);
+            $('#lmpModal').data('lmp-show-add', showAdd);
             const modal = new bootstrap.Modal(document.getElementById('lmpModal'));
             modal.show();
-            
+
             $('#lmpDataList').html('<div class="text-center py-5 text-muted"><div class="spinner-border text-primary me-2"></div>Loading competitors...</div>');
-            
+
             let amazonData = null;
             let ebayData = null;
             let googleData = null;
-            const onlyAmazon = marketplace === 'amazon';
-            const onlyEbay = marketplace === 'ebay';
-            const onlyGoogle = marketplace === 'google';
-            const needAmazon = !onlyEbay && !onlyGoogle;
-            const needEbay = !onlyAmazon && !onlyGoogle;
-            const needGoogle = !onlyAmazon && !onlyEbay;
+            let temuData = null;
             let loaded = 0;
-            const totalNeeded = (needAmazon ? 1 : 0) + (needEbay ? 1 : 0) + (needGoogle ? 1 : 0);
-            
+            const totalNeeded = 4;
+
             function tryRender() {
                 loaded++;
                 if (loaded < totalNeeded) return;
-                renderLmpCombined(sku, amazonData, ebayData, googleData, marketplace);
-            }
-            
-            if (needAmazon) {
-                $.ajax({
-                    url: '/amazon/competitors',
-                    method: 'GET',
-                    data: { sku: sku },
-                    success: function(res) {
-                        amazonData = res.success && res.competitors ? res : null;
-                        tryRender();
-                    },
-                    error: function() {
-                        amazonData = null;
-                        tryRender();
-                    }
-                });
-            }
-            
-            if (needEbay) {
-                $.ajax({
-                    url: '/ebay-lmp-data',
-                    method: 'GET',
-                    data: { sku: sku },
-                    success: function(res) {
-                        ebayData = res.success && res.competitors ? res : null;
-                        tryRender();
-                    },
-                    error: function() {
-                        ebayData = null;
-                        tryRender();
-                    }
-                });
+                const rows = buildLmpMergedRows(sku, amazonData, ebayData, googleData, temuData);
+                lmpModalCache = { sku: sku, rows: rows, filter: initialFilter, showAdd: showAdd };
+                renderLmpMergedTable();
             }
 
-            if (needGoogle) {
-                $.ajax({
-                    url: '/google-lmp-data',
-                    method: 'GET',
-                    data: { sku: sku },
-                    success: function(res) {
-                        googleData = res.success && res.competitors ? res : null;
-                        tryRender();
-                    },
-                    error: function() {
-                        googleData = null;
-                        tryRender();
-                    }
-                });
-            }
+            // Always load Amazon + eBay + Google + Temu so channel filter can switch instantly
+            $.ajax({
+                url: '/amazon/competitors',
+                method: 'GET',
+                data: { sku: sku },
+                timeout: 10000,
+                success: function(res) {
+                    amazonData = res.success && res.competitors ? res : null;
+                    tryRender();
+                },
+                error: function() {
+                    amazonData = null;
+                    tryRender();
+                }
+            });
+
+            $.ajax({
+                url: '/ebay-lmp-data',
+                method: 'GET',
+                data: { sku: sku },
+                timeout: 10000,
+                success: function(res) {
+                    ebayData = res.success && res.competitors ? res : null;
+                    tryRender();
+                },
+                error: function() {
+                    ebayData = null;
+                    tryRender();
+                }
+            });
+
+            $.ajax({
+                url: '/google-lmp-data',
+                method: 'GET',
+                data: { sku: sku },
+                timeout: 10000,
+                success: function(res) {
+                    googleData = res.success && res.competitors ? res : null;
+                    tryRender();
+                },
+                error: function() {
+                    googleData = null;
+                    tryRender();
+                }
+            });
+
+            $.ajax({
+                url: '/cvr-master-temu-lmp',
+                method: 'GET',
+                data: { sku: sku },
+                timeout: 10000,
+                success: function(res) {
+                    temuData = res.success && res.competitors ? res : null;
+                    tryRender();
+                },
+                error: function() {
+                    temuData = null;
+                    tryRender();
+                }
+            });
         }
-        
-        function renderLmpCombined(sku, amazonRes, ebayRes, googleRes, marketplace) {
+
+        function formatLmpDelivery(delivery) {
+            if (delivery == null || delivery === '') {
+                return '<span class="text-muted">-</span>';
+            }
+            const text = String(delivery).trim();
+            if (!text) return '<span class="text-muted">-</span>';
+
+            const amountMatch = text.match(/\$\s*([0-9]+(?:\.[0-9]{1,2})?)/);
+            const isFree = /\bfree\b/i.test(text);
+            if (isFree && !amountMatch) {
+                return '<span style="color:#28a745;font-weight:600;">Free</span>';
+            }
+            if (amountMatch) {
+                const amount = parseFloat(amountMatch[1]);
+                if (!isNaN(amount) && amount > 0) {
+                    return '<span style="font-weight:600;">$' + amount.toFixed(2) + '</span>';
+                }
+                if (!isNaN(amount) && amount === 0) {
+                    return '<span style="color:#28a745;font-weight:600;">Free</span>';
+                }
+            }
+            if (isFree) {
+                return '<span style="color:#28a745;font-weight:600;">Free</span>';
+            }
+            return '<span class="text-muted">-</span>';
+        }
+
+        function lmpChannelIconHtml(channel) {
+            if (channel === 'amazon') {
+                return '<span class="lmp-channel-icon amazon" title="Amazon"><i class="fab fa-amazon"></i></span>';
+            }
+            if (channel === 'ebay') {
+                return '<span class="lmp-channel-icon ebay" title="eBay"><i class="fas fa-gavel"></i></span>';
+            }
+            if (channel === 'google') {
+                return '<span class="lmp-channel-icon google" title="Google"><i class="fab fa-google"></i></span>';
+            }
+            if (channel === 'temu') {
+                return '<span class="lmp-channel-icon temu" title="Temu">T</span>';
+            }
+            return '';
+        }
+
+        function buildLmpMergedRows(sku, amazonRes, ebayRes, googleRes, temuRes) {
+            const rows = [];
             const amzList = (amazonRes && amazonRes.competitors) ? amazonRes.competitors : [];
             const ebayList = (ebayRes && ebayRes.competitors) ? ebayRes.competitors : [];
             const googleList = (googleRes && googleRes.competitors) ? googleRes.competitors : [];
-            const onlyAmazon = marketplace === 'amazon';
-            const onlyEbay = marketplace === 'ebay';
-            const onlyGoogle = marketplace === 'google';
-            
-            const amzLowest = amzList.length ? Math.min(...amzList.map(c => parseFloat(c.price) || 0).filter(p => p > 0)) : null;
-            const ebayTotals = ebayList.map(c => parseFloat(c.total_price || c.price) || 0).filter(t => t > 0);
-            const ebayLowest = ebayTotals.length ? Math.min(...ebayTotals) : null;
-            const googleLowest = googleList.length ? Math.min(...googleList.map(c => parseFloat(c.price) || 0).filter(p => p > 0)) : null;
-            
-            const listToShow = onlyAmazon ? amzList : (onlyEbay ? ebayList : (onlyGoogle ? googleList : null));
-            if (onlyAmazon && amzList.length === 0) {
-                $('#lmpDataList').html('<div class="alert alert-info"><i class="fa fa-info-circle"></i> No Amazon competitors found for this SKU</div>');
-                return;
-            }
-            if (onlyEbay && ebayList.length === 0) {
-                $('#lmpDataList').html('<div class="alert alert-info"><i class="fa fa-info-circle"></i> No eBay competitors found for this SKU</div>');
-                return;
-            }
-            if (onlyGoogle && googleList.length === 0) {
-                $('#lmpDataList').html('<div class="alert alert-info"><i class="fa fa-info-circle"></i> No Google competitors found for this SKU</div>');
-                return;
-            }
-            if (!onlyAmazon && !onlyEbay && !onlyGoogle && amzList.length === 0 && ebayList.length === 0 && googleList.length === 0) {
-                $('#lmpDataList').html('<div class="alert alert-info"><i class="fa fa-info-circle"></i> No Amazon, eBay, or Google competitors found for this SKU</div>');
-                return;
-            }
-            
-            const maxRows = onlyAmazon ? amzList.length : (onlyEbay ? ebayList.length : (onlyGoogle ? googleList.length : Math.max(amzList.length, ebayList.length, googleList.length)));
+            const temuList = (temuRes && temuRes.competitors) ? temuRes.competitors : [];
+
+            amzList.forEach(function(amz) {
+                const price = parseFloat(amz.price) || 0;
+                if (price <= 0) return;
+                rows.push({
+                    channel: 'amazon',
+                    id: amz.id,
+                    sku: sku,
+                    price: price,
+                    link: amz.product_link || amz.link || '',
+                    image: amz.image || '',
+                    title: amz.product_title || amz.title || '',
+                    rating: amz.rating != null ? parseFloat(amz.rating) : null,
+                    reviews: amz.reviews != null ? parseInt(amz.reviews) : null,
+                    old_price: amz.extracted_old_price != null ? parseFloat(amz.extracted_old_price) : null,
+                    delivery: amz.delivery || '',
+                    source: '',
+                });
+            });
+
+            ebayList.forEach(function(ebay) {
+                const price = parseFloat(ebay.total_price || ebay.price) || 0;
+                if (price <= 0) return;
+                rows.push({
+                    channel: 'ebay',
+                    id: ebay.id,
+                    sku: sku,
+                    price: price,
+                    link: ebay.link || ebay.product_link || '',
+                    image: ebay.image || '',
+                    title: ebay.product_title || ebay.title || '',
+                    rating: null,
+                    reviews: null,
+                    old_price: null,
+                    delivery: '',
+                    source: '',
+                });
+            });
+
+            googleList.forEach(function(google) {
+                const price = parseFloat(google.price) || 0;
+                if (price <= 0) return;
+                rows.push({
+                    channel: 'google',
+                    id: google.id,
+                    sku: sku,
+                    price: price,
+                    link: google.link || google.product_link || '',
+                    image: google.image || '',
+                    title: google.product_title || google.title || '',
+                    rating: google.rating != null ? parseFloat(google.rating) : null,
+                    reviews: google.reviews != null ? parseInt(google.reviews) : null,
+                    old_price: null,
+                    delivery: '',
+                    source: google.source || '',
+                });
+            });
+
+            temuList.forEach(function(temu) {
+                const price = parseFloat(temu.price) || 0;
+                if (price <= 0) return;
+                rows.push({
+                    channel: 'temu',
+                    id: temu.id,
+                    sku: sku,
+                    price: price,
+                    link: temu.link || temu.product_link || '',
+                    image: temu.image || '',
+                    title: temu.product_title || temu.title || '',
+                    rating: null,
+                    reviews: null,
+                    old_price: null,
+                    delivery: '',
+                    source: 'Temu',
+                });
+            });
+
+            rows.sort(function(a, b) { return a.price - b.price; });
+            return rows;
+        }
+
+        function renderLmpMergedTable() {
+            const sku = lmpModalCache.sku;
+            const filter = lmpModalCache.filter || 'all';
+            const allRows = lmpModalCache.rows || [];
+            const rows = filter === 'all' ? allRows : allRows.filter(function(r) { return r.channel === filter; });
+
+            const amzPrices = allRows.filter(function(r) { return r.channel === 'amazon'; }).map(function(r) { return r.price; });
+            const ebayPrices = allRows.filter(function(r) { return r.channel === 'ebay'; }).map(function(r) { return r.price; });
+            const googlePrices = allRows.filter(function(r) { return r.channel === 'google'; }).map(function(r) { return r.price; });
+            const temuPrices = allRows.filter(function(r) { return r.channel === 'temu'; }).map(function(r) { return r.price; });
+            const amzLowest = amzPrices.length ? Math.min.apply(null, amzPrices) : null;
+            const ebayLowest = ebayPrices.length ? Math.min.apply(null, ebayPrices) : null;
+            const googleLowest = googlePrices.length ? Math.min.apply(null, googlePrices) : null;
+            const temuLowest = temuPrices.length ? Math.min.apply(null, temuPrices) : null;
+            const channelLowest = {
+                amazon: amzLowest,
+                ebay: ebayLowest,
+                google: googleLowest,
+                temu: temuLowest,
+            };
+
+            const counts = {
+                all: allRows.length,
+                amazon: amzPrices.length,
+                ebay: ebayPrices.length,
+                google: googlePrices.length,
+                temu: temuPrices.length,
+            };
+
             let html = '';
-            if (onlyAmazon && amzLowest != null && amzLowest > 0) {
-                html += '<div class="mb-3"><span class="badge" style="background-color: transparent; color: #ff9c00; font-weight: 600;">Amz lowest: $' + amzLowest.toFixed(2) + '</span></div>';
-            } else if (onlyEbay && ebayLowest != null && ebayLowest > 0) {
-                html += '<div class="mb-3"><span class="badge bg-info text-dark">eBay lowest: $' + ebayLowest.toFixed(2) + '</span></div>';
-            } else if (onlyGoogle && googleLowest != null && googleLowest > 0) {
-                html += '<div class="mb-3"><span class="badge bg-success">Google lowest: $' + googleLowest.toFixed(2) + '</span></div>';
-            } else if (!onlyAmazon && !onlyEbay && !onlyGoogle && ((amzLowest != null && amzLowest > 0) || (ebayLowest != null && ebayLowest > 0) || (googleLowest != null && googleLowest > 0))) {
-                const parts = [];
-                if (amzLowest != null && amzLowest > 0) parts.push('<span class="badge me-1" style="background-color: transparent; color: #ff9c00; font-weight: 600;">Amz lowest: $' + amzLowest.toFixed(2) + '</span>');
-                if (ebayLowest != null && ebayLowest > 0) parts.push('<span class="badge bg-info text-dark me-1">eBay lowest: $' + ebayLowest.toFixed(2) + '</span>');
-                if (googleLowest != null && googleLowest > 0) parts.push('<span class="badge bg-success">Google lowest: $' + googleLowest.toFixed(2) + '</span>');
-                html += '<div class="mb-3">' + parts.join(' ') + '</div>';
-            }
-            
-            if (onlyAmazon) {
-                html += '<div class="table-responsive"><table class="table table-hover table-bordered table-sm"><thead class="table-light"><tr><th>#</th><th>Amz</th><th>Title</th><th>Rating</th><th>Reviews</th><th>Old Price</th><th>Delivery</th><th>Action</th></tr></thead><tbody>';
-                amzList.forEach(function(amz, i) {
-                    const sn = 'L' + (i + 1);
-                    const amzPrice = parseFloat(amz.price) || 0;
-                    const amzLink = amz.product_link || amz.link || '';
-                    const amzImage = amz.image || '';
-                    const amzLowestFlag = amzPrice > 0 && amzLowest != null && Math.abs(amzPrice - amzLowest) < 0.01;
-                    const amzImgHtml = amzImage ? `<img src="${amzImage.replace(/"/g, '&quot;')}" alt="Amz" class="rounded" style="height:40px;width:40px;object-fit:contain;margin-right:6px;" onerror="this.style.display='none'">` : '';
-                    const amzCell = amzPrice > 0
-                        ? `<div class="d-flex align-items-center">${amzImgHtml}<span>${amzLowestFlag ? '<i class="fa fa-trophy text-success me-1"></i>' : ''}<span style="font-weight: 600;">$${amzPrice.toFixed(2)}</span>${amzLink ? ` <a href="${amzLink.replace(/"/g, '&quot;')}" target="_blank" class="text-primary ms-1" title="Open product"><i class="fa fa-external-link"></i></a>` : ''}</span></div>`
-                        : `<div class="d-flex align-items-center">${amzImgHtml}<span class="text-muted">-</span></div>`;
-                    const title = (amz.product_title || '').substring(0, 40) + ((amz.product_title || '').length > 40 ? '...' : '');
-                    const ratingVal = amz.rating != null ? parseFloat(amz.rating) : null;
-                    const ratingCell = ratingVal != null ? '<span><i class="fa fa-star text-warning"></i> ' + ratingVal.toFixed(1) + '</span>' : '<span class="text-muted">-</span>';
-                    const reviewsCell = amz.reviews != null ? (parseInt(amz.reviews) || 0).toLocaleString() : '<span class="text-muted">-</span>';
-                    const oldPrice = amz.extracted_old_price != null ? parseFloat(amz.extracted_old_price) : null;
-                    const oldPriceCell = oldPrice != null && oldPrice > 0 ? '$' + oldPrice.toFixed(2) : '<span class="text-muted">-</span>';
-                    const deliveryCell = (amz.delivery || '').substring(0, 50) + ((amz.delivery || '').length > 50 ? '...' : '') || '<span class="text-muted">-</span>';
-                    const rowClass = amzLowestFlag ? 'table-success' : '';
-                    const delBtn = '<button type="button" class="btn btn-sm btn-outline-danger delete-lmp-row-btn" data-id="' + amz.id + '" data-marketplace="amazon" data-sku="' + (sku || '').replace(/"/g, '&quot;') + '" data-price="' + amzPrice + '" title="Delete this competitor"><i class="fa fa-trash"></i></button>';
-                    html += `<tr class="${rowClass}"><td>${sn}</td><td>${amzCell}</td><td title="${(amz.product_title || '').replace(/"/g, '&quot;')}">${title || '-'}</td><td>${ratingCell}</td><td>${reviewsCell}</td><td>${oldPriceCell}</td><td title="${(amz.delivery || '').replace(/"/g, '&quot;')}">${deliveryCell}</td><td>${delBtn}</td></tr>`;
-                });
-            } else if (onlyEbay) {
-                html += '<div class="table-responsive"><table class="table table-hover table-bordered table-sm"><thead class="table-light"><tr><th>#</th><th>eBay</th><th>Action</th></tr></thead><tbody>';
-                ebayList.forEach(function(ebay, i) {
-                    const sn = 'L' + (i + 1);
-                    const ebayPrice = parseFloat(ebay.total_price || ebay.price) || 0;
-                    const ebayLink = ebay.link || ebay.product_link || '';
-                    const ebayImage = ebay.image || '';
-                    const ebayLowestFlag = ebayPrice > 0 && ebayLowest != null && Math.abs(ebayPrice - ebayLowest) < 0.01;
-                    const ebayImgHtml = ebayImage ? `<img src="${ebayImage.replace(/"/g, '&quot;')}" alt="eBay" class="rounded" style="height:40px;width:40px;object-fit:contain;margin-right:6px;" onerror="this.style.display='none'">` : '';
-                    const ebayCell = ebayPrice > 0
-                        ? `<div class="d-flex align-items-center">${ebayImgHtml}<span>${ebayLowestFlag ? '<i class="fa fa-trophy text-success me-1"></i>' : ''}<span style="font-weight: 600;">$${ebayPrice.toFixed(2)}</span>${ebayLink ? ` <a href="${ebayLink.replace(/"/g, '&quot;')}" target="_blank" class="text-primary ms-1" title="Open product"><i class="fa fa-external-link"></i></a>` : ''}</span></div>`
-                        : `<div class="d-flex align-items-center">${ebayImgHtml}<span class="text-muted">-</span></div>`;
-                    const rowClass = ebayLowestFlag ? 'table-success' : '';
-                    const delBtn = '<button type="button" class="btn btn-sm btn-outline-danger delete-lmp-row-btn" data-id="' + ebay.id + '" data-marketplace="ebay" data-sku="' + (sku || '').replace(/"/g, '&quot;') + '" data-price="' + ebayPrice + '" title="Delete this competitor"><i class="fa fa-trash"></i></button>';
-                    html += `<tr class="${rowClass}"><td>${sn}</td><td>${ebayCell}</td><td>${delBtn}</td></tr>`;
-                });
-            } else if (onlyGoogle) {
-                html += '<div class="table-responsive"><table class="table table-hover table-bordered table-sm"><thead class="table-light"><tr><th>#</th><th>Google</th><th>Source</th><th>Title</th><th>Rating</th><th>Reviews</th><th>Action</th></tr></thead><tbody>';
-                googleList.forEach(function(google, i) {
-                    const sn = 'L' + (i + 1);
-                    const googlePrice = parseFloat(google.price) || 0;
-                    const googleLink = google.link || google.product_link || '';
-                    const googleImage = google.image || '';
-                    const googleLowestFlag = googlePrice > 0 && googleLowest != null && Math.abs(googlePrice - googleLowest) < 0.01;
-                    const googleImgHtml = googleImage ? `<img src="${googleImage.replace(/"/g, '&quot;')}" alt="Google" class="rounded" style="height:40px;width:40px;object-fit:contain;margin-right:6px;" onerror="this.style.display='none'">` : '';
-                    const googleCell = googlePrice > 0
-                        ? `<div class="d-flex align-items-center">${googleImgHtml}<span>${googleLowestFlag ? '<i class="fa fa-trophy text-success me-1"></i>' : ''}<span style="font-weight: 600;">$${googlePrice.toFixed(2)}</span>${googleLink ? ` <a href="${googleLink.replace(/"/g, '&quot;')}" target="_blank" class="text-primary ms-1" title="Open product"><i class="fa fa-external-link"></i></a>` : ''}</span></div>`
-                        : `<div class="d-flex align-items-center">${googleImgHtml}<span class="text-muted">-</span></div>`;
-                    const source = (google.source || '-').substring(0, 30) + ((google.source || '').length > 30 ? '...' : '');
-                    const title = ((google.product_title || google.title || '').substring(0, 40)) + ((google.product_title || google.title || '').length > 40 ? '...' : '');
-                    const ratingVal = google.rating != null ? parseFloat(google.rating) : null;
-                    const ratingCell = ratingVal != null ? '<span><i class="fa fa-star text-warning"></i> ' + ratingVal.toFixed(1) + '</span>' : '<span class="text-muted">-</span>';
-                    const reviewsCell = google.reviews != null ? (parseInt(google.reviews) || 0).toLocaleString() : '<span class="text-muted">-</span>';
-                    const rowClass = googleLowestFlag ? 'table-success' : '';
-                    const delBtn = '<button type="button" class="btn btn-sm btn-outline-danger delete-lmp-row-btn" data-id="' + google.id + '" data-marketplace="google" data-sku="' + (sku || '').replace(/"/g, '&quot;') + '" data-price="' + googlePrice + '" title="Delete this competitor"><i class="fa fa-trash"></i></button>';
-                    html += `<tr class="${rowClass}"><td>${sn}</td><td>${googleCell}</td><td title="${(google.source || '').replace(/"/g, '&quot;')}">${source}</td><td title="${((google.product_title || google.title || '') + '').replace(/"/g, '&quot;')}">${title || '-'}</td><td>${ratingCell}</td><td>${reviewsCell}</td><td>${delBtn}</td></tr>`;
-                });
-            } else {
-                html += '<div class="table-responsive"><table class="table table-hover table-bordered table-sm"><thead class="table-light"><tr><th>#</th><th>Amz</th><th>Rating</th><th>Reviews</th><th>Old Price</th><th>Delivery</th><th>eBay</th><th>Action</th></tr></thead><tbody>';
-                for (let i = 0; i < maxRows; i++) {
-                    const sn = 'L' + (i + 1);
-                    const amz = amzList[i];
-                    const ebay = ebayList[i];
-                    const amzPrice = amz ? (parseFloat(amz.price) || 0) : null;
-                    const ebayPrice = ebay ? (parseFloat(ebay.total_price || ebay.price) || 0) : null;
-                    const amzLink = amz ? (amz.product_link || amz.link || '') : '';
-                    const ebayLink = ebay ? (ebay.link || ebay.product_link || '') : '';
-                    const amzImage = amz ? (amz.image || '') : '';
-                    const ebayImage = ebay ? (ebay.image || '') : '';
-                    const amzLowestFlag = amzPrice > 0 && amzLowest != null && Math.abs(amzPrice - amzLowest) < 0.01;
-                    const ebayLowestFlag = ebayPrice > 0 && ebayLowest != null && Math.abs(ebayPrice - ebayLowest) < 0.01;
-                    const amzImgHtml = amzImage ? `<img src="${amzImage.replace(/"/g, '&quot;')}" alt="Amz" class="rounded" style="height:40px;width:40px;object-fit:contain;margin-right:6px;" onerror="this.style.display='none'">` : '';
-                    const ebayImgHtml = ebayImage ? `<img src="${ebayImage.replace(/"/g, '&quot;')}" alt="eBay" class="rounded" style="height:40px;width:40px;object-fit:contain;margin-right:6px;" onerror="this.style.display='none'">` : '';
-                    const amzCell = amzPrice != null && amzPrice > 0
-                        ? `<div class="d-flex align-items-center">${amzImgHtml}<span>${amzLowestFlag ? '<i class="fa fa-trophy text-success me-1"></i>' : ''}<span style="font-weight: 600;">$${amzPrice.toFixed(2)}</span>${amzLink ? ` <a href="${amzLink.replace(/"/g, '&quot;')}" target="_blank" class="text-primary ms-1" title="Open product"><i class="fa fa-external-link"></i></a>` : ''}</span></div>`
-                        : amz ? `<div class="d-flex align-items-center">${amzImgHtml}<span class="text-muted">-</span></div>` : '<span class="text-muted">-</span>';
-                    const ebayCell = ebayPrice != null && ebayPrice > 0
-                        ? `<div class="d-flex align-items-center">${ebayImgHtml}<span>${ebayLowestFlag ? '<i class="fa fa-trophy text-success me-1"></i>' : ''}<span style="font-weight: 600;">$${ebayPrice.toFixed(2)}</span>${ebayLink ? ` <a href="${ebayLink.replace(/"/g, '&quot;')}" target="_blank" class="text-primary ms-1" title="Open product"><i class="fa fa-external-link"></i></a>` : ''}</span></div>`
-                        : ebay ? `<div class="d-flex align-items-center">${ebayImgHtml}<span class="text-muted">-</span></div>` : '<span class="text-muted">-</span>';
-                    const ratingVal = amz && amz.rating != null ? parseFloat(amz.rating) : null;
-                    const ratingCell = ratingVal != null ? '<span><i class="fa fa-star text-warning"></i> ' + ratingVal.toFixed(1) + '</span>' : '<span class="text-muted">-</span>';
-                    const reviewsCell = amz && amz.reviews != null ? (parseInt(amz.reviews) || 0).toLocaleString() : '<span class="text-muted">-</span>';
-                    const oldPrice = amz && amz.extracted_old_price != null ? parseFloat(amz.extracted_old_price) : null;
-                    const oldPriceCell = oldPrice != null && oldPrice > 0 ? '$' + oldPrice.toFixed(2) : '<span class="text-muted">-</span>';
-                    const deliveryCell = (amz && amz.delivery) ? ((amz.delivery + '').substring(0, 35) + ((amz.delivery + '').length > 35 ? '...' : '')) : '<span class="text-muted">-</span>';
-                    const rowClass = (amzLowestFlag || ebayLowestFlag) ? 'table-success' : '';
-                    let actionCell = '';
-                    if (amz && amz.id) {
-                        actionCell += '<button type="button" class="btn btn-sm btn-outline-danger delete-lmp-row-btn me-1" data-id="' + amz.id + '" data-marketplace="amazon" data-sku="' + (sku || '').replace(/"/g, '&quot;') + '" data-price="' + (amzPrice || 0) + '" title="Delete Amz"><i class="fa fa-trash"></i></button>';
-                    }
-                    if (ebay && ebay.id) {
-                        actionCell += '<button type="button" class="btn btn-sm btn-outline-danger delete-lmp-row-btn" data-id="' + ebay.id + '" data-marketplace="ebay" data-sku="' + (sku || '').replace(/"/g, '&quot;') + '" data-price="' + (ebayPrice || 0) + '" title="Delete eBay"><i class="fa fa-trash"></i></button>';
-                    }
-                    if (!actionCell) actionCell = '<span class="text-muted">-</span>';
-                    html += `<tr class="${rowClass}"><td>${sn}</td><td>${amzCell}</td><td>${ratingCell}</td><td>${reviewsCell}</td><td>${oldPriceCell}</td><td title="${(amz && amz.delivery) ? (amz.delivery + '').replace(/"/g, '&quot;') : ''}">${deliveryCell}</td><td>${ebayCell}</td><td>${actionCell}</td></tr>`;
+            html += '<div class="lmp-channel-filters">';
+            [
+                { key: 'all', label: 'All' },
+                { key: 'amazon', label: 'Amazon' },
+                { key: 'ebay', label: 'eBay' },
+                { key: 'google', label: 'Google' },
+                { key: 'temu', label: 'Temu' },
+            ].forEach(function(opt) {
+                const active = filter === opt.key ? ' active' : '';
+                let btnClass = 'btn-outline-secondary';
+                if (filter === opt.key) {
+                    if (opt.key === 'amazon') btnClass = 'btn-warning';
+                    else if (opt.key === 'ebay') btnClass = 'btn-primary';
+                    else if (opt.key === 'google') btnClass = 'btn-success';
+                    else if (opt.key === 'temu') btnClass = 'btn-warning';
+                    else btnClass = 'btn-dark';
                 }
+                html += '<button type="button" class="btn ' + btnClass + active + ' lmp-channel-filter-btn" data-filter="' + opt.key + '">'
+                    + opt.label + ' <span class="badge bg-light text-dark ms-1">' + counts[opt.key] + '</span></button>';
+            });
+            html += '</div>';
+
+            const badgeParts = [];
+            if (amzLowest != null) {
+                badgeParts.push('<span class="badge" style="background:transparent;color:#ff9900;font-weight:600;border:1px solid #ff9900;">Amz $' + amzLowest.toFixed(2) + '</span>');
             }
-            
+            if (ebayLowest != null) {
+                badgeParts.push('<span class="badge bg-info text-dark">eBay $' + ebayLowest.toFixed(2) + '</span>');
+            }
+            if (googleLowest != null) {
+                badgeParts.push('<span class="badge bg-success">Google $' + googleLowest.toFixed(2) + '</span>');
+            }
+            if (temuLowest != null) {
+                badgeParts.push('<span class="badge" style="background:#fb7701;color:#fff;">Temu $' + temuLowest.toFixed(2) + '</span>');
+            }
+            if (badgeParts.length) {
+                html += '<div class="lmp-lowest-badges">' + badgeParts.join('') + '</div>';
+            }
+
+            // Add LMP form (shown when opened via +, or when a specific channel filter is active)
+            const addChannel = (filter !== 'all') ? filter : (lmpModalCache.showAdd ? 'amazon' : null);
+            if (addChannel || lmpModalCache.showAdd) {
+                html += buildLmpAddFormHtml(sku, addChannel || 'amazon');
+            }
+
+            if (!rows.length) {
+                const labelMap = { all: 'Amazon, eBay, Google, or Temu', amazon: 'Amazon', ebay: 'eBay', google: 'Google', temu: 'Temu' };
+                const label = labelMap[filter] || 'competitors';
+                html += '<div class="alert alert-info mb-0 py-2 px-2"><i class="fa fa-info-circle"></i> No ' + label + ' competitors found</div>';
+                $('#lmpDataList').html(html);
+                return;
+            }
+
+            html += '<div class="table-responsive"><table class="table table-hover table-bordered table-sm"><thead class="table-light">'
+                + '<tr><th>#</th><th>Price</th><th>Rating</th><th>Rev</th><th>Del</th><th></th></tr>'
+                + '</thead><tbody>';
+
+            rows.forEach(function(row, i) {
+                const sn = 'L' + (i + 1);
+                const lowest = channelLowest[row.channel];
+                const isLowest = lowest != null && Math.abs(row.price - lowest) < 0.01;
+                const thumb = row.image
+                    ? '<img src="' + String(row.image).replace(/"/g, '&quot;') + '" alt="" class="rounded lmp-thumb me-1" style="object-fit:contain;" onerror="this.style.display=\'none\'">'
+                    : '';
+                const linkHtml = row.link
+                    ? ' <a href="' + String(row.link).replace(/"/g, '&quot;') + '" target="_blank" class="text-primary ms-1" title="Open product"><i class="fa fa-external-link"></i></a>'
+                    : '';
+                const priceCell = '<div class="d-flex align-items-center">'
+                    + thumb
+                    + lmpChannelIconHtml(row.channel)
+                    + (isLowest ? '<i class="fa fa-trophy text-success me-1"></i>' : '')
+                    + '<span style="font-weight:600;">$' + row.price.toFixed(2) + '</span>'
+                    + linkHtml
+                    + '</div>';
+                const ratingCell = row.rating != null
+                    ? '<span><i class="fa fa-star text-warning"></i> ' + row.rating.toFixed(1) + '</span>'
+                    : '<span class="text-muted">-</span>';
+                const reviewsCell = row.reviews != null
+                    ? row.reviews.toLocaleString()
+                    : '<span class="text-muted">-</span>';
+                const deliveryCell = formatLmpDelivery(row.delivery);
+                const titleAttr = (row.title || row.source || '').replace(/"/g, '&quot;');
+                const delBtn = '<button type="button" class="btn btn-sm btn-outline-danger delete-lmp-row-btn" data-id="' + row.id
+                    + '" data-marketplace="' + row.channel
+                    + '" data-sku="' + String(sku || '').replace(/"/g, '&quot;')
+                    + '" data-price="' + row.price
+                    + '" title="Delete"><i class="fa fa-trash"></i></button>';
+                const rowClass = isLowest ? 'table-success' : '';
+                html += '<tr class="' + rowClass + '" title="' + titleAttr + '">'
+                    + '<td>' + sn + '</td>'
+                    + '<td>' + priceCell + '</td>'
+                    + '<td>' + ratingCell + '</td>'
+                    + '<td>' + reviewsCell + '</td>'
+                    + '<td>' + deliveryCell + '</td>'
+                    + '<td>' + delBtn + '</td>'
+                    + '</tr>';
+            });
+
             html += '</tbody></table></div>';
             $('#lmpDataList').html(html);
         }
+
+        function buildLmpAddFormHtml(sku, channel) {
+            const ch = (channel || 'amazon').toLowerCase();
+            const labelMap = { amazon: 'Amazon', ebay: 'eBay', google: 'Google', temu: 'Temu' };
+            const label = labelMap[ch] || ch;
+            let idField = '';
+            if (ch === 'amazon') {
+                idField = '<div class="col-4"><label class="form-label mb-0 small">ASIN</label>'
+                    + '<input type="text" class="form-control" id="lmpAddId" placeholder="B0XXXXXXXX" required></div>';
+            } else if (ch === 'ebay') {
+                idField = '<div class="col-4"><label class="form-label mb-0 small">Item ID</label>'
+                    + '<input type="text" class="form-control" id="lmpAddId" placeholder="eBay item id" required></div>';
+            } else if (ch === 'google') {
+                idField = '<div class="col-4"><label class="form-label mb-0 small">Product ID</label>'
+                    + '<input type="text" class="form-control" id="lmpAddId" placeholder="Product ID" required></div>';
+            } else {
+                // Temu: price + link only
+                idField = '';
+            }
+            return '<div class="lmp-add-form-box">'
+                + '<div class="d-flex align-items-center justify-content-between mb-1">'
+                + '<strong style="font-size:12px;"><i class="fas fa-plus-circle text-success me-1"></i>Add ' + label + ' LMP</strong>'
+                + '<select class="form-select form-select-sm" id="lmpAddChannel" style="width:110px;">'
+                + '<option value="amazon"' + (ch === 'amazon' ? ' selected' : '') + '>Amazon</option>'
+                + '<option value="ebay"' + (ch === 'ebay' ? ' selected' : '') + '>eBay</option>'
+                + '<option value="google"' + (ch === 'google' ? ' selected' : '') + '>Google</option>'
+                + '<option value="temu"' + (ch === 'temu' ? ' selected' : '') + '>Temu</option>'
+                + '</select></div>'
+                + '<form id="lmpAddForm" class="row g-1 align-items-end" data-sku="' + String(sku || '').replace(/"/g, '&quot;') + '">'
+                + idField
+                + '<div class="' + (idField ? 'col-3' : 'col-4') + '"><label class="form-label mb-0 small">Price</label>'
+                + '<input type="number" class="form-control" id="lmpAddPrice" step="0.01" min="0.01" placeholder="0.00" required></div>'
+                + '<div class="' + (idField ? 'col-3' : 'col-5') + '"><label class="form-label mb-0 small">Link</label>'
+                + '<input type="text" class="form-control" id="lmpAddLink" placeholder="https://..."></div>'
+                + '<div class="col-auto">'
+                + '<button type="submit" class="btn btn-success btn-sm" id="lmpAddSubmitBtn"><i class="fas fa-plus me-1"></i>Add</button>'
+                + '</div></form></div>';
+        }
+
+        function extractAmazonAsin(link) {
+            const m = String(link || '').match(/\/(?:dp|gp\/product)\/([A-Z0-9]{10})/i)
+                || String(link || '').match(/[?&]asin=([A-Z0-9]{10})/i);
+            return m ? m[1].toUpperCase() : '';
+        }
+        function extractEbayItemId(link) {
+            const m = String(link || '').match(/\/itm\/(?:[^\/]+\/)?(\d{9,15})/i)
+                || String(link || '').match(/[?&]item=(\d{9,15})/i);
+            return m ? m[1] : '';
+        }
+
+        $(document).on('change', '#lmpAddChannel', function() {
+            lmpModalCache.showAdd = true;
+            lmpModalCache.filter = $(this).val() || 'amazon';
+            $('#lmpModal').data('lmp-filter', lmpModalCache.filter);
+            renderLmpMergedTable();
+        });
+
+        $(document).on('submit', '#lmpAddForm', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const sku = $(this).data('sku') || $('#lmpSku').text() || '';
+            const channel = ($('#lmpAddChannel').val() || 'amazon').toLowerCase();
+            let price = parseFloat($('#lmpAddPrice').val());
+            let link = ($('#lmpAddLink').val() || '').trim();
+            let idVal = ($('#lmpAddId').val() || '').trim();
+            if (!(price > 0)) {
+                showToast('Enter a valid LMP price', 'error');
+                return;
+            }
+            if (channel === 'amazon' && !idVal) idVal = extractAmazonAsin(link);
+            if (channel === 'ebay' && !idVal) idVal = extractEbayItemId(link);
+            if (channel !== 'temu' && !idVal) {
+                showToast(channel === 'amazon' ? 'ASIN is required' : (channel === 'ebay' ? 'Item ID is required' : 'Product ID is required'), 'error');
+                return;
+            }
+
+            const $btn = $('#lmpAddSubmitBtn');
+            const originalHtml = $btn.html();
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
+
+            function done(ok, msg) {
+                $btn.prop('disabled', false).html(originalHtml);
+                if (ok) {
+                    showToast(msg || 'LMP added', 'success');
+                    loadLmpCompetitorsModal(sku, channel, true);
+                    // Refresh details modal LMP column
+                    const currentSku = $('#modalSkuName').text();
+                    if (currentSku) {
+                        const currentImage = $('#modal-product-image').attr('src');
+                        const currentInv = $('#modal-header-inv').text().replace(/,/g, '');
+                        const currentL30 = $('#modal-header-l30').text().replace(/,/g, '');
+                        const currentDil = parseFloat($('#modal-header-dil').text());
+                        loadMarketplaceBreakdown(currentSku, currentImage, currentInv, currentL30, currentDil);
+                    }
+                } else {
+                    showToast(msg || 'Failed to add LMP', 'error');
+                }
+            }
+
+            if (channel === 'amazon') {
+                $.ajax({
+                    url: '/amazon/lmp/add',
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                    data: { sku: sku, asin: idVal, price: price, product_link: link || null, marketplace: 'amazon' },
+                    success: function(r) { done(!!r.success, r.message || 'Amazon LMP added'); },
+                    error: function(xhr) {
+                        done(false, (xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message)) || 'Failed to add Amazon LMP');
+                    }
+                });
+                return;
+            }
+            if (channel === 'ebay') {
+                $.ajax({
+                    url: '/ebay-lmp-add',
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                    data: { sku: sku, item_id: idVal, price: price, shipping_cost: 0, product_link: link || null },
+                    success: function(r) { done(!!r.success, r.message || 'eBay LMP added'); },
+                    error: function(xhr) {
+                        done(false, (xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message)) || 'Failed to add eBay LMP');
+                    }
+                });
+                return;
+            }
+            if (channel === 'google') {
+                $.ajax({
+                    url: '/google-lmp-add',
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                    data: { sku: sku, product_id: idVal, price: price, product_link: link || null, source: 'manual' },
+                    success: function(r) { done(!!(r.success || r.data), r.message || 'Google LMP added'); },
+                    error: function(xhr) {
+                        done(false, (xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message)) || 'Failed to add Google LMP');
+                    }
+                });
+                return;
+            }
+            // Temu: append to existing entries then save
+            $.ajax({
+                url: '/cvr-master-temu-lmp',
+                method: 'GET',
+                data: { sku: sku },
+                success: function(res) {
+                    const existing = (res && res.competitors) ? res.competitors : [];
+                    const entries = existing.map(function(c) {
+                        return { price: c.price, link: c.link || c.product_link || null };
+                    });
+                    entries.push({ price: price, link: link || null });
+                    $.ajax({
+                        url: '/temu-lmp/save',
+                        method: 'POST',
+                        headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                        data: { sku: sku, lmp_entries: entries },
+                        success: function(r) { done(!!r.success, r.message || 'Temu LMP added'); },
+                        error: function(xhr) {
+                            done(false, (xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message)) || 'Failed to add Temu LMP');
+                        }
+                    });
+                },
+                error: function() {
+                    $.ajax({
+                        url: '/temu-lmp/save',
+                        method: 'POST',
+                        headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                        data: { sku: sku, lmp_entries: [{ price: price, link: link || null }] },
+                        success: function(r) { done(!!r.success, r.message || 'Temu LMP added'); },
+                        error: function(xhr) {
+                            done(false, (xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message)) || 'Failed to add Temu LMP');
+                        }
+                    });
+                }
+            });
+        });
+
+        $(document).on('click', '.lmp-channel-filter-btn', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const filter = $(this).data('filter') || 'all';
+            lmpModalCache.filter = filter;
+            if (filter !== 'all') lmpModalCache.showAdd = true;
+            $('#lmpModal').data('lmp-filter', filter);
+            renderLmpMergedTable();
+        });
         
         $(document).on('click', '.view-lmp-competitors', function(e) {
             e.preventDefault();
@@ -3314,7 +4840,9 @@ title: "Dil %",
         let expandedParent = null;
         let dotExpandedParent = null;
         // Play/Pause parent navigation (same as product master: show only current parent, ignore other filters)
+        // playNavMode: null | 'default' | 'npft' | 'dil' | 'cvr'
         let isPlayNavigationActive = false;
+        let playNavMode = null;
         let currentPlayParentIndex = 0;
         // Prevent dataLoaded side-effects for local setData operations
         let suppressDataLoadedHandler = false;
@@ -3513,19 +5041,30 @@ title: "Dil %",
                     return true;
                 });
             }
-            // Apply GPFT% filter to parent view (ranges: negative, 0-10, 10-20, 20-30, 30-40, 40-50, 50+; legacy saved: 50-60)
+            // Apply GPFT% filter (<20, 20-30, 30-40, >40)
             const gpftRange = $('.column-filter[data-column="avg_gpft"].active')?.data('range') || 'all';
             if (gpftRange !== 'all') {
                 displayData = displayData.filter(row => {
                     const gpft = parseFloat(row.avg_gpft) || 0;
-                    if (gpftRange === 'negative') return gpft < 0;
-                    if (gpftRange === '0-10') return gpft >= 0 && gpft < 10;
-                    if (gpftRange === '10-20') return gpft >= 10 && gpft < 20;
+                    if (gpftRange === 'lt-20') return gpft < 20;
                     if (gpftRange === '20-30') return gpft >= 20 && gpft < 30;
-                    if (gpftRange === '30-40') return gpft >= 30 && gpft < 40;
-                    if (gpftRange === '40-50') return gpft >= 40 && gpft < 50;
-                    if (gpftRange === '50-60') return gpft >= 50 && gpft < 60;
-                    if (gpftRange === '50+') return gpft >= 50;
+                    if (gpftRange === '30-40') return gpft >= 30 && gpft <= 40;
+                    if (gpftRange === 'gt-40') return gpft > 40;
+                    // legacy saved filters
+                    if (gpftRange === 'negative' || gpftRange === '0-10' || gpftRange === '10-20') return gpft < 20;
+                    if (gpftRange === '40-50' || gpftRange === '50-60' || gpftRange === '50+') return gpft > 40;
+                    return true;
+                });
+            }
+            // Apply NPFT% filter (<30, 30-40, 40-50, >50)
+            const npftRange = $('.column-filter[data-column="avg_pft"].active')?.data('range') || 'all';
+            if (npftRange !== 'all') {
+                displayData = displayData.filter(row => {
+                    const npft = parseFloat(row.avg_pft) || 0;
+                    if (npftRange === 'lt-30') return npft < 30;
+                    if (npftRange === '30-40') return npft >= 30 && npft < 40;
+                    if (npftRange === '40-50') return npft >= 40 && npft <= 50;
+                    if (npftRange === 'gt-50') return npft > 50;
                     return true;
                 });
             }
@@ -3562,6 +5101,30 @@ title: "Dil %",
             return fullDataset.filter(row => row.is_parent_summary === true);
         }
 
+        /** Parent list for active playback. npft/dil/cvr = lowest metric first. */
+        function getPlayParentRows() {
+            const parents = getParentRows();
+            let field = null;
+            if (playNavMode === 'npft') field = 'avg_pft';
+            else if (playNavMode === 'dil') field = 'dil_percent';
+            else if (playNavMode === 'cvr') field = 'avg_cvr';
+            if (!field) return parents;
+            return parents.slice().sort(function(a, b) {
+                const na = parseFloat(a[field]);
+                const nb = parseFloat(b[field]);
+                const va = isFinite(na) ? na : Number.POSITIVE_INFINITY;
+                const vb = isFinite(nb) ? nb : Number.POSITIVE_INFINITY;
+                if (va !== vb) return va - vb;
+                return String(a.parent || '').localeCompare(String(b.parent || ''));
+            });
+        }
+
+        function resetAllPlayUiButtons() {
+            $('#play-pause, #play-npft-pause, #play-dil-pause, #play-cvr-pause').hide();
+            $('#play-auto, #play-npft-auto, #play-dil-auto, #play-cvr-auto').show();
+            $('#play-backward, #play-forward, #play-npft-backward, #play-npft-forward, #play-dil-backward, #play-dil-forward, #play-cvr-backward, #play-cvr-forward').prop('disabled', true);
+        }
+
         function getCurrentParentIndex() {
             const parentRows = getParentRows();
             if (parentRows.length === 0 || expandedParent === null) return -1;
@@ -3576,10 +5139,19 @@ title: "Dil %",
             buildParentView();
         }
 
+        function refreshPlayTooltips() {
+            if (typeof bootstrap === 'undefined' || !bootstrap.Tooltip) return;
+            document.querySelectorAll('.cvr-play-group [data-bs-toggle="tooltip"]').forEach(function(el) {
+                const existing = bootstrap.Tooltip.getInstance(el);
+                if (existing) existing.dispose();
+                new bootstrap.Tooltip(el);
+            });
+        }
+
         /** Show only current parent's rows (children first, parent row last – like product master). No other filters. */
         function showCurrentParentPlayView() {
             if (!fullDataset || fullDataset.length === 0) return;
-            const parentRows = getParentRows();
+            const parentRows = getPlayParentRows();
             if (parentRows.length === 0) return;
             const currentParent = parentRows[currentPlayParentIndex].parent;
             const childRows = fullDataset.filter(row => row.parent === currentParent && row.is_parent_summary !== true);
@@ -3595,27 +5167,50 @@ title: "Dil %",
             });
         }
 
-        function startPlayNavigation() {
-            const parentRows = getParentRows();
-            if (parentRows.length === 0) return;
+        function startPlayNavigation(mode) {
+            const nextMode = mode || 'default';
+            const parentRowsPreview = (function() {
+                const prev = playNavMode;
+                playNavMode = nextMode;
+                const rows = getPlayParentRows();
+                playNavMode = prev;
+                return rows;
+            })();
+            if (parentRowsPreview.length === 0) return;
+
+            playNavMode = nextMode;
             isPlayNavigationActive = true;
             currentPlayParentIndex = 0;
             dotExpandedParent = null;
             expandedParent = null;
             showCurrentParentPlayView();
-            $('#play-auto').hide();
-            $('#play-pause').show();
+
+            resetAllPlayUiButtons();
+            if (playNavMode === 'npft') {
+                $('#play-npft-auto').hide();
+                $('#play-npft-pause').show();
+            } else if (playNavMode === 'dil') {
+                $('#play-dil-auto').hide();
+                $('#play-dil-pause').show();
+            } else if (playNavMode === 'cvr') {
+                $('#play-cvr-auto').hide();
+                $('#play-cvr-pause').show();
+            } else {
+                $('#play-auto').hide();
+                $('#play-pause').show();
+            }
             updatePlayButtonStates();
+            refreshPlayTooltips();
         }
 
         function stopPlayNavigation() {
             isPlayNavigationActive = false;
+            playNavMode = null;
             currentPlayParentIndex = 0;
             expandedParent = null;
             dotExpandedParent = null;
-            $('#play-pause').hide();
-            $('#play-auto').show();
-            $('#play-backward, #play-forward').prop('disabled', true);
+            resetAllPlayUiButtons();
+            refreshPlayTooltips();
             if (fullDataset.length > 0) {
                 suppressDataLoadedHandler = true;
                 table.setData(fullDataset).then(applyFilters);
@@ -3625,16 +5220,47 @@ title: "Dil %",
         }
 
         function updatePlayButtonStates() {
-            const parentRows = getParentRows();
-            $('#play-backward').prop('disabled', !isPlayNavigationActive || currentPlayParentIndex <= 0);
-            $('#play-forward').prop('disabled', !isPlayNavigationActive || currentPlayParentIndex >= parentRows.length - 1);
-            $('#play-auto').attr('title', isPlayNavigationActive ? 'Show all' : 'Start parent navigation');
-            $('#play-pause').attr('title', 'Stop navigation and show all');
+            const parentRows = getPlayParentRows();
+            const atStart = !isPlayNavigationActive || currentPlayParentIndex <= 0;
+            const atEnd = !isPlayNavigationActive || currentPlayParentIndex >= parentRows.length - 1;
+
+            $('#play-backward, #play-forward, #play-npft-backward, #play-npft-forward, #play-dil-backward, #play-dil-forward, #play-cvr-backward, #play-cvr-forward').prop('disabled', true);
+            if (playNavMode === 'npft') {
+                $('#play-npft-backward').prop('disabled', atStart);
+                $('#play-npft-forward').prop('disabled', atEnd);
+            } else if (playNavMode === 'dil') {
+                $('#play-dil-backward').prop('disabled', atStart);
+                $('#play-dil-forward').prop('disabled', atEnd);
+            } else if (playNavMode === 'cvr') {
+                $('#play-cvr-backward').prop('disabled', atStart);
+                $('#play-cvr-forward').prop('disabled', atEnd);
+            } else if (playNavMode === 'default') {
+                $('#play-backward').prop('disabled', atStart);
+                $('#play-forward').prop('disabled', atEnd);
+            }
+
+            $('#play-auto').attr('title', 'Play: walk parents in default order');
+            $('#play-pause').attr('title', 'Pause: stop and show all rows');
+            $('#play-backward').attr('title', 'Previous parent');
+            $('#play-forward').attr('title', 'Next parent');
+            $('#play-npft-auto').attr('title', 'Play Lowest NPFT%: walk parents starting from lowest Avg NPFT%');
+            $('#play-npft-pause').attr('title', 'Pause: stop NPFT playback and show all rows');
+            $('#play-npft-backward').attr('title', 'Previous: lower NPFT% parent');
+            $('#play-npft-forward').attr('title', 'Next: next higher NPFT% parent');
+            $('#play-dil-auto').attr('title', 'Play Lowest Dil%: walk parents starting from lowest Dil%');
+            $('#play-dil-pause').attr('title', 'Pause: stop Dil% playback and show all rows');
+            $('#play-dil-backward').attr('title', 'Previous: lower Dil% parent');
+            $('#play-dil-forward').attr('title', 'Next: next higher Dil% parent');
+            $('#play-cvr-auto').attr('title', 'Play Lowest CVR%: walk parents starting from lowest Avg CVR%');
+            $('#play-cvr-pause').attr('title', 'Pause: stop CVR% playback and show all rows');
+            $('#play-cvr-backward').attr('title', 'Previous: lower CVR% parent');
+            $('#play-cvr-forward').attr('title', 'Next: next higher CVR% parent');
+            refreshPlayTooltips();
         }
 
         function playNextParent() {
             if (!isPlayNavigationActive) return;
-            const parentRows = getParentRows();
+            const parentRows = getPlayParentRows();
             if (currentPlayParentIndex >= parentRows.length - 1) return;
             currentPlayParentIndex++;
             showCurrentParentPlayView();
@@ -3647,10 +5273,28 @@ title: "Dil %",
             showCurrentParentPlayView();
         }
 
-        $('#play-auto').on('click', startPlayNavigation);
+        $('#play-auto').on('click', function() { startPlayNavigation('default'); });
         $('#play-pause').on('click', stopPlayNavigation);
         $('#play-forward').on('click', playNextParent);
         $('#play-backward').on('click', playPreviousParent);
+
+        $('#play-npft-auto').on('click', function() { startPlayNavigation('npft'); });
+        $('#play-npft-pause').on('click', stopPlayNavigation);
+        $('#play-npft-forward').on('click', playNextParent);
+        $('#play-npft-backward').on('click', playPreviousParent);
+
+        $('#play-dil-auto').on('click', function() { startPlayNavigation('dil'); });
+        $('#play-dil-pause').on('click', stopPlayNavigation);
+        $('#play-dil-forward').on('click', playNextParent);
+        $('#play-dil-backward').on('click', playPreviousParent);
+
+        $('#play-cvr-auto').on('click', function() { startPlayNavigation('cvr'); });
+        $('#play-cvr-pause').on('click', stopPlayNavigation);
+        $('#play-cvr-forward').on('click', playNextParent);
+        $('#play-cvr-backward').on('click', playPreviousParent);
+
+        // Init hover tooltips for playback controls
+        $(function() { refreshPlayTooltips(); });
 
         // ==================== FILTER FUNCTIONS ====================
         
@@ -3674,7 +5318,10 @@ title: "Dil %",
             $item.addClass('active');
             
             const statusCircle = $item.find('.status-circle').clone();
-            const label = column === 'dil_percent' ? ' DIL%' : (column === 'avg_cvr' ? ' CVR' : (column === 'avg_gpft' ? ' GPFT%' : ''));
+            const label = column === 'dil_percent' ? ' DIL%'
+                : (column === 'avg_cvr' ? ' CVR'
+                : (column === 'avg_gpft' ? ' GPFT%'
+                : (column === 'avg_pft' ? ' NPFT%' : '')));
             button.html('').append(statusCircle).append(label);
             container.removeClass('show');
             
@@ -3753,14 +5400,24 @@ title: "Dil %",
                 if (gpftRange !== 'all') {
                     table.addFilter(function(data) {
                         const gpft = parseFloat(data['avg_gpft']) || 0;
-                        if (gpftRange === 'negative') return gpft < 0;
-                        if (gpftRange === '0-10') return gpft >= 0 && gpft < 10;
-                        if (gpftRange === '10-20') return gpft >= 10 && gpft < 20;
+                        if (gpftRange === 'lt-20') return gpft < 20;
                         if (gpftRange === '20-30') return gpft >= 20 && gpft < 30;
-                        if (gpftRange === '30-40') return gpft >= 30 && gpft < 40;
-                        if (gpftRange === '40-50') return gpft >= 40 && gpft < 50;
-                        if (gpftRange === '50-60') return gpft >= 50 && gpft < 60;
-                        if (gpftRange === '50+') return gpft >= 50;
+                        if (gpftRange === '30-40') return gpft >= 30 && gpft <= 40;
+                        if (gpftRange === 'gt-40') return gpft > 40;
+                        if (gpftRange === 'negative' || gpftRange === '0-10' || gpftRange === '10-20') return gpft < 20;
+                        if (gpftRange === '40-50' || gpftRange === '50-60' || gpftRange === '50+') return gpft > 40;
+                        return true;
+                    });
+                }
+
+                const npftRange = $('.column-filter[data-column="avg_pft"].active')?.data('range') || 'all';
+                if (npftRange !== 'all') {
+                    table.addFilter(function(data) {
+                        const npft = parseFloat(data['avg_pft']) || 0;
+                        if (npftRange === 'lt-30') return npft < 30;
+                        if (npftRange === '30-40') return npft >= 30 && npft < 40;
+                        if (npftRange === '40-50') return npft >= 40 && npft <= 50;
+                        if (npftRange === 'gt-50') return npft > 50;
                         return true;
                     });
                 }
@@ -3815,6 +5472,11 @@ title: "Dil %",
             $('.column-filter[data-column="avg_gpft"]').removeClass('active');
             $allGpft.addClass('active');
             $('#gpftFilterDropdown').html('').append($allGpft.find('.status-circle').clone()).append(' GPFT%');
+            // Reset NPFT%
+            const $allNpft = $('.column-filter[data-column="avg_pft"][data-range="all"]');
+            $('.column-filter[data-column="avg_pft"]').removeClass('active');
+            $allNpft.addClass('active');
+            $('#npftFilterDropdown').html('').append($allNpft.find('.status-circle').clone()).append(' NPFT%');
             $('#sw-l30-match-filter').val('all');
             applyFilters();
         });
@@ -3887,35 +5549,55 @@ title: "Dil %",
         }
 
         // ==================== COLUMN VISIBILITY FUNCTIONS ====================
+
+        // Permanently removed from Columns dropdown and kept hidden in the table
+        const CVR_HIDDEN_FROM_COLUMN_MENU = [
+            'amazon_price', 'amz_pft', 'amz_roi',
+            'amazon_sprice', 'amazon_sgpft', 'amazon_spft', 'amazon_sroi',
+            'amazon_lmp_price', 'ebay_lmp_price', 'google_lmp_price', 'temu_lmp_price',
+            'shein_l30', 'ae_l30', 'pp_l30'
+        ];
         
         function buildColumnDropdown() {
             const columns = table.getColumns();
             let html = '';
-            
+
             columns.forEach(col => {
                 const field = col.getField();
                 const title = col.getDefinition().title;
-                if (field && title) {
-                    const isVisible = col.isVisible();
-                    html += `<li class="dropdown-item">
-                        <label style="cursor: pointer; display: flex; align-items: center; gap: 8px;">
-                            <input type="checkbox" class="column-toggle" data-field="${field}" ${isVisible ? 'checked' : ''}>
-                            ${title.replace(/<[^>]*>/g, '')}
-                        </label>
-                    </li>`;
-                }
+                // Skip internal/select helper columns and permanently hidden Amz columns
+                if (!field || !title || field === '_select') return;
+                if (CVR_HIDDEN_FROM_COLUMN_MENU.indexOf(field) !== -1) return;
+                const isVisible = col.isVisible();
+                const label = String(title).replace(/<[^>]*>/g, '');
+                html += `<li class="dropdown-item">
+                    <label style="cursor: pointer; display: flex; align-items: center; gap: 8px;">
+                        <input type="checkbox" class="column-toggle" data-field="${field}" ${isVisible ? 'checked' : ''}>
+                        ${label}
+                    </label>
+                </li>`;
             });
-            
+
             $('#column-dropdown-menu').html(html);
+        }
+
+        function forceHideRemovedCvrColumns() {
+            CVR_HIDDEN_FROM_COLUMN_MENU.forEach(field => {
+                const col = table.getColumn(field);
+                if (col) col.hide();
+            });
         }
 
         function saveColumnVisibilityToServer() {
             const visibility = {};
             table.getColumns().forEach(col => {
                 const field = col.getField();
-                if (field) visibility[field] = col.isVisible();
+                if (field && field !== '_select') {
+                    visibility[field] = col.isVisible();
+                }
             });
-            
+
+            // Persists to channel_tabulator_column_settings (channel_name = pricing_master_cvr)
             $.ajax({
                 url: '/cvr-master-column-visibility',
                 method: 'POST',
@@ -3928,14 +5610,21 @@ title: "Dil %",
                 url: '/cvr-master-column-visibility',
                 method: 'GET',
                 success: function(visibility) {
-                    if (visibility && Object.keys(visibility).length > 0) {
+                    if (visibility && typeof visibility === 'object' && !Array.isArray(visibility)
+                        && Object.keys(visibility).length > 0) {
                         Object.keys(visibility).forEach(field => {
+                            if (CVR_HIDDEN_FROM_COLUMN_MENU.indexOf(field) !== -1) return;
                             const col = table.getColumn(field);
                             if (col) {
                                 visibility[field] ? col.show() : col.hide();
                             }
                         });
                     }
+                    forceHideRemovedCvrColumns();
+                    buildColumnDropdown();
+                },
+                error: function() {
+                    forceHideRemovedCvrColumns();
                     buildColumnDropdown();
                 }
             });

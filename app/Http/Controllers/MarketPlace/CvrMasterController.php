@@ -53,8 +53,13 @@ use App\Models\ViewsPullData;
 use App\Models\TemuViewData;
 use App\Models\Temu2ViewData;
 use App\Models\TemuAdData;
+use App\Models\TemuLmp;
 use App\Models\MarketplacePercentage;
+use App\Services\LmpSkuGroupService;
 use App\Models\MarketplaceDailyMetric;
+use App\Models\ChannelMasterCalculatedData;
+use App\Models\ChannelTabulatorColumnSetting;
+use App\Http\Controllers\Channels\ChannelMasterController;
 use App\Models\AmazonSpCampaignReport;
 use App\Models\AmazonSkuCompetitor;
 use App\Models\GoogleSkuCompetitor;
@@ -88,6 +93,12 @@ use App\Services\FbaInventoryService;
 use App\Services\DobaApiService;
 use App\Services\WalmartService;
 use App\Services\ReverbApiService;
+use App\Services\EbayApiService;
+use App\Services\Ebay2ApiService;
+use App\Services\EbayThreeApiService;
+use App\Services\BestBuyApiService;
+use App\Services\MacysApiService;
+use App\Support\TemuGoodsIdHelper;
 
 class CvrMasterController extends Controller
 {
@@ -284,7 +295,10 @@ class CvrMasterController extends Controller
             ]);
 
             // Fetch Temu data for GPFT/AD/PFT calculations
-            $temuPricings = TemuPricing::whereIn('sku', $skus)->get()->keyBy('sku');
+            // Match /temu-decrease: map pricing onto ProductMaster SKUs via normalized SKU
+            $temuPricingsAll = TemuPricing::query()->get(['sku', 'base_price', 'goods_id', 'quantity']);
+            $temuPricingByProductSku = $this->buildTemuPricingMapForProductSkus($temuPricingsAll, $skus);
+            $temuPricings = collect($temuPricingByProductSku)->filter(); // keyed by PM sku
             $temuDailySales = TemuDailyData::whereIn('contribution_sku', $skus)
                 ->selectRaw('contribution_sku as sku, SUM(quantity_purchased) as temu_l30')
                 ->groupBy('contribution_sku')
@@ -294,14 +308,54 @@ class CvrMasterController extends Controller
             // Get Temu percentage (Temu marketplace uses 96%)
             $temuMarketplace = MarketplacePercentage::where('marketplace', 'Temu')->first();
             $temuPercentage = $temuMarketplace ? ($temuMarketplace->percentage / 100) : 0.96;
+
+            // Temu views = SUM(product_clicks) by goods_id — same source as /temu-decrease
+            // Index by both raw and normalized goods_id so joins don't miss type/format variants
+            $temuViewByGoodsId = [];
+            if (Schema::hasTable('temu_view_data')) {
+                foreach (
+                    TemuViewData::selectRaw('goods_id, SUM(product_clicks) as product_clicks')
+                        ->groupBy('goods_id')
+                        ->get() as $r
+                ) {
+                    $clicks = (int) ($r->product_clicks ?? 0);
+                    $rawGid = (string) ($r->goods_id ?? '');
+                    if ($rawGid !== '') {
+                        $temuViewByGoodsId[$rawGid] = $clicks;
+                    }
+                    $nk = TemuGoodsIdHelper::normalizeKey($r->goods_id);
+                    if ($nk) {
+                        $temuViewByGoodsId[$nk] = $clicks;
+                    }
+                }
+            }
             
             Log::info('CVR Master - Temu Data fetched', [
                 'temu_pricings' => $temuPricings->count(),
+                'temu_view_goods_ids' => count($temuViewByGoodsId),
                 'temu_percentage' => $temuPercentage * 100 . '%'
             ]);
 
             $temu2L30ByProductSku = array_fill_keys($skus, 0);
             $temu2PricingByProductSku = array_fill_keys($skus, null);
+            $temu2ViewByGoodsId = [];
+            if (Schema::hasTable('temu2_view_data')) {
+                foreach (
+                    Temu2ViewData::selectRaw('goods_id, SUM(product_clicks) as product_clicks')
+                        ->groupBy('goods_id')
+                        ->get() as $r
+                ) {
+                    $clicks = (int) ($r->product_clicks ?? 0);
+                    $rawGid = (string) ($r->goods_id ?? '');
+                    if ($rawGid !== '') {
+                        $temu2ViewByGoodsId[$rawGid] = $clicks;
+                    }
+                    $nk = TemuGoodsIdHelper::normalizeKey($r->goods_id);
+                    if ($nk) {
+                        $temu2ViewByGoodsId[$nk] = $clicks;
+                    }
+                }
+            }
             if (Schema::hasTable('temu2_pricing') && Schema::hasTable('temu2_daily_data')) {
                 try {
                     $temu2L30ByProductSku = $this->buildTemu2L30ByProductSkusMap($skus, true);
@@ -463,6 +517,21 @@ class CvrMasterController extends Controller
                 $ebayLmpCountLookup = $ebayLmpRecords->map(fn ($items) => $items->count());
             } catch (\Exception $e) {
                 Log::warning('Could not fetch eBay LMP: ' . $e->getMessage());
+            }
+
+            // Temu / Temu 2 LMP — same source as /temu-decrease and /temu2-decrease (temu_lmp)
+            $temuLmpByNormalizedSku = [];
+            $temuLmpSkuGroupService = null;
+            try {
+                if (Schema::hasTable('temu_lmp')) {
+                    foreach (TemuLmp::all() as $temuLmpRow) {
+                        $temuLmpByNormalizedSku[self::normalizeTemuSkuForCvr((string) ($temuLmpRow->sku ?? ''))] = $temuLmpRow;
+                    }
+                    $temuLmpSkuGroupService = app(LmpSkuGroupService::class);
+                    $temuLmpSkuGroupService->prepareForSkus($skus);
+                }
+            } catch (\Exception $e) {
+                Log::warning('Could not fetch Temu LMP: ' . $e->getMessage());
             }
 
             // Fetch latest remarks for all SKUs in one query
@@ -883,13 +952,10 @@ class CvrMasterController extends Controller
                 $temu2PFT = $temu2GPFT;
                 $temu2Views = 0;
                 if ($temu2Pricing) {
-                    $temu2GoodsId = $temu2Pricing->goods_id ?? null;
-                    if ($temu2GoodsId) {
-                        $temu2ViewAgg = Temu2ViewData::where('goods_id', $temu2GoodsId)
-                            ->selectRaw('SUM(product_clicks) as product_clicks')
-                            ->first();
-                        $temu2Views = $temu2ViewAgg ? intval($temu2ViewAgg->product_clicks ?? 0) : 0;
-                    }
+                    $temu2Views = $this->lookupTemuViewsByGoodsId(
+                        $temu2Pricing->goods_id ?? null,
+                        $temu2ViewByGoodsId
+                    ) ?? 0;
                 }
 
                 // === SHEIN CALCULATIONS ===
@@ -933,19 +999,18 @@ class CvrMasterController extends Controller
                 $ebay1Views = $ebay1Metric ? intval($ebay1Metric->views ?? 0) : 0;
                 $ebay2Views = $ebay2Metric ? intval($ebay2Metric->views ?? 0) : 0;
                 $ebay3Views = $ebay3Metric ? intval($ebay3Metric->views ?? 0) : 0;
+                // Temu views = product_clicks from temu_view_data (same as /temu-decrease)
                 $temuViews = 0;
                 if ($temuPricing) {
-                    $goodsId = $temuPricing->goods_id ?? null;
-                    if ($goodsId) {
-                        $temuViewData = TemuViewData::where('goods_id', $goodsId)
-                            ->selectRaw('SUM(product_clicks) as product_clicks')
-                            ->first();
-                        $temuViews = $temuViewData ? intval($temuViewData->product_clicks ?? 0) : 0;
-                    }
+                    $temuViews = $this->lookupTemuViewsByGoodsId(
+                        $temuPricing->goods_id ?? null,
+                        $temuViewByGoodsId
+                    ) ?? 0;
                 }
                 $tiktokViews = $tiktokProduct ? intval($tiktokProduct->views ?? 0) : 0;
                 $bbViews = 0; // BestBuy doesn't track views
-                $sb2cViews = 0; // Shopify B2C doesn't track views separately
+                // Shopify L30 product page sessions (same shopify_skus.views as /shopify-b2c-pricing)
+                $sb2cViews = isset($shopifyData[$sku]) ? intval($shopifyData[$sku]->views ?? 0) : 0;
                 $macyViews = $macyProduct ? intval($macyProduct->views ?? 0) : 0;
                 $reverbViews = $reverbProduct ? intval($reverbProduct->views ?? 0) : 0;
                 $dobaViews = $dobaMetric ? intval($dobaMetric->impressions ?? 0) : 0;
@@ -1012,12 +1077,23 @@ class CvrMasterController extends Controller
                 if ($aePrice > 0) $gpftValues[] = $aeGPFT;
                 if ($ppPrice > 0) $gpftValues[] = $ppGPFT;
                 
-                // Collect all AD values (marketplaces with ads: Amazon, Temu, Walmart)
-                $adValues = [];
-                if ($amazonPrice > 0) $adValues[] = $amazonAD;
-                if ($temuPrice > 0) $adValues[] = $temuAD;
-                if ($walmartPrice > 0) $adValues[] = $walmartAD;
-                
+                // Sales-weighted Ads%: (Σ ad spend $) ÷ (Σ sales $) × 100
+                // for marketplaces with ads (Amazon, Temu, Walmart) that have sales
+                $totalAdsAmount = 0.0;
+                $totalAdSalesAmount = 0.0;
+                if ($amazonRevenue > 0) {
+                    $totalAdsAmount += $amazonAdSpend;
+                    $totalAdSalesAmount += $amazonRevenue;
+                }
+                if ($temuRevenue > 0) {
+                    $totalAdsAmount += $temuAdSpend;
+                    $totalAdSalesAmount += $temuRevenue;
+                }
+                if ($wL30 > 0) {
+                    $totalAdsAmount += $walmartAdSpend;
+                    $totalAdSalesAmount += $wL30;
+                }
+
                 // Collect all PFT values
                 $pftValues = [];
                 if ($amazonPrice > 0) $pftValues[] = $amazonPFT;
@@ -1037,11 +1113,86 @@ class CvrMasterController extends Controller
                 if ($aePrice > 0) $pftValues[] = $aePFT;
                 if ($ppPrice > 0) $pftValues[] = $ppPFT;
                 
+                // Collect GROI% / NROI% per listed channel:
+                // GROI = GPFT% × price / LP ; NROI = NPFT% × price / LP (after ads)
+                $roiValues = [];
+                $nroiValues = [];
+                if ($lp > 0) {
+                    if ($amazonPrice > 0) {
+                        $roiValues[] = ($amazonGPFT * $amazonPrice) / $lp;
+                        $nroiValues[] = ($amazonPFT * $amazonPrice) / $lp;
+                    }
+                    if ($ebay1Price > 0) {
+                        $roiValues[] = ($ebay1GPFT * $ebay1Price) / $lp;
+                        $nroiValues[] = ($ebay1PFT * $ebay1Price) / $lp;
+                    }
+                    if ($ebay2Price > 0) {
+                        $roiValues[] = ($ebay2GPFT * $ebay2Price) / $lp;
+                        $nroiValues[] = ($ebay2PFT * $ebay2Price) / $lp;
+                    }
+                    if ($ebay3Price > 0) {
+                        $roiValues[] = ($ebay3GPFT * $ebay3Price) / $lp;
+                        $nroiValues[] = ($ebay3PFT * $ebay3Price) / $lp;
+                    }
+                    if ($temuPrice > 0) {
+                        $roiValues[] = ($temuGPFT * $temuPrice) / $lp;
+                        $nroiValues[] = ($temuPFT * $temuPrice) / $lp;
+                    }
+                    if ($temu2Price > 0) {
+                        $roiValues[] = ($temu2GPFT * $temu2Price) / $lp;
+                        $nroiValues[] = ($temu2PFT * $temu2Price) / $lp;
+                    }
+                    if ($walmartPrice > 0) {
+                        $roiValues[] = ($walmartGPFT * $walmartPrice) / $lp;
+                        $nroiValues[] = ($walmartPFT * $walmartPrice) / $lp;
+                    }
+                    if ($tiktokPrice > 0) {
+                        $roiValues[] = ($tiktokGPFT * $tiktokPrice) / $lp;
+                        $nroiValues[] = ($tiktokPFT * $tiktokPrice) / $lp;
+                    }
+                    if ($bbPrice > 0) {
+                        $roiValues[] = ($bbGPFT * $bbPrice) / $lp;
+                        $nroiValues[] = ($bbPFT * $bbPrice) / $lp;
+                    }
+                    if ($sb2cPrice > 0) {
+                        $roiValues[] = ($sb2cGPFT * $sb2cPrice) / $lp;
+                        $nroiValues[] = ($sb2cPFT * $sb2cPrice) / $lp;
+                    }
+                    if ($macyPrice > 0) {
+                        $roiValues[] = ($macyGPFT * $macyPrice) / $lp;
+                        $nroiValues[] = ($macyPFT * $macyPrice) / $lp;
+                    }
+                    if ($reverbPrice > 0) {
+                        $roiValues[] = ($reverbGPFT * $reverbPrice) / $lp;
+                        $nroiValues[] = ($reverbPFT * $reverbPrice) / $lp;
+                    }
+                    if ($dobaPrice > 0) {
+                        $roiValues[] = ($dobaGPFT * $dobaPrice) / $lp;
+                        $nroiValues[] = ($dobaPFT * $dobaPrice) / $lp;
+                    }
+                    if ($sheinPrice > 0) {
+                        $roiValues[] = ($sheinGPFT * $sheinPrice) / $lp;
+                        $nroiValues[] = ($sheinPFT * $sheinPrice) / $lp;
+                    }
+                    if ($aePrice > 0) {
+                        $roiValues[] = ($aeGPFT * $aePrice) / $lp;
+                        $nroiValues[] = ($aePFT * $aePrice) / $lp;
+                    }
+                    if ($ppPrice > 0) {
+                        $roiValues[] = ($ppGPFT * $ppPrice) / $lp;
+                        $nroiValues[] = ($ppPFT * $ppPrice) / $lp;
+                    }
+                }
+
                 // Calculate averages
                 $avgPrice = count($prices) > 0 ? round(array_sum($prices) / count($prices), 2) : 0;
                 $avgGPFT = count($gpftValues) > 0 ? round(array_sum($gpftValues) / count($gpftValues), 2) : 0;
-                $avgAD = count($adValues) > 0 ? round(array_sum($adValues) / count($adValues), 2) : 0;
+                $avgAD = $totalAdSalesAmount > 0
+                    ? round(($totalAdsAmount / $totalAdSalesAmount) * 100, 2)
+                    : 0;
                 $avgPFT = count($pftValues) > 0 ? round(array_sum($pftValues) / count($pftValues), 2) : 0;
+                $avgRoi = count($roiValues) > 0 ? round(array_sum($roiValues) / count($roiValues), 2) : 0;
+                $avgNroi = count($nroiValues) > 0 ? round(array_sum($nroiValues) / count($nroiValues), 2) : 0;
 
                 // Get latest remark for this SKU
                 $latestRemark = $latestRemarks->get($sku);
@@ -1073,6 +1224,15 @@ class CvrMasterController extends Controller
                     ? round(floatval($googleLmp->price), 2) : null;
                 $googleLmpLink = ($googleLmp && !empty($googleLmp->product_link)) ? $googleLmp->product_link : null;
                 $googleLmpCount = $googleLmpCountLookup->get($skuLookupKey) ?? 0;
+
+                $temuLmpResolved = $this->resolveTemuLmpForSku(
+                    $sku,
+                    $temuLmpByNormalizedSku,
+                    $temuLmpSkuGroupService
+                );
+                $temuLmpPrice = $temuLmpResolved['price'];
+                $temuLmpLink = $temuLmpResolved['link'];
+                $temuLmpCount = $temuLmpResolved['count'];
 
                 $amazonDataViewRow = $amazonDataViewBySku->get($sku);
                 $amazonSprice = null;
@@ -1129,18 +1289,23 @@ class CvrMasterController extends Controller
                     "total_views" => $totalViews,
                     "avg_cvr" => $avgCVR,
                     "avg_price" => $avgPrice,
+                    "avg_roi" => $avgRoi,
+                    "avg_nroi" => $avgNroi,
                     "avg_gpft" => $avgGPFT,
                     "avg_ad" => $avgAD,
                     "avg_pft" => $avgPFT,
                     "amazon_lmp_price" => $amazonLmpPrice,
                     "ebay_lmp_price" => $ebayLmpPrice,
                     "google_lmp_price" => $googleLmpPrice,
+                    "temu_lmp_price" => $temuLmpPrice,
                     "amazon_lmp_link" => $amazonLmpLink,
                     "ebay_lmp_link" => $ebayLmpLink,
                     "google_lmp_link" => $googleLmpLink,
+                    "temu_lmp_link" => $temuLmpLink,
                     "amazon_lmp_count" => $amazonLmpCount,
                     "ebay_lmp_count" => $ebayLmpCount,
                     "google_lmp_count" => $googleLmpCount,
+                    "temu_lmp_count" => $temuLmpCount,
                     "rating" => $rating,
                     "reviews" => $reviews,
                     "listing_quality_score" => $listingQualityScore,
@@ -1172,6 +1337,7 @@ class CvrMasterController extends Controller
                 $amazonLmpVals = $rows->pluck('amazon_lmp_price')->filter(fn ($v) => $v !== null && $v > 0);
                 $ebayLmpVals = $rows->pluck('ebay_lmp_price')->filter(fn ($v) => $v !== null && $v > 0);
                 $googleLmpVals = $rows->pluck('google_lmp_price')->filter(fn ($v) => $v !== null && $v > 0);
+                $temuLmpVals = $rows->pluck('temu_lmp_price')->filter(fn ($v) => $v !== null && $v > 0);
                 $amazonPriceVals = $rows->pluck('amazon_price')->filter(fn ($v) => $v !== null && $v > 0);
                 $amazonSpriceVals = $rows->pluck('amazon_sprice')->filter(fn ($v) => $v !== null && $v > 0);
                 $amazonSgpftVals = $rows->pluck('amazon_sgpft')->filter(fn ($v) => $v !== null);
@@ -1208,16 +1374,36 @@ class CvrMasterController extends Controller
                     'total_views' => $rows->sum('total_views'),
                     'avg_cvr' => $rows->count() > 0 ? round($rows->avg('avg_cvr'), 2) : 0,
                     'avg_price' => $rows->count() > 0 ? round($rows->avg('avg_price'), 2) : 0,
+                    'avg_roi' => $rows->filter(fn ($r) => isset($r->avg_roi) && $r->avg_roi !== null)->isNotEmpty()
+                        ? round($rows->filter(fn ($r) => isset($r->avg_roi) && $r->avg_roi !== null)->avg('avg_roi'), 2) : 0,
+                    'avg_nroi' => $rows->filter(fn ($r) => isset($r->avg_nroi) && $r->avg_nroi !== null)->isNotEmpty()
+                        ? round($rows->filter(fn ($r) => isset($r->avg_nroi) && $r->avg_nroi !== null)->avg('avg_nroi'), 2) : 0,
                     'avg_gpft' => $rows->count() > 0 ? round($rows->avg('avg_gpft'), 2) : 0,
-                    'avg_ad' => $rows->count() > 0 ? round($rows->avg('avg_ad'), 2) : 0,
+                    // Sales-weighted Ads% across children: Σ(sales × avg_ad%) ÷ Σ sales
+                    'avg_ad' => (function () use ($rows) {
+                        $adsAmt = 0.0;
+                        $salesAmt = 0.0;
+                        foreach ($rows as $r) {
+                            $sales = floatval($r->avg_price ?? 0) * floatval($r->overall_l30 ?? 0);
+                            if ($sales <= 0) {
+                                continue;
+                            }
+                            $salesAmt += $sales;
+                            $adsAmt += $sales * (floatval($r->avg_ad ?? 0) / 100);
+                        }
+                        return $salesAmt > 0 ? round(($adsAmt / $salesAmt) * 100, 2) : 0;
+                    })(),
                     'avg_pft' => $rows->count() > 0 ? round($rows->avg('avg_pft'), 2) : 0,
                     'amazon_lmp_price' => $amazonLmpVals->isNotEmpty() ? round($amazonLmpVals->avg(), 2) : null,
                     'ebay_lmp_price' => $ebayLmpVals->isNotEmpty() ? round($ebayLmpVals->avg(), 2) : null,
                     'google_lmp_price' => $googleLmpVals->isNotEmpty() ? round($googleLmpVals->avg(), 2) : null,
+                    'temu_lmp_price' => $temuLmpVals->isNotEmpty() ? round($temuLmpVals->avg(), 2) : null,
                     'amazon_lmp_link' => null,
                     'ebay_lmp_link' => null,
+                    'temu_lmp_link' => null,
                     'amazon_lmp_count' => $rows->sum('amazon_lmp_count'),
                     'ebay_lmp_count' => $rows->sum('ebay_lmp_count'),
+                    'temu_lmp_count' => $rows->sum('temu_lmp_count'),
                     'rating' => $rows->filter(fn ($r) => isset($r->rating) && $r->rating > 0)->isNotEmpty()
                         ? round($rows->filter(fn ($r) => isset($r->rating) && $r->rating > 0)->avg('rating'), 1) : null,
                     'reviews' => $rows->sum('reviews'),
@@ -1316,19 +1502,33 @@ class CvrMasterController extends Controller
     }
 
     /**
-     * Save column visibility preferences
-     *
-     * @param Request $request
-     * @return \Illuminate\Http\JsonResponse
+     * Persist pricing-master-cvr Tabulator column visibility in channel_tabulator_column_settings.
      */
     public function saveColumnVisibility(Request $request)
     {
         try {
-            $visibility = $request->input('visibility');
-            
-            // Store in session
-            session(['cvr_master_column_visibility' => $visibility]);
-            
+            $visibility = $request->input('visibility', []);
+            if (!is_array($visibility)) {
+                return response()->json(['error' => 'visibility must be an array'], 422);
+            }
+
+            $normalized = [];
+            foreach ($visibility as $key => $val) {
+                $field = trim((string) $key);
+                if ($field === '' || strlen($field) > 190) {
+                    continue;
+                }
+                $normalized[$field] = filter_var($val, FILTER_VALIDATE_BOOLEAN);
+            }
+
+            ChannelTabulatorColumnSetting::updateOrCreate(
+                ['channel_name' => 'pricing_master_cvr'],
+                ['visibility' => $normalized]
+            );
+
+            // Keep session in sync for any older clients still reading it
+            session(['cvr_master_column_visibility' => $normalized]);
+
             return response()->json(['success' => true]);
         } catch (\Exception $e) {
             Log::error('Error saving column visibility: ' . $e->getMessage());
@@ -1337,16 +1537,26 @@ class CvrMasterController extends Controller
     }
 
     /**
-     * Get column visibility preferences
-     *
-     * @param Request $request
-     * @return \Illuminate\Http\JsonResponse
+     * Load pricing-master-cvr column visibility from channel_tabulator_column_settings.
      */
     public function getColumnVisibility(Request $request)
     {
         try {
-            $visibility = session('cvr_master_column_visibility', []);
-            
+            $row = ChannelTabulatorColumnSetting::where('channel_name', 'pricing_master_cvr')->first();
+            $visibility = ($row && is_array($row->visibility)) ? $row->visibility : [];
+
+            // One-time fallback: migrate legacy session settings into DB if empty
+            if ($visibility === []) {
+                $sessionVisibility = session('cvr_master_column_visibility', []);
+                if (is_array($sessionVisibility) && $sessionVisibility !== []) {
+                    $visibility = $sessionVisibility;
+                    ChannelTabulatorColumnSetting::updateOrCreate(
+                        ['channel_name' => 'pricing_master_cvr'],
+                        ['visibility' => $visibility]
+                    );
+                }
+            }
+
             return response()->json($visibility);
         } catch (\Exception $e) {
             Log::error('Error getting column visibility: ' . $e->getMessage());
@@ -1373,36 +1583,122 @@ class CvrMasterController extends Controller
 
             Log::info('Fetching breakdown data for SKU: ' . $sku);
             
-            // Get all channel TACOS% data from marketplace_daily_metrics (latest date)
-            $channelTacosData = [];
+            // Channel Ads% — same metric as /all-marketplace-master (Total Ad Spend / L30 Sales × 100).
+            // Prefer channel_master_calculated_data (AMM fast-path cache); fall back to marketplace_daily_metrics.
+            $channelAdsData = [];
+
+            $resolveAdsPercent = function ($channelLabel, $ads, $tacos) {
+                $norm = strtolower(preg_replace('/\s+/', '', (string) $channelLabel));
+                // Match AMM formatter: Walmart / TopDawg prefer TACOS % when Ads% is empty.
+                // Shopify/Shopify B2C use live AMM Shopify Ads% overlay below (not stale TACOS).
+                if (in_array($norm, ['walmart', 'topdawg'], true)) {
+                    if ($tacos !== null && $tacos !== '') {
+                        return round((float) $tacos, 2);
+                    }
+                    if ($ads !== null && $ads !== '') {
+                        return round((float) $ads, 2);
+                    }
+                    return 0.0;
+                }
+                if ($ads !== null && $ads !== '') {
+                    return round((float) $ads, 2);
+                }
+                if ($tacos !== null && $tacos !== '') {
+                    return round((float) $tacos, 2);
+                }
+                return 0.0;
+            };
+
             $dailyMetrics = MarketplaceDailyMetric::selectRaw('channel, MAX(date) as max_date')
                 ->groupBy('channel')
                 ->get();
-            
+
             foreach ($dailyMetrics as $row) {
                 $metric = MarketplaceDailyMetric::where('channel', $row->channel)
                     ->where('date', $row->max_date)
                     ->first();
-                
+
                 if ($metric) {
-                    $channelTacosData[strtolower($metric->channel)] = $metric->tacos_percentage ?? 0;
+                    $key = strtolower(trim($metric->channel));
+                    $channelAdsData[$key] = $resolveAdsPercent(
+                        $metric->channel,
+                        $metric->ads_percentage,
+                        $metric->tacos_percentage
+                    );
                 }
             }
-            
-            // Helper function to get TACOS% for a channel
-            $getChannelTACOS = function($channelName) use ($channelTacosData) {
-                // Map marketplace names to channel names in marketplace_daily_metrics
+
+            foreach (ChannelMasterCalculatedData::select('channel', 'ads_percentage', 'tacos_percentage')->get() as $channel) {
+                $key = strtolower(trim($channel->channel));
+                $channelAdsData[$key] = $resolveAdsPercent(
+                    $channel->channel,
+                    $channel->ads_percentage,
+                    $channel->tacos_percentage
+                );
+            }
+
+            // Shopify Ads% on /all-marketplace-master is live (Spend ÷ Sales), overlaid on the
+            // "Shopify" channel — not marketplace_daily_metrics "Shopify B2C" TACOS (~7.5%).
+            // Master Analytics SB2C must use that same AMM Shopify Ads%.
+            try {
+                $shopifySnap = app(ChannelMasterController::class)->getShopifyDirectL30Snapshot();
+                $shopifyAdsPct = round((float) ($shopifySnap['tcos_pct'] ?? 0), 2);
+                if ($shopifyAdsPct > 0) {
+                    $channelAdsData['shopify'] = $shopifyAdsPct;
+                    $channelAdsData['shopify b2c'] = $shopifyAdsPct;
+                    $channelAdsData['shopifyb2c'] = $shopifyAdsPct;
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Master Analytics: Shopify live Ads% overlay failed: ' . $e->getMessage());
+            }
+
+            // Helper: Ads% for a breakdown marketplace (maps to AMM / daily-metrics channel names)
+            $getChannelAdsPercent = function ($channelName) use ($channelAdsData) {
                 $channelMap = [
-                    'shopifyb2c' => 'shopify b2c',
-                    'shopifyb2b' => 'shopify b2b',
+                    'amazon' => 'amazon',
+                    'fba' => 'amazon',
+                    'ebay' => 'ebay',
+                    'ebay1' => 'ebay',
                     'ebaytwo' => 'ebay 2',
+                    'ebay2' => 'ebay 2',
                     'ebaythree' => 'ebay 3',
+                    'ebay3' => 'ebay 3',
+                    'doba' => 'doba',
+                    'tiktok' => 'tiktok',
+                    // SB2C ↔ AMM "Shopify" Ads% (live overlay above)
+                    'sb2c' => 'shopify',
+                    'shopifyb2c' => 'shopify',
+                    'shopify' => 'shopify',
+                    'sb2b' => 'shopify b2b',
+                    'shopifyb2b' => 'shopify b2b',
+                    'macy' => 'macys',
+                    'macys' => 'macys',
+                    'reverb' => 'reverb',
+                    'temu' => 'temu',
+                    'temu2' => 'temu 2',
                     'bestbuy' => 'best buy usa',
+                    'tiendamia' => 'tiendamia',
+                    'shein' => 'shein',
+                    'aliexpress' => 'aliexpress',
+                    'purchasingpower' => 'purchasing power',
+                    'ppower' => 'purchasing power',
+                    'purchase' => 'purchasing power',
+                    'walmart' => 'walmart',
                 ];
-                
-                $mappedName = $channelMap[strtolower($channelName)] ?? strtolower($channelName);
-                return $channelTacosData[$mappedName] ?? 0;
+
+                $mappedName = $channelMap[strtolower(trim($channelName))] ?? strtolower(trim($channelName));
+                // Prefer AMM Shopify key; fall back to shopify b2c if overlay missing
+                if ($mappedName === 'shopify') {
+                    return $channelAdsData['shopify']
+                        ?? $channelAdsData['shopify b2c']
+                        ?? $channelAdsData['shopifyb2c']
+                        ?? 0;
+                }
+                return $channelAdsData[$mappedName] ?? 0;
             };
+
+            // Backward-compatible alias used by a few NPFT calculations below
+            $getChannelTACOS = $getChannelAdsPercent;
 
             // Helper to get buyer_link and seller_link from any marketplace listing_statuses table (same structure: sku, value JSON)
             $getListingLinks = function($modelClass, $sku) {
@@ -1426,17 +1722,77 @@ class CvrMasterController extends Controller
                 Log::info('Found full SKU in ProductMaster: ' . $fullSku . ' (from: ' . $sku . ')');
             }
 
-            // Fetch Amazon LMP data from amazon_sku_competitors (same as getCvrDataJson)
+            // Fetch channel LMP lookups for breakdown LMP column (Amazon / eBay / Google / Temu)
             $amazonLmpLookup = collect();
+            $ebayLmpLookup = collect();
             $googleLmpLookup = collect();
+            $temuLmpByNormalizedSku = [];
+            $temuLmpSkuGroupService = null;
             try {
-                $amazonLmpLookups = AmazonSkuCompetitor::buildGroupedLookup('amazon');
-                $amazonLmpLookup = $amazonLmpLookups['lowest'];
-                $googleLmpLookups = GoogleSkuCompetitor::buildGroupedLookup('google');
-                $googleLmpLookup = $googleLmpLookups['lowest'];
+                $amazonLmpLookup = AmazonSkuCompetitor::buildGroupedLookup('amazon')['lowest'];
+                $ebayLmpLookup = EbaySkuCompetitor::buildGroupedLookup('ebay')['lowest'];
+                $googleLmpLookup = GoogleSkuCompetitor::buildGroupedLookup('google')['lowest'];
             } catch (\Exception $e) {
-                Log::warning('Could not fetch Amazon LMP in breakdown: ' . $e->getMessage());
+                Log::warning('Could not fetch LMP lookups in breakdown: ' . $e->getMessage());
             }
+            try {
+                if (Schema::hasTable('temu_lmp')) {
+                    foreach (TemuLmp::all() as $temuLmpRow) {
+                        $temuLmpByNormalizedSku[self::normalizeTemuSkuForCvr((string) ($temuLmpRow->sku ?? ''))] = $temuLmpRow;
+                    }
+                    $temuLmpSkuGroupService = app(LmpSkuGroupService::class);
+                    $temuLmpSkuGroupService->prepareForSkus([$fullSku, $sku]);
+                }
+            } catch (\Exception $e) {
+                Log::warning('Could not fetch Temu LMP in breakdown: ' . $e->getMessage());
+            }
+
+            $skuLookupKey = strtoupper(preg_replace('/\s+/', ' ', trim($fullSku ?? $sku)));
+            $resolveAmazonLmpPrice = function (?string $lookupSku = null) use ($amazonLmpLookup) {
+                $key = strtoupper(preg_replace('/\s+/', ' ', trim((string) ($lookupSku ?? ''))));
+                if ($key === '') {
+                    return null;
+                }
+                $lmp = $amazonLmpLookup->get($key);
+                if ($lmp && isset($lmp->price) && is_numeric($lmp->price) && floatval($lmp->price) > 0) {
+                    return round(floatval($lmp->price), 2);
+                }
+                return null;
+            };
+            $resolveEbayLmpPrice = function (?string $lookupSku = null) use ($ebayLmpLookup) {
+                $key = strtoupper(preg_replace('/\s+/', ' ', trim((string) ($lookupSku ?? ''))));
+                if ($key === '') {
+                    return null;
+                }
+                $lmp = $ebayLmpLookup->get($key);
+                if (!$lmp) {
+                    return null;
+                }
+                $total = floatval($lmp->total_price ?? 0);
+                if ($total <= 0) {
+                    $total = floatval($lmp->price ?? 0) + floatval($lmp->shipping_cost ?? 0);
+                }
+                return $total > 0 ? round($total, 2) : null;
+            };
+            $resolveGoogleLmpPrice = function (?string $lookupSku = null) use ($googleLmpLookup) {
+                $key = strtoupper(preg_replace('/\s+/', ' ', trim((string) ($lookupSku ?? ''))));
+                if ($key === '') {
+                    return null;
+                }
+                $lmp = $googleLmpLookup->get($key);
+                if ($lmp && isset($lmp->price) && is_numeric($lmp->price) && floatval($lmp->price) > 0) {
+                    return round(floatval($lmp->price), 2);
+                }
+                return null;
+            };
+            $resolveTemuLmpPrice = function (?string $lookupSku = null) use ($temuLmpByNormalizedSku, $temuLmpSkuGroupService) {
+                $resolved = $this->resolveTemuLmpForSku(
+                    (string) ($lookupSku ?? ''),
+                    $temuLmpByNormalizedSku,
+                    $temuLmpSkuGroupService
+                );
+                return $resolved['price'];
+            };
 
             // Get LP and Ship from ProductMaster for profit calculations
             $values = $productMaster ? ($productMaster->Values ?: []) : [];
@@ -1527,7 +1883,7 @@ class CvrMasterController extends Controller
                     // Format pushed at timestamp
                     if ($amazonPushedAt) {
                         try {
-                            $amazonPushedAt = Carbon::parse($amazonPushedAt)->format('M d, Y h:i A');
+                            $amazonPushedAt = Carbon::parse($amazonPushedAt)->format('jM');
                         } catch (\Exception $e) {
                             $amazonPushedAt = null;
                         }
@@ -1541,7 +1897,7 @@ class CvrMasterController extends Controller
                 'marketplace' => 'Amazon',
                 'sku' => $amazonData ? $fullSku : 'Not Listed',
                 'price' => $amazonPrice,
-                'views' => $amazonData ? ($amazonData->sessions_l30 ?? 0) : 0,
+                'views' => $amazonData ? intval($amazonData->sessions_l30 ?? 0) : null,
                 'l30' => $amazonL30,
                 'gpft' => $amazonGPFT,
                 'ad' => $amazonAD,
@@ -1576,7 +1932,8 @@ class CvrMasterController extends Controller
             
             // eBay 1
             $ebayData = EbayMetric::where('sku', $fullSku)->first();
-            $ebay1Marketplace = MarketplacePercentage::where('marketplace', 'Ebay')->first();
+            $ebay1Marketplace = MarketplacePercentage::where('marketplace', 'Ebay1')->first()
+                ?? MarketplacePercentage::where('marketplace', 'Ebay')->first();
             $ebay1Margin = $ebay1Marketplace ? ($ebay1Marketplace->percentage / 100) : 0.85;
             $ebay1Price = $ebayData->ebay_price ?? 0;
             $ebay1L30 = $ebayData->ebay_l30 ?? 0;
@@ -1586,23 +1943,34 @@ class CvrMasterController extends Controller
             
             $ebayDataView = EbayDataView::where('sku', $fullSku)->first();
             $ebay1Suggested = ['sprice' => 0, 'sgpft' => 0, 'sroi' => 0, 'spft' => 0];
+            $ebay1PushedBy = null;
+            $ebay1PushedAt = null;
             if ($ebayDataView) {
                 $val = is_array($ebayDataView->value) ? $ebayDataView->value : json_decode($ebayDataView->value, true);
                 if (is_array($val)) {
                     $ebay1Suggested = ['sprice' => $val['SPRICE'] ?? 0, 'sgpft' => $val['SGPFT'] ?? 0,
                                        'sroi' => $val['SROI'] ?? 0, 'spft' => $val['SPFT'] ?? 0];
+                    $ebay1PushedBy = $val['SPRICE_PUSHED_BY'] ?? null;
+                    $ebay1PushedAt = $val['SPRICE_PUSHED_AT'] ?? null;
+                    if ($ebay1PushedAt) {
+                        try {
+                            $ebay1PushedAt = Carbon::parse($ebay1PushedAt)->format('jM');
+                        } catch (\Exception $e) {
+                            $ebay1PushedAt = null;
+                        }
+                    }
                 }
             }
             
             $breakdownData[] = [
-                'marketplace' => 'Ebay',
+                'marketplace' => 'Ebay1',
                 'sku' => $ebayData ? $fullSku : 'Not Listed',
                 'price' => $ebay1Price,
-                'views' => $ebayData->views ?? 0,
+                'views' => $ebayData ? intval($ebayData->views ?? 0) : null,
                 'l30' => $ebay1L30,
                 'gpft' => $ebay1GPFT,
                 'ad' => $ebay1AD,
-                'tacos_ch' => $getChannelTACOS('Ebay'),
+                'tacos_ch' => $getChannelTACOS('Ebay1'),
                 'npft' => $ebay1NPFT,
                 'is_listed' => $ebayData ? true : false,
                 'sprice' => $ebay1Suggested['sprice'],
@@ -1612,8 +1980,8 @@ class CvrMasterController extends Controller
                 'lp' => $lp,
                 'ship' => $ship,
                 'margin' => $ebay1Margin,
-                'pushed_by' => null,
-                'pushed_at' => null,
+                'pushed_by' => $ebay1PushedBy,
+                'pushed_at' => $ebay1PushedAt,
                 'buyer_link' => ($ebay1Links = $getListingLinks(EbayListingStatus::class, $fullSku))[0],
                 'seller_link' => $ebay1Links[1],
             ];
@@ -1631,7 +1999,8 @@ class CvrMasterController extends Controller
             }
             
             // eBay 2
-            $ebay2Marketplace = MarketplacePercentage::where('marketplace', 'EbayTwo')->first();
+            $ebay2Marketplace = MarketplacePercentage::where('marketplace', 'Ebay2')->first()
+                ?? MarketplacePercentage::where('marketplace', 'EbayTwo')->first();
             $ebay2Margin = $ebay2Marketplace ? ($ebay2Marketplace->percentage / 100) : 0.85;
             $ebay2Price = $ebay2Data->ebay_price ?? 0;
             $ebay2L30 = $ebay2Data->ebay_l30 ?? 0;
@@ -1651,10 +2020,10 @@ class CvrMasterController extends Controller
             }
             
             $breakdownData[] = [
-                'marketplace' => 'EbayTwo',
+                'marketplace' => 'Ebay2',
                 'sku' => $ebay2Data ? $ebay2Data->sku : 'Not Listed',
                 'price' => $ebay2Price,
-                'views' => $ebay2Data->views ?? 0,
+                'views' => $ebay2Data ? intval($ebay2Data->views ?? 0) : null,
                 'l30' => $ebay2L30,
                 'gpft' => $ebay2GPFT,
                 'ad' => $ebay2AD,
@@ -1676,7 +2045,8 @@ class CvrMasterController extends Controller
 
             // eBay 3
             $ebay3Data = Ebay3Metric::where('sku', $fullSku)->first();
-            $ebay3Marketplace = MarketplacePercentage::where('marketplace', 'EbayThree')->first();
+            $ebay3Marketplace = MarketplacePercentage::where('marketplace', 'Ebay3')->first()
+                ?? MarketplacePercentage::where('marketplace', 'EbayThree')->first();
             $ebay3Margin = $ebay3Marketplace ? ($ebay3Marketplace->percentage / 100) : 0.85;
             $ebay3Price = $ebay3Data->ebay_price ?? 0;
             $ebay3L30 = $ebay3Data->ebay_l30 ?? 0;
@@ -1704,10 +2074,10 @@ class CvrMasterController extends Controller
             }
             
             $breakdownData[] = [
-                'marketplace' => 'EbayThree',
+                'marketplace' => 'Ebay3',
                 'sku' => $ebay3Data ? $fullSku : 'Not Listed',
                 'price' => $ebay3Price,
-                'views' => $ebay3Data->views ?? 0,
+                'views' => $ebay3Data ? intval($ebay3Data->views ?? 0) : null,
                 'l30' => $ebay3L30,
                 'gpft' => $ebay3GPFT,
                 'ad' => $ebay3AD,
@@ -1781,21 +2151,15 @@ class CvrMasterController extends Controller
             
             Log::info('Temu Marketplace % - Found: ' . ($temuMarketplaceData ? 'Yes' : 'No') . ', percentage: ' . ($temuMarketplaceData->percentage ?? 'NULL') . ', Final: ' . $temuPercentage);
             
-            // Get view data by goods_id (matching line 1600-1604)
-            $productClicks = 0;
-            if ($goodsId) {
-                $temuViewData = TemuViewData::where('goods_id', $goodsId)
-                    ->selectRaw('SUM(product_clicks) as product_clicks')
-                    ->first();
-                $productClicks = $temuViewData ? ($temuViewData->product_clicks ?? 0) : 0;
-            }
-            
-            // Get Temu views (ViewsPullData first, then product_clicks)
-            $temuViews = 0;
-            if ($viewsPullData && $viewsPullData->temu) {
-                $temuViews = $viewsPullData->temu;
-            } else {
-                $temuViews = $productClicks;
+            // Temu views = product_clicks (same as /temu-decrease Views column); null → N/A
+            $temuViews = $this->resolveTemuProductClicks($goodsId);
+            if (
+                ($temuViews === null || $temuViews === 0)
+                && $viewsPullData
+                && $viewsPullData->temu !== null
+                && $viewsPullData->temu !== ''
+            ) {
+                $temuViews = intval($viewsPullData->temu);
             }
             
             // Get ad spend by goods_id (matching line 1606-1612)
@@ -1875,7 +2239,7 @@ class CvrMasterController extends Controller
                     // Format pushed at timestamp
                     if ($dobaPushedAt) {
                         try {
-                            $dobaPushedAt = Carbon::parse($dobaPushedAt)->format('M d, Y h:i A');
+                            $dobaPushedAt = Carbon::parse($dobaPushedAt)->format('jM');
                         } catch (\Exception $e) {
                             $dobaPushedAt = null;
                         }
@@ -1887,7 +2251,7 @@ class CvrMasterController extends Controller
                 'marketplace' => 'Doba',
                 'sku' => $hasDobaData ? $fullSku : 'Not Listed',
                 'price' => $dobaPrice,
-                'views' => $dobaMetric->impressions ?? 0,
+                'views' => $dobaMetric ? intval($dobaMetric->impressions ?? 0) : null,
                 'l30' => $dobaMetric->quantity_l30 ?? 0,
                 'gpft' => $dobaGPFT,
                 'ad' => 0,
@@ -1970,7 +2334,7 @@ class CvrMasterController extends Controller
                 'marketplace' => 'TikTok',
                 'sku' => $hasTikTokData ? $fullSku : 'Not Listed',
                 'price' => $ttPrice,
-                'views' => $tiktokData->views ?? 0,
+                'views' => $tiktokData ? intval($tiktokData->views ?? 0) : null,
                 'l30' => $tiktokL30 ?? 0,
                 'gpft' => $ttGPFT,
                 'ad' => 0,
@@ -2009,9 +2373,16 @@ class CvrMasterController extends Controller
             // NOTE: BestBuy is added later with enhanced suggested data (line ~1594)
 
             // Fetch Shopify B2C data
-            // Price from shopify_skus, L30 from shopify_b2c_daily_data (count rows)
+            // Price/views from shopify_skus, L30 from shopify_b2c_daily_data (count rows)
             $shopifySku = ShopifySku::where('sku', $fullSku)->first();
+            if (!$shopifySku) {
+                $byNorm = ShopifySku::buildShopifySkuLookupByNormalizedSku([$fullSku]);
+                $normKey = ShopifySku::normalizeSkuForShopifyLookup($fullSku);
+                $shopifySku = ($normKey !== '' && isset($byNorm[$normKey])) ? $byNorm[$normKey] : null;
+            }
             $sb2cPrice = $shopifySku ? floatval($shopifySku->price ?? 0) : 0;
+            // Shopify L30 product page sessions; null when no shopify_skus row → N/A
+            $sb2cViews = $shopifySku ? intval($shopifySku->views ?? 0) : null;
             
             // L30: Count rows in shopify_b2c_daily_data (not sum quantity)
             $sb2cL30 = ShopifyB2CDailyData::where('sku', $fullSku)->count();
@@ -2040,7 +2411,7 @@ class CvrMasterController extends Controller
                     // Format pushed at timestamp
                     if ($sb2cPushedAt) {
                         try {
-                            $sb2cPushedAt = Carbon::parse($sb2cPushedAt)->format('M d, Y h:i A');
+                            $sb2cPushedAt = Carbon::parse($sb2cPushedAt)->format('jM');
                         } catch (\Exception $e) {
                             $sb2cPushedAt = null;
                         }
@@ -2049,14 +2420,14 @@ class CvrMasterController extends Controller
             }
             
             $breakdownData[] = [
-                'marketplace' => 'SB2C',
+                'marketplace' => 'Shopify',
                 'sku' => $fullSku, // Always show SKU (from ProductMaster)
                 'price' => $sb2cPrice,
-                'views' => 0,
+                'views' => $sb2cViews,
                 'l30' => $sb2cL30,
                 'gpft' => $sb2cGPFT,
                 'ad' => 0,
-                'tacos_ch' => $getChannelTACOS('ShopifyB2C'),
+                'tacos_ch' => $getChannelTACOS('Shopify'),
                 'npft' => $sb2cNPFT,
                 'is_listed' => true, // Always true - never "Not Listed"
                 'sprice' => $sb2cSuggested['sprice'],
@@ -2097,7 +2468,7 @@ class CvrMasterController extends Controller
                     // Format pushed at timestamp
                     if ($sb2bPushedAt) {
                         try {
-                            $sb2bPushedAt = Carbon::parse($sb2bPushedAt)->format('M d, Y h:i A');
+                            $sb2bPushedAt = Carbon::parse($sb2bPushedAt)->format('jM');
                         } catch (\Exception $e) {
                             $sb2bPushedAt = null;
                         }
@@ -2109,7 +2480,7 @@ class CvrMasterController extends Controller
                 'marketplace' => 'SB2B',
                 'sku' => $fullSku,
                 'price' => $sb2bPrice,
-                'views' => 0,
+                'views' => null, // B2B has no separate page-view metric
                 'l30' => $sb2bL30,
                 'gpft' => $sb2bGPFT,
                 'ad' => 0,
@@ -2162,7 +2533,7 @@ class CvrMasterController extends Controller
                 'marketplace' => 'MACY',
                 'sku' => $hasMacyData ? $fullSku : 'Not Listed',
                 'price' => $macyPrice,
-                'views' => $macyProduct->views ?? 0,
+                'views' => $macyProduct ? intval($macyProduct->views ?? 0) : null,
                 'l30' => $macyL30,
                 'gpft' => $macyGPFT,
                 'ad' => 0,
@@ -2220,7 +2591,7 @@ class CvrMasterController extends Controller
                 'marketplace' => 'Reverb',
                 'sku' => $hasReverbData ? $fullSku : 'Not Listed',
                 'price' => $rvPrice,
-                'views' => $reverbProduct->views ?? 0,
+                'views' => $reverbProduct ? intval($reverbProduct->views ?? 0) : null,
                 'l30' => $reverbL30,
                 'gpft' => $rvGPFT,
                 'ad' => 0,
@@ -2239,21 +2610,47 @@ class CvrMasterController extends Controller
                 'seller_link' => $reverbLinks[1],
             ];
 
-            // Add Temu (Temu marketplace uses 96%)
+            // Add Temu (Temu marketplace uses 96%) — pricing/views match /temu-decrease
             $temuMarketplace = MarketplacePercentage::where('marketplace', 'Temu')->first();
             $temuMargin = $temuMarketplace ? ($temuMarketplace->percentage / 100) : 0.96;
-            $temuPricing = TemuPricing::where('sku', $fullSku)->first();
+            $temuPriceMapOne = $this->buildTemuPricingMapForProductSkus(
+                TemuPricing::query()->get(['sku', 'base_price', 'goods_id', 'quantity']),
+                [$fullSku]
+            );
+            $temuPricing = $temuPriceMapOne[$fullSku] ?? null;
+            if (!$temuPricing) {
+                // Keep earlier normalized lookup if map missed
+                $temuPricing = TemuPricing::where(function ($query) use ($fullSku, $normalizedSku) {
+                    $query->where('sku', $fullSku)->orWhere('sku', $normalizedSku);
+                })->first();
+            }
             $temuPrice = 0;
             if ($temuPricing) {
                 $basePrice = $temuPricing->base_price ?? 0;
-                $temuPrice = $basePrice <= 26.99 ? $basePrice + 2.99 : $basePrice;
+                $temuPrice = $basePrice > 0 ? ($basePrice <= 26.99 ? $basePrice + 2.99 : $basePrice) : 0;
             }
-            $temuL30 = TemuDailyData::where('contribution_sku', $fullSku)
-                ->selectRaw('SUM(quantity_purchased) as l30')->value('l30') ?? 0;
+            // Re-resolve views from this pricing row's goods_id (authoritative for the Temu row)
+            $temuViews = $temuPricing
+                ? $this->resolveTemuProductClicks($temuPricing->goods_id ?? null)
+                : null;
+            if (
+                ($temuViews === null || $temuViews === 0)
+                && $viewsPullData
+                && $viewsPullData->temu !== null
+                && $viewsPullData->temu !== ''
+            ) {
+                $temuViews = intval($viewsPullData->temu);
+            }
+            $temuL30 = TemuDailyData::where(function ($query) use ($fullSku, $normalizedSku) {
+                $query->where('contribution_sku', $fullSku)
+                      ->orWhere('contribution_sku', $normalizedSku);
+            })->selectRaw('SUM(quantity_purchased) as l30')->value('l30') ?? 0;
             $temuGPFT = $temuPrice > 0 ? (($temuPrice * $temuMargin - $lp - $temuShip) / $temuPrice) * 100 : 0;
             $temuNPFT = $temuL30 == 0 ? $temuGPFT : $temuGPFT;
             
-            $temuDataView = TemuDataView::where('sku', $fullSku)->first();
+            $temuDataView = TemuDataView::where(function ($query) use ($fullSku, $normalizedSku) {
+                $query->where('sku', $fullSku)->orWhere('sku', $normalizedSku);
+            })->first();
             $temuSuggested = ['sprice' => 0, 'sgpft' => 0, 'sroi' => 0, 'spft' => 0];
             if ($temuDataView) {
                 $val = is_array($temuDataView->value) ? $temuDataView->value : json_decode($temuDataView->value, true);
@@ -2267,7 +2664,7 @@ class CvrMasterController extends Controller
                 'marketplace' => 'Temu',
                 'sku' => $temuPricing ? $fullSku : 'Not Listed',
                 'price' => $temuPrice,
-                'views' => 0,
+                'views' => $temuViews,
                 'l30' => $temuL30,
                 'gpft' => $temuGPFT,
                 'ad' => 0,
@@ -2291,7 +2688,7 @@ class CvrMasterController extends Controller
             $temu2L30Br = 0;
             $temu2GPFTBr = 0;
             $temu2NPFTBr = 0;
-            $temu2ViewsBr = 0;
+            $temu2ViewsBr = null; // null → N/A when no temu2_view_data
             $temu2DataView = null;
             $temu2Suggested = ['sprice' => 0, 'sgpft' => 0, 'sroi' => 0, 'spft' => 0];
             $temu2Buyer = null;
@@ -2309,11 +2706,11 @@ class CvrMasterController extends Controller
                     }
                     $temu2GPFTBr = $temu2PriceBr > 0 ? (($temu2PriceBr * $temuMargin - $lp - $temuShip) / $temu2PriceBr) * 100 : 0;
                     $temu2NPFTBr = $temu2L30Br == 0 ? $temu2GPFTBr : $temu2GPFTBr;
-                    if ($temu2PricingRow && ($g2b = $temu2PricingRow->goods_id ?? null)) {
-                        $v2b = Temu2ViewData::where('goods_id', $g2b)
-                            ->selectRaw('SUM(product_clicks) as product_clicks')
-                            ->first();
-                        $temu2ViewsBr = $v2b ? (int) ($v2b->product_clicks ?? 0) : 0;
+                    if ($temu2PricingRow) {
+                        $temu2ViewsBr = $this->resolveTemuProductClicks(
+                            $temu2PricingRow->goods_id ?? null,
+                            true // Temu 2 view table
+                        );
                     }
                 } catch (\Throwable $e) {
                     Log::warning('CVR breakdown Temu2 (pricing / daily): ' . $e->getMessage());
@@ -2394,7 +2791,7 @@ class CvrMasterController extends Controller
                 'marketplace' => 'BestBuy',
                 'sku' => $bestbuyProduct ? $fullSku : 'Not Listed',
                 'price' => $bestbuyPrice,
-                'views' => 0,
+                'views' => null, // BestBuy has no views metric
                 'l30' => $bestbuyL30,
                 'gpft' => $bestbuyGPFT,
                 'ad' => 0,
@@ -2437,7 +2834,7 @@ class CvrMasterController extends Controller
                 'marketplace' => 'Tiendamia',
                 'sku' => $tiendamiaProduct ? $fullSku : 'Not Listed',
                 'price' => $tiendamiaPrice,
-                'views' => 0,
+                'views' => null, // Tiendamia has no views metric
                 'l30' => $tiendamiaL30,
                 'gpft' => $tiendamiaGPFT,
                 'ad' => 0,
@@ -2504,12 +2901,26 @@ class CvrMasterController extends Controller
                 Log::warning('Shein DataView/ListingStatus fetch skipped for SKU ' . $fullSku . ': ' . $e->getMessage());
             }
             $hasSheinData = $sheinPricingRowBd && ($sheinPriceBd > 0 || $sheinL30Bd > 0);
+            $sheinViewsBd = null;
+            try {
+                $sheinSheetBd = \App\Models\SheinSheetData::where('sku', $fullSku)->first();
+                if ($sheinSheetBd && ($sheinSheetBd->views_clicks !== null && $sheinSheetBd->views_clicks !== '')) {
+                    $sheinViewsBd = intval($sheinSheetBd->views_clicks);
+                } else {
+                    $sheinMetricBd = \App\Models\SheinMetric::where('sku', $fullSku)->first();
+                    if ($sheinMetricBd && ($sheinMetricBd->views !== null && $sheinMetricBd->views !== '')) {
+                        $sheinViewsBd = intval($sheinMetricBd->views);
+                    }
+                }
+            } catch (\Exception $e) {
+                // leave N/A
+            }
 
             $breakdownData[] = [
                 'marketplace' => 'Shein',
                 'sku'         => $hasSheinData ? $fullSku : 'Not Listed',
                 'price'       => round($sheinPriceBd, 2),
-                'views'       => 0,
+                'views'       => $sheinViewsBd,
                 'l30'         => $sheinL30Bd,
                 'gpft'        => round($sheinGPFTBd, 2),
                 'ad'          => 0,
@@ -2567,12 +2978,21 @@ class CvrMasterController extends Controller
                 Log::warning('AliExpress DataView/ListingStatus fetch skipped for SKU ' . $fullSku . ': ' . $e->getMessage());
             }
             $hasAeData = $aePricingRowBd && ($aePriceBd > 0 || $aeL30Bd > 0);
+            $aeViewsBd = null;
+            try {
+                $aeSheetBd = \App\Models\AliExpressSheetData::where('sku', $fullSku)->first();
+                if ($aeSheetBd && ($aeSheetBd->views !== null && $aeSheetBd->views !== '')) {
+                    $aeViewsBd = intval($aeSheetBd->views);
+                }
+            } catch (\Exception $e) {
+                // leave N/A
+            }
 
             $breakdownData[] = [
                 'marketplace' => 'AliExpress',
                 'sku'         => $hasAeData ? $fullSku : 'Not Listed',
                 'price'       => round($aePriceBd, 2),
-                'views'       => 0,
+                'views'       => $aeViewsBd,
                 'l30'         => $aeL30Bd,
                 'gpft'        => round($aeGPFTBd, 2),
                 'ad'          => 0,
@@ -2628,10 +3048,10 @@ class CvrMasterController extends Controller
             $hasPpData = $ppProductBd && ($ppPriceBd > 0 || $ppL30Bd > 0);
 
             $breakdownData[] = [
-                'marketplace' => 'PurchasingPower',
+                'marketplace' => 'PPower',
                 'sku'         => $hasPpData ? $fullSku : 'Not Listed',
                 'price'       => round($ppPriceBd, 2),
-                'views'       => 0,
+                'views'       => null, // Purchasing Power has no views metric
                 'l30'         => $ppL30Bd,
                 'gpft'        => round($ppGPFTBd, 2),
                 'ad'          => 0,
@@ -2678,7 +3098,9 @@ class CvrMasterController extends Controller
 
                     $fbaPrice = $fbaPriceInfo ? floatval($fbaPriceInfo->price ?? 0) : 0;
                     $fbaL30 = $fbaMonthly ? ($fbaMonthly->l30_units ?? 0) : 0;
-                    $fbaViews = $fbaReports ? ($fbaReports->current_month_views ?? 0) : 0;
+                    $fbaViews = ($fbaReports && $fbaReports->current_month_views !== null)
+                        ? intval($fbaReports->current_month_views)
+                        : null;
 
                     $sendCost = 0;
                     if ($fbaManual) {
@@ -2771,6 +3193,63 @@ class CvrMasterController extends Controller
             } catch (\Throwable $e) {
                 Log::warning('FBA row skipped in breakdown for SKU ' . $fullSku . ': ' . $e->getMessage());
             }
+
+            // Attach channel Ads%, NPFT = GPFT − Ads%, and channel-relevant LMP price
+            $amazonLmpPrice = $resolveAmazonLmpPrice($fullSku);
+            $ebayLmpPrice = $resolveEbayLmpPrice($fullSku);
+            if ($ebayLmpPrice === null) {
+                foreach (EbaySkuCompetitor::resolveLookupKeys($fullSku) as $ebayKey) {
+                    $ebayLmpPrice = $resolveEbayLmpPrice($ebayKey);
+                    if ($ebayLmpPrice !== null) {
+                        break;
+                    }
+                }
+            }
+            $googleLmpPrice = $resolveGoogleLmpPrice($fullSku);
+            $temuLmpPrice = $resolveTemuLmpPrice($fullSku);
+
+            foreach ($breakdownData as &$row) {
+                $adsPct = (float) $getChannelAdsPercent($row['marketplace'] ?? '');
+                $gpftPct = (float) ($row['gpft'] ?? 0);
+                $row['tacos_ch'] = $adsPct;
+                $row['npft'] = round($gpftPct - $adsPct, 2);
+
+                $mp = strtolower(trim((string) ($row['marketplace'] ?? '')));
+                $lmpChannel = null;
+                $lmpPrice = null;
+                if (in_array($mp, ['amazon', 'fba'], true)) {
+                    $lmpChannel = 'amazon';
+                    $rowSku = ($row['sku'] ?? null) && ($row['sku'] !== 'Not Listed') ? $row['sku'] : $fullSku;
+                    $lmpPrice = $resolveAmazonLmpPrice($rowSku) ?? $amazonLmpPrice;
+                } elseif (in_array($mp, ['ebay', 'ebay1', 'ebaytwo', 'ebay2', 'ebaythree', 'ebay3'], true)) {
+                    $lmpChannel = 'ebay';
+                    $rowSku = ($row['sku'] ?? null) && ($row['sku'] !== 'Not Listed') ? $row['sku'] : $fullSku;
+                    $lmpPrice = $resolveEbayLmpPrice($rowSku);
+                    if ($lmpPrice === null) {
+                        foreach (EbaySkuCompetitor::resolveLookupKeys($rowSku, $fullSku) as $ebayKey) {
+                            $lmpPrice = $resolveEbayLmpPrice($ebayKey);
+                            if ($lmpPrice !== null) {
+                                break;
+                            }
+                        }
+                    }
+                    if ($lmpPrice === null) {
+                        $lmpPrice = $ebayLmpPrice;
+                    }
+                } elseif ($mp === 'google') {
+                    $lmpChannel = 'google';
+                    $lmpPrice = $googleLmpPrice;
+                } elseif (in_array($mp, ['temu', 'temu2'], true)) {
+                    // Same temu_lmp source used by /temu-decrease and /temu2-decrease
+                    $lmpChannel = 'temu';
+                    $rowSku = ($row['sku'] ?? null) && ($row['sku'] !== 'Not Listed') ? $row['sku'] : $fullSku;
+                    $lmpPrice = $resolveTemuLmpPrice($rowSku) ?? $temuLmpPrice;
+                }
+
+                $row['lmp_channel'] = $lmpChannel;
+                $row['lmp_price'] = $lmpPrice;
+            }
+            unset($row);
 
             Log::info('Total marketplaces: ' . count($breakdownData));
 
@@ -3085,11 +3564,11 @@ class CvrMasterController extends Controller
             // Determine which data_view table to use (use resolved SKU)
             if ($marketplace === 'amazon') {
                 $dataView = AmazonDataView::firstOrNew(['sku' => $skuToUse]);
-            } elseif ($marketplace === 'ebay') {
+            } elseif ($marketplace === 'ebay' || $marketplace === 'ebay1') {
                 $dataView = EbayDataView::firstOrNew(['sku' => $skuToUse]);
-            } elseif ($marketplace === 'ebaytwo') {
+            } elseif ($marketplace === 'ebaytwo' || $marketplace === 'ebay2') {
                 $dataView = EbayTwoDataView::firstOrNew(['sku' => $skuToUse]);
-            } elseif ($marketplace === 'ebaythree') {
+            } elseif ($marketplace === 'ebaythree' || $marketplace === 'ebay3') {
                 $dataView = EbayThreeDataView::firstOrNew(['sku' => $skuToUse]);
             } elseif ($marketplace === 'temu') {
                 $dataView = TemuDataView::firstOrNew(['sku' => $skuToUse]);
@@ -3112,7 +3591,7 @@ class CvrMasterController extends Controller
                 $dataView = ReverbViewData::firstOrNew(['sku' => $skuToUse]);
             } elseif ($marketplace === 'tiendamia') {
                 $dataView = TiendamiaDataView::firstOrNew(['sku' => $skuToUse]);
-            } elseif ($marketplace === 'shopifyb2c' || $marketplace === 'sb2c') {
+            } elseif ($marketplace === 'shopifyb2c' || $marketplace === 'sb2c' || $marketplace === 'shopify') {
                 $dataView = Shopifyb2cDataView::firstOrNew(['sku' => $skuToUse]);
             } elseif ($marketplace === 'shopifyb2b' || $marketplace === 'sb2b') {
                 $dataView = ShopifyB2BDataView::firstOrNew(['sku' => $skuToUse]);
@@ -3266,14 +3745,14 @@ class CvrMasterController extends Controller
                 ], 400);
             }
 
-            // Handle different marketplaces
+            // Handle different marketplaces (API push where available)
             if ($marketplace === 'amazon') {
                 return $this->pushToAmazon($sku, $price);
             } elseif ($marketplace === 'doba') {
                 return $this->pushToDoba($sku, $price);
             } elseif ($marketplace === 'walmart') {
                 return $this->pushToWalmart($sku, $price);
-            } elseif ($marketplace === 'sb2c' || $marketplace === 'shopifyb2c') {
+            } elseif ($marketplace === 'sb2c' || $marketplace === 'shopifyb2c' || $marketplace === 'shopify') {
                 return $this->pushToShopifyB2C($sku, $price);
             } elseif ($marketplace === 'sb2b' || $marketplace === 'shopifyb2b') {
                 return $this->pushToShopifyB2B($sku, $price);
@@ -3283,10 +3762,20 @@ class CvrMasterController extends Controller
                 return $this->pushToReverb($sku, $price);
             } elseif ($marketplace === 'fba') {
                 return $this->pushToFba($sku, $price);
+            } elseif ($marketplace === 'ebay' || $marketplace === 'ebay1') {
+                return $this->pushToEbay($sku, $price);
+            } elseif ($marketplace === 'ebay2' || $marketplace === 'ebaytwo') {
+                return $this->pushToEbay2($sku, $price);
+            } elseif ($marketplace === 'ebay3' || $marketplace === 'ebaythree') {
+                return $this->pushToEbay3($sku, $price);
+            } elseif ($marketplace === 'bestbuy' || $marketplace === 'bestbuyusa') {
+                return $this->pushToBestBuy($sku, $price);
+            } elseif ($marketplace === 'macy' || $marketplace === 'macys') {
+                return $this->pushToMacy($sku, $price);
             } else {
                 return response()->json([
                     'success' => false,
-                    'message' => "Price push is only supported for Amazon, Doba, Walmart, Shopify B2C, Shopify B2B, ProLightSounds, Reverb, and FBA. Received: $marketplace"
+                    'message' => "Price push is not available for this channel ($marketplace). Supported: Amazon, eBay1/2/3, Doba, Walmart, Shopify, SB2B, BestBuy, Macy, Reverb, FBA."
                 ], 400);
             }
 
@@ -3846,6 +4335,225 @@ class CvrMasterController extends Controller
     }
 
     /**
+     * Push price to eBay 1 — same path as /push-ebay-price-tabulator (EbayController::pushEbayPrice).
+     */
+    private function pushToEbay($sku, $price)
+    {
+        try {
+            $ebayMetric = EbayMetric::where('sku', $sku)->first();
+            if (!$ebayMetric) {
+                $ebayMetric = EbayMetric::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])->first();
+            }
+
+            if (!$ebayMetric || !$ebayMetric->item_id) {
+                $this->savePricePushStatus($sku, 'ebay', 'error', $price);
+                Log::warning('CVR Master - eBay item_id not found', ['sku' => $sku]);
+                return response()->json([
+                    'success' => false,
+                    'message' => "eBay listing not found for SKU: $sku",
+                    'errors' => [['message' => 'eBay listing not found for this SKU']]
+                ], 404);
+            }
+
+            $ebayService = new EbayApiService();
+            $result = $ebayService->reviseFixedPriceItem($ebayMetric->item_id, $price);
+
+            if (isset($result['success']) && $result['success']) {
+                $this->savePricePushStatus($sku, 'ebay', 'pushed', $price);
+                Log::info('CVR Master - eBay price push successful', [
+                    'sku' => $sku,
+                    'price' => $price,
+                    'item_id' => $ebayMetric->item_id,
+                ]);
+                return response()->json([
+                    'success' => true,
+                    'message' => "Price $" . number_format($price, 2) . " pushed to eBay for SKU: $sku",
+                    'result' => $result
+                ]);
+            }
+
+            $isAccountRestricted = !empty($result['accountRestricted']);
+            $this->savePricePushStatus($sku, 'ebay', $isAccountRestricted ? 'account_restricted' : 'error', $price);
+
+            $errors = $result['errors'] ?? [['code' => 'UnknownError', 'message' => 'Failed to update price']];
+            if (!is_array($errors)) {
+                $errors = [$errors];
+            }
+            $firstMsg = is_array($errors[0] ?? null)
+                ? ($errors[0]['message'] ?? $errors[0]['LongMessage'] ?? 'Failed to update eBay price')
+                : (string) $errors[0];
+
+            return response()->json([
+                'success' => false,
+                'message' => $firstMsg,
+                'errors' => $errors,
+            ], 400);
+        } catch (\Exception $e) {
+            $this->savePricePushStatus($sku, 'ebay', 'error', $price);
+            Log::error('CVR Master - eBay push exception', [
+                'sku' => $sku,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'eBay API error: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Push price to eBay 2 — same path as /push-ebay2-price (EbayTwoController::pushEbay2Price).
+     */
+    private function pushToEbay2($sku, $price)
+    {
+        try {
+            $ebayMetric = Ebay2Metric::where('sku', $sku)->first();
+            if (!$ebayMetric) {
+                $ebayMetric = Ebay2Metric::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])->first();
+            }
+            if (!$ebayMetric) {
+                $ebayMetric = Ebay2Metric::where('sku', 'LIKE', '%' . $sku . '%')->first();
+            }
+
+            if (!$ebayMetric || !$ebayMetric->item_id) {
+                $this->savePricePushStatus($sku, 'ebay2', 'error', $price);
+                return response()->json([
+                    'success' => false,
+                    'message' => "eBay2 listing not found for SKU: $sku",
+                ], 404);
+            }
+
+            $result = (new Ebay2ApiService())->reviseFixedPriceItem(
+                itemId: $ebayMetric->item_id,
+                price: $price
+            );
+
+            if (!empty($result['success'])) {
+                $ebayMetric->ebay_price = $price;
+                $ebayMetric->save();
+                $this->savePricePushStatus($sku, 'ebay2', 'pushed', $price);
+                return response()->json([
+                    'success' => true,
+                    'message' => "Price $" . number_format($price, 2) . " pushed to eBay2 for SKU: $sku",
+                    'result' => $result,
+                ]);
+            }
+
+            $this->savePricePushStatus($sku, 'ebay2', !empty($result['accountRestricted']) ? 'account_restricted' : 'error', $price);
+            $errors = $result['errors'] ?? [];
+            $message = $errors[0]['message'] ?? ($result['message'] ?? 'Failed to update price on eBay2');
+            return response()->json(['success' => false, 'message' => $message, 'errors' => $errors], 400);
+        } catch (\Exception $e) {
+            $this->savePricePushStatus($sku, 'ebay2', 'error', $price);
+            Log::error('CVR Master - eBay2 push exception', ['sku' => $sku, 'error' => $e->getMessage()]);
+            return response()->json(['success' => false, 'message' => 'eBay2 API error: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Push price to eBay 3 — same path as /push-ebay3-price-tabulator.
+     */
+    private function pushToEbay3($sku, $price)
+    {
+        try {
+            $ebayMetric = Ebay3Metric::where('sku', $sku)->first();
+            if (!$ebayMetric) {
+                $ebayMetric = Ebay3Metric::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])->first();
+            }
+
+            if (!$ebayMetric || !$ebayMetric->item_id) {
+                $this->savePricePushStatus($sku, 'ebay3', 'error', $price);
+                return response()->json([
+                    'success' => false,
+                    'message' => "eBay3 listing not found for SKU: $sku",
+                ], 404);
+            }
+
+            $result = (new EbayThreeApiService())->reviseFixedPriceItem(
+                $ebayMetric->item_id,
+                $price,
+                null,
+                $sku
+            );
+
+            if (!empty($result['success'])) {
+                $this->savePricePushStatus($sku, 'ebay3', 'pushed', $price);
+                return response()->json([
+                    'success' => true,
+                    'message' => "Price $" . number_format($price, 2) . " pushed to eBay3 for SKU: $sku",
+                    'result' => $result,
+                ]);
+            }
+
+            $this->savePricePushStatus($sku, 'ebay3', !empty($result['accountRestricted']) ? 'account_restricted' : 'error', $price);
+            $errors = $result['errors'] ?? [['message' => 'Failed to update price']];
+            $firstMsg = is_array($errors[0] ?? null)
+                ? ($errors[0]['message'] ?? $errors[0]['LongMessage'] ?? 'Failed to update eBay3 price')
+                : (string) ($errors[0] ?? 'Failed to update eBay3 price');
+            return response()->json(['success' => false, 'message' => $firstMsg, 'errors' => $errors], 400);
+        } catch (\Exception $e) {
+            $this->savePricePushStatus($sku, 'ebay3', 'error', $price);
+            Log::error('CVR Master - eBay3 push exception', ['sku' => $sku, 'error' => $e->getMessage()]);
+            return response()->json(['success' => false, 'message' => 'eBay3 API error: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Push price to Best Buy (Mirakl) via BestBuyApiService.
+     */
+    private function pushToBestBuy($sku, $price)
+    {
+        try {
+            $result = app(BestBuyApiService::class)->updatePrice($sku, $price);
+            if (!empty($result['success'])) {
+                $this->savePricePushStatus($sku, 'bestbuy', 'pushed', $price);
+                return response()->json([
+                    'success' => true,
+                    'message' => $result['message'] ?? ("Price $" . number_format($price, 2) . " pushed to BestBuy for SKU: $sku"),
+                    'result' => $result,
+                ]);
+            }
+            $this->savePricePushStatus($sku, 'bestbuy', 'error', $price);
+            return response()->json([
+                'success' => false,
+                'message' => $result['message'] ?? 'Failed to push price to BestBuy',
+            ], 400);
+        } catch (\Exception $e) {
+            $this->savePricePushStatus($sku, 'bestbuy', 'error', $price);
+            Log::error('CVR Master - BestBuy push exception', ['sku' => $sku, 'error' => $e->getMessage()]);
+            return response()->json(['success' => false, 'message' => 'BestBuy API error: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Push price to Macy's (Mirakl) via MacysApiService.
+     */
+    private function pushToMacy($sku, $price)
+    {
+        try {
+            $result = app(MacysApiService::class)->updatePrice($sku, $price);
+            if (!empty($result['success'])) {
+                $this->savePricePushStatus($sku, 'macy', 'pushed', $price);
+                return response()->json([
+                    'success' => true,
+                    'message' => $result['message'] ?? ("Price $" . number_format($price, 2) . " pushed to Macy for SKU: $sku"),
+                    'result' => $result,
+                ]);
+            }
+            $this->savePricePushStatus($sku, 'macy', 'error', $price);
+            return response()->json([
+                'success' => false,
+                'message' => $result['message'] ?? 'Failed to push price to Macy',
+            ], 400);
+        } catch (\Exception $e) {
+            $this->savePricePushStatus($sku, 'macy', 'error', $price);
+            Log::error('CVR Master - Macy push exception', ['sku' => $sku, 'error' => $e->getMessage()]);
+            return response()->json(['success' => false, 'message' => 'Macy API error: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
      * Push price to Reverb via ReverbApiService (uses reverb_products.reverb_listing_id when available).
      */
     private function pushToReverb($sku, $price)
@@ -3990,7 +4698,17 @@ class CvrMasterController extends Controller
                 $dataView = DobaDataView::firstOrNew(['sku' => $sku]);
             } elseif ($marketplace === 'walmart') {
                 $dataView = WalmartDataView::firstOrNew(['sku' => $sku]);
-            } elseif ($marketplace === 'shopifyb2c' || $marketplace === 'sb2c') {
+            } elseif ($marketplace === 'ebay' || $marketplace === 'ebay1') {
+                $dataView = EbayDataView::firstOrNew(['sku' => $sku]);
+            } elseif ($marketplace === 'ebay2' || $marketplace === 'ebaytwo') {
+                $dataView = EbayTwoDataView::firstOrNew(['sku' => $sku]);
+            } elseif ($marketplace === 'ebay3' || $marketplace === 'ebaythree') {
+                $dataView = EbayThreeDataView::firstOrNew(['sku' => $sku]);
+            } elseif ($marketplace === 'bestbuy' || $marketplace === 'bestbuyusa') {
+                $dataView = BestbuyUSADataView::firstOrNew(['sku' => $sku]);
+            } elseif ($marketplace === 'macy' || $marketplace === 'macys') {
+                $dataView = MacyDataView::firstOrNew(['sku' => $sku]);
+            } elseif ($marketplace === 'shopifyb2c' || $marketplace === 'sb2c' || $marketplace === 'shopify') {
                 $dataView = Shopifyb2cDataView::firstOrNew(['sku' => $sku]);
             } elseif ($marketplace === 'shopifyb2b' || $marketplace === 'sb2b') {
                 $dataView = ShopifyB2BDataView::firstOrNew(['sku' => $sku]);
@@ -4076,7 +4794,7 @@ class CvrMasterController extends Controller
             return response()->json(['success' => false, 'message' => 'No valid SKUs provided'], 400);
         }
 
-        $pushableMarketplaces = ['amazon', 'doba', 'walmart', 'sb2c', 'sb2b', 'reverb'];
+        $pushableMarketplaces = ['amazon', 'doba', 'walmart', 'sb2c', 'shopify', 'sb2b', 'reverb'];
         $updated = 0;
         $errors = [];
 
@@ -4143,7 +4861,7 @@ class CvrMasterController extends Controller
             $dataView = DobaDataView::firstOrNew(['sku' => $sku]);
         } elseif ($marketplace === 'walmart') {
             $dataView = WalmartDataView::firstOrNew(['sku' => $sku]);
-        } elseif ($marketplace === 'sb2c' || $marketplace === 'shopifyb2c') {
+        } elseif ($marketplace === 'sb2c' || $marketplace === 'shopifyb2c' || $marketplace === 'shopify') {
             $dataView = Shopifyb2cDataView::firstOrNew(['sku' => $sku]);
         } elseif ($marketplace === 'sb2b' || $marketplace === 'shopifyb2b') {
             $dataView = ShopifyB2BDataView::firstOrNew(['sku' => $sku]);
@@ -4172,6 +4890,195 @@ class CvrMasterController extends Controller
         $sku = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $sku);
         $sku = preg_replace('/\s+/', ' ', $sku);
         return $sku;
+    }
+
+    /**
+     * Temu LMP entries from a temu_lmp row — same logic as TemuController::extractTemuLmpEntries.
+     *
+     * @return list<array{price: mixed, link: mixed}>
+     */
+    private function extractTemuLmpEntriesFromRow(?TemuLmp $temuLmpRow): array
+    {
+        if (!$temuLmpRow) {
+            return [];
+        }
+
+        $entries = $temuLmpRow->lmp_entries;
+        if (is_array($entries) && count($entries) > 0) {
+            return $entries;
+        }
+
+        $lmpEntries = [];
+        if ($temuLmpRow->lmp !== null || $temuLmpRow->lmp_link) {
+            $lmpEntries[] = ['price' => $temuLmpRow->lmp, 'link' => $temuLmpRow->lmp_link];
+        }
+        if ($temuLmpRow->lmp_2 !== null || $temuLmpRow->lmp_link_2) {
+            $lmpEntries[] = ['price' => $temuLmpRow->lmp_2, 'link' => $temuLmpRow->lmp_link_2];
+        }
+
+        return $lmpEntries;
+    }
+
+    /**
+     * @param  list<array{price: mixed, link: mixed}>  $entries
+     * @return list<array{price: mixed, link: mixed}>
+     */
+    private function dedupeTemuLmpEntriesList(array $entries): array
+    {
+        $seen = [];
+        $out = [];
+        foreach ($entries as $entry) {
+            $price = $entry['price'] ?? null;
+            $link = strtoupper(trim((string) ($entry['link'] ?? '')));
+            $key = (string) $price . '|' . $link;
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $out[] = $entry;
+        }
+        usort($out, function ($a, $b) {
+            $pa = ($a['price'] ?? null) !== null && $a['price'] !== '' ? (float) $a['price'] : PHP_FLOAT_MAX;
+            $pb = ($b['price'] ?? null) !== null && $b['price'] !== '' ? (float) $b['price'] : PHP_FLOAT_MAX;
+            return $pa <=> $pb;
+        });
+        return $out;
+    }
+
+    /**
+     * Resolve Temu/Temu2 LMP for a SKU from temu_lmp (same source as /temu-decrease).
+     *
+     * @param  array<string, TemuLmp>  $temuLmpByNormalizedSku
+     * @return array{price: float|null, link: string|null, count: int, entries: list<array{price: mixed, link: mixed}>}
+     */
+    private function resolveTemuLmpForSku(
+        string $sku,
+        array $temuLmpByNormalizedSku,
+        ?LmpSkuGroupService $lmpSkuGroupService = null
+    ): array {
+        $empty = ['price' => null, 'link' => null, 'count' => 0, 'entries' => []];
+        $sku = trim($sku);
+        if ($sku === '' || $temuLmpByNormalizedSku === []) {
+            return $empty;
+        }
+
+        $linkedSkus = [$sku];
+        if ($lmpSkuGroupService) {
+            try {
+                $group = $lmpSkuGroupService->groupContaining($sku);
+                if (is_array($group) && $group !== []) {
+                    $linkedSkus = $group;
+                }
+            } catch (\Throwable $e) {
+                // fall back to the single SKU
+            }
+        }
+
+        $lmpEntries = [];
+        foreach ($linkedSkus as $linkedSku) {
+            $row = $temuLmpByNormalizedSku[self::normalizeTemuSkuForCvr((string) $linkedSku)] ?? null;
+            if ($row) {
+                $lmpEntries = array_merge($lmpEntries, $this->extractTemuLmpEntriesFromRow($row));
+            }
+        }
+        $lmpEntries = $this->dedupeTemuLmpEntriesList($lmpEntries);
+
+        // L1 = lowest non-ignored entry (same as /temu-decrease)
+        $prices = [];
+        $l1Link = null;
+        foreach ($lmpEntries as $entry) {
+            if (!empty($entry['ignored'])) {
+                continue;
+            }
+            $p = $entry['price'] ?? null;
+            if ($p !== null && $p !== '' && floatval($p) > 0) {
+                $prices[] = floatval($p);
+                if ($l1Link === null) {
+                    $l1Link = $entry['link'] ?? null;
+                }
+            }
+        }
+        if (count($prices) > 0) {
+            $minPrice = min($prices);
+            foreach ($lmpEntries as $entry) {
+                if (!empty($entry['ignored'])) {
+                    continue;
+                }
+                $p = $entry['price'] ?? null;
+                if ($p !== null && $p !== '' && floatval($p) === (float) $minPrice) {
+                    $l1Link = $entry['link'] ?? null;
+                    break;
+                }
+            }
+        }
+
+        $ownRow = $temuLmpByNormalizedSku[self::normalizeTemuSkuForCvr($sku)] ?? null;
+        $price = count($prices) > 0
+            ? round(min($prices), 2)
+            : ((empty($lmpEntries) && $ownRow && $ownRow->lmp !== null && floatval($ownRow->lmp) > 0) ? round(floatval($ownRow->lmp), 2) : null);
+        $link = $l1Link ?? ($ownRow->lmp_link ?? null);
+
+        return [
+            'price' => $price,
+            'link' => $link ? (string) $link : null,
+            'count' => count($lmpEntries),
+            'entries' => $lmpEntries,
+        ];
+    }
+
+    /**
+     * Temu LMP competitors for Master Analytics LMP drawer (from temu_lmp /temu-decrease).
+     */
+    public function getTemuLmpData(Request $request)
+    {
+        try {
+            $sku = trim((string) $request->query('sku', ''));
+            if ($sku === '') {
+                return response()->json(['success' => false, 'error' => 'SKU required'], 400);
+            }
+
+            $temuLmpByNormalizedSku = [];
+            if (Schema::hasTable('temu_lmp')) {
+                foreach (TemuLmp::all() as $temuLmpRow) {
+                    $temuLmpByNormalizedSku[self::normalizeTemuSkuForCvr((string) ($temuLmpRow->sku ?? ''))] = $temuLmpRow;
+                }
+            }
+
+            $groupService = null;
+            try {
+                $groupService = app(LmpSkuGroupService::class);
+                $groupService->prepareForSkus([$sku]);
+            } catch (\Throwable $e) {
+                $groupService = null;
+            }
+
+            $resolved = $this->resolveTemuLmpForSku($sku, $temuLmpByNormalizedSku, $groupService);
+            $competitors = [];
+            foreach ($resolved['entries'] as $idx => $entry) {
+                $price = isset($entry['price']) && $entry['price'] !== '' ? floatval($entry['price']) : 0;
+                if ($price <= 0) {
+                    continue;
+                }
+                $competitors[] = [
+                    'id' => 'temu-' . ($idx + 1),
+                    'price' => round($price, 2),
+                    'product_link' => $entry['link'] ?? null,
+                    'link' => $entry['link'] ?? null,
+                    'product_title' => '',
+                    'image' => null,
+                ];
+            }
+
+            return response()->json([
+                'success' => true,
+                'sku' => $sku,
+                'lmp' => $resolved['price'],
+                'competitors' => $competitors,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error fetching Temu LMP data: ' . $e->getMessage());
+            return response()->json(['success' => false, 'error' => 'Failed to fetch Temu LMP'], 500);
+        }
     }
 
     /**
@@ -4242,10 +5149,22 @@ class CvrMasterController extends Controller
      */
     private function buildTemu2PricingMapForProductSkus($temu2PricingAll, array $productSkus): array
     {
+        return $this->buildTemuPricingMapForProductSkus($temu2PricingAll, $productSkus);
+    }
+
+    /**
+     * Map Temu/Temu2 pricing rows onto ProductMaster SKUs (normalized + no-space), same as /temu-decrease.
+     *
+     * @param  \Illuminate\Support\Collection|array  $pricingAll
+     * @param  string[]  $productSkus
+     * @return array<string, mixed|null>
+     */
+    private function buildTemuPricingMapForProductSkus($pricingAll, array $productSkus): array
+    {
         $out = array_fill_keys($productSkus, null);
         $byNorm = [];
         $byNoSpace = [];
-        foreach ($temu2PricingAll as $p) {
+        foreach ($pricingAll as $p) {
             $n = self::normalizeTemuSkuForCvr((string) ($p->sku ?? ''));
             if ($n === '') {
                 continue;
@@ -4267,6 +5186,52 @@ class CvrMasterController extends Controller
             }
         }
         return $out;
+    }
+
+    /**
+     * Lookup pre-aggregated Temu product_clicks by goods_id (raw + normalized keys).
+     *
+     * @param  array<string, int>  $viewByGoodsId
+     */
+    private function lookupTemuViewsByGoodsId($goodsId, array $viewByGoodsId): ?int
+    {
+        if ($goodsId === null || $goodsId === '') {
+            return null;
+        }
+        $raw = (string) $goodsId;
+        if (array_key_exists($raw, $viewByGoodsId)) {
+            return (int) $viewByGoodsId[$raw];
+        }
+        $nk = TemuGoodsIdHelper::normalizeKey($goodsId);
+        if ($nk !== null && $nk !== '' && array_key_exists($nk, $viewByGoodsId)) {
+            return (int) $viewByGoodsId[$nk];
+        }
+        // goods_id present but no view rows → 0 (same as /temu-decrease)
+        return 0;
+    }
+
+    /**
+     * Live SUM(product_clicks) for a goods_id — same metric as /temu-decrease Views.
+     * Returns null when goods_id is missing (N/A), otherwise the click total (may be 0).
+     */
+    private function resolveTemuProductClicks($goodsId, bool $isTemu2 = false): ?int
+    {
+        if ($goodsId === null || $goodsId === '') {
+            return null;
+        }
+        $tableOk = $isTemu2
+            ? Schema::hasTable('temu2_view_data')
+            : Schema::hasTable('temu_view_data');
+        if (!$tableOk) {
+            return null;
+        }
+        $model = $isTemu2 ? Temu2ViewData::class : TemuViewData::class;
+        $nk = TemuGoodsIdHelper::normalizeKey($goodsId);
+        $sum = (int) $model::where('goods_id', $goodsId)->sum('product_clicks');
+        if ($sum === 0 && $nk && (string) $goodsId !== $nk) {
+            $sum = (int) $model::where('goods_id', $nk)->sum('product_clicks');
+        }
+        return $sum;
     }
 
     /**

@@ -69,6 +69,183 @@
             flex-shrink: 0;
         }
 
+        /* LMP modal: image + add form + our price on one line */
+        #lmpModal .lmp-add-form-box {
+            display: flex;
+            align-items: flex-end;
+            gap: 10px;
+            flex-wrap: nowrap;
+        }
+        #lmpModal .lmp-add-form-fields {
+            display: flex;
+            align-items: flex-end;
+            gap: 8px;
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+        #lmpModal .lmp-add-form-fields .lmp-field-price {
+            flex: 0 0 100px;
+        }
+        #lmpModal .lmp-add-form-fields .lmp-field-link {
+            flex: 1 1 auto;
+            min-width: 120px;
+        }
+        #lmpModal .lmp-add-form-fields .lmp-field-actions {
+            display: flex;
+            gap: 4px;
+            flex-shrink: 0;
+        }
+        #lmpModal .lmp-product-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 52px;
+            height: 52px;
+            padding: 3px;
+            background: #fff;
+            border: 1px solid #dee2e6;
+            border-radius: 0.5rem;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+            overflow: hidden;
+            flex-shrink: 0;
+        }
+        #lmpModal .lmp-product-badge img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 0.35rem;
+        }
+        #lmpModal .lmp-product-badge .lmp-no-image {
+            font-size: 10px;
+            color: #adb5bd;
+            text-align: center;
+            line-height: 1.2;
+        }
+        #lmpModal .lmp-our-price-badge {
+            display: inline-flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 1px;
+            padding: 6px 12px;
+            background: #0d6efd;
+            color: #fff;
+            border-radius: 0.5rem;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+            min-width: 90px;
+            flex-shrink: 0;
+        }
+        #lmpModal .lmp-our-price-badge .lmp-our-price-label {
+            font-size: 9px;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            opacity: 0.9;
+        }
+        #lmpModal .lmp-our-price-badge .lmp-our-price-value {
+            font-size: 16px;
+            font-weight: 700;
+            line-height: 1.1;
+        }
+
+        /* LMP modal header metric badges (Dil / NROI / NPFT / CVR) */
+        #lmpModal .modal-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        #lmpModal .modal-header .modal-title {
+            margin-right: auto;
+        }
+        #lmpModal .lmp-header-metrics {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+        #lmpModal .lmp-header-metric {
+            display: inline-flex;
+            align-items: baseline;
+            gap: 4px;
+            padding: 3px 8px;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 0.35rem;
+            font-size: 11px;
+            font-weight: 700;
+            line-height: 1.2;
+            white-space: nowrap;
+            color: #212529;
+        }
+        #lmpModal .lmp-header-metric .lmp-hm-label {
+            color: #6c757d;
+            font-weight: 600;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
+        }
+        #lmpModal .lmp-header-metric .lmp-hm-value.red { color: #dc3545; }
+        #lmpModal .lmp-header-metric .lmp-hm-value.yellow { color: #d4a106; }
+        #lmpModal .lmp-header-metric .lmp-hm-value.blue { color: #3591dc; }
+        #lmpModal .lmp-header-metric .lmp-hm-value.green { color: #28a745; }
+        #lmpModal .lmp-header-metric .lmp-hm-value.pink { color: #e83e8c; }
+        #lmpModal .lmp-header-metric .lmp-hm-value.purple { color: #6f42c1; }
+        #lmpModal .lmp-header-metric .lmp-hm-value.muted { color: #adb5bd; }
+
+        /* LMP list: blue 5 Core reference row (sorted by price among competitors) */
+        #lmpModal .lmp-five-core-row,
+        #lmpModal .lmp-five-core-row > td {
+            background-color: #dbeafe !important;
+            color: #1e3a8a;
+            --bs-table-bg-type: #dbeafe;
+            --bs-table-striped-bg: #dbeafe;
+            --bs-table-hover-bg: #bfdbfe;
+            font-weight: 600;
+        }
+        #lmpModal .lmp-five-core-row:hover > td {
+            background-color: #bfdbfe !important;
+        }
+        #lmpModal .lmp-five-core-row .lmp-five-core-price {
+            font-size: 15px;
+            font-weight: 700;
+        }
+        #lmpModal .lmp-entry-row.lmp-ignored {
+            opacity: 0.55;
+            background-color: #f8f9fa !important;
+        }
+        #lmpModal .lmp-entry-row.lmp-ignored .lmp-price {
+            text-decoration: line-through;
+        }
+        #lmpModal .lmp-list-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 0.5rem;
+        }
+        #lmpModal .lmp-l1-outside-badge {
+            display: inline-flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 1px;
+            padding: 5px 12px;
+            background: #0dcaf0;
+            color: #053b4a;
+            border-radius: 0.5rem;
+            font-weight: 700;
+            min-width: 90px;
+        }
+        #lmpModal .lmp-l1-outside-badge .lmp-l1-label {
+            font-size: 9px;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            opacity: 0.85;
+        }
+        #lmpModal .lmp-l1-outside-badge .lmp-l1-value {
+            font-size: 16px;
+            line-height: 1.1;
+        }
+
         .tabulator-col .tabulator-col-sorter {
             display: none !important;
         }
@@ -716,27 +893,48 @@
             <div class="modal-content">
                 <div class="modal-header bg-primary text-white">
                     <h5 class="modal-title" id="lmpModalLabel"><i class="fas fa-link me-2"></i>LMP for <span id="lmpModalSku"></span></h5>
+                    <div class="lmp-header-metrics" id="lmpHeaderMetrics">
+                        <span class="lmp-header-metric" title="Dil%"><span class="lmp-hm-label">Dil%</span><span class="lmp-hm-value" id="lmpHeaderDil">—</span></span>
+                        <span class="lmp-header-metric" title="NROI%"><span class="lmp-hm-label">NROI%</span><span class="lmp-hm-value" id="lmpHeaderNroi">—</span></span>
+                        <span class="lmp-header-metric" title="NPFT%"><span class="lmp-hm-label">NPFT%</span><span class="lmp-hm-value" id="lmpHeaderNpft">—</span></span>
+                        <span class="lmp-header-metric" title="CVR%"><span class="lmp-hm-label">CVR%</span><span class="lmp-hm-value" id="lmpHeaderCvr">—</span></span>
+                    </div>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
                     <div class="border rounded p-3 mb-3 bg-light">
-                        <h6 class="mb-3"><i class="fas fa-plus text-success me-1"></i> Add New LMP</h6>
-                        <div class="row g-2 align-items-end">
-                            <div class="col-md-3">
-                                <label class="form-label small mb-0">Price <span class="text-danger">*</span></label>
-                                <input type="number" step="0.01" min="0" class="form-control form-control-sm" id="lmpNewPrice" placeholder="e.g. 29.99">
+                        <h6 class="mb-2"><i class="fas fa-plus text-success me-1"></i> Add New LMP</h6>
+                        <div class="lmp-add-form-box">
+                            <div class="lmp-product-badge" id="lmpModalProductBadge" title="Product image">
+                                <span class="lmp-no-image">No image</span>
                             </div>
-                            <div class="col-md-6">
-                                <label class="form-label small mb-0">Product Link</label>
-                                <input type="text" class="form-control form-control-sm" id="lmpNewLink" placeholder="https://...">
+                            <div class="lmp-add-form-fields">
+                                <div class="lmp-field-price">
+                                    <label class="form-label small mb-0">Price <span class="text-danger">*</span></label>
+                                    <input type="number" step="0.01" min="0" class="form-control form-control-sm" id="lmpNewPrice" placeholder="e.g. 29.99">
+                                </div>
+                                <div class="lmp-field-link">
+                                    <label class="form-label small mb-0">Product Link</label>
+                                    <input type="text" class="form-control form-control-sm" id="lmpNewLink" placeholder="https://...">
+                                </div>
+                                <div class="lmp-field-actions">
+                                    <button type="button" class="btn btn-sm btn-primary" id="lmpAddRowBtn"><i class="fas fa-plus me-1"></i> Add LMP</button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" id="lmpClearFormBtn" title="Clear form"><i class="fas fa-undo"></i></button>
+                                </div>
                             </div>
-                            <div class="col-md-3 d-flex gap-1">
-                                <button type="button" class="btn btn-sm btn-primary" id="lmpAddRowBtn"><i class="fas fa-plus me-1"></i> Add LMP</button>
-                                <button type="button" class="btn btn-sm btn-outline-secondary" id="lmpClearFormBtn" title="Clear form"><i class="fas fa-undo"></i></button>
+                            <div class="lmp-our-price-badge" id="lmpModalOurPriceBadge" title="Our current Temu price">
+                                <span class="lmp-our-price-label">Our Price</span>
+                                <span class="lmp-our-price-value" id="lmpModalOurPrice">—</span>
                             </div>
                         </div>
                     </div>
-                    <h6 class="mb-2">LMP List</h6>
+                    <div class="lmp-list-header">
+                        <h6 class="mb-0">LMP List</h6>
+                        <div class="lmp-l1-outside-badge" title="Lowest non-ignored competitor price (L1)">
+                            <span class="lmp-l1-label">L1 Price</span>
+                            <span class="lmp-l1-value" id="lmpModalL1Price">—</span>
+                        </div>
+                    </div>
                     <div class="table-responsive">
                         <table class="table table-sm table-bordered mb-0" id="lmpListTable">
                             <thead class="table-light">
@@ -744,6 +942,7 @@
                                     <th style="width: 50px;">#</th>
                                     <th>Price</th>
                                     <th>Link</th>
+                                    <th style="width: 70px;" class="text-center" title="Ignore for L1 — product stays in list">Ignore</th>
                                     <th style="width: 80px;">Actions</th>
                                 </tr>
                             </thead>
@@ -4603,18 +4802,25 @@
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
                         const entries = row.lmp_entries || [];
-                        const prices = entries.map(function(e) { const p = e.price; return (p !== null && p !== undefined && p !== '' && !isNaN(parseFloat(p))) ? parseFloat(p) : null; }).filter(function(p) { return p !== null; });
+                        // L1 = lowest non-ignored entry
+                        const prices = entries
+                            .filter(function(e) { return !e.ignored; })
+                            .map(function(e) { const p = e.price; return (p !== null && p !== undefined && p !== '' && !isNaN(parseFloat(p))) ? parseFloat(p) : null; })
+                            .filter(function(p) { return p !== null; });
                         const lowest = prices.length > 0 ? Math.min.apply(null, prices) : null;
                         const display = lowest !== null ? (lowest % 1 === 0 ? lowest.toLocaleString() : lowest.toFixed(2)) : '-';
                         const count = entries.length;
-                        const title = count > 0 ? (display + ' (' + count + ' entries) - click eye to edit') : 'Click eye to add LMP';
+                        const ignoredCount = entries.filter(function(e) { return !!e.ignored; }).length;
+                        const title = count > 0
+                            ? (display + ' L1 (' + count + ' entries' + (ignoredCount ? ', ' + ignoredCount + ' ignored' : '') + ') - click eye to edit')
+                            : 'Click eye to add LMP';
                         return '<span class="lmp-display">' + (display !== '-' ? display : '<span style="color: #999;">-</span>') + '</span> <button type="button" class="btn btn-sm btn-link p-0 lmp-eye-btn" data-sku="' + (row.sku || '').replace(/"/g, '&quot;') + '" title="' + title + '"><i class="fas fa-info-circle text-info"></i></button>';
                     },
                     cellClick: function(e, cell) {
                         if (e.target.closest('.lmp-eye-btn')) {
                             e.stopPropagation();
                             const row = cell.getRow().getData();
-                            openLmpModal(row.sku, row.lmp_entries || []);
+                            openLmpModal(row);
                         }
                     }
                 },
@@ -5747,42 +5953,187 @@
 
         // LMP Modal: Add New form + table list; lowest row highlighted with LOWEST badge
         let lmpModalSku = '';
-        function openLmpModal(sku, entries) {
-            lmpModalSku = sku || '';
+        let lmpModalOurPrice = 0;
+        let lmpModalBuyerLink = '';
+        function lmpDilColorClass(dil) {
+            if (dil < 25) return 'red';
+            if (dil < 50) return 'green';
+            return 'pink';
+        }
+        function lmpCvrColorClass(cvr) {
+            if (cvr <= 4) return 'red';
+            if (cvr <= 7) return 'yellow';
+            if (cvr <= 13) return 'green';
+            return 'pink';
+        }
+        function setLmpHeaderMetric(elId, text, colorClass) {
+            const $el = $(elId);
+            $el.text(text);
+            $el.removeClass('red yellow blue green pink purple muted');
+            $el.addClass(colorClass || 'muted');
+        }
+        function openLmpModal(row) {
+            row = row || {};
+            lmpModalSku = row.sku || '';
             $('#lmpModalSku').text(lmpModalSku);
+
+            // Header metrics: Dil%, NROI%, NPFT%, CVR%
+            const dil = parseFloat(row.dil_percent);
+            const nroi = parseFloat(row.nroi_percent);
+            const npft = parseFloat(row.npft_percent);
+            const cvr = parseFloat(row.cvr_percent != null ? row.cvr_percent : row.cvr_30);
+            setLmpHeaderMetric('#lmpHeaderDil', isNaN(dil) ? '—' : (Math.round(dil) + '%'), isNaN(dil) ? 'muted' : lmpDilColorClass(dil));
+            setLmpHeaderMetric('#lmpHeaderNroi', isNaN(nroi) ? '—' : (Math.round(nroi) + '%'), isNaN(nroi) ? 'muted' : getRoiColor(nroi));
+            setLmpHeaderMetric('#lmpHeaderNpft', isNaN(npft) ? '—' : (Math.round(npft) + '%'), isNaN(npft) ? 'muted' : getPftColor(npft));
+            setLmpHeaderMetric('#lmpHeaderCvr', isNaN(cvr) ? '—' : (cvr.toFixed(1) + '%'), isNaN(cvr) ? 'muted' : lmpCvrColorClass(cvr));
+
+            // Top-left: product image badge
+            const $imgBadge = $('#lmpModalProductBadge');
+            const imgSrc = String(row.image_path || '').trim();
+            if (imgSrc) {
+                $imgBadge.html('<img src="' + imgSrc.replace(/"/g, '&quot;') + '" alt="Product">');
+            } else {
+                $imgBadge.html('<span class="lmp-no-image">No image</span>');
+            }
+
+            // Top-right: our current Temu price badge (same FB Prc rule as the grid)
+            const base = parseFloat(row.base_price) || 0;
+            lmpModalOurPrice = base > 0 ? (base <= 26.99 ? base + 2.99 : base) : 0;
+            $('#lmpModalOurPrice').text(lmpModalOurPrice > 0 ? ('$' + lmpModalOurPrice.toFixed(2)) : '—');
+            lmpModalBuyerLink = String(row.buyer_link || '').trim();
+
             $('#lmpNewPrice').val('');
             $('#lmpNewLink').val('');
             const tbody = $('#lmpEntriesContainer');
             tbody.empty();
+            const entries = row.lmp_entries || [];
             const list = Array.isArray(entries) && entries.length > 0 ? entries : [];
             list.forEach(function(entry) {
-                appendLmpTableRow(tbody, entry.price !== undefined && entry.price !== null ? entry.price : '', entry.link || '');
+                appendLmpTableRow(
+                    tbody,
+                    entry.price !== undefined && entry.price !== null ? entry.price : '',
+                    entry.link || '',
+                    !!entry.ignored,
+                    false
+                );
             });
-            updateLmpLowestHighlight();
+            updateLmpListLayout();
             $('#lmpModal').modal('show');
         }
-        function appendLmpTableRow(tbody, price, link) {
+        function appendLmpTableRow(tbody, price, link, ignored, relayout) {
             const tr = $('<tr class="lmp-entry-row">' +
                 '<td class="lmp-num text-center align-middle"></td>' +
                 '<td class="align-middle"><input type="number" step="0.01" min="0" class="form-control form-control-sm lmp-price border-0 bg-transparent" style="max-width:100px" placeholder="Price"> <span class="lmp-lowest-badge"></span></td>' +
                 '<td class="align-middle"><input type="text" class="form-control form-control-sm lmp-link d-inline-block me-1" style="max-width:220px" placeholder="https://..."> <a href="#" class="btn btn-sm btn-outline-primary lmp-open-link" target="_blank" rel="noopener" title="Open link"><i class="fas fa-external-link-alt"></i></a></td>' +
+                '<td class="align-middle text-center"><input type="checkbox" class="form-check-input lmp-ignore" title="Ignore for L1"></td>' +
                 '<td class="align-middle"><button type="button" class="btn btn-sm btn-outline-danger lmp-remove-row" title="Remove"><i class="fas fa-trash-alt"></i></button></td></tr>');
             tr.find('.lmp-price').val(price !== '' && price != null ? price : '');
             tr.find('.lmp-link').val(link || '');
+            tr.find('.lmp-ignore').prop('checked', !!ignored);
+            if (ignored) tr.addClass('lmp-ignored');
             tbody.append(tr);
-            tr.find('.lmp-remove-row').on('click', function(e) {
+            if (relayout !== false) updateLmpListLayout();
+        }
+        let lmpLayoutTimer = null;
+        function scheduleLmpListLayout() {
+            clearTimeout(lmpLayoutTimer);
+            lmpLayoutTimer = setTimeout(function() { updateLmpListLayout(); }, 200);
+        }
+        // Delegated handlers so delete/open/ignore keep working after rows are re-sorted in the DOM
+        $('#lmpEntriesContainer')
+            .off('click.lmpActions input.lmpActions change.lmpActions')
+            .on('click.lmpActions', '.lmp-remove-row', function(e) {
                 e.preventDefault();
-                tr.remove();
-                renumberLmpRows();
-                updateLmpLowestHighlight();
-            });
-            tr.find('.lmp-price, .lmp-link').on('input', function() { updateLmpLowestHighlight(); });
-            tr.find('.lmp-open-link').on('click', function(e) {
+                e.stopPropagation();
+                clearTimeout(lmpLayoutTimer);
+                $(this).closest('tr.lmp-entry-row').remove();
+                updateLmpListLayout();
+            })
+            .on('click.lmpActions', '.lmp-open-link', function(e) {
                 e.preventDefault();
-                const href = (tr.find('.lmp-link').val() || '').trim();
+                e.stopPropagation();
+                const href = ($(this).closest('tr').find('.lmp-link').val() || '').trim();
                 if (href && (href.startsWith('http://') || href.startsWith('https://'))) window.open(href, '_blank');
+            })
+            .on('change.lmpActions', '.lmp-ignore', function() {
+                const tr = $(this).closest('tr.lmp-entry-row');
+                tr.toggleClass('lmp-ignored', $(this).is(':checked'));
+                updateLmpLowestHighlight();
+            })
+            .on('input.lmpActions', '.lmp-price, .lmp-link', function() {
+                scheduleLmpListLayout();
             });
+        function getLmpEntryPrice(tr) {
+            const val = $(tr).find('.lmp-price').val();
+            const num = val !== '' && val != null ? parseFloat(val) : NaN;
+            return isNaN(num) ? null : num;
+        }
+        /** Sort competitor rows by price, insert blue 5 Core row at our price position, renumber + LOWEST. */
+        function updateLmpListLayout() {
+            clearTimeout(lmpLayoutTimer);
+            const tbody = $('#lmpEntriesContainer');
+            const $active = $(document.activeElement);
+            const activeIsLmpInput = $active.hasClass('lmp-price') || $active.hasClass('lmp-link');
+            const activeRow = activeIsLmpInput ? $active.closest('tr.lmp-entry-row')[0] : null;
+            const activeClass = activeIsLmpInput && $active.hasClass('lmp-price') ? 'lmp-price' : 'lmp-link';
+            const selStart = activeIsLmpInput ? $active[0].selectionStart : null;
+            const selEnd = activeIsLmpInput ? $active[0].selectionEnd : null;
+
+            tbody.find('.lmp-five-core-row').remove();
+
+            const entryRows = tbody.find('.lmp-entry-row').get();
+            entryRows.sort(function(a, b) {
+                const pa = getLmpEntryPrice(a);
+                const pb = getLmpEntryPrice(b);
+                if (pa === null && pb === null) return 0;
+                if (pa === null) return 1;
+                if (pb === null) return -1;
+                return pa - pb;
+            });
+            entryRows.forEach(function(tr) { tbody.append(tr); });
+
+            if (lmpModalOurPrice > 0) {
+                const buyerHref = lmpModalBuyerLink;
+                const buyerEsc = buyerHref.replace(/"/g, '&quot;');
+                const linkCell = buyerHref
+                    ? ('<input type="text" class="form-control form-control-sm d-inline-block me-1 bg-transparent border-0 text-primary" style="max-width:220px" readonly value="' + buyerEsc + '" title="' + buyerEsc + '"> ' +
+                       '<a href="' + buyerEsc + '" class="btn btn-sm btn-outline-primary lmp-five-core-open-link" target="_blank" rel="noopener" title="Open buyer link"><i class="fas fa-external-link-alt"></i></a>')
+                    : '<span class="text-muted small"><i class="fas fa-store me-1"></i>No buyer link</span>';
+                const fiveCoreTr = $('<tr class="lmp-five-core-row">' +
+                    '<td class="lmp-num text-center align-middle">—</td>' +
+                    '<td class="align-middle"><span class="lmp-five-core-price">$' + lmpModalOurPrice.toFixed(2) + '</span> ' +
+                    '<span class="badge bg-primary">5 CORE</span></td>' +
+                    '<td class="align-middle">' + linkCell + '</td>' +
+                    '<td class="align-middle text-center text-muted small">—</td>' +
+                    '<td class="align-middle text-muted small">buyer</td></tr>');
+
+                let inserted = false;
+                tbody.find('.lmp-entry-row').each(function() {
+                    if (inserted) return;
+                    const p = getLmpEntryPrice(this);
+                    if (p !== null && p >= lmpModalOurPrice) {
+                        fiveCoreTr.insertBefore(this);
+                        inserted = true;
+                    }
+                });
+                if (!inserted) tbody.append(fiveCoreTr);
+            }
+
             renumberLmpRows();
+            updateLmpLowestHighlight();
+
+            // Keep caret in the field being edited after DOM reorder
+            if (activeRow && document.body.contains(activeRow)) {
+                const $field = $(activeRow).find('.' + activeClass);
+                if ($field.length) {
+                    $field.trigger('focus');
+                    try {
+                        if (selStart != null && selEnd != null && $field[0].setSelectionRange) {
+                            $field[0].setSelectionRange(selStart, selEnd);
+                        }
+                    } catch (err) { /* ignore */ }
+                }
+            }
         }
         function renumberLmpRows() {
             $('#lmpEntriesContainer .lmp-entry-row').each(function(i) {
@@ -5796,16 +6147,18 @@
                 const tr = $(this);
                 tr.removeClass('table-dark');
                 tr.find('.lmp-lowest-badge').empty();
-                const val = tr.find('.lmp-price').val();
-                const num = val !== '' && val != null ? parseFloat(val) : null;
-                if (num !== null && !isNaN(num)) {
+                const ignored = tr.find('.lmp-ignore').is(':checked');
+                tr.toggleClass('lmp-ignored', ignored);
+                if (ignored) return;
+                const num = getLmpEntryPrice(tr);
+                if (num !== null) {
                     if (minVal === null || num < minVal) { minVal = num; minTr = tr; }
                 }
             });
             if (minTr && minVal !== null) {
-                minTr.addClass('table-dark');
-                minTr.find('.lmp-lowest-badge').html(' <span class="badge bg-info">LOWEST</span>');
+                minTr.find('.lmp-lowest-badge').html(' <span class="badge bg-info">L1</span>');
             }
+            $('#lmpModalL1Price').text(minVal !== null ? ('$' + Number(minVal).toFixed(2)) : '—');
         }
         $('#lmpAddRowBtn').on('click', function() {
             const price = $('#lmpNewPrice').val();
@@ -5814,7 +6167,7 @@
                 showToast('Enter Price or Link', 'warning');
                 return;
             }
-            appendLmpTableRow($('#lmpEntriesContainer'), price || '', link || '');
+            appendLmpTableRow($('#lmpEntriesContainer'), price || '', link || '', false, true);
             $('#lmpNewPrice').val('');
             $('#lmpNewLink').val('');
         });
@@ -5827,7 +6180,14 @@
             $('#lmpEntriesContainer .lmp-entry-row').each(function() {
                 const price = $(this).find('.lmp-price').val();
                 const link = $(this).find('.lmp-link').val();
-                if (price || link) entries.push({ price: price ? parseFloat(price) : null, link: link ? link.trim() : null });
+                const ignored = $(this).find('.lmp-ignore').is(':checked');
+                if (price || link) {
+                    entries.push({
+                        price: price ? parseFloat(price) : null,
+                        link: link ? link.trim() : null,
+                        ignored: ignored
+                    });
+                }
             });
             if (entries.length === 0) {
                 showToast('Add at least one price or link', 'warning');

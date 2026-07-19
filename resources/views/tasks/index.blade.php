@@ -4201,8 +4201,14 @@
                                     `;
                                 }
                             }
-                            
-                            // Delete moved into the Edit form — no delete button in the listing.
+
+                            if (canDelete) {
+                                buttons += `
+                                    <button class="action-btn-icon action-btn-delete delete-task" data-id="${id}" title="Delete (or delete all selected)">
+                                        <i class="mdi mdi-delete"></i>
+                                    </button>
+                                `;
+                            }
 
                             return '<div style="white-space: nowrap;">' + buttons + '</div>';
                         }
@@ -6320,39 +6326,47 @@
                 openTaskPanel('add', {});
             });
 
-            // Legacy delete button (kept for safety; the listing no longer renders it).
+            // ACTION column delete: single row, or all selected if this row is among a multi-selection.
             $(document).on('click', '.delete-task', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
-                
-                var taskId = $(this).data('id');
-                
+
+                var taskId = String($(this).data('id'));
+                var selectedIdSet = new Set((selectedTasks || []).map(function(sid) { return String(sid); }));
+                var deleteMany = selectedTasks.length > 1 && selectedIdSet.has(taskId);
+
+                if (deleteMany) {
+                    if (!confirm('Delete ' + selectedTasks.length + ' selected task(s)? This cannot be undone.')) {
+                        return;
+                    }
+                    bulkUpdate('delete', {});
+                    return;
+                }
+
+                if (!confirm('Delete this task? This cannot be undone.')) {
+                    return;
+                }
+
                 $.ajax({
                     url: '/tasks/' + taskId,
                     type: 'DELETE',
-                    data: {
-                        _token: '{{ csrf_token() }}'
-                    },
+                    data: { _token: '{{ csrf_token() }}' },
                     success: function(response) {
                         table.replaceData();
-                            
-                            // Show success message
-                            var alertHtml = `
-                                <div class="alert alert-success alert-dismissible fade show" role="alert">
-                                    <i class="mdi mdi-check-circle me-2"></i>${response.message}
-                                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                                </div>
-                            `;
-                            $('.task-card .card-body').prepend(alertHtml);
-                            
-                            // Auto dismiss after 3 seconds
-                            setTimeout(function() {
-                                $('.alert').fadeOut(function() { $(this).remove(); });
-                            }, 3000);
-                        },
-                    error: function(xhr, status, error) {
+                        var alertHtml = `
+                            <div class="alert alert-success alert-dismissible fade show" role="alert">
+                                <i class="mdi mdi-check-circle me-2"></i>${response.message || 'Task deleted successfully!'}
+                                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                            </div>
+                        `;
+                        $('.task-card .card-body').prepend(alertHtml);
+                        setTimeout(function() {
+                            $('.alert').fadeOut(function() { $(this).remove(); });
+                        }, 3000);
+                    },
+                    error: function(xhr) {
                         console.error('Delete failed:', xhr.responseJSON);
-                        var errorMsg = xhr.responseJSON?.message || 'Failed to delete task. You may not have permission.';
+                        var errorMsg = (xhr.responseJSON && xhr.responseJSON.message) || 'Failed to delete task. You may not have permission.';
                         alert('Error: ' + errorMsg);
                     }
                 });
