@@ -1364,7 +1364,7 @@
             });
         });
 
-        // SPRICE cell edited - recalculate metrics only.
+        // SPRICE cell edited - recalculate metrics and persist to DB.
         table.on('cellEdited', function(cell) {
             if (cell.getField() === 'SPRICE') {
                 const row = cell.getRow();
@@ -1387,7 +1387,7 @@
                     SROI: sroi,
                     has_custom_sprice: true
                 });
-                showToast(`SPRICE updated for ${sku}.`, 'info');
+                saveSpriceUpdates([{ sku: sku, sprice: newSprice }]);
             }
         });
 

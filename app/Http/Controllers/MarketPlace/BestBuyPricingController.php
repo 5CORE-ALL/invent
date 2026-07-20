@@ -359,81 +359,13 @@ class BestBuyPricingController extends Controller
         ]);
     }
 
+    /**
+     * Legacy single-SKU save endpoint — delegates to saveSpriceUpdates()
+     * which accepts both {sku,sprice} and {updates:[...]} payloads.
+     */
     public function saveSpriceToDatabase(Request $request)
     {
-        Log::info('Saving Best Buy pricing data', $request->all());
-        $sku = strtoupper($request->input('sku'));
-        $sprice = $request->input('sprice');
-
-        if (!$sku || !$sprice) {
-            return response()->json(['error' => 'SKU and SPRICE are required'], 400);
-        }
-
-        // Get marketplace percentage (80%)
-        $marketplaceData = MarketplacePercentage::where('marketplace', 'BestbuyUSA')->first();
-        $percentage = $marketplaceData ? ($marketplaceData->percentage / 100) : 0.80;
-
-        // Get ProductMaster for lp and ship
-        $pm = ProductMaster::where('sku', $sku)->first();
-        if (!$pm) {
-            return response()->json(['error' => 'SKU not found in product master'], 404);
-        }
-
-        // Extract lp and ship
-        $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-        $lp = 0;
-        foreach ($values as $k => $v) {
-            if (strtolower($k) === "lp") {
-                $lp = floatval($v);
-                break;
-            }
-        }
-        if ($lp === 0 && isset($pm->lp)) {
-            $lp = floatval($pm->lp);
-        }
-
-        // BestBuy uses channel-specific Ship BB (Values['ship_bb']), NOT the generic ship.
-        $ship = isset($values["ship_bb"])
-            ? floatval($values["ship_bb"])
-            : (isset($pm->ship_bb) ? floatval($pm->ship_bb) : 0);
-
-        // Calculate SGPFT
-        $spriceFloat = floatval($sprice);
-        $sgpft = $spriceFloat > 0 ? round((($spriceFloat * $percentage - $ship - $lp) / $spriceFloat) * 100, 2) : 0;
-
-        // SPFT = SGPFT (no ads for Best Buy)
-        $spft = $sgpft;
-
-        // SROI
-        $sroi = round(
-            $lp > 0 ? (($spriceFloat * $percentage - $lp - $ship) / $lp) * 100 : 0,
-            2
-        );
-
-        $dataView = BestbuyUSADataView::firstOrNew(['sku' => $sku]);
-        $existing = is_array($dataView->value) ? $dataView->value : (json_decode($dataView->value, true) ?? []);
-
-        $merged = array_merge($existing, [
-            'SPRICE' => $spriceFloat,
-            'SPFT' => $spft,
-            'SROI' => $sroi,
-            'SGPFT' => $sgpft,
-        ]);
-
-        $dataView->value = $merged;
-        $dataView->save();
-
-        $pushResult = $this->pushPriceToBestBuy($sku, $spriceFloat);
-
-        return response()->json([
-            'success' => true,
-            'spft_percent' => $spft,
-            'sroi_percent' => $sroi,
-            'sgpft_percent' => $sgpft,
-            'price_push_success' => (bool) ($pushResult['success'] ?? false),
-            'price_push_message' => (string) ($pushResult['message'] ?? ''),
-            'price_push_status_code' => $pushResult['status_code'] ?? null,
-        ]);
+        return $this->saveSpriceUpdates($request);
     }
 
     public function updateListedLive(Request $request)
