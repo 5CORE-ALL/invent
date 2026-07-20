@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'CC Message & Returns', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'CC Message', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -388,12 +388,12 @@
         <div class="col-12">
             <div class="page-title-box d-flex align-items-center justify-content-between">
                 <h4 class="page-title mb-0">
-                    <i class="ri-message-3-line me-2 text-primary"></i>CC Message &amp; Returns
+                    <i class="ri-message-3-line me-2 text-primary"></i>CC Message
                 </h4>
                 <div class="page-title-right">
                     <ol class="breadcrumb m-0">
                         <li class="breadcrumb-item"><a href="javascript:void(0);">Customer Care</a></li>
-                        <li class="breadcrumb-item active">CC Message &amp; Returns</li>
+                        <li class="breadcrumb-item active">CC Message</li>
                     </ol>
                 </div>
             </div>
@@ -410,16 +410,6 @@
                     </span>
                     <span class="ccmr-tat-badge__body">
                         <span class="ccmr-tat-badge__label">Avg TAT (Messages)</span>
-                        <span class="ccmr-tat-badge__value" data-role="value">—</span>
-                        <span class="ccmr-tat-badge__meta" data-role="meta">no data</span>
-                    </span>
-                </div>
-                <div class="ccmr-tat-badge ccmr-tat-badge--returns" id="ccmrAvgTatReturns">
-                    <span class="ccmr-tat-badge__icon">
-                        <i class="fa-solid fa-rotate-left"></i>
-                    </span>
-                    <span class="ccmr-tat-badge__body">
-                        <span class="ccmr-tat-badge__label">Avg TAT (Returns)</span>
                         <span class="ccmr-tat-badge__value" data-role="value">—</span>
                         <span class="ccmr-tat-badge__meta" data-role="meta">no data</span>
                     </span>
@@ -1261,17 +1251,15 @@
             function returnsHistoryFormatter(cell)  { return historyCellFormatter(cell, 'returns'); }
 
             // ---- TAT column formatter ----
-            // Renders off-hours-minutes (server-computed) as either a bare
-            // minute count for short gaps ("45m") or H/M for longer ones
-            // ("2h 13m"). Null / no prior submission renders a muted dash.
+            // Renders off-hours-minutes (server-computed) as hours only
+            // when >= 1h ("15h"), or minutes only when under 1h ("36m").
+            // Null / no prior submission renders a muted dash.
             function fmtMinutesAsTat(n) {
                 if (n === null || n === undefined) return null;
                 const m = Math.max(0, parseInt(n, 10));
                 if (!isFinite(m)) return null;
                 if (m < 60) return m + 'm';
-                const h = Math.floor(m / 60);
-                const r = m % 60;
-                return r === 0 ? (h + 'h') : (h + 'h ' + r + 'm');
+                return Math.floor(m / 60) + 'h';
             }
 
             function makeTatCellFormatter(kindLabel) {
@@ -1415,65 +1403,6 @@
                         editorParams: NEXT_EDITOR_PARAMS,
                         cellEdited: makeNextCellEditedHandler(urlNextValueSave, 'next_value'),
                     },
-                    {
-                        title: 'R link',
-                        field: 'r_link',
-                        width: 80,
-                        hozAlign: 'center',
-                        vertAlign: 'middle',
-                        headerSort: false,
-                        headerTooltip: 'R link (Returns) — per-channel',
-                        formatter: rLinkFormatter,
-                    },
-                    {
-                        title: 'R Status',
-                        field: 'latest_returns_checklist',
-                        width: 90,
-                        hozAlign: 'center',
-                        vertAlign: 'middle',
-                        headerSort: false,
-                        headerTooltip: 'Open the Returns checklist for this channel',
-                        formatter: returnsStatusFormatter,
-                    },
-                    {
-                        title: 'R History',
-                        field: '_returns_history',
-                        minWidth: 220,
-                        widthGrow: 1,
-                        hozAlign: 'left',
-                        vertAlign: 'middle',
-                        headerSort: false,
-                        headerTooltip: 'Latest Returns checklist submission — click the magnifier for full history',
-                        formatter: returnsHistoryFormatter,
-                    },
-                    {
-                        title: 'R TAT',
-                        field: 'tat_returns_minutes',
-                        width: 90,
-                        hozAlign: 'center',
-                        vertAlign: 'middle',
-                        headerSort: true,
-                        sorter: 'number',
-                        headerTooltip: 'Turn-around-time between the last two Returns submissions, '
-                            + 'in off-hour minutes only (working window 06:00–18:00 excluded)',
-                        formatter: returnsTatCellFormatter,
-                    },
-                    {
-                        title: 'R Next',
-                        field: 'next_returns_value',
-                        width: 90,
-                        hozAlign: 'center',
-                        vertAlign: 'middle',
-                        headerSort: true,
-                        headerTooltip: canEditNext
-                            ? 'Priority 1–9 — drives the Returns (R Status) freshness window'
-                            : 'Priority 1–9 (manager-only edit) — drives R Status freshness',
-                        formatter: nextValueFormatter,
-                        editable: () => !!canEditNext,
-                        editor: 'list',
-                        editorParams: NEXT_EDITOR_PARAMS,
-                        cellEdited: makeNextCellEditedHandler(urlRNextValueSave, 'next_returns_value'),
-                    },
                 ],
             });
 
@@ -1508,7 +1437,6 @@
 
             function refreshAvgTatBadges() {
                 setBadge('ccmrAvgTatMessages', 'tat_minutes');
-                setBadge('ccmrAvgTatReturns',  'tat_returns_minutes');
             }
 
             // Tabulator v6 builds the table asynchronously after the

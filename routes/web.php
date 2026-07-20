@@ -59,6 +59,8 @@ use App\Http\Controllers\Catalouge\CatalougeManagerController;
 use App\Http\Controllers\Channels\AccountHealthMasterController;
 use App\Http\Controllers\Channels\ShippingHealthController;
 use App\Http\Controllers\Channels\EscalatedClaimsController;
+use App\Http\Controllers\Channels\ShippingHealthOverviewController;
+use App\Http\Controllers\Channels\CustomerCareHealthController;
 use App\Http\Controllers\Channels\AccountHealthMasterDashboardController;
 use App\Http\Controllers\Channels\AdsMasterController as ChannelAdsMasterController;
 use App\Http\Controllers\Channels\ApprovalsChannelMasterController;
@@ -685,6 +687,24 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/account-health-master/escalated-claims/link/save', 'saveLink')->name('escalated.claims.link.save');
     });
 
+    // Shipping Health overview (Escalated Claims–style; separate from Shipping Audit)
+    Route::controller(ShippingHealthOverviewController::class)->group(function () {
+        Route::get('/account-health-master/shipping-health', 'tabulator')->name('shipping.health.overview.tabulator');
+        Route::get('/account-health-master/shipping-health-data', 'tabulatorChannelData')->name('shipping.health.overview.tabulator.data');
+        Route::get('/account-health-master/shipping-health-summary', 'statusSummary')->name('shipping.health.overview.summary');
+        Route::get('/account-health-master/shipping-health-history', 'statusHistory')->name('shipping.health.overview.history');
+        Route::post('/account-health-master/shipping-health/link/save', 'saveLink')->name('shipping.health.overview.link.save');
+    });
+
+    // Customer Care Health (Escalated Claims–style; separate from CC Message Health)
+    Route::controller(CustomerCareHealthController::class)->group(function () {
+        Route::get('/account-health-master/customer-care-health', 'tabulator')->name('customer.care.health.tabulator');
+        Route::get('/account-health-master/customer-care-health-data', 'tabulatorChannelData')->name('customer.care.health.tabulator.data');
+        Route::get('/account-health-master/customer-care-health-summary', 'statusSummary')->name('customer.care.health.summary');
+        Route::get('/account-health-master/customer-care-health-history', 'statusHistory')->name('customer.care.health.history');
+        Route::post('/account-health-master/customer-care-health/link/save', 'saveLink')->name('customer.care.health.link.save');
+    });
+
     // KPI
     Route::controller(KpiShippingController::class)->group(function () {
         Route::get('/kpi-shipping/tabulator', 'tabulator')->name('kpi.shipping.tabulator');
@@ -776,7 +796,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/customer-care', function () {
         return view('customer-care.index');
     })->name('customer.care');
-    // CC message & Returns — minimal channel list (channel_master) used by
+    // CC Message — minimal channel list (channel_master) used by
     // the Customer Care team as the landing for message + return follow-ups.
     Route::get('/customer-care/cc-messages-returns', [AuditMasterController::class, 'ccMessagesReturns'])
         ->name('customer.care.cc.messages.returns');
@@ -802,6 +822,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // owned by this page so we don't have to extend the AHM endpoint.
     Route::post('/customer-care/cc-messages-returns/r-link', [AuditMasterController::class, 'storeCcRLink'])
         ->name('customer.care.cc.messages.returns.r.link.store');
+
+    // CC Returns — Returns columns only from /customer-care/cc-messages-returns
+    // (reuses the same returns checklist / R Next / R link endpoints + tables).
+    Route::get('/customer-care/cc-returns', [AuditMasterController::class, 'ccReturns'])
+        ->name('customer.care.cc.returns');
 
     // CC Shipping — duplicate of /customer-care/cc-messages-returns
     // backed by entirely separate cc_shipping_* tables.

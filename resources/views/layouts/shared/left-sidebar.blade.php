@@ -260,7 +260,13 @@
                                         <a href="{{ route('account.health.master.tabulator') }}">CC Message Health</a>
                                     </li>
                                     <li>
-                                        <a href="{{ route('shipping.health.tabulator') }}">Shipping Health</a>
+                                        <a href="{{ route('customer.care.health.tabulator') }}">Customer Care Health</a>
+                                    </li>
+                                    <li>
+                                        <a href="{{ route('shipping.health.tabulator') }}">Shipping Audit</a>
+                                    </li>
+                                    <li>
+                                        <a href="{{ route('shipping.health.overview.tabulator') }}">Shipping Health</a>
                                     </li>
                                     <li>
                                         <a href="{{ route('odr.rate') }}">ODR Rate</a>
@@ -370,7 +376,10 @@
                             <a href="{{ route('customer.care') }}">Overview</a>
                         </li>
                         <li>
-                            <a href="{{ route('customer.care.cc.messages.returns') }}">CC message &amp; Returns</a>
+                            <a href="{{ route('customer.care.cc.messages.returns') }}">CC Message</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('customer.care.cc.returns') }}">CC Returns</a>
                         </li>
                         <li>
                             <a href="{{ route('customer.care.cc.shipping') }}">CC Shipping</a>

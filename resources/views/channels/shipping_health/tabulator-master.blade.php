@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Shipping Health'])
+@extends('layouts.vertical', ['title' => 'Shipping Audit'])
 
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
@@ -317,7 +317,7 @@
         <div class="col-12">
             <div class="page-title-box">
                 <div class="d-flex align-items-center flex-wrap gap-2">
-                    <h4 class="page-title mb-0">Shipping Health</h4>
+                    <h4 class="page-title mb-0">Shipping Audit</h4>
                 </div>
             </div>
         </div>
@@ -328,7 +328,7 @@
             <div class="card shadow-sm">
                 <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
                     <div class="d-flex align-items-center gap-3 flex-wrap">
-                        <span class="fw-semibold">Shipping Health</span>
+                        <span class="fw-semibold">Shipping Audit</span>
                         <span id="cc-avg-badge" class="cc-avg-badge cc-threshold-gray"
                             title="Today's average Shipping Health — click for chart">
                             <i class="fa-solid fa-chart-line" aria-hidden="true"></i>

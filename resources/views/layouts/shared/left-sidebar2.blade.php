@@ -716,7 +716,10 @@
                             <a href="{{ route('customer.care') }}">Overview</a>
                         </li>
                         <li>
-                            <a href="{{ route('customer.care.cc.messages.returns') }}">CC message &amp; Returns</a>
+                            <a href="{{ route('customer.care.cc.messages.returns') }}">CC Message</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('customer.care.cc.returns') }}">CC Returns</a>
                         </li>
                         <li>
                             <a href="{{ route('customer.care.cc.shipping') }}">CC Shipping</a>
