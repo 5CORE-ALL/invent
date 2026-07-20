@@ -21,6 +21,23 @@
     .stat-label { font-size: 12px; opacity: 0.9; }
     .history-badge { display: inline-block; padding: 6px 12px; margin: 4px; background: #f1f3f4; border-radius: 20px; cursor: pointer; font-size: 13px; }
     .history-badge:hover { background: #e8f0fe; color: #1a73e8; }
+    .quota-exceeded-box {
+        border: 1px solid #f5c2c7;
+        background: #fff5f5;
+        border-radius: 10px;
+        padding: 28px 24px;
+        text-align: center;
+        max-width: 640px;
+        margin: 0 auto;
+    }
+    .quota-exceeded-box .quota-icon {
+        width: 56px; height: 56px; border-radius: 50%;
+        background: #fde2e4; color: #b02a37;
+        display: inline-flex; align-items: center; justify-content: center;
+        font-size: 1.6rem; margin-bottom: 12px;
+    }
+    .quota-exceeded-box h5 { color: #842029; font-weight: 700; margin-bottom: 8px; }
+    .quota-exceeded-box p { color: #6c757d; margin-bottom: 0; line-height: 1.5; }
 </style>
 @endsection
 
@@ -199,13 +216,42 @@ $(function() {
             success: function(response) {
                 $('#loadingSpinner').hide();
                 if (response.success) displayResults(response);
-                else alert(response.message || 'Search failed');
+                else showSearchError(response);
             },
             error: function(xhr) {
                 $('#loadingSpinner').hide();
-                alert((xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : 'Search failed');
+                showSearchError(xhr.responseJSON || {});
             }
         });
+    }
+
+    function showSearchError(payload) {
+        const code = payload.error_code || '';
+        const msg = payload.message || 'Search failed. Please try again.';
+        const isQuota = code === 'quota_exceeded'
+            || /quota|run out of searches|429/i.test(msg);
+
+        $('#resultsContainer').show();
+        $('#statsContainer').html('');
+        $('#bulkActionsContainer').hide();
+
+        if (isQuota) {
+            $('#resultsContent').html(
+                '<div class="quota-exceeded-box">' +
+                    '<div class="quota-icon"><i class="mdi mdi-alert-circle-outline"></i></div>' +
+                    '<h5>Search Quota Exceeded</h5>' +
+                    '<p>Your SerpAPI search quota has been exceeded, so Google Shopping results cannot be loaded right now.</p>' +
+                    '<p class="mt-2">Please upgrade or renew your SerpAPI plan, then try searching again.</p>' +
+                '</div>'
+            );
+            return;
+        }
+
+        $('#resultsContent').html(
+            '<div class="alert alert-danger mb-0">' +
+                '<strong>Search failed.</strong> ' + $('<div>').text(msg).html() +
+            '</div>'
+        );
     }
 
     function applyFiltersAndSort() {

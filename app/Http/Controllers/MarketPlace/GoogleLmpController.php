@@ -180,13 +180,20 @@ class GoogleLmpController extends Controller
         ]);
 
         $fetcher = app(GoogleLivePriceFetcher::class);
-        $results = $fetcher->searchShopping($validated['search_query'], 0, [
+        try {
+            $results = $fetcher->searchShopping($validated['search_query'], 0, [
                 'max_pages' => 2,
                 'expand_sellers' => true,
                 'expand_multiple_only' => true,
                 'max_immersive_products' => min((int) ($validated['limit'] ?? 12), 12),
                 'max_store_pages' => 1,
             ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Google Shopping search failed: ' . $e->getMessage(),
+            ], 500);
+        }
         $imported = 0;
 
         foreach ($results as $item) {

@@ -39,7 +39,10 @@ class GoogleLivePriceFetcher
         ], $options);
 
         $apiKey = $this->getApiKey();
-        if (!$apiKey || trim($query) === '') {
+        if (!$apiKey) {
+            throw new \RuntimeException('SerpAPI key is not configured (SERPAPI_KEY).');
+        }
+        if (trim($query) === '') {
             return [];
         }
 
@@ -83,7 +86,8 @@ class GoogleLivePriceFetcher
                 'message' => $e->getMessage(),
             ]);
 
-            return [];
+            // Surface SerpAPI quota / auth / API errors to the UI (do not swallow as empty results)
+            throw $e;
         }
     }
 
@@ -93,19 +97,26 @@ class GoogleLivePriceFetcher
     public function fetchByProductId(string $productId, ?string $source = null, ?string $searchQuery = null): ?array
     {
         if ($searchQuery) {
-            foreach ($this->searchShopping($searchQuery, 80, [
-                'max_pages' => 1,
-                'expand_sellers' => false,
-                'sort_by_price' => false,
-            ]) as $item) {
-                if (($item['product_id'] ?? null) !== $productId) {
-                    continue;
-                }
-                if ($source && strcasecmp((string) ($item['source'] ?? ''), $source) !== 0) {
-                    continue;
-                }
+            try {
+                foreach ($this->searchShopping($searchQuery, 80, [
+                    'max_pages' => 1,
+                    'expand_sellers' => false,
+                    'sort_by_price' => false,
+                ]) as $item) {
+                    if (($item['product_id'] ?? null) !== $productId) {
+                        continue;
+                    }
+                    if ($source && strcasecmp((string) ($item['source'] ?? ''), $source) !== 0) {
+                        continue;
+                    }
 
-                return $item;
+                    return $item;
+                }
+            } catch (\Throwable $e) {
+                Log::warning('GoogleLivePriceFetcher: search-by-query fallback failed', [
+                    'product_id' => $productId,
+                    'message' => $e->getMessage(),
+                ]);
             }
         }
 
@@ -182,13 +193,25 @@ class GoogleLivePriceFetcher
 
         for ($page = 0; $page < $maxPages; $page++) {
             $response = Http::timeout(45)->get($url, $params);
-            if (!$response->successful()) {
-                break;
+            $data = $response->json();
+            $apiError = is_array($data) ? trim((string) ($data['error'] ?? '')) : '';
+
+            if ($response->status() === 429 || stripos($apiError, 'run out of searches') !== false) {
+                throw new \RuntimeException(
+                    $apiError !== '' ? $apiError : 'SerpAPI account has run out of searches (HTTP 429).'
+                );
             }
 
-            $data = $response->json();
-            if (!empty($data['error'])) {
-                break;
+            if (!$response->successful()) {
+                throw new \RuntimeException(
+                    $apiError !== ''
+                        ? $apiError
+                        : ('SerpAPI request failed (HTTP ' . $response->status() . ').')
+                );
+            }
+
+            if ($apiError !== '') {
+                throw new \RuntimeException($apiError);
             }
 
             $allItems = array_merge($allItems, $this->collectShoppingArrays($data));

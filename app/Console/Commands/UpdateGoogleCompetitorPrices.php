@@ -52,13 +52,18 @@ class UpdateGoogleCompetitorPrices extends Command
 
         foreach ($queries as $index => $query) {
             $this->info('[' . ($index + 1) . '/' . count($queries) . "] Searching: {$query}");
-            $results = $fetcher->searchShopping($query, 0, [
-                'max_pages' => 2,
-                'expand_sellers' => true,
-                'expand_multiple_only' => true,
-                'max_immersive_products' => 12,
-                'max_store_pages' => 1,
-            ]);
+            try {
+                $results = $fetcher->searchShopping($query, 0, [
+                    'max_pages' => 2,
+                    'expand_sellers' => true,
+                    'expand_multiple_only' => true,
+                    'max_immersive_products' => 12,
+                    'max_store_pages' => 1,
+                ]);
+            } catch (\Throwable $e) {
+                $this->error("Search failed for [{$query}]: " . $e->getMessage());
+                continue;
+            }
 
             foreach ($results as $item) {
                 $existing = GoogleCompetitorItem::where('search_query', $query)

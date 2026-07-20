@@ -118,10 +118,25 @@ class GoogleSearchController extends Controller
                 'message' => $e->getMessage(),
             ]);
 
+            $detail = $e->getMessage();
+            $isQuota = stripos($detail, 'run out of searches') !== false
+                || stripos($detail, 'quota') !== false
+                || stripos($detail, '429') !== false;
+
+            if ($isQuota) {
+                return response()->json([
+                    'success' => false,
+                    'error_code' => 'quota_exceeded',
+                    'message' => 'Your SerpAPI search quota has been exceeded. Google Shopping search is temporarily unavailable. Please upgrade or renew your SerpAPI plan, then try again.',
+                    'error' => $detail,
+                ], 429);
+            }
+
             return response()->json([
                 'success' => false,
-                'message' => 'Error fetching Google Shopping results',
-                'error' => $e->getMessage(),
+                'error_code' => 'search_failed',
+                'message' => 'Unable to fetch Google Shopping results. Please try again in a moment.',
+                'error' => $detail,
             ], 500);
         }
     }
