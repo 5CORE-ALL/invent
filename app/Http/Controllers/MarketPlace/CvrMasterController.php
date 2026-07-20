@@ -30,7 +30,9 @@ use App\Models\Temu2Pricing;
 use App\Models\Temu2DailyData;
 use App\Models\Temu2DataView;
 use App\Models\DobaDataView;
-use App\Models\TikTokDataView;
+use App\Models\TiktokShopDataView;
+use App\Models\TiktokCampaignReport;
+use App\Models\TiktokSkuCompetitor;
 use App\Models\BestbuyUSADataView;
 use App\Models\MacyDataView;
 use App\Models\ReverbViewData;
@@ -1722,18 +1724,27 @@ class CvrMasterController extends Controller
                 Log::info('Found full SKU in ProductMaster: ' . $fullSku . ' (from: ' . $sku . ')');
             }
 
-            // Fetch channel LMP lookups for breakdown LMP column (Amazon / eBay / Google / Temu)
+            // Fetch channel LMP lookups for breakdown LMP column (Amazon / eBay / Google / Temu / TikTok)
             $amazonLmpLookup = collect();
             $ebayLmpLookup = collect();
             $googleLmpLookup = collect();
+            $tiktokLmpDetailsLookup = collect();
             $temuLmpByNormalizedSku = [];
             $temuLmpSkuGroupService = null;
+            $tiktokLmpSkuGroupService = null;
             try {
                 $amazonLmpLookup = AmazonSkuCompetitor::buildGroupedLookup('amazon')['lowest'];
                 $ebayLmpLookup = EbaySkuCompetitor::buildGroupedLookup('ebay')['lowest'];
                 $googleLmpLookup = GoogleSkuCompetitor::buildGroupedLookup('google')['lowest'];
             } catch (\Exception $e) {
                 Log::warning('Could not fetch LMP lookups in breakdown: ' . $e->getMessage());
+            }
+            try {
+                $tiktokLmpDetailsLookup = TiktokSkuCompetitor::buildGroupedLookup('tiktok')['details'];
+                $tiktokLmpSkuGroupService = app(LmpSkuGroupService::class);
+                $tiktokLmpSkuGroupService->prepareForSkus([$fullSku, $sku]);
+            } catch (\Exception $e) {
+                Log::warning('Could not fetch TikTok LMP in breakdown: ' . $e->getMessage());
             }
             try {
                 if (Schema::hasTable('temu_lmp')) {
@@ -1793,12 +1804,56 @@ class CvrMasterController extends Controller
                 );
                 return $resolved['price'];
             };
+            // TikTok LMP = landed (price + shipping), merged across Sku Link LMP group — same as /tiktok-pricing
+            $resolveTiktokLmpPrice = function (?string $lookupSku = null) use ($tiktokLmpDetailsLookup, $tiktokLmpSkuGroupService) {
+                $skuVal = trim((string) ($lookupSku ?? ''));
+                if ($skuVal === '' || !$tiktokLmpDetailsLookup instanceof \Illuminate\Support\Collection) {
+                    return null;
+                }
+                $members = [$skuVal];
+                if ($tiktokLmpSkuGroupService) {
+                    try {
+                        $group = $tiktokLmpSkuGroupService->groupContaining($skuVal);
+                        if (!empty($group)) {
+                            $members = $group;
+                        }
+                    } catch (\Throwable $e) {
+                        // keep single-SKU fallback
+                    }
+                }
+                $merged = collect();
+                $seen = [];
+                foreach ($members as $linkedSku) {
+                    $linkedKey = TiktokSkuCompetitor::normalizeSkuKey((string) $linkedSku);
+                    $groupEntries = $tiktokLmpDetailsLookup->get($linkedKey);
+                    if (!$groupEntries instanceof \Illuminate\Support\Collection) {
+                        continue;
+                    }
+                    foreach ($groupEntries as $entry) {
+                        $dedupeKey = ((string) ($entry->id ?? '')) . '|'
+                            . ((string) ($entry->product_id ?? '')) . '|'
+                            . strtoupper(trim((string) ($entry->product_link ?? '')));
+                        if (isset($seen[$dedupeKey])) {
+                            continue;
+                        }
+                        $seen[$dedupeKey] = true;
+                        $merged->push($entry);
+                    }
+                }
+                $lowest = TiktokSkuCompetitor::lowestFromCollection($merged);
+                if (!$lowest || !is_numeric($lowest->price ?? null)) {
+                    return null;
+                }
+                $landed = floatval($lowest->price) + floatval($lowest->shipping_cost ?? 0);
+                return $landed > 0 ? round($landed, 2) : null;
+            };
 
             // Get LP and Ship from ProductMaster for profit calculations
             $values = $productMaster ? ($productMaster->Values ?: []) : [];
             $lp = 0;
             $ship = 0;
             $temuShip = 0;
+            $ttShip = 0;
             $actWt = 0;
             
             if ($values) {
@@ -1806,6 +1861,7 @@ class CvrMasterController extends Controller
                     if (strtolower($k) === "lp") $lp = floatval($v);
                     if (strtolower($k) === "ship") $ship = floatval($v);
                     if (strtolower($k) === "temu_ship") $temuShip = floatval($v);
+                    if (strtolower($k) === "tt_ship") $ttShip = floatval($v);
                     if (strtolower($k) === "wt_act") $actWt = floatval($v);
                 }
             }
@@ -2270,31 +2326,34 @@ class CvrMasterController extends Controller
                 'seller_link' => $dobaLinks[1],
             ];
 
-            // Fetch TikTok data (matching TikTokPricingController)
+            // Fetch TikTok data — same sources/formulas as /tiktok-pricing (TikTokPricingController)
             $tiktokData = TikTokProduct::where('sku', strtoupper($fullSku))->first();
-            
-            // Get TikTok percentage from MarketplacePercentage
-            $tiktokMarketplace = MarketplacePercentage::where('marketplace', 'TikTok')->first();
+            $skuNormTt = strtoupper(str_replace("\u{00a0}", ' ', trim((string) $fullSku)));
+
+            // Margin: TiktokShop first, fallback TikTok (legacy)
+            $tiktokMarketplace = MarketplacePercentage::where('marketplace', 'TiktokShop')
+                ->orWhere('marketplace', 'TikTok')
+                ->first();
             $tiktokPercentage = $tiktokMarketplace ? ($tiktokMarketplace->percentage / 100) : 0.80;
-            
-            // Get TikTok L30 from ShipHub orders (last 30 days)
+
+            // L30 from ShipHub (same window/filters as TikTokPricingController::getTiktokShiphubL30SoldDataBySku)
             $latestDate = DB::connection('shiphub')
                 ->table('orders')
                 ->where('marketplace', 'tiktok')
                 ->max('order_date');
-            
+
             $tiktokL30 = 0;
             if ($latestDate) {
                 $latestDateCarbon = \Carbon\Carbon::parse($latestDate, 'America/Los_Angeles');
-                $startDate = $latestDateCarbon->copy()->subDays(29); // 30 days total
-                
-                $tiktokL30 = DB::connection('shiphub')
+                $startDate = $latestDateCarbon->copy()->subDays(29);
+
+                $tiktokL30 = (int) DB::connection('shiphub')
                     ->table('orders as o')
                     ->join('order_items as i', 'o.id', '=', 'i.order_id')
                     ->whereBetween('o.order_date', [$startDate, $latestDateCarbon->endOfDay()])
                     ->where('o.marketplace', 'tiktok')
                     ->where('i.sku', strtoupper($fullSku))
-                    ->where(function($query) {
+                    ->where(function ($query) {
                         $query->where('o.order_status', '!=', 'Canceled')
                               ->where('o.order_status', '!=', 'Cancelled')
                               ->where('o.order_status', '!=', 'canceled')
@@ -2303,41 +2362,114 @@ class CvrMasterController extends Controller
                     })
                     ->sum('i.quantity_ordered');
             }
-            
+
             $ttPrice = $tiktokData ? floatval($tiktokData->price ?? 0) : 0;
-            
-            // Calculate TikTok GPFT% = ((price × percentage - lp - ship) / price) × 100
-            $ttGPFT = $ttPrice > 0 ? ((($ttPrice * $tiktokPercentage - $lp - $ship) / $ttPrice) * 100) : 0;
-            
-            // TikTok doesn't have ads, so NPFT = GPFT
-            $ttNPFT = $tiktokL30 == 0 ? $ttGPFT : $ttGPFT;
-            
-            // Get TikTok suggested data from tiktok_data_view
-            $tiktokDataView = TikTokDataView::where('sku', $fullSku)->first();
+
+            // T views = (video_views || views) + ads_views + affl_views; shop data view may override components
+            $ttVideoViews = $tiktokData ? intval($tiktokData->video_views ?? $tiktokData->views ?? 0) : 0;
+            $ttAdsViews = $tiktokData ? intval($tiktokData->ads_views ?? 0) : 0;
+            $ttAfflViews = $tiktokData ? intval($tiktokData->affl_views ?? 0) : 0;
+
+            // SPRICE from tiktok_shop_data_views (primary); fallback reverb_view_data — same as /tiktok-pricing
             $tiktokSuggested = ['sprice' => 0, 'sgpft' => 0, 'sroi' => 0, 'spft' => 0];
-            if ($tiktokDataView) {
-                $val = is_array($tiktokDataView->value) ? $tiktokDataView->value : 
-                       json_decode($tiktokDataView->value, true);
-                if (is_array($val)) {
+            $ttShopRow = TiktokShopDataView::whereRaw('UPPER(TRIM(sku)) = ?', [$skuNormTt])->first();
+            $tiktokValArr = [];
+            if ($ttShopRow) {
+                $tiktokValArr = is_array($ttShopRow->value)
+                    ? $ttShopRow->value
+                    : (json_decode($ttShopRow->value ?? '{}', true) ?: []);
+                if (array_key_exists('video_views', $tiktokValArr)) {
+                    $ttVideoViews = intval($tiktokValArr['video_views']);
+                }
+                if (array_key_exists('ads_views', $tiktokValArr)) {
+                    $ttAdsViews = intval($tiktokValArr['ads_views']);
+                }
+                if (array_key_exists('affl_views', $tiktokValArr)) {
+                    $ttAfflViews = intval($tiktokValArr['affl_views']);
+                }
+                $tiktokSuggested = [
+                    'sprice' => isset($tiktokValArr['SPRICE']) ? floatval($tiktokValArr['SPRICE']) : 0,
+                    'sgpft' => isset($tiktokValArr['SGPFT']) ? floatval($tiktokValArr['SGPFT']) : 0,
+                    'sroi' => isset($tiktokValArr['SROI']) ? floatval(str_replace('%', '', (string) $tiktokValArr['SROI'])) : 0,
+                    'spft' => isset($tiktokValArr['SPFT']) ? floatval(str_replace('%', '', (string) $tiktokValArr['SPFT'])) : 0,
+                ];
+            }
+            if (!$ttShopRow) {
+                $reverbFallback = ReverbViewData::where('sku', $fullSku)->first();
+                if ($reverbFallback) {
+                    $rv = is_array($reverbFallback->values) ? $reverbFallback->values : [];
                     $tiktokSuggested = [
-                        'sprice' => floatval($val['SPRICE'] ?? 0),
-                        'sgpft' => floatval($val['SGPFT'] ?? 0),
-                        'sroi' => floatval($val['SROI'] ?? 0),
-                        'spft' => floatval($val['SPFT'] ?? 0)
+                        'sprice' => isset($rv['SPRICE']) ? floatval($rv['SPRICE']) : 0,
+                        'sgpft' => isset($rv['SGPFT']) ? floatval($rv['SGPFT']) : 0,
+                        'sroi' => isset($rv['SROI']) ? floatval(str_replace('%', '', (string) ($rv['SROI'] ?? 0))) : 0,
+                        'spft' => isset($rv['SPFT']) ? floatval(str_replace('%', '', (string) ($rv['SPFT'] ?? 0))) : 0,
                     ];
                 }
             }
-            
+
+            $ttViews = $ttVideoViews + $ttAdsViews + $ttAfflViews;
+
+            // GPFT% uses tt_ship only (no fallback to ship) — same as TikTok 1 pricing
+            $ttGPFT = $ttPrice > 0
+                ? round((($ttPrice * $tiktokPercentage - $lp - $ttShip) / $ttPrice) * 100, 2)
+                : 0;
+
+            // SKU TACOS% from tiktok_campaign_reports (campaign_name = SKU), L30+L7 Product card — same as /tiktok-pricing
+            $ttSpend = 0.0;
+            try {
+                $skuUpperTt = strtoupper(trim($fullSku));
+                $ttSpendL30 = (float) TiktokCampaignReport::where('report_range', 'L30')
+                    ->where('creative_type', 'Product card')
+                    ->whereNotNull('campaign_name')->where('campaign_name', '!=', '')
+                    ->whereNotNull('product_id')->where('product_id', '!=', '')
+                    ->whereRaw('UPPER(TRIM(campaign_name)) = ?', [$skuUpperTt])
+                    ->sum('cost');
+                $ttSpendL7 = (float) TiktokCampaignReport::where('report_range', 'L7')
+                    ->where('creative_type', 'Product card')
+                    ->whereNotNull('campaign_name')->where('campaign_name', '!=', '')
+                    ->whereNotNull('product_id')->where('product_id', '!=', '')
+                    ->whereRaw('UPPER(TRIM(campaign_name)) = ?', [$skuUpperTt])
+                    ->sum('cost');
+                // Match /tiktok-pricing spend: L30 cost + L7 cost
+                $ttSpend = $ttSpendL30 + $ttSpendL7;
+            } catch (\Throwable $e) {
+                Log::warning('TikTok breakdown TACOS fetch failed for ' . $fullSku . ': ' . $e->getMessage());
+            }
+            $ttSalesValue = $tiktokL30 * $ttPrice;
+            $ttTacos = $ttSalesValue > 0
+                ? round(($ttSpend / $ttSalesValue) * 100, 2)
+                : ($ttSpend > 0 ? 100.0 : 0.0);
+            $ttNPFT = round($ttGPFT - $ttTacos, 2);
+            // SPFT = SGPFT − TACOS% (recomputed like /tiktok-pricing)
+            if (($tiktokSuggested['sprice'] ?? 0) > 0 || ($tiktokSuggested['sgpft'] ?? 0) != 0) {
+                $tiktokSuggested['spft'] = round(floatval($tiktokSuggested['sgpft']) - $ttTacos, 2);
+            }
+
+            // Buyer / Seller links — UPPER(TRIM) match like /tiktok-pricing
+            $ttBuyerLink = null;
+            $ttSellerLink = null;
+            try {
+                $ttLinkRow = TiktokShopListingStatus::whereRaw('UPPER(TRIM(sku)) = ?', [$skuNormTt])->first();
+                $ttLinkVal = ($ttLinkRow && is_array($ttLinkRow->value))
+                    ? $ttLinkRow->value
+                    : ($ttLinkRow ? (json_decode($ttLinkRow->value, true) ?: []) : []);
+                $ttBuyerLink = $ttLinkVal['buyer_link'] ?? null;
+                $ttSellerLink = $ttLinkVal['seller_link'] ?? null;
+            } catch (\Throwable $e) {
+                // leave null
+            }
+
             $hasTikTokData = $tiktokData && ($ttPrice > 0 || $tiktokL30 > 0);
-            
+
             $breakdownData[] = [
                 'marketplace' => 'TikTok',
                 'sku' => $hasTikTokData ? $fullSku : 'Not Listed',
                 'price' => $ttPrice,
-                'views' => $tiktokData ? intval($tiktokData->views ?? 0) : null,
-                'l30' => $tiktokL30 ?? 0,
+                'views' => $hasTikTokData ? $ttViews : null,
+                'l30' => $tiktokL30,
                 'gpft' => $ttGPFT,
-                'ad' => 0,
+                'ad' => $ttTacos,
+                'tacos_ch' => $ttTacos,
                 'npft' => $ttNPFT,
                 'is_listed' => $hasTikTokData,
                 'sprice' => $tiktokSuggested['sprice'],
@@ -2345,12 +2477,12 @@ class CvrMasterController extends Controller
                 'sroi' => $tiktokSuggested['sroi'],
                 'spft' => $tiktokSuggested['spft'],
                 'lp' => $lp,
-                'ship' => $ship,
+                'ship' => $ttShip,
                 'margin' => $tiktokPercentage,
                 'pushed_by' => null,
                 'pushed_at' => null,
-                'buyer_link' => ($tiktokLinks = $getListingLinks(TiktokShopListingStatus::class, $fullSku))[0],
-                'seller_link' => $tiktokLinks[1],
+                'buyer_link' => $ttBuyerLink,
+                'seller_link' => $ttSellerLink,
             ];
 
             // Fetch BestBuy data (matching BestBuyPricingController)
@@ -3207,14 +3339,24 @@ class CvrMasterController extends Controller
             }
             $googleLmpPrice = $resolveGoogleLmpPrice($fullSku);
             $temuLmpPrice = $resolveTemuLmpPrice($fullSku);
+            $tiktokLmpPrice = $resolveTiktokLmpPrice($fullSku);
 
             foreach ($breakdownData as &$row) {
-                $adsPct = (float) $getChannelAdsPercent($row['marketplace'] ?? '');
-                $gpftPct = (float) ($row['gpft'] ?? 0);
-                $row['tacos_ch'] = $adsPct;
-                $row['npft'] = round($gpftPct - $adsPct, 2);
-
                 $mp = strtolower(trim((string) ($row['marketplace'] ?? '')));
+                $gpftPct = (float) ($row['gpft'] ?? 0);
+
+                // TikTok uses SKU TACOS from campaign reports (already set); others use channel Ads%
+                if ($mp === 'tiktok') {
+                    $adsPct = (float) ($row['tacos_ch'] ?? $row['ad'] ?? 0);
+                    $row['ad'] = $adsPct;
+                    $row['tacos_ch'] = $adsPct;
+                    $row['npft'] = round($gpftPct - $adsPct, 2);
+                } else {
+                    $adsPct = (float) $getChannelAdsPercent($row['marketplace'] ?? '');
+                    $row['tacos_ch'] = $adsPct;
+                    $row['npft'] = round($gpftPct - $adsPct, 2);
+                }
+
                 $lmpChannel = null;
                 $lmpPrice = null;
                 if (in_array($mp, ['amazon', 'fba'], true)) {
@@ -3244,6 +3386,11 @@ class CvrMasterController extends Controller
                     $lmpChannel = 'temu';
                     $rowSku = ($row['sku'] ?? null) && ($row['sku'] !== 'Not Listed') ? $row['sku'] : $fullSku;
                     $lmpPrice = $resolveTemuLmpPrice($rowSku) ?? $temuLmpPrice;
+                } elseif ($mp === 'tiktok') {
+                    // Same tiktok_sku_competitors + Sku Link LMP groups as /tiktok-pricing
+                    $lmpChannel = 'tiktok';
+                    $rowSku = ($row['sku'] ?? null) && ($row['sku'] !== 'Not Listed') ? $row['sku'] : $fullSku;
+                    $lmpPrice = $resolveTiktokLmpPrice($rowSku) ?? $tiktokLmpPrice;
                 }
 
                 $row['lmp_channel'] = $lmpChannel;
@@ -3582,7 +3729,9 @@ class CvrMasterController extends Controller
             } elseif ($marketplace === 'walmart') {
                 $dataView = WalmartDataView::firstOrNew(['sku' => $skuToUse]);
             } elseif ($marketplace === 'tiktok') {
-                $dataView = TikTokDataView::firstOrNew(['sku' => $skuToUse]);
+                // Same store as /tiktok-pricing (tiktok_shop_data_views)
+                $existingTtView = TiktokShopDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($skuToUse))])->first();
+                $dataView = $existingTtView ?: new TiktokShopDataView(['sku' => $skuToUse]);
             } elseif ($marketplace === 'bestbuy') {
                 $dataView = BestbuyUSADataView::firstOrNew(['sku' => $skuToUse]);
             } elseif ($marketplace === 'macy') {

@@ -103,7 +103,9 @@
         .cvr-play-group #play-dil-auto,
         .cvr-play-group #play-dil-pause,
         .cvr-play-group #play-cvr-auto,
-        .cvr-play-group #play-cvr-pause {
+        .cvr-play-group #play-cvr-pause,
+        .cvr-play-group #play-groi-auto,
+        .cvr-play-group #play-groi-pause {
             width: 38px;
             height: 38px;
         }
@@ -135,6 +137,16 @@
         .cvr-play-cvr-main:hover {
             background-color: #d63384 !important;
             border-color: #c22573 !important;
+            color: #fff !important;
+        }
+        .cvr-play-groi-main {
+            background-color: #0dcaf0 !important;
+            border-color: #0bb5d7 !important;
+            color: #fff !important;
+        }
+        .cvr-play-groi-main:hover {
+            background-color: #0bb5d7 !important;
+            border-color: #0a9fb8 !important;
             color: #fff !important;
         }
         #ovl30DetailsModal .ovl30-sprice-suggest-btn i {
@@ -895,10 +907,10 @@
                                     <th class="ovl30-sortable" data-sort="views" data-dir="desc" title="Sort by Views"><span>Views</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                     <th class="ovl30-sortable" data-sort="cvr" data-dir="desc" title="Sort by CVR%"><span>CVR%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                     <th class="ovl30-sortable" data-sort="groi" data-dir="desc" title="GROI% = (Price × Margin − LP − Ship) ÷ LP × 100"><span>GROI%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
-                                    <th class="ovl30-sortable" data-sort="nroi" data-dir="desc" title="NROI% = (Gross Profit − Ads $) ÷ LP × 100"><span>NROI%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                     <th class="ovl30-sortable" data-sort="gpft" data-dir="desc" title="Sort by GPFT%"><span>GPFT%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
-                                    <th class="ovl30-sortable" data-sort="ad" data-dir="asc" title="Sort by Ads% (channel Ads% from All Marketplace Master)"><span>Ads%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-sortable" data-sort="nroi" data-dir="desc" title="NROI% = (Gross Profit − Ads $) ÷ LP × 100"><span>NROI%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                     <th class="ovl30-sortable" data-sort="npft" data-dir="desc" title="Sort by NPFT%"><span>NPFT%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-sortable" data-sort="ad" data-dir="asc" title="Sort by Ads% (channel Ads% from All Marketplace Master)"><span>Ads%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                     <th>LMP</th>
                                     <th>Links</th>
                                     <th class="ovl30-sprice-suggest-th" title="Auto Fill SPRICE using Dil%, CVR%, LMP &amp; Price">
@@ -926,10 +938,10 @@
                                     <th class="text-end" id="modal-total-views">0</th>
                                     <th class="text-end" id="modal-avg-cvr">0%</th>
                                     <th class="text-end" id="modal-avg-groi">0%</th>
-                                    <th class="text-end" id="modal-avg-nroi">0%</th>
                                     <th class="text-end" id="modal-avg-gpft">0%</th>
-                                    <th class="text-end" id="modal-avg-ad">0%</th>
+                                    <th class="text-end" id="modal-avg-nroi">0%</th>
                                     <th class="text-end" id="modal-avg-npft">0%</th>
+                                    <th class="text-end" id="modal-avg-ad">0%</th>
                                     <th></th>
                                     <th></th>
                                     <th></th>
@@ -1244,9 +1256,7 @@
                             <li><a class="dropdown-item column-filter active" href="#" data-column="dil_percent" data-color="all">
                                     <span class="status-circle default"></span> All DIL</a></li>
                             <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="red">
-                                    <span class="status-circle red"></span> Red (&lt;16.7%)</a></li>
-                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="yellow">
-                                    <span class="status-circle yellow"></span> Yellow (16.7-25%)</a></li>
+                                    <span class="status-circle red"></span> Red (&lt;25%)</a></li>
                             <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="green">
                                     <span class="status-circle green"></span> Green (25-50%)</a></li>
                             <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="pink">
@@ -1419,6 +1429,26 @@
                         </button>
                     </div>
 
+                    <!-- GROI Play: start from Lowest GROI% (cyan) -->
+                    <div class="btn-group align-items-center ms-2 cvr-play-group cvr-play-groi" role="group" aria-label="Lowest GROI% playback">
+                        <button type="button" id="play-groi-backward" class="btn btn-sm btn-light rounded-circle shadow-sm"
+                            title="Previous: lower GROI% parent" data-bs-toggle="tooltip" data-bs-placement="bottom" disabled>
+                            <i class="fas fa-step-backward"></i>
+                        </button>
+                        <button type="button" id="play-groi-auto" class="btn btn-sm rounded-circle shadow-sm me-1 cvr-play-groi-main"
+                            title="Play Lowest GROI%: walk parents starting from lowest Avg GROI%" data-bs-toggle="tooltip" data-bs-placement="bottom">
+                            <i class="fas fa-play"></i>
+                        </button>
+                        <button type="button" id="play-groi-pause" class="btn btn-sm rounded-circle shadow-sm me-1 cvr-play-groi-main" style="display: none;"
+                            title="Pause: stop GROI% playback and show all rows" data-bs-toggle="tooltip" data-bs-placement="bottom">
+                            <i class="fas fa-pause"></i>
+                        </button>
+                        <button type="button" id="play-groi-forward" class="btn btn-sm btn-light rounded-circle shadow-sm"
+                            title="Next: next higher GROI% parent" data-bs-toggle="tooltip" data-bs-placement="bottom" disabled>
+                            <i class="fas fa-step-forward"></i>
+                        </button>
+                    </div>
+
                     <!-- Column Visibility Dropdown (3-column layout) -->
                     <div class="dropdown d-inline-block">
                         <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
@@ -1463,7 +1493,7 @@
      * 
      * FEATURES:
      * - Display: Image, SKU, INV, OV L30, DIL%
-     * - Color-coded DIL% (Red < 16.7%, Yellow 16.7-25%, Green 25-50%, Pink 50%+)
+     * - Color-coded DIL% (Red <25%, Green 25–50%, Pink 50%+)
      * - SKU-wise breakdown modal (click info icon on OV L30)
      * - Filters: Inventory, DIL%
      * - Export to CSV
@@ -1719,15 +1749,9 @@
             $('#modal-header-inv').text(inv.toLocaleString());
             $('#modal-header-l30').text(l30.toLocaleString());
             
-            // Apply color formatting to Dil %
-            let dilColor = '';
+            // Dil% colors: Red <25%, Green 25–50%, Pink 50%+
             const dilValue = parseFloat(dil);
-            if (dilValue >= 50) dilColor = '#a00211'; // Dark red
-            else if (dilValue >= 30 && dilValue < 50) dilColor = '#dc3545'; // Red
-            else if (dilValue >= 20 && dilValue < 30) dilColor = '#ffc107'; // Yellow
-            else if (dilValue >= 10 && dilValue < 20) dilColor = '#3591dc'; // Blue
-            else if (dilValue >= 5 && dilValue < 10) dilColor = '#28a745'; // Green
-            else dilColor = '#e83e8c'; // Pink
+            const dilColor = getDilPercentColor(dilValue);
             
             $('#modal-header-dil').html(`<span style="${styleForCellColor(dilColor)}">${Math.round(dilValue)}%</span>`);
             ovl30ModalDil = isFinite(dilValue) ? dilValue : 0;
@@ -1997,10 +2021,12 @@
                     nroi = ((grossProfit - adsPerUnit) / lp) * 100;
                 }
                 
+                const mpLower = (item.marketplace || '').toLowerCase();
                 let sgpft = 0, spft = 0, sroi = 0, snroi = 0;
                 if (sprice > 0) {
                     sgpft = ((sprice * margin - ship - lp) / sprice) * 100;
-                    spft = l30 == 0 ? sgpft : (sgpft - ad);
+                    // TikTok: SPFT = SGPFT − TACOS% (same as /tiktok-pricing); others keep L30==0 skip-ads rule
+                    spft = (mpLower === 'tiktok') ? (sgpft - tacosCh) : (l30 == 0 ? sgpft : (sgpft - ad));
                     sroi = lp > 0 ? ((sprice * margin - lp - ship) / lp) * 100 : 0;
                     // SNROI% = (SPRICE × Margin − LP − Ship − SPRICE × Ads%) ÷ LP × 100
                     if (lp > 0) {
@@ -2010,7 +2036,7 @@
                     }
                 }
                 
-                const isEditable = ['amazon', 'doba', 'ebay', 'ebay1', 'ebaytwo', 'ebay2', 'ebaythree', 'ebay3', 'temu', 'temu2', 'tiktok', 'bestbuy', 'macy', 'reverb', 'tiendamia', 'sb2c', 'shopify', 'shopifyb2c', 'sb2b', 'shopifyb2b', 'fba', 'shein', 'aliexpress', 'ppower', 'purchasingpower'].includes((item.marketplace || '').toLowerCase());
+                const isEditable = ['amazon', 'doba', 'ebay', 'ebay1', 'ebaytwo', 'ebay2', 'ebaythree', 'ebay3', 'temu', 'temu2', 'tiktok', 'bestbuy', 'macy', 'reverb', 'tiendamia', 'sb2c', 'shopify', 'shopifyb2c', 'sb2b', 'shopifyb2b', 'fba', 'shein', 'aliexpress', 'ppower', 'purchasingpower'].includes(mpLower);
                 
                 // Color coding for CVR%
                 let cvrColor = '';
@@ -2181,10 +2207,10 @@
                         <td class="text-end ${textClass}">${!isListed ? '-' : (viewsMissing ? 'N/A' : views.toLocaleString())}</td>
                         <td class="text-end ${textClass}">${!isListed ? '-' : (viewsMissing ? 'N/A' : (views > 0 ? '<span style="' + styleForCellColor(cvrColor) + '">' + cvr.toFixed(1) + '%</span>' : '-'))}</td>
                         <td class="text-end ${textClass}">${isListed && price > 0 && lp > 0 ? '<span style="' + styleForCellColor(groiColor) + '">' + Math.round(groi) + '%</span>' : '-'}</td>
-                        <td class="text-end ${textClass}">${isListed && price > 0 && lp > 0 ? '<span style="' + styleForCellColor(nroiColor) + '">' + Math.round(nroi) + '%</span>' : '-'}</td>
                         <td class="text-end ${textClass}">${isListed && gpft !== 0 ? '<span style="' + gpftStyle + '">' + Math.round(gpft) + '%</span>' : '-'}</td>
-                        <td class="text-end ${textClass}">${isListed ? '<span style="' + styleForCellColor(adColor) + ';font-weight:600;">' + Math.round(tacosCh) + '%</span>' : '-'}</td>
+                        <td class="text-end ${textClass}">${isListed && price > 0 && lp > 0 ? '<span style="' + styleForCellColor(nroiColor) + '">' + Math.round(nroi) + '%</span>' : '-'}</td>
                         <td class="text-end ${textClass}">${isListed ? '<span style="' + npftStyle + '">' + Math.round(npft) + '%</span>' : '-'}</td>
+                        <td class="text-end ${textClass}">${isListed ? '<span style="' + styleForCellColor(adColor) + ';font-weight:600;">' + Math.round(tacosCh) + '%</span>' : '-'}</td>
                         <td class="text-end ${textClass}">
                             ${(() => {
                                 if (!isListed) return '-';
@@ -2559,16 +2585,11 @@
                     field: "dil_percent",
                     hozAlign: "center",
                     sorter: "number",
+                    headerTooltip: "DIL%: Red <25% · Green 25–50% · Pink 50%+",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const value = parseFloat(cell.getValue() || 0);
-                        let color = '';
-
-                        if (value === 0) color = '#6c757d';
-                        else if (value < 16.7) color = '#a00211';
-                        else if (value >= 16.7 && value < 25) color = '#ffc107';
-                        else if (value >= 25 && value < 50) color = '#28a745';
-                        else color = '#e83e8c';
+                        const color = getDilPercentColor(value);
 
                         let html = `<span style="${styleForCellColor(color)}">${Math.round(value)}%</span>`;
                         const parentEscDil = (rowData.parent || '').replace(/"/g, '&quot;');
@@ -2603,6 +2624,18 @@
                     minWidth: 70
                 },
                 {
+                    title: "Avg GPFT%",
+                    field: "avg_gpft",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue() || 0);
+                        // <20 red, 20–30 yellow, 30–40 green, >40 black on magenta
+                        return `<span style="${styleForGpftValue(value)}">${Math.round(value)}%</span>`;
+                    },
+                    minWidth: 70
+                },
+                {
                     title: "Avg GROI%",
                     field: "avg_roi",
                     hozAlign: "center",
@@ -2623,6 +2656,18 @@
                     }
                 },
                 {
+                    title: "Avg NPFT%",
+                    field: "avg_pft",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue() || 0);
+                        // NPFT: <30 red, 30–40 yellow, 40–50 green, >50 black on magenta
+                        return `<span style="${styleForNpftValue(value)}">${Math.round(value)}%</span>`;
+                    },
+                    minWidth: 70
+                },
+                {
                     title: "Avg NROI%",
                     field: "avg_nroi",
                     hozAlign: "center",
@@ -2641,30 +2686,6 @@
                         else color = '#e83e8c';
                         return `<span style="${styleForCellColor(color)}">${Math.round(pct)}%</span>`;
                     }
-                },
-                {
-                    title: "Avg GPFT%",
-                    field: "avg_gpft",
-                    hozAlign: "center",
-                    sorter: "number",
-                    formatter: function(cell) {
-                        const value = parseFloat(cell.getValue() || 0);
-                        // <20 red, 20–30 yellow, 30–40 green, >40 black on magenta
-                        return `<span style="${styleForGpftValue(value)}">${Math.round(value)}%</span>`;
-                    },
-                    minWidth: 70
-                },
-                {
-                    title: "Avg NPFT%",
-                    field: "avg_pft",
-                    hozAlign: "center",
-                    sorter: "number",
-                    formatter: function(cell) {
-                        const value = parseFloat(cell.getValue() || 0);
-                        // NPFT: <30 red, 30–40 yellow, 40–50 green, >50 black on magenta
-                        return `<span style="${styleForNpftValue(value)}">${Math.round(value)}%</span>`;
-                    },
-                    minWidth: 70
                 },
                 {
                     title: "Missing L",
@@ -3300,6 +3321,14 @@
         }
         // Dark mustard text (no yellow background)
         const darkMustard = '#ff9c00'; // orange/mustard accent
+        /** Dil%: Red <25%, Green 25–50%, Pink 50%+ */
+        function getDilPercentColor(value) {
+            const v = parseFloat(value) || 0;
+            if (v < 25) return '#a00211';
+            if (v < 50) return '#28a745';
+            return '#e83e8c';
+        }
+
         function styleForCellColor(c) {
             if (!c) return 'font-weight:600;';
             if (c === '#ffc107') return 'color:' + darkMustard + ';font-weight:600;';
@@ -3418,8 +3447,9 @@
             const $snroiSpan = row.find('.calculated-snroi');
             
             if (sprice > 0) {
+                const mpLower = String(row.attr('data-marketplace') || '').toLowerCase();
                 const sgpft = ((sprice * margin - ship - lp) / sprice) * 100;
-                const spft = l30 == 0 ? sgpft : (sgpft - ad);
+                const spft = (mpLower === 'tiktok') ? (sgpft - tacosCh) : (l30 == 0 ? sgpft : (sgpft - ad));
                 const sroi = lp > 0 ? ((sprice * margin - lp - ship) / lp) * 100 : 0;
                 const snroi = lp > 0
                     ? (((sprice * margin - lp - ship) - sprice * (tacosCh / 100)) / lp) * 100
@@ -3458,11 +3488,13 @@
             const lp = parseFloat(row.attr('data-lp')) || 0;
             const ship = parseFloat(row.attr('data-ship')) || 0;
             const ad = parseFloat(row.attr('data-ad')) || 0;
+            const tacosCh = parseFloat(row.attr('data-tacos-ch')) || 0;
             const margin = parseFloat(row.attr('data-margin')) || 0.80;
             const l30 = parseFloat(row.attr('data-l30')) || 0;
+            const mpLower = String(marketplace || '').toLowerCase();
             
             const sgpft = sprice > 0 ? ((sprice * margin - ship - lp) / sprice) * 100 : 0;
-            const spft = l30 == 0 ? sgpft : (sgpft - ad);
+            const spft = (mpLower === 'tiktok') ? (sgpft - tacosCh) : (l30 == 0 ? sgpft : (sgpft - ad));
             const sroi = lp > 0 ? ((sprice * margin - lp - ship) / lp) * 100 : 0;
             
             input.css('border-color', '#ff9c00');
@@ -4840,7 +4872,7 @@
         let expandedParent = null;
         let dotExpandedParent = null;
         // Play/Pause parent navigation (same as product master: show only current parent, ignore other filters)
-        // playNavMode: null | 'default' | 'npft' | 'dil' | 'cvr'
+        // playNavMode: null | 'default' | 'npft' | 'dil' | 'cvr' | 'groi'
         let isPlayNavigationActive = false;
         let playNavMode = null;
         let currentPlayParentIndex = 0;
@@ -5017,8 +5049,7 @@
                     const inv = parseFloat(row.inventory) || 0;
                     const l30 = parseFloat(row.overall_l30) || 0;
                     const dil = inv === 0 ? 0 : (l30 / inv) * 100;
-                    if (dilFilter === 'red') return dil < 16.7;
-                    if (dilFilter === 'yellow') return dil >= 16.7 && dil < 25;
+                    if (dilFilter === 'red') return dil < 25;
                     if (dilFilter === 'green') return dil >= 25 && dil < 50;
                     if (dilFilter === 'pink') return dil >= 50;
                     return true;
@@ -5101,13 +5132,14 @@
             return fullDataset.filter(row => row.is_parent_summary === true);
         }
 
-        /** Parent list for active playback. npft/dil/cvr = lowest metric first. */
+        /** Parent list for active playback. npft/dil/cvr/groi = lowest metric first. */
         function getPlayParentRows() {
             const parents = getParentRows();
             let field = null;
             if (playNavMode === 'npft') field = 'avg_pft';
             else if (playNavMode === 'dil') field = 'dil_percent';
             else if (playNavMode === 'cvr') field = 'avg_cvr';
+            else if (playNavMode === 'groi') field = 'avg_roi';
             if (!field) return parents;
             return parents.slice().sort(function(a, b) {
                 const na = parseFloat(a[field]);
@@ -5120,9 +5152,9 @@
         }
 
         function resetAllPlayUiButtons() {
-            $('#play-pause, #play-npft-pause, #play-dil-pause, #play-cvr-pause').hide();
-            $('#play-auto, #play-npft-auto, #play-dil-auto, #play-cvr-auto').show();
-            $('#play-backward, #play-forward, #play-npft-backward, #play-npft-forward, #play-dil-backward, #play-dil-forward, #play-cvr-backward, #play-cvr-forward').prop('disabled', true);
+            $('#play-pause, #play-npft-pause, #play-dil-pause, #play-cvr-pause, #play-groi-pause').hide();
+            $('#play-auto, #play-npft-auto, #play-dil-auto, #play-cvr-auto, #play-groi-auto').show();
+            $('#play-backward, #play-forward, #play-npft-backward, #play-npft-forward, #play-dil-backward, #play-dil-forward, #play-cvr-backward, #play-cvr-forward, #play-groi-backward, #play-groi-forward').prop('disabled', true);
         }
 
         function getCurrentParentIndex() {
@@ -5195,6 +5227,9 @@
             } else if (playNavMode === 'cvr') {
                 $('#play-cvr-auto').hide();
                 $('#play-cvr-pause').show();
+            } else if (playNavMode === 'groi') {
+                $('#play-groi-auto').hide();
+                $('#play-groi-pause').show();
             } else {
                 $('#play-auto').hide();
                 $('#play-pause').show();
@@ -5224,7 +5259,7 @@
             const atStart = !isPlayNavigationActive || currentPlayParentIndex <= 0;
             const atEnd = !isPlayNavigationActive || currentPlayParentIndex >= parentRows.length - 1;
 
-            $('#play-backward, #play-forward, #play-npft-backward, #play-npft-forward, #play-dil-backward, #play-dil-forward, #play-cvr-backward, #play-cvr-forward').prop('disabled', true);
+            $('#play-backward, #play-forward, #play-npft-backward, #play-npft-forward, #play-dil-backward, #play-dil-forward, #play-cvr-backward, #play-cvr-forward, #play-groi-backward, #play-groi-forward').prop('disabled', true);
             if (playNavMode === 'npft') {
                 $('#play-npft-backward').prop('disabled', atStart);
                 $('#play-npft-forward').prop('disabled', atEnd);
@@ -5234,6 +5269,9 @@
             } else if (playNavMode === 'cvr') {
                 $('#play-cvr-backward').prop('disabled', atStart);
                 $('#play-cvr-forward').prop('disabled', atEnd);
+            } else if (playNavMode === 'groi') {
+                $('#play-groi-backward').prop('disabled', atStart);
+                $('#play-groi-forward').prop('disabled', atEnd);
             } else if (playNavMode === 'default') {
                 $('#play-backward').prop('disabled', atStart);
                 $('#play-forward').prop('disabled', atEnd);
@@ -5255,6 +5293,10 @@
             $('#play-cvr-pause').attr('title', 'Pause: stop CVR% playback and show all rows');
             $('#play-cvr-backward').attr('title', 'Previous: lower CVR% parent');
             $('#play-cvr-forward').attr('title', 'Next: next higher CVR% parent');
+            $('#play-groi-auto').attr('title', 'Play Lowest GROI%: walk parents starting from lowest Avg GROI%');
+            $('#play-groi-pause').attr('title', 'Pause: stop GROI% playback and show all rows');
+            $('#play-groi-backward').attr('title', 'Previous: lower GROI% parent');
+            $('#play-groi-forward').attr('title', 'Next: next higher GROI% parent');
             refreshPlayTooltips();
         }
 
@@ -5292,6 +5334,11 @@
         $('#play-cvr-pause').on('click', stopPlayNavigation);
         $('#play-cvr-forward').on('click', playNextParent);
         $('#play-cvr-backward').on('click', playPreviousParent);
+
+        $('#play-groi-auto').on('click', function() { startPlayNavigation('groi'); });
+        $('#play-groi-pause').on('click', stopPlayNavigation);
+        $('#play-groi-forward').on('click', playNextParent);
+        $('#play-groi-backward').on('click', playPreviousParent);
 
         // Init hover tooltips for playback controls
         $(function() { refreshPlayTooltips(); });
@@ -5371,8 +5418,7 @@
                         const inv = parseFloat(data['inventory']) || 0;
                         const l30 = parseFloat(data['overall_l30']) || 0;
                         const dil = inv === 0 ? 0 : (l30 / inv) * 100;
-                        if (dilFilter === 'red') return dil < 16.7;
-                        if (dilFilter === 'yellow') return dil >= 16.7 && dil < 25;
+                        if (dilFilter === 'red') return dil < 25;
                         if (dilFilter === 'green') return dil >= 25 && dil < 50;
                         if (dilFilter === 'pink') return dil >= 50;
                         return true;
@@ -5537,7 +5583,7 @@
 
             $('#total-inv-badge').text(totalInv.toLocaleString());
             $('#total-l30-badge').text(totalL30.toLocaleString());
-            $('#avg-dil-badge').text(avgDil.toFixed(1) + '%');
+            $('#avg-dil-badge').html('<span style="' + styleForCellColor(getDilPercentColor(avgDil)) + '">' + avgDil.toFixed(1) + '%</span>');
             $('#total-views-badge').text(totalViews.toLocaleString());
             $('#avg-cvr-badge').text(avgCvr.toFixed(1) + '%');
             $('#avg-price-badge').text('$' + avgPrice.toFixed(2));
