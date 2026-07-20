@@ -85,6 +85,7 @@ class CalculateChannelMasterData extends Command
 
             $channels = $response['data'];
             $this->info('Found ' . count($channels) . ' channels to process.');
+            $monitor->markApiConnected();
             $monitor->setFetched(count($channels));
             $monitor->setExpected(count($channels));
 
