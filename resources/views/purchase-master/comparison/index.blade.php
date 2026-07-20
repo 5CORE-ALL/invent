@@ -2226,7 +2226,12 @@ document.addEventListener('DOMContentLoaded', function () {
             const row = cells[rowIndex] || [];
             for (let colIndex = 0; colIndex < row.length; colIndex++) {
                 const text = String(row[colIndex] || '').trim().toLowerCase();
-                if (!text || text.startsWith('http') || text.startsWith('data:image/')) {
+                if (
+                    !text
+                    || text.startsWith('http')
+                    || text.startsWith('data:image/')
+                    || text.startsWith('[embedded-image:')
+                ) {
                     continue;
                 }
                 if (text.includes('supplier') || text.includes('product photo') || text.includes('person name review') || text.includes('company name')) {
@@ -2327,12 +2332,15 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!text) {
             return null;
         }
-        const clean = text.replace(/,/g, '').replace(/[^0-9.\-]/g, '');
-        if (clean === '' || Number.isNaN(Number(clean))) {
+        // Sheet GW/NW cells often look like "8.82 / 9.26". Stripping "/" would make
+        // "8.829.26", and Number("8.829.26") is NaN — so take the first number only.
+        const firstPart = text.split('/')[0];
+        const match = String(firstPart).replace(/,/g, '').match(/-?\d+(\.\d+)?/);
+        if (!match) {
             return null;
         }
-        const num = parseFloat(clean);
-        return num > 0 ? num : null;
+        const num = parseFloat(match[0]);
+        return (Number.isFinite(num) && num > 0) ? num : null;
     }
 
     function findRowIndexByLabel(cells, labelNeedle, labelCol) {
@@ -3208,43 +3216,66 @@ document.addEventListener('DOMContentLoaded', function () {
         scheduleAutoSaveComparisonSheet(0);
     }
 
-    function readCellsFromEditor() {
+    // options.expandImages=true (default) resolves photo cells to full img.src (needed for save).
+    // options.expandImages=false keeps [embedded-image:…] placeholders — much faster for ROI/UI reads.
+    function readCellsFromEditor(options) {
+        const expandImages = !options || options.expandImages !== false;
         const body = document.getElementById('comparison-cd-sheet-body');
         if (!body) return currentSheetCells;
 
         const rows = [];
-        body.querySelectorAll('tr').forEach((tr, rowIndex) => {
+        const trList = body.children;
+        for (let rowIndex = 0; rowIndex < trList.length; rowIndex++) {
+            const tr = trList[rowIndex];
+            if (!tr || tr.tagName !== 'TR') {
+                continue;
+            }
             const row = [];
-            tr.querySelectorAll('td').forEach((td, tdIndex) => {
+            const tdList = tr.children;
+            for (let tdIndex = 0; tdIndex < tdList.length; tdIndex++) {
                 if (tdIndex === 0) {
-                    return;
+                    continue;
                 }
+                const td = tdList[tdIndex];
                 const colIndex = tdIndex - 1;
                 if (isCommRow(rowIndex, currentSheetCells)) {
                     row.push((currentSheetCells[rowIndex] || [])[colIndex] || '');
-                    return;
+                    continue;
                 }
 
-                const cell = td.querySelector('.cd-sheet-cell');
+                const cell = td.firstElementChild && td.firstElementChild.classList?.contains('cd-sheet-cell')
+                    ? td.firstElementChild
+                    : td.querySelector('.cd-sheet-cell');
                 if (!cell) {
                     row.push((currentSheetCells[rowIndex] || [])[colIndex] || '');
-                    return;
+                    continue;
                 }
 
                 const stored = cell.dataset.value || '';
-                const img = cell.querySelector('img');
-                if (img && img.src && (!stored || stored.startsWith('[embedded-image:'))) {
-                    row.push(img.src);
-                    return;
+
+                // Photo cells: never pull megabyte data: URLs into memory unless saving.
+                if (cell.classList.contains('cd-sheet-cell-image')) {
+                    if (!expandImages) {
+                        row.push(stored || (currentSheetCells[rowIndex] || [])[colIndex] || '');
+                        continue;
+                    }
+                    if (stored && !stored.startsWith('[embedded-image:')) {
+                        row.push(stored);
+                        continue;
+                    }
+                    const img = cell.querySelector('img');
+                    row.push((img && img.src) ? img.src : (stored || ''));
+                    continue;
                 }
+
                 if (stored) {
                     row.push(stored);
-                    return;
+                    continue;
                 }
-                row.push((cell.innerText || '').trimEnd());
-            });
+                row.push((cell.textContent || '').trimEnd());
+            }
             rows.push(row);
-        });
+        }
 
         currentSheetCells = rows;
         return rows;
@@ -4015,16 +4046,23 @@ document.addEventListener('DOMContentLoaded', function () {
 
     async function fetchShippingSlabRate(weightLb, sku) {
         const weight = parseSheetNumber(weightLb);
-        if (weight == null) {
+        const skuKey = String(sku || '').trim();
+        // Weight is optional when SKU is present — Product Master ship is preferred.
+        if (weight == null && !skuKey) {
             return null;
         }
 
         const params = new URLSearchParams({
-            weight_lb: String(weight),
             carrier: 'ship',
         });
-        if (sku) {
-            params.set('sku', sku);
+        if (weight != null) {
+            params.set('weight_lb', String(weight));
+        } else {
+            // Backend requires a numeric weight_lb; 0 resolves to the 0 lb slab and is ignored when PM ship exists.
+            params.set('weight_lb', '0');
+        }
+        if (skuKey) {
+            params.set('sku', skuKey);
         }
 
         try {
@@ -4167,8 +4205,13 @@ document.addEventListener('DOMContentLoaded', function () {
 
         const priceRow = findRowIndexByLabel(cells, priceLabel, specCol)
             ?? findRowIndexByLabel(cells, 'supplier price', specCol);
-        const gwRow = findRowIndexByLabel(cells, 'gw', specCol)
+        // Sheet label is often "GW /Unit (LB)" (no space after /).
+        const gwRow = findRowIndexByLabel(cells, 'gw /unit', specCol)
+            ?? findRowIndexByLabel(cells, 'gw / unit', specCol)
+            ?? findRowIndexByLabel(cells, 'gw/unit', specCol)
             ?? findRowIndexByLabel(cells, 'g.w', specCol)
+            ?? findRowIndexByLabel(cells, 'gross weight', specCol)
+            ?? findRowIndexByLabel(cells, 'gw', specCol)
             ?? findRowIndexByLabel(cells, 'weight', specCol);
         const cbmRow = findRowIndexByLabel(cells, 'cbm', specCol);
 
@@ -4220,15 +4263,20 @@ document.addEventListener('DOMContentLoaded', function () {
             : (fromSheet.cbm ? formatRoiCbm(fromSheet.cbm) : '');
         const lmpSale = getChannelLmpSale(channel, lmpRates);
         const rawLmp = getChannelRawLmp(channel, lmpRates);
+        // GW must use the sheet's "GW / Unit (LB)" spec row (metrics.gw), same as CBM —
+        // not a stale/empty cost-calculator cell that would blank the ROI GW LB field.
+        const gw = metrics.gw != null
+            ? formatRoiNumber(metrics.gw)
+            : (fromSheet.gw ? formatRoiNumber(fromSheet.gw) : '');
         const row = {
             channel,
             cp: fromSheet.cp || (metrics.cp != null ? formatRoiNumber(metrics.cp) : ''),
             cbm,
             freight: computeFreightFromCbm(metrics.cbm != null ? metrics.cbm : (fromSheet.cbm || cbm)),
-            gw: fromSheet.gw || (metrics.gw != null ? formatRoiNumber(metrics.gw) : ''),
-            // Shipping is always sourced from the Shipping Master (weight-based slab rate),
-            // never from the comparison sheet. This prevents stale/imported sheet values
-            // (e.g. a manually typed or Google-synced number) from overriding the master.
+            gw,
+            // Shipping is sourced from Product Master Values.ship for the SKU
+            // (via shipping-slab-rate API; slab consensus is only a fallback).
+            // Never from the comparison sheet, so stale/imported sheet values cannot override.
             shipping: (slabShipping != null && slabShipping !== '')
                 ? formatRoiNumber(slabShipping)
                 : '',
@@ -4269,7 +4317,7 @@ document.addEventListener('DOMContentLoaded', function () {
             const inputCell = (field, value) =>
                 `<td class="comparison-roi-input-cell"><input type="text" class="comparison-roi-input" data-row="${rowIndex}" data-field="${field}" value="${escapeHtmlAttr(value || '')}"></td>`;
             const readonlyInputCell = (field, value) =>
-                `<td class="comparison-roi-input-cell"><input type="text" class="comparison-roi-input comparison-roi-input-readonly" data-row="${rowIndex}" data-field="${field}" value="${escapeHtmlAttr(value || '')}" readonly tabindex="-1" title="Auto from Shipping Master (based on GW LB). Not editable."></td>`;
+                `<td class="comparison-roi-input-cell"><input type="text" class="comparison-roi-input comparison-roi-input-readonly" data-row="${rowIndex}" data-field="${field}" value="${escapeHtmlAttr(value || '')}" readonly tabindex="-1" title="Auto from Product Master (ship). Not editable."></td>`;
 
             return `<tr>
                 <td class="comparison-roi-channel">${escapeHtml(row.channel)}</td>
@@ -4347,7 +4395,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
         const tr = input.closest('tr');
         if (field === 'gw') {
-            await fetchShippingSlabRate(input.value, currentCdRow?.sku || '').then(function (slabInfo) {
+            await fetchShippingSlabRate(input.value, (currentCdRow?.sku || COMPARISON_CD_PAGE_SKU || '').trim()).then(function (slabInfo) {
                 const shipRate = slabInfo?.rate != null ? formatRoiNumber(slabInfo.rate) : '';
                 tbody.roiRows[rowIndex].shipping = shipRate;
                 const shippingInput = tr?.querySelector('[data-field="shipping"]');
@@ -4393,7 +4441,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         if (field === 'gw') {
-            fetchShippingSlabRate(input.value, currentCdRow?.sku || '').then(function (slabInfo) {
+            fetchShippingSlabRate(input.value, (currentCdRow?.sku || COMPARISON_CD_PAGE_SKU || '').trim()).then(function (slabInfo) {
                 const shipRate = slabInfo?.rate != null ? formatRoiNumber(slabInfo.rate) : '';
                 tbody.roiRows[rowIndex].shipping = shipRate;
                 const shippingInput = tr?.querySelector('[data-field="shipping"]');
@@ -4444,43 +4492,94 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     async function openRoiModal() {
-        readCellsFromEditor();
-        if (!currentSheetCells.length) {
-            setSheetStatus('Load a comparison sheet first.', true);
-            return;
-        }
-
-        const metrics = extractLowestPriceColumnMetrics(currentSheetCells);
-        const sku = currentCdRow?.sku || '';
-        const [slabInfo, lmpRates] = await Promise.all([
-            metrics.gw != null ? fetchShippingSlabRate(metrics.gw, sku) : Promise.resolve(null),
-            fetchPlatformLmpRates(sku),
-        ]);
-        const rows = ROI_CHANNELS.map(channel => buildRoiChannelRow(
-            channel,
-            currentSheetCells,
-            metrics,
-            slabInfo?.rate,
-            lmpRates
-        ));
-        renderRoiModalTable(rows);
-        updateManualLmpSection(lmpRates);
-        setRoiSaveStatus('', false);
-
-        const manualLmpInput = document.getElementById('comparison-roi-manual-lmp');
-        if (manualLmpInput) {
-            manualLmpInput.value = '';
-        }
-
         const roiModal = getRoiModalInstance();
         if (!roiModal) {
             setSheetStatus('ROI modal unavailable. Refresh the page and try again.', true);
             return;
         }
 
+        const sku = (currentCdRow?.sku || COMPARISON_CD_PAGE_SKU || '').trim();
+        const emptyLmp = { amazon: null, ebay: null };
+        const manualLmpInput = document.getElementById('comparison-roi-manual-lmp');
+        if (manualLmpInput) {
+            manualLmpInput.value = '';
+        }
+        setRoiSaveStatus('', false);
+        updateManualLmpSection(emptyLmp);
+
+        // Paint the modal on this click — do NOT scan the sheet first.
+        // Product-photo cells hold huge data: URLs; reading them blocked the UI ~5s.
+        const placeholderRows = ROI_CHANNELS.map(channel => ({
+            channel,
+            cp: '',
+            cbm: '',
+            freight: '',
+            gw: '',
+            shipping: '',
+            sale: '',
+            lmp: '',
+            profit: '',
+            pPct: '',
+            roi: '',
+        }));
+        renderRoiModalTable(placeholderRows);
+
         const roiModalEl = getRoiModalElement();
         roiModalEl?.addEventListener('shown.bs.modal', fixRoiModalStacking, { once: true });
         roiModal.show();
+
+        // Yield so the browser can paint the modal before the sheet DOM scan.
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+        // Prefer already-loaded in-memory cells (correct GW/CBM/CP from sheet load).
+        // Only fall back to a lightweight DOM sync when memory is empty.
+        if (!currentSheetCells.length) {
+            readCellsFromEditor({ expandImages: false });
+        } else {
+            // Sync recent text edits without expanding huge product-photo data URLs.
+            try {
+                readCellsFromEditor({ expandImages: false });
+            } catch (e) {
+                // Keep prior in-memory cells if DOM sync fails.
+            }
+        }
+        if (!currentSheetCells.length) {
+            setSheetStatus('Load a comparison sheet first.', true);
+            return;
+        }
+
+        const metrics = extractLowestPriceColumnMetrics(currentSheetCells);
+        const rows = ROI_CHANNELS.map(channel => buildRoiChannelRow(
+            channel,
+            currentSheetCells,
+            metrics,
+            null,
+            emptyLmp
+        ));
+        renderRoiModalTable(rows);
+
+        // Prefer Product Master ship for SKU; GW is used only for slab fallback when PM ship is empty.
+        const [slabInfo, lmpRates] = await Promise.all([
+            fetchShippingSlabRate(metrics.gw, sku),
+            fetchPlatformLmpRates(sku),
+        ]);
+
+        // Ignore stale responses if the user closed/reopened for another SKU.
+        const stillSameSku = (currentCdRow?.sku || COMPARISON_CD_PAGE_SKU || '').trim() === sku;
+        if (!stillSameSku || !document.getElementById('comparisonRoiModal')?.classList.contains('show')) {
+            return;
+        }
+
+        const hydratedRows = ROI_CHANNELS.map(channel => buildRoiChannelRow(
+            channel,
+            currentSheetCells,
+            metrics,
+            slabInfo?.rate,
+            lmpRates
+        ));
+        renderRoiModalTable(hydratedRows);
+        updateManualLmpSection(lmpRates);
+        setRoiSaveStatus('', false);
     }
 
     function replaceSpecsFromMemory() {

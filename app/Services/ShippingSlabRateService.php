@@ -53,6 +53,23 @@ class ShippingSlabRateService
 
     public function getCarrierRateForWeight(?float $weightLb, string $carrier = 'ship', ?string $sku = null): array
     {
+        // Prefer Product Master Values.{carrier} for the SKU (e.g. ship).
+        // Skip the expensive full-catalog slab scan when PM already has a rate.
+        $skuRate = ($sku !== null && trim($sku) !== '')
+            ? $this->getSkuCarrierRate(trim($sku), $carrier)
+            : null;
+
+        if ($skuRate !== null) {
+            return [
+                'success' => true,
+                'rate' => $skuRate,
+                'slab_key' => $this->resolveSlabKeyForWeight($weightLb),
+                'slab_label' => null,
+                'mixed' => false,
+                'source' => 'product_master',
+            ];
+        }
+
         $slabKey = $this->resolveSlabKeyForWeight($weightLb);
         if ($slabKey === null) {
             return [
@@ -61,7 +78,8 @@ class ShippingSlabRateService
                 'slab_key' => null,
                 'slab_label' => null,
                 'mixed' => false,
-                'message' => 'Could not resolve weight slab.',
+                'source' => null,
+                'message' => 'Could not resolve weight slab or Product Master ship rate.',
             ];
         }
 
@@ -70,19 +88,13 @@ class ShippingSlabRateService
         $rate = $slabInfo['rate'] ?? null;
         $mixed = (bool) ($slabInfo['mixed'] ?? false);
 
-        if ($rate === null && $sku) {
-            $skuRate = $this->getSkuCarrierRate($sku, $carrier);
-            if ($skuRate !== null) {
-                $rate = $skuRate;
-            }
-        }
-
         return [
             'success' => true,
             'rate' => $rate,
             'slab_key' => $slabKey,
             'slab_label' => $slabInfo['slab_label'] ?? $slabKey,
             'mixed' => $mixed,
+            'source' => $rate !== null ? 'slab' : null,
         ];
     }
 
@@ -191,7 +203,18 @@ class ShippingSlabRateService
 
     private function getSkuCarrierRate(string $sku, string $carrier): ?float
     {
-        $product = ProductMaster::query()->where('sku', $sku)->first(['Values']);
+        $sku = trim($sku);
+        if ($sku === '') {
+            return null;
+        }
+
+        $product = ProductMaster::query()->where('sku', $sku)->first(['sku', 'Values']);
+        if (! $product) {
+            $product = ProductMaster::query()
+                ->whereRaw('LOWER(sku) = ?', [strtolower($sku)])
+                ->first(['sku', 'Values']);
+        }
+
         if (! $product) {
             return null;
         }
@@ -207,6 +230,16 @@ class ShippingSlabRateService
         $value = $values[$carrier];
         if ($value === null || $value === '') {
             return null;
+        }
+
+        // Allow values like "$7.00" / "7,00"
+        if (is_string($value)) {
+            $value = trim(str_replace(['$', ' '], '', $value));
+            if (preg_match('/^\d+,\d+$/', $value)) {
+                $value = str_replace(',', '.', $value);
+            } else {
+                $value = str_replace(',', '', $value);
+            }
         }
 
         $num = is_numeric($value) ? (float) $value : null;
