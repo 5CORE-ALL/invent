@@ -4258,12 +4258,22 @@ class ChannelMasterController extends Controller
      */
     public function getViewChannelDataFast(Request $request)
     {
+        // Live overlays (pricing Map/Miss/NMap, sales) need headroom beyond the default 128M.
+        @ini_set('memory_limit', '512M');
+
         try {
-            // Check if we have fresh calculated data
-            if (!\App\Models\ChannelMasterCalculatedData::isDataFresh()) {
-                \Log::warning('Channel calculated data is not fresh, consider running: php artisan channel:calculate-data');
-                // Fallback to old method if data is stale
+            $hasCalculatedRows = \App\Models\ChannelMasterCalculatedData::query()->exists();
+
+            // Never recalculate the full channel matrix on a web request when any
+            // pre-calculated rows exist — that path OOMs at 128M. Serve stale data
+            // and let channel:calculate-data refresh it.
+            if (! $hasCalculatedRows) {
+                \Log::warning('Channel calculated data is empty; falling back to live calculation. Run: php artisan channel:calculate-data --force');
                 return $this->getViewChannelData($request);
+            }
+
+            if (!\App\Models\ChannelMasterCalculatedData::isDataFresh()) {
+                \Log::warning('Channel calculated data is not fresh; serving cached table. Run: php artisan channel:calculate-data --force');
             }
             
             // Get pagination parameters
@@ -4484,7 +4494,15 @@ class ChannelMasterController extends Controller
             
         } catch (\Exception $e) {
             \Log::error('Error fetching fast channel data: ' . $e->getMessage());
-            // Fallback to old method
+            // Only fall back to the heavy live path when the cache table is empty.
+            if (\App\Models\ChannelMasterCalculatedData::query()->exists()) {
+                return response()->json([
+                    'status' => 500,
+                    'message' => 'Error loading channel data: ' . $e->getMessage(),
+                    'data' => [],
+                ], 500);
+            }
+
             return $this->getViewChannelData($request);
         }
     }
@@ -4495,6 +4513,8 @@ class ChannelMasterController extends Controller
      */
     public function getViewChannelData(Request $request)
     {
+        @ini_set('memory_limit', '512M');
+
         // Fetch both channel and sheet_link from ChannelMaster
         $columns = ['channel', 'sheet_link', 'channel_percentage', 'type'];
         

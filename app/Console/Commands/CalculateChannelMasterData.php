@@ -96,12 +96,14 @@ class CalculateChannelMasterData extends Command
                 $calculatedAt = now();
                 $dataAsOf = now();
 
-                ChannelMasterCalculatedData::truncate();
-                $this->newLine();
-                $this->info('Cleared old calculated data.');
+                // DELETE (not TRUNCATE) so a failed run can roll back and keep the
+                // previous page-serving rows. MySQL TRUNCATE is DDL and cannot roll back.
+                DB::transaction(function () use ($channels, $chunkSize, $calculatedAt, $dataAsOf, $bar, $monitor) {
+                    ChannelMasterCalculatedData::query()->delete();
+                    $this->newLine();
+                    $this->info('Cleared old calculated data.');
 
-                foreach (array_chunk($channels, $chunkSize) as $chunkIndex => $chunk) {
-                    DB::transaction(function () use ($chunk, $chunkIndex, $calculatedAt, $dataAsOf, $bar, $monitor) {
+                    foreach (array_chunk($channels, $chunkSize) as $chunkIndex => $chunk) {
                         foreach ($chunk as $channelData) {
                             $channelName = $channelData['Channel '] ?? $channelData['Channel'] ?? 'Unknown';
 
@@ -141,8 +143,8 @@ class CalculateChannelMasterData extends Command
                         $monitor->incrementUpdated(count($chunk));
                         $monitor->incrementProcessed(count($chunk));
                         $monitor->checkpoint(['phase' => 'channels', 'chunk' => $chunkIndex], $monitor->processedRecords);
-                    });
-                }
+                    }
+                });
 
                 $bar->finish();
                 $this->newLine(2);
