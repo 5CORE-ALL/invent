@@ -99,6 +99,7 @@ return [
     ['value' => 'shopifyb2c_zero_view', 'text' => 'Shopify B2C 0 View', 'group' => 'Marketplace'],
     ['value' => 'shopifyb2c_low_visibility', 'text' => 'Shopify B2C Low Visibility', 'group' => 'Marketplace'],
     ['value' => 'listing_shopifyb2c', 'text' => 'Listing Shopify B2C', 'group' => 'Marketplace'],
+    ['value' => 'shopify_b2b', 'text' => 'Shopify B2B', 'group' => 'Marketplace'],
     ['value' => 'macys', 'text' => 'Macy\'s', 'group' => 'Marketplace'],
     ['value' => 'macys_pricing_tabulator', 'text' => "Macy's Pricing Tabulator", 'group' => 'Marketplace'],
     ['value' => 'macys_zero_view', 'text' => 'Macy\'s 0 View', 'group' => 'Marketplace'],

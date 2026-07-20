@@ -146,7 +146,7 @@
     const COLUMN_VIS_KEY = "temu_tabulator_column_visibility";
     // Temu margin from marketplace_percentages (same source as getOrdersTableRows /
     // getTemuChannelData) so PFT / GPFT% / ROI match the Temu row on /all-marketplace-master.
-    const TEMU_MARGIN = {{ (float) ($temuMargin ?? 0.96) }};
+    const TEMU_MARGIN = {{ (float) ($temuMargin ?? 0.95) }};
     let table = null;
     
     // Toast notification function

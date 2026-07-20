@@ -1459,6 +1459,22 @@
                         </li>
 
                         <li class="side-nav-item">
+                            <a data-bs-toggle="collapse" href="#sidebarshopifyb2b" aria-expanded="false"
+                                aria-controls="sidebarshopifyb2b">
+                                <span> Shopify B2B </span>
+                                <span class="menu-arrow"></span>
+                            </a>
+                            <div class="collapse" id="sidebarshopifyb2b">
+                                <ul class="side-nav-third-level">
+                                    <li>
+                                        <a href="{{ url('/shopify-b2b-pricing') }}">
+                                            Business Analytics</a>
+                                    </li>
+                                </ul>
+                            </div>
+                        </li>
+
+                        <li class="side-nav-item">
                             <a data-bs-toggle="collapse" href="#sidebarmacy" aria-expanded="false"
                                 aria-controls="sidebarmacy">
                                 <span> Macy's </span>

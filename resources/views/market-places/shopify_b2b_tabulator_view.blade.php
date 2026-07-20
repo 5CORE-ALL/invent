@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Shopify B2C - Analytics', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Business Analytics', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -118,35 +118,35 @@
         /* ========== DROPDOWN STYLING ========== */
         /* Match /amazon-tabulator-view: wrap + auto-width selects so sidebar open doesn't clip labels.
            Keep toolbar z-index BELOW .leftside-menu (1000) — high z-index was painting filters over the sidebar. */
-        .shopify-b2c-toolbar {
+        .shopify-b2b-toolbar {
             position: relative;
             z-index: auto;
             overflow: visible !important;
             flex-wrap: wrap !important;
             gap: 8px 10px !important;
         }
-        .shopify-b2c-toolbar .form-select {
+        .shopify-b2b-toolbar .form-select {
             width: auto !important;
             max-width: 130px;
             padding-right: 1.35rem !important;
             padding-left: 0.5rem !important;
             background-position: right 0.35rem center !important;
         }
-        .shopify-b2c-page .card,
-        .shopify-b2c-page .card-body {
+        .shopify-b2b-page .card,
+        .shopify-b2b-page .card-body {
             overflow: visible;
         }
-        .shopify-b2c-page .card-body.shopify-b2c-controls {
+        .shopify-b2b-page .card-body.shopify-b2b-controls {
             display: flex;
             flex-direction: column;
         }
-        .shopify-b2c-toolbar .dropdown,
-        .shopify-b2c-toolbar .btn-group,
-        .shopify-b2c-toolbar .manual-dropdown-container {
+        .shopify-b2b-toolbar .dropdown,
+        .shopify-b2b-toolbar .btn-group,
+        .shopify-b2b-toolbar .manual-dropdown-container {
             position: relative;
             z-index: 2;
         }
-        .shopify-b2c-toolbar .dropdown-menu,
+        .shopify-b2b-toolbar .dropdown-menu,
         .manual-dropdown-container .dropdown-menu {
             z-index: 20 !important;
         }
@@ -201,36 +201,36 @@
             padding-right: 12px;
             max-width: 100%;
         }
-        .shopify-b2c-page .row {
+        .shopify-b2b-page .row {
             margin-left: 0;
             margin-right: 0;
         }
-        .shopify-b2c-page .row > [class*="col-"],
-        .shopify-b2c-page > .row > .card {
+        .shopify-b2b-page .row > [class*="col-"],
+        .shopify-b2b-page > .row > .card {
             padding-left: 0;
             padding-right: 0;
         }
-        .shopify-b2c-page .card { border-radius: 10px; }
-        .shopify-b2c-page .card-body { padding: 12px 14px; }
+        .shopify-b2b-page .card { border-radius: 10px; }
+        .shopify-b2b-page .card-body { padding: 12px 14px; }
         /* Badges above filters (Amazon order: -1) */
-        .shopify-b2c-page #summary-stats {
+        .shopify-b2b-page #summary-stats {
             order: -1;
             padding: 0.5rem 0.7rem !important;
             margin-top: 0 !important;
             margin-bottom: 0.5rem !important;
         }
-        .shopify-b2c-page #summary-stats .summary-badges-row {
+        .shopify-b2b-page #summary-stats .summary-badges-row {
             display: flex;
             flex-wrap: wrap;
             align-items: center;
             gap: 8px !important;
         }
-        .shopify-b2c-page #summary-stats .summary-badges-row .badge {
+        .shopify-b2b-page #summary-stats .summary-badges-row .badge {
             font-size: 0.85rem !important;
             padding: 0.35rem 0.55rem !important;
             white-space: nowrap;
         }
-        .shopify-b2c-page #discount-input-container { padding: 8px 12px !important; }
+        .shopify-b2b-page #discount-input-container { padding: 8px 12px !important; }
 
         /* Parent summary rows (Amazon-style) */
         #reverb-table .tabulator-row.parent-row,
@@ -267,7 +267,7 @@
         }
 
         /* ========== SKU / PARENT SEARCH (inline after NPFT badge) ========== */
-        .shopify-b2c-search-group {
+        .shopify-b2b-search-group {
             border: 1px solid #e2e8f0;
             border-radius: 8px;
             background: #fff;
@@ -276,19 +276,19 @@
             height: 38px;
             transition: border-color 0.15s, box-shadow 0.15s;
         }
-        .shopify-b2c-search-group:focus-within {
+        .shopify-b2b-search-group:focus-within {
             border-color: #0d6efd;
             box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.15);
         }
-        .shopify-b2c-search-group .input-group-text {
+        .shopify-b2b-search-group .input-group-text {
             background: transparent;
             border: 0;
             color: #94a3b8;
             padding: 0 8px 0 10px;
             font-size: 0.8rem;
         }
-        .shopify-b2c-search-group #sku-search,
-        .shopify-b2c-search-group #parent-search {
+        .shopify-b2b-search-group #sku-search,
+        .shopify-b2b-search-group #parent-search {
             border: 0;
             background: transparent;
             box-shadow: none !important;
@@ -297,10 +297,10 @@
             color: #1e293b;
             padding-left: 2px;
         }
-        .shopify-b2c-search-group #sku-search::placeholder,
-        .shopify-b2c-search-group #parent-search::placeholder { color: #94a3b8; }
-        .shopify-b2c-search-group #sku-search:focus,
-        .shopify-b2c-search-group #parent-search:focus { outline: none; border: 0; }
+        .shopify-b2b-search-group #sku-search::placeholder,
+        .shopify-b2b-search-group #parent-search::placeholder { color: #94a3b8; }
+        .shopify-b2b-search-group #sku-search:focus,
+        .shopify-b2b-search-group #parent-search:focus { outline: none; border: 0; }
 
         /* Match Target ROI% / GPFT% height to btn-sm toolbar buttons */
         #target-roi-controls,
@@ -346,7 +346,7 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Shopify B2C - Analytics',
+        'page_title' => 'Business Analytics',
         'sub_title' => '',
     ])
     <div class="toast-container"></div>
@@ -451,13 +451,13 @@
         </div>
     </div>
 
-    <div class="shopify-b2c-page">
+    <div class="shopify-b2b-page">
     <div class="row">
         <div class="col-12">
         <div class="card shadow-sm">
-            <div class="card-body py-2 shopify-b2c-controls">
+            <div class="card-body py-2 shopify-b2b-controls">
                 {{-- Filter bar (Amazon-style flex-wrap + auto-width selects) --}}
-                <div class="d-flex align-items-center flex-wrap shopify-b2c-toolbar" id="shopify-b2c-filter-bar">
+                <div class="d-flex align-items-center flex-wrap shopify-b2b-toolbar" id="shopify-b2b-filter-bar">
                     <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU..." style="width: 180px;">
                     <input type="text" id="parent-search" class="form-control form-control-sm" placeholder="Search Parent..." style="width: 180px;">
 
@@ -485,7 +485,7 @@
                     </select>
 
                     <select id="cvr-filter" class="form-select form-select-sm"
-                        title="CVR = B2C L30 ÷ Views">
+                        title="CVR = B2B L30 ÷ Views">
                         <option value="all">CVR%</option>
                         <option value="0-0">0%</option>
                         <option value="0-3">0-3%</option>
@@ -559,9 +559,9 @@
                         <i class="fas fa-file-excel"></i>
                     </button>
 
-                    {{-- Push SPRICE to Shopify B2C for selected rows (same API as /amazon-tabulator-view) --}}
-                    <button type="button" id="push-shopify-prices-btn" class="btn btn-sm btn-success"
-                        title="Push SPRICE to Shopify for selected SKUs">
+                    {{-- Push SPRICE to Shopify B2B via /pricing-master-cvr (marketplace=sb2b) --}}
+                    <button type="button" id="push-shopify-b2b-prices-btn" class="btn btn-sm btn-success"
+                        title="Push SPRICE to Shopify B2B (pricing-master-cvr sb2b) for selected SKUs">
                         <i class="fas fa-paper-plane"></i> Push
                     </button>
 
@@ -579,10 +579,10 @@
                     </div>
 
                     {{-- Target ROI% bulk control — back-solves S PRC for selected rows so SROI = Target ROI%.
-                         Formula: sprice = (LP × (1 + ROI%/100) + Ship) / margin   (margin = 0.95 for Shopify B2C) --}}
+                         Formula: sprice = (LP × (1 + ROI%/100)) / margin   (margin = 0.95 for Shopify B2B; no Ship) --}}
                     <div class="d-inline-flex align-items-center gap-1 p-1 border rounded bg-light"
                         id="target-roi-controls"
-                        title="Target ROI% — sets S PRC = (LP × (1 + Target ROI%/100) + Ship) / 0.95 on every selected row (accounts for Shopify B2C 95% take-home)">
+                        title="Target ROI% — sets S PRC = (LP × (1 + Target ROI%/100)) / 0.95 on every selected row (B2B: no Ship)">
                         <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
                             <span aria-hidden="true">🎯</span> ROI%:
                         </label>
@@ -590,24 +590,24 @@
                             placeholder="30" step="0.1" style="width: 90px;"
                             title="Target ROI% applied to all selected rows">
                         <button id="apply-target-roi-btn" class="btn btn-sm btn-primary" type="button"
-                            title="Compute & save S PRC = (LP × (1 + Target ROI%/100) + Ship) / 0.95 for every selected row">
+                            title="Compute & save S PRC = (LP × (1 + Target ROI%/100)) / 0.95 for every selected row (no Ship)">
                             <i class="fas fa-calculator"></i>
                         </button>
                     </div>
 
                     {{-- Target GPFT% bulk control — back-solves S PRC for selected rows so SGPFT = Target GPFT%.
-                         Formula: sprice = (LP + Ship) / (margin − GPFT%/100). Target GPFT% must be < margin*100 (else denominator ≤ 0). --}}
+                         Formula: sprice = LP / (margin − GPFT%/100). Target GPFT% must be < margin*100 (else denominator ≤ 0). No Ship. --}}
                     <div class="d-inline-flex align-items-center gap-1 p-1 border rounded bg-light"
                         id="target-gpft-controls"
-                        title="Target GPFT% — sets S PRC = (LP + Ship) / (0.95 − Target GPFT%/100) on every selected row (back-solves so SGPFT column equals the target)">
+                        title="Target GPFT% — sets S PRC = LP / (0.95 − Target GPFT%/100) on every selected row (B2B: no Ship)">
                         <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
                             <span aria-hidden="true">🎯</span> GPFT%:
                         </label>
                         <input type="number" id="target-gpft-input" class="form-control form-control-sm text-end"
                             placeholder="30" step="0.1" style="width: 90px;"
-                            title="Target GPFT% applied to all selected rows. Must be less than the Shopify B2C take-home margin (< 95%).">
+                            title="Target GPFT% applied to all selected rows. Must be less than the Shopify B2B take-home margin (< 95%).">
                         <button id="apply-target-gpft-btn" class="btn btn-sm btn-primary" type="button"
-                            title="Compute & save S PRC = (LP + Ship) / (0.95 − Target GPFT%/100) for every selected row">
+                            title="Compute & save S PRC = LP / (0.95 − Target GPFT%/100) for every selected row (no Ship)">
                             <i class="fas fa-calculator"></i>
                         </button>
                     </div>
@@ -618,23 +618,23 @@
                     <div class="d-flex flex-wrap gap-2 summary-badges-row">
                         <span class="badge bg-success fs-6 p-2 d-none" id="total-pft-amt-badge" style="color: black; font-weight: bold;">PFT: $0</span>
                         {{-- Sales is the L30 net-sales total from the actual /shopify page
-                             (shopify_raw_orders with marketplace exclusions). Server-rendered so it
-                             always matches /shopify and the eBay row pattern on /all-marketplace-master.
+                             (shopify_b2b_daily_data with marketplace exclusions). Server-rendered so it
+                             always matches /shopify-b2b/daily-sales and the eBay row pattern on /all-marketplace-master.
                              Page filters do not narrow this number — it's the page-level reference. --}}
                         <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-badge"
                               style="color: black; font-weight: bold;"
-                              title="L30 Net Sales from shopify_raw_orders (matches /shopify Net Sales card and the Shopify row on /all-marketplace-master). Page-level total — unaffected by table filters.">Sales: ${{ number_format((float) ($shopifyDirectL30Sales ?? 0), 0) }}</span>
+                              title="L30 Net Sales from shopify_b2b_daily_data (matches /shopify-b2b/daily-sales Net Sales card and the Shopify row on /all-marketplace-master). Page-level total — unaffected by table filters.">Sales: ${{ number_format((float) ($shopifyB2bL30Sales ?? 0), 0) }}</span>
                         {{-- Orders: distinct order_id count from the same source. New badge requested
-                             so this page agrees with /shopify and /all-marketplace-master Shopify row. --}}
+                             so this page agrees with /shopify and /all-marketplace-master Shopify B2B row. --}}
                         <span class="badge bg-secondary fs-6 p-2" id="total-orders-badge"
                               style="color: white; font-weight: bold;"
-                              title="L30 distinct orders from shopify_raw_orders (matches /shopify and /all-marketplace-master Shopify row).">Orders: {{ number_format((int) ($shopifyDirectL30Orders ?? 0)) }}</span>
-                        {{-- Qty: Σ ebay_order_items.quantity-equivalent from shopify_raw_orders for the
+                              title="L30 distinct orders from shopify_b2b_daily_data (matches /shopify-b2b/daily-sales and /all-marketplace-master Shopify B2B row).">Orders: {{ number_format((int) ($shopifyB2bL30Orders ?? 0)) }}</span>
+                        {{-- Qty: Σ ebay_order_items.quantity-equivalent from shopify_b2b_daily_data for the
                              same L30 window. Same value /shopify reports as "Total Qty" and
                              /all-marketplace-master shows in the Shopify row's "Qty items" cell. --}}
                         <span class="badge fs-6 p-2" id="total-qty-badge"
                               style="background-color: #6f42c1; color: white; font-weight: bold;"
-                              title="L30 units sold from shopify_raw_orders (matches /shopify and /all-marketplace-master Shopify row).">Qty: {{ number_format((int) ($shopifyDirectL30Qty ?? 0)) }}</span>
+                              title="L30 units sold from shopify_b2b_daily_data (matches /shopify-b2b/daily-sales and /all-marketplace-master Shopify B2B row).">Qty: {{ number_format((int) ($shopifyB2bL30Qty ?? 0)) }}</span>
                         <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge" style="color: black; font-weight: bold;">GPFT: 0%</span>
                         <span class="badge bg-warning fs-6 p-2 d-none" id="avg-price-badge" style="color: black; font-weight: bold;">Price: $0</span>
                         <span class="badge bg-primary fs-6 p-2 d-none" id="total-inv-badge" style="color: black; font-weight: bold;">INV: 0</span>
@@ -645,7 +645,7 @@
                         <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter B2B L30 = 0">0 Sold: 0</span>
                         <span class="badge fs-6 p-2" id="more-sold-count-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter B2B L30 > 0">&gt;0 Sold: 0</span>
                         <span class="badge bg-info fs-6 p-2 d-none" id="total-cogs-badge" style="color: black; font-weight: bold;">COGS: $0</span>
-                        <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: black; font-weight: bold;" title="GROI% = Σ PFT ÷ Σ COGS × 100 — same as Amazon/eBay badges and /shopify snapshot">GROI: 0%</span>
+                        <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: black; font-weight: bold;" title="GROI% = Σ PFT ÷ Σ COGS × 100 — same as /shopify-b2b/daily-sales and Amazon/eBay badges">GROI: 0%</span>
                         <span class="badge fs-6 p-2" id="nroi-percent-badge" style="background-color: #e83e8c; color: white; font-weight: bold;">NROI: 0%</span>
                         <span class="badge bg-danger fs-6 p-2" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amazon">&lt; Amz: 0</span>
                         <span class="badge fs-6 p-2" id="more-amz-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices greater than Amazon">&gt; Amz: 0</span>
@@ -677,7 +677,7 @@
                         <button id="clear-sprice-btn" class="btn btn-danger btn-sm">
                             <i class="fas fa-eraser"></i> Clear SPRICE
                         </button>
-                        <button type="button" id="push-selected-shopify-btn" class="btn btn-success btn-sm"
+                        <button type="button" id="push-selected-shopify-b2b-btn" class="btn btn-success btn-sm"
                             title="Push SPRICE to Shopify for selected SKUs">
                             <i class="fas fa-paper-plane"></i> Push
                         </button>
@@ -695,39 +695,39 @@
 
 @section('script-bottom')
 <script>
-    const COLUMN_VIS_KEY = "shopify_b2c_tabulator_column_visibility";
+    const COLUMN_VIS_KEY = "shopify_b2b_tabulator_column_visibility";
     /** Stored in DB table channel_tabulator_column_settings (shared across all users — same as Amazon). */
-    const TABULATOR_COLUMN_CHANNEL = 'shopify_b2c_tabulator';
+    const TABULATOR_COLUMN_CHANNEL = 'shopify_b2b_tabulator';
     const TABULATOR_COLUMN_VISIBILITY_URL = '/tabulator-column-visibility';
-    /** L30 sales + distinct order count from /shopify (shopify_raw_orders with
+    /** L30 sales + distinct order count from /shopify (shopify_b2b_daily_data with
      *  marketplace exclusions). Page-level totals — used to drive the Total
      *  Sales and Orders badges so this page agrees with /shopify and the
-     *  /all-marketplace-master Shopify row. Page filters do NOT narrow these
+     *  /all-marketplace-master Shopify B2B row. Page filters do NOT narrow these
      *  numbers, mirroring how /shopify reports them. */
-    const SHOPIFY_DIRECT_L30_SALES   = {{ (float) ($shopifyDirectL30Sales   ?? 0) }};
-    const SHOPIFY_DIRECT_L30_ORDERS  = {{ (int)   ($shopifyDirectL30Orders  ?? 0) }};
-    const SHOPIFY_DIRECT_L30_QTY     = {{ (int)   ($shopifyDirectL30Qty     ?? 0) }};
+    const SHOPIFY_B2B_L30_SALES   = {{ (float) ($shopifyB2bL30Sales   ?? 0) }};
+    const SHOPIFY_B2B_L30_ORDERS  = {{ (int)   ($shopifyB2bL30Orders  ?? 0) }};
+    const SHOPIFY_B2B_L30_QTY     = {{ (int)   ($shopifyB2bL30Qty     ?? 0) }};
     /** Profit / cost / spend + derived percentages from the same /shopify snapshot
      *  the master Shopify row uses. Drives Total PFT, GPFT, Total Spend, TCOS,
      *  NPFT, and NROI badges on this page so they agree with /all-marketplace-master. */
-    const SHOPIFY_DIRECT_TOTAL_PFT   = {{ (float) ($shopifyDirectTotalPft   ?? 0) }};
-    const SHOPIFY_DIRECT_TOTAL_COGS  = {{ (float) ($shopifyDirectTotalCogs  ?? 0) }};
-    const SHOPIFY_DIRECT_TOTAL_SPEND = {{ (float) ($shopifyDirectTotalSpend ?? 0) }};
-    const SHOPIFY_DIRECT_GPFT_PCT    = {{ (float) ($shopifyDirectGpftPct    ?? 0) }};
-    const SHOPIFY_DIRECT_GROI_PCT    = {{ (float) ($shopifyDirectGroiPct    ?? 0) }};
-    const SHOPIFY_DIRECT_TCOS_PCT    = {{ (float) ($shopifyDirectTcosPct    ?? 0) }};
-    const SHOPIFY_DIRECT_NPFT_PCT    = {{ (float) ($shopifyDirectNpftPct    ?? 0) }};
-    const SHOPIFY_DIRECT_NROI_PCT    = {{ (float) ($shopifyDirectNroiPct    ?? 0) }};
+    const SHOPIFY_B2B_TOTAL_PFT   = {{ (float) ($shopifyB2bTotalPft   ?? 0) }};
+    const SHOPIFY_B2B_TOTAL_COGS  = {{ (float) ($shopifyB2bTotalCogs  ?? 0) }};
+    const SHOPIFY_B2B_TOTAL_SPEND = {{ (float) ($shopifyB2bTotalSpend ?? 0) }};
+    const SHOPIFY_B2B_GPFT_PCT    = {{ (float) ($shopifyB2bGpftPct    ?? 0) }};
+    const SHOPIFY_B2B_GROI_PCT    = {{ (float) ($shopifyB2bGroiPct    ?? 0) }};
+    const SHOPIFY_B2B_TCOS_PCT    = {{ (float) ($shopifyB2bTcosPct    ?? 0) }};
+    const SHOPIFY_B2B_NPFT_PCT    = {{ (float) ($shopifyB2bNpftPct    ?? 0) }};
+    const SHOPIFY_B2B_NROI_PCT    = {{ (float) ($shopifyB2bNroiPct    ?? 0) }};
 
     /**
      * Channel Ads% (TCOS badge) — same role as Amazon AMAZON_CHANNEL_ADS_PCT.
      */
     function shopifyChannelAdsPct() {
-        return parseFloat(SHOPIFY_DIRECT_TCOS_PCT) || 0;
+        return parseFloat(SHOPIFY_B2B_TCOS_PCT) || 0;
     }
 
     /** Amazon-style parent summary row (SKU like "PARENT 10 FR"). */
-    function isShopifyB2cParentRow(row) {
+    function isShopifyB2bParentRow(row) {
         if (!row) return false;
         if (row.is_parent_summary === true) return true;
         const sku = String(row['(Child) sku'] || '').toUpperCase();
@@ -735,19 +735,18 @@
     }
 
     /**
-     * Net ROI (NROI% / SNROI) — Amazon unit formula (works even when L30 qty = 0):
-     *   ((Price × 0.95 − Ship − LP − Price × Ads%/100) / LP) × 100
-     * Ads% = channel Ads badge (TCOS).
+     * Net ROI (NROI% / SNROI) — B2B unit formula (no Ship):
+     *   ((Price × 0.95 − LP − Price × Ads%/100) / LP) × 100
+     * Ads% = channel Ads badge (TCOS). `ship` arg kept for call-site compat; ignored.
      */
     function shopifyComputeNetRoi(price, lp, ship, adsPct) {
         price = parseFloat(price);
         lp = parseFloat(lp);
         if (!isFinite(price) || price <= 0 || !isFinite(lp) || lp <= 0) return 0;
-        ship = parseFloat(ship) || 0;
         const ads = (adsPct != null && isFinite(parseFloat(adsPct)))
             ? parseFloat(adsPct)
             : shopifyChannelAdsPct();
-        const grossPft = (price * 0.95) - ship - lp;
+        const grossPft = (price * 0.95) - lp; // B2B: no Ship
         const adSpend = price * (ads / 100);
         return ((grossPft - adSpend) / lp) * 100;
     }
@@ -817,7 +816,7 @@
 
     function linkedLmpSkuFormatter(cell) {
         const row = cell.getRow().getData();
-        if (isShopifyB2cParentRow(row)) return '';
+        if (isShopifyB2bParentRow(row)) return '';
         const rowSku = rowSkuForLinkLmp(row);
         let skus = row.linked_lmp_skus || [];
         if (typeof skus === 'string') { try { skus = JSON.parse(skus) || []; } catch (e) { skus = []; } }
@@ -840,7 +839,7 @@
 
     function linkedLmpSkuAddFormatter(cell) {
         const row = cell.getRow().getData();
-        if (isShopifyB2cParentRow(row)) return '';
+        if (isShopifyB2bParentRow(row)) return '';
         const rowSku = rowSkuForLinkLmp(row);
         if (!rowSku) return '';
         return `<div class="d-flex align-items-center justify-content-center py-1">
@@ -1059,7 +1058,7 @@
         // Select all checkbox handler
         $(document).on('change', '#select-all-checkbox', function() {
             const isChecked = $(this).prop('checked');
-            const filteredData = table.getData('active').filter(row => !isShopifyB2cParentRow(row));
+            const filteredData = table.getData('active').filter(row => !isShopifyB2bParentRow(row));
             
             filteredData.forEach(row => {
                 if (isChecked) {
@@ -1102,14 +1101,14 @@
         });
 
         /*
-         * Target ROI% bulk apply (Shopify B2C, margin = 0.95)
+         * Target ROI% bulk apply (Shopify B2B, margin = 0.95)
          * ---------------------------------------------------
          * For every selected row with a usable LP, back-solve the sale price so the
          * resulting SROI column matches Target ROI%:
-         *     SROI = ((sprice * margin − ship − lp) / lp) * 100
-         *   → sprice = (lp * (1 + ROI%/100) + ship) / margin
+         *     SROI = ((sprice * margin − lp) / lp) * 100
+         *   → sprice = (lp * (1 + ROI%/100)) / margin  (no Ship)
          * Optimistic SGPFT / SROI / SNPFT / SNROI are written client-side and the
-         * bulk save endpoint (/shopify/save-sprice) recomputes them server-side.
+         * bulk save endpoint (/shopify-b2b/save-sprice) recomputes them server-side.
          */
         $('#apply-target-roi-btn').on('click', function () {
             const rawInput = $('#target-roi-input').val();
@@ -1130,7 +1129,7 @@
                 return;
             }
 
-            const SHOPIFY_B2C_MARGIN = 0.95;
+            const SHOPIFY_B2B_MARGIN = 0.95;
             const roiMultiplier = 1 + (targetRoiPct / 100);
             const updates = [];
             let updatedCount = 0;
@@ -1141,18 +1140,18 @@
                 if (rows.length === 0) return;
                 const row = rows[0];
                 const rowData = row.getData();
-                if (isShopifyB2cParentRow(rowData)) return;
+                if (isShopifyB2bParentRow(rowData)) return;
 
                 const lp = parseFloat(rowData['LP_productmaster']) || 0;
                 if (lp <= 0) { skippedNoLp++; return; }
                 const ship = parseFloat(rowData['Ship_productmaster']) || 0;
                 const ads  = shopifyChannelAdsPct();
 
-                const candidate = (lp * roiMultiplier + ship) / SHOPIFY_B2C_MARGIN;
+                const candidate = (lp * roiMultiplier) / SHOPIFY_B2B_MARGIN; // no Ship
                 const newSprice = +candidate.toFixed(2);
                 if (!isFinite(newSprice) || newSprice <= 0) return;
 
-                const grossProfit = (newSprice * SHOPIFY_B2C_MARGIN) - lp - ship;
+                const grossProfit = (newSprice * SHOPIFY_B2B_MARGIN) - lp; // no Ship
                 const sgpft = newSprice > 0 ? (grossProfit / newSprice) * 100 : 0;
                 const snpft = sgpft - ads;
                 const sroi  = lp > 0 ? (grossProfit / lp) * 100 : 0;
@@ -1181,11 +1180,11 @@
         });
 
         /*
-         * Target GPFT% bulk apply (Shopify B2C, margin = 0.95)
+         * Target GPFT% bulk apply (Shopify B2B, margin = 0.95)
          * ----------------------------------------------------
          * Mirrors Target ROI but back-solves so SGPFT = Target GPFT%:
-         *     SGPFT = ((sprice * margin − ship − lp) / sprice) * 100
-         *   → sprice = (lp + ship) / (margin − GPFT%/100)
+         *     SGPFT = ((sprice * margin − lp) / sprice) * 100
+         *   → sprice = lp / (margin − GPFT%/100)  (no Ship)
          * Constraint: (margin − target/100) must be > 0, i.e. Target GPFT% < 95%.
          */
         $('#apply-target-gpft-btn').on('click', function () {
@@ -1207,10 +1206,10 @@
                 return;
             }
 
-            const SHOPIFY_B2C_MARGIN = 0.95;
-            const denom = SHOPIFY_B2C_MARGIN - (targetGpftPct / 100);
+            const SHOPIFY_B2B_MARGIN = 0.95;
+            const denom = SHOPIFY_B2B_MARGIN - (targetGpftPct / 100);
             if (denom <= 0) {
-                showToast(`Target GPFT% ${targetGpftPct}% is too high — must be < 95% (Shopify B2C take-home).`, 'error');
+                showToast(`Target GPFT% ${targetGpftPct}% is too high — must be < 95% (Shopify B2B take-home).`, 'error');
                 return;
             }
 
@@ -1223,18 +1222,18 @@
                 if (rows.length === 0) return;
                 const row = rows[0];
                 const rowData = row.getData();
-                if (isShopifyB2cParentRow(rowData)) return;
+                if (isShopifyB2bParentRow(rowData)) return;
 
                 const lp = parseFloat(rowData['LP_productmaster']) || 0;
                 if (lp <= 0) { skippedNoLp++; return; }
                 const ship = parseFloat(rowData['Ship_productmaster']) || 0;
                 const ads  = shopifyChannelAdsPct();
 
-                const candidate = (lp + ship) / denom;
+                const candidate = lp / denom; // no Ship
                 const newSprice = +candidate.toFixed(2);
                 if (!isFinite(newSprice) || newSprice <= 0) return;
 
-                const grossProfit = (newSprice * SHOPIFY_B2C_MARGIN) - lp - ship;
+                const grossProfit = (newSprice * SHOPIFY_B2B_MARGIN) - lp; // no Ship
                 const sgpft = newSprice > 0 ? (grossProfit / newSprice) * 100 : 0;
                 const snpft = sgpft - ads;
                 const sroi  = lp > 0 ? (grossProfit / lp) * 100 : 0;
@@ -1280,8 +1279,8 @@
             clearSpriceForSelected();
         });
 
-        /** Push one SKU SPRICE to Shopify B2C (same /push-shopify-b2c-price as Amazon tabulator). */
-        function pushShopifyB2cPrice(sku, price, $btn, row) {
+        /** Push one SKU SPRICE to Shopify B2B via /pricing-master-cvr (marketplace=sb2b). */
+        function pushShopifyB2bPrice(sku, price, $btn, row) {
             if (!sku || !price || price <= 0 || isNaN(price)) {
                 showToast('Invalid SKU or S PRC — set S PRC first', 'error');
                 return;
@@ -1295,21 +1294,18 @@
             }
 
             $.ajax({
-                url: @json(route('push.shopify.b2c.price')),
+                url: @json(route('cvr.master.push.price')),
                 method: 'POST',
                 timeout: 120000,
                 headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
-                data: { sku: sku, price: price },
+                data: { sku: sku, price: price, marketplace: 'sb2b' },
                 success: function(response) {
-                    const shopifyPush = response.shopify_push || {};
                     let finalStatus = 'error';
-                    if (response.errors && response.errors.length > 0) {
-                        showToast('Shopify push failed: ' + (response.errors[0].message || 'Unknown error'), 'error');
-                    } else if (shopifyPush.ok) {
+                    if (response && response.success) {
                         finalStatus = 'pushed';
-                        showToast('Shopify: ' + (shopifyPush.message || 'Pushed successfully') + ' for SKU: ' + sku, 'success');
+                        showToast(response.message || ('Shopify B2B price pushed for SKU: ' + sku), 'success');
                     } else {
-                        showToast('Shopify: ' + (shopifyPush.message || 'Push failed'), 'error');
+                        showToast((response && response.message) || 'Shopify B2B push failed', 'error');
                     }
 
                     if (row) {
@@ -1329,10 +1325,10 @@
                         $btn.prop('disabled', false);
                         $btn.html('<i class="fa-solid fa-x" style="color:#dc3545;"></i>');
                     }
-                    const errorMsg = (xhr.responseJSON && xhr.responseJSON.errors && xhr.responseJSON.errors[0])
-                        ? xhr.responseJSON.errors[0].message
+                    const errorMsg = (xhr.responseJSON && xhr.responseJSON.message)
+                        ? xhr.responseJSON.message
                         : 'Unknown error';
-                    showToast('Shopify push failed: ' + errorMsg, 'error');
+                    showToast('Shopify B2B push failed: ' + errorMsg, 'error');
                 }
             });
         }
@@ -1348,7 +1344,7 @@
             const toPush = [];
             table.getRows().forEach(function(row) {
                 const d = row.getData();
-                if (isShopifyB2cParentRow(d)) return;
+                if (isShopifyB2bParentRow(d)) return;
                 const sku = d['(Child) sku'];
                 if (!selectedSkus.has(sku)) return;
                 const price = parseFloat(d.SPRICE) || 0;
@@ -1362,12 +1358,12 @@
                 return;
             }
 
-            if (!confirm('Push ' + toPush.length + ' price(s) to Shopify?')) return;
+            if (!confirm('Push ' + toPush.length + ' price(s) to Shopify B2B (pricing-master-cvr sb2b)?')) return;
 
-            const $btns = $('#push-shopify-prices-btn, #push-selected-shopify-btn');
-            const originalHtml = $('#push-shopify-prices-btn').html();
+            const $btns = $('#push-shopify-b2b-prices-btn, #push-selected-shopify-b2b-btn');
+            const originalHtml = $('#push-shopify-b2b-prices-btn').html();
             $btns.prop('disabled', true);
-            $('#push-shopify-prices-btn').html('<i class="fas fa-spinner fa-spin"></i> Pushing...');
+            $('#push-shopify-b2b-prices-btn').html('<i class="fas fa-spinner fa-spin"></i> Pushing...');
 
             let idx = 0;
             let okCount = 0;
@@ -1376,7 +1372,7 @@
             function next() {
                 if (idx >= toPush.length) {
                     $btns.prop('disabled', false);
-                    $('#push-shopify-prices-btn').html(originalHtml);
+                    $('#push-shopify-b2b-prices-btn').html(originalHtml);
                     showToast('Push done: ' + okCount + ' ok, ' + failCount + ' failed', failCount ? 'warning' : 'success');
                     return;
                 }
@@ -1385,17 +1381,13 @@
                 item.row.reformat();
 
                 $.ajax({
-                    url: @json(route('push.shopify.b2c.price')),
+                    url: @json(route('cvr.master.push.price')),
                     method: 'POST',
                     timeout: 120000,
                     headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
-                    data: { sku: item.sku, price: item.price },
+                    data: { sku: item.sku, price: item.price, marketplace: 'sb2b' },
                     success: function(response) {
-                        const shopifyPush = response.shopify_push || {};
-                        if (response.errors && response.errors.length > 0) {
-                            failCount++;
-                            item.row.update({ SPRICE_STATUS: 'error' });
-                        } else if (shopifyPush.ok) {
+                        if (response && response.success) {
                             okCount++;
                             item.row.update({ SPRICE_STATUS: 'pushed' });
                         } else {
@@ -1417,7 +1409,7 @@
             next();
         }
 
-        $('#push-shopify-prices-btn, #push-selected-shopify-btn').on('click', function() {
+        $('#push-shopify-b2b-prices-btn, #push-selected-shopify-b2b-btn').on('click', function() {
             pushSelectedShopifyPrices();
         });
 
@@ -1451,7 +1443,7 @@
             applyFilters();
         });
 
-        // Missing badge click handler - filter SKUs missing in Shopify B2C
+        // Missing badge click handler - filter SKUs missing in Shopify B2B
         let missingFilterActive = false;
         $('#missing-count-badge').on('click', function() {
             missingFilterActive = !missingFilterActive;
@@ -1513,7 +1505,7 @@
         function updateSelectAllCheckbox() {
             if (!table) return;
             
-            const filteredData = table.getData('active').filter(row => !isShopifyB2cParentRow(row));
+            const filteredData = table.getData('active').filter(row => !isShopifyB2bParentRow(row));
             
             if (filteredData.length === 0) {
                 $('#select-all-checkbox').prop('checked', false);
@@ -1595,13 +1587,13 @@
                         // Ensure minimum price
                         newSprice = Math.max(0.99, newSprice);
 
-                        // Calculate SGPFT, SNPFT, SROI, SNROI (95% margin for Shopify B2C)
-                        const percentage = 0.95; // Shopify B2C margin
+                        // Calculate SGPFT, SNPFT, SROI, SNROI (95% margin for Shopify B2B)
+                        const percentage = 0.95; // Shopify B2B margin
                         const lp = parseFloat(rowData['LP_productmaster']) || 0;
                         const ship = parseFloat(rowData['Ship_productmaster']) || 0;
                         const ads = shopifyChannelAdsPct();
 
-                        const grossProfit = (newSprice * percentage) - lp - ship;
+                        const grossProfit = (newSprice * percentage) - lp; // no Ship
                         const sgpft = newSprice > 0 ? (grossProfit / newSprice) * 100 : 0;
                         const snpft = sgpft - ads;
                         const sroi = lp > 0 ? (grossProfit / lp) * 100 : 0;
@@ -1659,13 +1651,13 @@
                     const amazonPrice = parseFloat(rowData['A Price']);
                     
                     if (amazonPrice && amazonPrice > 0) {
-                        // Calculate SGPFT, SNPFT, SROI, SNROI (95% margin for Shopify B2C)
-                        const percentage = 0.95; // Shopify B2C margin
+                        // Calculate SGPFT, SNPFT, SROI, SNROI (95% margin for Shopify B2B)
+                        const percentage = 0.95; // Shopify B2B margin
                         const lp = parseFloat(rowData['LP_productmaster']) || 0;
                         const ship = parseFloat(rowData['Ship_productmaster']) || 0;
                         const ads = shopifyChannelAdsPct();
                         
-                        const grossProfit = (amazonPrice * percentage) - lp - ship;
+                        const grossProfit = (amazonPrice * percentage) - lp; // no Ship
                         const sgpft = amazonPrice > 0 ? (grossProfit / amazonPrice) * 100 : 0;
                         const snpft = sgpft - ads;
                         const sroi = lp > 0 ? (grossProfit / lp) * 100 : 0;
@@ -1714,7 +1706,7 @@
             console.log('Saving SPRICE updates:', updates.length, 'SKUs');
             
             $.ajax({
-                url: '/shopify/save-sprice',
+                url: '/shopify-b2b/save-sprice',
                 method: 'POST',
                 headers: {
                     'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
@@ -1797,7 +1789,7 @@
             const maxRetries = 3;
             
             $.ajax({
-                url: '/shopify/save-sprice',
+                url: '/shopify-b2b/save-sprice',
                 method: 'POST',
                 data: {
                     sku: sku,
@@ -1837,7 +1829,7 @@
 
         // Initialize Tabulator
         table = new Tabulator("#reverb-table", {
-            ajaxURL: "/shopify-b2c-data-json",
+            ajaxURL: "/shopify-b2b-data-json",
             ajaxSorting: false,
             layout: "fitDataStretch",
             pagination: true,
@@ -1865,7 +1857,7 @@
                 dir: "desc"
             }],
             rowFormatter: function(row) {
-                if (isShopifyB2cParentRow(row.getData())) {
+                if (isShopifyB2bParentRow(row.getData())) {
                     row.getElement().classList.add('parent-row');
                 }
             },
@@ -1907,7 +1899,7 @@
                     formatter: function(cell) {
                         const sku = cell.getValue();
                         const rowData = cell.getRow().getData();
-                        if (isShopifyB2cParentRow(rowData)) {
+                        if (isShopifyB2bParentRow(rowData)) {
                             return `<span style="font-weight: bold;">${sku}</span>`;
                         }
                         let html = `<span>${sku}</span>`;
@@ -2015,7 +2007,7 @@
                     width: 60,
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
-                        // CVR% = B2C L30 ÷ Views (not OV L30)
+                        // CVR% = B2B L30 ÷ Views (not OV L30)
                         const l30 = parseFloat(rowData['B2B L30']) || 0;
                         const views = parseFloat(rowData['Views']) || 0;
 
@@ -2034,7 +2026,7 @@
                     }
                 },
                 {
-                    title: "B2C L30",
+                    title: "B2B L30",
                     field: "B2B L30",
                     hozAlign: "center",
                     width: 70,
@@ -2072,7 +2064,7 @@
                         if (value === null || value === undefined || value === '' || String(value).trim() === '') {
                             value = 'REQ';
                         }
-                        if (isShopifyB2cParentRow(rowData)) {
+                        if (isShopifyB2bParentRow(rowData)) {
                             return value === 'NR'
                                 ? '<span title="Derived from children">🔴</span>'
                                 : '<span title="Derived from children">🟢</span>';
@@ -2126,7 +2118,7 @@
                     headerTooltip: "Google LMP from /repricer/google-search (manual add supported)",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
-                        if (isShopifyB2cParentRow(rowData)) return '';
+                        if (isShopifyB2bParentRow(rowData)) return '';
 
                         const sku = String(rowData['(Child) sku'] || '');
                         const skuEnc = encodeURIComponent(sku);
@@ -2175,7 +2167,7 @@
                     headerTooltip: "(Google LMP − Shopify Price) / LMP × 100",
                     sorter: function(a, b, aRow, bRow) {
                         const calc = function(rd) {
-                            if (isShopifyB2cParentRow(rd)) return -Infinity;
+                            if (isShopifyB2bParentRow(rd)) return -Infinity;
                             const lmp = parseFloat(rd.lmp_price || 0);
                             const price = parseFloat(rd.Price || 0);
                             if (!lmp || lmp <= 0) return -Infinity;
@@ -2185,7 +2177,7 @@
                     },
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
-                        if (isShopifyB2cParentRow(rowData)) return '';
+                        if (isShopifyB2bParentRow(rowData)) return '';
 
                         const lmp = parseFloat(rowData.lmp_price || 0);
                         const price = parseFloat(rowData.Price || 0);
@@ -2300,7 +2292,7 @@
                         // Same as Amazon PFT %: GPFT% − channel Ads% (TCOS badge)
                         const rowData = cell.getRow().getData();
                         const gpft = parseFloat(rowData['GPFT%']) || 0;
-                        const ads = parseFloat(SHOPIFY_DIRECT_TCOS_PCT) || 0;
+                        const ads = parseFloat(SHOPIFY_B2B_TCOS_PCT) || 0;
                         const npft = gpft - ads;
                         
                         let color = '';
@@ -2397,7 +2389,7 @@
                     visible: true,
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
-                        if (isShopifyB2cParentRow(rowData)) return '';
+                        if (isShopifyB2bParentRow(rowData)) return '';
                         const sku = rowData['(Child) sku'];
                         const isChecked = selectedSkus.has(sku) ? 'checked' : '';
                         return `<input type='checkbox' class='sku-select-checkbox' data-sku='${sku}' ${isChecked}>`;
@@ -2409,7 +2401,7 @@
                     hozAlign: "center",
                     editor: "number",
                     editable: function(cell) {
-                        return !isShopifyB2cParentRow(cell.getRow().getData());
+                        return !isShopifyB2bParentRow(cell.getRow().getData());
                     },
                     editorParams: {
                         min: 0,
@@ -2418,7 +2410,7 @@
                     sorter: "number",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
-                        if (isShopifyB2cParentRow(rowData)) {
+                        if (isShopifyB2bParentRow(rowData)) {
                             return '';
                         }
                         const value = parseFloat(cell.getValue() || 0);
@@ -2443,7 +2435,7 @@
                     width: 50,
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
-                        if (isShopifyB2cParentRow(rowData)) return '';
+                        if (isShopifyB2bParentRow(rowData)) return '';
                         const sku = rowData['(Child) sku'] || '';
                         const sprice = parseFloat(rowData.SPRICE) || 0;
                         const status = rowData.SPRICE_STATUS || '';
@@ -2466,17 +2458,17 @@
                             color = '#ffc107';
                             title = 'Pushing to Shopify...';
                         }
-                        return `<button type="button" class="btn btn-sm push-shopify-btn" data-sku="${sku.replace(/"/g, '&quot;')}" title="${title}" style="border:none;background:none;color:${color};padding:0;cursor:pointer;">${icon}</button>`;
+                        return `<button type="button" class="btn btn-sm push-shopify-b2b-btn" data-sku="${sku.replace(/"/g, '&quot;')}" title="${title}" style="border:none;background:none;color:${color};padding:0;cursor:pointer;">${icon}</button>`;
                     },
                     cellClick: function(e, cell) {
                         const $target = $(e.target);
-                        if (!$target.hasClass('push-shopify-btn') && !$target.closest('.push-shopify-btn').length) return;
+                        if (!$target.hasClass('push-shopify-b2b-btn') && !$target.closest('.push-shopify-b2b-btn').length) return;
                         e.stopPropagation();
-                        const $btn = $target.hasClass('push-shopify-btn') ? $target : $target.closest('.push-shopify-btn');
+                        const $btn = $target.hasClass('push-shopify-b2b-btn') ? $target : $target.closest('.push-shopify-b2b-btn');
                         const rowData = cell.getRow().getData();
                         const sku = rowData['(Child) sku'];
                         const price = parseFloat(rowData.SPRICE) || 0;
-                        pushShopifyB2cPrice(sku, price, $btn, cell.getRow());
+                        pushShopifyB2bPrice(sku, price, $btn, cell.getRow());
                     }
                 },
                 {
@@ -2531,7 +2523,7 @@
                         // Same as Amazon SNPFT: SGPFT − channel Ads% (TCOS badge)
                         const rowData = cell.getRow().getData();
                         const sgpft = parseFloat(rowData['SGPFT']) || 0;
-                        const ads = parseFloat(SHOPIFY_DIRECT_TCOS_PCT) || 0;
+                        const ads = parseFloat(SHOPIFY_B2B_TCOS_PCT) || 0;
                         const snpft = sgpft - ads;
                         
                         let color = '';
@@ -2557,7 +2549,7 @@
                             rowData['SPRICE'],
                             rowData['LP_productmaster'],
                             rowData['Ship_productmaster'],
-                            parseFloat(SHOPIFY_DIRECT_TCOS_PCT) || 0
+                            parseFloat(SHOPIFY_B2B_TCOS_PCT) || 0
                         );
                         
                         let color = '';
@@ -2591,7 +2583,7 @@
             const newValue = $(this).val();
             
             $.ajax({
-                url: '{{ url("/shopify-b2c-update-listed-live") }}',
+                url: '{{ url("/shopify-b2b-update-listed-live") }}',
                 method: 'POST',
                 data: {
                     sku: sku,
@@ -2613,18 +2605,18 @@
             if (cell.getField() === 'SPRICE') {
                 const row = cell.getRow();
                 const rowData = row.getData();
-                if (isShopifyB2cParentRow(rowData)) return;
+                if (isShopifyB2bParentRow(rowData)) return;
                 const sku = rowData['(Child) sku'];
                 const newSprice = parseFloat(cell.getValue()) || 0;
                 
-                // Recalculate SGPFT, SNPFT, SROI, SNROI (95% margin for Shopify B2C)
-                const percentage = 0.95; // Shopify B2C margin
+                // Recalculate SGPFT, SNPFT, SROI, SNROI (95% margin for Shopify B2B)
+                const percentage = 0.95; // Shopify B2B margin
                 const lp = parseFloat(rowData['LP_productmaster']) || 0;
                 const ship = parseFloat(rowData['Ship_productmaster']) || 0;
                 const ads = shopifyChannelAdsPct();
                 
-                // SGPFT = ((SPRICE × 95%) - LP - Ship) / SPRICE × 100
-                const grossProfit = (newSprice * percentage) - lp - ship;
+                // SGPFT = ((SPRICE × 95%) - LP) / SPRICE × 100  (B2B: no Ship)
+                const grossProfit = (newSprice * percentage) - lp; // no Ship
                 const sgpft = newSprice > 0 ? (grossProfit / newSprice) * 100 : 0;
                 
                 // SNPFT = SGPFT - ADS
@@ -2707,7 +2699,7 @@
                 });
             }
 
-            // CVR filter — B2C L30 ÷ Views
+            // CVR filter — B2B L30 ÷ Views
             const cvrFilter = $('#cvr-filter').val();
             if (cvrFilter !== 'all') {
                 table.addFilter(function(data) {
@@ -2766,7 +2758,7 @@
                 });
             }
 
-            // Missing filter - show SKUs missing in Shopify B2C
+            // Missing filter - show SKUs missing in Shopify B2B
             if (missingFilterActive) {
                 table.addFilter("Missing", "=", "M");
             }
@@ -2775,11 +2767,11 @@
             const parentFilter = $('#parent-filter').val();
             if (parentFilter === 'parents') {
                 table.addFilter(function(data) {
-                    return isShopifyB2cParentRow(data);
+                    return isShopifyB2bParentRow(data);
                 });
             } else if (parentFilter === 'skus') {
                 table.addFilter(function(data) {
-                    return !isShopifyB2cParentRow(data);
+                    return !isShopifyB2bParentRow(data);
                 });
             }
 
@@ -2799,7 +2791,7 @@
             const allData = table.getData();
             const data = allData.filter(row => {
                 // Exclude parent summary rows from badge math
-                if (isShopifyB2cParentRow(row)) return false;
+                if (isShopifyB2bParentRow(row)) return false;
                 
                 // Apply inventory filter
                 const inv = parseFloat(row.INV) || 0;
@@ -2876,46 +2868,45 @@
             // Calculate GPFT % = (Total PFT / Total Sales) * 100 (same as Sales page)
             const avgGpft = totalSales > 0 ? (totalPft / totalSales) * 100 : 0;
             const avgPrice = priceCount > 0 ? totalPrice / priceCount : 0;
-            // GROI% = Σ PFT ÷ Σ COGS × 100 (same as Amazon / eBay / CVR modal)
+            // GROI% = Σ PFT ÷ Σ COGS × 100 (same as Amazon / eBay / /shopify-b2b/daily-sales)
             // — NOT a simple average of per-row ROI% values.
             const groiFromRows = totalCogs > 0 ? (totalPft / totalCogs) * 100 : 0;
 
-            // All page-level financials below come from the same /shopify L30 snapshot
-            // the Shopify row on /all-marketplace-master uses (single source of truth:
-            // ChannelMasterController::getShopifyDirectL30Snapshot).
-            $('#total-pft-amt-badge').text(`PFT: $${Math.round(SHOPIFY_DIRECT_TOTAL_PFT).toLocaleString()}`);
-            $('#total-sales-amt-badge').text(`Sales: $${Math.round(SHOPIFY_DIRECT_L30_SALES).toLocaleString()}`);
-            $('#total-orders-badge').text(`Orders: ${SHOPIFY_DIRECT_L30_ORDERS.toLocaleString()}`);
-            $('#total-qty-badge').text(`Qty: ${SHOPIFY_DIRECT_L30_QTY.toLocaleString()}`);
-            $('#avg-gpft-badge').text(`GPFT: ${SHOPIFY_DIRECT_GPFT_PCT.toFixed(1)}%`);
+            // Page-level financial badges use the L30 snapshot from shopify_b2b_daily_data
+            // (same source as /shopify-b2b/daily-sales). GROI badge prefers that snapshot.
+            $('#total-pft-amt-badge').text(`PFT: $${Math.round(SHOPIFY_B2B_TOTAL_PFT).toLocaleString()}`);
+            $('#total-sales-amt-badge').text(`Sales: $${Math.round(SHOPIFY_B2B_L30_SALES).toLocaleString()}`);
+            $('#total-orders-badge').text(`Orders: ${SHOPIFY_B2B_L30_ORDERS.toLocaleString()}`);
+            $('#total-qty-badge').text(`Qty: ${SHOPIFY_B2B_L30_QTY.toLocaleString()}`);
+            $('#avg-gpft-badge').text(`GPFT: ${SHOPIFY_B2B_GPFT_PCT.toFixed(1)}%`);
             $('#avg-price-badge').text(`Price: $${avgPrice.toFixed(2)}`);
             $('#total-inv-badge').text(`INV: ${totalInv.toLocaleString()}`);
             $('#total-l30-badge').text(`L30: ${totalL30.toLocaleString()}`);
-            const overallCvr = totalViews > 0 ? (SHOPIFY_DIRECT_L30_QTY / totalViews) * 100 : 0;
+            const overallCvr = totalViews > 0 ? (SHOPIFY_B2B_L30_QTY / totalViews) * 100 : 0;
             $('#total-views-badge').text(`Views: ${totalViews.toLocaleString()}`);
             $('#avg-cvr-badge').text(`CVR: ${Math.round(overallCvr)}%`);
             $('#total-b2b-l30-badge').text(`B2B: ${totalB2BL30.toLocaleString()}`);
             $('#zero-sold-count-badge').text(`0 Sold: ${zeroSoldCount}`);
             $('#more-sold-count-badge').text(`>0 Sold: ${moreSoldCount}`);
-            $('#total-cogs-badge').text(`COGS: $${Math.round(SHOPIFY_DIRECT_TOTAL_COGS || totalCogs).toLocaleString()}`);
-            const groiBadge = (typeof SHOPIFY_DIRECT_GROI_PCT === 'number' && !isNaN(SHOPIFY_DIRECT_GROI_PCT))
-                ? SHOPIFY_DIRECT_GROI_PCT
+            $('#total-cogs-badge').text(`COGS: $${Math.round(SHOPIFY_B2B_TOTAL_COGS || totalCogs).toLocaleString()}`);
+            const groiBadge = (typeof SHOPIFY_B2B_GROI_PCT === 'number' && !isNaN(SHOPIFY_B2B_GROI_PCT))
+                ? SHOPIFY_B2B_GROI_PCT
                 : groiFromRows;
             $('#roi-percent-badge').text(`GROI: ${groiBadge.toFixed(1)}%`);
             $('#less-amz-badge').text(`< Amz: ${lessAmzCount}`);
             $('#more-amz-badge').text(`> Amz: ${moreAmzCount}`);
             $('#missing-count-badge').text(`Miss: ${missingCount}`);
             
-            // Spend / TCOS / NPFT / NROI all read the page-level snapshot now.
-            $('#total-tcos-badge').text(`Ads: ${Math.round(SHOPIFY_DIRECT_TCOS_PCT)}%`);
-            $('#total-spend-badge').text(`Spend: $${Math.round(SHOPIFY_DIRECT_TOTAL_SPEND).toLocaleString()}`);
-            $('#avg-npft-badge').text(`NPFT: ${SHOPIFY_DIRECT_NPFT_PCT.toFixed(1)}%`);
-            $('#nroi-percent-badge').text(`NROI: ${SHOPIFY_DIRECT_NROI_PCT.toFixed(1)}%`);
+            // Ads / Spend / NPFT / NROI — B2B has no channel ads, so NPFT≈GPFT and NROI≈GROI.
+            $('#total-tcos-badge').text(`Ads: ${Math.round(SHOPIFY_B2B_TCOS_PCT)}%`);
+            $('#total-spend-badge').text(`Spend: $${Math.round(SHOPIFY_B2B_TOTAL_SPEND).toLocaleString()}`);
+            $('#avg-npft-badge').text(`NPFT: ${SHOPIFY_B2B_NPFT_PCT.toFixed(1)}%`);
+            $('#nroi-percent-badge').text(`NROI: ${SHOPIFY_B2B_NROI_PCT.toFixed(1)}%`);
         }
 
         /*
          * Column visibility persists in shared DB table channel_tabulator_column_settings
-         * under channel = 'shopify_b2c_tabulator' — same /tabulator-column-visibility
+         * under channel = 'shopify_b2b_tabulator' — same /tabulator-column-visibility
          * endpoint Amazon / ebay / mfrg tabulators use.
          */
         function buildColumnDropdown(savedVisibility) {
@@ -3112,7 +3103,7 @@
 
         // ==================== Google LMP (from /repricer/google-search) ====================
 
-        function updateShopifyB2cLmpRow(sku, competitors, lowestPrice) {
+        function updateShopifyB2bLmpRow(sku, competitors, lowestPrice) {
             if (!table || !sku) return;
             const list = Array.isArray(competitors) ? competitors : [];
             const lowest = (lowestPrice != null && lowestPrice > 0)
@@ -3242,7 +3233,7 @@
                 success: function(response) {
                     if (response.success) {
                         renderGoogleLmpList(sku, response.competitors || [], response.lowest_price);
-                        updateShopifyB2cLmpRow(sku, response.competitors || [], response.lowest_price);
+                        updateShopifyB2bLmpRow(sku, response.competitors || [], response.lowest_price);
                     } else {
                         $('#lmpDataList').html(
                             '<div class="alert alert-warning"><i class="fa fa-info-circle"></i> ' +

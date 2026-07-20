@@ -1620,15 +1620,15 @@ class TemuController extends Controller
      */
     private function sanitizePrice($value)
     {
-        if (empty($value) || $value === '?') {
+        if ($value === null || $value === '' || $value === '?') {
             return null;
         }
 
         // Remove currency symbols, commas, and whitespace
-        $cleaned = preg_replace('/[$,\s]/', '', $value);
-        
+        $cleaned = preg_replace('/[$,\s]/', '', (string) $value);
+
         // Return as float or null if not numeric
-        return is_numeric($cleaned) ? (float)$cleaned : null;
+        return is_numeric($cleaned) ? (float) $cleaned : null;
     }
 
     private function parseDate($dateString)
@@ -2638,7 +2638,7 @@ class TemuController extends Controller
             }
 
             $marketplaceData = MarketplacePercentage::where('marketplace', 'TemuTwo')->first();
-            $percentage = $marketplaceData && $marketplaceData->percentage ? ($marketplaceData->percentage / 100) : 0.96;
+            $percentage = $marketplaceData && $marketplaceData->percentage ? ($marketplaceData->percentage / 100) : 0.95;
 
             $stemuPrice = $sprice <= 26.99 ? $sprice + 2.99 : $sprice;
 
@@ -2815,10 +2815,11 @@ class TemuController extends Controller
      */
     public function temuDecreaseView()
     {
-        $percentage = 95;
+        // Margin from marketplace_percentages (Temu) — same source as GROI/GPFT backend
+        $temuMargin = TemuShopifySalesService::temuMarginDecimal();
 
         return view('market-places.temu_decrease', [
-            'percentage' => $percentage,
+            'temuMargin' => $temuMargin,
         ]);
     }
 
@@ -2968,10 +2969,12 @@ class TemuController extends Controller
             }
             $isL7Period = $selectedPeriod === 'L7';
 
-            // Get Temu marketplace percentage from marketplace_percentages table
+            // Margin from marketplace_percentages (Temu / TemuTwo) — no hardcoded rate
             $marketplaceName = $isTemu2Pricing ? 'TemuTwo' : 'Temu';
             $marketplaceData = MarketplacePercentage::where('marketplace', $marketplaceName)->first();
-            $percentage = $marketplaceData && $marketplaceData->percentage ? ($marketplaceData->percentage / 100) : 0.96;
+            $percentage = ($marketplaceData && $marketplaceData->percentage)
+                ? ((float) $marketplaceData->percentage / 100)
+                : TemuShopifySalesService::temuMarginDecimal();
             
             // 1. Start from ProductMaster (like eBay does)
             $productMasters = ProductMaster::orderBy("parent", "asc")
@@ -3583,7 +3586,7 @@ class TemuController extends Controller
                     ? ($temu1BasePrice <= 26.99 ? $temu1BasePrice + 2.99 : $temu1BasePrice)
                     : 0;
                 
-                // GPRFT% = ((FB Prc * 0.96 - LP - Temu Ship) / FB Prc) * 100 (temuPrice = FB Prc)
+                // GPRFT% = ((FB Prc × margin − LP − Temu Ship) / FB Prc) × 100 (margin from marketplace_percentages)
                 $profit = $temuPrice * $percentage - $lp - $temuShip;
                 $profitPercent = $temuPrice > 0 ? (($temuPrice * $percentage - $lp - $temuShip) / $temuPrice) * 100 : 0;
                 $roiPercent = $lp > 0 ? (($temuPrice * $percentage - $lp - $temuShip) / $lp) * 100 : 0;
@@ -3759,7 +3762,7 @@ class TemuController extends Controller
                     'a_price' => $amazonPrice,
                     'e_price' => $ebayPrice,
                     'e2_price' => $ebay2Price,
-                    // Pass the live marketplace take-home % (decimal, e.g. 0.96) on every row
+                    // Pass the live marketplace take-home % (decimal, e.g. 0.95) on every row
                     // so the front-end SROI formatter can use the SAME margin the backend
                     // GROI calc uses. Prevents GROI / SROI from disagreeing on the rate.
                     'percentage' => (float) $percentage,
@@ -4043,7 +4046,7 @@ class TemuController extends Controller
 
             // Get TemuTwo marketplace percentage from marketplace_percentages table
             $marketplaceData = MarketplacePercentage::where('marketplace', 'TemuTwo')->first();
-            $percentage = $marketplaceData && $marketplaceData->percentage ? ($marketplaceData->percentage / 100) : 0.96;
+            $percentage = $marketplaceData && $marketplaceData->percentage ? ($marketplaceData->percentage / 100) : 0.95;
 
             // Calculate Suggested Temu Price (SPRICE + 2.99 if <= 26.99)
             $stemuPrice = $sprice <= 26.99 ? $sprice + 2.99 : $sprice;
@@ -5667,11 +5670,18 @@ class TemuController extends Controller
                 $temuShip = floatval($values['temu_ship'] ?? 0);
             }
 
-            // Use 0.96 so chart matches table formatter (table uses 0.96 hardcoded for GPRFT%)
-            $percentage = 0.96;
-
             $useTemu2PricingChart = $request->boolean('temu2');
             $pricingModel = $useTemu2PricingChart ? Temu2Pricing::class : TemuPricing::class;
+
+            // Margin from marketplace_percentages — same as table GROI/GPRFT (no hardcode)
+            if ($useTemu2PricingChart) {
+                $mp = MarketplacePercentage::where('marketplace', 'TemuTwo')->first();
+                $percentage = ($mp && $mp->percentage)
+                    ? ((float) $mp->percentage / 100)
+                    : TemuShopifySalesService::temuMarginDecimal();
+            } else {
+                $percentage = TemuShopifySalesService::temuMarginDecimal();
+            }
 
             // Current base_price from temu_pricing / temu2_pricing so latest chart point matches table
             $currentBasePrice = null;
@@ -5717,7 +5727,7 @@ class TemuController extends Controller
 
             $latestRecordDate = $metricsData->isEmpty() ? null : $metricsData->last()->record_date;
 
-            // Format data for chart and compute percent metrics (use 0.96; for latest use current base + current spend so GPRFT/ADS/NPFT/NROI match table)
+            // Format data for chart and compute percent metrics (margin from marketplace_percentages; for latest use current base + current spend so GPRFT/ADS/NPFT/NROI match table)
             $chartData = $metricsData->map(function ($record) use ($lp, $temuShip, $percentage, $currentBasePrice, $currentSpend, $latestRecordDate) {
                 $basePrice = floatval($record->base_price ?? 0);
                 $spend = floatval($record->spend ?? 0);

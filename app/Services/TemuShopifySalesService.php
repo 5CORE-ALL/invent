@@ -44,7 +44,7 @@ class TemuShopifySalesService
     {
         $mp = MarketplacePercentage::where('marketplace', 'Temu')->first();
 
-        return $mp && $mp->percentage ? ((float) $mp->percentage / 100) : 0.96;
+        return $mp && $mp->percentage ? ((float) $mp->percentage / 100) : 0.95;
     }
 
     /**

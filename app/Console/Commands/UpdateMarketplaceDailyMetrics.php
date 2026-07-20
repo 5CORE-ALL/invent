@@ -1802,8 +1802,8 @@ class UpdateMarketplaceDailyMetrics extends Command
             $cogs = $lp * $quantity;
             $totalCogs += $cogs;
 
-            // PFT Each = (price * 0.95) - lp - ship_cost
-            $pftEach = ($price * $margin) - $lp - $shipCost;
+            // PFT Each = (price * 0.95) - lp  (B2B excludes Ship; same as Business Analytics)
+            $pftEach = ($price * $margin) - $lp;
 
             // T PFT = pft_each * quantity
             $pft = $pftEach * $quantity;

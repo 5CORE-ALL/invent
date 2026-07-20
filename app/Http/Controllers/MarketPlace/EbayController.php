@@ -3638,6 +3638,68 @@ class EbayController extends Controller
     }
 
     /**
+     * Update an existing eBay LMP competitor price/link.
+     */
+    public function updateEbayLmp(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'id' => 'required|integer',
+                'price' => 'required|numeric|min:0',
+                'shipping_cost' => 'nullable|numeric|min:0',
+                'product_link' => 'nullable|string',
+                'item_id' => 'nullable|string',
+            ]);
+
+            $lmp = \App\Models\EbaySkuCompetitor::find($validated['id']);
+            if (!$lmp) {
+                return response()->json(['error' => 'LMP entry not found'], 404);
+            }
+
+            $price = (float) $validated['price'];
+            $shippingCost = array_key_exists('shipping_cost', $validated) && $validated['shipping_cost'] !== null
+                ? (float) $validated['shipping_cost']
+                : (float) ($lmp->shipping_cost ?? 0);
+
+            DB::beginTransaction();
+            $lmp->price = $price;
+            $lmp->shipping_cost = $shippingCost;
+            $lmp->total_price = $price + $shippingCost;
+            if (array_key_exists('product_link', $validated)) {
+                $lmp->product_link = $validated['product_link'] ?: null;
+            }
+            if (!empty($validated['item_id'])) {
+                $lmp->item_id = $validated['item_id'];
+            }
+            $lmp->save();
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'LMP updated successfully',
+                'data' => [
+                    'id' => $lmp->id,
+                    'item_id' => $lmp->item_id,
+                    'price' => floatval($lmp->price),
+                    'total_price' => floatval($lmp->total_price),
+                    'product_link' => $lmp->product_link,
+                ],
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'error' => 'Validation failed',
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Error updating eBay LMP', ['error' => $e->getMessage()]);
+            return response()->json([
+                'error' => 'Failed to update LMP: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
      * Delete LMP entry
      */
     public function deleteEbayLmp(Request $request)

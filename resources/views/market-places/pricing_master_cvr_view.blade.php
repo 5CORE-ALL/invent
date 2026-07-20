@@ -41,6 +41,29 @@
         }
 
         /* OV L30 Modal – light bg with dark text */
+        #ovl30DetailsModal #modal-price-pct-btn {
+            width: 34px;
+            height: 30px;
+            padding: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+        }
+        #ovl30DetailsModal #modal-price-pct-btn.dropdown-toggle::after {
+            display: none;
+        }
+        #ovl30DetailsModal #modal-price-pct-dropdown {
+            z-index: 2000;
+        }
+        #ovl30DetailsModal .modal-header .btn-group {
+            position: relative;
+        }
+        #ovl30DetailsModal .ovl30-prc-row-cb {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
         #ovl30DetailsModal .modal-header,
         #ovl30DetailsModal .table thead {
             background-color: #e2e8f0 !important;
@@ -878,7 +901,7 @@
                             <i class="fas fa-mouse-pointer me-2"></i> 
                             <span id="modalSkuName" style="font-weight: bold;">SKU</span>
                         </div>
-                        <div class="d-flex align-items-center gap-5">
+                        <div class="d-flex align-items-center gap-3 flex-wrap">
                             <span>
                                 <strong>Total INV:</strong> <span id="modal-header-inv">0</span>
                             </span>
@@ -891,9 +914,43 @@
                             <span id="modal-header-lmp-link" style="cursor: pointer; text-decoration: underline;" title="Click to view LMP competitors">
                                 <i class="fas fa-search me-2"></i><strong>LMP</strong>
                             </span>
+                            <div class="btn-group">
+                                <button type="button" id="modal-price-pct-btn" class="btn btn-sm btn-primary dropdown-toggle"
+                                    data-bs-toggle="dropdown" data-bs-display="static" aria-expanded="false"
+                                    title="Prc Mode">
+                                    <i class="fas fa-percent"></i>
+                                </button>
+                                <ul class="dropdown-menu dropdown-menu-end" id="modal-price-pct-dropdown">
+                                    <li><a class="dropdown-item" href="#" data-mode="decrease"><i class="fas fa-minus-circle text-warning"></i> Decrease</a></li>
+                                    <li><a class="dropdown-item" href="#" data-mode="increase"><i class="fas fa-plus-circle text-primary"></i> Increase</a></li>
+                                    <li><a class="dropdown-item" href="#" data-mode="same"><i class="fas fa-equals text-info"></i> Same Price</a></li>
+                                    <li><hr class="dropdown-divider"></li>
+                                    <li><a class="dropdown-item" href="#" data-mode="cancel"><i class="fas fa-times text-muted"></i> Cancel</a></li>
+                                </ul>
+                            </div>
                         </div>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div id="modal-discount-input-container" class="px-3 py-2 border-bottom bg-light" style="display: none;">
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <span id="modal-selected-channels-count" class="fw-semibold small text-muted">(select channels)</span>
+                        <span id="modal-discount-input-label" class="text-muted small">By how much:</span>
+                        <span id="modal-discount-type-select-wrap">
+                            <select id="modal-discount-type-select" class="form-select form-select-sm" style="width: 120px;">
+                                <option value="percentage">Percentage</option>
+                                <option value="value">Value ($)</option>
+                            </select>
+                        </span>
+                        <input type="text" id="modal-discount-percentage-input" class="form-control form-control-sm"
+                            inputmode="decimal" placeholder="e.g. 10 or 2.50" autocomplete="off" style="width: 120px;">
+                        <button type="button" id="modal-apply-discount-btn" class="btn btn-sm btn-primary">
+                            <i class="fas fa-check"></i> Apply
+                        </button>
+                        <button type="button" id="modal-select-all-channels-btn" class="btn btn-sm btn-outline-secondary">
+                            Select all editable
+                        </button>
+                    </div>
                 </div>
                 <div class="modal-body" style="background-color: #fff;">
                     <div class="table-responsive ovl30-table-wrap">
@@ -1228,13 +1285,6 @@
                     <span class="summary-badge-dot" style="background-color: #6f42c1;"></span>
                     <span>AVG LQS:</span>
                     <span class="summary-badge-value" id="avg-lqs-badge">-</span>
-                </span>
-                <span class="d-flex align-items-center gap-2 ms-auto">
-                    <label class="mb-0 fw-semibold">Change Price:</label>
-                    <input type="number" id="change-price-input" class="form-control form-control-sm" placeholder="Enter price" step="0.01" min="0" style="width: 100px;">
-                    <button type="button" id="apply-change-price-btn" class="btn btn-sm btn-primary">
-                        <i class="fas fa-check"></i> Apply
-                    </button>
                 </span>
             </div>
             <div class="card-body py-3">
@@ -1805,6 +1855,81 @@
         let ovl30ModalData = [];
         let ovl30ModalDil = 0;
         let ovl30SpriceSuggestions = [];
+        let modalPrcModeActive = false;
+        let modalDecreaseModeActive = false;
+        let modalIncreaseModeActive = false;
+        let modalSamePriceModeActive = false;
+        let modalSelectedChannels = new Set();
+
+        function updateModalPrcSelectedCount() {
+            const n = modalSelectedChannels.size;
+            $('#modal-selected-channels-count').text(
+                n > 0 ? `(${n} channel${n > 1 ? 's' : ''} selected)` : '(select channels)'
+            );
+        }
+
+        function exitModalPricePctMode(rerender) {
+            modalPrcModeActive = false;
+            modalDecreaseModeActive = false;
+            modalIncreaseModeActive = false;
+            modalSamePriceModeActive = false;
+            modalSelectedChannels.clear();
+            $('#modal-discount-input-container').hide();
+            $('#modal-price-pct-btn').removeClass('btn-danger btn-warning btn-success btn-info').addClass('btn-primary')
+                .attr('title', 'Prc Mode')
+                .html('<i class="fas fa-percent"></i>');
+            $('#modal-apply-discount-btn').html('<i class="fas fa-check"></i> Apply');
+            $('#modal-discount-type-select-wrap').show();
+            $('#modal-discount-input-label').text('By how much:');
+            $('#modal-discount-percentage-input').val('').attr('placeholder', 'e.g. 10 or 2.50');
+            if (rerender !== false && ovl30ModalData.length) {
+                renderMarketplaceData();
+            }
+        }
+
+        function setModalPricePctMode(mode) {
+            if (mode === 'cancel') {
+                exitModalPricePctMode(true);
+                return;
+            }
+            modalPrcModeActive = true;
+            modalDecreaseModeActive = (mode === 'decrease');
+            modalIncreaseModeActive = (mode === 'increase');
+            modalSamePriceModeActive = (mode === 'same');
+            modalSelectedChannels.clear();
+            $('#modal-discount-input-container').show();
+            $('#modal-discount-percentage-input').val('');
+            updateModalPrcSelectedCount();
+
+            if (mode === 'decrease') {
+                $('#modal-discount-type-select-wrap').show();
+                $('#modal-discount-input-label').text('By how much:');
+                $('#modal-discount-percentage-input').attr('placeholder', 'e.g. 10 or 2.50');
+                $('#modal-price-pct-btn').removeClass('btn-primary btn-success btn-info').addClass('btn-warning')
+                    .attr('title', 'Decrease')
+                    .html('<i class="fas fa-minus-circle"></i>');
+                $('#modal-apply-discount-btn').html('<i class="fas fa-check"></i> Apply Decrease');
+            } else if (mode === 'increase') {
+                $('#modal-discount-type-select-wrap').show();
+                $('#modal-discount-input-label').text('By how much:');
+                $('#modal-discount-percentage-input').attr('placeholder', 'e.g. 10 or 2.50');
+                $('#modal-price-pct-btn').removeClass('btn-primary btn-warning btn-info').addClass('btn-success')
+                    .attr('title', 'Increase')
+                    .html('<i class="fas fa-plus-circle"></i>');
+                $('#modal-apply-discount-btn').html('<i class="fas fa-check"></i> Apply Increase');
+            } else if (mode === 'same') {
+                $('#modal-discount-type-select-wrap').hide();
+                $('#modal-discount-input-label').text('Same Price ($):');
+                $('#modal-discount-percentage-input').attr('placeholder', 'Enter price (e.g. 19.99)');
+                $('#modal-price-pct-btn').removeClass('btn-primary btn-warning btn-success').addClass('btn-info')
+                    .attr('title', 'Same Price')
+                    .html('<i class="fas fa-equals"></i>');
+                $('#modal-apply-discount-btn').html('<i class="fas fa-check"></i> Apply Same Price');
+            }
+            if (ovl30ModalData.length) {
+                renderMarketplaceData();
+            }
+        }
 
         function getOvl30SortCompare() {
             const val = (ovl30ModalSortBy || 'l30_desc').toString();
@@ -1833,8 +1958,14 @@
                         const shipV = parseFloat(row.ship || 0);
                         const marginV = parseFloat(row.margin || 0.80);
                         const adsPct = parseFloat(row.tacos_ch || 0);
+                        const mp = String(row.marketplace || '').toLowerCase();
                         if (!(lpV > 0) || !(p > 0)) return 0;
                         const gross = p * marginV - lpV - shipV;
+                        const groiV = (gross / lpV) * 100;
+                        // Temu/Temu2: NROI% = GROI% − Ads% (same as /temu-decrease)
+                        if (net && (mp === 'temu' || mp === 'temu2')) {
+                            return adsPct === 100 ? groiV : (groiV - adsPct);
+                        }
                         const profit = net ? (gross - p * (adsPct / 100)) : gross;
                         return (profit / lpV) * 100;
                     };
@@ -2011,27 +2142,33 @@
                 const ship = parseFloat(item.ship || 0);
                 const margin = parseFloat(item.margin || 0.80);
 
-                // GROI% = (Price × Margin − LP − Ship) ÷ LP × 100
-                // NROI% = (Gross Profit − Ads $ per unit) ÷ LP × 100
+                const mpLower = (item.marketplace || '').toLowerCase();
+                // GROI% = (Price × Margin − LP − Ship) ÷ LP × 100 — same as /temu-decrease & channel pages
+                // Temu/Temu2 NROI% = GROI% − Ads% (same as /temu-decrease); others use dollar-ads / LP
                 let groi = 0, nroi = 0;
                 if (lp > 0 && price > 0) {
                     const grossProfit = price * margin - lp - ship;
-                    const adsPerUnit = price * (tacosCh / 100);
                     groi = (grossProfit / lp) * 100;
-                    nroi = ((grossProfit - adsPerUnit) / lp) * 100;
+                    if (mpLower === 'temu' || mpLower === 'temu2') {
+                        nroi = (tacosCh === 100) ? groi : (groi - tacosCh);
+                    } else {
+                        const adsPerUnit = price * (tacosCh / 100);
+                        nroi = ((grossProfit - adsPerUnit) / lp) * 100;
+                    }
                 }
-                
-                const mpLower = (item.marketplace || '').toLowerCase();
                 let sgpft = 0, spft = 0, sroi = 0, snroi = 0;
                 if (sprice > 0) {
-                    sgpft = ((sprice * margin - ship - lp) / sprice) * 100;
+                    // Temu/Temu2: suggested metrics use FB price (base ≤26.99 → +$2.99) — same as /temu-decrease
+                    const isTemuMp = (mpLower === 'temu' || mpLower === 'temu2');
+                    const calcSp = isTemuMp ? (sprice <= 26.99 ? sprice + 2.99 : sprice) : sprice;
+                    sgpft = ((calcSp * margin - ship - lp) / calcSp) * 100;
                     // TikTok: SPFT = SGPFT − TACOS% (same as /tiktok-pricing); others keep L30==0 skip-ads rule
                     spft = (mpLower === 'tiktok') ? (sgpft - tacosCh) : (l30 == 0 ? sgpft : (sgpft - ad));
-                    sroi = lp > 0 ? ((sprice * margin - lp - ship) / lp) * 100 : 0;
+                    sroi = lp > 0 ? ((calcSp * margin - lp - ship) / lp) * 100 : 0;
                     // SNROI% = (SPRICE × Margin − LP − Ship − SPRICE × Ads%) ÷ LP × 100
                     if (lp > 0) {
-                        const sGross = sprice * margin - lp - ship;
-                        const sAds = sprice * (tacosCh / 100);
+                        const sGross = calcSp * margin - lp - ship;
+                        const sAds = calcSp * (tacosCh / 100);
                         snroi = ((sGross - sAds) / lp) * 100;
                     }
                 }
@@ -2246,7 +2383,14 @@
                                 (item.seller_link ? '<a href="' + item.seller_link + '" target="_blank" rel="noopener" class="ovl30-link-bs" title="Seller link" style="color:#495057;font-weight:700;text-decoration:none;padding:0 2px;">S</a>' : '')
                                 : '-'}
                         </td>
-                        <td class="text-center ${textClass}">-</td>
+                        <td class="text-center ${textClass}">
+                            ${(modalPrcModeActive && isEditable && isListed)
+                                ? '<input type="checkbox" class="ovl30-prc-row-cb" data-marketplace="'
+                                    + String(item.marketplace || '').replace(/"/g, '&quot;')
+                                    + '"' + (modalSelectedChannels.has(String(item.marketplace || '')) ? ' checked' : '')
+                                    + ' title="Select for Prc Mode">'
+                                : '-'}
+                        </td>
                         <td class="text-end ${textClass}">
                             ${isEditable && isListed ? 
                                 '<input type="number" class="form-control form-control-sm editable-sprice" value="' + sprice.toFixed(2) + '" step="0.01">' 
@@ -3448,11 +3592,13 @@
             
             if (sprice > 0) {
                 const mpLower = String(row.attr('data-marketplace') || '').toLowerCase();
-                const sgpft = ((sprice * margin - ship - lp) / sprice) * 100;
+                const isTemuMp = (mpLower === 'temu' || mpLower === 'temu2');
+                const calcSp = isTemuMp ? (sprice <= 26.99 ? sprice + 2.99 : sprice) : sprice;
+                const sgpft = ((calcSp * margin - ship - lp) / calcSp) * 100;
                 const spft = (mpLower === 'tiktok') ? (sgpft - tacosCh) : (l30 == 0 ? sgpft : (sgpft - ad));
-                const sroi = lp > 0 ? ((sprice * margin - lp - ship) / lp) * 100 : 0;
+                const sroi = lp > 0 ? ((calcSp * margin - lp - ship) / lp) * 100 : 0;
                 const snroi = lp > 0
-                    ? (((sprice * margin - lp - ship) - sprice * (tacosCh / 100)) / lp) * 100
+                    ? (((calcSp * margin - lp - ship) - calcSp * (tacosCh / 100)) / lp) * 100
                     : 0;
                 
                 applyCellColor($sgpftSpan, getSgpftSpftColor(sgpft));
@@ -3492,10 +3638,12 @@
             const margin = parseFloat(row.attr('data-margin')) || 0.80;
             const l30 = parseFloat(row.attr('data-l30')) || 0;
             const mpLower = String(marketplace || '').toLowerCase();
+            const isTemuMp = (mpLower === 'temu' || mpLower === 'temu2');
+            const calcSp = isTemuMp ? (sprice <= 26.99 ? sprice + 2.99 : sprice) : sprice;
             
-            const sgpft = sprice > 0 ? ((sprice * margin - ship - lp) / sprice) * 100 : 0;
+            const sgpft = sprice > 0 ? ((calcSp * margin - ship - lp) / calcSp) * 100 : 0;
             const spft = (mpLower === 'tiktok') ? (sgpft - tacosCh) : (l30 == 0 ? sgpft : (sgpft - ad));
-            const sroi = lp > 0 ? ((sprice * margin - lp - ship) / lp) * 100 : 0;
+            const sroi = lp > 0 ? ((calcSp * margin - lp - ship) / lp) * 100 : 0;
             
             input.css('border-color', '#ff9c00');
             
@@ -3522,6 +3670,183 @@
                     showToast('Failed to save', 'error');
                 }
             });
+        });
+
+        // ==================== DETAILS MODAL PRC MODE (Increase / Decrease / Same) ====================
+        function roundModalRetailPrice(price) {
+            if (!(price > 0)) return 0.01;
+            if (price < 20.99) return +Number(price).toFixed(2);
+            return +(Math.ceil(price) - 0.01).toFixed(2);
+        }
+        function roundModalRetailPrice49(price) {
+            if (!(price > 0)) return 0.01;
+            if (price < 20.99) return +Number(price).toFixed(2);
+            return +(Math.ceil(price) - 0.51).toFixed(2);
+        }
+        function computeModalModePrice(basePrice, mode, inputValue, discountType) {
+            let newPrice;
+            if (mode === 'same') {
+                newPrice = Math.max(0.01, inputValue);
+            } else if (discountType === 'percentage') {
+                const decimal = inputValue / 100;
+                newPrice = mode === 'decrease' ? basePrice * (1 - decimal) : basePrice * (1 + decimal);
+            } else {
+                newPrice = mode === 'decrease'
+                    ? Math.max(0.01, basePrice - inputValue)
+                    : basePrice + inputValue;
+            }
+            newPrice = roundModalRetailPrice(newPrice);
+            if (mode !== 'same' && newPrice.toFixed(2) === Number(basePrice).toFixed(2)) {
+                newPrice = roundModalRetailPrice49(newPrice);
+            }
+            return Math.max(0.01, parseFloat(newPrice.toFixed(2)));
+        }
+
+        function saveModalSpriceForRow($row, sprice, done) {
+            const sku = $row.attr('data-sku');
+            const marketplace = $row.attr('data-marketplace');
+            const lp = parseFloat($row.attr('data-lp')) || 0;
+            const ship = parseFloat($row.attr('data-ship')) || 0;
+            const ad = parseFloat($row.attr('data-ad')) || 0;
+            const tacosCh = parseFloat($row.attr('data-tacos-ch')) || 0;
+            const margin = parseFloat($row.attr('data-margin')) || 0.80;
+            const l30 = parseFloat($row.attr('data-l30')) || 0;
+            const mpLower = String(marketplace || '').toLowerCase();
+            const isTemuMp = (mpLower === 'temu' || mpLower === 'temu2');
+            const calcSp = isTemuMp ? (sprice <= 26.99 ? sprice + 2.99 : sprice) : sprice;
+            const sgpft = sprice > 0 ? ((calcSp * margin - ship - lp) / calcSp) * 100 : 0;
+            const spft = (mpLower === 'tiktok') ? (sgpft - tacosCh) : (l30 == 0 ? sgpft : (sgpft - ad));
+            const sroi = lp > 0 ? ((calcSp * margin - lp - ship) / lp) * 100 : 0;
+
+            $.ajax({
+                url: '/cvr-master-save-suggested-data',
+                method: 'POST',
+                data: {
+                    sku: sku,
+                    marketplace: marketplace,
+                    sprice: sprice,
+                    sgpft: sgpft,
+                    spft: spft,
+                    sroi: sroi,
+                    amazon_margin: margin,
+                    _token: '{{ csrf_token() }}'
+                },
+                success: function() { if (done) done(true); },
+                error: function() { if (done) done(false); }
+            });
+        }
+
+        $(document).on('click', '#modal-price-pct-dropdown a[data-mode]', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            setModalPricePctMode($(this).data('mode'));
+        });
+
+        $(document).on('change', '.ovl30-prc-row-cb', function() {
+            const mp = String($(this).attr('data-marketplace') || '');
+            if ($(this).is(':checked')) modalSelectedChannels.add(mp);
+            else modalSelectedChannels.delete(mp);
+            updateModalPrcSelectedCount();
+        });
+
+        $(document).on('click', '#modal-select-all-channels-btn', function(e) {
+            e.preventDefault();
+            $('#ovl30DetailsTableBody .ovl30-prc-row-cb').each(function() {
+                const mp = String($(this).attr('data-marketplace') || '');
+                $(this).prop('checked', true);
+                if (mp) modalSelectedChannels.add(mp);
+            });
+            updateModalPrcSelectedCount();
+        });
+
+        $(document).on('change', '#modal-discount-type-select', function() {
+            $('#modal-discount-percentage-input').attr(
+                'placeholder',
+                $(this).val() === 'percentage' ? 'Enter percentage' : 'Enter value ($)'
+            );
+        });
+
+        $('#ovl30DetailsModal').on('hidden.bs.modal', function() {
+            exitModalPricePctMode(false);
+        });
+
+        $(document).on('click', '#modal-apply-discount-btn', function() {
+            if (!modalPrcModeActive) {
+                showToast('Choose Decrease, Increase, or Same Price from Prc Mode first', 'error');
+                return;
+            }
+            const rawInput = $('#modal-discount-percentage-input').val();
+            const inputValue = parseFloat(String(rawInput == null ? '' : rawInput).replace(/[$,\s]/g, '').replace(',', '.'));
+            if (rawInput === '' || rawInput == null || isNaN(inputValue) || inputValue < 0) {
+                showToast(modalSamePriceModeActive ? 'Please enter a price' : 'Please enter a valid value (% or $)', 'error');
+                $('#modal-discount-percentage-input').focus();
+                return;
+            }
+            const discountType = $('#modal-discount-type-select').val() || 'percentage';
+            if (!modalSamePriceModeActive && discountType === 'percentage' && inputValue > 100) {
+                showToast('Percentage cannot exceed 100', 'error');
+                return;
+            }
+            if (modalSelectedChannels.size === 0) {
+                showToast('Please select at least one channel (checkbox next to SPRICE)', 'error');
+                return;
+            }
+
+            const mode = modalSamePriceModeActive ? 'same' : (modalIncreaseModeActive ? 'increase' : 'decrease');
+            const $rows = [];
+            $('#ovl30DetailsTableBody tr').each(function() {
+                const $tr = $(this);
+                const mp = String($tr.attr('data-marketplace') || '');
+                if (!modalSelectedChannels.has(mp)) return;
+                if (!$tr.find('.editable-sprice').length) return;
+                $rows.push($tr);
+            });
+            if (!$rows.length) {
+                showToast('No editable SPRICE rows selected', 'error');
+                return;
+            }
+
+            const actionLabel = mode === 'same' ? 'Same Price' : (mode === 'increase' ? 'Increase' : 'Decrease');
+            if (!confirm(actionLabel + ' SPRICE for ' + $rows.length + ' channel(s)?')) return;
+
+            const $btn = $(this);
+            const origHtml = $btn.html();
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Applying...');
+
+            let doneCount = 0;
+            let okCount = 0;
+            $rows.forEach(function($tr) {
+                const basePrice = parseFloat($tr.attr('data-price')) || 0;
+                const $input = $tr.find('.editable-sprice');
+                if (mode !== 'same' && !(basePrice > 0)) {
+                    doneCount++;
+                    if (doneCount === $rows.length) {
+                        $btn.prop('disabled', false).html(origHtml);
+                        showToast(okCount ? ('Updated ' + okCount + ' channel(s); some had no Price') : 'Selected channels have no Price', okCount ? 'success' : 'error');
+                    }
+                    return;
+                }
+                const newPrice = computeModalModePrice(basePrice, mode, inputValue, discountType);
+                $input.val(newPrice.toFixed(2)).trigger('input');
+                saveModalSpriceForRow($tr, newPrice, function(ok) {
+                    if (ok) okCount++;
+                    doneCount++;
+                    if (doneCount === $rows.length) {
+                        $btn.prop('disabled', false).html(origHtml);
+                        showToast(okCount
+                            ? (actionLabel + ' applied to ' + okCount + ' channel(s). Use Push to go live.')
+                            : 'Failed to save SPRICE', okCount ? 'success' : 'error');
+                        $('#modal-discount-percentage-input').val('');
+                    }
+                });
+            });
+        });
+
+        $(document).on('keydown', '#modal-discount-percentage-input', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                $('#modal-apply-discount-btn').trigger('click');
+            }
         });
         
         // ==================== AUTO FILL SPRICE (Dil / CVR / LMP / Price) ====================
@@ -4085,72 +4410,106 @@
             });
         });
 
-        // ==================== BULK CHANGE PRICE ====================
-        $('#apply-change-price-btn').on('click', function() {
-            const price = parseFloat($('#change-price-input').val()) || 0;
-            if (price <= 0) {
-                showToast('Please enter a valid price greater than 0', 'error');
-                $('#change-price-input').focus();
-                return;
-            }
-
-            let skus = [];
-            if (selectedSkus.size > 0) {
-                skus = Array.from(selectedSkus);
-            } else {
-                const rows = table.getRows('active');
-                rows.forEach(r => {
-                    const d = r.getData();
-                    if (d.is_parent_summary !== true) skus.push(d.sku);
-                });
-            }
-
-            if (skus.length === 0) {
-                showToast('Please select SKUs or ensure table has data', 'error');
-                return;
-            }
-
-            const msg = `Apply price $${price.toFixed(2)} to ${skus.length} SKU(s) across all marketplaces?\n\n` +
-                'Amazon, Walmart, Shopify B2C, Reverb: full price\n' +
-                'Doba & Shopify Wholesale: 25% discount applied\n' +
-                'Shopify B2B: 25% discount + shipping deducted';
-            if (!confirm(msg)) return;
-
-            const btn = $(this);
-            const origHtml = btn.html();
-            btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Applying...');
-
-            $.ajax({
-                url: '/cvr-master-bulk-change-price',
-                method: 'POST',
-                data: {
-                    price: price,
-                    skus: skus,
-                    _token: '{{ csrf_token() }}'
-                },
-                success: function(res) {
-                    if (res.success) {
-                        showToast(res.message || `Updated ${res.updated || 0} SKU(s) across marketplaces`, 'success');
-                        $('#change-price-input').val('');
-                        setTimeout(() => location.reload(), 1500);
-                    } else {
-                        showToast(res.message || 'Some updates failed', 'error');
-                    }
-                    btn.prop('disabled', false).html(origHtml);
-                },
-                error: function(xhr) {
-                    const msg = xhr.responseJSON?.message || 'Failed to apply price';
-                    showToast(msg, 'error');
-                    btn.prop('disabled', false).html(origHtml);
-                }
-            });
-        });
-
         // ==================== LMP COMPETITORS MODAL ====================
 
         let lmpModalCache = { sku: '', rows: [], filter: 'all', showAdd: false };
+        // draftPrice/draftLink hold typed values so re-renders don't wipe direct input
+        let lmpEditState = null; // { id, channel, extId, origPrice, origLink, draftPrice, draftLink, draftExtId }
+
+        function resetLmpEditState() {
+            lmpEditState = null;
+        }
+
+        function parseLmpPriceInput(raw) {
+            if (raw == null) return NaN;
+            const cleaned = String(raw).replace(/[$,\s]/g, '').trim();
+            if (cleaned === '') return NaN;
+            return parseFloat(cleaned);
+        }
+
+        function syncLmpEditDraftFromForm() {
+            if (!lmpEditState) return;
+            lmpEditState.draftPrice = $('#lmpAddPrice').val();
+            lmpEditState.draftLink = $('#lmpAddLink').val();
+            if ($('#lmpAddId').length) {
+                lmpEditState.draftExtId = $('#lmpAddId').val();
+            }
+        }
+
+        function applyLmpEditFormState() {
+            const $form = $('#lmpAddForm');
+            if (!$form.length) return;
+            const isEdit = !!lmpEditState;
+            const ch = isEdit
+                ? lmpEditState.channel
+                : (($('#lmpAddChannel').val() || lmpModalCache.filter || 'amazon').toLowerCase());
+            const labelMap = { amazon: 'Amazon', ebay: 'eBay', google: 'Google', temu: 'Temu' };
+            const label = labelMap[ch] || ch;
+            const $box = $form.closest('.lmp-add-form-box');
+            $box.find('strong').html(
+                isEdit
+                    ? '<i class="fas fa-edit text-warning me-1"></i>Edit ' + label + ' LMP'
+                    : '<i class="fas fa-plus-circle text-success me-1"></i>Add ' + label + ' LMP'
+            );
+            $('#lmpEditId').val(isEdit ? String(lmpEditState.id) : '');
+            $('#lmpFormChannel').val(ch);
+            $('#lmpAddChannel').val(ch);
+            if (isEdit) {
+                $('#lmpAddChannel').prop('disabled', true);
+                // Prefer draft (what user typed) over original row values
+                const priceVal = lmpEditState.draftPrice != null && lmpEditState.draftPrice !== ''
+                    ? lmpEditState.draftPrice
+                    : (lmpEditState.origPrice != null ? Number(lmpEditState.origPrice).toFixed(2) : '');
+                const linkVal = lmpEditState.draftLink != null
+                    ? lmpEditState.draftLink
+                    : (lmpEditState.origLink || '');
+                const extVal = lmpEditState.draftExtId != null
+                    ? lmpEditState.draftExtId
+                    : (lmpEditState.extId || '');
+                $('#lmpAddPrice').val(priceVal);
+                $('#lmpAddLink').val(linkVal);
+                if ($('#lmpAddId').length) {
+                    $('#lmpAddId').val(extVal);
+                }
+                $('#lmpAddSubmitBtn').removeClass('btn-success').addClass('btn-warning')
+                    .html('<i class="fas fa-save me-1"></i>Update');
+                $('#lmpCancelEditBtn').removeClass('d-none');
+            } else {
+                $('#lmpAddChannel').prop('disabled', false);
+                $('#lmpAddSubmitBtn').removeClass('btn-warning').addClass('btn-success')
+                    .html('<i class="fas fa-plus me-1"></i>Add');
+                $('#lmpCancelEditBtn').addClass('d-none');
+            }
+        }
+
+        function enterLmpEditMode(row) {
+            if (!row || !row.id) return;
+            const priceStr = row.price != null && row.price !== '' ? String(row.price) : '';
+            lmpEditState = {
+                id: row.id,
+                channel: row.channel,
+                extId: row.extId || '',
+                origPrice: row.price,
+                origLink: row.link || '',
+                draftPrice: priceStr,
+                draftLink: row.link || '',
+                draftExtId: row.extId || '',
+            };
+            lmpModalCache.filter = row.channel;
+            lmpModalCache.showAdd = true;
+            $('#lmpModal').data('lmp-filter', row.channel);
+            renderLmpMergedTable();
+            setTimeout(function() {
+                const el = document.getElementById('lmpAddPrice');
+                if (el) {
+                    el.focus();
+                    el.select();
+                }
+            }, 0);
+        }
 
         function loadLmpCompetitorsModal(sku, marketplace, showAddForm) {
+            resetLmpEditState();
             $('#lmpSku').text(sku);
             const initialFilter = (marketplace === 'amazon' || marketplace === 'ebay' || marketplace === 'google' || marketplace === 'temu')
                 ? marketplace
@@ -4300,6 +4659,7 @@
                     sku: sku,
                     price: price,
                     link: amz.product_link || amz.link || '',
+                    extId: amz.asin || '',
                     image: amz.image || '',
                     title: amz.product_title || amz.title || '',
                     rating: amz.rating != null ? parseFloat(amz.rating) : null,
@@ -4319,6 +4679,7 @@
                     sku: sku,
                     price: price,
                     link: ebay.link || ebay.product_link || '',
+                    extId: ebay.item_id || '',
                     image: ebay.image || '',
                     title: ebay.product_title || ebay.title || '',
                     rating: null,
@@ -4338,6 +4699,7 @@
                     sku: sku,
                     price: price,
                     link: google.link || google.product_link || '',
+                    extId: google.product_id || '',
                     image: google.image || '',
                     title: google.product_title || google.title || '',
                     rating: google.rating != null ? parseFloat(google.rating) : null,
@@ -4357,6 +4719,7 @@
                     sku: sku,
                     price: price,
                     link: temu.link || temu.product_link || '',
+                    extId: '',
                     image: temu.image || '',
                     title: temu.product_title || temu.title || '',
                     rating: null,
@@ -4451,6 +4814,7 @@
                 const label = labelMap[filter] || 'competitors';
                 html += '<div class="alert alert-info mb-0 py-2 px-2"><i class="fa fa-info-circle"></i> No ' + label + ' competitors found</div>';
                 $('#lmpDataList').html(html);
+                applyLmpEditFormState();
                 return;
             }
 
@@ -4483,6 +4847,15 @@
                     : '<span class="text-muted">-</span>';
                 const deliveryCell = formatLmpDelivery(row.delivery);
                 const titleAttr = (row.title || row.source || '').replace(/"/g, '&quot;');
+                const linkAttr = String(row.link || '').replace(/"/g, '&quot;');
+                const extAttr = String(row.extId || '').replace(/"/g, '&quot;');
+                const editBtn = '<button type="button" class="btn btn-sm btn-outline-warning edit-lmp-row-btn me-1" data-id="' + row.id
+                    + '" data-marketplace="' + row.channel
+                    + '" data-sku="' + String(sku || '').replace(/"/g, '&quot;')
+                    + '" data-price="' + row.price
+                    + '" data-link="' + linkAttr
+                    + '" data-ext-id="' + extAttr
+                    + '" title="Edit price"><i class="fa fa-edit"></i></button>';
                 const delBtn = '<button type="button" class="btn btn-sm btn-outline-danger delete-lmp-row-btn" data-id="' + row.id
                     + '" data-marketplace="' + row.channel
                     + '" data-sku="' + String(sku || '').replace(/"/g, '&quot;')
@@ -4495,12 +4868,13 @@
                     + '<td>' + ratingCell + '</td>'
                     + '<td>' + reviewsCell + '</td>'
                     + '<td>' + deliveryCell + '</td>'
-                    + '<td>' + delBtn + '</td>'
+                    + '<td class="text-nowrap">' + editBtn + delBtn + '</td>'
                     + '</tr>';
             });
 
             html += '</tbody></table></div>';
             $('#lmpDataList').html(html);
+            applyLmpEditFormState();
         }
 
         function buildLmpAddFormHtml(sku, channel) {
@@ -4530,14 +4904,17 @@
                 + '<option value="google"' + (ch === 'google' ? ' selected' : '') + '>Google</option>'
                 + '<option value="temu"' + (ch === 'temu' ? ' selected' : '') + '>Temu</option>'
                 + '</select></div>'
-                + '<form id="lmpAddForm" class="row g-1 align-items-end" data-sku="' + String(sku || '').replace(/"/g, '&quot;') + '">'
+                + '<form id="lmpAddForm" class="row g-1 align-items-end" novalidate data-sku="' + String(sku || '').replace(/"/g, '&quot;') + '">'
+                + '<input type="hidden" id="lmpEditId" value="">'
+                + '<input type="hidden" id="lmpFormChannel" value="' + ch + '">'
                 + idField
                 + '<div class="' + (idField ? 'col-3' : 'col-4') + '"><label class="form-label mb-0 small">Price</label>'
-                + '<input type="number" class="form-control" id="lmpAddPrice" step="0.01" min="0.01" placeholder="0.00" required></div>'
+                + '<input type="text" class="form-control" id="lmpAddPrice" inputmode="decimal" placeholder="0.00" autocomplete="off"></div>'
                 + '<div class="' + (idField ? 'col-3' : 'col-5') + '"><label class="form-label mb-0 small">Link</label>'
-                + '<input type="text" class="form-control" id="lmpAddLink" placeholder="https://..."></div>'
-                + '<div class="col-auto">'
+                + '<input type="text" class="form-control" id="lmpAddLink" placeholder="https://..." autocomplete="off"></div>'
+                + '<div class="col-auto d-flex gap-1">'
                 + '<button type="submit" class="btn btn-success btn-sm" id="lmpAddSubmitBtn"><i class="fas fa-plus me-1"></i>Add</button>'
+                + '<button type="button" class="btn btn-outline-secondary btn-sm d-none" id="lmpCancelEditBtn">Cancel</button>'
                 + '</div></form></div>';
         }
 
@@ -4552,23 +4929,129 @@
             return m ? m[1] : '';
         }
 
+        $(document).on('input change', '#lmpAddPrice, #lmpAddLink, #lmpAddId', function() {
+            syncLmpEditDraftFromForm();
+        });
+
         $(document).on('change', '#lmpAddChannel', function() {
+            if (lmpEditState) return;
             lmpModalCache.showAdd = true;
             lmpModalCache.filter = $(this).val() || 'amazon';
+            $('#lmpFormChannel').val(lmpModalCache.filter);
             $('#lmpModal').data('lmp-filter', lmpModalCache.filter);
             renderLmpMergedTable();
         });
 
+        $(document).on('click', '#lmpCancelEditBtn', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            resetLmpEditState();
+            renderLmpMergedTable();
+        });
+
+        $(document).on('click', '.edit-lmp-row-btn', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const $btn = $(this);
+            enterLmpEditMode({
+                id: $btn.attr('data-id') || $btn.data('id'),
+                channel: ($btn.attr('data-marketplace') || $btn.data('marketplace') || '').toLowerCase(),
+                extId: $btn.attr('data-ext-id') || '',
+                price: $btn.attr('data-price') || $btn.data('price'),
+                link: $btn.attr('data-link') || '',
+            });
+        });
+
+        function refreshLmpAfterMutation(sku, channel) {
+            resetLmpEditState();
+            loadLmpCompetitorsModal(sku, channel, true);
+            const currentSku = $('#modalSkuName').text();
+            if (currentSku) {
+                const currentImage = $('#modal-product-image').attr('src');
+                const currentInv = $('#modal-header-inv').text().replace(/,/g, '');
+                const currentL30 = $('#modal-header-l30').text().replace(/,/g, '');
+                const currentDil = parseFloat($('#modal-header-dil').text());
+                loadMarketplaceBreakdown(currentSku, currentImage, currentInv, currentL30, currentDil);
+            }
+        }
+
+        function saveTemuLmpEntries(sku, entries, done) {
+            $.ajax({
+                url: '/temu-lmp/save',
+                method: 'POST',
+                contentType: 'application/json',
+                headers: {
+                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content'),
+                    'Accept': 'application/json',
+                },
+                data: JSON.stringify({ sku: sku, lmp_entries: entries }),
+                success: function(r) { done(!!r.success, r.message || 'Temu LMP saved'); },
+                error: function(xhr) {
+                    done(false, (xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message)) || 'Failed to save Temu LMP');
+                }
+            });
+        }
+
+        function withTemuLmpEntries(sku, mutator, done) {
+            $.ajax({
+                url: '/cvr-master-temu-lmp',
+                method: 'GET',
+                data: { sku: sku },
+                success: function(res) {
+                    const existing = (res && res.competitors) ? res.competitors : [];
+                    const entries = existing.map(function(c) {
+                        return { price: c.price, link: c.link || c.product_link || null };
+                    });
+                    const next = mutator(entries, existing);
+                    if (next === false) {
+                        done(false, 'Temu LMP entry not found');
+                        return;
+                    }
+                    saveTemuLmpEntries(sku, next, done);
+                },
+                error: function() {
+                    done(false, 'Failed to load Temu LMP entries');
+                }
+            });
+        }
+
+        function findTemuEntryIndex(entries, editId, origPrice, origLink) {
+            const m = String(editId || '').match(/^temu-(\d+)$/i);
+            const idxFromId = m ? (parseInt(m[1], 10) - 1) : -1;
+            if (idxFromId >= 0 && idxFromId < entries.length) {
+                return idxFromId;
+            }
+            const op = parseLmpPriceInput(origPrice);
+            const ol = String(origLink || '').trim().toUpperCase();
+            for (let i = 0; i < entries.length; i++) {
+                const ep = parseLmpPriceInput(entries[i].price);
+                const el = String(entries[i].link || '').trim().toUpperCase();
+                if (!isNaN(op) && !isNaN(ep) && Math.abs(ep - op) < 0.001 && el === ol) {
+                    return i;
+                }
+            }
+            return -1;
+        }
+
         $(document).on('submit', '#lmpAddForm', function(e) {
             e.preventDefault();
             e.stopPropagation();
-            const sku = $(this).data('sku') || $('#lmpSku').text() || '';
-            const channel = ($('#lmpAddChannel').val() || 'amazon').toLowerCase();
-            let price = parseFloat($('#lmpAddPrice').val());
+            syncLmpEditDraftFromForm();
+            const sku = $(this).attr('data-sku') || $(this).data('sku') || $('#lmpSku').text() || '';
+            const channel = (
+                (lmpEditState && lmpEditState.channel)
+                || $('#lmpFormChannel').val()
+                || $('#lmpAddChannel').val()
+                || 'amazon'
+            ).toLowerCase();
+            const editId = ($('#lmpEditId').val() || (lmpEditState && lmpEditState.id) || '').toString();
+            const isEdit = !!editId;
+            let price = parseLmpPriceInput($('#lmpAddPrice').val());
             let link = ($('#lmpAddLink').val() || '').trim();
             let idVal = ($('#lmpAddId').val() || '').trim();
             if (!(price > 0)) {
                 showToast('Enter a valid LMP price', 'error');
+                $('#lmpAddPrice').focus();
                 return;
             }
             if (channel === 'amazon' && !idVal) idVal = extractAmazonAsin(link);
@@ -4585,101 +5068,87 @@
             function done(ok, msg) {
                 $btn.prop('disabled', false).html(originalHtml);
                 if (ok) {
-                    showToast(msg || 'LMP added', 'success');
-                    loadLmpCompetitorsModal(sku, channel, true);
-                    // Refresh details modal LMP column
-                    const currentSku = $('#modalSkuName').text();
-                    if (currentSku) {
-                        const currentImage = $('#modal-product-image').attr('src');
-                        const currentInv = $('#modal-header-inv').text().replace(/,/g, '');
-                        const currentL30 = $('#modal-header-l30').text().replace(/,/g, '');
-                        const currentDil = parseFloat($('#modal-header-dil').text());
-                        loadMarketplaceBreakdown(currentSku, currentImage, currentInv, currentL30, currentDil);
-                    }
+                    showToast(msg || (isEdit ? 'LMP updated' : 'LMP added'), 'success');
+                    refreshLmpAfterMutation(sku, channel);
                 } else {
-                    showToast(msg || 'Failed to add LMP', 'error');
+                    showToast(msg || (isEdit ? 'Failed to update LMP' : 'Failed to add LMP'), 'error');
                 }
             }
 
             if (channel === 'amazon') {
                 $.ajax({
-                    url: '/amazon/lmp/add',
+                    url: isEdit ? '/amazon/lmp/update' : '/amazon/lmp/add',
                     method: 'POST',
                     headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
-                    data: { sku: sku, asin: idVal, price: price, product_link: link || null, marketplace: 'amazon' },
-                    success: function(r) { done(!!r.success, r.message || 'Amazon LMP added'); },
+                    data: isEdit
+                        ? { id: editId, asin: idVal, price: price, product_link: link || null }
+                        : { sku: sku, asin: idVal, price: price, product_link: link || null, marketplace: 'amazon' },
+                    success: function(r) { done(!!r.success, r.message || (isEdit ? 'Amazon LMP updated' : 'Amazon LMP added')); },
                     error: function(xhr) {
-                        done(false, (xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message)) || 'Failed to add Amazon LMP');
+                        done(false, (xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message)) || (isEdit ? 'Failed to update Amazon LMP' : 'Failed to add Amazon LMP'));
                     }
                 });
                 return;
             }
             if (channel === 'ebay') {
                 $.ajax({
-                    url: '/ebay-lmp-add',
+                    url: isEdit ? '/ebay-lmp-update' : '/ebay-lmp-add',
                     method: 'POST',
                     headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
-                    data: { sku: sku, item_id: idVal, price: price, shipping_cost: 0, product_link: link || null },
-                    success: function(r) { done(!!r.success, r.message || 'eBay LMP added'); },
+                    data: isEdit
+                        ? { id: editId, item_id: idVal, price: price, shipping_cost: 0, product_link: link || null }
+                        : { sku: sku, item_id: idVal, price: price, shipping_cost: 0, product_link: link || null },
+                    success: function(r) { done(!!r.success, r.message || (isEdit ? 'eBay LMP updated' : 'eBay LMP added')); },
                     error: function(xhr) {
-                        done(false, (xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message)) || 'Failed to add eBay LMP');
+                        done(false, (xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message)) || (isEdit ? 'Failed to update eBay LMP' : 'Failed to add eBay LMP'));
                     }
                 });
                 return;
             }
             if (channel === 'google') {
                 $.ajax({
-                    url: '/google-lmp-add',
+                    url: isEdit ? '/google-lmp-update' : '/google-lmp-add',
                     method: 'POST',
                     headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
-                    data: { sku: sku, product_id: idVal, price: price, product_link: link || null, source: 'manual' },
-                    success: function(r) { done(!!(r.success || r.data), r.message || 'Google LMP added'); },
+                    data: isEdit
+                        ? { id: editId, product_id: idVal, price: price, product_link: link || null }
+                        : { sku: sku, product_id: idVal, price: price, product_link: link || null, source: 'manual' },
+                    success: function(r) { done(!!(r.success || r.data), r.message || (isEdit ? 'Google LMP updated' : 'Google LMP added')); },
                     error: function(xhr) {
-                        done(false, (xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message)) || 'Failed to add Google LMP');
+                        done(false, (xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message)) || (isEdit ? 'Failed to update Google LMP' : 'Failed to add Google LMP'));
                     }
                 });
                 return;
             }
-            // Temu: append to existing entries then save
-            $.ajax({
-                url: '/cvr-master-temu-lmp',
-                method: 'GET',
-                data: { sku: sku },
-                success: function(res) {
-                    const existing = (res && res.competitors) ? res.competitors : [];
-                    const entries = existing.map(function(c) {
-                        return { price: c.price, link: c.link || c.product_link || null };
-                    });
-                    entries.push({ price: price, link: link || null });
-                    $.ajax({
-                        url: '/temu-lmp/save',
-                        method: 'POST',
-                        headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
-                        data: { sku: sku, lmp_entries: entries },
-                        success: function(r) { done(!!r.success, r.message || 'Temu LMP added'); },
-                        error: function(xhr) {
-                            done(false, (xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message)) || 'Failed to add Temu LMP');
-                        }
-                    });
-                },
-                error: function() {
-                    $.ajax({
-                        url: '/temu-lmp/save',
-                        method: 'POST',
-                        headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
-                        data: { sku: sku, lmp_entries: [{ price: price, link: link || null }] },
-                        success: function(r) { done(!!r.success, r.message || 'Temu LMP added'); },
-                        error: function(xhr) {
-                            done(false, (xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message)) || 'Failed to add Temu LMP');
-                        }
-                    });
+
+            // Temu: append or replace entry then save
+            if (isEdit) {
+                const origPrice = lmpEditState ? lmpEditState.origPrice : null;
+                const origLink = lmpEditState ? lmpEditState.origLink : '';
+                withTemuLmpEntries(sku, function(entries) {
+                    const idx = findTemuEntryIndex(entries, editId, origPrice, origLink);
+                    if (idx < 0) return false;
+                    entries[idx] = { price: price, link: link || null };
+                    return entries;
+                }, done);
+                return;
+            }
+            withTemuLmpEntries(sku, function(entries) {
+                entries.push({ price: price, link: link || null });
+                return entries;
+            }, function(ok, msg) {
+                if (!ok && msg === 'Failed to load Temu LMP entries') {
+                    saveTemuLmpEntries(sku, [{ price: price, link: link || null }], done);
+                    return;
                 }
+                done(ok, msg || 'Temu LMP added');
             });
         });
 
         $(document).on('click', '.lmp-channel-filter-btn', function(e) {
             e.preventDefault();
             e.stopPropagation();
+            if (lmpEditState) resetLmpEditState();
             const filter = $(this).data('filter') || 'all';
             lmpModalCache.filter = filter;
             if (filter !== 'all') lmpModalCache.showAdd = true;
@@ -4706,29 +5175,46 @@
             e.preventDefault();
             e.stopPropagation();
             const btn = $(this);
-            const id = btn.data('id');
-            const marketplace = btn.data('marketplace');
-            const sku = btn.data('sku') || $('#lmpSku').text();
-            const price = btn.data('price');
-            const label = marketplace === 'amazon' ? 'Amazon' : (marketplace === 'google' ? 'Google' : 'eBay');
+            const id = btn.attr('data-id') || btn.data('id');
+            const marketplace = (btn.attr('data-marketplace') || btn.data('marketplace') || '').toLowerCase();
+            const sku = btn.attr('data-sku') || btn.data('sku') || $('#lmpSku').text();
+            const price = btn.attr('data-price') || btn.data('price');
+            const link = btn.closest('tr').find('a.text-primary').attr('href') || '';
+            const labelMap = { amazon: 'Amazon', ebay: 'eBay', google: 'Google', temu: 'Temu' };
+            const label = labelMap[marketplace] || marketplace;
             if (!id) return;
             if (!confirm('Delete this ' + label + ' competitor ($' + (price ? parseFloat(price).toFixed(2) : '') + ') from LMP? This cannot be undone.')) return;
+
+            function afterDelete(ok, msg) {
+                if (ok) {
+                    showToast(msg || 'Competitor deleted', 'success');
+                    refreshLmpAfterMutation(sku, marketplace);
+                } else {
+                    showToast(msg || 'Failed to delete', 'error');
+                }
+            }
+
+            if (marketplace === 'temu') {
+                withTemuLmpEntries(sku, function(entries) {
+                    const idx = findTemuEntryIndex(entries, id, price, link);
+                    if (idx < 0) return false;
+                    entries.splice(idx, 1);
+                    return entries;
+                }, afterDelete);
+                return;
+            }
+
             const url = marketplace === 'amazon' ? '/amazon/lmp/delete' : (marketplace === 'google' ? '/google-lmp-delete' : '/ebay-lmp-delete');
             $.ajax({
                 url: url,
                 method: 'POST',
                 data: { id: id, _token: '{{ csrf_token() }}' },
                 success: function(response) {
-                    if (response.success) {
-                        showToast(response.message || 'Competitor deleted', 'success');
-                        loadLmpCompetitorsModal(sku, marketplace);
-                    } else {
-                        showToast(response.error || 'Failed to delete', 'error');
-                    }
+                    afterDelete(!!response.success, response.message || response.error);
                 },
                 error: function(xhr) {
                     const msg = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : 'Failed to delete competitor';
-                    showToast(msg, 'error');
+                    afterDelete(false, msg);
                 }
             });
         });

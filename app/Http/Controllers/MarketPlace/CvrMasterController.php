@@ -58,6 +58,7 @@ use App\Models\TemuAdData;
 use App\Models\TemuLmp;
 use App\Models\MarketplacePercentage;
 use App\Services\LmpSkuGroupService;
+use App\Services\TemuShopifySalesService;
 use App\Models\MarketplaceDailyMetric;
 use App\Models\ChannelMasterCalculatedData;
 use App\Models\ChannelTabulatorColumnSetting;
@@ -297,19 +298,48 @@ class CvrMasterController extends Controller
             ]);
 
             // Fetch Temu data for GPFT/AD/PFT calculations
-            // Match /temu-decrease: map pricing onto ProductMaster SKUs via normalized SKU
+            // Pricing map onto ProductMaster SKUs via normalized SKU
             $temuPricingsAll = TemuPricing::query()->get(['sku', 'base_price', 'goods_id', 'quantity']);
             $temuPricingByProductSku = $this->buildTemuPricingMapForProductSkus($temuPricingsAll, $skus);
             $temuPricings = collect($temuPricingByProductSku)->filter(); // keyed by PM sku
-            $temuDailySales = TemuDailyData::whereIn('contribution_sku', $skus)
-                ->selectRaw('contribution_sku as sku, SUM(quantity_purchased) as temu_l30')
-                ->groupBy('contribution_sku')
-                ->get()
-                ->keyBy('sku');
-            
-            // Get Temu percentage (Temu marketplace uses 96%)
-            $temuMarketplace = MarketplacePercentage::where('marketplace', 'Temu')->first();
-            $temuPercentage = $temuMarketplace ? ($temuMarketplace->percentage / 100) : 0.96;
+
+            // L30 qty — same source as /temu-tabulator (/temu/daily-data → temu_orders)
+            $temuL30ByProductSku = array_fill_keys($skus, 0);
+            try {
+                [$temuL30Start, $temuL30End] = TemuShopifySalesService::channelMasterL30Window();
+                $temuOrderRows = TemuShopifySalesService::getOrdersTableRows($temuL30Start, $temuL30End);
+                $temuNormToPmSku = [];
+                $temuNoSpaceToPmSku = [];
+                foreach ($skus as $pmSku) {
+                    $n = self::normalizeTemuSkuForCvr((string) $pmSku);
+                    $temuNormToPmSku[$n] = $pmSku;
+                    $ns = str_replace(' ', '', $n);
+                    if ($ns !== '') {
+                        $temuNoSpaceToPmSku[$ns] = $pmSku;
+                    }
+                }
+                foreach ($temuOrderRows as $orderRow) {
+                    $raw = trim((string) ($orderRow['contribution_sku'] ?? ''));
+                    if ($raw === '') {
+                        continue;
+                    }
+                    $n = self::normalizeTemuSkuForCvr($raw);
+                    $pmKey = $temuNormToPmSku[$n] ?? null;
+                    if ($pmKey === null) {
+                        $ns = str_replace(' ', '', $n);
+                        $pmKey = $temuNoSpaceToPmSku[$ns] ?? null;
+                    }
+                    if ($pmKey === null) {
+                        continue;
+                    }
+                    $temuL30ByProductSku[$pmKey] += (int) ($orderRow['quantity_purchased'] ?? 0);
+                }
+            } catch (\Throwable $e) {
+                Log::warning('CVR Master Temu L30 (temu_orders / temu-tabulator): ' . $e->getMessage());
+            }
+
+            // Margin — marketplace_percentages Temu (temu-decrease / temu-tabulator)
+            $temuPercentage = TemuShopifySalesService::temuMarginDecimal();
 
             // Temu views = SUM(product_clicks) by goods_id — same source as /temu-decrease
             // Index by both raw and normalized goods_id so joins don't miss type/format variants
@@ -911,17 +941,18 @@ class CvrMasterController extends Controller
                 $temuBasePrice = $temuPricing ? floatval($temuPricing->base_price ?? 0) : 0;
                 $temuPrice = $temuBasePrice > 0 ? ($temuBasePrice <= 26.99 ? $temuBasePrice + 2.99 : $temuBasePrice) : 0;
                 
-                $temuSales = $temuDailySales->get($sku);
-                $temuL30 = $temuSales ? intval($temuSales->temu_l30 ?? 0) : 0;
+                $temuL30 = (int) ($temuL30ByProductSku[$sku] ?? 0);
                 
-                // Temu GPFT% = (price × percentage - lp - temu_ship) / price × 100
                 $temuShip = 0;
                 if ($values) {
                     foreach ($values as $k => $v) {
                         if (strtolower($k) === "temu_ship") $temuShip = floatval($v);
                     }
                 }
-                $temuGPFT = $temuPrice > 0 ? ((($temuPrice * $temuPercentage - $lp - $temuShip) / $temuPrice) * 100) : 0;
+                // GPFT% — same as /temu-decrease: ((FB × margin − LP − temu_ship) / FB) × 100
+                $temuGPFT = $temuPrice > 0
+                    ? ((($temuPrice * $temuPercentage - $lp - $temuShip) / $temuPrice) * 100)
+                    : 0;
                 
                 // Get Temu ad spend
                 $goodsId = $temuPricing ? ($temuPricing->goods_id ?? null) : null;
@@ -2203,7 +2234,7 @@ class CvrMasterController extends Controller
                 // Try case-insensitive
                 $temuMarketplaceData = MarketplacePercentage::whereRaw('LOWER(marketplace) = ?', ['temu'])->first();
             }
-            $temuPercentage = $temuMarketplaceData && $temuMarketplaceData->percentage ? ($temuMarketplaceData->percentage / 100) : 0.96;
+            $temuPercentage = TemuShopifySalesService::temuMarginDecimal();
             
             Log::info('Temu Marketplace % - Found: ' . ($temuMarketplaceData ? 'Yes' : 'No') . ', percentage: ' . ($temuMarketplaceData->percentage ?? 'NULL') . ', Final: ' . $temuPercentage);
             
@@ -2575,15 +2606,22 @@ class CvrMasterController extends Controller
                 'seller_link' => $sb2cLinks[1],
             ];
 
-            // Add Shopify B2B - Same logic as B2C
+            // Add Shopify B2B — L30 from shopify_b2b_daily_data (same as /shopify-b2b/daily-sales)
             $sb2bPrice = $shopifySku ? floatval($shopifySku->b2b_price ?? 0) : 0;
-            $sb2bL30 = DB::table('shopify_b2b_daily_data')->where('sku', $fullSku)->count();
+            $sb2bL30 = (int) (DB::table('shopify_b2b_daily_data')
+                ->where('sku', $fullSku)
+                ->where('period', 'l30')
+                ->where('financial_status', '!=', 'refunded')
+                ->sum('quantity') ?? 0);
             
             $sb2bMarketplace = MarketplacePercentage::where('marketplace', 'ShopifyB2B')->first();
             $sb2bMargin = $sb2bMarketplace ? ($sb2bMarketplace->percentage / 100) : 0.95;
             
-            $sb2bGPFT = $sb2bPrice > 0 ? (($sb2bPrice * $sb2bMargin - $lp - $ship) / $sb2bPrice) * 100 : 0;
-            $sb2bNPFT = $sb2bL30 == 0 ? $sb2bGPFT : $sb2bGPFT;
+            // GPFT% / GROI% — same as Business Analytics (/shopify-b2b-pricing): no Ship
+            // GPFT = (Price × Margin − LP) / Price × 100
+            // GROI (modal) = (Price × Margin − LP) / LP × 100  (ship passed as 0)
+            $sb2bGPFT = $sb2bPrice > 0 ? (($sb2bPrice * $sb2bMargin - $lp) / $sb2bPrice) * 100 : 0;
+            $sb2bNPFT = $sb2bGPFT;
             
             $sb2bDataView = ShopifyB2BDataView::where('sku', $fullSku)->first();
             $sb2bSuggested = ['sprice' => 0, 'sgpft' => 0, 'sroi' => 0, 'spft' => 0];
@@ -2624,7 +2662,7 @@ class CvrMasterController extends Controller
                 'sroi' => $sb2bSuggested['sroi'],
                 'spft' => $sb2bSuggested['spft'],
                 'lp' => $lp,
-                'ship' => $ship,
+                'ship' => 0, // B2B formulas exclude Ship (Business Analytics / shopify-b2b-pricing)
                 'margin' => $sb2bMargin,
                 'pushed_by' => $sb2bPushedBy,
                 'pushed_at' => $sb2bPushedAt,
@@ -2742,16 +2780,17 @@ class CvrMasterController extends Controller
                 'seller_link' => $reverbLinks[1],
             ];
 
-            // Add Temu (Temu marketplace uses 96%) — pricing/views match /temu-decrease
-            $temuMarketplace = MarketplacePercentage::where('marketplace', 'Temu')->first();
-            $temuMargin = $temuMarketplace ? ($temuMarketplace->percentage / 100) : 0.96;
+            // Add Temu — L30/GPFT same source & formula as /temu-tabulator
+            $temuMargin = TemuShopifySalesService::temuMarginDecimal();
+            $temu2Marketplace = MarketplacePercentage::where('marketplace', 'TemuTwo')->first();
+            $temu2Margin = $temu2Marketplace ? ($temu2Marketplace->percentage / 100) : $temuMargin;
+            $normalizedSku = self::normalizeTemuSkuForCvr($fullSku);
             $temuPriceMapOne = $this->buildTemuPricingMapForProductSkus(
                 TemuPricing::query()->get(['sku', 'base_price', 'goods_id', 'quantity']),
                 [$fullSku]
             );
             $temuPricing = $temuPriceMapOne[$fullSku] ?? null;
             if (!$temuPricing) {
-                // Keep earlier normalized lookup if map missed
                 $temuPricing = TemuPricing::where(function ($query) use ($fullSku, $normalizedSku) {
                     $query->where('sku', $fullSku)->orWhere('sku', $normalizedSku);
                 })->first();
@@ -2759,27 +2798,46 @@ class CvrMasterController extends Controller
             $temuPrice = 0;
             if ($temuPricing) {
                 $basePrice = $temuPricing->base_price ?? 0;
-                $temuPrice = $basePrice > 0 ? ($basePrice <= 26.99 ? $basePrice + 2.99 : $basePrice) : 0;
+                // FB Prc — same +$2.99 rule as TemuShopifySalesService::computeFbPrice / temu-tabulator
+                $temuPrice = $basePrice > 0
+                    ? TemuShopifySalesService::computeFbPrice((float) $basePrice, 1)
+                    : 0;
             }
-            // Re-resolve views from this pricing row's goods_id (authoritative for the Temu row)
+            // Views: temu_view_data SUM(product_clicks) by goods_id
             $temuViews = $temuPricing
                 ? $this->resolveTemuProductClicks($temuPricing->goods_id ?? null)
                 : null;
-            if (
-                ($temuViews === null || $temuViews === 0)
-                && $viewsPullData
-                && $viewsPullData->temu !== null
-                && $viewsPullData->temu !== ''
-            ) {
-                $temuViews = intval($viewsPullData->temu);
+
+            // L30 qty — same source as /temu-tabulator (/temu/daily-data → temu_orders)
+            $temuL30 = 0;
+            try {
+                [$apiStart, $apiEnd] = TemuShopifySalesService::channelMasterL30Window();
+                $orderRows = TemuShopifySalesService::getOrdersTableRows($apiStart, $apiEnd);
+                $normFull = $normalizedSku;
+                $normNoSpace = str_replace(' ', '', $normFull);
+                foreach ($orderRows as $row) {
+                    $raw = trim((string) ($row['contribution_sku'] ?? ''));
+                    if ($raw === '') {
+                        continue;
+                    }
+                    $n = self::normalizeTemuSkuForCvr($raw);
+                    if ($n === $normFull || str_replace(' ', '', $n) === $normNoSpace) {
+                        $temuL30 += (int) ($row['quantity_purchased'] ?? 0);
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning('CVR breakdown Temu L30 (temu_orders / temu-tabulator): ' . $e->getMessage());
             }
-            $temuL30 = TemuDailyData::where(function ($query) use ($fullSku, $normalizedSku) {
-                $query->where('contribution_sku', $fullSku)
-                      ->orWhere('contribution_sku', $normalizedSku);
-            })->selectRaw('SUM(quantity_purchased) as l30')->value('l30') ?? 0;
-            $temuGPFT = $temuPrice > 0 ? (($temuPrice * $temuMargin - $lp - $temuShip) / $temuPrice) * 100 : 0;
-            $temuNPFT = $temuL30 == 0 ? $temuGPFT : $temuGPFT;
-            
+
+            // GPFT% / GROI% — same as /temu-decrease:
+            // GPFT = (Price × margin − LP − temu_ship) / Price × 100
+            // GROI = (Price × margin − LP − temu_ship) / LP × 100  (modal uses row margin)
+            $temuGPFT = $temuPrice > 0
+                ? round((($temuPrice * $temuMargin - $lp - $temuShip) / $temuPrice) * 100, 2)
+                : 0;
+            $temuNPFT = $temuGPFT;
+
+            // SPRICE: /temu-decrease stores lowercase sprice (+ sgprft_percent / sroi_percent)
             $temuDataView = TemuDataView::where(function ($query) use ($fullSku, $normalizedSku) {
                 $query->where('sku', $fullSku)->orWhere('sku', $normalizedSku);
             })->first();
@@ -2787,11 +2845,15 @@ class CvrMasterController extends Controller
             if ($temuDataView) {
                 $val = is_array($temuDataView->value) ? $temuDataView->value : json_decode($temuDataView->value, true);
                 if (is_array($val)) {
-                    $temuSuggested = ['sprice' => $val['SPRICE'] ?? 0, 'sgpft' => $val['SGPFT'] ?? 0,
-                                      'sroi' => $val['SROI'] ?? 0, 'spft' => $val['SPFT'] ?? 0];
+                    $temuSuggested = [
+                        'sprice' => floatval($val['sprice'] ?? $val['SPRICE'] ?? 0),
+                        'sgpft' => floatval($val['sgprft_percent'] ?? $val['SGPFT'] ?? $val['sgpft'] ?? 0),
+                        'sroi' => floatval($val['sroi_percent'] ?? $val['SROI'] ?? $val['sroi'] ?? 0),
+                        'spft' => floatval($val['SPFT'] ?? $val['spft'] ?? 0),
+                    ];
                 }
             }
-            
+
             $breakdownData[] = [
                 'marketplace' => 'Temu',
                 'sku' => $temuPricing ? $fullSku : 'Not Listed',
@@ -2815,6 +2877,7 @@ class CvrMasterController extends Controller
                 'seller_link' => $temuLinks[1],
             ];
 
+            // Temu2 — same sources as /temu2-decrease
             $temu2PricingRow = null;
             $temu2PriceBr = 0;
             $temu2L30Br = 0;
@@ -2836,8 +2899,10 @@ class CvrMasterController extends Controller
                         $temu2BaseBr = $temu2PricingRow->base_price ?? 0;
                         $temu2PriceBr = $temu2BaseBr > 0 ? ($temu2BaseBr <= 26.99 ? $temu2BaseBr + 2.99 : $temu2BaseBr) : 0;
                     }
-                    $temu2GPFTBr = $temu2PriceBr > 0 ? (($temu2PriceBr * $temuMargin - $lp - $temuShip) / $temu2PriceBr) * 100 : 0;
-                    $temu2NPFTBr = $temu2L30Br == 0 ? $temu2GPFTBr : $temu2GPFTBr;
+                    $temu2GPFTBr = $temu2PriceBr > 0
+                        ? round((($temu2PriceBr * $temu2Margin - $lp - $temuShip) / $temu2PriceBr) * 100, 2)
+                        : 0;
+                    $temu2NPFTBr = $temu2GPFTBr; // Temu2 Ads% forced 0 on /temu2-decrease
                     if ($temu2PricingRow) {
                         $temu2ViewsBr = $this->resolveTemuProductClicks(
                             $temu2PricingRow->goods_id ?? null,
@@ -2854,12 +2919,12 @@ class CvrMasterController extends Controller
                     if ($temu2DataView) {
                         $v2d = is_array($temu2DataView->value) ? $temu2DataView->value : json_decode($temu2DataView->value, true);
                         if (is_array($v2d)) {
-                            $suggSp = $v2d['SPRICE'] ?? $v2d['sprice'] ?? 0;
+                            $suggSp = $v2d['sprice'] ?? $v2d['SPRICE'] ?? 0;
                             $temu2Suggested = [
                                 'sprice' => floatval($suggSp),
-                                'sgpft' => floatval($v2d['SGPFT'] ?? $v2d['sgprft_percent'] ?? 0),
-                                'sroi' => floatval($v2d['SROI'] ?? $v2d['sroi_percent'] ?? 0),
-                                'spft' => floatval($v2d['SPFT'] ?? 0),
+                                'sgpft' => floatval($v2d['sgprft_percent'] ?? $v2d['SGPFT'] ?? 0),
+                                'sroi' => floatval($v2d['sroi_percent'] ?? $v2d['SROI'] ?? 0),
+                                'spft' => floatval($v2d['SPFT'] ?? $v2d['spft'] ?? 0),
                             ];
                         }
                     }
@@ -2883,6 +2948,7 @@ class CvrMasterController extends Controller
                 'l30' => $temu2L30Br,
                 'gpft' => $temu2GPFTBr,
                 'ad' => 0,
+                'tacos_ch' => 0,
                 'npft' => $temu2NPFTBr,
                 'is_listed' => $temu2HasListSignal,
                 'sprice' => $temu2Suggested['sprice'],
@@ -2891,7 +2957,7 @@ class CvrMasterController extends Controller
                 'spft' => $temu2Suggested['spft'],
                 'lp' => $lp,
                 'ship' => $temuShip,
-                'margin' => $temuMargin,
+                'margin' => $temu2Margin,
                 'pushed_by' => null,
                 'pushed_at' => null,
                 'buyer_link' => $temu2Buyer,
@@ -3345,12 +3411,16 @@ class CvrMasterController extends Controller
                 $mp = strtolower(trim((string) ($row['marketplace'] ?? '')));
                 $gpftPct = (float) ($row['gpft'] ?? 0);
 
-                // TikTok uses SKU TACOS from campaign reports (already set); others use channel Ads%
+                // TikTok: SKU TACOS; Temu2: Ads% = 0 (same as /temu2-decrease); else channel Ads%
                 if ($mp === 'tiktok') {
                     $adsPct = (float) ($row['tacos_ch'] ?? $row['ad'] ?? 0);
                     $row['ad'] = $adsPct;
                     $row['tacos_ch'] = $adsPct;
                     $row['npft'] = round($gpftPct - $adsPct, 2);
+                } elseif ($mp === 'temu2') {
+                    $row['ad'] = 0;
+                    $row['tacos_ch'] = 0;
+                    $row['npft'] = round($gpftPct, 2);
                 } else {
                     $adsPct = (float) $getChannelAdsPercent($row['marketplace'] ?? '');
                     $row['tacos_ch'] = $adsPct;
@@ -3785,22 +3855,22 @@ class CvrMasterController extends Controller
             }
             if (!is_array($value)) $value = [];
             
-            // Update values (Walmart uses lowercase 'sprice', others use 'SPRICE')
-            if ($marketplace === 'walmart') {
-                $value['sprice'] = $sprice;  // Walmart uses lowercase
+            // Update values (Walmart/Temu use lowercase 'sprice'; others use 'SPRICE')
+            if ($marketplace === 'walmart' || $marketplace === 'temu' || $marketplace === 'temu2') {
+                $value['sprice'] = $sprice;
             } else {
-                $value['SPRICE'] = $sprice;  // Others use uppercase
+                $value['SPRICE'] = $sprice;
             }
             $value['SGPFT'] = $sgpft;
             $value['SROI'] = $sroi;
             $value['SPFT'] = $spft;
             
-            // Remove lowercase duplicates (but not for Walmart which uses lowercase 'sprice');
-            // Temu 2: also persist sprice + sgprft_percent + sroi_percent (same as Temu2 decrease / saveTemu2Sprice)
+            // Temu / Temu2: keep lowercase keys used by /temu-decrease and /temu2-decrease
             if ($marketplace === 'walmart') {
                 unset($value['SPRICE']);
-            } elseif ($marketplace === 'temu2') {
+            } elseif ($marketplace === 'temu' || $marketplace === 'temu2') {
                 $value['sprice'] = $sprice;
+                $value['SPRICE'] = $sprice; // keep both so CVR + decrease stay in sync
                 $value['sgprft_percent'] = round($sgpft, 2);
                 $value['sroi_percent'] = round($sroi, 2);
             } else {
@@ -4916,46 +4986,62 @@ class CvrMasterController extends Controller
 
     /**
      * Bulk change price for selected SKUs across all marketplaces.
-     * - Doba & Shopify Wholesale: 25% discount (price * 0.75)
-     * - Shopify B2B: 25% discount + shipping deducted (price * 0.75 - ship)
+     * - Doba & Shopify B2B: 25% discount (price * 0.75); B2B excludes Ship
      * - Others (Amazon, Walmart, Shopify B2C): Full price
      */
     public function bulkChangePrice(Request $request)
     {
-        $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
-            'price' => 'required|numeric|min:0.01|max:999999.99',
-            'skus' => 'required|array',
-            'skus.*' => 'string'
-        ]);
+        // Prefer per-SKU items (Decrease / Increase / Same Price modes).
+        // Legacy: single `price` + `skus[]` still supported.
+        $rawItems = $request->input('items');
+        $skuPrices = [];
 
-        if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Validation failed: ' . $validator->errors()->first()
-            ], 400);
+        if (is_array($rawItems) && count($rawItems) > 0) {
+            foreach ($rawItems as $item) {
+                if (!is_array($item)) {
+                    continue;
+                }
+                $sku = strtoupper(trim((string) ($item['sku'] ?? '')));
+                $price = isset($item['price']) ? round(floatval($item['price']), 2) : 0;
+                if ($sku !== '' && $price >= 0.01) {
+                    $skuPrices[$sku] = $price;
+                }
+            }
+        } else {
+            $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
+                'price' => 'required|numeric|min:0.01|max:999999.99',
+                'skus' => 'required|array',
+                'skus.*' => 'string',
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Validation failed: ' . $validator->errors()->first(),
+                ], 400);
+            }
+
+            $basePrice = round(floatval($request->input('price')), 2);
+            $skus = array_map(fn ($s) => strtoupper(trim($s)), $request->input('skus', []));
+            $skus = array_values(array_filter(array_unique($skus)));
+            foreach ($skus as $sku) {
+                $skuPrices[$sku] = $basePrice;
+            }
         }
 
-        $basePrice = round(floatval($request->input('price')), 2);
-        $skus = array_map(fn($s) => strtoupper(trim($s)), $request->input('skus', []));
-        $skus = array_values(array_filter(array_unique($skus)));
-
-        if (empty($skus)) {
-            return response()->json(['success' => false, 'message' => 'No valid SKUs provided'], 400);
+        if ($skuPrices === []) {
+            return response()->json(['success' => false, 'message' => 'No valid SKUs / prices provided'], 400);
         }
 
+        $mode = strtolower(trim((string) $request->input('mode', 'same')));
         $pushableMarketplaces = ['amazon', 'doba', 'walmart', 'sb2c', 'shopify', 'sb2b', 'reverb'];
         $updated = 0;
         $errors = [];
 
-        foreach ($skus as $sku) {
-            $productMaster = ProductMaster::where('sku', $sku)->first();
-            $values = $productMaster && $productMaster->Values
-                ? (is_array($productMaster->Values) ? $productMaster->Values : json_decode($productMaster->Values ?? '{}', true) ?? [])
-                : [];
-            $ship = floatval($values['ship'] ?? $productMaster->ship ?? 0);
-
+        foreach ($skuPrices as $sku => $basePrice) {
             $dobaPrice = round($basePrice * 0.75, 2);
-            $sb2bPrice = max(0.01, round($basePrice * 0.75 - $ship, 2));
+            // B2B excludes Ship from pricing formulas (same as Business Analytics)
+            $sb2bPrice = max(0.01, round($basePrice * 0.75, 2));
 
             foreach ($pushableMarketplaces as $mp) {
                 $price = match ($mp) {
@@ -4967,7 +5053,7 @@ class CvrMasterController extends Controller
                 try {
                     // Keep suggested SPRICE in sync with bulk pricing rules,
                     // so Doba/Shopify wholesale shows 25% reduced price in UI.
-                    if (in_array($mp, ['doba', 'sb2b'])) {
+                    if (in_array($mp, ['doba', 'sb2b'], true)) {
                         $this->saveSpriceToView($sku, $mp, $price);
                     }
 
@@ -4975,7 +5061,7 @@ class CvrMasterController extends Controller
                         'sku' => $sku,
                         'price' => $price,
                         'marketplace' => $mp,
-                        '_token' => $request->input('_token')
+                        '_token' => $request->input('_token'),
                     ]);
                     $req->setUserResolver($request->getUserResolver());
                     $response = $this->pushPriceToAmazon($req);
@@ -4993,11 +5079,18 @@ class CvrMasterController extends Controller
             }
         }
 
+        $skuCount = count($skuPrices);
+        $modeLabel = match ($mode) {
+            'increase' => 'Increase',
+            'decrease' => 'Decrease',
+            default => 'Same Price',
+        };
+
         return response()->json([
             'success' => true,
             'updated' => $updated,
             'errors' => array_slice($errors, 0, 10),
-            'message' => "Price \${$basePrice} applied. " . count($skus) . " SKU(s) processed across marketplaces."
+            'message' => "{$modeLabel} applied to {$skuCount} SKU(s) across marketplaces.",
         ]);
     }
 

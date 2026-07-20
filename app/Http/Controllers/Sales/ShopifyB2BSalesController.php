@@ -78,8 +78,8 @@ class ShopifyB2BSalesController extends Controller
             // COGS = LP * quantity
             $cogs = $lp * $quantity;
 
-            // PFT Each = (price * 0.95) - lp - ship_cost (Shopify B2B uses 95% margin)
-            $pftEach = ($price * 0.95) - $lp - $shipCost;
+            // PFT Each = (price * 0.95) - lp  (B2B excludes Ship; same as Business Analytics)
+            $pftEach = ($price * 0.95) - $lp;
 
             // PFT Each % = (pft_each / price) * 100
             $pftEachPct = $price > 0 ? ($pftEach / $price) * 100 : 0;

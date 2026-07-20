@@ -3303,6 +3303,59 @@ class OverallAmazonController extends Controller
         }
     }
 
+    /**
+     * Update an existing Amazon LMP competitor price/link.
+     */
+    public function updateAmazonLmp(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'id' => 'required|integer',
+                'price' => 'required|numeric|min:0.01',
+                'product_link' => 'nullable|string',
+                'asin' => 'nullable|string',
+            ]);
+
+            $lmp = AmazonSkuCompetitor::find($validated['id']);
+            if (!$lmp) {
+                return response()->json(['error' => 'LMP entry not found'], 404);
+            }
+
+            DB::beginTransaction();
+            $lmp->price = $validated['price'];
+            if (array_key_exists('product_link', $validated)) {
+                $lmp->product_link = $validated['product_link'] ?: null;
+            }
+            if (!empty($validated['asin'])) {
+                $lmp->asin = strtoupper(trim($validated['asin']));
+            }
+            $lmp->save();
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'LMP updated successfully',
+                'data' => [
+                    'id' => $lmp->id,
+                    'asin' => $lmp->asin,
+                    'price' => floatval($lmp->price),
+                    'product_link' => $lmp->product_link,
+                ],
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'error' => 'Validation failed',
+                'messages' => $e->errors(),
+            ], 422);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Error updating Amazon LMP', ['error' => $e->getMessage()]);
+            return response()->json([
+                'error' => 'Failed to update LMP: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
     public function getCampaignDataBySku(Request $request)
     {
         $sku = $request->input('sku');

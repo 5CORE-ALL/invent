@@ -1507,6 +1507,8 @@
 @section('script-bottom')
 <script>
     const COLUMN_VIS_KEY = "temu_decrease_column_visibility";
+    // Temu margin from marketplace_percentages (Temu) — same source as backend GROI/GPFT
+    const TEMU_MARGIN = {{ (float) ($temuMargin ?? \App\Services\TemuShopifySalesService::temuMarginDecimal()) }};
     /** Stored in DB table channel_tabulator_column_settings (shared across all users — same pattern as amazon/ebay1/ebay2/ebay3/mfrg tabulators). */
     const TABULATOR_COLUMN_CHANNEL = 'temu_decrease';
     const TABULATOR_COLUMN_VISIBILITY_URL = '/tabulator-column-visibility';
@@ -2877,9 +2879,8 @@
          * edit. Selection is cleared after each batch so the next run starts fresh.
          * ============================================================================
          */
-        // Temu margin fallback used both for back-solve and skip-decisions. 0.96 matches
-        // the backend default when MarketplacePercentage 'TemuTwo' has no row.
-        const TEMU_MARGIN_FALLBACK = 0.96;
+        // Fallback when a row is missing percentage — page-level TEMU_MARGIN from marketplace_percentages
+        const TEMU_MARGIN_FALLBACK = TEMU_MARGIN;
 
         // Inverse of the backend's `stemuPrice = sprice <= 26.99 ? sprice + 2.99 : sprice`
         // transformation: returns the sprice that would produce `desiredStemuPrice`
@@ -3749,8 +3750,10 @@
                 const hasSales = temuL30 > 0 && price > 0;
                 if (hasSales) {
                     const fbPrice = price <= 26.99 ? price + 2.99 : price;
-                    // PFT % formula: (price * 0.96 - lp - temuship) / price — use fbPrice as price
-                    const pftDecimal = fbPrice > 0 ? (fbPrice * 0.96 - lpPerUnit - temuShip) / fbPrice : 0;
+                    // Same margin as GROI / backend (row.percentage from marketplace_percentages)
+                    const marginRaw = parseFloat(row['percentage']);
+                    const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : TEMU_MARGIN;
+                    const pftDecimal = fbPrice > 0 ? (fbPrice * margin - lpPerUnit - temuShip) / fbPrice : 0;
                     const rowProfit = pftDecimal * fbPrice * temuL30;
                     totalRevenue += fbPrice * temuL30; // Use fbPrice for revenue (matches marketplace_daily_metrics total_sales)
                     totalProfit += rowProfit;
@@ -3845,7 +3848,7 @@
             });
             
             // Calculate averages
-            // Avg GPRFT% = (Total Profit / Total Revenue) * 100 — profit from PFT formula (Temu Price * 0.96 - lp - temuship) / Temu Price
+            // Avg GPRFT% = (Total Profit / Total Revenue) * 100 — margin from marketplace_percentages
             const avgGprft = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : (totalProducts > 0 ? totalGprft / totalProducts : 0);
             // Weighted GROI% = (Total Profit / Total LP/COGS) × 100
             const avgGroi = totalLp > 0 ? (totalProfit / totalLp) * 100 : (totalProducts > 0 ? totalGroi / totalProducts : 0);
@@ -4673,7 +4676,10 @@
                             if (price <= 0) return 0;
                             const lp = parseFloat(row['lp']) || 0;
                             const temuShip = parseFloat(row['temu_ship']) || 0;
-                            return ((price * 0.96 - lp - temuShip) / price) * 100;
+                            const marginRaw = parseFloat(row['percentage']);
+                            const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : TEMU_MARGIN;
+                            // Same formula/margin as GROI and backend profit_percent
+                            return ((price * margin - lp - temuShip) / price) * 100;
                         };
                         return calc(aRow.getData()) - calc(bRow.getData());
                     },
@@ -4683,8 +4689,10 @@
                         const price = parseFloat(rowData['temu_price']) || 0;  // Temu Price column
                         const lp = parseFloat(rowData['lp']) || 0;
                         const temuShip = parseFloat(rowData['temu_ship']) || 0;
-                        // PFT % = (price * 0.96 - lp - temuship) / price * 100
-                        const value = price > 0 ? ((price * 0.96 - lp - temuShip) / price) * 100 : 0;
+                        const marginRaw = parseFloat(rowData['percentage']);
+                        const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : TEMU_MARGIN;
+                        // GPRFT% = ((Temu Price × margin − LP − temu_ship) / Temu Price) × 100 — same margin as GROI
+                        const value = price > 0 ? ((price * margin - lp - temuShip) / price) * 100 : 0;
                         const colorClass = getPftColor(value);
                         const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="profit_percent" title="View GPRFT% chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #ff1493;"></span></button>` : '';
                         return `<span class="dil-percent-value ${colorClass}">${Math.round(value)}%</span> ${dotBtn}`.trim();
@@ -4954,7 +4962,8 @@
                         const currentTemuPrice = parseFloat(rowData['temu_price']) || 0;
                         const lp = parseFloat(rowData['lp']) || 0;
                         const temuShip = parseFloat(rowData['temu_ship']) || 0;
-                        const percentage = 0.95; // Temu marketplace percentage (hardcoded 95)
+                        const marginRaw = parseFloat(rowData['percentage']);
+                        const percentage = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : TEMU_MARGIN;
                         
                         if (sprice === 0) return '';
                         
@@ -4986,7 +4995,8 @@
                         const adsPercentRow = parseFloat(rowData['ads_percent']) || 0;
                         const spend = parseFloat(rowData['spend']) || 0;
                         const temuL30 = parseFloat(rowData['temu_l30']) || 0;
-                        const percentage = 0.95;
+                        const marginRawSpft = parseFloat(rowData['percentage']);
+                        const percentage = (isFinite(marginRawSpft) && marginRawSpft > 0) ? marginRawSpft : TEMU_MARGIN;
                         
                         if (sprice === 0) return '';
                         
@@ -5041,12 +5051,12 @@
                             ? sprice
                             : (sprice <= 26.99 ? sprice + 2.99 : sprice);
                         // Use the SAME marketplace take-home % the backend GROI calc used
-                        // (delivered with each row as `percentage`). Falls back to 0.96 only
+                        // (delivered with each row as `percentage`). Falls back to TEMU_MARGIN
                         // when the field is missing, matching the backend default. This keeps
                         // SROI and GROI on identical margins so the only legit difference is
                         // sprice vs current temu_price — not a margin mismatch.
                         const marginRaw = parseFloat(rowData['percentage']);
-                        const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : 0.96;
+                        const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : TEMU_MARGIN;
                         const sroi = ((stemuPrice * margin - lp - temuShip) / lp) * 100;
                         const colorClass = getRoiColor(sroi);
                         return `<span class="dil-percent-value ${colorClass}">${Math.round(sroi)}%</span>`;
@@ -5558,11 +5568,13 @@
                 });
             }
 
-            // GPFT filter — use same formula as column: (temu_price * 0.96 - lp - temu_ship) / temu_price * 100
+            // GPFT filter — same formula/margin as GPRFT column & GROI (row.percentage)
             if (gpftFilter !== 'all') {
                 table.addFilter(function(data) {
                     const price = parseFloat(data.temu_price) || 0;
-                    const gpft = price > 0 ? ((price * 0.96 - (parseFloat(data.lp) || 0) - (parseFloat(data.temu_ship) || 0)) / price) * 100 : 0;
+                    const marginRaw = parseFloat(data.percentage);
+                    const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : TEMU_MARGIN;
+                    const gpft = price > 0 ? ((price * margin - (parseFloat(data.lp) || 0) - (parseFloat(data.temu_ship) || 0)) / price) * 100 : 0;
                     if (gpftFilter === 'negative') return gpft < 0;
                     if (gpftFilter === '0-10') return gpft >= 0 && gpft < 10;
                     if (gpftFilter === '10-20') return gpft >= 10 && gpft < 20;

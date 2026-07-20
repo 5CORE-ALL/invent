@@ -200,6 +200,52 @@ class GoogleLmpController extends Controller
     }
 
     /**
+     * Update an existing Google LMP competitor price/link.
+     */
+    public function updateGoogleLmp(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'id' => 'required|integer',
+                'price' => 'required|numeric|min:0',
+                'product_link' => 'nullable|string',
+                'product_id' => 'nullable|string',
+            ]);
+
+            $lmp = GoogleSkuCompetitor::find($validated['id']);
+            if (!$lmp) {
+                return response()->json(['error' => 'LMP entry not found'], 404);
+            }
+
+            DB::beginTransaction();
+            $lmp->price = $validated['price'];
+            if (array_key_exists('product_link', $validated)) {
+                $lmp->product_link = $validated['product_link'] ?: null;
+            }
+            if (!empty($validated['product_id'])) {
+                $lmp->product_id = $validated['product_id'];
+            }
+            $lmp->save();
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'LMP updated successfully',
+                'data' => $lmp,
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'error' => 'Validation failed',
+                'messages' => $e->errors(),
+            ], 422);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+
+            return response()->json(['error' => 'Failed to update LMP: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
      * Import top Google Shopping results for a SKU search query into google_sku_competitors.
      */
     public function importGoogleSearch(Request $request)

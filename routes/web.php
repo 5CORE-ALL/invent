@@ -3335,6 +3335,14 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/shopify-b2c-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\Shopifyb2cController::class, 'getColumnVisibility'])->name('shopify.b2c.pricing.column.get');
     Route::post('/shopify-b2c-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\Shopifyb2cController::class, 'setColumnVisibility'])->name('shopify.b2c.pricing.column.set');
 
+    // Shopify B2B Tabulator Routes (sales from /shopify-b2b/daily-sales; price/SPRICE via pricing-master-cvr sb2b)
+    Route::get('/shopify-b2b-pricing', [\App\Http\Controllers\MarketPlace\Shopifyb2bController::class, 'shopifyB2bTabulatorView'])->name('shopify.b2b.pricing');
+    Route::get('/shopify-b2b-data-json', [\App\Http\Controllers\MarketPlace\Shopifyb2bController::class, 'shopifyB2bDataJson'])->name('shopify.b2b.data.json');
+    Route::post('/shopify-b2b-update-listed-live', [\App\Http\Controllers\MarketPlace\Shopifyb2bController::class, 'updateShopifyB2bListedLive'])->name('shopify.b2b.update.listed.live');
+    Route::get('/shopify-b2b-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\Shopifyb2bController::class, 'getColumnVisibility'])->name('shopify.b2b.pricing.column.get');
+    Route::post('/shopify-b2b-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\Shopifyb2bController::class, 'setColumnVisibility'])->name('shopify.b2b.pricing.column.set');
+    Route::post('/shopify-b2b/save-sprice', [\App\Http\Controllers\MarketPlace\Shopifyb2bController::class, 'saveSpriceToDatabase'])->name('shopify.b2b.save.sprice');
+
     // eBay 2 Sales Routes
     Route::get('/ebay2/daily-sales-data', [\App\Http\Controllers\Sales\Ebay2SalesController::class, 'getData'])->name('ebay2.daily.sales.data');
     Route::get('/ebay2/daily-sales', [\App\Http\Controllers\Sales\Ebay2SalesController::class, 'index'])->name('ebay2.daily.sales');
@@ -3781,6 +3789,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/import-amazon-ratings', [OverallAmazonController::class, 'importAmazonRatings']);
     Route::get('/amazon/competitors', [OverallAmazonController::class, 'getAmazonCompetitors'])->name('amazon.competitors.get');
     Route::post('/amazon/lmp/add', [OverallAmazonController::class, 'addAmazonLmp'])->name('amazon.lmp.add');
+    Route::post('/amazon/lmp/update', [OverallAmazonController::class, 'updateAmazonLmp'])->name('amazon.lmp.update');
     Route::post('/amazon/lmp/delete', [OverallAmazonController::class, 'deleteAmazonLmp'])->name('amazon.lmp.delete.post');
     Route::delete('/amazon/lmp/delete', [OverallAmazonController::class, 'deleteAmazonLmp'])->name('amazon.lmp.delete');
     Route::post('/update-amazon-rating', [OverallAmazonController::class, 'updateAmazonRating']);
@@ -3959,11 +3968,13 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // eBay LMP (Lowest Marketplace Price) routes
     Route::get('/ebay-lmp-data', [EbayController::class, 'getEbayLmpData'])->name('ebay.lmp.data');
     Route::post('/ebay-lmp-add', [EbayController::class, 'addEbayLmp'])->name('ebay.lmp.add');
+    Route::post('/ebay-lmp-update', [EbayController::class, 'updateEbayLmp'])->name('ebay.lmp.update');
     Route::post('/ebay-lmp-delete', [EbayController::class, 'deleteEbayLmp'])->name('ebay.lmp.delete');
 
     // Google LMP (Lowest Marketplace Price) routes
     Route::get('/google-lmp-data', [\App\Http\Controllers\MarketPlace\GoogleLmpController::class, 'getGoogleLmpData'])->name('google.lmp.data');
     Route::post('/google-lmp-add', [\App\Http\Controllers\MarketPlace\GoogleLmpController::class, 'addGoogleLmp'])->name('google.lmp.add');
+    Route::post('/google-lmp-update', [\App\Http\Controllers\MarketPlace\GoogleLmpController::class, 'updateGoogleLmp'])->name('google.lmp.update');
     Route::post('/google-lmp-delete', [\App\Http\Controllers\MarketPlace\GoogleLmpController::class, 'deleteGoogleLmp'])->name('google.lmp.delete');
     Route::post('/google-lmp-import-search', [\App\Http\Controllers\MarketPlace\GoogleLmpController::class, 'importGoogleSearch'])->name('google.lmp.import');
 
