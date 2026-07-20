@@ -13,6 +13,7 @@ use App\Models\ShopifyB2CDailyData;
 use App\Models\ShopifyB2CListingStatus;
 use App\Models\AmazonDatasheet;
 use App\Models\GoogleSkuCompetitor;
+use App\Services\LmpSkuGroupService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -833,13 +834,22 @@ class Shopifyb2cController extends Controller
 
         // Google LMP from /repricer/google-search → google_sku_competitors
         $googleLmpDetails = collect();
-        $googleLmpLowest = collect();
         try {
             $googleLmpLookups = GoogleSkuCompetitor::buildGroupedLookup('google');
             $googleLmpDetails = $googleLmpLookups['details'];
-            $googleLmpLowest = $googleLmpLookups['lowest'];
         } catch (\Throwable $e) {
             Log::warning('Shopify B2C Google LMP lookup failed: ' . $e->getMessage());
+        }
+
+        // Sku Link LMP — shared lmp_sku_links groups (same as Amazon / Newegg / Shein)
+        $lmpGroupService = new LmpSkuGroupService();
+        try {
+            $lmpGroupService->prepareForSkus(array_values(array_filter(array_map(
+                static fn ($s) => trim((string) $s),
+                $skus
+            ))));
+        } catch (\Throwable $e) {
+            Log::warning('LmpSkuGroupService prepare failed (Shopify B2C): ' . $e->getMessage());
         }
 
         // Fetch Google Ads spend per SKU (L30 - last 30 days)
@@ -1049,28 +1059,33 @@ class Shopifyb2cController extends Controller
                 }
             }
 
-            // Google LMP (same source as /repricer/google-search saved competitors)
-            $lmpKey = GoogleSkuCompetitor::normalizeSkuKey($sku);
-            $lowestLmp = $googleLmpLowest->get($lmpKey);
-            $lmpEntries = $googleLmpDetails->get($lmpKey);
-            $lmpEntriesArr = [];
-            if ($lmpEntries instanceof \Illuminate\Support\Collection) {
-                $lmpEntriesArr = $lmpEntries->map(static function ($comp) {
-                    return [
-                        'id' => $comp->id,
-                        'product_id' => $comp->product_id,
-                        'source' => $comp->source,
-                        'price' => isset($comp->price) ? round((float) $comp->price, 2) : null,
-                        'link' => $comp->product_link,
-                        'product_link' => $comp->product_link,
-                        'title' => $comp->product_title,
-                        'product_title' => $comp->product_title,
-                        'image' => $comp->image,
-                        'rating' => $comp->rating !== null ? (float) $comp->rating : null,
-                        'reviews' => $comp->reviews !== null ? (int) $comp->reviews : null,
-                    ];
-                })->values()->all();
+            // Google LMP merged across Sku Link LMP group (same as Amazon / Newegg)
+            $linkedLmpSkus = $this->shopifyB2cLinkedLmpSkusFor($lmpGroupService, (string) $sku);
+            $processedItem['linked_lmp_skus'] = $linkedLmpSkus;
+
+            $mergedLmpEntries = collect();
+            $seenLmp = [];
+            $skusForLmp = $linkedLmpSkus !== [] ? $linkedLmpSkus : [$sku];
+            foreach ($skusForLmp as $linkedSku) {
+                $linkedKey = GoogleSkuCompetitor::normalizeSkuKey((string) $linkedSku);
+                $groupEntries = $googleLmpDetails->get($linkedKey);
+                if (! $groupEntries instanceof \Illuminate\Support\Collection) {
+                    continue;
+                }
+                foreach ($groupEntries as $comp) {
+                    $dedupeKey = ((string) ($comp->id ?? '')).'|'
+                        .((string) ($comp->product_id ?? '')).'|'
+                        .strtoupper(trim((string) ($comp->source ?? ''))).'|'
+                        .strtoupper(trim((string) ($comp->product_link ?? '')));
+                    if (isset($seenLmp[$dedupeKey])) {
+                        continue;
+                    }
+                    $seenLmp[$dedupeKey] = true;
+                    $mergedLmpEntries->push($comp);
+                }
             }
+            $mergedLmpEntries = GoogleSkuCompetitor::sortCollectionByNumericPrice($mergedLmpEntries);
+            $lowestLmp = GoogleSkuCompetitor::lowestFromCollection($mergedLmpEntries);
 
             $processedItem['lmp_price'] = ($lowestLmp && is_numeric($lowestLmp->price))
                 ? round((float) $lowestLmp->price, 2)
@@ -1078,8 +1093,22 @@ class Shopifyb2cController extends Controller
             $processedItem['lmp_link'] = $lowestLmp->product_link ?? null;
             $processedItem['lmp_source'] = $lowestLmp->source ?? null;
             $processedItem['lmp_title'] = $lowestLmp->product_title ?? null;
-            $processedItem['lmp_entries'] = $lmpEntriesArr;
-            $processedItem['lmp_entries_total'] = count($lmpEntriesArr);
+            $processedItem['lmp_entries'] = $mergedLmpEntries->map(static function ($comp) {
+                return [
+                    'id' => $comp->id,
+                    'product_id' => $comp->product_id,
+                    'source' => $comp->source,
+                    'price' => isset($comp->price) ? round((float) $comp->price, 2) : null,
+                    'link' => $comp->product_link,
+                    'product_link' => $comp->product_link,
+                    'title' => $comp->product_title,
+                    'product_title' => $comp->product_title,
+                    'image' => $comp->image,
+                    'rating' => $comp->rating !== null ? (float) $comp->rating : null,
+                    'reviews' => $comp->reviews !== null ? (int) $comp->reviews : null,
+                ];
+            })->values()->all();
+            $processedItem['lmp_entries_total'] = $mergedLmpEntries->count();
 
             $processedItem['is_parent_summary'] = false;
             $processedItems[] = $processedItem;
@@ -1155,6 +1184,7 @@ class Shopifyb2cController extends Controller
                 'SROI' => 0,
                 'SNROI' => 0,
                 'SPRICE_STATUS' => null,
+                'linked_lmp_skus' => [],
                 'lmp_price' => null,
                 'lmp_link' => null,
                 'lmp_source' => null,
@@ -1165,6 +1195,40 @@ class Shopifyb2cController extends Controller
         }
 
         return $finalItems;
+    }
+
+    /**
+     * Sku Link LMP group for a Shopify B2C row — shared lmp_sku_links service.
+     *
+     * @return list<string>
+     */
+    private function shopifyB2cLinkedLmpSkusFor(LmpSkuGroupService $lmpGroupService, string $sku): array
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return [];
+        }
+
+        try {
+            $group = $lmpGroupService->groupContaining($sku);
+        } catch (\Throwable $e) {
+            $group = [];
+        }
+
+        $members = $group !== [] ? $group : [$sku];
+        $seen = [];
+        $out = [];
+        foreach ($members as $member) {
+            $display = trim((string) $member);
+            $norm = strtoupper($display);
+            if ($norm === '' || isset($seen[$norm])) {
+                continue;
+            }
+            $seen[$norm] = true;
+            $out[] = $display;
+        }
+
+        return $out;
     }
 
     public function updateShopifyB2cListedLive(Request $request)

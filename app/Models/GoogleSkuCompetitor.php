@@ -81,4 +81,36 @@ class GoogleSkuCompetitor extends Model
             ->orderByNumericPrice('asc')
             ->get();
     }
+
+    /**
+     * @param  list<string>  $skus
+     */
+    public static function getCompetitorsForSkus(array $skus, string $marketplace = 'google')
+    {
+        $normKeys = [];
+        foreach ($skus as $sku) {
+            $key = self::normalizeSkuKey((string) $sku);
+            if ($key !== '') {
+                $normKeys[$key] = true;
+            }
+        }
+        $normKeys = array_keys($normKeys);
+        if ($normKeys === []) {
+            return collect();
+        }
+
+        $records = self::where('marketplace', $marketplace)
+            ->wherePositivePrice()
+            ->where(function ($query) use ($normKeys) {
+                foreach ($normKeys as $key) {
+                    $query->orWhereRaw(
+                        'UPPER(REPLACE(REPLACE(REPLACE(REPLACE(sku, CHAR(10), " "), CHAR(13), " "), CHAR(9), " "), "  ", " ")) = ?',
+                        [$key]
+                    );
+                }
+            })
+            ->get();
+
+        return self::sortCollectionByNumericPrice($records);
+    }
 }

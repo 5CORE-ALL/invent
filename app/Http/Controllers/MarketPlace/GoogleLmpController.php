@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\GoogleCompetitorItem;
 use App\Models\GoogleSkuCompetitor;
 use App\Services\GoogleLivePriceFetcher;
+use App\Services\LmpSkuGroupService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -20,7 +21,35 @@ class GoogleLmpController extends Controller
                 return response()->json(['error' => 'SKU is required'], 400);
             }
 
-            $competitors = GoogleSkuCompetitor::getCompetitorsForSku($sku, 'google');
+            $linkedSkus = $request->input('linked_lmp_skus', []);
+            if (! is_array($linkedSkus)) {
+                $linkedSkus = $linkedSkus !== null && $linkedSkus !== ''
+                    ? [trim((string) $linkedSkus)]
+                    : [];
+            }
+
+            $groupSkus = [$sku];
+            try {
+                $lmpGroupService = new LmpSkuGroupService();
+                $seed = array_values(array_filter(array_map(
+                    static fn ($value) => trim((string) $value),
+                    array_merge([$sku], $linkedSkus)
+                )));
+                $lmpGroupService->prepareForSkus($seed);
+                $resolved = $lmpGroupService->groupContaining($sku);
+                if (! empty($resolved)) {
+                    $groupSkus = $resolved;
+                }
+            } catch (\Throwable $e) {
+                Log::warning('LmpSkuGroupService in getGoogleLmpData failed: '.$e->getMessage());
+            }
+
+            $groupSkus = array_values(array_unique(array_filter(array_map(
+                static fn ($value) => trim((string) $value),
+                array_merge($groupSkus, $linkedSkus, [$sku])
+            ))));
+
+            $competitors = GoogleSkuCompetitor::getCompetitorsForSkus($groupSkus, 'google');
 
             // Live SerpApi refresh is opt-in (?refresh=1). Default is DB-only so LMP modal
             // opens quickly; background jobs keep prices fresh.
@@ -59,7 +88,7 @@ class GoogleLmpController extends Controller
                         ]);
                 }
 
-                $competitors = GoogleSkuCompetitor::getCompetitorsForSku($sku, 'google');
+                $competitors = GoogleSkuCompetitor::getCompetitorsForSkus($groupSkus, 'google');
             }
 
             $lowest = $competitors->first();
@@ -67,8 +96,10 @@ class GoogleLmpController extends Controller
             return response()->json([
                 'success' => true,
                 'sku' => $sku,
+                'linked_lmp_skus' => $groupSkus,
                 'competitors' => $competitors->map(fn ($comp) => [
                     'id' => $comp->id,
+                    'sku' => $comp->sku,
                     'product_id' => $comp->product_id,
                     'source' => $comp->source,
                     'price' => (float) ($comp->price ?? 0),
